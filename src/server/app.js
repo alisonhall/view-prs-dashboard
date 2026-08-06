@@ -2029,6 +2029,22 @@ const createViewPrsApp = () => {
   // Initialize user-defaults file on startup if it doesn't exist
   initUserDefaultsFile();
 
+  // Favicon route
+  const faviconFile = path.join(viewPrsDir, "favicon.png");
+  app.get(["/favicon.ico", "/favicon.png"], (_req, res) => {
+    if (!fs.existsSync(faviconFile)) {
+      res.status(404).send("Favicon not found");
+      return;
+    }
+
+    res.sendFile(faviconFile, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  });
+
   // Legacy compatibility route for UI files
   app.get(["/", "/index.html"], (_req, res) => {
     res.sendFile(viewPrsUiIndexFile);

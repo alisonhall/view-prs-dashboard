@@ -548,6 +548,120 @@ describe("route behavior", () => {
     expect(css.length).toBeGreaterThan(0);
   });
 
+  test("serves favicon when GET /favicon.ico is requested and file exists", async () => {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Unable to resolve server address");
+    }
+
+    const faviconPath = path.join(appModule.viewPrsDir, "favicon.png");
+    const faviconExisted = fs.existsSync(faviconPath);
+
+    try {
+      // Ensure favicon exists for this test
+      if (!faviconExisted) {
+        fs.writeFileSync(faviconPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]), "binary");
+      }
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/favicon.ico`);
+
+      expect(response.status).toBe(200);
+      expect(String(response.headers.get("content-type") || "")).toContain(
+        "image/png",
+      );
+      expect(String(response.headers.get("cache-control") || "")).toContain(
+        "max-age=86400",
+      );
+    } finally {
+      if (!faviconExisted) {
+        fs.rmSync(faviconPath, { force: true });
+      }
+    }
+  });
+
+  test("serves favicon when GET /favicon.png is requested and file exists", async () => {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Unable to resolve server address");
+    }
+
+    const faviconPath = path.join(appModule.viewPrsDir, "favicon.png");
+    const faviconExisted = fs.existsSync(faviconPath);
+
+    try {
+      // Ensure favicon exists for this test
+      if (!faviconExisted) {
+        fs.writeFileSync(faviconPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]), "binary");
+      }
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/favicon.png`);
+
+      expect(response.status).toBe(200);
+      expect(String(response.headers.get("content-type") || "")).toContain(
+        "image/png",
+      );
+      expect(String(response.headers.get("cache-control") || "")).toContain(
+        "max-age=86400",
+      );
+    } finally {
+      if (!faviconExisted) {
+        fs.rmSync(faviconPath, { force: true });
+      }
+    }
+  });
+
+  test("returns 404 when GET /favicon.ico is requested and file does not exist", async () => {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Unable to resolve server address");
+    }
+
+    const faviconPath = path.join(appModule.viewPrsDir, "favicon.png");
+    const faviconExisted = fs.existsSync(faviconPath);
+    const originalContent = faviconExisted ? fs.readFileSync(faviconPath) : null;
+
+    try {
+      // Ensure favicon does NOT exist for this test
+      fs.rmSync(faviconPath, { force: true });
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/favicon.ico`);
+      const body = await response.text();
+
+      expect(response.status).toBe(404);
+      expect(body).toContain("Favicon not found");
+    } finally {
+      if (faviconExisted && originalContent) {
+        fs.writeFileSync(faviconPath, originalContent);
+      }
+    }
+  });
+
+  test("returns 404 when GET /favicon.png is requested and file does not exist", async () => {
+    const address = server.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Unable to resolve server address");
+    }
+
+    const faviconPath = path.join(appModule.viewPrsDir, "favicon.png");
+    const faviconExisted = fs.existsSync(faviconPath);
+    const originalContent = faviconExisted ? fs.readFileSync(faviconPath) : null;
+
+    try {
+      // Ensure favicon does NOT exist for this test
+      fs.rmSync(faviconPath, { force: true });
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/favicon.png`);
+      const body = await response.text();
+
+      expect(response.status).toBe(404);
+      expect(body).toContain("Favicon not found");
+    } finally {
+      if (faviconExisted && originalContent) {
+        fs.writeFileSync(faviconPath, originalContent);
+      }
+    }
+  });
+
   test("creates the user-defaults file on startup when it is missing", () => {
     expect(fs.existsSync(userDefaultsFilePath)).toBe(true);
 
