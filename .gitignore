@@ -6,6 +6,7 @@ pr-reviews/data
 verify-not-filled-status/results
 verify-not-filled-status/source-data
 view-prs/data
+data
 coverage
 !backup-code/*
 backup-code/.DS_Store

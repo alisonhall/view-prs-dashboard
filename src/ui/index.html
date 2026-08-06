@@ -1,23 +1,20 @@
-<html>
+<html lang="en">
+
 <head>
     <title>View PR Updates</title>
     <link rel="stylesheet" href="./index.css" />
 </head>
+
 <body>
     <div id="error-snackbar" class="error-snackbar" role="alert" aria-live="polite" aria-atomic="true" hidden>
         <div class="error-snackbar-content">
             <span id="error-snackbar-message"></span>
-            <button type="button" id="error-snackbar-close" aria-label="Close notification" class="error-snackbar-close">✕</button>
+            <button type="button" id="error-snackbar-close" aria-label="Close notification"
+                class="error-snackbar-close">✕</button>
         </div>
     </div>
-    <div
-        id="auto-render-blocked-indicator"
-        class="auto-render-blocked-indicator"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        hidden
-    >
+    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-live="polite"
+        aria-atomic="true" hidden>
         <div class="auto-render-blocked-title">Auto update paused</div>
         <div id="auto-render-blocked-status" class="auto-render-blocked-status">
             Auto updates are paused until changes are saved.
@@ -38,74 +35,33 @@
     <h2>Management Tabs</h2>
     <div class="management-tabs" id="management-tabs">
         <div class="management-tab-list" role="tablist" aria-label="Management tabs">
-            <button
-                type="button"
-                id="tab-status"
-                class="management-tab-button is-active"
-                role="tab"
-                aria-selected="true"
-                aria-controls="tab-panel-status"
-            >
+            <button type="button" id="tab-status" class="management-tab-button is-active" role="tab"
+                aria-selected="true" aria-controls="tab-panel-status">
                 Activity
             </button>
-            <button
-                type="button"
-                id="tab-script"
-                class="management-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-script"
-            >
+            <button type="button" id="tab-script" class="management-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-script">
                 Run & Filter
             </button>
-            <button
-                type="button"
-                id="tab-backfill"
-                class="management-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-backfill"
-            >
+            <button type="button" id="tab-backfill" class="management-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-backfill">
                 Backfill
             </button>
-            <button
-                type="button"
-                id="tab-action-log"
-                class="management-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-action-log"
-            >
+            <button type="button" id="tab-action-log" class="management-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-action-log">
                 Action Log
             </button>
-            <button
-                type="button"
-                id="tab-actor-name-cache"
-                class="management-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-actor-name-cache"
-            >
+            <button type="button" id="tab-actor-name-cache" class="management-tab-button" role="tab"
+                aria-selected="false" aria-controls="tab-panel-actor-name-cache">
                 Actor Names
             </button>
-            <button
-                type="button"
-                id="tab-export"
-                class="management-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-export"
-            >
+            <button type="button" id="tab-export" class="management-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-export">
                 Export
             </button>
         </div>
 
-        <section
-            id="tab-panel-status"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-status"
-        >
+        <section id="tab-panel-status" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-status">
             <div class="management-overview-grid">
                 <section class="section-card management-priority-card">
                     <h3>Request Activity</h3>
@@ -129,13 +85,7 @@
             </div>
         </section>
 
-        <section
-            id="tab-panel-script"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-script"
-            hidden
-        >
+        <section id="tab-panel-script" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-script" hidden>
             <form id="run-script-form">
                 <div class="management-script-layout">
                     <section class="section-card management-priority-card run-command-panel">
@@ -153,8 +103,10 @@
 
                     <section class="section-card visibility-panel">
                         <h3>Visibility Filters</h3>
-                        <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub requests.</p>
-                        <pre id="management-filter-summary" class="management-filter-summary">Applied filters summary will appear here after data loads.</pre>
+                        <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub
+                            requests.</p>
+                        <pre id="management-filter-summary"
+                            class="management-filter-summary">Applied filters summary will appear here after data loads.</pre>
                         <div id="management-filter-chips" class="applied-filter-chips"></div>
 
                         <div class="form-grid">
@@ -163,7 +115,8 @@
                                 <option value="all" selected>All stored rows</option>
                                 <option value="last-run">Last run rows</option>
                                 <option value="needs-attention">Needs attention rows</option>
-                                <option value="needs-attention-or-interacted">Needs attention or interacted rows</option>
+                                <option value="needs-attention-or-interacted">Needs attention or interacted rows
+                                </option>
                             </select>
 
                             <label for="filter-pr-numbers">Filter by PR number(s)</label>
@@ -196,7 +149,8 @@
                         </div>
 
                         <div class="form-actions">
-                            <button type="button" id="apply-filters-btn" class="apply-filters-btn">Apply filters (local)</button>
+                            <button type="button" id="apply-filters-btn" class="apply-filters-btn">Apply filters
+                                (local)</button>
                         </div>
 
                         <details class="advanced-options section-card low-emphasis-card">
@@ -213,50 +167,65 @@
                                     <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
                                     <select id="attention-no-activity-mode" name="attentionNoActivityMode">
                                         <option value="all" selected>Mark all NO_ACTIVITY PRs</option>
-                                        <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a reviewer</option>
+                                        <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a
+                                            reviewer</option>
                                         <option value="none">Never mark NO_ACTIVITY PRs</option>
                                     </select>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-pending-comments" name="attentionIncludePendingComments" checked />
+                                        <input type="checkbox" id="attention-include-pending-comments"
+                                            name="attentionIncludePendingComments" checked />
                                         Mark PRs with my pending (unsubmitted) comments
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-ignore-merge-only-commits" name="attentionIgnoreMergeOnlyCommits" />
+                                        <input type="checkbox" id="attention-ignore-merge-only-commits"
+                                            name="attentionIgnoreMergeOnlyCommits" />
                                         Exclude merge-only commit activity from CHANGED attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-closed-merged" name="attentionIncludeClosedMerged" checked />
+                                        <input type="checkbox" id="attention-include-closed-merged"
+                                            name="attentionIncludeClosedMerged" checked />
                                         Include closed/merged sections in attention logic
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-changed" name="attentionIncludeDraftChanged" checked />
+                                        <input type="checkbox" id="attention-include-draft-changed"
+                                            name="attentionIncludeDraftChanged" checked />
                                         Mark CHANGED draft PRs as attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-no-activity" name="attentionIncludeDraftNoActivity" />
+                                        <input type="checkbox" id="attention-include-draft-no-activity"
+                                            name="attentionIncludeDraftNoActivity" />
                                         Apply NO_ACTIVITY attention rules to draft PRs
                                     </label>
 
-                                    <label for="attention-author-thread-resolution-mode">PR author thread resolution policy</label>
-                                    <select id="attention-author-thread-resolution-mode" name="attentionAuthorThreadResolutionMode">
-                                        <option value="allow-all" selected>Allow PR authors to resolve all own-PR threads</option>
+                                    <label for="attention-author-thread-resolution-mode">PR author thread resolution
+                                        policy</label>
+                                    <select id="attention-author-thread-resolution-mode"
+                                        name="attentionAuthorThreadResolutionMode">
+                                        <option value="allow-all" selected>Allow PR authors to resolve all own-PR
+                                            threads</option>
                                         <option value="allow-only">Allow only for selected thread starters</option>
                                         <option value="deny-only">Disallow for selected thread starters</option>
                                     </select>
 
-                                    <details id="attention-author-thread-resolution-allow-options" class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary">Allow PR authors to resolve threads started by (Actor Names)</summary>
-                                        <div id="attention-author-thread-resolution-allow-list" class="multi-select-list"></div>
+                                    <details id="attention-author-thread-resolution-allow-options"
+                                        class="multi-select-dropdown" hidden>
+                                        <summary class="multi-select-summary">Allow PR authors to resolve threads
+                                            started by (Actor Names)</summary>
+                                        <div id="attention-author-thread-resolution-allow-list"
+                                            class="multi-select-list"></div>
                                     </details>
 
-                                    <details id="attention-author-thread-resolution-deny-options" class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary">Do not allow PR authors to resolve threads started by (Actor Names)</summary>
-                                        <div id="attention-author-thread-resolution-deny-list" class="multi-select-list"></div>
+                                    <details id="attention-author-thread-resolution-deny-options"
+                                        class="multi-select-dropdown" hidden>
+                                        <summary class="multi-select-summary">Do not allow PR authors to resolve threads
+                                            started by (Actor Names)</summary>
+                                        <div id="attention-author-thread-resolution-deny-list"
+                                            class="multi-select-list"></div>
                                     </details>
                                 </fieldset>
                             </div>
@@ -268,7 +237,8 @@
                     <summary>Run Script options (rarely changed)</summary>
                     <div class="form-grid">
                         <label for="repo">Repo (owner/name)</label>
-                        <input type="text" id="repo" name="repo" placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
+                        <input type="text" id="repo" name="repo"
+                            placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
 
                         <label for="limit">Open PR limit</label>
                         <input type="number" id="limit" name="limit" min="1" placeholder="200" />
@@ -310,13 +280,8 @@
             </details>
         </section>
 
-        <section
-            id="tab-panel-backfill"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-backfill"
-            hidden
-        >
+        <section id="tab-panel-backfill" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-backfill"
+            hidden>
             <h3>Backfill (least-used maintenance tool)</h3>
             <div id="backfill-card" class="scheduler-card low-emphasis-card">
                 <div id="backfill-badges" class="scheduler-badges"></div>
@@ -340,13 +305,8 @@
             </div>
         </section>
 
-        <section
-            id="tab-panel-action-log"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-action-log"
-            hidden
-        >
+        <section id="tab-panel-action-log" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-action-log"
+            hidden>
             <h3>Action Log</h3>
             <div class="action-log-controls form-actions">
                 <button type="button" id="action-log-refresh-btn">Refresh</button>
@@ -356,15 +316,11 @@
             </div>
         </section>
 
-        <section
-            id="tab-panel-actor-name-cache"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-actor-name-cache"
-            hidden
-        >
+        <section id="tab-panel-actor-name-cache" class="management-tab-panel" role="tabpanel"
+            aria-labelledby="tab-actor-name-cache" hidden>
             <h3>Actor Names</h3>
-            <p class="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering, insights, and stats.</p>
+            <p class="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering,
+                insights, and stats.</p>
             <h4>Display Name Mappings</h4>
             <div class="actor-name-cache-controls form-actions">
                 <button type="button" id="actor-name-cache-refresh-btn">Refresh</button>
@@ -375,7 +331,8 @@
             <div id="actor-name-cache-rows" class="actor-name-cache-rows"></div>
 
             <h4>Login Alias Mappings</h4>
-            <p class="subtle-copy">Use alias login to canonical login mappings when the same person appears under multiple GitHub identities.</p>
+            <p class="subtle-copy">Use alias login to canonical login mappings when the same person appears under
+                multiple GitHub identities.</p>
             <div class="actor-name-cache-controls form-actions">
                 <button type="button" id="actor-login-aliases-refresh-btn">Refresh</button>
                 <button type="button" id="actor-login-aliases-add-row-btn">Add alias row</button>
@@ -385,16 +342,12 @@
             <div id="actor-login-aliases-rows" class="actor-name-cache-rows"></div>
         </section>
 
-        <section
-            id="tab-panel-export"
-            class="management-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-export"
-            hidden
-        >
+        <section id="tab-panel-export" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-export" hidden>
             <h3>Export Visible PR JSON</h3>
-            <p class="subtle-copy">Choose PR fields from data and user state, then export only rows currently visible in PR Data and only sections currently expanded.</p>
-            <pre id="export-selection-summary" class="management-filter-summary">Select export fields to build a JSON preview.</pre>
+            <p class="subtle-copy">Choose PR fields from data and user state, then export only rows currently visible in
+                PR Data and only sections currently expanded.</p>
+            <pre id="export-selection-summary"
+                class="management-filter-summary">Select export fields to build a JSON preview.</pre>
 
             <div class="export-field-controls form-actions">
                 <button type="button" id="export-select-all-btn">Select all</button>
@@ -421,65 +374,32 @@
     <h2>Data Views</h2>
     <div class="data-tabs" id="data-tabs">
         <div class="data-tab-list" role="tablist" aria-label="PR data views">
-            <button
-                type="button"
-                id="tab-pr-data"
-                class="data-tab-button is-active"
-                role="tab"
-                aria-selected="true"
-                aria-controls="tab-panel-pr-data"
-            >
+            <button type="button" id="tab-pr-data" class="data-tab-button is-active" role="tab" aria-selected="true"
+                aria-controls="tab-panel-pr-data">
                 PR data
             </button>
-            <button
-                type="button"
-                id="tab-review-stats"
-                class="data-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-review-stats"
-            >
+            <button type="button" id="tab-review-stats" class="data-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-review-stats">
                 Review statistics
             </button>
-            <button
-                type="button"
-                id="tab-author-insights"
-                class="data-tab-button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="tab-panel-author-insights"
-            >
+            <button type="button" id="tab-author-insights" class="data-tab-button" role="tab" aria-selected="false"
+                aria-controls="tab-panel-author-insights">
                 Author Insights
             </button>
         </div>
 
-        <section
-            id="tab-panel-pr-data"
-            class="data-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-pr-data"
-        >
+        <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <pre id="data-meta" style="white-space: break-spaces;">Loading...</pre>
             <div id="pr-sections"></div>
         </section>
 
-        <section
-            id="tab-panel-review-stats"
-            class="data-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-review-stats"
-            hidden
-        >
+        <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
+            hidden>
             <div id="pr-stats" class="stats-panel">Loading...</div>
         </section>
 
-        <section
-            id="tab-panel-author-insights"
-            class="data-tab-panel"
-            role="tabpanel"
-            aria-labelledby="tab-author-insights"
-            hidden
-        >
+        <section id="tab-panel-author-insights" class="data-tab-panel" role="tabpanel"
+            aria-labelledby="tab-author-insights" hidden>
             <div id="author-insights" class="author-insights-panel">Loading...</div>
         </section>
     </div>
@@ -526,6 +446,9 @@
     <script src="./helpers/pr-review-stats-timeline.helpers.js"></script>
     <script src="./helpers/pr-author-insights-drafts.helpers.js"></script>
     <script src="./helpers/pr-author-insights-identity.helpers.js"></script>
+    <script src="./helpers/pr-author-insights-pr-link.helpers.js"></script>
+    <script src="./helpers/pr-author-insights-display.helpers.js"></script>
+    <script src="./helpers/pr-author-insights-data.helpers.js"></script>
     <script src="./helpers/pr-needs-attention.helpers.js"></script>
     <script src="./helpers/pr-ui-option-scroll.helpers.js"></script>
     <script src="./helpers/pr-dom-access.helpers.js"></script>
@@ -590,4 +513,5 @@
     <script src="./components/pr-row-insights.component.js"></script>
     <script src="./index.page.js"></script>
 </body>
+
 </html>

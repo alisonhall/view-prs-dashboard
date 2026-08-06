@@ -35,6 +35,7 @@
   "author": "Alison Hall",
   "license": "ISC",
   "dependencies": {
+    "express": "^4.21.2",
     "marked": "^17.0.5"
   },
   "devDependencies": {

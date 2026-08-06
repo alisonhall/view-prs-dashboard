@@ -11,7 +11,7 @@
     return;
   }
 
-  root.ViewPrsPrAuthorInsightsDataHelpers = factory();
+  root.ViewPrsAuthorInsightsDataHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const AUTHOR_COMMENT_SENTIMENT_OPTIONS = [
     { value: "positive", label: "Positive" },

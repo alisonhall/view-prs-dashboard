@@ -11,7 +11,7 @@
     return;
   }
 
-  root.ViewPrsPrAuthorInsightsPrLinkHelpers = factory();
+  root.ViewPrsAuthorInsightsPrLinkHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrAuthorInsightsPrLinkHelpers = ({
     DEFAULT_REPO = "",

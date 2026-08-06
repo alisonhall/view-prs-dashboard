@@ -12,7 +12,7 @@
     return;
   }
 
-  root.ViewPrsPrAuthorInsightsDisplayHelpers = factory();
+  root.ViewPrsAuthorInsightsDisplayHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrAuthorInsightsDisplayHelpers = ({
     resolveActorDisplayName,
