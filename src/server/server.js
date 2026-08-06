@@ -18,10 +18,10 @@ const shouldDisableSchedulerStartup = ["1", "true", "yes", "on"].includes(
 );
 const requestedPort =
   rawRequestedPort === ""
-    ? 3000
+    ? 9000
     : /^\d+$/.test(rawRequestedPort)
       ? Number(rawRequestedPort)
-      : 3000;
+      : 9000;
 
 // Create the app
 const app = createViewPrsApp();

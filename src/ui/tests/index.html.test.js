@@ -5027,34 +5027,30 @@ describe("index page rendering with Testing Library", () => {
 
   test("posts notes payload and renders saved comment after a user saves notes", async () => {
     initTestPage({
-      dataPayload: {
-        byPrNumber: {
-          1: {
-            repo: "owner/repo",
-            prNumber: "1",
-            section: "open",
-            data: {
-              number: "1",
-              url: "https://github.com/owner/repo/pull/1",
-              status: "NO_CHANGE",
-              approved: "NO",
-              title: "PR with notes",
-              titleDisplay: "PR with notes [CHK:PASS] [MRG:YES]",
-              author: "octocat",
-              labels: [{ name: "bug" }],
-              updatedAt: "2026-06-15T10:00:00Z",
-              inReview: false,
+      dataPayload: createMultiPrPayload({
+        prs: [
+          {
+            scenario: "open-no-change",
+            prNumber: 1,
+            overrides: {
+              data: {
+                title: "PR with notes",
+                titleDisplay: "PR with notes [CHK:PASS] [MRG:YES]",
+                author: "octocat",
+                url: "https://github.com/owner/repo/pull/1",
+                updatedAt: "2026-06-15T10:00:00Z",
+              },
+              notes: undefined,
             },
-            notes: undefined,
           },
-        },
+        ],
         lastRun: { repo: "owner/repo", updatedAt: "2026-03-10T10:15:00Z" },
         scheduler: {
           intervalMinutes: 15,
           manualCooldownMinutes: 15,
           isAutoRunInProgress: false,
         },
-      },
+      }),
     });
     const user = userEvent.setup();
     fetchMock.mockClear();
@@ -6245,26 +6241,24 @@ describe("index page rendering with Testing Library", () => {
           dataMeta: {
             dataVersion: "seed-version",
           },
-          byPrNumber: {
-            101: {
-              repo: "owner/repo",
-              prNumber: "101",
-              section: "open",
-              data: {
-                number: "101",
-                url: "https://github.com/owner/repo/pull/101",
-                status: "NO_CHANGE",
-                approved: "NO",
-                title: "Unchanged polling seed",
-                titleDisplay: "Unchanged polling seed [CHK:PASS]",
-                author: "octocat",
-                labels: [],
-                updatedAt: "2026-06-16T10:00:00Z",
-                inReview: false,
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 101,
+                overrides: {
+                  data: {
+                    title: "Unchanged polling seed",
+                    titleDisplay: "Unchanged polling seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/101",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
               },
-            },
-          },
-          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
         },
       });
 

@@ -232,7 +232,7 @@ describe("server startup behavior", () => {
     expect(response.body.length).toBeGreaterThan(0);
   });
 
-  test("uses default port 3000 when VIEW_PRS_PORT is not set", async () => {
+  test("uses default port 9000 when VIEW_PRS_PORT is not set", async () => {
     // Start server without VIEW_PRS_PORT env var
     const childEnv = { ...process.env };
     delete childEnv.VIEW_PRS_PORT;
@@ -247,11 +247,11 @@ describe("server startup behavior", () => {
 
     try {
       const { port: detectedPort } = await waitForReportedPort(child);
-      expect(detectedPort).toBe(3000);
+      expect(detectedPort).toBe(9000);
 
       // Verify server is responsive on default port
       const response = await waitForServer({
-        url: "http://127.0.0.1:3000/",
+        url: "http://127.0.0.1:9000/",
       });
       expect(response.status).toBe(200);
     } finally {
