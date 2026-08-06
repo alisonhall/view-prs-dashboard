@@ -1,0 +1,593 @@
+<html>
+<head>
+    <title>View PR Updates</title>
+    <link rel="stylesheet" href="./index.css" />
+</head>
+<body>
+    <div id="error-snackbar" class="error-snackbar" role="alert" aria-live="polite" aria-atomic="true" hidden>
+        <div class="error-snackbar-content">
+            <span id="error-snackbar-message"></span>
+            <button type="button" id="error-snackbar-close" aria-label="Close notification" class="error-snackbar-close">✕</button>
+        </div>
+    </div>
+    <div
+        id="auto-render-blocked-indicator"
+        class="auto-render-blocked-indicator"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        hidden
+    >
+        <div class="auto-render-blocked-title">Auto update paused</div>
+        <div id="auto-render-blocked-status" class="auto-render-blocked-status">
+            Auto updates are paused until changes are saved.
+        </div>
+        <div id="auto-render-blocked-pr-links" class="auto-render-blocked-pr-links"></div>
+        <div class="auto-render-blocked-actions">
+            <button type="button" id="auto-render-blocked-apply-btn">Discard unsaved</button>
+        </div>
+    </div>
+    <h1>View PR Updates</h1>
+    <nav>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="./README.md">README</a></li>
+        </ul>
+    </nav>
+
+    <h2>Management Tabs</h2>
+    <div class="management-tabs" id="management-tabs">
+        <div class="management-tab-list" role="tablist" aria-label="Management tabs">
+            <button
+                type="button"
+                id="tab-status"
+                class="management-tab-button is-active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="tab-panel-status"
+            >
+                Activity
+            </button>
+            <button
+                type="button"
+                id="tab-script"
+                class="management-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-script"
+            >
+                Run & Filter
+            </button>
+            <button
+                type="button"
+                id="tab-backfill"
+                class="management-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-backfill"
+            >
+                Backfill
+            </button>
+            <button
+                type="button"
+                id="tab-action-log"
+                class="management-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-action-log"
+            >
+                Action Log
+            </button>
+            <button
+                type="button"
+                id="tab-actor-name-cache"
+                class="management-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-actor-name-cache"
+            >
+                Actor Names
+            </button>
+            <button
+                type="button"
+                id="tab-export"
+                class="management-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-export"
+            >
+                Export
+            </button>
+        </div>
+
+        <section
+            id="tab-panel-status"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-status"
+        >
+            <div class="management-overview-grid">
+                <section class="section-card management-priority-card">
+                    <h3>Request Activity</h3>
+                    <div id="request-activity-badges" class="scheduler-badges"></div>
+                    <pre id="request-activity-details" class="scheduler-details">Monitoring request activity...</pre>
+                </section>
+
+                <section class="section-card">
+                    <h3>Latest Status</h3>
+                    <pre id="status" style="white-space: break-spaces;">Not run</pre>
+                </section>
+            </div>
+
+            <h3>Auto Refresh Scheduler</h3>
+            <div id="scheduler-card" class="scheduler-card">
+                <div id="scheduler-badges" class="scheduler-badges"></div>
+                <pre id="scheduler-details" class="scheduler-details">Loading scheduler status...</pre>
+                <div class="form-actions">
+                    <button type="button" id="trigger-auto-run-btn">Trigger auto run</button>
+                </div>
+            </div>
+        </section>
+
+        <section
+            id="tab-panel-script"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-script"
+            hidden
+        >
+            <form id="run-script-form">
+                <div class="management-script-layout">
+                    <section class="section-card management-priority-card run-command-panel">
+                        <h3>Run check-open-pr-updates.sh</h3>
+                        <div class="form-grid single-field-grid">
+                            <label for="pr-numbers">PR number(s) (comma-separated)</label>
+                            <input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />
+                        </div>
+                        <div class="form-actions primary-actions">
+                            <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
+                            <button type="button" id="ack-only-btn">Apply ack only</button>
+                            <button type="button" id="clear-only-btn">Apply clear only</button>
+                        </div>
+                    </section>
+
+                    <section class="section-card visibility-panel">
+                        <h3>Visibility Filters</h3>
+                        <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub requests.</p>
+                        <pre id="management-filter-summary" class="management-filter-summary">Applied filters summary will appear here after data loads.</pre>
+                        <div id="management-filter-chips" class="applied-filter-chips"></div>
+
+                        <div class="form-grid">
+                            <label for="scope-mode">View scope</label>
+                            <select id="scope-mode" name="scopeMode">
+                                <option value="all" selected>All stored rows</option>
+                                <option value="last-run">Last run rows</option>
+                                <option value="needs-attention">Needs attention rows</option>
+                                <option value="needs-attention-or-interacted">Needs attention or interacted rows</option>
+                            </select>
+
+                            <label for="filter-pr-numbers">Filter by PR number(s)</label>
+                            <input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />
+
+                            <details class="multi-select-dropdown">
+                                <summary class="multi-select-summary">Filter by label name(s)</summary>
+                                <div id="label-list" class="multi-select-list"></div>
+                            </details>
+
+                            <details class="multi-select-dropdown">
+                                <summary class="multi-select-summary">Exclude by label name(s)</summary>
+                                <div id="exclude-label-list" class="multi-select-list"></div>
+                            </details>
+
+                            <details class="multi-select-dropdown">
+                                <summary class="multi-select-summary">Filter by PR author(s)</summary>
+                                <div id="author-list" class="multi-select-list"></div>
+                            </details>
+
+                            <details class="multi-select-dropdown">
+                                <summary class="multi-select-summary">Filter by Assigned user(s)</summary>
+                                <div id="assigned-list" class="multi-select-list"></div>
+                            </details>
+
+                            <details class="multi-select-dropdown">
+                                <summary class="multi-select-summary">Filter by PR approver(s)</summary>
+                                <div id="approver-list" class="multi-select-list"></div>
+                            </details>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" id="apply-filters-btn" class="apply-filters-btn">Apply filters (local)</button>
+                        </div>
+
+                        <details class="advanced-options section-card low-emphasis-card">
+                            <summary>Advanced visibility and attention rules</summary>
+                            <div class="form-grid">
+                                <label class="checkbox-row">
+                                    <input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" />
+                                    Always show PRs In Review
+                                </label>
+
+                                <fieldset>
+                                    <legend>Needs Attention rules</legend>
+
+                                    <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
+                                    <select id="attention-no-activity-mode" name="attentionNoActivityMode">
+                                        <option value="all" selected>Mark all NO_ACTIVITY PRs</option>
+                                        <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a reviewer</option>
+                                        <option value="none">Never mark NO_ACTIVITY PRs</option>
+                                    </select>
+
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="attention-include-pending-comments" name="attentionIncludePendingComments" checked />
+                                        Mark PRs with my pending (unsubmitted) comments
+                                    </label>
+
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="attention-ignore-merge-only-commits" name="attentionIgnoreMergeOnlyCommits" />
+                                        Exclude merge-only commit activity from CHANGED attention
+                                    </label>
+
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="attention-include-closed-merged" name="attentionIncludeClosedMerged" checked />
+                                        Include closed/merged sections in attention logic
+                                    </label>
+
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="attention-include-draft-changed" name="attentionIncludeDraftChanged" checked />
+                                        Mark CHANGED draft PRs as attention
+                                    </label>
+
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="attention-include-draft-no-activity" name="attentionIncludeDraftNoActivity" />
+                                        Apply NO_ACTIVITY attention rules to draft PRs
+                                    </label>
+
+                                    <label for="attention-author-thread-resolution-mode">PR author thread resolution policy</label>
+                                    <select id="attention-author-thread-resolution-mode" name="attentionAuthorThreadResolutionMode">
+                                        <option value="allow-all" selected>Allow PR authors to resolve all own-PR threads</option>
+                                        <option value="allow-only">Allow only for selected thread starters</option>
+                                        <option value="deny-only">Disallow for selected thread starters</option>
+                                    </select>
+
+                                    <details id="attention-author-thread-resolution-allow-options" class="multi-select-dropdown" hidden>
+                                        <summary class="multi-select-summary">Allow PR authors to resolve threads started by (Actor Names)</summary>
+                                        <div id="attention-author-thread-resolution-allow-list" class="multi-select-list"></div>
+                                    </details>
+
+                                    <details id="attention-author-thread-resolution-deny-options" class="multi-select-dropdown" hidden>
+                                        <summary class="multi-select-summary">Do not allow PR authors to resolve threads started by (Actor Names)</summary>
+                                        <div id="attention-author-thread-resolution-deny-list" class="multi-select-list"></div>
+                                    </details>
+                                </fieldset>
+                            </div>
+                        </details>
+                    </section>
+                </div>
+
+                <details class="advanced-options section-card low-emphasis-card">
+                    <summary>Run Script options (rarely changed)</summary>
+                    <div class="form-grid">
+                        <label for="repo">Repo (owner/name)</label>
+                        <input type="text" id="repo" name="repo" placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
+
+                        <label for="limit">Open PR limit</label>
+                        <input type="number" id="limit" name="limit" min="1" placeholder="200" />
+
+                        <label for="merged-limit">Merged PR limit</label>
+                        <input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />
+
+                        <label for="jobs">Parallel jobs</label>
+                        <input type="number" id="jobs" name="jobs" min="1" placeholder="6" />
+
+                        <label for="open-mode">Open mode</label>
+                        <select id="open-mode" name="openMode">
+                            <option value="none" selected>none</option>
+                            <option value="changed">changed</option>
+                            <option value="all">all</option>
+                        </select>
+
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="ack-changed" name="ackChanged" />
+                            Ack all CHANGED non-draft PRs from this run
+                        </label>
+
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="show-reason" name="showReason" checked />
+                            Show CHANGED reason in status
+                        </label>
+
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="quiet" name="quiet" />
+                            Quiet mode (hide run metadata header)
+                        </label>
+                    </div>
+                </details>
+            </form>
+
+            <details class="advanced-options section-card low-emphasis-card">
+                <summary>Latest request output</summary>
+                <pre id="output">Run the script to see output</pre>
+            </details>
+        </section>
+
+        <section
+            id="tab-panel-backfill"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-backfill"
+            hidden
+        >
+            <h3>Backfill (least-used maintenance tool)</h3>
+            <div id="backfill-card" class="scheduler-card low-emphasis-card">
+                <div id="backfill-badges" class="scheduler-badges"></div>
+                <div class="form-actions">
+                    <button type="button" id="backfill-start-btn">Start backfill</button>
+                    <button type="button" id="backfill-stop-btn">Stop backfill</button>
+                    <button type="button" id="backfill-refresh-btn">Refresh status</button>
+                </div>
+                <pre id="backfill-details" class="scheduler-details">Loading backfill status...</pre>
+                <details class="advanced-options">
+                    <summary>Log details</summary>
+                    <div class="backfill-log-options">
+                        <label>
+                            <input type="checkbox" id="backfill-log-autoscroll" checked />
+                            Auto-scroll log while running
+                        </label>
+                        <button type="button" id="backfill-log-refresh-btn">Refresh log</button>
+                    </div>
+                    <pre id="backfill-log" class="backfill-log">Loading backfill log...</pre>
+                </details>
+            </div>
+        </section>
+
+        <section
+            id="tab-panel-action-log"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-action-log"
+            hidden
+        >
+            <h3>Action Log</h3>
+            <div class="action-log-controls form-actions">
+                <button type="button" id="action-log-refresh-btn">Refresh</button>
+            </div>
+            <div id="action-log-container" class="action-log-container">
+                <p id="action-log-empty" class="action-log-empty">No actions logged yet.</p>
+            </div>
+        </section>
+
+        <section
+            id="tab-panel-actor-name-cache"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-actor-name-cache"
+            hidden
+        >
+            <h3>Actor Names</h3>
+            <p class="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering, insights, and stats.</p>
+            <h4>Display Name Mappings</h4>
+            <div class="actor-name-cache-controls form-actions">
+                <button type="button" id="actor-name-cache-refresh-btn">Refresh</button>
+                <button type="button" id="actor-name-cache-add-row-btn">Add display-name row</button>
+                <button type="button" id="actor-name-cache-save-btn">Save display names</button>
+            </div>
+            <p id="actor-name-cache-status" class="actor-name-cache-status">Loading cache...</p>
+            <div id="actor-name-cache-rows" class="actor-name-cache-rows"></div>
+
+            <h4>Login Alias Mappings</h4>
+            <p class="subtle-copy">Use alias login to canonical login mappings when the same person appears under multiple GitHub identities.</p>
+            <div class="actor-name-cache-controls form-actions">
+                <button type="button" id="actor-login-aliases-refresh-btn">Refresh</button>
+                <button type="button" id="actor-login-aliases-add-row-btn">Add alias row</button>
+                <button type="button" id="actor-login-aliases-save-btn">Save login aliases</button>
+            </div>
+            <p id="actor-login-aliases-status" class="actor-name-cache-status">Loading aliases...</p>
+            <div id="actor-login-aliases-rows" class="actor-name-cache-rows"></div>
+        </section>
+
+        <section
+            id="tab-panel-export"
+            class="management-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-export"
+            hidden
+        >
+            <h3>Export Visible PR JSON</h3>
+            <p class="subtle-copy">Choose PR fields from data and user state, then export only rows currently visible in PR Data and only sections currently expanded.</p>
+            <pre id="export-selection-summary" class="management-filter-summary">Select export fields to build a JSON preview.</pre>
+
+            <div class="export-field-controls form-actions">
+                <button type="button" id="export-select-all-btn">Select all</button>
+                <button type="button" id="export-select-none-btn">Select none</button>
+                <button type="button" id="export-select-data-btn">Data only</button>
+                <button type="button" id="export-select-user-state-btn">User state only</button>
+            </div>
+
+            <div id="export-field-list" class="export-field-list"></div>
+
+            <div class="form-actions export-actions">
+                <button type="button" id="export-preview-btn">Preview JSON</button>
+                <button type="button" id="export-copy-btn">Copy JSON</button>
+                <button type="button" id="export-download-btn">Download JSON</button>
+            </div>
+            <pre id="export-status" class="scheduler-details">Waiting for data...</pre>
+            <details class="advanced-options section-card low-emphasis-card" open>
+                <summary>Export preview</summary>
+                <pre id="export-preview">Run Preview JSON to inspect the export payload.</pre>
+            </details>
+        </section>
+    </div>
+
+    <h2>Data Views</h2>
+    <div class="data-tabs" id="data-tabs">
+        <div class="data-tab-list" role="tablist" aria-label="PR data views">
+            <button
+                type="button"
+                id="tab-pr-data"
+                class="data-tab-button is-active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="tab-panel-pr-data"
+            >
+                PR data
+            </button>
+            <button
+                type="button"
+                id="tab-review-stats"
+                class="data-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-review-stats"
+            >
+                Review statistics
+            </button>
+            <button
+                type="button"
+                id="tab-author-insights"
+                class="data-tab-button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-panel-author-insights"
+            >
+                Author Insights
+            </button>
+        </div>
+
+        <section
+            id="tab-panel-pr-data"
+            class="data-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-pr-data"
+        >
+            <pre id="data-meta" style="white-space: break-spaces;">Loading...</pre>
+            <div id="pr-sections"></div>
+        </section>
+
+        <section
+            id="tab-panel-review-stats"
+            class="data-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-review-stats"
+            hidden
+        >
+            <div id="pr-stats" class="stats-panel">Loading...</div>
+        </section>
+
+        <section
+            id="tab-panel-author-insights"
+            class="data-tab-panel"
+            role="tabpanel"
+            aria-labelledby="tab-author-insights"
+            hidden
+        >
+            <div id="author-insights" class="author-insights-panel">Loading...</div>
+        </section>
+    </div>
+
+    <script src="./node_modules/marked/lib/marked.umd.js"></script>
+    <script src="./helpers/pr-json-modal.helpers.js"></script>
+    <script src="./helpers/pr-notes.helpers.js"></script>
+    <script src="./helpers/pr-data-polling.helpers.js"></script>
+    <script src="./helpers/pr-http.helpers.js"></script>
+    <script src="./helpers/pr-status-display.helpers.js"></script>
+    <script src="./helpers/pr-command-output.helpers.js"></script>
+    <script src="./helpers/pr-data-tabs.helpers.js"></script>
+    <script src="./helpers/pr-backfill.helpers.js"></script>
+    <script src="./helpers/pr-backfill-actions.helpers.js"></script>
+    <script src="./helpers/pr-action-log.helpers.js"></script>
+    <script src="./helpers/pr-actor-name-cache.helpers.js"></script>
+    <script src="./helpers/pr-management-tabs.helpers.js"></script>
+    <script src="./helpers/pr-formatting.helpers.js"></script>
+    <script src="./helpers/pr-actor-identity.helpers.js"></script>
+    <script src="./helpers/pr-actor-identity-style.helpers.js"></script>
+    <script src="./helpers/pr-actor-identity-render.helpers.js"></script>
+    <script src="./helpers/pr-activity-event-description.helpers.js"></script>
+    <script src="./helpers/pr-activity-timeline-render.helpers.js"></script>
+    <script src="./helpers/pr-requested-reviewers.helpers.js"></script>
+    <script src="./helpers/pr-assigned-users.helpers.js"></script>
+    <script src="./helpers/pr-approvers.helpers.js"></script>
+    <script src="./helpers/pr-lines-changed-insight.helpers.js"></script>
+    <script src="./helpers/pr-insight-badge-class.helpers.js"></script>
+    <script src="./helpers/pr-insight-metrics-summary.helpers.js"></script>
+    <script src="./helpers/pr-labels-cell.helpers.js"></script>
+    <script src="./helpers/pr-date-cell.helpers.js"></script>
+    <script src="./helpers/pr-selection-cell.helpers.js"></script>
+    <script src="./helpers/pr-status-cell.helpers.js"></script>
+    <script src="./helpers/pr-table-cell-primitives.helpers.js"></script>
+    <script src="./helpers/pr-approved-cell.helpers.js"></script>
+    <script src="./helpers/pr-author-cell.helpers.js"></script>
+    <script src="./helpers/pr-title-cell.helpers.js"></script>
+    <script src="./helpers/pr-row-toggle-controls.helpers.js"></script>
+    <script src="./helpers/pr-actions-cell.helpers.js"></script>
+    <script src="./helpers/pr-ui-render-utils.helpers.js"></script>
+    <script src="./helpers/pr-diff-render.helpers.js"></script>
+    <script src="./helpers/pr-review-stats-date-bucketing.helpers.js"></script>
+    <script src="./helpers/pr-review-stats-aggregation.helpers.js"></script>
+    <script src="./helpers/pr-review-stats-timeline.helpers.js"></script>
+    <script src="./helpers/pr-author-insights-drafts.helpers.js"></script>
+    <script src="./helpers/pr-author-insights-identity.helpers.js"></script>
+    <script src="./helpers/pr-needs-attention.helpers.js"></script>
+    <script src="./helpers/pr-ui-option-scroll.helpers.js"></script>
+    <script src="./helpers/pr-dom-access.helpers.js"></script>
+    <script src="./helpers/pr-dom-reset.helpers.js"></script>
+    <script src="./helpers/pr-dom-traversal.helpers.js"></script>
+    <script src="./helpers/pr-section-open-state.helpers.js"></script>
+    <script src="./helpers/pr-insights-state.helpers.js"></script>
+    <script src="./helpers/pr-insights-view-state.helpers.js"></script>
+    <script src="./helpers/pr-applied-summary.helpers.js"></script>
+    <script src="./helpers/pr-merged-request-more-config.helpers.js"></script>
+    <script src="./helpers/pr-merged-request-more.helpers.js"></script>
+    <script src="./helpers/pr-merged-request-more-action.helpers.js"></script>
+    <script src="./helpers/pr-section-grouping.helpers.js"></script>
+    <script src="./helpers/pr-scope-selection.helpers.js"></script>
+    <script src="./helpers/pr-scope-settings.helpers.js"></script>
+    <script src="./helpers/pr-repo-run-context.helpers.js"></script>
+    <script src="./helpers/pr-render-context.helpers.js"></script>
+    <script src="./helpers/pr-row-sources.helpers.js"></script>
+    <script src="./helpers/pr-run-pr-data-context.helpers.js"></script>
+    <script src="./helpers/pr-stored-data-load.helpers.js"></script>
+    <script src="./helpers/pr-single-pr-update.helpers.js"></script>
+    <script src="./helpers/pr-render-viewer-filter-setup.helpers.js"></script>
+    <script src="./helpers/pr-viewer-context.helpers.js"></script>
+    <script src="./helpers/pr-filter-options.helpers.js"></script>
+    <script src="./helpers/pr-scoped-rows.helpers.js"></script>
+    <script src="./helpers/pr-render-summary.helpers.js"></script>
+    <script src="./helpers/pr-render-apply.helpers.js"></script>
+    <script src="./helpers/pr-filter-pipeline.helpers.js"></script>
+    <script src="./helpers/pr-filter-selection-inputs.helpers.js"></script>
+    <script src="./helpers/pr-render-summary-inputs.helpers.js"></script>
+    <script src="./helpers/pr-render-filter-summary.helpers.js"></script>
+    <script src="./helpers/pr-render-apply-inputs.helpers.js"></script>
+    <script src="./helpers/pr-render-finalize.helpers.js"></script>
+    <script src="./helpers/pr-render-pipeline.helpers.js"></script>
+    <script src="./helpers/pr-render-state-commit.helpers.js"></script>
+    <script src="./helpers/pr-selected-filters.helpers.js"></script>
+    <script src="./helpers/pr-row-filtering.helpers.js"></script>
+    <script src="./helpers/pr-section-config.helpers.js"></script>
+    <script src="./helpers/pr-section-shell.helpers.js"></script>
+    <script src="./helpers/pr-section-render.helpers.js"></script>
+    <script src="./helpers/pr-dom-visibility.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-blocking.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-unsaved.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-navigation.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-indicator.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-indicator-links.helpers.js"></script>
+    <script src="./helpers/pr-auto-render-state.helpers.js"></script>
+    <script src="./helpers/pr-apply-filters-cache.helpers.js"></script>
+    <script src="./helpers/pr-export.helpers.js"></script>
+    <script src="./helpers/pr-export-actions.helpers.js"></script>
+    <script src="./helpers/pr-export-preview-summary.helpers.js"></script>
+    <script src="./helpers/pr-export-json-build.helpers.js"></script>
+    <script src="./helpers/form-parsing.helpers.js"></script>
+    <script src="./components/pr-review-stats-controls.component.js"></script>
+    <script src="./components/pr-review-stats-chart.component.js"></script>
+    <script src="./components/pr-review-stats-visuals.component.js"></script>
+    <script src="./components/pr-review-stats-summary.component.js"></script>
+    <script src="./components/pr-author-insights.component.js"></script>
+    <script src="./components/pr-json-modal.component.js"></script>
+    <script src="./components/pr-filter-panel.component.js"></script>
+    <script src="./components/pr-section-table.component.js"></script>
+    <script src="./components/pr-row-insights.component.js"></script>
+    <script src="./index.page.js"></script>
+</body>
+</html>

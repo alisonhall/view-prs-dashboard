@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/view-prs/check-open-pr-updates.author-comments.schema.json",
+  "title": "view-prs persisted author comments",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["byAuthorLogin"],
+  "properties": {
+    "byAuthorLogin": {
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s]+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["comments"],
+          "properties": {
+            "comments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/authorComment"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "isoDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?Z$"
+    },
+    "authorComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "note", "sentiment", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "sentiment": {
+          "type": "string",
+          "enum": ["positive", "negative", "neutral"]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    }
+  }
+}

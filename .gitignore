@@ -1,0 +1,12 @@
+.DS_Store
+node_modules
+get-secure-access-details/data
+get-secure-access-details/results
+pr-reviews/data
+verify-not-filled-status/results
+verify-not-filled-status/source-data
+view-prs/data
+coverage
+!backup-code/*
+backup-code/.DS_Store
+.slingshot/code-tagging

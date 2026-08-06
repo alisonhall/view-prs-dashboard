@@ -1,0 +1,1155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/view-prs/check-open-pr-updates.data.schema.json",
+  "title": "view-prs persisted data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["byPrNumber"],
+  "properties": {
+    "byPrNumber": {
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[0-9]+$": {
+          "$ref": "#/$defs/byPrEntry"
+        }
+      },
+      "additionalProperties": false
+    },
+    "lastRun": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/lastRun"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "isoDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "isoDateTimeOrEmpty": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        {
+          "type": "string",
+          "const": ""
+        }
+      ]
+    },
+    "dateYmd": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "numericString": {
+      "type": "string",
+      "pattern": "^[0-9]+$"
+    },
+    "repoKey": {
+      "type": "string",
+      "pattern": "^[^\\s/]+/[^\\s/]+$"
+    },
+    "lastRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "updatedAt"],
+      "properties": {
+        "repo": {
+          "$ref": "#/$defs/repoKey"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "byPrEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prNumber",
+        "repo",
+        "section",
+        "updatedAt",
+        "rowOrder",
+        "data"
+      ],
+      "properties": {
+        "prNumber": {
+          "$ref": "#/$defs/numericString"
+        },
+        "repo": {
+          "$ref": "#/$defs/repoKey"
+        },
+        "section": {
+          "type": "string",
+          "enum": ["open", "draft", "closed", "merged"]
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "rowOrder": {
+          "type": "number"
+        },
+        "data": {
+          "$ref": "#/$defs/prData"
+        }
+      }
+    },
+    "prData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "title",
+        "titleDisplay",
+        "url",
+        "mergedAt",
+        "sourceUpdatedAt",
+        "sourceBranch",
+        "targetBranch",
+        "checkState",
+        "mergeState",
+        "labels",
+        "author",
+        "authorLogin",
+        "status",
+        "approved",
+        "approvalCount",
+        "inReview",
+        "approvers",
+        "openConversationCount",
+        "viewedFilesCount",
+        "changedFilesCount",
+        "viewedFilesSummary",
+        "comments",
+        "reviews",
+        "commits",
+        "metrics",
+        "activityTimelineSummary",
+        "baseline",
+        "reason"
+      ],
+      "properties": {
+        "number": {
+          "$ref": "#/$defs/numericString"
+        },
+        "title": {
+          "type": "string"
+        },
+        "titleDisplay": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "mergedAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "sourceUpdatedAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "sourceFingerprint": {
+          "type": "string"
+        },
+        "detailRef": {
+          "$ref": "#/$defs/detailRef"
+        },
+        "sourceBranch": {
+          "type": "string"
+        },
+        "targetBranch": {
+          "type": "string"
+        },
+        "checkState": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "RUN", "SKIP", "NA"]
+        },
+        "mergeState": {
+          "type": "string",
+          "pattern": "^[A-Z_]+$"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "author": {
+          "type": "string"
+        },
+        "authorLogin": {
+          "type": "string"
+        },
+        "viewerLogin": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["CHANGED", "NO_CHANGE", "NO_ACTIVITY"]
+        },
+        "approved": {
+          "type": "string",
+          "enum": ["YES", "NO"]
+        },
+        "approvalCount": {
+          "$ref": "#/$defs/numericString"
+        },
+        "inReview": {
+          "type": "string",
+          "enum": ["true", "false"]
+        },
+        "approvers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/approver"
+          }
+        },
+        "requestedReviewers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assignee"
+          }
+        },
+        "assignees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assignee"
+          }
+        },
+        "openConversationCount": {
+          "$ref": "#/$defs/numericString"
+        },
+        "viewedFilesCount": {
+          "$ref": "#/$defs/numericString"
+        },
+        "changedFilesCount": {
+          "$ref": "#/$defs/numericString"
+        },
+        "additions": {
+          "$ref": "#/$defs/numericString"
+        },
+        "deletions": {
+          "$ref": "#/$defs/numericString"
+        },
+        "viewedFilesSummary": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/topLevelComment"
+          }
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/review"
+          }
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commit"
+          }
+        },
+        "reviewThreads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reviewThread"
+          }
+        },
+        "commentEvents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commentEvent"
+          }
+        },
+        "activityEvents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activityEvent"
+          }
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "activityTimelineSummary": {
+          "type": "string"
+        },
+        "activityTimeline": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activityTimelineBucket"
+          }
+        },
+        "baseline": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "assignee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["login", "name"],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "approver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["login", "name", "approvedAt"],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "detailRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "version"],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "topLevelComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "authorLogin",
+        "authorName",
+        "authorAssociation",
+        "createdAt",
+        "publishedAt",
+        "body",
+        "url"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "authorLogin": {
+          "type": "string"
+        },
+        "authorName": {
+          "type": "string"
+        },
+        "authorAssociation": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "publishedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "body": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "authorLogin",
+        "authorName",
+        "authorAssociation",
+        "submittedAt",
+        "state",
+        "body",
+        "url",
+        "commitOid"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "authorLogin": {
+          "type": "string"
+        },
+        "authorName": {
+          "type": "string"
+        },
+        "authorAssociation": {
+          "type": "string"
+        },
+        "submittedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "state": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "commitOid": {
+          "type": "string"
+        }
+      }
+    },
+    "commitAuthor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["login", "name", "email"],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oid",
+        "committedAt",
+        "messageHeadline",
+        "messageBody",
+        "authors"
+      ],
+      "properties": {
+        "oid": {
+          "type": "string"
+        },
+        "committedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "messageHeadline": {
+          "type": "string"
+        },
+        "messageBody": {
+          "type": "string"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commitAuthor"
+          }
+        }
+      }
+    },
+    "reviewThreadComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "authorLogin",
+        "authorName",
+        "authorAssociation",
+        "createdAt",
+        "publishedAt",
+        "body",
+        "url",
+        "replyToId",
+        "path",
+        "line",
+        "originalLine",
+        "diffSide",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "authorLogin": {
+          "type": "string"
+        },
+        "authorName": {
+          "type": "string"
+        },
+        "authorAssociation": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "publishedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "body": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "replyToId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": ["integer", "null"]
+        },
+        "originalLine": {
+          "type": ["integer", "null"]
+        },
+        "diffSide": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      }
+    },
+    "reviewThread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "isResolved",
+        "isOutdated",
+        "commentCount",
+        "hasMoreComments",
+        "comments",
+        "participants",
+        "latestCommentAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "isResolved": {
+          "type": "boolean"
+        },
+        "isOutdated": {
+          "type": "boolean"
+        },
+        "commentCount": {
+          "type": "number"
+        },
+        "hasMoreComments": {
+          "type": "boolean"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reviewThreadComment"
+          }
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "latestCommentAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "resolvedByLogin": {
+          "type": "string"
+        }
+      }
+    },
+    "commentEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "threadId",
+        "occurredAt",
+        "date",
+        "actor",
+        "type",
+        "channel",
+        "body",
+        "url"
+      ],
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "date": {
+          "$ref": "#/$defs/dateYmd"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "channel": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "replyToId": {
+          "type": "string"
+        },
+        "conversationResolved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "activityEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "threadId",
+        "occurredAt",
+        "date",
+        "actor",
+        "type",
+        "channel"
+      ],
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "date": {
+          "$ref": "#/$defs/dateYmd"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "channel": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "replyToId": {
+          "type": "string"
+        },
+        "conversationResolved": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        },
+        "commitOid": {
+          "type": "string"
+        },
+        "messageHeadline": {
+          "type": "string"
+        },
+        "messageBody": {
+          "type": "string"
+        }
+      }
+    },
+    "activityTimelineBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "actor", "type", "count", "latestAt"],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/dateYmd"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "count": {
+          "type": "number"
+        },
+        "earliestAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "latestAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activityEvent"
+          }
+        }
+      }
+    },
+    "metricsCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topLevelComments",
+        "threadComments",
+        "totalComments",
+        "reviews",
+        "approvals",
+        "commits",
+        "conversations",
+        "openConversations"
+      ],
+      "properties": {
+        "topLevelComments": {
+          "type": "number"
+        },
+        "threadComments": {
+          "type": "number"
+        },
+        "totalComments": {
+          "type": "number"
+        },
+        "reviews": {
+          "type": "number"
+        },
+        "approvals": {
+          "type": "number"
+        },
+        "commits": {
+          "type": "number"
+        },
+        "conversations": {
+          "type": "number"
+        },
+        "openConversations": {
+          "type": "number"
+        }
+      }
+    },
+    "metricsCommentsByActor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "login",
+        "name",
+        "topLevelCount",
+        "threadCount",
+        "resolvedThreadCount",
+        "openThreadCount",
+        "followedByAuthorCommitCount",
+        "followedByAuthorCommitWithin24hCount",
+        "totalCount",
+        "firstCommentAt",
+        "lastCommentAt",
+        "isPrAuthor",
+        "commentsOnOthersPr",
+        "usefulnessSignals"
+      ],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topLevelCount": {
+          "type": "number"
+        },
+        "threadCount": {
+          "type": "number"
+        },
+        "resolvedThreadCount": {
+          "type": "number"
+        },
+        "openThreadCount": {
+          "type": "number"
+        },
+        "followedByAuthorCommitCount": {
+          "type": "number"
+        },
+        "followedByAuthorCommitWithin24hCount": {
+          "type": "number"
+        },
+        "totalCount": {
+          "type": "number"
+        },
+        "firstCommentAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "lastCommentAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "isPrAuthor": {
+          "type": "boolean"
+        },
+        "commentsOnOthersPr": {
+          "type": "boolean"
+        },
+        "usefulnessSignals": {
+          "type": "number"
+        }
+      }
+    },
+    "metricsReviewsByActor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "login",
+        "name",
+        "reviewCount",
+        "approvalCount",
+        "commentCount",
+        "changesRequestedCount",
+        "dismissedCount",
+        "lastReviewAt",
+        "lastApprovalAt",
+        "isPrAuthor",
+        "reviewsOnOthersPr"
+      ],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reviewCount": {
+          "type": "number"
+        },
+        "approvalCount": {
+          "type": "number"
+        },
+        "commentCount": {
+          "type": "number"
+        },
+        "changesRequestedCount": {
+          "type": "number"
+        },
+        "dismissedCount": {
+          "type": "number"
+        },
+        "lastReviewAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "lastApprovalAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "isPrAuthor": {
+          "type": "boolean"
+        },
+        "reviewsOnOthersPr": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metricsApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "login",
+        "name",
+        "approvedAt",
+        "mergeLeadMinutes",
+        "commentCountAfterApproval",
+        "reviewCountAfterApproval",
+        "changeRequestCountAfterApproval",
+        "commitCountAfterApproval",
+        "issueSignalsAfterApprovalCount",
+        "highRiskApproval",
+        "riskyApproval"
+      ],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "approvedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "mergeLeadMinutes": {
+          "type": ["number", "null"]
+        },
+        "commentCountAfterApproval": {
+          "type": "number"
+        },
+        "reviewCountAfterApproval": {
+          "type": "number"
+        },
+        "changeRequestCountAfterApproval": {
+          "type": "number"
+        },
+        "commitCountAfterApproval": {
+          "type": "number"
+        },
+        "issueSignalsAfterApprovalCount": {
+          "type": "number"
+        },
+        "highRiskApproval": {
+          "type": "boolean"
+        },
+        "riskyApproval": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metricsApprovalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalApprovals",
+        "riskyApprovals",
+        "highRiskApprovals",
+        "approvalsWithChangeRequestsAfter",
+        "approvalsWithCommentsAfter",
+        "approvalsWithCommitsAfter",
+        "averageMergeLeadMinutes"
+      ],
+      "properties": {
+        "totalApprovals": {
+          "type": "number"
+        },
+        "riskyApprovals": {
+          "type": "number"
+        },
+        "highRiskApprovals": {
+          "type": "number"
+        },
+        "approvalsWithChangeRequestsAfter": {
+          "type": "number"
+        },
+        "approvalsWithCommentsAfter": {
+          "type": "number"
+        },
+        "approvalsWithCommitsAfter": {
+          "type": "number"
+        },
+        "averageMergeLeadMinutes": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "metricsCommentUsefulnessSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commentsOnOthersPrs",
+        "resolvedThreadCommentsOnOthersPrs",
+        "commentsFollowedByAuthorCommit",
+        "commentsFollowedByAuthorCommitWithin24h",
+        "usefulnessSignals"
+      ],
+      "properties": {
+        "commentsOnOthersPrs": {
+          "type": "number"
+        },
+        "resolvedThreadCommentsOnOthersPrs": {
+          "type": "number"
+        },
+        "commentsFollowedByAuthorCommit": {
+          "type": "number"
+        },
+        "commentsFollowedByAuthorCommitWithin24h": {
+          "type": "number"
+        },
+        "usefulnessSignals": {
+          "type": "number"
+        }
+      }
+    },
+    "metricsConversationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalThreads",
+        "openThreads",
+        "resolvedThreads",
+        "totalThreadComments",
+        "topLevelConversations",
+        "reviewConversations",
+        "estimatedTotalConversations",
+        "estimatedOpenConversations"
+      ],
+      "properties": {
+        "totalThreads": {
+          "type": "number"
+        },
+        "openThreads": {
+          "type": "number"
+        },
+        "resolvedThreads": {
+          "type": "number"
+        },
+        "totalThreadComments": {
+          "type": "number"
+        },
+        "topLevelConversations": {
+          "type": "number"
+        },
+        "reviewConversations": {
+          "type": "number"
+        },
+        "estimatedTotalConversations": {
+          "type": "number"
+        },
+        "estimatedOpenConversations": {
+          "type": "number"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "counts",
+        "commentsByActor",
+        "reviewsByActor",
+        "approvals",
+        "approvalSummary",
+        "commentUsefulnessSummary",
+        "conversationSummary"
+      ],
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/metricsCounts"
+        },
+        "commentsByActor": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsCommentsByActor"
+          }
+        },
+        "reviewsByActor": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsReviewsByActor"
+          }
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsApproval"
+          }
+        },
+        "approvalSummary": {
+          "$ref": "#/$defs/metricsApprovalSummary"
+        },
+        "commentUsefulnessSummary": {
+          "$ref": "#/$defs/metricsCommentUsefulnessSummary"
+        },
+        "conversationSummary": {
+          "$ref": "#/$defs/metricsConversationSummary"
+        }
+      }
+    },
+    "notesComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "author", "tone", "note"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "enum": ["Positive", "Negative", "Neutral"]
+        },
+        "note": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["comments", "otherNotes"],
+          "properties": {
+            "comments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/notesComment"
+              }
+            },
+            "otherNotes": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issues", "callouts", "otherNotes"],
+          "properties": {
+            "issues": {
+              "type": "string"
+            },
+            "callouts": {
+              "type": "string"
+            },
+            "otherNotes": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/view-prs/check-open-pr-updates.user-state.schema.json",
+  "title": "view-prs persisted user state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "notesByPrNumber",
+    "ackByRepo",
+    "reverifyByRepo",
+    "inReviewByRepo",
+    "flaggedByRepo"
+  ],
+  "properties": {
+    "notesByPrNumber": {
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[0-9]+$": {
+          "$ref": "#/$defs/notes"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ackByRepo": {
+      "$ref": "#/$defs/repoTimestampStateMap"
+    },
+    "reverifyByRepo": {
+      "$ref": "#/$defs/repoBooleanStateMap"
+    },
+    "inReviewByRepo": {
+      "$ref": "#/$defs/repoBooleanStateMap"
+    },
+    "flaggedByRepo": {
+      "$ref": "#/$defs/repoBooleanStateMap"
+    }
+  },
+  "$defs": {
+    "isoDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "repoTimestampStateMap": {
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s/]+/[^\\s/]+$": {
+          "type": "object",
+          "default": {},
+          "patternProperties": {
+            "^[0-9]+$": {
+              "$ref": "#/$defs/isoDateTime"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "repoBooleanStateMap": {
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s/]+/[^\\s/]+$": {
+          "type": "object",
+          "default": {},
+          "patternProperties": {
+            "^[0-9]+$": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "notesComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "author", "tone", "note"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "enum": ["Positive", "Negative", "Neutral"]
+        },
+        "note": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comments", "otherNotes"],
+      "properties": {
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/notesComment"
+          }
+        },
+        "otherNotes": {
+          "type": "string"
+        },
+        "prDifficulty": {
+          "type": "string",
+          "enum": ["", "1", "2", "3", "4", "5"]
+        },
+        "rallyStories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rallyLinks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "analysisOfPr": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
