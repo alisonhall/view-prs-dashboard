@@ -13,6 +13,7 @@
     populateAssignedOptions,
     populateApproverOptions,
     populateAuthorThreadResolutionActorOptions,
+    populateChangeFilterActorOptions,
   } = {}) => {
     const populateIncludeLabelOptionsSafe =
       typeof populateIncludeLabelOptions === "function"
@@ -32,6 +33,10 @@
       typeof populateAuthorThreadResolutionActorOptions === "function"
         ? populateAuthorThreadResolutionActorOptions
         : () => {};
+    const populateChangeFilterActorOptionsSafe =
+      typeof populateChangeFilterActorOptions === "function"
+        ? populateChangeFilterActorOptions
+        : () => {};
 
     const populateFilterOptions = ({ entries, repoFilter, actorsMap } = {}) => {
       const safeEntries = Array.isArray(entries) ? entries : [];
@@ -44,6 +49,7 @@
       populateAssignedOptionsSafe(safeEntries, safeRepoFilter, safeActorsMap);
       populateApproverOptionsSafe(safeEntries, safeRepoFilter, safeActorsMap);
       populateAuthorThreadResolutionActorOptionsSafe(safeActorsMap);
+      populateChangeFilterActorOptionsSafe(safeActorsMap);
     };
 
     return {

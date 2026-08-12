@@ -21,7 +21,6 @@ describe("exported API surface", () => {
     "viewPrsBackupDir",
     "viewPrsBackupRetention",
     "viewPrsActorNameCacheFile",
-    "prReviewsUsernamesFile",
     "viewPrsBackfillManagerScript",
     "viewPrsActionLogFile",
     "viewPrsBackfillPidFile",

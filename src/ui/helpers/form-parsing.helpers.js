@@ -48,11 +48,30 @@
         .filter((token) => /^\d+$/.test(token));
     };
 
+    // Parse commit patterns from textarea (one pattern per line).
+    const parseCommitPatterns = (textarea) => {
+      const value = textarea?.value || "";
+      if (!value || typeof value !== "string") return [];
+
+      return String(value)
+        .split("\n")
+        .map((line) => String(line || "").trim())
+        .filter(Boolean);
+    };
+
+    // Format commit patterns array for textarea display (one per line).
+    const formatCommitPatternsForTextarea = (patterns) => {
+      if (!Array.isArray(patterns)) return "";
+      return patterns.join("\n");
+    };
+
     return {
       toBoolean,
       getSelectedAuthorLogins,
       applyCredentialHints,
       parsePrNumbersInput,
+      parseCommitPatterns,
+      formatCommitPatternsForTextarea,
     };
   };
 

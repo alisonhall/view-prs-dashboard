@@ -50,6 +50,8 @@ let pendingLabelFilterSelections = null;
 let pendingExcludeLabelFilterSelections = null;
 let pendingAuthorThreadResolutionAllowSelections = null;
 let pendingAuthorThreadResolutionDenySelections = null;
+let _pendingChangeFilterIgnoreCommentAuthors = null;
+let _pendingChangeFilterIgnoreReviewAuthors = null;
 let currentViewerLogin = "";
 let currentActorLoginAliases = {};
 let supportsDataMetaPolling = true;
@@ -772,6 +774,58 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
     }
   }
 
+  // Change detection filters
+  if (
+    includeField("change-filter-ignore-comment-authors") ||
+    includeField("change-filter-ignore-review-authors") ||
+    includeField("change-filter-ignore-commit-patterns")
+  ) {
+    const existingChangeFilters =
+      typeof existingOverrides.changeFilters === "object" &&
+      !Array.isArray(existingOverrides.changeFilters)
+        ? existingOverrides.changeFilters
+        : {};
+    const changeFilters = { ...existingChangeFilters };
+
+    if (includeField("change-filter-ignore-comment-authors")) {
+      const selectedLogins = getSelectedChangeFilterIgnoreCommentAuthors();
+      if (selectedLogins.length > 0) {
+        changeFilters.ignoreCommentsFromAuthors = selectedLogins;
+      } else {
+        delete changeFilters.ignoreCommentsFromAuthors;
+      }
+    }
+
+    if (includeField("change-filter-ignore-review-authors")) {
+      const selectedLogins = getSelectedChangeFilterIgnoreReviewAuthors();
+      if (selectedLogins.length > 0) {
+        changeFilters.ignoreReviewsFromAuthors = selectedLogins;
+      } else {
+        delete changeFilters.ignoreReviewsFromAuthors;
+      }
+    }
+
+    if (includeField("change-filter-ignore-commit-patterns")) {
+      const textarea = getOptionalElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      const patterns = formParsingHelpers?.parseCommitPatterns
+        ? formParsingHelpers.parseCommitPatterns(textarea)
+        : [];
+      if (patterns.length > 0) {
+        changeFilters.ignoreCommitPatterns = patterns;
+      } else {
+        delete changeFilters.ignoreCommitPatterns;
+      }
+    }
+
+    if (Object.keys(changeFilters).length > 0) {
+      overrides.changeFilters = changeFilters;
+    } else {
+      delete overrides.changeFilters;
+    }
+  }
+
   await writeUiSessionOverrides(overrides);
 };
 
@@ -890,9 +944,42 @@ const restoreUiOptionOverrides = async () => {
         .filter(Boolean);
   }
 
+  // Restore change detection filters
+  if (
+    overrides.changeFilters &&
+    typeof overrides.changeFilters === "object" &&
+    !Array.isArray(overrides.changeFilters)
+  ) {
+    if (Array.isArray(overrides.changeFilters.ignoreCommentsFromAuthors)) {
+      _pendingChangeFilterIgnoreCommentAuthors = overrides.changeFilters
+        .ignoreCommentsFromAuthors
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(overrides.changeFilters.ignoreReviewsFromAuthors)) {
+      _pendingChangeFilterIgnoreReviewAuthors = overrides.changeFilters
+        .ignoreReviewsFromAuthors
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(overrides.changeFilters.ignoreCommitPatterns)) {
+      const textarea = getOptionalElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      if (textarea && formParsingHelpers?.formatCommitPatternsForTextarea) {
+        textarea.value = formParsingHelpers.formatCommitPatternsForTextarea(
+          overrides.changeFilters.ignoreCommitPatterns,
+        );
+      }
+    }
+  }
+
   updateAuthorThreadResolutionRuleVisibility();
   if (latestStoredPayload?.actorsMap) {
     populateAuthorThreadResolutionActorOptions(latestStoredPayload.actorsMap);
+    populateChangeFilterActorOptions(latestStoredPayload.actorsMap);
   }
 };
 
@@ -928,6 +1015,9 @@ const persistViewFilterOptionOverrides = async () => {
     "attention-author-thread-resolution-mode",
     "attention-author-thread-resolution-allow",
     "attention-author-thread-resolution-deny",
+    "change-filter-ignore-comment-authors",
+    "change-filter-ignore-review-authors",
+    "change-filter-ignore-commit-patterns",
   ]);
 };
 
@@ -958,6 +1048,16 @@ const getSelectedAuthorThreadResolutionAllowLogins = () =>
 const getSelectedAuthorThreadResolutionDenyLogins = () =>
   getSelectedMultiSelectValuesFromList(
     "attention-author-thread-resolution-deny-list",
+  );
+
+const getSelectedChangeFilterIgnoreCommentAuthors = () =>
+  getSelectedMultiSelectValuesFromList(
+    "change-filter-ignore-comment-authors-list",
+  );
+
+const getSelectedChangeFilterIgnoreReviewAuthors = () =>
+  getSelectedMultiSelectValuesFromList(
+    "change-filter-ignore-review-authors-list",
   );
 
 const updateAuthorThreadResolutionRuleVisibility = () => {
@@ -1539,6 +1639,8 @@ const { populateFilterOptions } =
     populateApproverOptions: (...args) => populateApproverOptions(...args),
     populateAuthorThreadResolutionActorOptions: (...args) =>
       populateAuthorThreadResolutionActorOptions(...args),
+    populateChangeFilterActorOptions: (...args) =>
+      populateChangeFilterActorOptions(...args),
   });
 
 const prScopedRowsHelperFactory =
@@ -2481,6 +2583,102 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
       pendingAuthorThreadResolutionDenySelections = value;
     },
     idPrefix: "attention-author-thread-resolution-deny",
+  });
+};
+
+const populateChangeFilterActorOptions = (actorsMap = {}) => {
+  const actorEntries = Object.entries(
+    actorsMap && typeof actorsMap === "object" ? actorsMap : {},
+  )
+    .map(([login, displayName]) => {
+      const loginValue = String(login || "").trim();
+      if (!loginValue) {
+        return null;
+      }
+      return {
+        login: loginValue,
+        displayName: resolveActorDisplayName(loginValue, actorsMap, displayName),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const left = String(a.displayName || a.login).toLowerCase();
+      const right = String(b.displayName || b.login).toLowerCase();
+      return left.localeCompare(right);
+    });
+
+  const renderChangeFilterActorList = ({
+    listId,
+    pendingSelections,
+    setPendingSelections,
+    idPrefix,
+  }) => {
+    const listNode = getOptionalElementById(listId);
+    if (!listNode) {
+      return;
+    }
+
+    const existingSelections = getSelectedMultiSelectValuesFromList(listId);
+    const seedSelections =
+      existingSelections.length > 0
+        ? existingSelections
+        : Array.isArray(pendingSelections)
+          ? pendingSelections
+          : [];
+    const selectedSet = new Set(seedSelections);
+
+    listNode.innerHTML = "";
+    if (actorEntries.length === 0) {
+      listNode.classList.add("empty");
+    } else {
+      listNode.classList.remove("empty");
+      actorEntries.forEach(({ login, displayName }, index) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = "multi-select-item";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.id = `${idPrefix}-${login}-${index}`;
+        checkbox.value = login;
+        checkbox.checked = selectedSet.has(login);
+
+        const label = document.createElement("label");
+        label.htmlFor = checkbox.id;
+        label.textContent = displayName;
+
+        itemDiv.appendChild(checkbox);
+        itemDiv.appendChild(label);
+        listNode.appendChild(itemDiv);
+      });
+    }
+
+    if (Array.isArray(pendingSelections)) {
+      const appliedCount = actorEntries.filter(({ login }) =>
+        selectedSet.has(login),
+      ).length;
+      if (appliedCount > 0 || existingSelections.length > 0) {
+        setPendingSelections(null);
+      }
+    }
+
+    updateMultiSelectSummary(listId);
+  };
+
+  renderChangeFilterActorList({
+    listId: "change-filter-ignore-comment-authors-list",
+    pendingSelections: _pendingChangeFilterIgnoreCommentAuthors,
+    setPendingSelections: (value) => {
+      _pendingChangeFilterIgnoreCommentAuthors = value;
+    },
+    idPrefix: "change-filter-ignore-comment-authors",
+  });
+  renderChangeFilterActorList({
+    listId: "change-filter-ignore-review-authors-list",
+    pendingSelections: _pendingChangeFilterIgnoreReviewAuthors,
+    setPendingSelections: (value) => {
+      _pendingChangeFilterIgnoreReviewAuthors = value;
+    },
+    idPrefix: "change-filter-ignore-review-authors",
   });
 };
 
@@ -6473,6 +6671,8 @@ const initPage = () => {
     "approver-list",
     "attention-author-thread-resolution-allow-list",
     "attention-author-thread-resolution-deny-list",
+    "change-filter-ignore-comment-authors-list",
+    "change-filter-ignore-review-authors-list",
   ].forEach((listId) => {
     const listElement = document.getElementById(listId);
     if (listElement) {

@@ -7737,4 +7737,449 @@ describe("index page rendering with Testing Library", () => {
       nowSpy.mockRestore();
     }
   });
+
+  describe("change detection filters", () => {
+    test("given actorsMap with multiple users, when page loads, then comment author filter list is populated with checkboxes", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [
+            {
+              scenario: "open-no-change",
+              prNumber: 801,
+              overrides: {
+                data: {
+                  title: "Test PR for change filters",
+                  author: "Test Author",
+                  authorLogin: "test-author",
+                },
+              },
+            },
+          ],
+          actorsMap: {
+            "test-author": "Test Author",
+            "dependabot[bot]": "dependabot[bot]",
+            "github-actions[bot]": "github-actions[bot]",
+            reviewer1: "Reviewer One",
+            reviewer2: "Reviewer Two",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const list = getMultiSelectList("change-filter-ignore-comment-authors-list");
+      expect(list).toBeTruthy();
+      expect(isMultiSelectEmpty("change-filter-ignore-comment-authors-list")).toBe(false);
+
+      const checkboxes = Array.from(list.querySelectorAll("input[type='checkbox']"));
+      expect(checkboxes.length).toBe(5);
+
+      const labels = Array.from(list.querySelectorAll("label")).map(
+        (label) => label.textContent,
+      );
+      expect(labels).toContain("dependabot[bot]");
+      expect(labels).toContain("github-actions[bot]");
+      expect(labels).toContain("Reviewer One");
+      expect(labels).toContain("Reviewer Two");
+      expect(labels).toContain("Test Author");
+    });
+
+    test("given actorsMap with multiple users, when page loads, then review author filter list is populated with checkboxes", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [
+            {
+              scenario: "open-no-change",
+              prNumber: 802,
+            },
+          ],
+          actorsMap: {
+            "codecov[bot]": "codecov[bot]",
+            reviewer1: "Reviewer One",
+            reviewer2: "Reviewer Two",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const list = getMultiSelectList("change-filter-ignore-review-authors-list");
+      expect(list).toBeTruthy();
+      expect(isMultiSelectEmpty("change-filter-ignore-review-authors-list")).toBe(false);
+
+      const checkboxes = Array.from(list.querySelectorAll("input[type='checkbox']"));
+      expect(checkboxes.length).toBeGreaterThanOrEqual(3);
+
+      const labels = Array.from(list.querySelectorAll("label")).map(
+        (label) => label.textContent,
+      );
+      expect(labels).toContain("codecov[bot]");
+      expect(labels).toContain("Reviewer One");
+      expect(labels).toContain("Reviewer Two");
+    });
+
+    test("given minimal actorsMap, when page loads, then change filter lists are populated from available actors", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 803 }],
+          actorsMap: {},
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const commentList = getMultiSelectList("change-filter-ignore-comment-authors-list");
+      const reviewList = getMultiSelectList("change-filter-ignore-review-authors-list");
+
+      expect(commentList).toBeTruthy();
+      expect(reviewList).toBeTruthy();
+
+      // Lists should contain the same actors (from scenario defaults)
+      const commentCheckboxes = Array.from(
+        commentList.querySelectorAll("input[type='checkbox']"),
+      );
+      const reviewCheckboxes = Array.from(
+        reviewList.querySelectorAll("input[type='checkbox']"),
+      );
+
+      expect(commentCheckboxes.length).toBeGreaterThanOrEqual(0);
+      expect(reviewCheckboxes.length).toBeGreaterThanOrEqual(0);
+      expect(commentCheckboxes.length).toBe(reviewCheckboxes.length);
+    });
+
+    test("given change filter selections, when Apply filters clicked, then selections are persisted to user-defaults", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 804 }],
+          actorsMap: {
+            "dependabot[bot]": "dependabot[bot]",
+            "github-actions[bot]": "github-actions[bot]",
+            reviewer1: "Reviewer One",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      // Select comment authors to ignore
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-comment-authors-list",
+        "dependabot[bot]",
+        user,
+      );
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-comment-authors-list",
+        "github-actions[bot]",
+        user,
+      );
+
+      // Select review authors to ignore
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-review-authors-list",
+        "reviewer1",
+        user,
+      );
+
+      // Enter commit patterns
+      const commitPatternsTextarea = document.getElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      commitPatternsTextarea.value = "^docs:\n^test:\n^chore\\(deps\\):";
+      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      expect(savedOverrides.changeFilters).toBeDefined();
+      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+        "dependabot[bot]",
+        "github-actions[bot]",
+      ]);
+      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
+      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+        "^docs:",
+        "^test:",
+        "^chore\\(deps\\):",
+      ]);
+    });
+
+    test("given commit patterns with whitespace and empty lines, when Apply filters clicked, then patterns are trimmed and empty lines removed", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 805 }],
+          actorsMap: {},
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const commitPatternsTextarea = document.getElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      commitPatternsTextarea.value = "  ^docs:  \n\n  ^test:  \n   \n^style: formatting";
+      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+        "^docs:",
+        "^test:",
+        "^style: formatting",
+      ]);
+    });
+
+    test("given user-defaults with change filters, when page loads, then selections are restored", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 806 }],
+          actorsMap: {
+            "dependabot[bot]": "dependabot[bot]",
+            "codecov[bot]": "codecov[bot]",
+            reviewer1: "Reviewer One",
+            reviewer2: "Reviewer Two",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+        userDefaultsOverrides: {
+          repo: "owner/repo",
+          changeFilters: {
+            ignoreCommentsFromAuthors: ["dependabot[bot]", "codecov[bot]"],
+            ignoreReviewsFromAuthors: ["reviewer1"],
+            ignoreCommitPatterns: ["^docs:", "^test:", "^chore\\(deps\\):"],
+          },
+        },
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      // Check comment author selections are restored
+      const commentAuthorsSelections = getSelectedMultiSelectValues(
+        "change-filter-ignore-comment-authors-list",
+      );
+      expect(commentAuthorsSelections).toEqual(
+        expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
+      );
+      expect(commentAuthorsSelections.length).toBe(2);
+
+      // Check review author selections are restored
+      const reviewAuthorsSelections = getSelectedMultiSelectValues(
+        "change-filter-ignore-review-authors-list",
+      );
+      expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+
+      // Check commit patterns are restored
+      const commitPatternsTextarea = document.getElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      expect(commitPatternsTextarea.value).toBe("^docs:\n^test:\n^chore\\(deps\\):");
+    });
+
+    test("given change filter selections, when selections are changed and Apply filters clicked, then new selections replace old ones", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 807 }],
+          actorsMap: {
+            "dependabot[bot]": "dependabot[bot]",
+            "github-actions[bot]": "github-actions[bot]",
+            reviewer1: "Reviewer One",
+            reviewer2: "Reviewer Two",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+        userDefaultsOverrides: {
+          repo: "owner/repo",
+          changeFilters: {
+            ignoreCommentsFromAuthors: ["dependabot[bot]"],
+            ignoreReviewsFromAuthors: ["reviewer1"],
+            ignoreCommitPatterns: ["^docs:"],
+          },
+        },
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      // Verify initial state
+      expect(
+        getSelectedMultiSelectValues("change-filter-ignore-comment-authors-list"),
+      ).toEqual(["dependabot[bot]"]);
+
+      // Change selections
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-comment-authors-list",
+        "dependabot[bot]",
+        user,
+      ); // Uncheck
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-comment-authors-list",
+        "github-actions[bot]",
+        user,
+      ); // Check
+      await clickMultiSelectCheckbox(
+        "change-filter-ignore-review-authors-list",
+        "reviewer2",
+        user,
+      ); // Add reviewer2
+
+      const commitPatternsTextarea = document.getElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      commitPatternsTextarea.value = "^test:\n^style:";
+      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+        "github-actions[bot]",
+      ]);
+      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
+        expect.arrayContaining(["reviewer1", "reviewer2"]),
+      );
+      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
+      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
+    });
+
+    test("given no change filter selections, when Apply filters clicked, then empty arrays are persisted", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 808 }],
+          actorsMap: {
+            reviewer1: "Reviewer One",
+          },
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      // When all filter arrays are empty, changeFilters should be removed from saved overrides
+      expect(savedOverrides.changeFilters).toBeUndefined();
+    });
+
+    test("given commit patterns textarea with complex regex, when Apply filters clicked, then patterns are preserved exactly", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 809 }],
+          actorsMap: {},
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const commitPatternsTextarea = document.getElementById(
+        "change-filter-ignore-commit-patterns",
+      );
+      // Complex regex patterns with special characters
+      commitPatternsTextarea.value = "^chore\\(deps(-dev)?\\): bump\n^(docs|test):\\s+[A-Z]\n^Merge branch .* into .*$";
+      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+        "^chore\\(deps(-dev)?\\): bump",
+        "^(docs|test):\\s+[A-Z]",
+        "^Merge branch .* into .*$",
+      ]);
+    });
+  });
 });

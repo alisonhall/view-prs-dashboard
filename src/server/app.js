@@ -128,10 +128,6 @@ const _defaultActorLoginAliasesFile = path.join(
 const viewPrsActorLoginAliasesFile =
   process.env.VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE ||
   _defaultActorLoginAliasesFile;
-const prReviewsUsernamesFile = path.join(
-  path.dirname(viewPrsDir),
-  "pr-reviews/usernames.json",
-);
 const viewPrsBackfillManagerScript = path.join(
   viewPrsDir,
   viewPrsBackfillManagerRelativePath,
@@ -848,7 +844,6 @@ const buildViewPrsActorsMap = (byPrNumberRaw = {}) => {
     readJsonFileIfExists(viewPrsActorNameCacheFile, {}),
   );
   const actorsMap = {
-    ...readJsonFileIfExists(prReviewsUsernamesFile, {}),
     ...actorNameCacheEntries,
   };
   const unresolvedLogins = new Set();
@@ -2159,7 +2154,6 @@ module.exports = {
   viewPrsBackupRetention,
   viewPrsActorNameCacheFile,
   viewPrsActorLoginAliasesFile,
-  prReviewsUsernamesFile,
   viewPrsBackfillManagerScript,
   viewPrsActionLogFile,
   viewPrsBackfillPidFile,

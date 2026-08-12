@@ -7,6 +7,8 @@ const {
   getSelectedAuthorLogins,
   applyCredentialHints,
   parsePrNumbersInput,
+  parseCommitPatterns,
+  formatCommitPatternsForTextarea,
 } = require("../helpers/form-parsing.helpers");
 
 describe("form-parsing.helpers", () => {
@@ -200,6 +202,100 @@ describe("form-parsing.helpers", () => {
     test("given empty and non-numeric tokens when parsing then only numeric IDs are kept", () => {
       expect(parsePrNumbersInput("912, , 921")).toEqual(["912", "921"]);
       expect(parsePrNumbersInput("912,foo, 921 bar")).toEqual(["912", "921"]);
+    });
+  });
+
+  describe("parseCommitPatterns", () => {
+    test("given textarea with patterns on separate lines, when parsing, then returns array of patterns", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "^docs:\n^test:\n^chore:";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual(["^docs:", "^test:", "^chore:"]);
+    });
+
+    test("given textarea with whitespace around patterns, when parsing, then patterns are trimmed", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "  ^docs:  \n  ^test:  \n  ^chore:  ";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual(["^docs:", "^test:", "^chore:"]);
+    });
+
+    test("given textarea with empty lines, when parsing, then empty lines are filtered out", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "^docs:\n\n^test:\n   \n^chore:";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual(["^docs:", "^test:", "^chore:"]);
+    });
+
+    test("given empty textarea, when parsing, then returns empty array", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual([]);
+    });
+
+    test("given textarea with only whitespace, when parsing, then returns empty array", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "\n  \n   \n";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual([]);
+    });
+
+    test("given null textarea, when parsing, then returns empty array", () => {
+      const result = parseCommitPatterns(null);
+      expect(result).toEqual([]);
+    });
+
+    test("given textarea with single pattern, when parsing, then returns single-item array", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "^docs:";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual(["^docs:"]);
+    });
+
+    test("given textarea with complex regex patterns, when parsing, then preserves pattern syntax", () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = "^chore\\(deps\\):\n(?i)^wip:\n^Bump .* from";
+
+      const result = parseCommitPatterns(textarea);
+      expect(result).toEqual(["^chore\\(deps\\):", "(?i)^wip:", "^Bump .* from"]);
+    });
+  });
+
+  describe("formatCommitPatternsForTextarea", () => {
+    test("given array of patterns, when formatting, then returns patterns joined by newlines", () => {
+      const patterns = ["^docs:", "^test:", "^chore:"];
+
+      const result = formatCommitPatternsForTextarea(patterns);
+      expect(result).toBe("^docs:\n^test:\n^chore:");
+    });
+
+    test("given empty array, when formatting, then returns empty string", () => {
+      const result = formatCommitPatternsForTextarea([]);
+      expect(result).toBe("");
+    });
+
+    test("given null, when formatting, then returns empty string", () => {
+      const result = formatCommitPatternsForTextarea(null);
+      expect(result).toBe("");
+    });
+
+    test("given single pattern, when formatting, then returns single line", () => {
+      const patterns = ["^docs:"];
+
+      const result = formatCommitPatternsForTextarea(patterns);
+      expect(result).toBe("^docs:");
+    });
+
+    test("given non-array, when formatting, then returns empty string", () => {
+      const result = formatCommitPatternsForTextarea("not-an-array");
+      expect(result).toBe("");
     });
   });
 });

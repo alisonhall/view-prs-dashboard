@@ -84,6 +84,11 @@ BACKUP_LIST_ONLY=0
 BACKUP_RESTORE_NAME=''
 DEBUG_LOG_FILE="${CHECK_OPEN_PR_DEBUG_LOG:-}"
 
+CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=''
+CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=''
+CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=''
+USER_DEFAULTS_FILE=''
+
 debug_log() {
   local message="$1"
   [[ -z "$DEBUG_LOG_FILE" ]] && return 0
@@ -600,6 +605,19 @@ ensure_pr_state_store() {
   jq '.byPrNumber //= {} | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)' "$PR_STATE_FILE" >"$tmp"
   replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
 }
+
+load_change_filter_config() {
+  USER_DEFAULTS_FILE="$DATA_DIR/user-defaults.json"
+  
+  [[ -f "$USER_DEFAULTS_FILE" ]] || return 0
+  
+  CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(jq -r '.changeFilters.ignoreCommentsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
+  CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(jq -r '.changeFilters.ignoreReviewsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
+  CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(jq -r '.changeFilters.ignoreCommitPatterns // [] | join("|")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
+  
+  debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS"
+}
+
 lock_info_file() {
   local lock_dir="$1"
   printf '%s/lock-info' "$lock_dir"
@@ -2031,44 +2049,65 @@ compute_pr_state_json() {
   fi
 
   if [[ -n "$effective_last" ]]; then
-    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" '
-      [.comments[]? | select((.author.login // "") != "" and .author.login != $me) | select((.createdAt // "") > $since)] | length
+    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" '
+      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
+      | [.comments[]? 
+         | select((.author.login // "") != "" and .author.login != $me) 
+         | select((.createdAt // "") > $since)
+         | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
+        ] 
+      | length
     ')
-    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" '
-      [
+    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS" '
+      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
+      | [
         .reviews[]?
         | select((.author.login // "") != "" and .author.login != $me)
         | select((.submittedAt // "") > $since)
         | select((.state // "") != "APPROVED")
+        | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" '
-      [
+    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" '
+      # Build combined pattern: built-in merge pattern + user patterns
+      ("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + 
+       (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern
+      | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))
         | select((.committedDate // "") > $since)
-        | select(((.messageHeadline // "") | test("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )")) | not)
+        | select(((.messageHeadline // "") | test($combinedPattern)) | not)
       ]
       | length
     ')
   else
-    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
-      [.comments[]? | select((.author.login // "") != "" and .author.login != $me)] | length
+    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" '
+      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
+      | [.comments[]? 
+         | select((.author.login // "") != "" and .author.login != $me)
+         | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
+        ] 
+      | length
     ')
-    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
-      [
+    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS" '
+      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
+      | [
         .reviews[]?
         | select((.author.login // "") != "" and .author.login != $me)
         | select((.state // "") != "APPROVED")
+        | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
-      [
+    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" '
+      # Build combined pattern: built-in merge pattern + user patterns
+      ("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + 
+       (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern
+      | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))
-        | select(((.messageHeadline // "") | test("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )")) | not)
+        | select(((.messageHeadline // "") | test($combinedPattern)) | not)
       ]
       | length
     ')
@@ -3311,6 +3350,7 @@ main() {
   fi
 
   ensure_ack_store
+  load_change_filter_config
   apply_ack_changes
 
   if [[ "$ACK_ONLY" -eq 1 ]]; then

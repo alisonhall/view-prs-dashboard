@@ -329,6 +329,47 @@ Default values:
 | Include NO_ACTIVITY drafts | `off` |
 | PR-author thread-resolution policy | `allow-all` |
 
+Change Detection Filters:
+
+- The `Advanced visibility and attention rules` section includes `Change Detection Filters` to configure what activity should NOT trigger CHANGED status.
+- These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`.
+- Supported filter types:
+  - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
+  - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
+  - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
+- Built-in filters (always active):
+  - Approved reviews are always ignored
+  - Merge commits from main are always ignored (pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`)
+- Regex patterns for commits:
+  - Patterns use PCRE-compatible syntax (jq's `test()` function)
+  - Patterns are tested against commit message headline (first line only)
+  - Multiple patterns are combined with OR logic
+  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits)
+
+Comments vs Reviews vs Commits:
+
+- **Comments** (💬) are general discussion messages in the PR conversation tab (created via main comment box). Example: bot notifications, questions, status updates.
+- **Reviews** (✅) are formal code review submissions with states (APPROVED, CHANGES_REQUESTED, COMMENTED) created via the "Review changes" button. They affect PR merge status and appear with special badges.
+- **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is pattern-based, not author-based.
+
+Example configuration in `user-defaults.json`:
+
+```json
+{
+  "repo": "owner/repo",
+  "changeFilters": {
+    "ignoreCommentsFromAuthors": ["dependabot[bot]", "github-actions[bot]", "codecov[bot]"],
+    "ignoreReviewsFromAuthors": ["optional-reviewer"],
+    "ignoreCommitPatterns": [
+      "^docs:",
+      "^test:",
+      "^style: formatting",
+      "^chore: update dependencies"
+    ]
+  }
+}
+```
+
 Scope mode behavior:
 
 - `all`: show all rows that match non-scope filters.

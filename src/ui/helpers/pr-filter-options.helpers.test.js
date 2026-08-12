@@ -12,6 +12,7 @@ describe("pr filter options helpers", () => {
     const populateAssignedOptions = jest.fn();
     const populateApproverOptions = jest.fn();
     const populateAuthorThreadResolutionActorOptions = jest.fn();
+    const populateChangeFilterActorOptions = jest.fn();
     const { populateFilterOptions } = createPrFilterOptionsHelpers({
       populateIncludeLabelOptions,
       populateExcludeLabelOptions,
@@ -19,6 +20,7 @@ describe("pr filter options helpers", () => {
       populateAssignedOptions,
       populateApproverOptions,
       populateAuthorThreadResolutionActorOptions,
+      populateChangeFilterActorOptions,
     });
     const entries = [{ id: 1 }];
     const repoFilter = "org/repo";
@@ -50,6 +52,7 @@ describe("pr filter options helpers", () => {
     expect(populateAuthorThreadResolutionActorOptions).toHaveBeenCalledWith(
       actorsMap,
     );
+    expect(populateChangeFilterActorOptions).toHaveBeenCalledWith(actorsMap);
   });
 
   test("given missing actors map, when populating filter options, then actor-dependent options receive empty object fallback", () => {
@@ -57,6 +60,7 @@ describe("pr filter options helpers", () => {
     const populateAssignedOptions = jest.fn();
     const populateApproverOptions = jest.fn();
     const populateAuthorThreadResolutionActorOptions = jest.fn();
+    const populateChangeFilterActorOptions = jest.fn();
     const { populateFilterOptions } = createPrFilterOptionsHelpers({
       populateIncludeLabelOptions: () => {},
       populateExcludeLabelOptions: () => {},
@@ -64,6 +68,7 @@ describe("pr filter options helpers", () => {
       populateAssignedOptions,
       populateApproverOptions,
       populateAuthorThreadResolutionActorOptions,
+      populateChangeFilterActorOptions,
     });
 
     populateFilterOptions({
@@ -87,6 +92,7 @@ describe("pr filter options helpers", () => {
       {},
     );
     expect(populateAuthorThreadResolutionActorOptions).toHaveBeenCalledWith({});
+    expect(populateChangeFilterActorOptions).toHaveBeenCalledWith({});
   });
 
   test("given invalid entries and repo filter, when populating filter options, then defaults are used", () => {
