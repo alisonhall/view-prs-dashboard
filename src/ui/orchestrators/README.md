@@ -72,7 +72,7 @@ All orchestrators use UMD pattern for browser + Jest compatibility:
 
 ## File Organization
 
-```
+```text
 src/ui/orchestrators/
   ├── README.md (this file)
   ├── pr-data-tab.orchestrator.js
@@ -151,11 +151,11 @@ function handleDataRefresh(data) {
 
 ## Migration Status
 
-- [x] Phase 7A: PR Data Tab - **IN PROGRESS**
-- [ ] Phase 7B: Author Insights Tab
-- [ ] Phase 7C: Backfill Tab
-- [ ] Phase 7D: Review Stats Tab
-- [ ] Phase 7E: Cross-cutting orchestrators
+- \[x] Phase 7A: PR Data Tab - **IN PROGRESS**
+- \[ ] Phase 7B: Author Insights Tab
+- \[ ] Phase 7C: Backfill Tab
+- \[ ] Phase 7D: Review Stats Tab
+- \[ ] Phase 7E: Cross-cutting orchestrators
 
 ## Questions?
 
