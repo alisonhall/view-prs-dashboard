@@ -31,7 +31,7 @@
 - ~~Validate Rally story/defect ID matches what is within the PR title~~
 - [ ] Fix consistency on when filters are applied (ie. on select vs clicking "Apply filters (local)" button)
 - [ ] Rename "Rally" fields to be more generic
-- [ ] Reorganize story and link fields to be linked together
+- [ ] Reorganize Notes' Story and Link fields to be linked together
 - [ ] Use pub-sub pattern or something instead of current rerender pattern with internal rescroll/reset issues
 - [ ] Modules and functions within unit tests should not be mocked unless they really need to be
 - [ ] Prefer updating/modifying/refactoring existing code rather than just adding extra code
@@ -40,6 +40,9 @@
 - [ ] Allow overriding the PR author and allowing multiple users to be considered the author. Maybe base this off of who adds commits (other than merges)?
 - [ ] For possible long dropdown lists (ie. all authors), add a UI enhancement so that it has the search/filter functionality in the dropdown. Also consider "recently active" sorting (actors from recent PRs at the top)
 - [ ] Deduplicate author name dropdown fields
+- [ ] Add a small copy button beside the source branch name
+- [ ] Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields
+- [ ] Update Notes' Story and Link fields to have the read view of the story name have a small open link icon button beside it to open the link URL
 
 ### Styling
 
