@@ -4055,6 +4055,31 @@ const renderStatsView = (rows, actorsMap = {}) => {
   renderStatsSummaryAndTable(host, stats, rows, actorsMap);
 };
 
+// Review Stats Tab Orchestrator
+const reviewStatsTabOrchestratorFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./orchestrators/review-stats-tab.orchestrator.js")
+    : globalThis.ViewPrsReviewStatsTabOrchestrator;
+
+const reviewStatsTabOrchestrator =
+  reviewStatsTabOrchestratorFactory.createReviewStatsTabOrchestrator({
+    // Helper functions
+    renderStatsView,
+    activateDataTab,
+    getOptionalElementById,
+    // State management via dependency injection
+    stateGetters: {
+      getStatsViewState: () => statsViewState,
+      getLatestRows: () => latestStoredPayload?.rows || [],
+      getLatestActorsMap: () => latestStoredPayload?.actorsMap || {},
+    },
+    stateSetters: {
+      setStatsViewState: (value) => {
+        Object.assign(statsViewState, value);
+      },
+    },
+  });
+
 // Author Insights helper modules (refactored dependency injection)
 const prAuthorInsightsPrLinkHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -6616,6 +6641,8 @@ const initPage = () => {
   authorInsightsTabOrchestrator.initialize();
   // Initialize Backfill Tab orchestrator
   backfillTabOrchestrator.initialize();
+  // Initialize Review Stats Tab orchestrator
+  reviewStatsTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
   setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();
