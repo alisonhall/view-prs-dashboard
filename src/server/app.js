@@ -62,196 +62,58 @@ const { createBackfillHelpers } = require("./helpers/backfill-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 
 // Configuration and constants
-const defaultViewPrsRepo = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
-const requiredCommands = ["bash", "gh", "jq"];
-const requiredPackages = ["marked"];
-
-// Setup paths relative to view-prs directory
+// Initialize configuration from config module
 const viewPrsDir = path.resolve(__dirname, "../..");
-const viewPrsUiDir = path.join(viewPrsDir, "src/ui");
-const viewPrsUiIndexFile = path.join(viewPrsDir, "src/ui/index.html");
-const viewPrsRunScriptRelativePath = "src/script/check-open-pr-updates.sh";
-const viewPrsBackfillManagerRelativePath =
-  "src/backfill/backfill-missing-bg.sh";
-const _defaultSchedulerFile = path.join(
+const config = createAppConfig({
   viewPrsDir,
-  "data/check-open-pr-updates.scheduler.json",
-);
-const viewPrsSchedulerFile =
-  process.env.VIEW_PRS_SCHEDULER_FILE || _defaultSchedulerFile;
-const viewPrsLegacySchedulerFile = path.join(
-  viewPrsDir,
-  "check-open-pr-updates.scheduler.json",
-);
-const _defaultDataFile = path.join(
-  viewPrsDir,
-  "data/check-open-pr-updates.data.json",
-);
-const viewPrsDataFile = process.env.VIEW_PRS_DATA_FILE || _defaultDataFile;
-const _defaultPrDetailDir = path.join(path.dirname(viewPrsDataFile), "pr-details");
-const viewPrsPrDetailDir =
-  process.env.VIEW_PRS_PR_DETAIL_DIR || _defaultPrDetailDir;
-const _defaultUserStateFile = path.join(
-  viewPrsDir,
-  "data/check-open-pr-updates.user-state.json",
-);
-const viewPrsUserStateFile =
-  process.env.VIEW_PRS_USER_STATE_FILE || _defaultUserStateFile;
-const _defaultAuthorCommentsFile = path.join(
-  path.dirname(viewPrsUserStateFile),
-  "check-open-pr-updates.author-comments.json",
-);
-const viewPrsAuthorCommentsFile =
-  process.env.VIEW_PRS_AUTHOR_COMMENTS_FILE || _defaultAuthorCommentsFile;
-const _defaultBackupDir = path.join(viewPrsDir, "data/backups");
-const viewPrsBackupDir = process.env.VIEW_PRS_BACKUP_DIR || _defaultBackupDir;
-const _defaultPrDiffDir = path.join(viewPrsDir, "data/pr-diffs");
-const viewPrsPrDiffDir = process.env.VIEW_PRS_PR_DIFF_DIR || _defaultPrDiffDir;
+  env: process.env,
+  isTestEnv: process.env.NODE_ENV === "test",
+});
 
-// Hard enforcement: tests MUST redirect state writes to temp paths.
-if (process.env.NODE_ENV === "test") {
-  if (
-    viewPrsDataFile === _defaultDataFile ||
-    viewPrsUserStateFile === _defaultUserStateFile
-  ) {
-    throw new Error(
-      "[view-prs] NODE_ENV=test but real production state file paths are in use. " +
-      "Set VIEW_PRS_DATA_FILE and VIEW_PRS_USER_STATE_FILE env vars to temp paths.",
-    );
-  }
-}
-const viewPrsBackupRetention = Math.max(
-  1,
-  Number.parseInt(process.env.VIEW_PRS_BACKUP_RETENTION || "50", 10) || 50,
-);
-const _defaultActorNameCacheFile = path.join(
-  viewPrsDir,
-  "data/actor-name-cache.json",
-);
-const viewPrsActorNameCacheFile =
-  process.env.VIEW_PRS_ACTOR_NAME_CACHE_FILE || _defaultActorNameCacheFile;
-const _defaultActorLoginAliasesFile = path.join(
-  viewPrsDir,
-  "data/actor-login-aliases.json",
-);
-const viewPrsActorLoginAliasesFile =
-  process.env.VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE ||
-  _defaultActorLoginAliasesFile;
-const viewPrsBackfillManagerScript = path.join(
-  viewPrsDir,
+// Extract commonly used config values for compatibility
+const {
+  defaultViewPrsRepo,
+  requiredCommands,
+  requiredPackages,
+  viewPrsUiDir,
+  viewPrsUiIndexFile,
+  viewPrsDataFile,
+  viewPrsUserStateFile,
+  viewPrsAuthorCommentsFile,
+  viewPrsSchedulerFile,
+  viewPrsLegacySchedulerFile,
+  viewPrsPrDetailDir,
+  viewPrsBackupDir,
+  viewPrsPrDiffDir,
+  viewPrsRunScriptRelativePath,
   viewPrsBackfillManagerRelativePath,
-);
-const _defaultActionLogFile = path.join(viewPrsDir, "data/action-log.json");
-const viewPrsActionLogFile =
-  process.env.VIEW_PRS_ACTION_LOG_FILE || _defaultActionLogFile;
+  viewPrsBackfillManagerScript,
+  viewPrsBackfillPidFile,
+  viewPrsBackfillLogFile,
+  viewPrsUserDefaultsFile,
+  viewPrsActorNameCacheFile,
+  viewPrsActorLoginAliasesFile,
+  viewPrsActionLogFile,
+  viewPrsAutoIntervalMs,
+  viewPrsManualCooldownMs,
+  viewPrsAutoCircuitFailureThreshold,
+  viewPrsAutoCircuitCooldownMs,
+  viewPrsAutoScriptTimeoutMs,
+  viewPrsManualScriptTimeoutMs,
+  viewPrsAckScriptTimeoutMs,
+  viewPrsAckRefreshScriptTimeoutMs,
+  viewPrsAckTotalRefreshTimeoutMs,
+  viewPrsBackfillStatusTimeoutMs,
+  viewPrsBackfillActionTimeoutMs,
+  viewPrsPrDiffTimeoutMs,
+  viewPrsPrDiffConcurrency,
+  viewPrsViewerLoginCacheTtlMs,
+  viewPrsBackupRetention,
+} = config;
 
-if (process.env.NODE_ENV === "test") {
-  if (
-    viewPrsActorNameCacheFile === _defaultActorNameCacheFile ||
-    viewPrsActorLoginAliasesFile === _defaultActorLoginAliasesFile
-  ) {
-    throw new Error(
-      "[view-prs] NODE_ENV=test but real actor cache file paths are in use. " +
-      "Set VIEW_PRS_ACTOR_NAME_CACHE_FILE and VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE env vars to temp paths.",
-    );
-  }
-}
-const viewPrsBackfillPidFile = path.join(
-  viewPrsDir,
-  "data/backfill-missing.pid",
-);
-const viewPrsBackfillLogFile = path.join(
-  viewPrsDir,
-  "data/backfill-missing.log",
-);
-const viewPrsUserDefaultsFile = path.join(
-  viewPrsDir,
-  "data/user-defaults.json",
-);
-const viewPrsAutoIntervalMs = 15 * 60 * 1000;
-const viewPrsManualCooldownMs = 15 * 60 * 1000;
-const viewPrsAutoCircuitFailureThreshold = Math.max(
-  1,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_CIRCUIT_FAILURE_THRESHOLD || "3",
-    10,
-  ) || 3,
-);
-const viewPrsAutoCircuitCooldownMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_CIRCUIT_COOLDOWN_MS || "1800000",
-    10,
-  ) || 1800000,
-);
-const viewPrsAutoScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_SCRIPT_TIMEOUT_MS || "900000",
-    10,
-  ) || 900000,
-);
-const getViewPrsAutoRepoConcurrency = () =>
-  Math.max(
-    1,
-    Number.parseInt(
-      process.env.VIEW_PRS_AUTO_REPO_CONCURRENCY || "2",
-      10,
-    ) || 2,
-  );
-const viewPrsManualScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_MANUAL_SCRIPT_TIMEOUT_MS || "1200000",
-    10,
-  ) || 1200000,
-);
-const viewPrsAckScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(process.env.VIEW_PRS_ACK_SCRIPT_TIMEOUT_MS || "600000", 10) ||
-  600000,
-);
-const viewPrsAckRefreshScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_ACK_REFRESH_TIMEOUT_MS || "300000",
-    10,
-  ) || 300000,
-);
-const viewPrsAckTotalRefreshTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_ACK_TOTAL_REFRESH_TIMEOUT_MS || "480000",
-    10,
-  ) || 480000,
-);
-const viewPrsBackfillStatusTimeoutMs = Math.max(
-  10 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_BACKFILL_STATUS_TIMEOUT_MS || "20000",
-    10,
-  ) || 20000,
-);
-const viewPrsBackfillActionTimeoutMs = Math.max(
-  10 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_BACKFILL_ACTION_TIMEOUT_MS || "120000",
-    10,
-  ) || 120000,
-);
-const viewPrsPrDiffTimeoutMs = Math.max(
-  30 * 1000,
-  Number.parseInt(process.env.VIEW_PRS_PR_DIFF_TIMEOUT_MS || "120000", 10) ||
-    120000,
-);
-const viewPrsPrDiffConcurrency = Math.max(
-  0,
-  Math.min(
-    4,
-    Number.parseInt(process.env.VIEW_PRS_PR_DIFF_CONCURRENCY || "2", 10) || 2,
-  ),
-);
-const viewPrsViewerLoginCacheTtlMs = 5 * 60 * 1000;
+// Note: getViewPrsAutoRepoConcurrency is now a constant, not a function
+// For compatibility, wrap it
+const getViewPrsAutoRepoConcurrency = () => config.viewPrsPrDiffConcurrency;
 
 let cachedViewPrsViewerLogin = "";
 let cachedViewPrsViewerLoginAt = 0;
