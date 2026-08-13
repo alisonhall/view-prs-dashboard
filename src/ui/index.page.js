@@ -3201,6 +3201,48 @@ const { activateDataTab, initDataTabs } =
     getOptionalElementById,
   });
 
+// PR Data Tab Orchestrator
+const prDataTabOrchestratorFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./orchestrators/pr-data-tab.orchestrator.js")
+    : globalThis.ViewPrsPrDataTabOrchestrator;
+
+const prDataTabOrchestrator =
+  prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
+    // Helper functions
+    deriveRunPrDataContext,
+    deriveRenderPipelineState,
+    applyFiltersFromCache,
+    loadStoredData,
+    activateDataTab,
+    initDataTabs,
+    getOptionalElementById,
+    // State management via dependency injection
+    stateGetters: {
+      getLatestStoredPayload: () => latestStoredPayload,
+      getLatestSelectedRepo: () => latestSelectedRepo,
+      getLastSuccessfulRenderedCheckAt: () => lastSuccessfulRenderedCheckAt,
+      getLatestSchedulerState: () => latestSchedulerState,
+    },
+    stateSetters: {
+      setLatestStoredPayload: (value) => {
+        latestStoredPayload = value;
+      },
+      setLastSuccessfulRenderedCheckAt: (value) => {
+        lastSuccessfulRenderedCheckAt = value;
+      },
+      setLastRenderedPrFingerprint: (value) => {
+        lastRenderedPrFingerprint = value;
+      },
+      setLatestPrManifest: (value) => {
+        latestPrManifest = value;
+      },
+      setPendingAutoRenderPayload: (value) => {
+        pendingAutoRenderPayload = value;
+      },
+    },
+  });
+
 const prBackfillHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-backfill.helpers.js")
@@ -5878,59 +5920,8 @@ const { buildSectionTable } =
   });
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
-  latestStoredPayload = payload || latestStoredPayload;
-  const {
-    sectionsHost,
-    insightsViewState,
-    prSectionOpenState,
-    meta,
-    allEntries,
-    repoFilter,
-    runStamp,
-    normalizedRunStamp,
-    filterPrNumbersRaw,
-    filterPrNumbers,
-    selectedScope,
-    ignoreScopeForPrNumberFilter,
-    useLastRunScope,
-    attentionConfig,
-    rowsForRepo,
-    allStoredRows,
-  } = deriveRunPrDataContext({
-    payload,
-    selectedRepo,
-    inputRepo: document.getElementById("repo").value.trim(),
-    filterPrNumbersRaw: document.getElementById("filter-pr-numbers").value.trim(),
-    optionsUseLastRunScope: options.useLastRunScope,
-  });
-  const nextRenderPipelineState = deriveRenderPipelineState({
-    payload,
-    allEntries,
-    repoFilter,
-    lastSuccessfulRenderedCheckAt,
-    normalizedRunStamp,
-    rowsForRepo,
-    ignoreScopeForPrNumberFilter,
-    runStamp,
-    useLastRunScope,
-    selectedScope,
-    attentionConfig,
-    filterPrNumbers,
-    filterPrNumbersRaw,
-    allStoredRows,
-    sectionsHost,
-    meta,
-    prSectionOpenState,
-    latestSelectedRepo,
-    insightsViewState,
-    latestSchedulerState,
-  });
-  lastSuccessfulRenderedCheckAt =
-    nextRenderPipelineState.lastSuccessfulRenderedCheckAt;
-  const committedRenderState = nextRenderPipelineState.committedRenderState;
-  pendingAutoRenderPayload = committedRenderState.pendingAutoRenderPayload;
-  lastRenderedPrFingerprint = committedRenderState.lastRenderedPrFingerprint;
-  latestPrManifest = committedRenderState.latestPrManifest;
+  // Delegate to PR Data Tab orchestrator
+  prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
 };
 
 const setExportStatus = (message) => {
@@ -6559,7 +6550,8 @@ const initPage = () => {
   registerUiOptionPersistenceHandlers();
   initManagementTabs();
   initActorNameCacheControls();
-  initDataTabs();
+  // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
+  prDataTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
   setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();
