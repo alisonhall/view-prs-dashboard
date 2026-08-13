@@ -3290,6 +3290,35 @@ const {
   backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
 });
 
+// Backfill Tab Orchestrator
+const backfillTabOrchestratorFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./orchestrators/backfill-tab.orchestrator.js")
+    : globalThis.ViewPrsBackfillTabOrchestrator;
+
+const backfillTabOrchestrator =
+  backfillTabOrchestratorFactory.createBackfillTabOrchestrator({
+    // Helper functions
+    loadBackfillStatus,
+    loadBackfillLogTail,
+    handleBackfillAction,
+    renderBackfillStatus,
+    setBackfillLogMessage,
+    activateDataTab,
+    getOptionalElementById,
+    beginRequestActivity,
+    notifyFailureSnackbar,
+    // State management via dependency injection
+    stateGetters: {
+      getLastBackfillStateKey: () => lastBackfillStateKey,
+    },
+    stateSetters: {
+      setLastBackfillStateKey: (value) => {
+        lastBackfillStateKey = value;
+      },
+    },
+  });
+
 const prActionLogHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-action-log.helpers.js")
@@ -6585,6 +6614,8 @@ const initPage = () => {
   prDataTabOrchestrator.initialize();
   // Initialize Author Insights Tab orchestrator
   authorInsightsTabOrchestrator.initialize();
+  // Initialize Backfill Tab orchestrator
+  backfillTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
   setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();
