@@ -4101,6 +4101,37 @@ const { renderAuthorInsights } =
     DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
   });
 
+// Author Insights Tab Orchestrator
+const authorInsightsTabOrchestratorFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./orchestrators/author-insights-tab.orchestrator.js")
+    : globalThis.ViewPrsAuthorInsightsTabOrchestrator;
+
+const authorInsightsTabOrchestrator =
+  authorInsightsTabOrchestratorFactory.createAuthorInsightsTabOrchestrator({
+    // Helper functions
+    renderAuthorInsights,
+    activateDataTab,
+    getOptionalElementById,
+    // State management via dependency injection
+    stateGetters: {
+      getAuthorInsightsState: () => authorInsightsState,
+      getLatestStoredPayload: () => latestStoredPayload,
+      getLatestSelectedRepo: () => latestSelectedRepo,
+    },
+    stateSetters: {
+      setSelectedAuthorLogin: (value) => {
+        authorInsightsState.selectedAuthorLogin = value;
+      },
+      setLatestRows: (value) => {
+        authorInsightsState.latestRows = value;
+      },
+      setLatestActorsMap: (value) => {
+        authorInsightsState.latestActorsMap = value;
+      },
+    },
+  });
+
 const prActorIdentityHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-actor-identity.helpers.js")
@@ -6552,6 +6583,8 @@ const initPage = () => {
   initActorNameCacheControls();
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
+  // Initialize Author Insights Tab orchestrator
+  authorInsightsTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
   setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();
