@@ -140,7 +140,7 @@ const config = {
   setupFiles: ["./jest.setup.env.js"],
 
   // A list of paths to modules that run some code to configure or set up the testing framework before each test
-  setupFilesAfterEnv: ["<rootDir>/src/ui/tests/jest.setup.testing-library.js"],
+  setupFilesAfterEnv: ["<rootDir>/src/ui/integration-tests/jest.setup.testing-library.js"],
 
   // The number of seconds after which a test is considered as slow and reported as such in the results.
   // slowTestThreshold: 5,
