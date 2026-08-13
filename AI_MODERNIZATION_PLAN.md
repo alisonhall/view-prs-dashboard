@@ -571,7 +571,7 @@ src/ui/orchestrators/
 ---
 
 ## Phase 8: Server Entry Point Refactoring
-**Status:** 🔄 IN PROGRESS (75% complete - Integration pending)  
+**Status:** � BLOCKED (80% complete - Circular dependencies discovered)  
 **Objective:** Extract helper modules from monolithic app.js to enable 85% size reduction
 
 ### Achievements
@@ -677,16 +677,19 @@ Expected reduction: 84% (1,909 lines)
 - [x] All 102 tests passing (100%) ✅
 - [x] Server tests: 1,302/1,303 passing (99.9%) ✅
 - [x] Zero regressions from extraction ✅
-- [x] Clean git history (20 commits) ✅
+- [x] Clean git history (26 commits) ✅
 
-**Integration Phase (Pending - 3-4 hours):**
-- [ ] Initialize helper factories in app.js
+**Integration Phase (Blocked - Circular Dependencies):**
+- [x] Configuration integration complete ✅ (Step 1 done)
+- [ ] 🚫 Helper factory initialization (blocked by circular deps)
 - [ ] Replace inline code section by section
 - [ ] Test after each section
 - [ ] Integration complete
 - [ ] app.js reduced to <500 lines (target: ~350)
 - [ ] Full quality gates passing post-integration
 - [ ] Phase 8 fully complete
+
+**Blocker:** Helper modules have circular dependencies (e.g., `createDataProcessingHelpers` expects `dataHelpers` parameter - itself!). Requires refactoring before integration can proceed. See `PHASE_8_INTEGRATION_BLOCKER.md` for details and solutions.
 
 ### Next Steps
 
