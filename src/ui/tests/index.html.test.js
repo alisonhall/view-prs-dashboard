@@ -2395,130 +2395,81 @@ describe("index page rendering with Testing Library", () => {
 
   test("renders compact table headers, author-note indicators, and merged note-only rows", async () => {
     initTestPage({
-      dataPayload: {
-        byPrNumber: {
-          11: {
-            repo: "owner/repo",
-            prNumber: "11",
-            section: "open",
-            notes: {
-              comments: [
-                {
-                  id: "comment-1",
-                  author: "ahall236_uhg",
-                  tone: "Positive",
-                  note: "Remember to revisit metrics copy.",
-                },
-              ],
-              otherNotes: "Follow up after release",
-              prDifficulty: "4",
-              rallyStories: ["US12345"],
-              rallyLinks: ["https://rally.example/US12345"],
-              analysisOfPr: "Risk is moderate due to API coupling.",
-            },
-            data: {
-              number: "11",
-              title: "Open row with notes",
-              titleDisplay: "Open row with notes [CHK:PASS][MRG:YES]",
-              url: "https://example.com/11",
-              labels: [],
-              author: "Alison Hall",
-              authorLogin: "ahall236_uhg",
-              status: "NO_ACTIVITY",
-              approved: "NO",
-              approvalCount: "0",
-              approvers: [],
-              openConversationCount: "0",
-              viewedFilesCount: "0",
-              changedFilesCount: "0",
-              viewedFilesSummary: "0/0 viewed",
-              activityTimelineSummary: "-",
-              activityTimeline: [],
-              baseline: "2026-03-01T10:00:00Z",
-              mergedAt: "",
-              reason: "-",
-              inReview: false,
-              updatedAt: "2026-03-10T10:00:00Z",
+      dataPayload: createMultiPrPayload({
+        prs: [
+          {
+            scenario: "open-no-change",
+            prNumber: 11,
+            overrides: {
+              notes: {
+                comments: [
+                  {
+                    id: "comment-1",
+                    author: "ahall236_uhg",
+                    tone: "Positive",
+                    note: "Remember to revisit metrics copy.",
+                  },
+                ],
+                otherNotes: "Follow up after release",
+                prDifficulty: "4",
+                rallyStories: ["US12345"],
+                rallyLinks: ["https://rally.example/US12345"],
+                analysisOfPr: "Risk is moderate due to API coupling.",
+              },
+              data: {
+                title: "Open row with notes",
+                titleDisplay: "Open row with notes [CHK:PASS][MRG:YES]",
+                author: "Alison Hall",
+                authorLogin: "ahall236_uhg",
+                status: "NO_ACTIVITY",
+                activityTimelineSummary: "-",
+                reason: "-",
+              },
             },
           },
-          12: {
-            repo: "owner/repo",
-            prNumber: "12",
-            section: "open",
-            notes: {
-              comments: [],
-              otherNotes: "",
-              prDifficulty: "",
-              rallyStories: [],
-              rallyLinks: [],
-              analysisOfPr: "",
-            },
-            data: {
-              number: "12",
-              title: "Open row without notes",
-              titleDisplay: "Open row without notes [CHK:PASS][MRG:YES]",
-              url: "https://example.com/12",
-              labels: [],
-              author: "Second Author",
-              authorLogin: "second_author",
-              status: "NO_CHANGE",
-              approved: "NO",
-              approvalCount: "0",
-              approvers: [],
-              openConversationCount: "0",
-              viewedFilesCount: "0",
-              changedFilesCount: "0",
-              viewedFilesSummary: "0/0 viewed",
-              activityTimelineSummary: "-",
-              activityTimeline: [],
-              baseline: "2026-03-01T10:00:00Z",
-              mergedAt: "",
-              reason: "-",
-              inReview: false,
-              updatedAt: "2026-03-10T10:00:00Z",
+          {
+            scenario: "open-no-change",
+            prNumber: 12,
+            overrides: {
+              data: {
+                title: "Open row without notes",
+                titleDisplay: "Open row without notes [CHK:PASS][MRG:YES]",
+                author: "Second Author",
+                authorLogin: "second_author",
+              },
             },
           },
-          999: {
-            repo: "owner/repo",
-            prNumber: "999",
-            section: "merged",
-            notes: {
-              comments: [
-                {
-                  id: "comment-merged-1",
-                  author: "reviewer-only",
-                  tone: "Negative",
-                  note: "This PR still needs follow-up context.",
-                },
-              ],
-              otherNotes: "Saved without local PR data.",
-            },
-            data: {
-              number: "999",
-              title: "Stored notes only",
-              titleDisplay: "Stored notes only",
-              url: "https://example.com/999",
-              labels: [],
-              author: "",
-              authorLogin: "",
-              status: "NO_LOCAL_DATA",
-              approved: "-",
-              approvalCount: "0",
-              approvers: [],
-              comments: [],
-              reviews: [],
-              commits: [],
-              reviewThreads: [],
-              openConversationCount: "0",
-              viewedFilesCount: "0",
-              changedFilesCount: "0",
-              viewedFilesSummary: "0/0 viewed",
-              mergedAt: "",
-              reason: "No retrieved PR data available",
-              inReview: false,
+          {
+            scenario: "merged-approved",
+            prNumber: 999,
+            overrides: {
+              notes: {
+                comments: [
+                  {
+                    id: "comment-merged-1",
+                    author: "reviewer-only",
+                    tone: "Negative",
+                    note: "This PR still needs follow-up context.",
+                  },
+                ],
+                otherNotes: "Saved without local PR data.",
+              },
+              data: {
+                title: "Stored notes only",
+                titleDisplay: "Stored notes only",
+                author: "",
+                authorLogin: "",
+                status: "NO_LOCAL_DATA",
+                approved: "-",
+                comments: [],
+                reviews: [],
+                commits: [],
+                reviewThreads: [],
+                reason: "No retrieved PR data available",
+              },
             },
           },
-        },
+        ],
         actorsMap: { ahall236_uhg: "Alison Hall" },
         lastRun: { repo: "owner/repo", updatedAt: "2026-03-10T10:00:00Z" },
         scheduler: {
@@ -2526,7 +2477,7 @@ describe("index page rendering with Testing Library", () => {
           manualCooldownMinutes: 15,
           isAutoRunInProgress: false,
         },
-      },
+      }),
     });
     const user = userEvent.setup();
 
@@ -7054,99 +7005,86 @@ describe("index page rendering with Testing Library", () => {
 
   test("author insights resolve display names and closed or merged sections sort by timestamps", async () => {
     initTestPage({
-      dataPayload: {
-        ok: true,
-        byPrNumber: {
-          55: {
-            repo: "owner/repo",
-            prNumber: "55",
-            section: "open",
-            updatedAt: "2026-03-25T12:00:00Z",
-            rowOrder: 0,
-            data: {
-              number: "55",
-              title: "Author insight coverage",
-              titleDisplay: "Author insight coverage [CHK:PASS][MRG:YES]",
-              url: "https://example.com/55",
-              status: "NO_CHANGE",
-              approved: "NO",
-              author: "ahall236_uhg",
-              authorLogin: "ahall236_uhg",
-              labels: [],
+      dataPayload: createMultiPrPayload({
+        prs: [
+          {
+            scenario: "open-no-change",
+            prNumber: 55,
+            overrides: {
               updatedAt: "2026-03-25T12:00:00Z",
-            },
-            notes: {
-              comments: [
-                {
-                  id: "note-1",
-                  author: "ahall236_uhg",
-                  createdAt: "2026-03-24T10:00:00Z",
-                  tone: "Positive",
-                  note: "Older PR-linked comment",
-                },
-              ],
+              rowOrder: 0,
+              data: {
+                title: "Author insight coverage",
+                titleDisplay: "Author insight coverage [CHK:PASS][MRG:YES]",
+                author: "ahall236_uhg",
+                authorLogin: "ahall236_uhg",
+                updatedAt: "2026-03-25T12:00:00Z",
+              },
+              notes: {
+                comments: [
+                  {
+                    id: "note-1",
+                    author: "ahall236_uhg",
+                    createdAt: "2026-03-24T10:00:00Z",
+                    tone: "Positive",
+                    note: "Older PR-linked comment",
+                  },
+                ],
+              },
             },
           },
-          56: {
-            repo: "owner/repo",
-            prNumber: "56",
-            section: "open",
-            updatedAt: "2026-03-24T12:00:00Z",
-            rowOrder: 1,
-            data: {
-              number: "56",
-              title: "Author insight newer comment",
-              titleDisplay: "Author insight newer comment [CHK:PASS][MRG:YES]",
-              url: "https://example.com/56",
-              status: "CHANGED",
-              approved: "NO",
-              author: "ahall236_uhg",
-              authorLogin: "ahall236_uhg",
-              labels: [],
+          {
+            scenario: "open-changed",
+            prNumber: 56,
+            overrides: {
               updatedAt: "2026-03-24T12:00:00Z",
-            },
-            notes: {
-              comments: [
-                {
-                  id: "note-2",
-                  author: "ahall236_uhg",
-                  createdAt: "2026-03-25T11:00:00Z",
-                  tone: "Neutral",
-                  note: "Newer PR-linked comment",
-                },
-              ],
+              rowOrder: 1,
+              data: {
+                title: "Author insight newer comment",
+                titleDisplay: "Author insight newer comment [CHK:PASS][MRG:YES]",
+                author: "ahall236_uhg",
+                authorLogin: "ahall236_uhg",
+                updatedAt: "2026-03-24T12:00:00Z",
+              },
+              notes: {
+                comments: [
+                  {
+                    id: "note-2",
+                    author: "ahall236_uhg",
+                    createdAt: "2026-03-25T11:00:00Z",
+                    tone: "Neutral",
+                    note: "Newer PR-linked comment",
+                  },
+                ],
+              },
             },
           },
-          57: {
-            repo: "owner/repo",
-            prNumber: "57",
-            section: "open",
-            updatedAt: "2026-03-26T14:30:00Z",
-            rowOrder: 2,
-            data: {
-              number: "57",
-              title: "Author insight fallback date",
-              titleDisplay: "Author insight fallback date [CHK:PASS][MRG:YES]",
-              url: "https://example.com/57",
-              status: "NO_CHANGE",
-              approved: "NO",
-              author: "ahall236_uhg",
-              authorLogin: "ahall236_uhg",
-              labels: [],
+          {
+            scenario: "open-no-change",
+            prNumber: 57,
+            overrides: {
               updatedAt: "2026-03-26T14:30:00Z",
-            },
-            notes: {
-              comments: [
-                {
-                  id: "note-3",
-                  author: "ahall236_uhg",
-                  tone: "Negative",
-                  note: "Fallback timestamp PR-linked comment",
-                },
-              ],
+              rowOrder: 2,
+              data: {
+                title: "Author insight fallback date",
+                titleDisplay: "Author insight fallback date [CHK:PASS][MRG:YES]",
+                author: "ahall236_uhg",
+                authorLogin: "ahall236_uhg",
+                updatedAt: "2026-03-26T14:30:00Z",
+              },
+              notes: {
+                comments: [
+                  {
+                    id: "note-3",
+                    author: "ahall236_uhg",
+                    tone: "Negative",
+                    note: "Fallback timestamp PR-linked comment",
+                  },
+                ],
+              },
             },
           },
-        },
+        ],
         actorsMap: {
           ahall236_uhg: "Alison Hall",
           no_prs_author: "No PR Author",
@@ -7160,7 +7098,7 @@ describe("index page rendering with Testing Library", () => {
           manualCooldownMinutes: 15,
           isAutoRunInProgress: false,
         },
-      },
+      }),
       authorCommentsGetHandler: () =>
         createOkJsonResponse({
           ok: true,

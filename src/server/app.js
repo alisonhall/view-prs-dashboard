@@ -49,6 +49,9 @@ const {
 } = require("./helpers/view-prs-data-helpers");
 const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
 const {
+  runMigration: runPrDetailMigration,
+} = require("../script/migrate-pr-detail-sidecar-v1");
+const {
   createViewPrsActorHelpers,
 } = require("./helpers/view-prs-actor-helpers");
 
@@ -1955,6 +1958,15 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
       console.log(
         `[view-prs] auto refresh complete for ${successCount} repo(s) at ${viewPrsSchedulerState.lastAutoRunAt}`,
       );
+
+      // Automatically split heavy PR detail arrays into separate files
+      try {
+        runPrDetailMigration({ silent: true });
+      } catch (migrationError) {
+        console.error(
+          `[view-prs] warning: PR detail split failed: ${migrationError.message || migrationError}`,
+        );
+      }
     }
 
     if (failures.length === 0 && successCount > 0) {
