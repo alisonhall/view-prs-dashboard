@@ -307,11 +307,24 @@
                                         reviewers whose approval isn't required.
                                     </p>
 
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="change-filter-use-builtin-merge-pattern"
+                                            name="changeFilterUseBuiltinMergePattern" checked />
+                                        Use built-in merge commit filter (merges from main/origin/main)
+                                    </label>
+                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
+                                        🔀 Built-in pattern:
+                                        <code>^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main
+                                            into )</code><br>
+                                        Uncheck to use only your custom patterns below, or to define your own merge
+                                        filter.
+                                    </p>
+
                                     <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
                                         (regex, one per line)</label>
                                     <textarea id="change-filter-ignore-commit-patterns"
                                         name="changeFilterIgnoreCommitPatterns" rows="4"
-                                        placeholder="^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )&#10;^chore: update dependencies&#10;^docs: &#10;^style: formatting&#10;^test: "
+                                        placeholder="^docs: &#10;^test: &#10;^chore: update dependencies&#10;^style: formatting"
                                         aria-describedby="commit-patterns-help"></textarea>
                                     <p class="subtle-copy" id="commit-patterns-help" style="margin-top: 4px;">
                                         📝 Filter commits by message patterns (e.g., <code>^docs:</code> ignores
@@ -319,8 +332,7 @@
                                     </p>
 
                                     <p class="subtle-copy" style="margin-top: 16px;">
-                                        <strong>Note:</strong> Approved reviews and merge commits from main are always
-                                        ignored (built-in behavior).
+                                        <strong>Note:</strong> Approved reviews are always ignored (built-in behavior).
                                     </p>
                                 </fieldset>
                             </div>
