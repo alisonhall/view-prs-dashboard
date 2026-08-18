@@ -116,6 +116,37 @@
     const getSelectedExcludeLabelNames = () =>
       getSelectedMultiSelectValues("exclude-label-list");
 
+    const getCustomCommentsFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-custom-comments");
+      return String(element?.value || "").trim();
+    };
+    const getOtherNotesFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-other-notes");
+      return String(element?.value || "").trim();
+    };
+    const getPrDifficultyFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-pr-difficulty");
+      return String(element?.value || "").trim();
+    };
+    const getRallyStoriesFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-rally-stories");
+      return String(element?.value || "").trim();
+    };
+    const getRallyLinksFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-rally-links");
+      return String(element?.value || "").trim();
+    };
+    const getAnalysisOfPrFilter = () => {
+      const doc = getDocument();
+      const element = doc?.getElementById("filter-analysis-of-pr");
+      return String(element?.value || "").trim();
+    };
+
     const getMultiSelectCheckboxId = (prefix, value, index) => {
       const normalized = String(value || "")
         .trim()
@@ -553,6 +584,12 @@
       getSelectedApproverLogins,
       getSelectedIncludeLabelNames,
       getSelectedExcludeLabelNames,
+      getCustomCommentsFilter,
+      getOtherNotesFilter,
+      getPrDifficultyFilter,
+      getRallyStoriesFilter,
+      getRallyLinksFilter,
+      getAnalysisOfPrFilter,
       updateMultiSelectSummary,
       collectSortedLabelOptions,
       populateIncludeLabelOptions,
