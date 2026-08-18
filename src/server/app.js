@@ -226,6 +226,29 @@ const removeSchedulerActivePrNumbers = (prNumbers) => {
   });
 };
 
+// Initialize command execution helpers
+const commandHelpers = createCommandExecutionHelpers({
+  spawn,
+  spawnSync,
+  process,
+  viewPrsDir: config.viewPrsDir,
+  viewPrsScriptsDir: path.join(config.viewPrsDir, 'scripts'),
+  requiredCommands: config.requiredCommands,
+  requiredPackages: config.requiredPackages,
+  viewPrsProgressTracker,
+});
+
+// Extract command helper functions
+const {
+  runViewPrsCommand: _runViewPrsCommand,
+  runViewPrsBashCommand: _runViewPrsBashCommand,
+  runViewPrsScript: _runViewPrsScript,
+  runViewPrsShellScript: _runViewPrsShellScript,
+  formatScriptFailureMessage: _formatScriptFailureMessage,
+  isCommandAvailable: _isCommandAvailable,
+  getDependencyStatus: _getDependencyStatus,
+} = commandHelpers;
+
 const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
   const safeRepo = toTrimmedString(repo);
   if (!safeRepo) {
@@ -271,151 +294,9 @@ const writeUserDefaults = (overrides) => {
 const safeReadJsonFile = (filePath, fallbackValue = null) => 
   _safeReadJsonFile(filePath, fallbackValue);
 
-const runViewPrsCommand = (
-  command,
-  args,
-  maxBufferBytes = 10 * 1024 * 1024,
-  options = {},
-) =>
-  new Promise((resolve, reject) => {
-    const timeoutMs =
-      Number.isFinite(Number(options?.timeoutMs)) &&
-        Number(options?.timeoutMs) > 0
-        ? Number(options.timeoutMs)
-        : 0;
-
-    const maxBuffer =
-      Number.isFinite(Number(maxBufferBytes)) && Number(maxBufferBytes) > 0
-        ? Number(maxBufferBytes)
-        : 10 * 1024 * 1024;
-
-    const child = spawn(command, Array.isArray(args) ? args : [], {
-      cwd: viewPrsDir,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        GH_PAGER: "cat",
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let didTimeout = false;
-    let settled = false;
-    let timeoutHandle = null;
-    let forceKillTimeoutHandle = null;
-
-    const forceStopProcessTree = () => {
-      terminateProcessTree(child.pid, "SIGTERM");
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      forceKillTimeoutHandle = setTimeout(
-        () => terminateProcessTree(child.pid, "SIGKILL"),
-        1000,
-      );
-    };
-
-    const finishResolve = (value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      resolve(value);
-    };
-
-    const finishReject = (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      reject({
-        error,
-        stdout,
-        stderr,
-        command: `${command} ${Array.isArray(args) ? args.join(" ") : ""}`,
-        didTimeout,
-        timeoutMs,
-      });
-    };
-
-    const appendChunk = (chunk, target) => {
-      const chunkText = chunk.toString();
-      const chunkBytes = Buffer.byteLength(chunkText);
-      if (target === "stdout") {
-        stdout += chunkText;
-        stdoutBytes += chunkBytes;
-        if (stdoutBytes > maxBuffer) {
-          forceStopProcessTree();
-          finishReject(new Error("stdout maxBuffer exceeded"));
-        }
-        return;
-      }
-
-      stderr += chunkText;
-      stderrBytes += chunkBytes;
-      if (stderrBytes > maxBuffer) {
-        forceStopProcessTree();
-        finishReject(new Error("stderr maxBuffer exceeded"));
-      }
-    };
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        didTimeout = true;
-        forceStopProcessTree();
-      }, timeoutMs);
-    }
-
-    child.stdout.on("data", (chunk) => appendChunk(chunk, "stdout"));
-    child.stderr.on("data", (chunk) => appendChunk(chunk, "stderr"));
-
-    child.on("error", (error) => {
-      finishReject(error);
-    });
-
-    child.on("close", (code, signal) => {
-      if (didTimeout) {
-        const timeoutSeconds = Math.round(timeoutMs / 1000);
-        finishReject(
-          new Error(
-            timeoutSeconds > 0
-              ? `Command timed out after ${timeoutSeconds}s`
-              : "Command timed out",
-          ),
-        );
-        return;
-      }
-
-      if (code !== 0) {
-        finishReject(
-          new Error(
-            signal
-              ? `Command terminated by ${signal}`
-              : `Command exited with code ${code}`,
-          ),
-        );
-        return;
-      }
-
-      finishResolve({ stdout, stderr });
-    });
-  });
+// Use command execution helper
+const runViewPrsCommand = (command, args, maxBufferBytes, options) =>
+  _runViewPrsCommand(command, args, maxBufferBytes, options);
 
 const {
   getPrDiffCacheFilePath,
@@ -843,36 +724,11 @@ const {
   viewPrsLegacySchedulerFile,
 });
 
-const formatScriptFailureMessage = (
-  failure,
-  fallbackMessage = "Script failed",
-) => {
-  if (failure?.didTimeout === true) {
-    const timeoutMs = Number(failure?.timeoutMs || 0);
-    const timeoutSeconds = timeoutMs > 0 ? Math.round(timeoutMs / 1000) : null;
-    return timeoutSeconds
-      ? `Script timed out after ${timeoutSeconds}s`
-      : "Script timed out";
-  }
-  return failure?.error?.message || fallbackMessage;
-};
+// Use command execution helpers
+const formatScriptFailureMessage = (failure, fallbackMessage) =>
+  _formatScriptFailureMessage(failure, fallbackMessage);
 
-const terminateProcessTree = (pid, signal) => {
-  if (!Number.isFinite(Number(pid)) || Number(pid) <= 0) {
-    return;
-  }
-
-  try {
-    // Child processes run in their own process group, so kill the whole group.
-    process.kill(-Number(pid), signal);
-  } catch (_error) {
-    try {
-      process.kill(Number(pid), signal);
-    } catch (_ignore) {
-      // Best effort cleanup.
-    }
-  }
-};
+const { terminateProcessTree } = commandHelpers;
 
 const runViewPrsBashCommand = (
   bashArgs,
