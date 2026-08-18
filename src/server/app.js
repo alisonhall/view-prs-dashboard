@@ -265,20 +265,11 @@ const readUserDefaults = () =>
 
 const writeUserDefaults = (overrides) => {
   const data = isObject(overrides) ? overrides : {};
-  fs.mkdirSync(path.dirname(viewPrsUserDefaultsFile), { recursive: true });
-  fs.writeFileSync(viewPrsUserDefaultsFile, JSON.stringify(data, null, 2), "utf8");
+  _writeJsonFile(config.viewPrsUserDefaultsFile, data);
 };
 
-const safeReadJsonFile = (filePath, fallbackValue = null) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return fallbackValue;
-    }
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (_error) {
-    return fallbackValue;
-  }
-};
+const safeReadJsonFile = (filePath, fallbackValue = null) => 
+  _safeReadJsonFile(filePath, fallbackValue);
 
 const runViewPrsCommand = (
   command,
