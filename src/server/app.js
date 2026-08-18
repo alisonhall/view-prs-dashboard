@@ -135,6 +135,19 @@ const viewPrsSchedulerState = {
 const VIEW_PRS_PROGRESS_PREFIX = "__VIEW_PRS_PROGRESS__:";
 const viewPrsActivePrCounts = new Map();
 
+// Initialize scheduler helpers (uses only fs, path, config - no circular deps)
+const schedulerHelpers = createSchedulerHelpers({
+  fs,
+  path,
+  viewPrsActionLogFile: config.viewPrsActionLogFile,
+});
+
+// Extract scheduler helper functions
+const {
+  appendActionLogEntry: _appendActionLogEntry,
+  readActionLog: _readActionLog,
+} = schedulerHelpers;
+
 const syncSchedulerActivePrNumbers = () => {
   viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()].sort(
     (left, right) => Number(left) - Number(right),
@@ -224,43 +237,9 @@ const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
 
 let viewPrsWatchdogForceStopCount = 0;
 
-const ACTION_LOG_MAX_ENTRIES = 500;
-
-const appendActionLogEntry = (entry) => {
-  try {
-    fs.mkdirSync(path.dirname(viewPrsActionLogFile), { recursive: true });
-    let entries = [];
-    if (fs.existsSync(viewPrsActionLogFile)) {
-      try {
-        entries = JSON.parse(fs.readFileSync(viewPrsActionLogFile, "utf8"));
-        if (!Array.isArray(entries)) entries = [];
-      } catch (_parseError) {
-        entries = [];
-      }
-    }
-    entries.unshift(entry);
-    if (entries.length > ACTION_LOG_MAX_ENTRIES) {
-      entries = entries.slice(0, ACTION_LOG_MAX_ENTRIES);
-    }
-    fs.writeFileSync(
-      viewPrsActionLogFile,
-      JSON.stringify(entries, null, 2),
-      "utf8",
-    );
-  } catch (_writeError) {
-    // best-effort; never throw from a logging helper
-  }
-};
-
-const readActionLog = () => {
-  if (!fs.existsSync(viewPrsActionLogFile)) return [];
-  try {
-    const raw = JSON.parse(fs.readFileSync(viewPrsActionLogFile, "utf8"));
-    return Array.isArray(raw) ? raw : [];
-  } catch (_error) {
-    return [];
-  }
-};
+// Use scheduler helpers for action log management
+const appendActionLogEntry = (entry) => _appendActionLogEntry(entry);
+const readActionLog = () => _readActionLog();
 
 // Helper functions
 const readJsonFileIfExists = (filePath, fallbackValue) => {

@@ -10,20 +10,21 @@
  * @module scheduler-helpers
  */
 
+// Import view-prs-data-helpers directly (plain module)
+const dataHelpers = require('./view-prs-data-helpers');
+
 /**
  * Creates scheduler helper functions.
  * 
  * @param {Object} deps - Dependencies
  * @param {Object} deps.fs - Node.js fs module
  * @param {Object} deps.path - Node.js path module
- * @param {Object} deps.dataHelpers - Data helper functions
  * @param {string} deps.viewPrsActionLogFile - Action log file path
  * @returns {Object} Scheduler helper functions
  */
 function createSchedulerHelpers({
   fs,
   path,
-  dataHelpers,
   viewPrsActionLogFile,
 }) {
   const { toTrimmedString } = dataHelpers;
