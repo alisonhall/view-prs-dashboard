@@ -20,6 +20,12 @@
       assignedLogins,
       approverLogins,
       alwaysShowInReview,
+      customComments,
+      otherNotes,
+      prDifficulty,
+      rallyStories,
+      rallyLinks,
+      analysisOfPr,
     } = {}) => ({
       prNumbers: Array.isArray(prNumbers) ? prNumbers : [],
       includeLabels: Array.isArray(includeLabels) ? includeLabels : [],
@@ -28,6 +34,12 @@
       assignedLogins: Array.isArray(assignedLogins) ? assignedLogins : [],
       approverLogins: Array.isArray(approverLogins) ? approverLogins : [],
       alwaysShowInReview: Boolean(alwaysShowInReview),
+      customComments: String(customComments || ""),
+      otherNotes: String(otherNotes || ""),
+      prDifficulty: String(prDifficulty || ""),
+      rallyStories: String(rallyStories || ""),
+      rallyLinks: String(rallyLinks || ""),
+      analysisOfPr: String(analysisOfPr || ""),
     });
 
     const applyRowUiFilters = (rows, criteria) => {

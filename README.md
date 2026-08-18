@@ -275,6 +275,37 @@ UI filter behavior:
 - When `Filter by PR number(s)` is set, it matches against all stored rows and ignores the selected `View scope` value and `Exclude by label name(s)` values.
 - Changing filter fields updates the HTML tables and local terminal preview from existing JSON without making new GitHub CLI requests.
 
+Custom Metadata Filters:
+
+The `Visibility Filters` panel includes filters for custom metadata fields (manual notes data):
+
+- **Custom comments**: Filter by presence/absence of custom review comments
+  - `Any (with or without)`: Show all PRs regardless of custom comments
+  - `With custom comments`: Show only PRs that have at least one custom comment
+  - `Without custom comments`: Show only PRs with no custom comments
+- **Other notes**: Filter by presence/absence of "Other notes" text field
+  - `Any (with or without)`: Show all PRs regardless of other notes
+  - `With other notes`: Show only PRs that have other notes text entered
+  - `Without other notes`: Show only PRs with no other notes text
+- **PR difficulty**: Filter by difficulty rating (1-5 scale) or unset
+  - `Any (set or not set)`: Show all PRs regardless of difficulty setting
+  - `1` through `5`: Show only PRs with that specific difficulty rating
+  - `Not set`: Show only PRs where difficulty has not been assigned
+- **Rally stories**: Filter by presence/absence of Rally story references
+  - `Any (with or without)`: Show all PRs regardless of Rally stories
+  - `With Rally stories`: Show only PRs that have Rally story references entered
+  - `Without Rally stories`: Show only PRs with no Rally story references
+- **Rally links**: Filter by presence/absence of Rally links
+  - `Any (with or without)`: Show all PRs regardless of Rally links
+  - `With Rally links`: Show only PRs that have Rally links entered
+  - `Without Rally links`: Show only PRs with no Rally links
+- **Analysis of PR**: Filter by presence/absence of PR analysis text
+  - `Any (with or without)`: Show all PRs regardless of analysis
+  - `With analysis`: Show only PRs that have analysis text entered
+  - `Without analysis`: Show only PRs with no analysis text
+
+These filters are applied locally and work in combination with other visibility filters (labels, authors, approvers, etc.). All custom metadata filters default to "Any" (no filtering).
+
 On page load, the UI automatically reads stored data and renders sections without requiring a new run.
 
 Date columns in the web table (`YOUR LAST ACTIVITY` and `MERGED AT`) use the same display format as the CLI output (`Mon D, YYYY H:MM AM/PM`, local time).

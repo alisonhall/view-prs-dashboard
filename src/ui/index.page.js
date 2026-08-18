@@ -1725,6 +1725,12 @@ const { deriveFilterSelectionInputs } =
     getOpenModeFilter: () => document.getElementById("open-mode")?.value || "none",
     shouldAlwaysShowInReviewRows: (...args) =>
       shouldAlwaysShowInReviewRows(...args),
+    getCustomCommentsFilter: (...args) => getCustomCommentsFilter(...args),
+    getOtherNotesFilter: (...args) => getOtherNotesFilter(...args),
+    getPrDifficultyFilter: (...args) => getPrDifficultyFilter(...args),
+    getRallyStoriesFilter: (...args) => getRallyStoriesFilter(...args),
+    getRallyLinksFilter: (...args) => getRallyLinksFilter(...args),
+    getAnalysisOfPrFilter: (...args) => getAnalysisOfPrFilter(...args),
   });
 
 const prRenderSummaryInputsHelperFactory =
@@ -2451,6 +2457,12 @@ const {
   getSelectedApproverLogins,
   getSelectedIncludeLabelNames,
   getSelectedExcludeLabelNames,
+  getCustomCommentsFilter,
+  getOtherNotesFilter,
+  getPrDifficultyFilter,
+  getRallyStoriesFilter,
+  getRallyLinksFilter,
+  getAnalysisOfPrFilter,
   updateMultiSelectSummary,
   populateIncludeLabelOptions,
   populateExcludeLabelOptions,
@@ -5839,6 +5851,54 @@ const rowMatchesUiFilters = (entry, filters) => {
     filters.approverLogins.length > 0 &&
     !filters.approverLogins.some((login) => approverLogins.includes(login))
   ) {
+    return false;
+  }
+
+  const notesSummary = getManualNotesFieldSummary(entry, row);
+
+  if (filters.customComments === "with" && !notesSummary.hasCustomComments) {
+    return false;
+  }
+  if (filters.customComments === "without" && notesSummary.hasCustomComments) {
+    return false;
+  }
+
+  if (filters.otherNotes === "with" && !notesSummary.hasOtherNotes) {
+    return false;
+  }
+  if (filters.otherNotes === "without" && notesSummary.hasOtherNotes) {
+    return false;
+  }
+
+  if (filters.prDifficulty === "not-set" && notesSummary.hasDifficulty) {
+    return false;
+  }
+  if (
+    filters.prDifficulty &&
+    filters.prDifficulty !== "not-set" &&
+    notesSummary.difficultyLevelText !== filters.prDifficulty
+  ) {
+    return false;
+  }
+
+  if (filters.rallyStories === "with" && !notesSummary.hasRallyStories) {
+    return false;
+  }
+  if (filters.rallyStories === "without" && notesSummary.hasRallyStories) {
+    return false;
+  }
+
+  if (filters.rallyLinks === "with" && !notesSummary.hasRallyLinks) {
+    return false;
+  }
+  if (filters.rallyLinks === "without" && notesSummary.hasRallyLinks) {
+    return false;
+  }
+
+  if (filters.analysisOfPr === "with" && !notesSummary.hasAnalysisOfPr) {
+    return false;
+  }
+  if (filters.analysisOfPr === "without" && notesSummary.hasAnalysisOfPr) {
     return false;
   }
 

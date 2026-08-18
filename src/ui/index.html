@@ -146,6 +146,52 @@
                                 <summary class="multi-select-summary">Filter by PR approver(s)</summary>
                                 <div id="approver-list" class="multi-select-list"></div>
                             </details>
+
+                            <label for="filter-custom-comments">Custom comments</label>
+                            <select id="filter-custom-comments" name="filterCustomComments">
+                                <option value="" selected>Any (with or without)</option>
+                                <option value="with">With custom comments</option>
+                                <option value="without">Without custom comments</option>
+                            </select>
+
+                            <label for="filter-other-notes">Other notes</label>
+                            <select id="filter-other-notes" name="filterOtherNotes">
+                                <option value="" selected>Any (with or without)</option>
+                                <option value="with">With other notes</option>
+                                <option value="without">Without other notes</option>
+                            </select>
+
+                            <label for="filter-pr-difficulty">PR difficulty</label>
+                            <select id="filter-pr-difficulty" name="filterPrDifficulty">
+                                <option value="" selected>Any (set or not set)</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="not-set">Not set</option>
+                            </select>
+
+                            <label for="filter-rally-stories">Rally stories</label>
+                            <select id="filter-rally-stories" name="filterRallyStories">
+                                <option value="" selected>Any (with or without)</option>
+                                <option value="with">With Rally stories</option>
+                                <option value="without">Without Rally stories</option>
+                            </select>
+
+                            <label for="filter-rally-links">Rally links</label>
+                            <select id="filter-rally-links" name="filterRallyLinks">
+                                <option value="" selected>Any (with or without)</option>
+                                <option value="with">With Rally links</option>
+                                <option value="without">Without Rally links</option>
+                            </select>
+
+                            <label for="filter-analysis-of-pr">Analysis of PR</label>
+                            <select id="filter-analysis-of-pr" name="filterAnalysisOfPr">
+                                <option value="" selected>Any (with or without)</option>
+                                <option value="with">With analysis</option>
+                                <option value="without">Without analysis</option>
+                            </select>
                         </div>
 
                         <div class="form-actions">

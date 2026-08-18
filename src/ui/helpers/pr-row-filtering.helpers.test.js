@@ -16,6 +16,12 @@ describe("pr row filtering helpers", () => {
       assignedLogins: ["bob"],
       approverLogins: ["carol"],
       alwaysShowInReview: true,
+      customComments: "with",
+      otherNotes: "without",
+      prDifficulty: "3",
+      rallyStories: "with",
+      rallyLinks: "without",
+      analysisOfPr: "with",
     });
 
     expect(criteria).toEqual({
@@ -26,6 +32,12 @@ describe("pr row filtering helpers", () => {
       assignedLogins: ["bob"],
       approverLogins: ["carol"],
       alwaysShowInReview: true,
+      customComments: "with",
+      otherNotes: "without",
+      prDifficulty: "3",
+      rallyStories: "with",
+      rallyLinks: "without",
+      analysisOfPr: "with",
     });
   });
 
@@ -42,6 +54,12 @@ describe("pr row filtering helpers", () => {
       assignedLogins: [],
       approverLogins: [],
       alwaysShowInReview: false,
+      customComments: "",
+      otherNotes: "",
+      prDifficulty: "",
+      rallyStories: "",
+      rallyLinks: "",
+      analysisOfPr: "",
     });
   });
 
