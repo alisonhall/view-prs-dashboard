@@ -612,6 +612,7 @@ const getUiOptionDefaults = () => ({
   "attention-author-thread-resolution-mode": "allow-all",
   "attention-author-thread-resolution-allow": [],
   "attention-author-thread-resolution-deny": [],
+  "change-filter-use-builtin-merge-pattern": true,
 });
 
 const readUiSessionOverrides = async () => {
@@ -698,6 +699,7 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
     "attention-include-closed-merged",
     "attention-include-draft-changed",
     "attention-include-draft-no-activity",
+    "change-filter-use-builtin-merge-pattern",
   ];
   checkboxIds.forEach((id) => {
     if (!includeField(id)) return;
@@ -776,6 +778,7 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
 
   // Change detection filters
   if (
+    includeField("change-filter-use-builtin-merge-pattern") ||
     includeField("change-filter-ignore-comment-authors") ||
     includeField("change-filter-ignore-review-authors") ||
     includeField("change-filter-ignore-commit-patterns")
@@ -786,6 +789,16 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
         ? existingOverrides.changeFilters
         : {};
     const changeFilters = { ...existingChangeFilters };
+
+    if (includeField("change-filter-use-builtin-merge-pattern")) {
+      const useBuiltin = getCheckbox("change-filter-use-builtin-merge-pattern");
+      // Only save if different from default (true)
+      if (useBuiltin !== true) {
+        changeFilters.useBuiltinMergePattern = useBuiltin;
+      } else {
+        delete changeFilters.useBuiltinMergePattern;
+      }
+    }
 
     if (includeField("change-filter-ignore-comment-authors")) {
       const selectedLogins = getSelectedChangeFilterIgnoreCommentAuthors();
@@ -873,6 +886,7 @@ const restoreUiOptionOverrides = async () => {
     "attention-include-closed-merged",
     "attention-include-draft-changed",
     "attention-include-draft-no-activity",
+    "change-filter-use-builtin-merge-pattern",
   ].forEach((id) => {
     if (Object.prototype.hasOwnProperty.call(overrides, id)) {
       setCheckbox(id, overrides[id]);
@@ -950,6 +964,13 @@ const restoreUiOptionOverrides = async () => {
     typeof overrides.changeFilters === "object" &&
     !Array.isArray(overrides.changeFilters)
   ) {
+    if (typeof overrides.changeFilters.useBuiltinMergePattern === "boolean") {
+      setCheckbox(
+        "change-filter-use-builtin-merge-pattern",
+        overrides.changeFilters.useBuiltinMergePattern,
+      );
+    }
+
     if (Array.isArray(overrides.changeFilters.ignoreCommentsFromAuthors)) {
       _pendingChangeFilterIgnoreCommentAuthors = overrides.changeFilters
         .ignoreCommentsFromAuthors
@@ -1015,6 +1036,7 @@ const persistViewFilterOptionOverrides = async () => {
     "attention-author-thread-resolution-mode",
     "attention-author-thread-resolution-allow",
     "attention-author-thread-resolution-deny",
+    "change-filter-use-builtin-merge-pattern",
     "change-filter-ignore-comment-authors",
     "change-filter-ignore-review-authors",
     "change-filter-ignore-commit-patterns",
@@ -6741,7 +6763,9 @@ const initPage = () => {
           updateMultiSelectSummary(listId);
           if (
             listId === "attention-author-thread-resolution-allow-list" ||
-            listId === "attention-author-thread-resolution-deny-list"
+            listId === "attention-author-thread-resolution-deny-list" ||
+            listId === "change-filter-ignore-comment-authors-list" ||
+            listId === "change-filter-ignore-review-authors-list"
           ) {
             void persistViewFilterOptionOverrides();
           }
@@ -6750,6 +6774,27 @@ const initPage = () => {
       });
     }
   });
+
+  // Add event listeners for change filter fields
+  const useBuiltinMergePatternCheckbox = getOptionalElementById(
+    "change-filter-use-builtin-merge-pattern",
+  );
+  if (useBuiltinMergePatternCheckbox) {
+    useBuiltinMergePatternCheckbox.addEventListener("change", () => {
+      void persistViewFilterOptionOverrides();
+      applyFiltersFromCache();
+    });
+  }
+
+  const commitPatternsTextarea = getOptionalElementById(
+    "change-filter-ignore-commit-patterns",
+  );
+  if (commitPatternsTextarea) {
+    commitPatternsTextarea.addEventListener("change", () => {
+      void persistViewFilterOptionOverrides();
+      applyFiltersFromCache();
+    });
+  }
 
   setupMultiSelectDropdownClosing();
 

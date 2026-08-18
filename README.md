@@ -368,14 +368,20 @@ Change Detection Filters:
   - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
   - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
-- Built-in filters (always active):
-  - Approved reviews are always ignored
-  - Merge commits from main are always ignored (pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`)
+- Built-in filters:
+  - **Approved reviews are always ignored** (cannot be disabled)
+  - **Built-in merge commit filter** (configurable):
+    - Pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`
+    - Enabled by default via "Use built-in merge commit filter" checkbox
+    - Can be disabled to define custom merge patterns or allow all merge commits to trigger CHANGED status
+    - Useful for repos with different merge workflows (e.g., develop → main, custom branch names)
+    - When disabled, only user-defined commit patterns apply
 - Regex patterns for commits:
   - Patterns use PCRE-compatible syntax (jq's `test()` function)
   - Patterns are tested against commit message headline (first line only)
   - Multiple patterns are combined with OR logic
-  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits)
+  - Patterns work in addition to built-in merge filter (when enabled) or as standalone filters (when built-in is disabled)
+  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits), `^Merge branch 'develop'` (custom merge pattern)
 
 Comments vs Reviews vs Commits:
 
@@ -383,7 +389,9 @@ Comments vs Reviews vs Commits:
 - **Reviews** (✅) are formal code review submissions with states (APPROVED, CHANGES_REQUESTED, COMMENTED) created via the "Review changes" button. They affect PR merge status and appear with special badges.
 - **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is pattern-based, not author-based.
 
-Example configuration in `user-defaults.json`:
+Example configurations in `user-defaults.json`:
+
+**Default configuration (built-in merge filter enabled):**
 
 ```json
 {
@@ -400,6 +408,27 @@ Example configuration in `user-defaults.json`:
   }
 }
 ```
+
+Note: `useBuiltinMergePattern` defaults to `true` if omitted.
+
+**Custom merge pattern configuration (built-in disabled):**
+
+```json
+{
+  "repo": "owner/repo",
+  "changeFilters": {
+    "useBuiltinMergePattern": false,
+    "ignoreCommitPatterns": [
+      "^Merge branch '(develop|staging)'",
+      "^Merge pull request #",
+      "^docs:",
+      "^test:"
+    ]
+  }
+}
+```
+
+This configuration disables the built-in merge filter and defines custom merge patterns for repos that merge from develop/staging branches.
 
 Scope mode behavior:
 
