@@ -6,16 +6,18 @@
  * @module file-io-helpers
  */
 
+// Import view-prs-data-helpers directly (plain module)
+const { isObject } = require('./view-prs-data-helpers');
+
 /**
  * Creates file I/O helper functions.
  * 
  * @param {Object} deps - Dependencies
  * @param {Object} deps.fs - Node.js fs module
  * @param {Object} deps.path - Node.js path module
- * @param {Function} deps.isObject - Object validation function
  * @returns {Object} File I/O helper functions
  */
-function createFileIoHelpers({ fs, path, isObject }) {
+function createFileIoHelpers({ fs, path }) {
   /**
    * Reads a JSON file if it exists, otherwise returns fallback value.
    * 

@@ -148,6 +148,18 @@ const {
   readActionLog: _readActionLog,
 } = schedulerHelpers;
 
+// Initialize file I/O helpers (uses only fs, path - no circular deps)
+const fileIoHelpers = createFileIoHelpers({ fs, path });
+
+// Extract file I/O helper functions
+const {
+  readJsonFileIfExists: _readJsonFileIfExists,
+  readJsonFileIfExistsDetailed: _readJsonFileIfExistsDetailed,
+  safeReadJsonFile: _safeReadJsonFile,
+  writeJsonFile: _writeJsonFile,
+  writeJsonFileBestEffort: _writeJsonFileBestEffort,
+} = fileIoHelpers;
+
 const syncSchedulerActivePrNumbers = () => {
   viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()].sort(
     (left, right) => Number(left) - Number(right),
@@ -241,53 +253,15 @@ let viewPrsWatchdogForceStopCount = 0;
 const appendActionLogEntry = (entry) => _appendActionLogEntry(entry);
 const readActionLog = () => _readActionLog();
 
-// Helper functions
-const readJsonFileIfExists = (filePath, fallbackValue) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return fallbackValue;
-    }
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (_error) {
-    return fallbackValue;
-  }
-};
+// Use file I/O helpers for JSON file operations
+const readJsonFileIfExists = (filePath, fallbackValue) => 
+  _readJsonFileIfExists(filePath, fallbackValue);
 
-const readJsonFileIfExistsDetailed = (filePath) => {
-  if (!fs.existsSync(filePath)) {
-    return {
-      exists: false,
-      value: null,
-      parseError: null,
-    };
-  }
+const readJsonFileIfExistsDetailed = (filePath) => 
+  _readJsonFileIfExistsDetailed(filePath);
 
-  try {
-    return {
-      exists: true,
-      value: JSON.parse(fs.readFileSync(filePath, "utf8")),
-      parseError: null,
-    };
-  } catch (error) {
-    return {
-      exists: true,
-      value: null,
-      parseError: error,
-    };
-  }
-};
-
-const readUserDefaults = () => {
-  if (!fs.existsSync(viewPrsUserDefaultsFile)) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(fs.readFileSync(viewPrsUserDefaultsFile, "utf8"));
-    return isObject(parsed) ? parsed : {};
-  } catch (_error) {
-    return {};
-  }
-};
+const readUserDefaults = () => 
+  _safeReadJsonFile(config.viewPrsUserDefaultsFile, {});
 
 const writeUserDefaults = (overrides) => {
   const data = isObject(overrides) ? overrides : {};
