@@ -7,15 +7,20 @@
  * @module data-processing-helpers
  */
 
+// Import view-prs-data-helpers directly (plain module with utility functions)
+// This breaks the circular dependency where data-processing-helpers needed dataHelpers as a parameter
+const dataHelpers = require('./view-prs-data-helpers');
+
 /**
  * Creates data processing helper functions.
+ * 
+ * Note: dataHelpers (view-prs-data-helpers) is imported directly to break circular dependency.
  * 
  * @param {Object} deps - Dependencies
  * @param {Object} deps.fs - Node.js fs module
  * @param {Object} deps.path - Node.js path module
  * @param {Function} deps.spawnSync - Node.js child_process.spawnSync
  * @param {Object} deps.fileIoHelpers - File I/O helper functions
- * @param {Object} deps.dataHelpers - View PRS data helper functions
  * @param {Object} deps.actorHelpers - View PRS actor helper functions
  * @param {Object} deps.stateStorage - View PRS state storage
  * @param {Object} deps.prDetailHelpers - PR detail helper functions
@@ -34,7 +39,6 @@ function createDataProcessingHelpers({
   path,
   spawnSync,
   fileIoHelpers,
-  dataHelpers,
   actorHelpers,
   stateStorage,
   prDetailHelpers,
