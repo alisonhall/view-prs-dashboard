@@ -576,13 +576,15 @@ src/ui/orchestrators/
 
 **Current Status:** 85% complete (extraction done, 3 helpers integrated - see below for details)
 
-**Integration Progress:** 185/1,909 lines (9.7%)
+**Integration Progress:** 194/1,909 lines (10.2%)
 - ✅ Configuration integrated (138 lines)
 - ✅ Scheduler integrated (21 lines)  
-- ✅ File I/O integrated (26 lines)
+- ✅ File I/O integrated (35 lines - readJsonFileIfExists, writeUserDefaults, safeReadJsonFile)
 - ⏳ Commands pending (~600 lines)
 - ⏳ Data Processing pending (~500 lines)
 - ⏳ Backfill pending (~250 lines)
+
+**Current app.js:** 2,065 lines (was 2,259) = **194 lines saved** (8.6% reduction, target: 84%)
 
 ### Achievements
 
