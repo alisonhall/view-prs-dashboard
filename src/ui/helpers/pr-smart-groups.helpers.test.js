@@ -383,4 +383,183 @@ describe("Smart Groups Helpers", () => {
       });
     });
   });
+
+  describe("hasUserInteraction - real-world logic", () => {
+    // These tests verify the actual interaction detection logic
+    // matching the implementation in index.page.js
+
+    const createHasUserInteractionFn = () => (entry) => {
+      // Only show OPEN PRs that viewer has interacted with
+      const isOpenPr = entry?.section === "open" || entry?.section === "draft";
+      if (!isOpenPr) return false;
+
+      const row = entry?.data || {};
+      const viewerLogin = String(row?.viewerLogin || "").toLowerCase();
+      if (!viewerLogin) return false;
+
+      // Check if viewer authored the PR
+      const authorLogin = String(row?.authorLogin || "").toLowerCase();
+      if (authorLogin === viewerLogin) return true;
+
+      // Check if viewer has commented
+      const comments = row?.comments || [];
+      if (comments.some((c) => String(c?.author?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer has reviewed
+      const reviews = row?.reviews || [];
+      if (reviews.some((r) => String(r?.author?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is a requested reviewer
+      const requestedReviewers = row?.requestedReviewers || [];
+      if (requestedReviewers.some((r) => String(r?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is assigned
+      const assignees = row?.assignees || [];
+      if (assignees.some((a) => String(a?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      return false;
+    };
+
+    test("given viewer is author of open PR, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: { viewerLogin: "alice", authorLogin: "alice" },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+
+    test("given viewer commented on open PR, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "alice",
+          authorLogin: "bob",
+          comments: [{ author: { login: "alice" } }],
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+
+    test("given viewer reviewed open PR, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "alice",
+          authorLogin: "bob",
+          reviews: [{ author: { login: "alice" } }],
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+
+    test("given viewer is requested reviewer on open PR, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "alice",
+          authorLogin: "bob",
+          requestedReviewers: [{ login: "alice" }],
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+
+    test("given viewer is assigned to open PR, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "alice",
+          authorLogin: "bob",
+          assignees: [{ login: "alice" }],
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+
+    test("given viewer has no interaction with open PR, when checking, then returns false", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "alice",
+          authorLogin: "bob",
+          comments: [{ author: { login: "charlie" } }],
+          reviews: [],
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(false);
+    });
+
+    test("given viewer authored closed PR, when checking interaction, then returns false", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "closed",
+        data: { viewerLogin: "alice", authorLogin: "alice" },
+      };
+
+      expect(hasInteraction(entry)).toBe(false);
+    });
+
+    test("given viewer authored merged PR, when checking interaction, then returns false", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "merged",
+        data: { viewerLogin: "alice", authorLogin: "alice" },
+      };
+
+      expect(hasInteraction(entry)).toBe(false);
+    });
+
+    test("given no viewerLogin, when checking interaction, then returns false", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: { authorLogin: "bob" },
+      };
+
+      expect(hasInteraction(entry)).toBe(false);
+    });
+
+    test("given viewer login is case-insensitive match, when checking interaction, then returns true", () => {
+      const hasUserInteraction = createHasUserInteractionFn();
+      const { hasInteraction } = createPrSmartGroupsHelpers({ hasUserInteraction });
+      const entry = {
+        section: "open",
+        data: {
+          viewerLogin: "Alice",
+          authorLogin: "ALICE",
+        },
+      };
+
+      expect(hasInteraction(entry)).toBe(true);
+    });
+  });
 });

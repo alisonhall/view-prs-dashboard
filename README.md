@@ -338,7 +338,13 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
   - Purpose: Personal reference for active PRs you're engaged with
   - Only shows OPEN or DRAFT PRs (excludes merged/closed to keep section actionable)
-  - Example use: Track active PRs where you've authored, reviewed, commented, or are a participant
+  - Shows PRs where you are:
+    - The author
+    - A commenter (have left comments)
+    - A reviewer (have submitted reviews)
+    - A requested reviewer
+    - An assignee
+  - Example use: Track all active PRs requiring your attention or where you've contributed
 
 Smart group features:
 

@@ -1608,13 +1608,39 @@ const { buildSmartGroupConfigs, applySmartGroups } =
       const isOpenPr = entry?.section === "open" || entry?.section === "draft";
       if (!isOpenPr) return false;
 
-      // Check if viewer has interacted with this PR
-      return (
-        Boolean(entry?.data?.viewerDidAuthor) ||
-        Boolean(entry?.data?.viewerMergedAt) ||
-        Boolean(entry?.data?.viewerSubscription === "SUBSCRIBED") ||
-        (entry?.data?.participants || []).some((p) => p?.isViewer)
-      );
+      const row = entry?.data || {};
+      const viewerLogin = String(row?.viewerLogin || "").toLowerCase();
+      if (!viewerLogin) return false;
+
+      // Check if viewer authored the PR
+      const authorLogin = String(row?.authorLogin || "").toLowerCase();
+      if (authorLogin === viewerLogin) return true;
+
+      // Check if viewer has commented
+      const comments = row?.comments || [];
+      if (comments.some((c) => String(c?.author?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer has reviewed
+      const reviews = row?.reviews || [];
+      if (reviews.some((r) => String(r?.author?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is a requested reviewer
+      const requestedReviewers = row?.requestedReviewers || [];
+      if (requestedReviewers.some((r) => String(r?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is assigned
+      const assignees = row?.assignees || [];
+      if (assignees.some((a) => String(a?.login || "").toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      return false;
     },
   });
 
