@@ -1583,6 +1583,41 @@ const { buildGroupedPrSections } =
     sortRowsByDateFieldDesc: (...args) => sortRowsByDateFieldDesc(...args),
   });
 
+// Smart groups helpers
+const prSmartGroupsHelperFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./helpers/pr-smart-groups.helpers.js")
+    : globalThis.ViewPrsSmartGroupsHelpers;
+
+const { buildSmartGroupConfigs, applySmartGroups } =
+  prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({
+    hasNeedsAttentionFlag: (entry) => {
+      // Use the SAME logic as the existing needs attention flag/icon
+      // BUT exclude closed PRs (only show open, draft, merged)
+      const section = String(entry?.section || "").toLowerCase();
+      if (section === "closed") {
+        return false; // Never show closed PRs in Needs Attention smart group
+      }
+
+      const attentionConfig = getNeedsAttentionConfig();
+      return entryNeedsAttention(entry, attentionConfig);
+    },
+    hasUserInteraction: (entry) => {
+      // Only show OPEN PRs that viewer has interacted with
+      // (excluding merged/closed PRs to keep this section actionable)
+      const isOpenPr = entry?.section === "open" || entry?.section === "draft";
+      if (!isOpenPr) return false;
+
+      // Check if viewer has interacted with this PR
+      return (
+        Boolean(entry?.data?.viewerDidAuthor) ||
+        Boolean(entry?.data?.viewerMergedAt) ||
+        Boolean(entry?.data?.viewerSubscription === "SUBSCRIBED") ||
+        (entry?.data?.participants || []).some((p) => p?.isViewer)
+      );
+    },
+  });
+
 const prScopeSelectionHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-scope-selection.helpers.js")
@@ -1703,6 +1738,8 @@ const { applyRenderResults } =
     renderStatsView: (...args) => renderStatsView(...args),
     clearElementContents: (...args) => clearElementContents(...args),
     buildPrSectionConfigs: (...args) => buildPrSectionConfigs(...args),
+    buildSmartGroupConfigs: (...args) => buildSmartGroupConfigs(...args),
+    applySmartGroups: (...args) => applySmartGroups(...args),
     appendPrSections: (...args) => appendPrSections(...args),
     buildMergedRequestMoreActionOptions: (...args) =>
       buildMergedRequestMoreActionOptions(...args),

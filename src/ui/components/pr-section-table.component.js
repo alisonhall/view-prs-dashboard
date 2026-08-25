@@ -87,6 +87,7 @@
       sectionKey,
       lastCheckedAt = "",
       actorsMapFromPayload = {},
+      isSmartGroup = false,
     ) => {
       const doc = getDocument();
       if (!doc || typeof doc.createElement !== "function") {
@@ -221,7 +222,14 @@
         );
         insightsTr.appendChild(insightsTd);
 
-        appendIfNode(tr, createTitleCellSafe(row, insightsTr));
+        appendIfNode(
+          tr,
+          createTitleCellSafe(row, insightsTr, {
+            section: sectionKey,
+            isSmartGroup,
+            lifecycleSection: entry?.section || sectionKey,
+          }),
+        );
         appendIfNode(tr, createAuthorCellSafe(entry, row, actorsMapFromPayload));
         appendIfNode(tr, createLabelsCellSafe(row.labels));
         appendIfNode(

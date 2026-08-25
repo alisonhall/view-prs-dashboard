@@ -318,6 +318,60 @@ Open and draft PR sections are sorted by PR number descending (highest first). C
 
 The PR section headings are expandable/collapsible in the UI: `Open PRs`, `Draft PRs`, and `Latest Merged PRs` are expanded by default, while `Closed PRs` is collapsed by default. Each heading also shows total PR count and a `Needs attention` count for that section.
 
+Smart Accordion Groups:
+
+The UI features **smart accordion groups** that appear above lifecycle sections (Open, Draft, Closed, Merged). Smart groups provide workflow-based organization where PRs can appear in multiple sections simultaneously:
+
+- **🚩 Flagged**: PRs marked with the flagged flag (collapsed by default)
+  - Purpose: User-flagged PRs for quick reference
+  - Example use: Star important PRs that need close monitoring
+- **👁️ In Review**: PRs marked with the in-review flag (expanded by default)
+  - Purpose: Active code review workflow tracking
+  - Example use: PRs currently undergoing review cycles
+- **⚠️ Needs Attention**: PRs requiring action based on your "Needs Attention rules" settings (expanded by default)
+  - Purpose: High-priority PRs needing immediate attention
+  - Shows: Open, Draft, and Merged PRs (excludes Closed PRs)
+  - Uses the SAME logic as the existing needs attention flag/icon shown in PR rows
+  - Respects your custom "Needs Attention" configuration (CHANGED status, pending comments, in-review flag, no activity, etc.)
+  - Configuration controlled via `user-defaults.json` (see "Needs Attention Configuration" section below)
+  - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
+- **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
+  - Purpose: Personal reference for active PRs you're engaged with
+  - Only shows OPEN or DRAFT PRs (excludes merged/closed to keep section actionable)
+  - Example use: Track active PRs where you've authored, reviewed, commented, or are a participant
+
+Smart group features:
+
+- **Non-exclusive membership**: A single PR can appear in multiple smart groups AND its lifecycle section
+- **Two-tier hierarchy**: Smart groups (Tier 1) display above lifecycle sections (Tier 2)
+- **Lifecycle badges**: When a PR appears in a smart group, a small pill-shaped badge indicates its lifecycle state:
+  - 🟢 **OPEN** (green pill) - Active open PR
+  - ⚪ **DRAFT** (gray pill) - Draft PR
+  - 🔵 **MERGED** (purple pill) - Merged PR
+  - 🔴 **CLOSED** (red pill) - Closed PR (only in Flagged/In Review groups)
+  - Badges only appear in smart groups (not in lifecycle sections where they would be redundant)
+- **Color-coded sections**: Each smart group has unique visual styling (colored border and gradient background)
+- **State persistence**: Section open/closed state persists across page refreshes and auto-refresh cycles
+- **Smart defaults**: 
+  - Smart groups: Actionable groups (In Review, Needs Attention) expand by default; reference groups (Flagged, Open PRs I'm Involved In) collapse by default
+  - Lifecycle sections: All sections (Open PRs, Draft PRs, Closed PRs, Latest Merged PRs) collapse by default to reduce clutter
+
+Visual layout example:
+
+```text
+┌─ SMART GROUPS ─────────────────────────┐
+│ ▼ 🚩 Flagged (3)                       │ ← Red border, pink gradient
+│ ▼ 👁️ In Review (5)                     │ ← Blue border, blue gradient
+│ ▼ ⚠️ Needs Attention (2)               │ ← Orange border, yellow gradient
+│ ▼ 💬 Open PRs I'm Involved In (8)      │ ← Purple border, purple gradient
+├─ LIFECYCLE SECTIONS ───────────────────┤
+│ ▼ Open PRs (12)                        │
+│ ▼ Draft PRs (3)                        │
+│ ▶ Closed PRs (5)                       │
+│ ▼ Latest Merged PRs (20)               │
+└──────────────────────────────────────────┘
+```
+
 Each stored row also persists branch metadata used by expandable row insights:
 
 - `sourceBranch` (PR head branch)

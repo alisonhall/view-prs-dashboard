@@ -26,7 +26,41 @@
     const getDocument = () =>
       documentRef || (typeof document !== "undefined" ? document : null);
 
-    const createTitleCell = (row, insightsRow) => {
+    /**
+     * Create a lifecycle badge element for a PR in a smart group.
+     * Only shows badges when PR is in a smart group section.
+     *
+     * @param {string} section - The lifecycle section (open/draft/closed/merged)
+     * @param {boolean} isSmartGroup - Whether the PR is in a smart group
+     * @returns {HTMLElement|null} Badge element or null
+     */
+    const createLifecycleBadge = (section, isSmartGroup) => {
+      if (!isSmartGroup) return null;
+
+      const doc = getDocument();
+      if (!doc || typeof doc.createElement !== "function") {
+        return null;
+      }
+
+      const badges = {
+        open: { text: "Open", className: "lifecycle-badge-open" },
+        draft: { text: "Draft", className: "lifecycle-badge-draft" },
+        closed: { text: "Closed", className: "lifecycle-badge-closed" },
+        merged: { text: "Merged", className: "lifecycle-badge-merged" },
+      };
+
+      const badgeConfig = badges[String(section || "").toLowerCase()];
+      if (!badgeConfig) return null;
+
+      const badge = doc.createElement("span");
+      badge.className = `lifecycle-badge ${badgeConfig.className}`;
+      badge.textContent = badgeConfig.text;
+      badge.title = `Lifecycle status: ${badgeConfig.text}`;
+
+      return badge;
+    };
+
+    const createTitleCell = (row, insightsRow, sectionContext = null) => {
       const doc = getDocument();
       if (!doc || typeof doc.createElement !== "function") {
         return null;
@@ -38,6 +72,19 @@
       const titleText = doc.createElement("div");
       titleText.className = "title-text";
       titleText.textContent = formatTitleWithIconsSafe(row?.titleDisplay, row?.title);
+
+      // Add lifecycle badge if in smart group
+      // The lifecycle section is stored in sectionContext.lifecycleSection
+      // (not row.section which doesn't exist, and not sectionContext.section which is the smart group key)
+      const lifecycleBadge = createLifecycleBadge(
+        sectionContext?.lifecycleSection,
+        sectionContext?.isSmartGroup === true,
+      );
+      if (lifecycleBadge) {
+        titleText.appendChild(doc.createTextNode(" "));
+        titleText.appendChild(lifecycleBadge);
+      }
+
       td.appendChild(titleText);
 
       const targetBranch = String(row?.targetBranch || "").trim();
@@ -82,6 +129,7 @@
 
     return {
       createTitleCell,
+      createLifecycleBadge,
     };
   };
 

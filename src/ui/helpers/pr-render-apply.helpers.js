@@ -13,6 +13,8 @@
     renderStatsView,
     clearElementContents,
     buildPrSectionConfigs,
+    buildSmartGroupConfigs,
+    applySmartGroups,
     appendPrSections,
     buildMergedRequestMoreActionOptions,
     appendMergedRequestMoreAction,
@@ -38,6 +40,10 @@
       typeof clearElementContents === "function" ? clearElementContents : () => {};
     const buildPrSectionConfigsSafe =
       typeof buildPrSectionConfigs === "function" ? buildPrSectionConfigs : () => [];
+    const buildSmartGroupConfigsSafe =
+      typeof buildSmartGroupConfigs === "function" ? buildSmartGroupConfigs : () => [];
+    const applySmartGroupsSafe =
+      typeof applySmartGroups === "function" ? applySmartGroups : () => ({});
     const appendPrSectionsSafe =
       typeof appendPrSections === "function" ? appendPrSections : () => {};
     const buildMergedRequestMoreActionOptionsSafe =
@@ -99,10 +105,20 @@
 
       clearElementContentsSafe(sectionsHost);
 
+      // Build smart groups from all rows
+      const smartGroupConfigs = buildSmartGroupConfigsSafe({
+        flaggedByRepo: payload?.flaggedByRepo || {},
+        inReviewByRepo: payload?.inReviewByRepo || {},
+        repo: latestSelectedRepo || "",
+      });
+
+      const smartGroups = applySmartGroupsSafe(allStoredRows, smartGroupConfigs);
+
       appendPrSectionsSafe(
         sectionsHost,
         buildPrSectionConfigsSafe({
           grouped,
+          smartGroups,
           prSectionOpenState,
           lastCheckedAt: lastSuccessfulRenderedCheckAt,
           actorsMapFromPayload: actorsMap,

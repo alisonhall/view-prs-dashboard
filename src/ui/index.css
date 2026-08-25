@@ -1231,6 +1231,15 @@
             background: #ffffff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
             overflow: hidden;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .pr-group-section:hover {
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+        }
+
+        .pr-group-section[open] {
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
         }
 
         .pr-group-section-summary {
@@ -1246,6 +1255,12 @@
             background: linear-gradient(180deg, #f8fafc 0%, #f3f6fb 100%);
             border-bottom: 1px solid #e5e9f0;
             list-style: none;
+            transition: background 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .pr-group-section-summary:hover {
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 
         .pr-group-section-summary::-webkit-details-marker {
@@ -1299,6 +1314,74 @@
         .pr-group-section-content .pr-data-table {
             margin-top: 10px;
             margin-bottom: 10px;
+        }
+
+        /* Smart Group Specific Styles */
+        .pr-group-section[data-pr-section="flagged"],
+        .pr-group-section[data-pr-section="in-review"],
+        .pr-group-section[data-pr-section="needs-attention"],
+        .pr-group-section[data-pr-section="interacted-with"] {
+            border-left: 3px solid #0969da;
+            box-shadow: 0 2px 4px rgba(9, 105, 218, 0.08);
+        }
+
+        .pr-group-section[data-pr-section="flagged"] {
+            border-left-color: #cf222e;
+        }
+
+        .pr-group-section[data-pr-section="flagged"] .pr-group-section-summary {
+            background: linear-gradient(180deg, #fff5f5 0%, #ffebeb 100%);
+        }
+
+        .pr-group-section[data-pr-section="in-review"] {
+            border-left-color: #0969da;
+        }
+
+        .pr-group-section[data-pr-section="in-review"] .pr-group-section-summary {
+            background: linear-gradient(180deg, #f0f6ff 0%, #e6f0ff 100%);
+        }
+
+        .pr-group-section[data-pr-section="needs-attention"] {
+            border-left-color: #fb8500;
+        }
+
+        .pr-group-section[data-pr-section="needs-attention"] .pr-group-section-summary {
+            background: linear-gradient(180deg, #fff8f0 0%, #fff0db 100%);
+        }
+
+        .pr-group-section[data-pr-section="interacted-with"] {
+            border-left-color: #8250df;
+        }
+
+        .pr-group-section[data-pr-section="interacted-with"] .pr-group-section-summary {
+            background: linear-gradient(180deg, #fbf4ff 0%, #f6eaff 100%);
+        }
+
+        /* Smart group icons in section titles */
+        .pr-group-section-title .pr-group-icon {
+            margin-right: 6px;
+            font-size: 16px;
+            vertical-align: middle;
+        }
+
+        /* Visual separator between smart groups and lifecycle sections */
+        .pr-group-section[data-pr-section="open"] {
+            margin-top: 24px;
+            position: relative;
+        }
+
+        .pr-group-section[data-pr-section="open"]::before {
+            content: "";
+            position: absolute;
+            top: -16px;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                #d0d7de 20%, 
+                #d0d7de 80%, 
+                transparent 100%);
         }
 
         .pr-data-table col.pr-col-select { width: 3%; }
@@ -2079,6 +2162,44 @@
             font-size: 11px;
             font-weight: 700;
             line-height: 1.3;
+        }
+
+        /* Lifecycle badges for PRs in smart groups */
+        /* Simple lifecycle badges for PRs in smart groups */
+        .lifecycle-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            margin-left: 6px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1.3;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .lifecycle-badge-open {
+            background: #dafbe1;
+            border: 1px solid #22863a;
+            color: #1a7f37;
+        }
+
+        .lifecycle-badge-draft {
+            background: #e6eaee;
+            border: 1px solid #6a737d;
+            color: #57606a;
+        }
+
+        .lifecycle-badge-closed {
+            background: #ffebe9;
+            border: 1px solid #d73a49;
+            color: #b42318;
+        }
+
+        .lifecycle-badge-merged {
+            background: #ede7f6;
+            border: 1px solid #6f42c1;
+            color: #6639ba;
         }
 
         .insights-row-cell {

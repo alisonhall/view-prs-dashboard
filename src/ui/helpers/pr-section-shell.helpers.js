@@ -40,6 +40,7 @@
       lastCheckedAt = "",
       actorsMapFromPayload = {},
       isOpen = true,
+      isSmartGroup = false,
     }) => {
       const doc = getDocument();
       if (!doc || typeof doc.createElement !== "function") {
@@ -106,6 +107,7 @@
         sectionKey,
         lastCheckedAt,
         actorsMapFromPayload,
+        isSmartGroup,
       );
       if (table) {
         content.appendChild(table);

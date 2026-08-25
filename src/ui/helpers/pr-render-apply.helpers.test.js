@@ -12,6 +12,11 @@ describe("pr render apply helpers", () => {
     const renderStatsView = jest.fn();
     const clearElementContents = jest.fn();
     const buildPrSectionConfigs = jest.fn(() => [{ id: "section-1" }]);
+    const buildSmartGroupConfigs = jest.fn(() => [
+      { groupKey: "flagged", predicate: () => false },
+      { groupKey: "in-review", predicate: () => false },
+    ]);
+    const applySmartGroups = jest.fn(() => ({}));
     const appendPrSections = jest.fn();
     const buildMergedRequestMoreActionOptions = jest.fn(() => ({ enabled: true }));
     const appendMergedRequestMoreAction = jest.fn();
@@ -28,6 +33,8 @@ describe("pr render apply helpers", () => {
       renderStatsView,
       clearElementContents,
       buildPrSectionConfigs,
+      buildSmartGroupConfigs,
+      applySmartGroups,
       appendPrSections,
       buildMergedRequestMoreActionOptions,
       appendMergedRequestMoreAction,
@@ -72,8 +79,18 @@ describe("pr render apply helpers", () => {
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(clearElementContents).toHaveBeenCalledWith(sectionsHost);
+    expect(buildSmartGroupConfigs).toHaveBeenCalledWith({
+      flaggedByRepo: {},
+      inReviewByRepo: {},
+      repo: "org/repo",
+    });
+    expect(applySmartGroups).toHaveBeenCalledWith([{ id: 1 }], [
+      { groupKey: "flagged", predicate: expect.any(Function) },
+      { groupKey: "in-review", predicate: expect.any(Function) },
+    ]);
     expect(buildPrSectionConfigs).toHaveBeenCalledWith({
       grouped: { opened: [{ id: 1 }] },
+      smartGroups: {},
       prSectionOpenState: { opened: true },
       lastCheckedAt: "2026-07-17T00:00:00Z",
       actorsMapFromPayload: payload.actorsMap,
@@ -112,6 +129,8 @@ describe("pr render apply helpers", () => {
       renderStatsView: () => {},
       clearElementContents: () => {},
       buildPrSectionConfigs: () => [],
+      buildSmartGroupConfigs: () => [],
+      applySmartGroups: () => ({}),
       appendPrSections: () => {},
       buildMergedRequestMoreActionOptions: () => ({}),
       appendMergedRequestMoreAction: () => {},
