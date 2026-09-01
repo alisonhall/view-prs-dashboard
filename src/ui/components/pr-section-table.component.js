@@ -137,10 +137,12 @@
         prTd.className = "pr-number-cell";
         const prNumber = row.number || entry.prNumber || "";
         const hasPendingComments = countPendingThreadCommentsSafe(row) > 0;
+        // Use lifecycle section (entry.section) for needs attention logic, not smart group key
+        const lifecycleSection = entry?.section || sectionKey;
         const needsAttention =
           shouldShowNeedsAttentionSafe({
             row,
-            sectionKey,
+            sectionKey: lifecycleSection,
             hasPendingComments,
             config: attentionConfig,
           }) || isInReviewEnabledSafe(row);

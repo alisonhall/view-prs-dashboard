@@ -85,4 +85,75 @@ describe("pr section table component", () => {
     );
     expect(result?.querySelector(".insights-row-cell")?.getAttribute("colspan")).toBe("11");
   });
+
+  test("given PR in smart group with lifecycle section, when checking needs attention, then uses lifecycle section not smart group key", () => {
+    let capturedSectionKey = null;
+    const component = createPrSectionTableComponent({
+      tableHeaders: ["Sel", "Attention", "PR", "Status", "Approved", "Title", "Author", "Labels", "Check", "Date", "Actions"],
+      tableColumnClasses: [
+        "selection-column",
+        "attention-column",
+        "pr-column",
+        "status-column",
+        "approved-column",
+        "title-column",
+        "author-column",
+        "labels-column",
+        "check-column",
+        "date-column",
+        "actions-column",
+      ],
+      defaultRepo: "owner/default",
+      getNeedsAttentionConfig: () => ({}),
+      countPendingThreadComments: () => 0,
+      shouldShowNeedsAttention: ({ sectionKey }) => {
+        capturedSectionKey = sectionKey;
+        return true;
+      },
+      isInReviewEnabled: () => false,
+      isFlaggedEnabled: () => false,
+      createSelectionCell: () => makeCell("selection-cell", "sel"),
+      createStatusCell: () => makeCell("status-cell", "status"),
+      createApprovedCell: () => makeCell("approved-cell", "approved"),
+      createInsightsDetails: () => {
+        const node = document.createElement("div");
+        node.className = "insights-content";
+        return node;
+      },
+      createTitleCell: () => makeCell("title-cell", "title"),
+      createAuthorCell: () => makeCell("author-cell", "author"),
+      createLabelsCell: () => makeCell("labels-cell", "labels"),
+      createTextCell: () => makeCell("text-cell", "check"),
+      createDateCell: () => makeCell("date-cell", "date"),
+      createActionsCell: () => makeCell("actions-cell", "actions"),
+      formatChkDisplay: (value) => String(value || "-"),
+      createHeaderCell: (header) => {
+        const th = document.createElement("th");
+        th.textContent = String(header || "");
+        return th;
+      },
+      documentRef: document,
+    });
+
+    // PR in needs-attention smart group but lifecycle section is "open"
+    const result = component.buildSectionTable(
+      [
+        {
+          section: "open", // lifecycle section
+          prNumber: 101,
+          repo: "owner/repo",
+          data: { number: 101, titleDisplay: "Title", labels: [] },
+        },
+      ],
+      "Date",
+      () => "2026-01-01",
+      "needs-attention", // smart group key
+      "2026-01-01T00:00:00Z",
+      {},
+    );
+
+    // Should have called shouldShowNeedsAttention with lifecycle section "open", not smart group key
+    expect(capturedSectionKey).toBe("open");
+    expect(result?.querySelector(".attention-icon")).not.toBeNull();
+  });
 });
