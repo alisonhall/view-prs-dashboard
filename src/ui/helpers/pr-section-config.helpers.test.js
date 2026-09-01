@@ -231,7 +231,7 @@ describe("pr section config helpers", () => {
         title: "Flagged",
         icon: "🚩",
         rows: expect.any(Array),
-        dateHeader: "YOUR LAST ACTIVITY",
+        dateHeader: "LAST ACTIVITY",
         sectionKey: "flagged",
         lastCheckedAt: "2026-01-10T00:00:00Z",
         actorsMapFromPayload: { bob: { login: "bob" } },

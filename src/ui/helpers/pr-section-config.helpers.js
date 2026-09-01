@@ -26,7 +26,7 @@
               title: String(groupData?.title || ""),
               icon: String(groupData?.icon || ""),
               rows: Array.isArray(groupData?.rows) ? groupData.rows : [],
-              dateHeader: "YOUR LAST ACTIVITY",
+              dateHeader: "LAST ACTIVITY",
               dateResolver: (row) => row.baseline,
               sectionKey: groupKey,
               lastCheckedAt,
@@ -45,7 +45,7 @@
         {
           title: "Open PRs",
           rows: grouped?.open || [],
-          dateHeader: "YOUR LAST ACTIVITY",
+          dateHeader: "LAST ACTIVITY",
           dateResolver: (row) => row.baseline,
           sectionKey: "open",
           lastCheckedAt,
@@ -56,7 +56,7 @@
         {
           title: "Draft PRs",
           rows: grouped?.draft || [],
-          dateHeader: "YOUR LAST ACTIVITY",
+          dateHeader: "LAST ACTIVITY",
           dateResolver: (row) => row.baseline,
           sectionKey: "draft",
           lastCheckedAt,

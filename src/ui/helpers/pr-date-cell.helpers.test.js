@@ -30,14 +30,44 @@ describe("pr date cell helpers", () => {
       documentRef: document,
     });
 
-  test("given a raw date value, when creating the date cell, then formatted date text is rendered", () => {
+  test("given a raw date value, when creating the date cell, then PR activity and viewer activity are rendered", () => {
     const helpers = createHelpers();
 
-    const result = helpers.createDateCell({}, {}, "2026-07-22T10:00:00Z");
-
-    expect(result?.querySelector(".date-cell-content")?.textContent).toBe(
-      "formatted:2026-07-22T10:00:00Z",
+    const result = helpers.createDateCell(
+      {},
+      { updatedAt: "2026-07-20T10:00:00Z" },
+      "2026-07-22T10:00:00Z"
     );
+
+    // Should show PR activity line (last commit)
+    expect(result?.querySelector(".date-cell-pr-activity")?.textContent).toBe(
+      "formatted:2026-07-20T10:00:00Z",
+    );
+    expect(result?.querySelector(".date-cell-pr-activity")?.title).toBe("Last commit");
+
+    // Should show viewer activity line
+    expect(result?.querySelector(".date-cell-viewer-activity")?.textContent).toBe(
+      "You: formatted:2026-07-22T10:00:00Z",
+    );
+    expect(result?.querySelector(".date-cell-viewer-activity")?.title).toBe(
+      "Your last activity on this PR",
+    );
+  });
+
+  test("given merged PR, when creating the date cell, then shows merge date with appropriate title", () => {
+    const helpers = createHelpers();
+
+    const result = helpers.createDateCell(
+      {},
+      { mergedAt: "2026-07-25T15:30:00Z", updatedAt: "2026-07-20T10:00:00Z" },
+      "2026-07-22T10:00:00Z"
+    );
+
+    // Should show merge date (takes precedence over updatedAt)
+    expect(result?.querySelector(".date-cell-pr-activity")?.textContent).toBe(
+      "formatted:2026-07-25T15:30:00Z",
+    );
+    expect(result?.querySelector(".date-cell-pr-activity")?.title).toBe("Merged at");
   });
 
   test("given notes field summary flags, when creating the date cell, then one indicator is rendered for each supported notes field", () => {

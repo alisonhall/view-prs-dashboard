@@ -1476,6 +1476,22 @@
 
         .date-cell-content {
             line-height: 1.3;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .date-cell-pr-activity {
+            font-weight: 600;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .date-cell-viewer-activity {
+            font-size: 11px;
+            font-weight: 400;
+            color: #475467;
+            line-height: 1.4;
         }
 
         .approved-cell-summary {

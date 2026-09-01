@@ -47,7 +47,22 @@
 
       const dateContent = doc.createElement("div");
       dateContent.className = "date-cell-content";
-      dateContent.textContent = formatIsoDatetimeSafe(rawDateValue);
+      
+      // Show PR last activity (commit or merge date)
+      const prLastActivity = row?.mergedAt || row?.sourceUpdatedAt || row?.updatedAt || "-";
+      const prActivityLine = doc.createElement("div");
+      prActivityLine.className = "date-cell-pr-activity";
+      prActivityLine.textContent = formatIsoDatetimeSafe(prLastActivity);
+      prActivityLine.title = row?.mergedAt ? "Merged at" : "Last commit";
+      dateContent.appendChild(prActivityLine);
+      
+      // Show viewer's last activity (baseline)
+      const viewerActivityLine = doc.createElement("div");
+      viewerActivityLine.className = "date-cell-viewer-activity";
+      viewerActivityLine.textContent = `You: ${formatIsoDatetimeSafe(rawDateValue)}`;
+      viewerActivityLine.title = "Your last activity on this PR";
+      dateContent.appendChild(viewerActivityLine);
+      
       td.appendChild(dateContent);
 
       const fieldSummary = getManualNotesFieldSummarySafe(entry, row);

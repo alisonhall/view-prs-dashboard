@@ -3140,11 +3140,16 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
     }
 
     statusElement.textContent = `${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`;
+    
+    // PERFORMANCE OPTIMIZATION: Skip full table re-render
+    // The checkbox is already visually updated, just update the stored state
     if (result.prData) {
       latestStoredPayload = result.prData;
       latestSelectedRepo = payload.repo || latestSelectedRepo;
-      renderPrData(result.prData, latestSelectedRepo);
+      // Don't call renderPrData() - it's expensive and unnecessary
+      // The UI is already in the correct state (checkbox is checked/unchecked)
     } else {
+      // Fallback to full reload only if no prData returned
       await loadStoredData(payload.repo || latestSelectedRepo || "");
     }
   } catch (_error) {
@@ -3203,11 +3208,16 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
     }
 
     statusElement.textContent = `${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`;
+    
+    // PERFORMANCE OPTIMIZATION: Skip full table re-render
+    // The checkbox is already visually updated, just update the stored state
     if (result.prData) {
       latestStoredPayload = result.prData;
       latestSelectedRepo = payload.repo || latestSelectedRepo;
-      renderPrData(result.prData, latestSelectedRepo);
+      // Don't call renderPrData() - it's expensive and unnecessary
+      // The UI is already in the correct state (checkbox is checked/unchecked)
     } else {
+      // Fallback to full reload only if no prData returned
       await loadStoredData(payload.repo || latestSelectedRepo || "");
     }
   } catch (_error) {
@@ -6793,10 +6803,27 @@ const initPage = () => {
   renderAutoRenderBlockedIndicator();
 
   const prSectionsHost = document.getElementById("pr-sections");
+  
+  // Debounce timer for input events to improve textarea performance
+  let recomputeDirtyDebounceTimer = null;
+  
   const recomputeDirtyOnEvent = (event) => {
     const tagName = String(event?.target?.tagName || "").toUpperCase();
-    if (event?.type === "input") {
+    const isInputEvent = event?.type === "input";
+    const isTextarea = tagName === "TEXTAREA";
+    
+    if (isInputEvent) {
       if (tagName !== "INPUT" && tagName !== "TEXTAREA") {
+        return;
+      }
+      // Debounce input events for textareas to reduce lag while typing
+      if (isTextarea) {
+        if (recomputeDirtyDebounceTimer) {
+          clearTimeout(recomputeDirtyDebounceTimer);
+        }
+        recomputeDirtyDebounceTimer = setTimeout(() => {
+          recomputeDirtyPrSectionsFields();
+        }, 300); // 300ms debounce - feels responsive but reduces computation
         return;
       }
     }
@@ -6853,9 +6880,22 @@ const initPage = () => {
   loadSchedulerStatus().catch((_error) => {
     // Ignore startup scheduler fetch failures; the next poll will retry.
   });
+  
+  // PERFORMANCE OPTIMIZATION: Debounce filter changes to reduce re-renders
+  // When changing multiple filters rapidly, only re-render once after changes stop
+  let filterChangeDebounceTimer = null;
+  const debouncedApplyFilters = () => {
+    if (filterChangeDebounceTimer) {
+      clearTimeout(filterChangeDebounceTimer);
+    }
+    filterChangeDebounceTimer = setTimeout(() => {
+      applyFiltersFromCache();
+    }, 150); // 150ms feels instant but batches rapid changes
+  };
+  
   document
     .getElementById("scope-mode")
-    .addEventListener("change", applyFiltersFromCache);
+    .addEventListener("change", debouncedApplyFilters);
   getPrNumbersInput().addEventListener("input", handlePrNumbersInputChange);
   getPrNumbersInput().addEventListener("change", handlePrNumbersInputChange);
   [
@@ -6869,14 +6909,14 @@ const initPage = () => {
   ].forEach((id) => {
     document
       .getElementById(id)
-      .addEventListener("change", applyFiltersFromCache);
+      .addEventListener("change", debouncedApplyFilters);
   });
 
   const attentionNoActivityModeSelect = getOptionalElementById(
     "attention-no-activity-mode",
   );
   if (attentionNoActivityModeSelect) {
-    attentionNoActivityModeSelect.addEventListener("change", applyFiltersFromCache);
+    attentionNoActivityModeSelect.addEventListener("change", debouncedApplyFilters);
   }
 
   const authorThreadResolutionModeField = getOptionalElementById(
@@ -6886,7 +6926,7 @@ const initPage = () => {
     authorThreadResolutionModeField.addEventListener("change", () => {
       updateAuthorThreadResolutionRuleVisibility();
       void persistViewFilterOptionOverrides();
-      applyFiltersFromCache();
+      debouncedApplyFilters();
     });
   }
 
@@ -6915,7 +6955,7 @@ const initPage = () => {
           ) {
             void persistViewFilterOptionOverrides();
           }
-          applyFiltersFromCache();
+          debouncedApplyFilters(); // Use debounced version for multi-select changes
         }
       });
     }
@@ -6928,7 +6968,7 @@ const initPage = () => {
   if (useBuiltinMergePatternCheckbox) {
     useBuiltinMergePatternCheckbox.addEventListener("change", () => {
       void persistViewFilterOptionOverrides();
-      applyFiltersFromCache();
+      debouncedApplyFilters(); // Use debounced version
     });
   }
 
@@ -6938,7 +6978,7 @@ const initPage = () => {
   if (commitPatternsTextarea) {
     commitPatternsTextarea.addEventListener("change", () => {
       void persistViewFilterOptionOverrides();
-      applyFiltersFromCache();
+      debouncedApplyFilters(); // Use debounced version
     });
   }
 
