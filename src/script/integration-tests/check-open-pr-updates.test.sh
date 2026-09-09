@@ -522,16 +522,21 @@ JSON
 
   get_in_review_required() {
     local number="$1"
-    if [[ "$number" == '101' ]]; then
+    if [[ "$number" == '103' ]]; then
       echo 'true'
       return
     fi
     echo 'false'
   }
 
-  row=$(compute_pr_state_json "$(make_pr_json 101 'other' 'Other, User')")
-  assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'CHANGED' 'in-review should force NO_CHANGE to CHANGED'
-  assert_eq "$(printf '%s' "$row" | jq -r '.reason')" 'in-review' 'in-review should use in-review reason override'
+  # Marking a PR as in-review only populates row.inReview (the checkbox
+  # state / "In Review" smart group) — it no longer forces status/reason to
+  # CHANGED(in-review), since the dedicated "In Review" and "Needs
+  # Attention" groups already surface these PRs without that override.
+  row=$(compute_pr_state_json "$(make_pr_json 103 'other' 'Other, User')")
+  assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'NO_CHANGE' 'in-review should not force status to CHANGED'
+  assert_eq "$(printf '%s' "$row" | jq -r '.reason')" '-' 'in-review should not override the changed reason'
+  assert_eq "$(printf '%s' "$row" | jq -r '.inReview')" 'true' 'in-review should still populate the inReview field'
 
   row=$(compute_pr_state_json "$(make_pr_json 102 'other' 'Other, User')")
   assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'CHANGED' 'non-authored changed status failed'

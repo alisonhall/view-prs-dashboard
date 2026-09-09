@@ -2320,14 +2320,17 @@ compute_pr_state_json() {
   fi
 
   reverify_required=$(get_reverify_required "$number")
-  in_review_required=$(get_in_review_required "$number")
-  if [[ "$status" == 'NO_CHANGE' && "$in_review_required" == 'true' ]]; then
-    status='CHANGED'
-    changed_reason='in-review'
-  elif [[ "$reverify_required" == 'true' && "$status" == 'NO_CHANGE' ]]; then
+  if [[ "$reverify_required" == 'true' && "$status" == 'NO_CHANGE' ]]; then
     status='CHANGED'
     changed_reason='ack-cleared'
   fi
+
+  # Populates row.inReview (checkbox state, "In Review" smart group) without
+  # forcing status/changed_reason to CHANGED(in-review) — the dedicated
+  # "In Review" and "Needs Attention" groups already surface these PRs, so
+  # the status override is no longer needed to flag that they're being
+  # worked on.
+  in_review_required=$(get_in_review_required "$number")
 
   check_state=$(printf '%s' "$detail_json" | jq -r '
     def to_state:

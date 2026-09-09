@@ -69,6 +69,7 @@ export function PrTable({
   onCheckboxChange,
   onAckAction,
   onDataRefresh,
+  onViewJson,
   getPrFlags,
   checkNeedsAttention,
 }) {
@@ -129,6 +130,7 @@ export function PrTable({
               onCheckboxChange={onCheckboxChange}
               onAckAction={onAckAction}
               onDataRefresh={onDataRefresh}
+              onViewJson={onViewJson}
             />
           );
         })}

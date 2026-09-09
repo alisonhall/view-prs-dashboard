@@ -203,8 +203,16 @@ const createViewPrsSchedulerHelpers = ({
       addRepo(entry?.repo);
     });
 
-    addRepo(defaultViewPrsRepo);
     addRepo(data?.lastRun?.repo);
+
+    // Only fall back to the hardcoded default repo when nothing else names a
+    // repo at all (e.g. a brand-new install with no stored data yet and no
+    // VIEW_PRS_AUTO_REPOS override) — otherwise a machine that has always
+    // tracked a different repo would silently have this unrelated one
+    // auto-refreshed alongside it too.
+    if (repos.length === 0) {
+      addRepo(defaultViewPrsRepo);
+    }
 
     return repos;
   };

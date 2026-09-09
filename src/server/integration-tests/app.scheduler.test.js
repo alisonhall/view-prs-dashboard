@@ -65,7 +65,7 @@ describe("scheduler helper behavior", () => {
   });
 
   describe("getViewPrsAutoRefreshRepos", () => {
-    test("includes configured repos, stored repos, default repo, and last-run repo without duplicates", () => {
+    test("includes configured repos, stored repos, and last-run repo without duplicates, and does not add the hardcoded default repo when real repos are already known", () => {
       const result = getViewPrsAutoRefreshRepos(
         {
           byPrNumber: {
@@ -78,16 +78,11 @@ describe("scheduler helper behavior", () => {
         "owner/four, invalid, owner/two",
       );
 
-      expect(result).toEqual([
-        "owner/four",
-        "owner/two",
-        "owner/one",
-        "optum-rx-clinicalproducts/orx-cpp-mp-uis",
-        "owner/three",
-      ]);
+      expect(result).toEqual(["owner/four", "owner/two", "owner/one", "owner/three"]);
+      expect(result).not.toContain("optum-rx-clinicalproducts/orx-cpp-mp-uis");
     });
 
-    test("given placeholder owner/repo values, when building auto-refresh repos, then excludes placeholder entries", () => {
+    test("given placeholder owner/repo values, when building auto-refresh repos, then excludes placeholder entries and does not add the hardcoded default repo since a real repo is still known", () => {
       const result = getViewPrsAutoRefreshRepos(
         {
           byPrNumber: {
@@ -99,11 +94,13 @@ describe("scheduler helper behavior", () => {
         "owner/repo, owner/extra-repo",
       );
 
-      expect(result).toEqual([
-        "owner/extra-repo",
-        "owner/real-repo",
-        "optum-rx-clinicalproducts/orx-cpp-mp-uis",
-      ]);
+      expect(result).toEqual(["owner/extra-repo", "owner/real-repo"]);
+    });
+
+    test("given no configured repos, no stored data, and no last-run repo, when building auto-refresh repos, then falls back to the hardcoded default repo so a fresh install can still bootstrap", () => {
+      const result = getViewPrsAutoRefreshRepos({ byPrNumber: {}, lastRun: null }, "");
+
+      expect(result).toEqual(["optum-rx-clinicalproducts/orx-cpp-mp-uis"]);
     });
   });
 

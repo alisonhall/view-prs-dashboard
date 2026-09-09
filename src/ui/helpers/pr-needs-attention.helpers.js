@@ -12,7 +12,6 @@
     getEffectiveViewerLogin = () => "",
     collectAssignedUsers = () => [],
     collectRequestedReviewers = () => [],
-    isInReviewEnabled = () => false,
     countPendingThreadComments = () => 0,
   } = {}) => {
     const parseChangedReasonTokens = (row = {}) => {
@@ -112,8 +111,7 @@
       if (sectionKey === "draft") {
         return (
           (config.includeDraftChanged && changedAttention) ||
-          (config.includeDraftNoActivity && noActivityAttention) ||
-          isInReviewEnabled(row)
+          (config.includeDraftNoActivity && noActivityAttention)
         );
       }
 
@@ -122,9 +120,6 @@
 
     const entryNeedsAttention = (entry = {}, config = {}) => {
       const row = entry?.data || {};
-      if (isInReviewEnabled(row)) {
-        return true;
-      }
 
       const sectionKey = String(entry?.section || "")
         .trim()

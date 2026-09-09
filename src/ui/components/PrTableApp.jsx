@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PrSection } from './PrSection';
+import { PrJsonModal } from './PrJsonModal';
 
 /**
  * Main PR Table Application Component
@@ -52,11 +53,42 @@ export function PrTableApp({
   // State: Expanded insights rows (keyed by composite: 'section:prNumber')
   const [expandedInsights, setExpandedInsights] = useState({});
 
-  // Helper: Find the default repo present in the stored data
+  // State: PR JSON details modal target ({ entry, pr } | null)
+  const [jsonModalTarget, setJsonModalTarget] = useState(null);
+
+  // Helper: Find the default repo present in the stored data. Prefers
+  // `lastRun.repo` (the repo the scanner script most recently scanned,
+  // recorded by check-open-pr-updates.sh) since that's the strongest signal
+  // for "what the user is currently tracking" — e.g. if someone starts
+  // tracking a brand-new repo, its handful of entries would otherwise lose
+  // to an older, larger repo's accumulated history. Falls back to the repo
+  // with the most entries (rather than just the first one found) so that a
+  // single synthetic/fixture entry (e.g. a seeded row with a placeholder
+  // repo like "owner/repo") sorted first by PR number can't hijack the
+  // entire table into showing just that one row.
   const getDefaultRepo = (currentPayload) => {
+    const lastRunRepo = String(currentPayload?.lastRun?.repo || '').trim();
+    if (lastRunRepo) {
+      return lastRunRepo;
+    }
+
     const entries = Object.values(currentPayload?.byPrNumber || {});
-    const firstEntry = entries.find((entry) => entry?.repo);
-    return firstEntry ? firstEntry.repo : '';
+    const countsByRepo = {};
+    entries.forEach((entry) => {
+      const repo = entry?.repo;
+      if (!repo) return;
+      countsByRepo[repo] = (countsByRepo[repo] || 0) + 1;
+    });
+
+    let bestRepo = '';
+    let bestCount = 0;
+    Object.entries(countsByRepo).forEach(([repo, count]) => {
+      if (count > bestCount) {
+        bestRepo = repo;
+        bestCount = count;
+      }
+    });
+    return bestRepo;
   };
 
   // The single repo this table is currently showing. The vanilla app's
@@ -282,6 +314,12 @@ export function PrTableApp({
     }));
   };
 
+  // Handler: Open the PR JSON details modal for a row (mirrors vanilla's
+  // window.openPrJsonModal(entry, pr) signature).
+  const handleViewJson = (entry, pr) => {
+    setJsonModalTarget({ entry, pr });
+  };
+
   // Handler: Toggle insights row for a PR
   const handleToggleInsights = (prNumber, sectionKey) => {
     const compositeKey = `${sectionKey}:${prNumber}`;
@@ -333,10 +371,12 @@ export function PrTableApp({
           onCheckboxChange={onCheckboxChange}
           onAckAction={onAckAction}
           onDataRefresh={handleDataRefresh}
+          onViewJson={handleViewJson}
           getPrFlags={getPrFlags}
           checkNeedsAttention={checkNeedsAttention}
         />
       ))}
+      <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
     </>
   );
 }

@@ -8,7 +8,7 @@
 
 import React from 'react';
 
-export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChange, onAckAction }) {
+export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChange, onAckAction, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
 
@@ -40,7 +40,11 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChang
 
   const handleJsonClick = (e) => {
     e.stopPropagation();
-    (window.openPrJsonModal || (() => {}))(entry, pr);
+    if (onViewJson) {
+      onViewJson(entry, pr);
+    } else {
+      (window.openPrJsonModal || (() => {}))(entry, pr);
+    }
   };
 
   return (

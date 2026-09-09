@@ -68,7 +68,7 @@ describe('PrActionsCell', () => {
     );
   });
 
-  test('given the {} button, when clicked, then calls window.openPrJsonModal with an entry carrying the repo', () => {
+  test('given the {} button and no onViewJson prop, when clicked, then falls back to window.openPrJsonModal with an entry carrying the repo', () => {
     const openPrJsonModal = jest.fn();
     window.openPrJsonModal = openPrJsonModal;
     renderCell({ pr: { number: '101' } });
@@ -77,5 +77,18 @@ describe('PrActionsCell', () => {
       { prNumber: '101', repo: 'owner/repo' },
       { number: '101' },
     );
+  });
+
+  test('given the {} button and an onViewJson prop, when clicked, then calls onViewJson (not window.openPrJsonModal) with an entry carrying the repo', () => {
+    const openPrJsonModal = jest.fn();
+    window.openPrJsonModal = openPrJsonModal;
+    const onViewJson = jest.fn();
+    renderCell({ pr: { number: '101' }, onViewJson });
+    screen.getByRole('button', { name: 'View PR JSON details for #101' }).click();
+    expect(onViewJson).toHaveBeenCalledWith(
+      { prNumber: '101', repo: 'owner/repo' },
+      { number: '101' },
+    );
+    expect(openPrJsonModal).not.toHaveBeenCalled();
   });
 });

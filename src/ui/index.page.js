@@ -1437,7 +1437,6 @@ const {
   getEffectiveViewerLogin: (...args) => getEffectiveViewerLogin(...args),
   collectAssignedUsers: (...args) => collectAssignedUsers(...args),
   collectRequestedReviewers: (...args) => collectRequestedReviewers(...args),
-  isInReviewEnabled: (...args) => isInReviewEnabled(...args),
   countPendingThreadComments: (...args) => countPendingThreadComments(...args),
 });
 
@@ -7084,6 +7083,10 @@ const initPage = () => {
     asArray,
     autoResizeTextarea,
     recomputeDirtyPrSectionsFields,
+    // ---- PR JSON modal (see components/PrJsonModal.jsx) ----
+    safeJsonStringify,
+    getPerPrUserStateFromPayload,
+    DEFAULT_REPO,
   });
 
   // The initial loadStoredData() fetch below often resolves before the

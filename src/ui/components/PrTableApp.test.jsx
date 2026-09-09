@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, fireEvent, waitFor } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 
 // PrSection is mocked so these tests exercise PrTableApp's own logic
@@ -101,7 +101,7 @@ describe('PrTableApp', () => {
     expect(screen.getByText('Loading Pull Requests...')).toBeInTheDocument();
   });
 
-  test('given entries for one repo, when no selectedRepo is passed, then effectiveRepo falls back to the first repo found in the payload', () => {
+  test('given entries for one repo, when no selectedRepo is passed, then effectiveRepo falls back to that repo', () => {
     const payload = {
       byPrNumber: {
         1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
@@ -110,6 +110,55 @@ describe('PrTableApp', () => {
     };
     render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
     expect(capturedSectionProps[0].repo).toBe('owner/repo');
+  });
+
+  test('given no lastRun.repo, a single low-numbered placeholder-repo entry outnumbered by a real repo\'s entries, when no selectedRepo is passed, then effectiveRepo picks the repo with the most entries (not just the numerically-first one)', () => {
+    // Regression test: Object.values() on an object keyed by numeric-looking
+    // strings iterates in ascending numeric order regardless of insertion
+    // order, so a single synthetic/seeded row (e.g. PR #1 with a placeholder
+    // repo like "owner/repo") can sort before a user's real PRs just by
+    // having a lower number. Picking "the first entry found" used to let
+    // that one synthetic row hijack effectiveRepo and hide every real PR.
+    const payload = {
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        100: makeEntry({ prNumber: '100', repo: 'real-org/real-repo', section: 'open' }),
+        101: makeEntry({ prNumber: '101', repo: 'real-org/real-repo', section: 'closed' }),
+        102: makeEntry({ prNumber: '102', repo: 'real-org/real-repo', section: 'merged' }),
+      },
+    };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    expect(capturedSectionProps[0].repo).toBe('real-org/real-repo');
+  });
+
+  test('given lastRun.repo, when no selectedRepo is passed, then effectiveRepo prefers it even over a repo with far more entries', () => {
+    // lastRun.repo (recorded by check-open-pr-updates.sh) reflects which
+    // repo was most recently actively scanned — a stronger signal for "what
+    // the user is currently tracking" than raw entry counts, since a
+    // newly-tracked repo would otherwise lose to an older repo's larger
+    // accumulated history.
+    const payload = {
+      lastRun: { repo: 'new-org/new-repo', updatedAt: '2026-01-01T00:00:00Z' },
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'old-org/old-repo', section: 'open' }),
+        2: makeEntry({ prNumber: '2', repo: 'old-org/old-repo', section: 'closed' }),
+        3: makeEntry({ prNumber: '3', repo: 'old-org/old-repo', section: 'merged' }),
+        4: makeEntry({ prNumber: '4', repo: 'new-org/new-repo', section: 'open' }),
+      },
+    };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    expect(capturedSectionProps[0].repo).toBe('new-org/new-repo');
+  });
+
+  test('given a blank lastRun.repo, when no selectedRepo is passed, then effectiveRepo falls back to the most-common-entries logic', () => {
+    const payload = {
+      lastRun: { repo: '', updatedAt: '2026-01-01T00:00:00Z' },
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'real-org/real-repo', section: 'open' }),
+      },
+    };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    expect(capturedSectionProps[0].repo).toBe('real-org/real-repo');
   });
 
   test('given entries for multiple repos, when selectedRepo is passed, then only that repo\'s entries populate the sections', () => {
@@ -257,5 +306,52 @@ describe('PrTableApp', () => {
     render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={onAckAction} />);
     expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
     expect(capturedSectionProps[0].onAckAction).toBe(onAckAction);
+  });
+
+  describe('PR JSON modal', () => {
+    beforeEach(() => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, diffText: '' }),
+      });
+    });
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    test('given no PR has been requested, when rendering, then the PR JSON modal is not shown', () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    test('given onViewJson is called (as PrActionsCell would via the {} button), when invoked, then opens the PR JSON modal for that PR', async () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      const { onViewJson } = capturedSectionProps[0];
+
+      React.act(() => {
+        onViewJson({ prNumber: '1', repo: 'owner/repo' }, { number: '1' });
+      });
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('PR #1 (owner/repo)')).toBeInTheDocument();
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    });
+
+    test('given the PR JSON modal is open, when its close button is clicked, then it is dismissed', async () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      const { onViewJson } = capturedSectionProps[0];
+
+      React.act(() => {
+        onViewJson({ prNumber: '1', repo: 'owner/repo' }, { number: '1' });
+      });
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close PR JSON details' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
   });
 });

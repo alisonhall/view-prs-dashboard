@@ -63,4 +63,24 @@ describe('PrTable', () => {
     expect(rows[0].querySelector('.flagged-toggle')).toBeChecked();
     expect(rows[1].querySelector('.flagged-toggle')).not.toBeChecked();
   });
+
+  test('given an onViewJson prop, when the {} button is clicked on a row, then it is threaded down with that row\'s entry/pr', () => {
+    const onViewJson = jest.fn();
+    render(
+      <PrTable
+        prs={[makeEntry(101), makeEntry(102)]}
+        repo="owner/repo"
+        sectionKey="open"
+        dateHeader="LAST ACTIVITY"
+        expandedInsights={{}}
+        onViewJson={onViewJson}
+      />,
+    );
+    const rows = document.querySelectorAll('tbody tr.pr-row');
+    rows[1].querySelector('.row-action-btn.view-json').click();
+    expect(onViewJson).toHaveBeenCalledWith(
+      { prNumber: '102', repo: 'owner/repo' },
+      { number: '102', title: 'PR 102', labels: [] },
+    );
+  });
 });

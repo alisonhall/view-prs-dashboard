@@ -77,4 +77,11 @@ describe('PrRow', () => {
     expect(insightsRow).not.toHaveAttribute('hidden');
     expect(insightsRow.querySelector('.row-insights-content')).toBeInTheDocument();
   });
+
+  test('given an onViewJson prop, when the {} button is clicked, then it is threaded down to PrActionsCell', () => {
+    const onViewJson = jest.fn();
+    renderRow({ onViewJson });
+    document.querySelector('.row-action-btn.view-json').click();
+    expect(onViewJson).toHaveBeenCalledWith({ prNumber: '101', repo: 'owner/repo' }, basePr);
+  });
 });

@@ -59,6 +59,7 @@ export const PrRow = memo(function PrRow({
   onCheckboxChange,
   onAckAction,
   onDataRefresh,
+  onViewJson,
 }) {
   const compositeKey = `${sectionKey}:${pr.number}`;
   const lastCheckedAt = String(entry?.updatedAt || '').trim() || String(pr?.updatedAt || '').trim();
@@ -91,6 +92,7 @@ export const PrRow = memo(function PrRow({
           isAcknowledged={isAcknowledged}
           onCheckboxChange={onCheckboxChange}
           onAckAction={onAckAction}
+          onViewJson={onViewJson}
         />
       </tr>
 

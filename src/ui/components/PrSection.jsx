@@ -45,6 +45,7 @@ export function PrSection({
   onCheckboxChange,
   onAckAction,
   onDataRefresh,
+  onViewJson,
   getPrFlags,
   checkNeedsAttention,
 }) {
@@ -90,6 +91,7 @@ export function PrSection({
             onCheckboxChange={onCheckboxChange}
             onAckAction={onAckAction}
             onDataRefresh={onDataRefresh}
+            onViewJson={onViewJson}
             getPrFlags={getPrFlags}
             checkNeedsAttention={checkNeedsAttention}
           />
