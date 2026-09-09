@@ -105,4 +105,40 @@ describe("pr date cell helpers", () => {
     expect(difficulty?.title).toBe("PR difficulty");
     expect(difficulty?.textContent).toBe("");
   });
+
+  test("given closed PR (not merged), when creating the date cell, then shows closed date with appropriate title", () => {
+    const helpers = createHelpers();
+
+    const result = helpers.createDateCell(
+      {},
+      { closedAt: "2026-07-26T09:15:00Z", updatedAt: "2026-07-20T10:00:00Z" },
+      "2026-07-22T10:00:00Z"
+    );
+
+    // Should show closed date (takes precedence over updatedAt)
+    expect(result?.querySelector(".date-cell-pr-activity")?.textContent).toBe(
+      "formatted:2026-07-26T09:15:00Z",
+    );
+    expect(result?.querySelector(".date-cell-pr-activity")?.title).toBe("Closed at");
+  });
+
+  test("given merged PR, when creating the date cell, then mergedAt takes precedence over closedAt", () => {
+    const helpers = createHelpers();
+
+    const result = helpers.createDateCell(
+      {},
+      { 
+        mergedAt: "2026-07-25T15:30:00Z", 
+        closedAt: "2026-07-25T15:30:00Z",
+        updatedAt: "2026-07-20T10:00:00Z" 
+      },
+      "2026-07-22T10:00:00Z"
+    );
+
+    // Should show "Merged at" (not "Closed at") since mergedAt has higher priority
+    expect(result?.querySelector(".date-cell-pr-activity")?.textContent).toBe(
+      "formatted:2026-07-25T15:30:00Z",
+    );
+    expect(result?.querySelector(".date-cell-pr-activity")?.title).toBe("Merged at");
+  });
 });

@@ -121,12 +121,72 @@ Run from repository root:
 npm run test:view-prs
 ```
 
+## React Development Scripts
+
+The following scripts support the React migration and development workflow:
+
+```bash
+npm start                    # Start both Node.js backend (3455) + Vite dev server (3456)
+npm run dev                  # Alias for npm start
+npm run start:server-only    # Start Node.js backend only (no Vite)
+npm run dev:server           # Alias for start:server-only
+npm run dev:ui               # Start Vite dev server only (requires backend running)
+npm run build:ui             # Build production React bundle to dist/ui/
+npm run preview              # Preview production build locally
+npm run verify:react-setup   # Verify React development environment setup
+```
+
+Script guide:
+
+- **`npm start`** (recommended): Starts both servers for full React development with Hot Module Replacement (HMR)
+  - Node.js backend on `http://localhost:3455` (API server)
+  - Vite dev server on `http://localhost:3456` (frontend with HMR)
+  - Access UI at: `http://localhost:3456`
+  - Use this for React/UI development work
+
+- **`npm run start:server-only`**: Backend-only mode for API development
+  - Starts only Node.js server on `http://localhost:3455`
+  - Serves static files but no HMR
+  - Use when working on backend logic without UI changes
+
+- **`npm run dev:ui`**: Frontend-only Vite server
+  - Requires backend to be running separately
+  - Proxies `/view-prs/*` API calls to backend on port 3455
+  - Use for frontend-focused work with backend already running
+
+- **`npm run build:ui`**: Production build
+  - Compiles React app to optimized static files
+  - Output: `dist/ui/` directory
+  - Run before deploying or testing production builds
+
+- **`npm run preview`**: Test production build locally
+  - Serves built files from `dist/ui/`
+  - Simulates production environment
+  - Run after `build:ui` to verify production bundle
+
+- **`npm run verify:react-setup`**: Development environment check
+  - Verifies all React dependencies installed
+  - Checks configuration files exist
+  - Validates project structure
+  - Run after cloning repo or updating dependencies
+
+Recommended React development workflow:
+
+1. **First time setup:** `npm run verify:react-setup`
+2. **Development:** `npm start` (opens both servers)
+3. **Access UI:** `http://localhost:3456`
+4. **Before deployment:** `npm run build:ui`
+5. **Test build:** `npm run preview`
+
+See [Development Servers](#development-servers) section for more details.
+
 ## Key Files
 
 - Script: `src/script/check-open-pr-updates.sh`
 - Local launcher (recommended): `./run-prs`
 - CLI script mode: `npm run cli-view -- <args>`
-- Standalone server: `npm run start`
+- Development server: `npm start` (runs Node.js backend + Vite dev server with React HMR)
+- Backend only: `npm run start:server-only` (Node.js server without Vite)
 - Interactive page: `src/ui/index.html`
 - Actor login aliases: `data/actor-login-aliases.json`
 - JSON Schema: `src/schema/check-open-pr-updates.data.schema.json`
@@ -166,6 +226,51 @@ cd view-prs
 VIEW_PRS_SKIP_UNCHANGED=1 ./run-prs --open none
 ```
 
+## Development Servers
+
+**React Development Mode (Recommended):**
+
+```bash
+cd view-prs
+npm start
+```
+
+This starts TWO servers:
+- **Node.js backend** on `http://localhost:3455` (API server)
+- **Vite dev server** on `http://localhost:3456` (frontend with Hot Module Replacement)
+
+**Access the UI at:** `http://localhost:3456`
+
+**Benefits:**
+- ✅ Hot Module Replacement (HMR) - changes appear instantly without page reload
+- ✅ Fast builds with Vite (10-100x faster than Webpack)
+- ✅ React DevTools support
+- ✅ Modern ESM development
+
+**Backend Only Mode:**
+
+If you only need the Node.js server without React HMR:
+
+```bash
+cd view-prs
+npm run start:server-only
+```
+
+**Access the UI at:** `http://localhost:3455`
+
+Note: This mode serves static files but does not provide Hot Module Replacement.
+
+**Production Build:**
+
+To build the React app for production:
+
+```bash
+cd view-prs
+npm run build:ui
+```
+
+Built files are output to `dist/ui/` and can be served by the Node.js server.
+
 ## Usage
 
 ### Recommended (local launcher)
@@ -184,7 +289,8 @@ cd view-prs
 npm run cli-view -- --help
 npm run cli-view -- --open changed
 npm run cli-view -- --ack 912,921
-npm run start
+npm start  # Starts Node.js backend (3455) + Vite dev server (3456) with React HMR
+npm run start:server-only  # Node.js backend only (no Vite)
 npm run backfill:missing:dry -- --max-prs 20
 npm run backfill:missing -- --max-prs 50 --delay-ms 3000
 npm run backfill:missing:bg
@@ -357,8 +463,12 @@ Smart group features:
   - 🔴 **CLOSED** (red pill) - Closed PR (only in Flagged/In Review groups)
   - Badges only appear in smart groups (not in lifecycle sections where they would be redundant)
 - **Color-coded sections**: Each smart group has unique visual styling (colored border and gradient background)
-- **State persistence**: Section open/closed state persists across page refreshes and auto-refresh cycles
-- **Smart defaults**: 
+- **State persistence**:
+  - Section open/closed state persists across page refreshes and auto-refresh cycles
+  - "More Insights" expand/collapse state persists independently per section
+  - When a PR appears in multiple sections, each section maintains its own "More Insights" state
+  - Example: PR #123 can have "More Insights" expanded in "Needs Attention" but collapsed in "Open PRs"
+- **Smart defaults**:
   - Smart groups: Actionable groups (In Review, Needs Attention) expand by default; reference groups (Flagged, Open PRs I'm Involved In) collapse by default
   - Lifecycle sections: All sections (Open PRs, Draft PRs, Closed PRs, Latest Merged PRs) collapse by default to reduce clutter
 
@@ -696,6 +806,28 @@ Example missing dependency response:
   "missing": ["gh", "npm:marked"]
 }
 ```
+
+## Date Columns
+
+### Last Activity Column
+
+The "LAST ACTIVITY" column displays two lines of information:
+
+- **Line 1 (bold)**: PR's last activity date
+  - Shows `mergedAt` if the PR is merged
+  - Shows `closedAt` if the PR is closed (but not merged)
+  - Otherwise shows `sourceUpdatedAt` or `updatedAt` (last commit timestamp)
+  - Tooltip: "Merged at", "Closed at", or "Last commit"
+- **Line 2 (muted)**: Your last activity on the PR
+  - Format: "You: [datetime]"
+  - Shows the `baseline` field (your last interaction with the PR)
+  - Tooltip: "Your last activity on this PR"
+
+**Data sources:**
+- PR activity (Line 1): `mergedAt` (highest priority) → `closedAt` → `sourceUpdatedAt` → `updatedAt`
+- Viewer activity (Line 2): `baseline` field (always shows YOUR last interaction, never the merge/close date)
+
+This two-line format helps you quickly see both when the PR was last updated and when you last interacted with it.
 
 ## Troubleshooting
 

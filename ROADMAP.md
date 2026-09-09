@@ -66,3 +66,27 @@
 - [ ] Add name for each table
 - [ ] Associate PR number with the controls within each table row
 - [ ] Add proper labels to the 'Comments' fields
+
+### Modernization of code
+
+Modernize this repository toward a maintainable, readable, modular architecture with safe incremental delivery and test-backed changes.
+
+For progress and steps, see [`AI_MODERNIZATION_PLAN.md`](AI_MODERNIZATION_PLAN.md)
+
+### UI Modernization
+
+Improve UI and style it more similarly to GitKraken's LaunchPad.
+
+For planned steps, see [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md)
+
+### Future Performance Opportunities
+
+- [ ] Virtual scrolling for 200+ PR lists (10-50x faster initial render)
+- [ ] Smart group count caching (5-10% faster renders)
+- [ ] Filter result memoization (10-20% improvement when filters unchanged)
+
+For detailed performance analysis, see [`PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md`](PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md).
+
+### React Migration
+
+For planned steps, see [`REACT_MIGRATION_PLAN.md`](REACT_MIGRATION_PLAN.md).

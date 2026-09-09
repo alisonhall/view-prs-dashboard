@@ -3,6 +3,8 @@
  * https://jestjs.io/docs/configuration
  */
 
+const path = require("path");
+
 /** @type {import('jest').Config} */
 const config = {
   displayName: "view-prs",
@@ -177,8 +179,14 @@ const config = {
   // This option allows use of a custom test runner
   // testRunner: "jest-circus/runner",
 
-  // A map from regular expressions to paths to transformers
-  // transform: undefined,
+  // A map from regular expressions to paths to transformers.
+  // Only React component tests (.jsx, or .test.js files that import JSX)
+  // need this — plain vanilla helper/component tests are untouched CommonJS
+  // and pass through unaffected. This babel config is Jest-only; Vite has
+  // its own separate JSX pipeline via @vitejs/plugin-react.
+  transform: {
+    "^.+\\.[jt]sx?$": ["babel-jest", { configFile: path.join(__dirname, "babel.config.jest.js") }],
+  },
 
   // An array of regexp pattern strings that are matched against all source file paths, matched files will skip transformation
   // transformIgnorePatterns: [

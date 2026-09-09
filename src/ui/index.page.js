@@ -3,6 +3,12 @@ const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
 
+// Interval timer IDs for cleanup (prevent memory leaks)
+let pollDataInterval = null;
+let pollSchedulerInterval = null;
+let pollBackfillInterval = null;
+let activityRenderInterval = null;
+
 const formatDateInputValue = (date) => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -1434,6 +1440,14 @@ const {
   isInReviewEnabled: (...args) => isInReviewEnabled(...args),
   countPendingThreadComments: (...args) => countPendingThreadComments(...args),
 });
+
+// Expose for the React hybrid table bridge (see components/PrTableApp.jsx),
+// which reads these off `window` since it can't import top-level `const`
+// bindings from this non-module script.
+if (typeof window !== "undefined") {
+  window.entryNeedsAttention = entryNeedsAttention;
+  window.getNeedsAttentionConfig = getNeedsAttentionConfig;
+}
 
 const prUiOptionScrollHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -3141,15 +3155,28 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
 
     statusElement.textContent = `${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`;
     
-    // PERFORMANCE OPTIMIZATION: Skip full table re-render
-    // The checkbox is already visually updated, just update the stored state
-    if (result.prData) {
+    // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
+    // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
+    if (result.flaggedByRepo && result.inReviewByRepo) {
+      // Minimal response: only update flag data. Reassign (don't mutate)
+      // latestStoredPayload so React's reference-equality checks (useState
+      // bail-out, useEffect deps) actually detect the change and re-render.
+      if (latestStoredPayload) {
+        latestStoredPayload = {
+          ...latestStoredPayload,
+          flaggedByRepo: result.flaggedByRepo,
+          inReviewByRepo: result.inReviewByRepo,
+        };
+      }
+      latestSelectedRepo = payload.repo || latestSelectedRepo;
+      // Don't call renderPrData() - checkbox already updated, UI is correct
+      // Smart groups will update on next full refresh
+    } else if (result.prData) {
+      // Full response (backward compatibility)
       latestStoredPayload = result.prData;
       latestSelectedRepo = payload.repo || latestSelectedRepo;
-      // Don't call renderPrData() - it's expensive and unnecessary
-      // The UI is already in the correct state (checkbox is checked/unchecked)
     } else {
-      // Fallback to full reload only if no prData returned
+      // Fallback to full reload only if no data returned
       await loadStoredData(payload.repo || latestSelectedRepo || "");
     }
   } catch (_error) {
@@ -3209,15 +3236,28 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
 
     statusElement.textContent = `${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`;
     
-    // PERFORMANCE OPTIMIZATION: Skip full table re-render
-    // The checkbox is already visually updated, just update the stored state
-    if (result.prData) {
+    // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
+    // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
+    if (result.flaggedByRepo && result.inReviewByRepo) {
+      // Minimal response: only update flag data. Reassign (don't mutate)
+      // latestStoredPayload so React's reference-equality checks (useState
+      // bail-out, useEffect deps) actually detect the change and re-render.
+      if (latestStoredPayload) {
+        latestStoredPayload = {
+          ...latestStoredPayload,
+          flaggedByRepo: result.flaggedByRepo,
+          inReviewByRepo: result.inReviewByRepo,
+        };
+      }
+      latestSelectedRepo = payload.repo || latestSelectedRepo;
+      // Don't call renderPrData() - checkbox already updated, UI is correct
+      // Smart groups will update on next full refresh
+    } else if (result.prData) {
+      // Full response (backward compatibility)
       latestStoredPayload = result.prData;
       latestSelectedRepo = payload.repo || latestSelectedRepo;
-      // Don't call renderPrData() - it's expensive and unnecessary
-      // The UI is already in the correct state (checkbox is checked/unchecked)
     } else {
-      // Fallback to full reload only if no prData returned
+      // Fallback to full reload only if no data returned
       await loadStoredData(payload.repo || latestSelectedRepo || "");
     }
   } catch (_error) {
@@ -6160,8 +6200,88 @@ const { buildSectionTable } =
   });
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
-  // Delegate to PR Data Tab orchestrator
-  prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+  // Update global state
+  if (payload) {
+    latestStoredPayload = payload;
+  }
+  if (selectedRepo) {
+    latestSelectedRepo = selectedRepo;
+  }
+
+  // Get container element
+  const container = document.getElementById('pr-sections');
+  if (!container) {
+    console.error('[renderPrData] pr-sections container not found');
+    return;
+  }
+
+  // Check if React is available
+  const hasReactBridge = window.ReactMountBridge && typeof window.ReactMountBridge.mount === 'function';
+  const hasReactApp = window.mountReactPrTable && typeof window.mountReactPrTable === 'function';
+
+  if (!hasReactBridge || !hasReactApp) {
+    console.log('[renderPrData] React not available, using vanilla rendering');
+    // Fallback to vanilla rendering via orchestrator
+    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+    return;
+  }
+
+  // ========================================
+  // REACT RENDERING PATH
+  // ========================================
+
+  console.log('[renderPrData] Using React rendering');
+
+  // Check if already mounted
+  if (window.ReactMountBridge.isMounted()) {
+    // Already mounted: just update data
+    console.log('[renderPrData] Updating React table with new data:', {
+      hasPayload: !!(latestStoredPayload || payload),
+      hasPrs: !!(latestStoredPayload?.prs || payload?.prs),
+      prsKeys: Object.keys((latestStoredPayload?.prs || payload?.prs) || {}),
+    });
+    window.ReactMountBridge.update(
+      latestStoredPayload || payload,
+      latestSelectedRepo || selectedRepo
+    );
+    return;
+  }
+
+  // First time: mount React
+  console.log('[renderPrData] Mounting React table for first time');
+
+  // Create callbacks
+  const callbacks = createReactCallbacks();
+  if (!callbacks) {
+    console.error('[renderPrData] Failed to create React callbacks, falling back to vanilla');
+    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+    return;
+  }
+
+  // Mount React
+  console.log('[renderPrData] Mounting with payload:', {
+    hasPayload: !!(latestStoredPayload || payload),
+    hasPrs: !!(latestStoredPayload?.prs || payload?.prs),
+    prsKeys: Object.keys((latestStoredPayload?.prs || payload?.prs) || {}),
+    selectedRepo: latestSelectedRepo || selectedRepo || '',
+  });
+  
+  const success = window.ReactMountBridge.mount(
+    container,
+    {
+      payload: latestStoredPayload || payload || {},
+      selectedRepo: latestSelectedRepo || selectedRepo || '',
+    },
+    {
+      onCheckboxChange: callbacks.handleCheckboxChange,
+      onAckAction: callbacks.handleAckAction,
+    }
+  );
+
+  if (!success) {
+    console.error('[renderPrData] React mount failed, falling back to vanilla rendering');
+    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+  }
 };
 
 const setExportStatus = (message) => {
@@ -6782,6 +6902,48 @@ const handleClearOnly = async () => {
   await runClearOnlyWorkflow();
 };
 
+/**
+ * Create React callback helpers (lazy initialization)
+ * This factory creates the callbacks that React uses to communicate with vanilla JS.
+ */
+let reactCallbacks = null;
+
+function createReactCallbacks() {
+  if (reactCallbacks) {
+    return reactCallbacks;
+  }
+
+  // Check if React callbacks helper is available
+  if (!window.ViewPrsReactCallbacksHelpers) {
+    console.warn('[ReactIntegration] React callbacks helper not available');
+    return null;
+  }
+
+  const helpers = window.ViewPrsReactCallbacksHelpers.createReactCallbackHelpers({
+    // Pass vanilla JS functions
+    toggleInReviewForRow: toggleInReviewForRow,
+    toggleFlaggedForRow: toggleFlaggedForRow,
+    runAckOnlyWorkflow: runAckOnlyWorkflow,
+    runClearOnlyWorkflow: runClearOnlyWorkflow,
+
+    // Update React table function
+    updateReactTable: (payload, repo) => {
+      if (window.ReactMountBridge?.isMounted?.()) {
+        window.ReactMountBridge.update(payload, repo);
+      }
+    },
+
+    // State getters
+    stateGetters: {
+      getLatestStoredPayload: () => latestStoredPayload,
+      getLatestSelectedRepo: () => latestSelectedRepo,
+    },
+  });
+
+  reactCallbacks = helpers;
+  return helpers;
+}
+
 const initPage = () => {
   renderRequestActivity();
   ensureDefaultFilterValues();
@@ -6851,6 +7013,92 @@ const initPage = () => {
       forceApplyPendingAutoRender();
     });
   }
+
+  // Expose the pure (non-DOM) row-rendering logic for the React hybrid
+  // table (see components/PrRow.jsx and friends) so it can reproduce the
+  // vanilla row/cell output exactly instead of guessing at field names and
+  // formatting rules. These are plain functions with no DOM dependency;
+  // React builds its own JSX elements and only borrows the *values*.
+  Object.assign(window, {
+    isChangedStatus,
+    statusClass,
+    approvedClass,
+    formatTitleWithIcons,
+    formatChkDisplay,
+    getPreferredActorKey,
+    resolveActorDisplayName,
+    buildRowActorsMap,
+    normalizeActorLogin,
+    collectAssignedUsers,
+    buildActorIdentityClassName,
+    buildActorIdentityTitle,
+    getEffectiveViewerLogin,
+    getUserInitials,
+    getOpenConversationCountWithMe,
+    getManualNotesSummary,
+    getManualNotesFieldSummary,
+    buildPrLastCheckedIndicator,
+    countPendingThreadComments,
+    getViewedFilesState,
+    getViewedFilesSummary,
+    getSelectedPrNumbers,
+    updateSelectedPrNumbers,
+    getLabelName,
+    isInReviewEnabled,
+    isFlaggedEnabled,
+    shouldShowNeedsAttention,
+    toCount,
+    formatIsoDatetime,
+    runSinglePrUpdate,
+    openPrJsonModal,
+    // ---- "More insights" panel (see components/PrInsightsRow.jsx and
+    // components/insights/*) ----
+    parseMarkerState,
+    buildRowActorsMap,
+    formatApproversDisplay,
+    formatRequestedReviewersDisplay,
+    formatAssignedUsersDisplay,
+    normalizeRowMetrics,
+    getBadgeClassForStatus,
+    getBadgeClassForCheck,
+    getBadgeClassForMerge,
+    formatReviewFootprint,
+    formatConversationStatus,
+    formatApprovalRisk,
+    formatCommentUsefulness,
+    buildActivityTimelineSummary,
+    buildFallbackActivityEvents,
+    buildActivityEventKey,
+    normalizePrRootUrl,
+    getAuthorThreadResolutionPolicy,
+    parseSortableTime,
+    readReviewConversationsUiState,
+    writeReviewConversationsUiState,
+    renderMarkdownAsHtml,
+    buildPrPeopleOptions,
+    noteAuthorMatchesSelection,
+    normalizeNotesListForUi,
+    getNotesDifficultyLevelText,
+    formatDurationMinutes,
+    postJson,
+    asArray,
+    autoResizeTextarea,
+    recomputeDirtyPrSectionsFields,
+  });
+
+  // The initial loadStoredData() fetch below often resolves before the
+  // deferred react-app.jsx module (and its full import graph) finishes
+  // loading, so the first renderPrData() call falls back to vanilla
+  // rendering. Re-render once React signals it's actually ready.
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => {
+      if (!window.ReactMountBridge || !window.ReactMountBridge.isMounted()) {
+        renderPrData(latestStoredPayload, latestSelectedRepo);
+      }
+    },
+    { once: true },
+  );
 
   loadStoredData("").catch((error) => {
     setStatusMessage("Failed to load stored data");
@@ -7130,12 +7378,61 @@ const initPage = () => {
     });
   }
 
+  // Start auto-polling intervals (stored for cleanup to prevent memory leaks)
   if (typeof setInterval === "function") {
-    setInterval(pollForDataChanges, AUTO_DATA_POLL_MS);
-    setInterval(pollSchedulerStatus, AUTO_DATA_POLL_MS);
-    setInterval(pollBackfillStatus, AUTO_BACKFILL_POLL_MS);
-    setInterval(renderRequestActivity, 1000);
+    pollDataInterval = setInterval(pollForDataChanges, AUTO_DATA_POLL_MS);
+    pollSchedulerInterval = setInterval(pollSchedulerStatus, AUTO_DATA_POLL_MS);
+    pollBackfillInterval = setInterval(pollBackfillStatus, AUTO_BACKFILL_POLL_MS);
+    activityRenderInterval = setInterval(renderRequestActivity, 1000);
   }
+
+  /**
+   * Cleanup all polling intervals to prevent memory leaks.
+   * Called when tab is hidden or page is unloaded.
+   */
+  const cleanupIntervals = () => {
+    if (pollDataInterval) {
+      clearInterval(pollDataInterval);
+      pollDataInterval = null;
+    }
+    if (pollSchedulerInterval) {
+      clearInterval(pollSchedulerInterval);
+      pollSchedulerInterval = null;
+    }
+    if (pollBackfillInterval) {
+      clearInterval(pollBackfillInterval);
+      pollBackfillInterval = null;
+    }
+    if (activityRenderInterval) {
+      clearInterval(activityRenderInterval);
+      activityRenderInterval = null;
+    }
+  };
+
+  /**
+   * Restart all polling intervals after cleanup.
+   * Called when tab becomes visible again.
+   */
+  const restartIntervals = () => {
+    if (typeof setInterval === "function") {
+      pollDataInterval = setInterval(pollForDataChanges, AUTO_DATA_POLL_MS);
+      pollSchedulerInterval = setInterval(pollSchedulerStatus, AUTO_DATA_POLL_MS);
+      pollBackfillInterval = setInterval(pollBackfillStatus, AUTO_BACKFILL_POLL_MS);
+      activityRenderInterval = setInterval(renderRequestActivity, 1000);
+    }
+  };
+
+  // Pause intervals when tab is hidden, resume when visible (saves CPU and battery)
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      cleanupIntervals();
+    } else {
+      restartIntervals();
+    }
+  });
+
+  // Cleanup intervals when page is unloaded (prevent memory leaks)
+  window.addEventListener("beforeunload", cleanupIntervals);
 };
 
 if (typeof window !== "undefined") {

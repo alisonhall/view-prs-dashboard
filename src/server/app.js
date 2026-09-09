@@ -1349,13 +1349,88 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
   }
 };
 
+// Vite dev middleware (React/JSX transform)
+//
+// index.html loads react-app.jsx as an ES module. Express can't transpile
+// JSX or resolve bare module specifiers on its own, so outside of a
+// production build we embed Vite's dev server in middleware mode and let it
+// handle those requests before falling back to static files / API routes.
+const isProductionEnv = process.env.NODE_ENV === "production";
+// This app is mounted at /view-prs by the root server (index.js), but Vite
+// needs to know that prefix too: it uses `base` to emit browser-facing URLs
+// for its client script, HMR, and resolved imports (/@vite/client, /@fs/...,
+// /components/PrTableApp.jsx, etc). Without it those come back rooted at
+// "/" and 404 once the browser requests them.
+const VIEW_PRS_MOUNT_PATH = "/view-prs";
+let viteDevServerPromise = null;
+
+const getViteDevServer = () => {
+  if (!viteDevServerPromise) {
+    viteDevServerPromise = (async () => {
+      const { createServer: createViteDevServer } = require("vite");
+      const react = require("@vitejs/plugin-react");
+      return createViteDevServer({
+        // Deliberately skip vite.config.js: it configures the *standalone*
+        // dev server (port 3456) with a proxy that forwards /view-prs
+        // requests to this very server on :9000. Merging that in here would
+        // make this embedded instance proxy every request back to itself.
+        configFile: false,
+        root: viewPrsUiDir,
+        base: `${VIEW_PRS_MOUNT_PATH}/`,
+        appType: "custom",
+        plugins: [react()],
+        resolve: {
+          alias: {
+            "@": viewPrsUiDir,
+            "@helpers": path.join(viewPrsUiDir, "helpers"),
+            "@components": path.join(viewPrsUiDir, "components"),
+          },
+        },
+        server: { middlewareMode: true },
+      });
+    })().catch((error) => {
+      viteDevServerPromise = null;
+      throw error;
+    });
+  }
+  return viteDevServerPromise;
+};
+
 // Create and configure the Express app
 const createViewPrsApp = () => {
   const app = express();
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use(express.static(viewPrsUiDir));
+
+  if (!isProductionEnv) {
+    app.use((req, res, next) => {
+      getViteDevServer()
+        .then((vite) => {
+          // Express strips the /view-prs mount prefix from req.url before
+          // handing control to this sub-app's middleware, but Vite (configured
+          // with base "/view-prs/" above) expects to see that prefix so it can
+          // recognize and match its own special paths. Restore it just for
+          // Vite's turn, then put back the stripped url for downstream routes
+          // (the data/mutation API routes registered below all expect it).
+          const strippedUrl = req.url;
+          req.url = VIEW_PRS_MOUNT_PATH + strippedUrl;
+          vite.middlewares(req, res, (err) => {
+            req.url = strippedUrl;
+            next(err);
+          });
+        })
+        .catch((error) => {
+          console.error(
+            "[view-prs] Vite dev middleware unavailable, falling back to static files:",
+            error,
+          );
+          next();
+        });
+    });
+  }
+
+  app.use(express.static(viewPrsUiDir, { index: false }));
 
   // Initialize user-defaults file on startup if it doesn't exist
   initUserDefaultsFile();
@@ -1377,8 +1452,27 @@ const createViewPrsApp = () => {
   });
 
   // Legacy compatibility route for UI files
-  app.get(["/", "/index.html"], (_req, res) => {
-    res.sendFile(viewPrsUiIndexFile);
+  app.get(["/", "/index.html"], async (req, res) => {
+    if (isProductionEnv) {
+      res.sendFile(viewPrsUiIndexFile);
+      return;
+    }
+
+    try {
+      const vite = await getViteDevServer();
+      const rawHtml = fs.readFileSync(viewPrsUiIndexFile, "utf-8");
+      const transformedHtml = await vite.transformIndexHtml(
+        req.originalUrl,
+        rawHtml,
+      );
+      res.status(200).set({ "Content-Type": "text/html" }).end(transformedHtml);
+    } catch (error) {
+      console.error(
+        "[view-prs] Vite HTML transform failed, serving raw index.html:",
+        error,
+      );
+      res.sendFile(viewPrsUiIndexFile);
+    }
   });
 
   registerViewPrsMutationRoutes({

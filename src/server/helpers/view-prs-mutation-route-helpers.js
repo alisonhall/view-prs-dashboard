@@ -309,6 +309,36 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     },
   });
 
+  /**
+   * Build minimal success result for checkbox-only operations (flagged/inReview).
+   * Returns only the changed flag data instead of the entire PR dataset.
+   * This reduces response payload from ~100-500KB to ~1-5KB.
+   *
+   * @param {Object} params - Parameters
+   * @param {string} params.displayCommand - Command that was executed
+   * @param {string} params.stdout - Script stdout
+   * @param {string} params.stderr - Script stderr
+   * @param {Object} params.prData - Full PR data (only flaggedByRepo/inReviewByRepo used)
+   * @returns {Object} Minimal response result
+   */
+  const buildAckMinimalSuccessResult = ({
+    displayCommand,
+    stdout,
+    stderr,
+    prData,
+  }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      command: displayCommand,
+      output: stdout,
+      stderr,
+      // Only return the flag data, not the entire PR dataset
+      flaggedByRepo: prData?.flaggedByRepo || {},
+      inReviewByRepo: prData?.inReviewByRepo || {},
+    },
+  });
+
   const buildAckFailureResult = ({ failure, displayCommand }) => ({
     responseStatusCode: 500,
     responsePayload: {
@@ -562,6 +592,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildAckSuccessActionLogEntry,
     buildAckFailureActionLogEntry,
     buildAckSuccessResult,
+    buildAckMinimalSuccessResult,
     buildAckFailureResult,
     runAckRefreshes,
     buildRequestMoreRequest,

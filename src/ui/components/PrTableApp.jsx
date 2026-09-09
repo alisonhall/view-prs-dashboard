@@ -1,0 +1,342 @@
+/**
+ * PrTableApp - Main React container for PR table
+ * 
+ * Phase 1: Hybrid React Migration
+ * This component replaces the vanilla JS table rendering while keeping
+ * filters and controls in vanilla JS.
+ * 
+ * @module components/PrTableApp
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { PrSection } from './PrSection';
+
+/**
+ * Main PR Table Application Component
+ * 
+ * Renders all PR sections (smart groups + lifecycle sections) with React.
+ * Manages section open/closed state and expandable insights state.
+ * 
+ * @param {Object} props
+ * @param {Object} props.initialPayload - Initial PR data payload
+ * @param {string} props.selectedRepo - Currently selected repository
+ * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
+ * @param {Function} props.onAckAction - Callback for Ack button clicks
+ * @returns {JSX.Element}
+ */
+export function PrTableApp({
+  initialPayload,
+  selectedRepo,
+  onCheckboxChange,
+  onAckAction,
+}) {
+  // State: PR data payload
+  const [payload, setPayload] = useState(initialPayload);
+
+  // The vanilla bridge's update path (react-mount-bridge.js -> react-app.jsx's
+  // mountReactPrTable) re-renders this component with a new `initialPayload`
+  // prop via root.render() rather than calling setPayload directly. useState's
+  // initial value is only read on the very first render, so without this sync
+  // any update delivered that way (e.g. after toggling a Flagged/In Review
+  // checkbox) would silently never reach `payload`.
+  useEffect(() => {
+    if (initialPayload && initialPayload !== payload) {
+      setPayload(initialPayload);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPayload]);
+
+  // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
+  const [openSections, setOpenSections] = useState({});
+  
+  // State: Expanded insights rows (keyed by composite: 'section:prNumber')
+  const [expandedInsights, setExpandedInsights] = useState({});
+
+  // Helper: Find the default repo present in the stored data
+  const getDefaultRepo = (currentPayload) => {
+    const entries = Object.values(currentPayload?.byPrNumber || {});
+    const firstEntry = entries.find((entry) => entry?.repo);
+    return firstEntry ? firstEntry.repo : '';
+  };
+
+  // The single repo this table is currently showing. The vanilla app's
+  // `latestSelectedRepo` global is frequently empty (nothing here ever
+  // requires the "repo" input to be filled in), so actions that need to know
+  // which repo a PR belongs to must use this resolved value instead of
+  // trusting that global.
+  const effectiveRepo = useMemo(
+    () => selectedRepo || getDefaultRepo(payload),
+    [payload, selectedRepo],
+  );
+
+  // Helper: Get checkbox state for a PR
+  const getPrFlags = useMemo(() => {
+    return (prNumber) => {
+      const repo = effectiveRepo;
+      const flaggedSet = payload?.flaggedByRepo?.[repo] || {};
+      const inReviewSet = payload?.inReviewByRepo?.[repo] || {};
+      const ackSet = payload?.ackByRepo?.[repo] || {};
+
+      return {
+        isFlagged: Boolean(flaggedSet[prNumber]),
+        isInReview: Boolean(inReviewSet[prNumber]),
+        isAcknowledged: Boolean(ackSet[prNumber]),
+      };
+    };
+  }, [payload, effectiveRepo]);
+
+  // Helper: Check if PR needs attention
+  const checkNeedsAttention = useMemo(() => {
+    return (entry) => {
+      // Access vanilla JS helper
+      if (typeof window.entryNeedsAttention !== 'function') {
+        return false;
+      }
+      
+      // Get attention config from vanilla JS
+      const attentionConfig = typeof window.getNeedsAttentionConfig === 'function'
+        ? window.getNeedsAttentionConfig()
+        : {};
+      
+      try {
+        return window.entryNeedsAttention(entry, attentionConfig);
+      } catch (e) {
+        console.warn('[PrTableApp] Error checking needs attention:', e);
+        return false;
+      }
+    };
+  }, []);
+
+  // Helper: Check if viewer has interacted with PR
+  const checkUserInteraction = useMemo(() => {
+    return (entry) => {
+      // Only show OPEN PRs that viewer has interacted with
+      const isOpenPr = entry?.section === 'open' || entry?.section === 'draft';
+      if (!isOpenPr) return false;
+
+      const row = entry?.data || {};
+      const viewerLogin = String(row?.viewerLogin || '').toLowerCase();
+      if (!viewerLogin) return false;
+
+      // Check if viewer authored the PR
+      const authorLogin = String(row?.authorLogin || '').toLowerCase();
+      if (authorLogin === viewerLogin) return true;
+
+      // Check if viewer has commented
+      const comments = row?.comments || [];
+      if (comments.some((c) => String(c?.author?.login || '').toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer has reviewed
+      const reviews = row?.reviews || [];
+      if (reviews.some((r) => String(r?.author?.login || '').toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is a requested reviewer
+      const requestedReviewers = row?.requestedReviewers || [];
+      if (requestedReviewers.some((r) => String(r?.login || '').toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      // Check if viewer is assigned
+      const assignees = row?.assignees || [];
+      if (assignees.some((a) => String(a?.login || '').toLowerCase() === viewerLogin)) {
+        return true;
+      }
+
+      return false;
+    };
+  }, []);
+
+  // Build sections from payload using existing vanilla JS helpers
+  const sections = useMemo(() => {
+    if (!payload || !payload.byPrNumber) {
+      return [];
+    }
+
+    // Access existing helpers from global scope (vanilla JS)
+    const helpers = window.ViewPrsSectionConfigHelpers;
+    if (!helpers) {
+      console.warn('[PrTableApp] Section config helpers not available');
+      return [];
+    }
+
+    const { buildPrSectionConfigs } = helpers.createPrSectionConfigHelpers({
+      resolvePrSectionOpenState: () => true, // Use React state instead
+    });
+
+    // Get PR entries from payload.byPrNumber (the real stored-data shape),
+    // each entry already has the { prNumber, repo, section, data } shape
+    // the vanilla renderer expects.
+    const repo = effectiveRepo;
+    const allEntries = Object.values(payload.byPrNumber);
+    const entriesForRepo = allEntries.filter((entry) => entry?.repo === repo);
+
+    // Group by lifecycle status using the section already computed server-side
+    const grouped = {
+      open: entriesForRepo.filter((entry) => entry.section === 'open'),
+      draft: entriesForRepo.filter((entry) => entry.section === 'draft'),
+      merged: entriesForRepo.filter((entry) => entry.section === 'merged'),
+      closed: entriesForRepo.filter((entry) => entry.section === 'closed'),
+    };
+
+    // Build smart groups (if helpers available)
+    let smartGroups = null;
+    if (window.ViewPrsSmartGroupsHelpers) {
+      const allEntries = [...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed];
+      
+      const smartGroupHelpers = window.ViewPrsSmartGroupsHelpers.createPrSmartGroupsHelpers({
+        hasNeedsAttentionFlag: (entry) => {
+          // Use actual needs attention logic
+          // Exclude closed PRs from "Needs Attention" smart group
+          const section = String(entry?.section || '').toLowerCase();
+          if (section === 'closed') {
+            return false;
+          }
+          return checkNeedsAttention(entry);
+        },
+        hasUserInteraction: (entry) => {
+          // Use actual interaction detection
+          return checkUserInteraction(entry);
+        },
+      });
+
+      const configs = smartGroupHelpers.buildSmartGroupConfigs({
+        flaggedByRepo: payload.flaggedByRepo || {},
+        inReviewByRepo: payload.inReviewByRepo || {},
+        repo,
+      });
+
+      smartGroups = smartGroupHelpers.applySmartGroups(allEntries, configs);
+    }
+
+    // Build section configs
+    const sectionConfigs = buildPrSectionConfigs({
+      grouped,
+      smartGroups,
+      prSectionOpenState: openSections,
+      lastCheckedAt: payload.lastCheckedAt || '',
+      actorsMapFromPayload: payload.actorsMap || {},
+    });
+
+    return sectionConfigs.map(config => ({
+      key: config.sectionKey,
+      title: config.title,
+      prs: config.rows || [],
+      isSmartGroup: config.isSmartGroup,
+      lifecycleSection: config.sectionKey,
+      dateHeader: config.dateHeader,
+      defaultOpen: config.isOpen,
+      // Section header counts use the narrower shouldShowNeedsAttention (not
+      // entryNeedsAttention, which also ORs in isInReviewEnabled) to match
+      // vanilla's pr-section-shell.helpers.js exactly.
+      attentionCount: (config.rows || []).filter((entry) => {
+        const row = entry?.data || {};
+        const hasPendingComments = (window.countPendingThreadComments?.(row) || 0) > 0;
+        const attentionConfig = window.getNeedsAttentionConfig ? window.getNeedsAttentionConfig() : {};
+        return window.shouldShowNeedsAttention
+          ? window.shouldShowNeedsAttention({ row, sectionKey: config.sectionKey, hasPendingComments, config: attentionConfig })
+          : false;
+      }).length,
+    }));
+  }, [payload, effectiveRepo, openSections, checkNeedsAttention, checkUserInteraction]);
+
+  // Listen for delta updates from vanilla JS polling
+  useEffect(() => {
+    const handleDeltaUpdate = (event) => {
+      console.log('[PrTableApp] Received delta update', event.detail);
+      setPayload(event.detail.payload);
+    };
+
+    window.addEventListener('pr-delta-update', handleDeltaUpdate);
+    return () => {
+      window.removeEventListener('pr-delta-update', handleDeltaUpdate);
+    };
+  }, []);
+
+  // Expose update function globally for vanilla JS bridge
+  useEffect(() => {
+    window.updateReactPrTable = (newPayload) => {
+      console.log('[PrTableApp] Manual update from vanilla JS', newPayload);
+      setPayload(newPayload);
+    };
+    
+    return () => {
+      delete window.updateReactPrTable;
+    };
+  }, []);
+
+  // Handler: apply a fresh payload returned by a save (e.g. Notes) directly
+  // into React state, without going through the vanilla bridge.
+  const handleDataRefresh = (newPayload) => {
+    setPayload(newPayload);
+  };
+
+  // Handler: Toggle section open/closed
+  const handleToggleSection = (sectionKey) => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
+
+  // Handler: Toggle insights row for a PR
+  const handleToggleInsights = (prNumber, sectionKey) => {
+    const compositeKey = `${sectionKey}:${prNumber}`;
+    setExpandedInsights((prev) => ({
+      ...prev,
+      [compositeKey]: !prev[compositeKey],
+    }));
+  };
+
+  // Loading state: Show message while data loads
+  if (sections.length === 0) {
+    const hasPayload = payload && Object.keys(payload).length > 0;
+    const hasPrs = payload?.byPrNumber && Object.keys(payload.byPrNumber).length > 0;
+    
+    return (
+      <div style={{
+        padding: '40px',
+        textAlign: 'center',
+        margin: '20px 0',
+      }}>
+        <div style={{
+          fontSize: '48px',
+          marginBottom: '20px',
+        }}>
+          ⏳
+        </div>
+        <h3 style={{ margin: '0 0 10px 0', color: '#1f2328' }}>Loading Pull Requests...</h3>
+        <p style={{ fontSize: '14px', color: '#656d76', margin: '0' }}>
+          {!hasPayload && 'Fetching data from server...'}
+          {hasPayload && !hasPrs && 'Processing repository data...'}
+          {hasPrs && 'Building PR sections...'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {sections.map((section) => (
+        <PrSection
+          key={section.key}
+          section={section}
+          repo={effectiveRepo}
+          actorsMap={payload?.actorsMap || {}}
+          isOpen={openSections[section.key] ?? section.defaultOpen}
+          expandedInsights={expandedInsights}
+          onToggleSection={handleToggleSection}
+          onToggleInsights={handleToggleInsights}
+          onCheckboxChange={onCheckboxChange}
+          onAckAction={onAckAction}
+          onDataRefresh={handleDataRefresh}
+          getPrFlags={getPrFlags}
+          checkNeedsAttention={checkNeedsAttention}
+        />
+      ))}
+    </>
+  );
+}

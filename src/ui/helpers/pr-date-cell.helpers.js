@@ -48,12 +48,12 @@
       const dateContent = doc.createElement("div");
       dateContent.className = "date-cell-content";
       
-      // Show PR last activity (commit or merge date)
-      const prLastActivity = row?.mergedAt || row?.sourceUpdatedAt || row?.updatedAt || "-";
+      // Show PR last activity (merge date, closed date, or last commit)
+      const prLastActivity = row?.mergedAt || row?.closedAt || row?.sourceUpdatedAt || row?.updatedAt || "-";
       const prActivityLine = doc.createElement("div");
       prActivityLine.className = "date-cell-pr-activity";
       prActivityLine.textContent = formatIsoDatetimeSafe(prLastActivity);
-      prActivityLine.title = row?.mergedAt ? "Merged at" : "Last commit";
+      prActivityLine.title = row?.mergedAt ? "Merged at" : (row?.closedAt ? "Closed at" : "Last commit");
       dateContent.appendChild(prActivityLine);
       
       // Show viewer's last activity (baseline)

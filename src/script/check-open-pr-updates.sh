@@ -329,10 +329,17 @@ create_state_backup() {
   if [[ "$retention" =~ ^[0-9]+$ ]] && ((retention > 0)); then
     pattern="$STATE_BACKUP_DIR/$(basename "$target_file").${tag}.*.bak"
     if compgen -G "$pattern" >/dev/null; then
+      # Best-effort trim only: with `set -e -o pipefail`, if a concurrent
+      # invocation of this same cleanup deletes the last matching files
+      # between the compgen check above and `ls` running here, the glob
+      # expands to nothing, `ls` fails (no such file), and pipefail would
+      # propagate that failure through the whole pipeline and abort the
+      # entire script — silently dropping whatever ack/flag/clear operation
+      # was in progress. `|| true` keeps that race from being fatal.
       ls -1t $pattern 2>/dev/null | awk -v keep="$retention" 'NR > keep { print }' | while IFS= read -r old_file; do
         [[ -n "$old_file" ]] || continue
         rm -f "$old_file" 2>/dev/null || true
-      done
+      done || true
     fi
   fi
 }
@@ -638,20 +645,28 @@ is_pid_alive() {
 }
 write_lock_metadata() {
   local lock_dir="$1"
-  local info_file now
+  local info_file tmp_file now
   info_file=$(lock_info_file "$lock_dir")
+  tmp_file="${info_file}.tmp.$$"
   now=$(get_epoch_seconds)
 
+  # Write to a temp file and rename it into place rather than writing
+  # info_file directly. `{ ...; } >"$info_file"` truncates info_file to 0
+  # bytes the instant the redirect opens, before any of the printfs run —
+  # under heavy concurrency, a competing process's staleness check can land
+  # in that gap, see an existing-but-empty file, parse no pid from it, and
+  # conclude (wrongly) that this brand-new, live lock is stale and abandoned
+  # by a dead process. Renaming a fully-written temp file into place is
+  # atomic, so readers only ever see "absent" or "complete", never "empty".
   {
     printf 'pid=%s\n' "$$"
     printf 'createdAt=%s\n' "$now"
     printf 'script=%s\n' "$0"
-  } >"$info_file" 2>/dev/null || true
+  } >"$tmp_file" 2>/dev/null && mv -f "$tmp_file" "$info_file" 2>/dev/null || true
 }
-recover_stale_lock_dir() {
+is_lock_dir_currently_stale() {
   local lock_dir="$1"
-  local lock_label="$2"
-  local info_file pid created_at now age stale_after mtime
+  local info_file pid now age stale_after mtime
 
   [[ -d "$lock_dir" ]] || return 1
 
@@ -674,6 +689,25 @@ recover_stale_lock_dir() {
       fi
     fi
   fi
+
+  return 0
+}
+
+recover_stale_lock_dir() {
+  local lock_dir="$1"
+  local lock_label="$2"
+
+  is_lock_dir_currently_stale "$lock_dir" || return 1
+
+  # Re-verify immediately before the destructive step. Under contention,
+  # checking "pid" or "reading the info file" can take long enough (process
+  # scheduling, subprocess forking for `stat`/`kill -0`/`awk`) for a
+  # different waiter to legitimately win the lock in between our verdict and
+  # actually acting on it. Without this, we'd blow away a lock dir another
+  # process just created and is actively holding, letting both believe they
+  # own it — the exact way concurrent ack/flag/clear requests silently lose
+  # each other's writes.
+  is_lock_dir_currently_stale "$lock_dir" || return 1
 
   if rm -rf "$lock_dir" 2>/dev/null; then
     debug_log "Recovered stale ${lock_label} lock: ${lock_dir}"
@@ -3351,6 +3385,10 @@ main() {
     ACK_NUMBERS=$(parse_number_list_or_fail "$ACK_RAW_INPUT" '--ack')
   fi
 
+  if [[ "$ACK_CLEAR_ENABLED" -eq 1 ]]; then
+    ACK_CLEAR_NUMBERS=$(parse_number_list_or_fail "$ACK_CLEAR_RAW_INPUT" '--ack-clear')
+  fi
+
   ensure_ack_store
   load_change_filter_config
   apply_ack_changes
@@ -3375,10 +3413,6 @@ main() {
   if ! gh auth status >/dev/null 2>&1; then
     echo 'Please authenticate first: gh auth login' >&2
     exit 1
-  fi
-
-  if [[ "$ACK_CLEAR_ENABLED" -eq 1 ]]; then
-    ACK_CLEAR_NUMBERS=$(parse_number_list_or_fail "$ACK_CLEAR_RAW_INPUT" '--ack-clear')
   fi
 
   VIEWER_LOGIN=$(gh_with_retry gh api graphql -f query='query { viewer { login } }' --jq '.data.viewer.login')

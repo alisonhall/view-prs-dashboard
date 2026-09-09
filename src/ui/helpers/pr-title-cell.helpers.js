@@ -101,6 +101,7 @@
       toggleButton.textContent = "More insights";
       toggleButton.setAttribute("aria-expanded", "false");
       toggleButton.setAttribute("data-pr-number", String(row?.number || ""));
+      toggleButton.setAttribute("data-section-key", String(sectionContext?.section || ""));
       toggleButton.onclick = () => {
         insightsRow.hidden = !insightsRow.hidden;
         const isExpanded = insightsRow.hidden === false;

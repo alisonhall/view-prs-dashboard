@@ -92,8 +92,8 @@ describe("pr section config helpers", () => {
     const [openConfig, draftConfig, closedConfig, mergedConfig] = configs;
     expect(openConfig.dateResolver({ baseline: "b" })).toBe("b");
     expect(draftConfig.dateResolver({ baseline: "d" })).toBe("d");
-    expect(closedConfig.dateResolver({ closedAt: "c" })).toBe("c");
-    expect(mergedConfig.dateResolver({ mergedAt: "m" })).toBe("m");
+    expect(closedConfig.dateResolver({ baseline: "c" })).toBe("c");
+    expect(mergedConfig.dateResolver({ baseline: "m" })).toBe("m");
   });
 
   describe("smart groups", () => {

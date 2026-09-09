@@ -21,11 +21,11 @@ describe("pr insights state helpers", () => {
           : "",
     });
 
-  test("given expanded insight toggle buttons, when capturing expanded state, then only expanded PR numbers are included", () => {
+  test("given expanded and collapsed insight toggle buttons with section keys, when capturing expanded state, then both expanded and collapsed states are stored per section", () => {
     document.body.innerHTML = `
       <div id="host">
-        <button class="row-insights-toggle" data-pr-number="101" aria-expanded="true"></button>
-        <button class="row-insights-toggle" data-pr-number="102" aria-expanded="false"></button>
+        <button class="row-insights-toggle" data-pr-number="101" data-section-key="open" aria-expanded="true"></button>
+        <button class="row-insights-toggle" data-pr-number="102" data-section-key="draft" aria-expanded="false"></button>
       </div>
     `;
     const host = document.getElementById("host");
@@ -34,8 +34,8 @@ describe("pr insights state helpers", () => {
     const state = captureExpandedInsightsState(host);
 
     expect(state instanceof Map).toBe(true);
-    expect(state.get("101")).toBe(true);
-    expect(state.has("102")).toBe(false);
+    expect(state.get("open:101")).toBe(true);
+    expect(state.get("draft:102")).toBe(false); // Now captures collapsed state too
   });
 
   test("given details panels, when capturing open inner sections state, then open detail keys are stored by PR number", () => {
@@ -60,7 +60,7 @@ describe("pr insights state helpers", () => {
   test("given collapsed toggles and saved expanded state, when restoring expanded state, then matching toggle click handlers are invoked", () => {
     document.body.innerHTML = `
       <div id="host">
-        <button class="row-insights-toggle" data-pr-number="101" aria-expanded="false"></button>
+        <button class="row-insights-toggle" data-pr-number="101" data-section-key="open" aria-expanded="false"></button>
       </div>
     `;
     const host = document.getElementById("host");
@@ -69,7 +69,7 @@ describe("pr insights state helpers", () => {
     button.onclick = onClick;
 
     const { restoreExpandedInsightsState } = createHelpers();
-    restoreExpandedInsightsState(host, new Map([["101", true]]));
+    restoreExpandedInsightsState(host, new Map([["open:101", true]]));
 
     expect(onClick).toHaveBeenCalledTimes(1);
   });
@@ -91,5 +91,107 @@ describe("pr insights state helpers", () => {
 
     expect(details.open).toBe(true);
     expect(details.getAttribute("open")).toBe("");
+  });
+
+  test("given collapsed toggle and saved collapsed state, when restoring expanded state, then toggle is NOT clicked", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button class="row-insights-toggle" data-pr-number="101" data-section-key="open" aria-expanded="false"></button>
+      </div>
+    `;
+    const host = document.getElementById("host");
+    const button = host.querySelector(".row-insights-toggle");
+    const onClick = jest.fn();
+    button.onclick = onClick;
+
+    const { restoreExpandedInsightsState } = createHelpers();
+    restoreExpandedInsightsState(host, new Map([["open:101", false]])); // Saved as closed
+
+    expect(onClick).not.toHaveBeenCalled(); // Should NOT toggle - already matches saved state
+  });
+
+  test("given expanded toggle and saved expanded state, when restoring expanded state, then toggle is NOT clicked", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button class="row-insights-toggle" data-pr-number="101" data-section-key="open" aria-expanded="true"></button>
+      </div>
+    `;
+    const host = document.getElementById("host");
+    const button = host.querySelector(".row-insights-toggle");
+    const onClick = jest.fn();
+    button.onclick = onClick;
+
+    const { restoreExpandedInsightsState } = createHelpers();
+    restoreExpandedInsightsState(host, new Map([["open:101", true]])); // Saved as expanded
+
+    expect(onClick).not.toHaveBeenCalled(); // Should NOT toggle - already matches saved state
+  });
+
+  test("given expanded toggle and saved collapsed state, when restoring expanded state, then toggle IS clicked", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button class="row-insights-toggle" data-pr-number="101" data-section-key="open" aria-expanded="true"></button>
+      </div>
+    `;
+    const host = document.getElementById("host");
+    const button = host.querySelector(".row-insights-toggle");
+    const onClick = jest.fn();
+    button.onclick = onClick;
+
+    const { restoreExpandedInsightsState } = createHelpers();
+    restoreExpandedInsightsState(host, new Map([["open:101", false]])); // Saved as closed
+
+    expect(onClick).toHaveBeenCalledTimes(1); // Should toggle to match saved collapsed state
+  });
+
+  test("given same PR in multiple sections with different states, when capturing, then each section's state is preserved independently", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="needs-attention" aria-expanded="true"></button>
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="in-review" aria-expanded="false"></button>
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="open" aria-expanded="false"></button>
+      </div>
+    `;
+    const host = document.getElementById("host");
+    const { captureExpandedInsightsState } = createHelpers();
+
+    const state = captureExpandedInsightsState(host);
+
+    expect(state instanceof Map).toBe(true);
+    expect(state.get("needs-attention:123")).toBe(true); // Expanded in needs-attention
+    expect(state.get("in-review:123")).toBe(false); // Closed in in-review
+    expect(state.get("open:123")).toBe(false); // Closed in open
+  });
+
+  test("given same PR in multiple sections, when restoring, then each section gets its own saved state", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="needs-attention" aria-expanded="false"></button>
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="in-review" aria-expanded="false"></button>
+        <button class="row-insights-toggle" data-pr-number="123" data-section-key="open" aria-expanded="false"></button>
+      </div>
+    `;
+    const host = document.getElementById("host");
+    const buttons = host.querySelectorAll(".row-insights-toggle");
+    const onClickNeedsAttention = jest.fn();
+    const onClickInReview = jest.fn();
+    const onClickOpen = jest.fn();
+    buttons[0].onclick = onClickNeedsAttention;
+    buttons[1].onclick = onClickInReview;
+    buttons[2].onclick = onClickOpen;
+
+    const { restoreExpandedInsightsState } = createHelpers();
+    restoreExpandedInsightsState(
+      host,
+      new Map([
+        ["needs-attention:123", true], // Should expand
+        ["in-review:123", false], // Should stay collapsed
+        ["open:123", false], // Should stay collapsed
+      ]),
+    );
+
+    expect(onClickNeedsAttention).toHaveBeenCalledTimes(1); // Toggle to expand
+    expect(onClickInReview).not.toHaveBeenCalled(); // Already matches
+    expect(onClickOpen).not.toHaveBeenCalled(); // Already matches
   });
 });
