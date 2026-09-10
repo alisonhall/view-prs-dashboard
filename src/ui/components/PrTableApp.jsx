@@ -53,6 +53,36 @@ export function PrTableApp({
   // State: Expanded insights rows (keyed by composite: 'section:prNumber')
   const [expandedInsights, setExpandedInsights] = useState({});
 
+  // The "Needs Attention rules" controls (NO_ACTIVITY handling mode, pending
+  // comments, merge-only commits, etc.) live in vanilla DOM elements, not
+  // React state/props. `checkNeedsAttention` reads window.getNeedsAttentionConfig()
+  // fresh on every call, so per-row cells (which call it directly during
+  // render) already reflect a changed dropdown immediately — but the
+  // `sections` useMemo below has no dependency that changes when these
+  // controls change, so smart-group membership (which is only recomputed
+  // when the memo re-runs) stays stale until something else invalidates it
+  // (e.g. toggling a section, which changes `openSections`). Bumping this
+  // counter on every relevant control's change event gives the memo a
+  // dependency to react to.
+  const [attentionConfigVersion, setAttentionConfigVersion] = useState(0);
+  useEffect(() => {
+    const attentionControlIds = new Set([
+      'attention-no-activity-mode',
+      'attention-include-pending-comments',
+      'attention-ignore-merge-only-commits',
+      'attention-include-closed-merged',
+      'attention-include-draft-changed',
+      'attention-include-draft-no-activity',
+    ]);
+    const handleChange = (event) => {
+      if (attentionControlIds.has(event.target?.id)) {
+        setAttentionConfigVersion((version) => version + 1);
+      }
+    };
+    document.addEventListener('change', handleChange);
+    return () => document.removeEventListener('change', handleChange);
+  }, []);
+
   // State: PR JSON details modal target ({ entry, pr } | null)
   const [jsonModalTarget, setJsonModalTarget] = useState(null);
 
@@ -195,9 +225,14 @@ export function PrTableApp({
       return [];
     }
 
-    const { buildPrSectionConfigs } = helpers.createPrSectionConfigHelpers({
-      resolvePrSectionOpenState: () => true, // Use React state instead
-    });
+    // Section open/closed state lives in the `openSections` React state
+    // (see PrSection's `isOpen={openSections[section.key] ?? section.defaultOpen}`),
+    // not in a captured DOM snapshot like vanilla's resolvePrSectionOpenState
+    // does — so just fall through to each section's own configured default
+    // (lifecycle sections default closed; "In Review"/"Needs Attention"
+    // smart groups default open — see pr-smart-groups.helpers.js) by not
+    // overriding it at all.
+    const { buildPrSectionConfigs } = helpers.createPrSectionConfigHelpers();
 
     // Get PR entries from payload.byPrNumber (the real stored-data shape),
     // each entry already has the { prNumber, repo, section, data } shape
@@ -206,19 +241,30 @@ export function PrTableApp({
     const allEntries = Object.values(payload.byPrNumber);
     const entriesForRepo = allEntries.filter((entry) => entry?.repo === repo);
 
-    // Group by lifecycle status using the section already computed server-side
+    // Group by lifecycle status using the section already computed
+    // server-side, then sort exactly as vanilla's buildGroupedPrSections
+    // does: open/draft newest-PR-number-first, closed/merged
+    // newest-closed/merged-date-first.
+    const sortRowsByPrNumberDesc = window.sortRowsByPrNumberDesc || ((rows) => rows);
+    const sortRowsByDateFieldDesc = window.sortRowsByDateFieldDesc || ((rows) => rows);
     const grouped = {
-      open: entriesForRepo.filter((entry) => entry.section === 'open'),
-      draft: entriesForRepo.filter((entry) => entry.section === 'draft'),
-      merged: entriesForRepo.filter((entry) => entry.section === 'merged'),
-      closed: entriesForRepo.filter((entry) => entry.section === 'closed'),
+      open: sortRowsByPrNumberDesc(entriesForRepo.filter((entry) => entry.section === 'open')),
+      draft: sortRowsByPrNumberDesc(entriesForRepo.filter((entry) => entry.section === 'draft')),
+      merged: sortRowsByDateFieldDesc(entriesForRepo.filter((entry) => entry.section === 'merged'), 'mergedAt'),
+      closed: sortRowsByDateFieldDesc(entriesForRepo.filter((entry) => entry.section === 'closed'), 'closedAt'),
     };
 
     // Build smart groups (if helpers available)
     let smartGroups = null;
     if (window.ViewPrsSmartGroupsHelpers) {
-      const allEntries = [...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed];
-      
+      // Smart groups mix rows from every lifecycle section, so they use
+      // vanilla's own cross-section ordering (normalizeRows: rowOrder
+      // ascending, tie-broken by PR number descending) rather than any
+      // single lifecycle section's sort — matching how vanilla builds
+      // "allStoredRows" for its smart groups.
+      const normalizeRows = window.normalizeRows || ((rows) => rows);
+      const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
+
       const smartGroupHelpers = window.ViewPrsSmartGroupsHelpers.createPrSmartGroupsHelpers({
         hasNeedsAttentionFlag: (entry) => {
           // Use actual needs attention logic
@@ -241,7 +287,7 @@ export function PrTableApp({
         repo,
       });
 
-      smartGroups = smartGroupHelpers.applySmartGroups(allEntries, configs);
+      smartGroups = smartGroupHelpers.applySmartGroups(allEntriesForSmartGroups, configs);
     }
 
     // Build section configs
@@ -273,7 +319,7 @@ export function PrTableApp({
           : false;
       }).length,
     }));
-  }, [payload, effectiveRepo, openSections, checkNeedsAttention, checkUserInteraction]);
+  }, [payload, effectiveRepo, openSections, checkNeedsAttention, checkUserInteraction, attentionConfigVersion]);
 
   // Listen for delta updates from vanilla JS polling
   useEffect(() => {

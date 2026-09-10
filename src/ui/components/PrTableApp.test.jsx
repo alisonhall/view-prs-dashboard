@@ -30,29 +30,39 @@ function installSectionHelpers() {
   // grouped.<key> array, in a fixed order, mirroring the shape
   // pr-section-config.helpers.js actually returns.
   window.ViewPrsSectionConfigHelpers = {
-    createPrSectionConfigHelpers: () => ({
-      buildPrSectionConfigs: ({ grouped, smartGroups }) => {
-        const lifecycleConfigs = ['open', 'draft', 'merged', 'closed'].map((key) => ({
-          sectionKey: key,
-          title: key,
-          rows: grouped[key] || [],
-          isSmartGroup: false,
-          dateHeader: 'LAST ACTIVITY',
-          isOpen: false,
-        }));
-        const smartGroupConfigs = smartGroups
-          ? Object.entries(smartGroups).map(([key, group]) => ({
-              sectionKey: key,
-              title: group.title,
-              rows: group.rows || [],
-              isSmartGroup: true,
-              dateHeader: 'LAST ACTIVITY',
-              isOpen: false,
-            }))
-          : [];
-        return [...smartGroupConfigs, ...lifecycleConfigs];
-      },
-    }),
+    // Mirrors pr-section-config.helpers.js's real safe-default behavior: if
+    // the caller doesn't override resolvePrSectionOpenState, each section
+    // falls back to its own configured default (false for lifecycle
+    // sections, whatever the smart group specifies for its own).
+    createPrSectionConfigHelpers: ({ resolvePrSectionOpenState } = {}) => {
+      const resolve =
+        typeof resolvePrSectionOpenState === 'function'
+          ? resolvePrSectionOpenState
+          : (_openState, _sectionKey, fallbackOpen) => Boolean(fallbackOpen);
+      return {
+        buildPrSectionConfigs: ({ grouped, smartGroups }) => {
+          const lifecycleConfigs = ['open', 'draft', 'merged', 'closed'].map((key) => ({
+            sectionKey: key,
+            title: key,
+            rows: grouped[key] || [],
+            isSmartGroup: false,
+            dateHeader: 'LAST ACTIVITY',
+            isOpen: resolve(undefined, key, false),
+          }));
+          const smartGroupConfigs = smartGroups
+            ? Object.entries(smartGroups).map(([key, group]) => ({
+                sectionKey: key,
+                title: group.title,
+                rows: group.rows || [],
+                isSmartGroup: true,
+                dateHeader: 'LAST ACTIVITY',
+                isOpen: resolve(undefined, key, group.defaultOpen),
+              }))
+            : [];
+          return [...smartGroupConfigs, ...lifecycleConfigs];
+        },
+      };
+    },
   };
 }
 
@@ -75,10 +85,41 @@ function clearWindowHelpers() {
   delete window.countPendingThreadComments;
   delete window.shouldShowNeedsAttention;
   delete window.updateReactPrTable;
+  delete window.sortRowsByPrNumberDesc;
+  delete window.sortRowsByDateFieldDesc;
+  delete window.normalizeRows;
 }
 
-function makeEntry({ prNumber, repo, section }) {
-  return { prNumber, repo, section, data: { number: prNumber, viewerLogin: '' } };
+// Real equivalents of index.page.js's row-sorting functions (mirrored here
+// rather than requiring the whole vanilla script), so tests can verify
+// PrTableApp actually wires these in rather than leaving rows unsorted.
+function installSortHelpers() {
+  window.sortRowsByPrNumberDesc = (rows) =>
+    rows.sort((a, b) => Number(a?.data?.number || a?.prNumber || 0) < Number(b?.data?.number || b?.prNumber || 0) ? 1 : -1);
+  window.sortRowsByDateFieldDesc = (rows, fieldName) =>
+    rows.sort((a, b) => {
+      const dateA = Date.parse(String(a?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
+      const dateB = Date.parse(String(b?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
+      if (dateA !== dateB) return dateB - dateA;
+      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
+    });
+  window.normalizeRows = (rows) =>
+    rows.sort((a, b) => {
+      const orderA = Number.isFinite(Number(a?.rowOrder)) ? Number(a.rowOrder) : Number.MAX_SAFE_INTEGER;
+      const orderB = Number.isFinite(Number(b?.rowOrder)) ? Number(b.rowOrder) : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
+    });
+}
+
+function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
+  return {
+    prNumber,
+    repo,
+    section,
+    rowOrder,
+    data: { number: prNumber, viewerLogin: '', mergedAt, closedAt },
+  };
 }
 
 describe('PrTableApp', () => {
@@ -250,6 +291,173 @@ describe('PrTableApp', () => {
       openSectionBefore.onToggleSection('open');
     });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
+  });
+
+  test('given a fresh load with no prior toggles, when sections are built, then lifecycle sections default closed and a smart group configured with defaultOpen:true (e.g. "Needs Attention") defaults open', () => {
+    // Regression test: PrTableApp used to pass `resolvePrSectionOpenState: () => true`
+    // to createPrSectionConfigHelpers, forcing every section open on every
+    // load/refresh regardless of its own configured default. It should now
+    // let each section fall through to its own default (lifecycle sections
+    // closed; "In Review"/"Needs Attention" smart groups open).
+    window.ViewPrsSmartGroupsHelpers = {
+      createPrSmartGroupsHelpers: () => ({
+        buildSmartGroupConfigs: () => ({
+          needsAttention: { title: 'Needs Attention', defaultOpen: true },
+        }),
+        applySmartGroups: () => ({
+          needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: [] },
+        }),
+      }),
+    };
+
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+    expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(false);
+    expect(capturedSectionProps.find((p) => p.section.key === 'draft').isOpen).toBe(false);
+    expect(capturedSectionProps.find((p) => p.section.key === 'merged').isOpen).toBe(false);
+    expect(capturedSectionProps.find((p) => p.section.key === 'closed').isOpen).toBe(false);
+    expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(true);
+  });
+
+  describe('attention config live-update', () => {
+    test('given the NO_ACTIVITY handling select (or any other "Needs Attention rules" control) changes, when no section is toggled, then the Needs Attention smart group\'s membership updates immediately', () => {
+      // Regression test: these controls live in vanilla DOM, not React
+      // state, so the `sections` useMemo previously had no dependency that
+      // changed when they did — smart-group membership only refreshed once
+      // something else (e.g. toggling a section, which changes
+      // `openSections`) happened to invalidate the memo, even though each
+      // row's own attention-cell icon (computed fresh on every PrTable
+      // render, not memoized) already reflected the change immediately.
+      let attentionFlag = false;
+      window.entryNeedsAttention = () => attentionFlag;
+      window.getNeedsAttentionConfig = () => ({});
+      window.ViewPrsSmartGroupsHelpers = {
+        createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
+          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+          applySmartGroups: (allEntries) => ({
+            needsAttention: {
+              title: 'Needs Attention',
+              defaultOpen: true,
+              rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+            },
+          }),
+        }),
+      };
+
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+      expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
+
+      const select = document.createElement('select');
+      select.id = 'attention-no-activity-mode';
+      document.body.appendChild(select);
+
+      attentionFlag = true;
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(1);
+
+      document.body.removeChild(select);
+    });
+
+    test('given a change event on an unrelated control, when no section is toggled, then the Needs Attention smart group does not needlessly recompute', () => {
+      let attentionFlag = false;
+      window.entryNeedsAttention = () => attentionFlag;
+      window.getNeedsAttentionConfig = () => ({});
+      window.ViewPrsSmartGroupsHelpers = {
+        createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
+          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+          applySmartGroups: (allEntries) => ({
+            needsAttention: {
+              title: 'Needs Attention',
+              defaultOpen: true,
+              rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+            },
+          }),
+        }),
+      };
+
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+      const unrelated = document.createElement('input');
+      unrelated.id = 'some-unrelated-control';
+      document.body.appendChild(unrelated);
+
+      attentionFlag = true;
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        unrelated.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      // No re-render was triggered by this unrelated control, so nothing was
+      // re-captured — the memoized section list (built while attentionFlag
+      // was still false) is unaffected.
+      expect(capturedSectionProps).toHaveLength(0);
+
+      document.body.removeChild(unrelated);
+    });
+  });
+
+  describe('row sorting', () => {
+    beforeEach(installSortHelpers);
+
+    test('given open PRs in arbitrary order, when rendering, then the Open section lists them newest-PR-number-first', () => {
+      const payload = {
+        byPrNumber: {
+          10: makeEntry({ prNumber: '10', repo: 'owner/repo', section: 'open' }),
+          30: makeEntry({ prNumber: '30', repo: 'owner/repo', section: 'open' }),
+          20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
+      expect(openSection.section.prs.map((entry) => entry.prNumber)).toEqual(['30', '20', '10']);
+    });
+
+    test('given merged PRs with different mergedAt dates, when rendering, then the Merged section lists them newest-merged-first', () => {
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'merged', mergedAt: '2026-01-01T00:00:00Z' }),
+          2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'merged', mergedAt: '2026-03-01T00:00:00Z' }),
+          3: makeEntry({ prNumber: '3', repo: 'owner/repo', section: 'merged', mergedAt: '2026-02-01T00:00:00Z' }),
+        },
+      };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      const mergedSection = capturedSectionProps.find((p) => p.section.key === 'merged');
+      expect(mergedSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '3', '1']);
+    });
+
+    test('given rows spanning multiple lifecycle sections with different rowOrder values, when building a smart group, then its rows follow rowOrder ascending (vanilla\'s cross-section ordering) rather than lifecycle-then-PR-number order', () => {
+      window.ViewPrsSmartGroupsHelpers = {
+        createPrSmartGroupsHelpers: () => ({
+          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+          applySmartGroups: (allEntries) => ({
+            needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: allEntries },
+          }),
+        }),
+      };
+
+      const payload = {
+        byPrNumber: {
+          // If smart groups merely concatenated grouped.open + grouped.merged
+          // (each independently sorted), PR 1 (open, rowOrder 3) would come
+          // before PR 2 (merged, rowOrder 1) since "open" rows are listed
+          // first. normalizeRows' rowOrder-ascending sort should instead put
+          // PR 2 first.
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open', rowOrder: 3 }),
+          2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'merged', rowOrder: 1, mergedAt: '2026-01-01T00:00:00Z' }),
+        },
+      };
+      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      const needsAttentionSection = capturedSectionProps.find((p) => p.section.key === 'needsAttention');
+      expect(needsAttentionSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '1']);
+    });
   });
 
   test('given onToggleInsights is called for a PR, when toggled twice, then expandedInsights returns to its original state', () => {

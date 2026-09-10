@@ -7087,6 +7087,10 @@ const initPage = () => {
     safeJsonStringify,
     getPerPrUserStateFromPayload,
     DEFAULT_REPO,
+    // ---- Row sorting (see components/PrTableApp.jsx) ----
+    normalizeRows,
+    sortRowsByPrNumberDesc,
+    sortRowsByDateFieldDesc,
   });
 
   // The initial loadStoredData() fetch below often resolves before the

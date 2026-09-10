@@ -68,21 +68,27 @@
       const viewerLogin = getEffectiveViewerLogin(row);
       if (!viewerLogin) return false;
 
-      const isAssignedToMe = collectAssignedUsers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-      if (isAssignedToMe) return true;
+      const isAssignedToMe = () =>
+        collectAssignedUsers(row).some(
+          (person) =>
+            String(person?.login || "")
+              .trim()
+              .toLowerCase() === viewerLogin,
+        );
+      const isReviewerMe = () =>
+        collectRequestedReviewers(row).some(
+          (person) =>
+            String(person?.login || "")
+              .trim()
+              .toLowerCase() === viewerLogin,
+        );
 
-      const isReviewerMe = collectRequestedReviewers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-      return isReviewerMe;
+      if (mode === "assigned-only") return isAssignedToMe();
+      if (mode === "reviewer-only") return isReviewerMe();
+
+      // "mine-only" (and any other/legacy value): either assigned to me or
+      // I'm a requested reviewer.
+      return isAssignedToMe() || isReviewerMe();
     };
 
     const shouldShowNeedsAttention = ({
