@@ -6243,10 +6243,18 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
 
   console.log('[renderPrData] Using React rendering');
 
-  // The React table renders itself, but the filter dropdowns (label/author/
-  // assigned/approver/thread-resolution/change-filter actor lists) are
-  // still vanilla-rendered DOM populated as a side effect of the pipeline
-  // React bypasses here — re-run that side effect explicitly.
+  // The React table renders the PR rows/sections itself, but everything
+  // else the vanilla pipeline normally does as a side effect of building
+  // that table — the data-meta summary line, filter chips, export field
+  // catalog, author insights panel, stats view, and the filter dropdown
+  // options (label/author/assigned/approver/thread-resolution/change-filter
+  // actor lists) — still needs to run. Run the full vanilla pipeline with
+  // skipTableRender so it performs those side effects without building or
+  // appending its own <table> markup into #pr-sections (which React owns).
+  prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
+    ...options,
+    skipTableRender: true,
+  });
   populateFilterDropdownsForCurrentPayload(
     latestStoredPayload || payload,
     latestSelectedRepo || selectedRepo,

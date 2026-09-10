@@ -69,6 +69,11 @@
      * @param {string} [selectedRepo=""] - Selected repository
      * @param {Object} [options={}] - Rendering options
      * @param {boolean} [options.useLastRunScope] - Use last run scope
+     * @param {boolean} [options.skipTableRender] - Skip building/appending
+     *   the vanilla PR table DOM into sectionsHost (used when the React
+     *   table owns rendering); the surrounding side effects (data-meta
+     *   summary, filter chips, export field catalog, author insights,
+     *   stats view) still run either way.
      */
     function renderPrData(payload, selectedRepo = "", options = {}) {
       // Get current state
@@ -121,6 +126,7 @@
         latestSelectedRepo,
         insightsViewState: runContext.insightsViewState,
         latestSchedulerState,
+        skipTableRender: Boolean(options.skipTableRender),
       });
 
       // Update state from render pipeline

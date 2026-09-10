@@ -1,6 +1,7 @@
 <html lang="en">
 
 <head>
+    <meta charset="utf-8" />
     <title>View PR Updates</title>
     <link rel="stylesheet" href="./index.css" />
 </head>
@@ -513,7 +514,12 @@
         </section>
     </div>
 
-    <script src="./node_modules/marked/lib/marked.umd.js"></script>
+    <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
+         dev server and the standalone Express server serve static files
+         rooted at src/ui, so a path into the repo-root node_modules/ 404s
+         under either. Re-copy from node_modules/marked/lib/marked.umd.js
+         when bumping the "marked" dependency version. -->
+    <script src="./vendor/marked.umd.js"></script>
     <script src="./helpers/pr-json-modal.helpers.js"></script>
     <script src="./helpers/pr-notes.helpers.js"></script>
     <script src="./helpers/pr-data-polling.helpers.js"></script>

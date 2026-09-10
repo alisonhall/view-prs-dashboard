@@ -49,6 +49,7 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => {
       const nextLastSuccessfulRenderedCheckAt =
         typeof normalizedRunStamp === "string" && normalizedRunStamp
@@ -93,6 +94,7 @@
         latestSelectedRepo,
         insightsViewState,
         latestSchedulerState,
+        skipTableRender,
       });
 
       return {

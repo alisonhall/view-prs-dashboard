@@ -89,6 +89,7 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => {
       const actorsMap = payload?.actorsMap || {};
       if (meta && typeof meta === "object") {
@@ -104,50 +105,59 @@
       renderAuthorInsightsSafe(allStoredRows, actorsMap);
       renderStatsViewSafe(allStoredRows, actorsMap);
 
-      clearElementContentsSafe(sectionsHost);
+      // When the React table is handling rendering, it owns sectionsHost
+      // (smart groups, lifecycle sections, progress indicators, insights
+      // expand/collapse state) entirely - the vanilla DOM-building steps
+      // below would just be immediately clobbered by (or fight with)
+      // React's own render, so skip them and only apply the side effects
+      // above, which both rendering paths need regardless of which one
+      // owns the table markup.
+      if (!skipTableRender) {
+        clearElementContentsSafe(sectionsHost);
 
-      // Build smart groups from the currently filtered rows (not
-      // allStoredRows) so smart groups honor the same scope/local filters
-      // (PR number, labels, authors, etc.) as the lifecycle sections below
-      // them, instead of always showing every stored PR regardless of the
-      // active filter.
-      const smartGroupConfigs = buildSmartGroupConfigsSafe({
-        flaggedByRepo: payload?.flaggedByRepo || {},
-        inReviewByRepo: payload?.inReviewByRepo || {},
-        repo: latestSelectedRepo || "",
-      });
+        // Build smart groups from the currently filtered rows (not
+        // allStoredRows) so smart groups honor the same scope/local filters
+        // (PR number, labels, authors, etc.) as the lifecycle sections below
+        // them, instead of always showing every stored PR regardless of the
+        // active filter.
+        const smartGroupConfigs = buildSmartGroupConfigsSafe({
+          flaggedByRepo: payload?.flaggedByRepo || {},
+          inReviewByRepo: payload?.inReviewByRepo || {},
+          repo: latestSelectedRepo || "",
+        });
 
-      const smartGroups = applySmartGroupsSafe(
-        Array.isArray(filteredRows) ? filteredRows : allStoredRows,
-        smartGroupConfigs,
-      );
+        const smartGroups = applySmartGroupsSafe(
+          Array.isArray(filteredRows) ? filteredRows : allStoredRows,
+          smartGroupConfigs,
+        );
 
-      appendPrSectionsSafe(
-        sectionsHost,
-        buildPrSectionConfigsSafe({
-          grouped,
-          smartGroups,
-          prSectionOpenState,
-          lastCheckedAt: lastSuccessfulRenderedCheckAt,
-          actorsMapFromPayload: actorsMap,
-        }),
-      );
+        appendPrSectionsSafe(
+          sectionsHost,
+          buildPrSectionConfigsSafe({
+            grouped,
+            smartGroups,
+            prSectionOpenState,
+            lastCheckedAt: lastSuccessfulRenderedCheckAt,
+            actorsMapFromPayload: actorsMap,
+          }),
+        );
 
-      appendMergedRequestMoreActionSafe(
-        sectionsHost,
-        buildMergedRequestMoreActionOptionsSafe({
-          selectedScope,
-          repoFilter,
-          lastRunRepo: payload?.lastRun?.repo || "",
-          latestSelectedRepo,
-        }),
-      );
+        appendMergedRequestMoreActionSafe(
+          sectionsHost,
+          buildMergedRequestMoreActionOptionsSafe({
+            selectedScope,
+            repoFilter,
+            lastRunRepo: payload?.lastRun?.repo || "",
+            latestSelectedRepo,
+          }),
+        );
 
-      restoreInsightsViewStateSafe(sectionsHost, insightsViewState);
-      applyActivePrProgressIndicatorsSafe(
-        latestSchedulerState?.activePrNumbers || [],
-      );
-      recomputeDirtyPrSectionsFieldsSafe();
+        restoreInsightsViewStateSafe(sectionsHost, insightsViewState);
+        applyActivePrProgressIndicatorsSafe(
+          latestSchedulerState?.activePrNumbers || [],
+        );
+        recomputeDirtyPrSectionsFieldsSafe();
+      }
 
       return {
         pendingAutoRenderPayload: null,

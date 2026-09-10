@@ -44,6 +44,7 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => {
       const renderApplyInputs = deriveRenderApplyInputsSafe({
         payload,
@@ -61,6 +62,7 @@
         latestSelectedRepo,
         insightsViewState,
         latestSchedulerState,
+        skipTableRender,
       });
       const nextRenderState = applyRenderResultsSafe(renderApplyInputs);
 

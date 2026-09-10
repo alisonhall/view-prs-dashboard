@@ -23,10 +23,12 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => ({
       payload: payload && typeof payload === "object" ? payload : null,
       allStoredRows: Array.isArray(allStoredRows) ? allStoredRows : [],
       filteredRows: Array.isArray(filteredRows) ? filteredRows : [],
+      skipTableRender: Boolean(skipTableRender),
       sectionsHost: sectionsHost || null,
       meta: meta && typeof meta === "object" ? meta : null,
       appliedSummaryText:
