@@ -87,7 +87,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     }
   }
 
-  // Other paths (not overridable)
+  // Other paths (fixed relative to viewPrsDir - these locate the app's own
+  // source/scripts, not mutable state, so there's no need to override them)
   const viewPrsUiDir = path.join(viewPrsDir, "src/ui");
   const viewPrsUiIndexFile = path.join(viewPrsDir, "src/ui/index.html");
   const viewPrsRunScriptRelativePath = "src/script/check-open-pr-updates.sh";
@@ -100,9 +101,15 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsDir,
     viewPrsBackfillManagerRelativePath,
   );
-  const viewPrsBackfillPidFile = path.join(viewPrsDir, "data/backfill-missing.pid");
-  const viewPrsBackfillLogFile = path.join(viewPrsDir, "data/backfill-missing.log");
-  const viewPrsUserDefaultsFile = path.join(viewPrsDir, "data/user-defaults.json");
+  const viewPrsBackfillPidFile =
+    env.VIEW_PRS_BACKFILL_PID_FILE ||
+    path.join(viewPrsDir, "data/backfill-missing.pid");
+  const viewPrsBackfillLogFile =
+    env.VIEW_PRS_BACKFILL_LOG_FILE ||
+    path.join(viewPrsDir, "data/backfill-missing.log");
+  const viewPrsUserDefaultsFile =
+    env.VIEW_PRS_USER_DEFAULTS_FILE ||
+    path.join(viewPrsDir, "data/user-defaults.json");
 
   // Timeouts and intervals (with env overrides and validation)
   const viewPrsAutoIntervalMs = 15 * 60 * 1000;

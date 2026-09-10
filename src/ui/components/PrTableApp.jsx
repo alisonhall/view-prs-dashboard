@@ -302,7 +302,12 @@ export function PrTableApp({
     return sectionConfigs.map(config => ({
       key: config.sectionKey,
       title: config.title,
-      prs: config.rows || [],
+      // `renderRows` (deduplicated: excludes rows already shown in a smart
+      // group above) is what's actually rendered as PR rows; `rows` (the
+      // full set) only feeds attentionCount below. Falls back to `rows` for
+      // smart-group configs, which don't set renderRows since they're never
+      // deduplicated against anything.
+      prs: config.renderRows || config.rows || [],
       isSmartGroup: config.isSmartGroup,
       lifecycleSection: config.sectionKey,
       dateHeader: config.dateHeader,

@@ -1,0 +1,15 @@
+{
+  "notesByPrNumber": {},
+  "ackByRepo": {},
+  "reverifyByRepo": {},
+  "flaggedByRepo": {
+    "octocat/hello-world": {
+      "2": true
+    }
+  },
+  "inReviewByRepo": {
+    "octocat/hello-world": {
+      "1": true
+    }
+  }
+}

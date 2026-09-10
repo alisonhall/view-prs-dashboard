@@ -8,6 +8,10 @@ verify-not-filled-status/source-data
 view-prs/data
 data
 coverage
+test-results
+playwright-report
+blob-report
+playwright/.cache
 !backup-code/*
 backup-code/.DS_Store
 .slingshot/code-tagging
