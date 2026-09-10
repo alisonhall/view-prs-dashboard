@@ -2079,6 +2079,18 @@ const { deriveViewerFilterSetup } =
     populateFilterOptions: (...args) => populateFilterOptions(...args),
   });
 
+const prReactFilterDropdownsHelperFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./helpers/pr-react-filter-dropdowns.helpers.js")
+    : globalThis.ViewPrsReactFilterDropdownsHelpers;
+
+const { populateFilterDropdownsForCurrentPayload } =
+  prReactFilterDropdownsHelperFactory.createPrReactFilterDropdownsHelpers({
+    getOptionalElementById: (...args) => getOptionalElementById(...args),
+    deriveRunPrDataContext: (...args) => deriveRunPrDataContext(...args),
+    deriveViewerFilterSetup: (...args) => deriveViewerFilterSetup(...args),
+  });
+
 const prSelectedFiltersHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-selected-filters.helpers.js")
@@ -6230,6 +6242,15 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // ========================================
 
   console.log('[renderPrData] Using React rendering');
+
+  // The React table renders itself, but the filter dropdowns (label/author/
+  // assigned/approver/thread-resolution/change-filter actor lists) are
+  // still vanilla-rendered DOM populated as a side effect of the pipeline
+  // React bypasses here — re-run that side effect explicitly.
+  populateFilterDropdownsForCurrentPayload(
+    latestStoredPayload || payload,
+    latestSelectedRepo || selectedRepo,
+  );
 
   // Check if already mounted
   if (window.ReactMountBridge.isMounted()) {
