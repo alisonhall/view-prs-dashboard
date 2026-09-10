@@ -156,14 +156,14 @@ function createSchedulerHelpers({
         entries = [];
       }
 
-      entries.push({
+      entries.unshift({
         ...entry,
         timestamp: entry.timestamp || new Date().toISOString(),
       });
 
-      // Keep only the most recent entries
+      // Keep only the most recent entries (newest stays at the front)
       if (entries.length > ACTION_LOG_MAX_ENTRIES) {
-        entries = entries.slice(-ACTION_LOG_MAX_ENTRIES);
+        entries = entries.slice(0, ACTION_LOG_MAX_ENTRIES);
       }
 
       fs.writeFileSync(

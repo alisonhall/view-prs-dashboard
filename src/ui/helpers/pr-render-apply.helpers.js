@@ -76,6 +76,7 @@
     const applyRenderResults = ({
       payload,
       allStoredRows,
+      filteredRows,
       sectionsHost,
       meta,
       appliedSummaryText,
@@ -105,14 +106,21 @@
 
       clearElementContentsSafe(sectionsHost);
 
-      // Build smart groups from all rows
+      // Build smart groups from the currently filtered rows (not
+      // allStoredRows) so smart groups honor the same scope/local filters
+      // (PR number, labels, authors, etc.) as the lifecycle sections below
+      // them, instead of always showing every stored PR regardless of the
+      // active filter.
       const smartGroupConfigs = buildSmartGroupConfigsSafe({
         flaggedByRepo: payload?.flaggedByRepo || {},
         inReviewByRepo: payload?.inReviewByRepo || {},
         repo: latestSelectedRepo || "",
       });
 
-      const smartGroups = applySmartGroupsSafe(allStoredRows, smartGroupConfigs);
+      const smartGroups = applySmartGroupsSafe(
+        Array.isArray(filteredRows) ? filteredRows : allStoredRows,
+        smartGroupConfigs,
+      );
 
       appendPrSectionsSafe(
         sectionsHost,

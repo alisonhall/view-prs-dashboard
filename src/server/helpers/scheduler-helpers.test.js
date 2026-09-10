@@ -249,8 +249,8 @@ describe("Scheduler Helpers", () => {
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       const written = JSON.parse(writeCall[1]);
       expect(written).toHaveLength(2);
-      expect(written[1].action).toBe("new");
-      expect(written[1].timestamp).toBeDefined();
+      expect(written[0].action).toBe("new");
+      expect(written[0].timestamp).toBeDefined();
     });
 
     test("When log exceeds max entries, Then truncates", () => {
@@ -269,8 +269,8 @@ describe("Scheduler Helpers", () => {
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       const written = JSON.parse(writeCall[1]);
       expect(written.length).toBe(500);
-      expect(written[0].action).toBe("old-1"); // First entry removed
-      expect(written[499].action).toBe("new");
+      expect(written[0].action).toBe("new"); // Newest entries stay at the front
+      expect(written[499].action).toBe("old-498"); // Oldest entry (old-499) dropped
     });
   });
 

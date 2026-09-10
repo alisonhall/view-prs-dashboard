@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { screen, waitFor } = require("@testing-library/dom");
+const { screen, waitFor, within } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 
@@ -229,8 +229,111 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
+  // index.page.js starts several real setInterval-based auto-refresh
+  // pollers as soon as it's required, and only clears them on a real
+  // 'visibilitychange'/'beforeunload' event, which jsdom never fires
+  // between tests. It also schedules one-shot setTimeout-based debounce
+  // timers (e.g. applyFiltersFromCache's filter-change debounce) that can
+  // still be pending when a test ends. Since initTestPage() does
+  // jest.resetModules() + require("../index.page.js") before every test,
+  // each test leaked its own live intervals/timeouts into the ones from
+  // every test run before it. A stale timer from an earlier test firing
+  // mid-test calls back into that earlier test's now-orphaned closure
+  // (e.g. renderPrData with that test's PR data) and overwrites the
+  // *current* test's DOM (document is shared across the whole file) -
+  // this is what caused several tests to fail only when run as part of
+  // the full file, and pass in isolation. Track every interval/timeout
+  // created during a test and clear it afterward so no test leaks live
+  // timers into the next one.
+  // The same require-on-every-test pattern also means every test's
+  // instance of index.page.js calls window/document.addEventListener
+  // ("visibilitychange", "beforeunload", "unhandledrejection", "error",
+  // etc.) again, and those accumulate on the single jsdom window/document
+  // shared by the whole file (nothing ever calls removeEventListener
+  // between tests). By the end of the file, dozens of stale listeners
+  // from earlier tests - each closing over that earlier test's now-gone
+  // module state - were still live and could react to events raised
+  // during a later, unrelated test. Track listeners added to window/
+  // document during a test and remove them afterward, same as the
+  // interval tracking above.
+  const realWindowAddEventListener = window.addEventListener.bind(window);
+  const realWindowRemoveEventListener = window.removeEventListener.bind(window);
+  const realDocumentAddEventListener = document.addEventListener.bind(document);
+  const realDocumentRemoveEventListener =
+    document.removeEventListener.bind(document);
+  let trackedListeners = [];
+
+  const realSetInterval = global.setInterval;
+  const realClearInterval = global.clearInterval;
+  const realSetTimeout = global.setTimeout;
+  const realClearTimeout = global.clearTimeout;
+  let trackedIntervalIds = [];
+  let trackedTimeoutIds = [];
+
   beforeEach(() => {
+    trackedIntervalIds = [];
+    const trackingSetInterval = (...args) => {
+      const id = realSetInterval(...args);
+      trackedIntervalIds.push(id);
+      return id;
+    };
+    global.setInterval = trackingSetInterval;
+    window.setInterval = trackingSetInterval;
+
+    trackedTimeoutIds = [];
+    const trackingSetTimeout = (...args) => {
+      const id = realSetTimeout(...args);
+      trackedTimeoutIds.push(id);
+      return id;
+    };
+    global.setTimeout = trackingSetTimeout;
+    window.setTimeout = trackingSetTimeout;
+
+    trackedListeners = [];
+    window.addEventListener = (type, listener, options) => {
+      trackedListeners.push({ target: window, type, listener, options });
+      return realWindowAddEventListener(type, listener, options);
+    };
+    document.addEventListener = (type, listener, options) => {
+      trackedListeners.push({ target: document, type, listener, options });
+      return realDocumentAddEventListener(type, listener, options);
+    };
+
     initTestPage();
+  });
+
+  afterEach(async () => {
+    // Some click handlers (e.g. "Apply filters (local)") kick off a
+    // fire-and-forget persistence fetch (`void persistViewFilterOptionOverrides()`)
+    // that the test never awaits. If that Promise chain is still pending
+    // when the test ends, it resolves during the *next* test - after
+    // document.body.innerHTML has already been replaced - and can
+    // re-render using this test's now-stale closure state into the next
+    // test's fresh DOM. Give one microtask tick for any such dangling
+    // promise to settle (against the DOM this test is about to discard)
+    // before the next test's beforeEach swaps the DOM out from under it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    trackedListeners.forEach(({ target, type, listener, options }) => {
+      if (target === window) {
+        realWindowRemoveEventListener(type, listener, options);
+      } else {
+        realDocumentRemoveEventListener(type, listener, options);
+      }
+    });
+    trackedListeners = [];
+    window.addEventListener = realWindowAddEventListener;
+    document.addEventListener = realDocumentAddEventListener;
+
+    trackedIntervalIds.forEach((id) => realClearInterval(id));
+    trackedIntervalIds = [];
+    global.setInterval = realSetInterval;
+    window.setInterval = realSetInterval;
+
+    trackedTimeoutIds.forEach((id) => realClearTimeout(id));
+    trackedTimeoutIds = [];
+    global.setTimeout = realSetTimeout;
+    window.setTimeout = realSetTimeout;
   });
 
   test("shows key management and data tabs from static HTML", () => {
@@ -1797,18 +1900,24 @@ describe("index page rendering with Testing Library", () => {
     await user.selectOptions(scopeField, "needs-attention");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
+    // PR #4 is only in-review (not CHANGED), so it no longer counts as
+    // needing attention on its own - the in-review override was
+    // intentionally removed (see "Further migration and removal of in
+    // review attention override"). Only PR #1 (CHANGED) qualifies here.
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 2");
+      expect(dataMetaText).toContain("Rows: 1");
       expect(dataMetaText).toContain("scope=needs attention rows");
     });
 
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
+    // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
+    // flag alone no longer qualifies it for either scope.
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 3");
+      expect(dataMetaText).toContain("Rows: 2");
       expect(dataMetaText).toContain("scope=needs attention or interacted rows");
     });
   });
@@ -1842,10 +1951,15 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("#101")).toBeInTheDocument();
+      expect(document.querySelector('[data-pr-section="flagged"]')).toBeTruthy();
     });
 
-    const row = screen.getByText("#101").closest("tr");
+    // This PR also has CHANGED status, so it independently qualifies for the
+    // "Needs Attention" smart group and renders a second time there (smart
+    // groups have non-exclusive membership by design) - scope to the
+    // Flagged group specifically so the query is unambiguous.
+    const flaggedSection = document.querySelector('[data-pr-section="flagged"]');
+    const row = within(flaggedSection).getByText("#101").closest("tr");
     const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
 
     expect(icons.map((node) => node.textContent)).toEqual(["⚠️", "🚩"]);
@@ -5080,10 +5194,10 @@ describe("index page rendering with Testing Library", () => {
     expect(noteTextarea).toBeInTheDocument();
     await user.type(noteTextarea, "LGTM");
 
-    const difficultySelect = screen.getByLabelText("PR difficulty");
+    const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
     await user.selectOptions(difficultySelect, "5");
 
-    const analysisTextarea = screen.getByLabelText("Analysis of PR");
+    const analysisTextarea = within(notesSection).getByLabelText("Analysis of PR");
     await user.type(analysisTextarea, "Deep analysis for save test");
 
     const saveNotesButton = screen.getByRole("button", { name: "Save notes" });
@@ -5175,8 +5289,8 @@ describe("index page rendering with Testing Library", () => {
     };
 
     {
-      const { user, saveNotesButton } = await renderCleanNotesSection();
-      const difficultySelect = screen.getByLabelText("PR difficulty");
+      const { user, notesSection, saveNotesButton } = await renderCleanNotesSection();
+      const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
       await user.selectOptions(difficultySelect, "4");
       expect(saveNotesButton).toBeEnabled();
     }
@@ -5663,6 +5777,16 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
     const user = userEvent.setup();
+
+    // Lifecycle sections collapse by default; only rows in an expanded
+    // section are considered "visible" for export, so open the "Open PRs"
+    // section that PR #11 lives in.
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-pr-section="open"]'),
+      ).toBeTruthy();
+    });
+    document.querySelector('[data-pr-section="open"]').open = true;
 
     await user.click(screen.getByRole("tab", { name: "Export" }));
 

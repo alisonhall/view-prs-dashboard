@@ -61,7 +61,6 @@ function createDataProcessingHelpers({
     isViewPrsFixtureRow,
     toTrimmedString,
     isRepoSlug,
-    normalizeDisplayName,
     isObject,
     inferFallbackRepoForNotesOnlyEntries: inferFallbackRepoForNotesOnlyEntriesWithDefault,
     buildNotesOnlyMergedEntry: buildNotesOnlyMergedEntryWithDefault,
@@ -72,6 +71,7 @@ function createDataProcessingHelpers({
 
   const {
     addActorName,
+    normalizeDisplayName,
     normalizeActorLoginAliases,
     normalizeActorNameCacheEntries,
   } = actorHelpers;

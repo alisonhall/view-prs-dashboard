@@ -34,6 +34,7 @@
     const buildPrSection = ({
       title,
       rows,
+      renderRows,
       dateHeader,
       dateResolver,
       sectionKey,
@@ -47,7 +48,13 @@
         return null;
       }
 
+      // `rows` drives the section's total/attention counts; `renderRows`
+      // (defaulting to `rows` when not supplied) is the set of rows actually
+      // rendered as table rows. These differ when a row is already shown in
+      // a smart group above - it still counts here, but isn't rendered a
+      // second time.
       const safeRows = Array.isArray(rows) ? rows : [];
+      const safeRenderRows = Array.isArray(renderRows) ? renderRows : safeRows;
       const attentionConfig = getNeedsAttentionConfigSafe();
       const needsAttentionCount = safeRows.reduce((count, entry) => {
         const row = entry?.data || {};
@@ -101,7 +108,7 @@
       const content = doc.createElement("div");
       content.className = "pr-group-section-content";
       const table = buildSectionTableSafe(
-        safeRows,
+        safeRenderRows,
         dateHeader,
         dateResolver,
         sectionKey,

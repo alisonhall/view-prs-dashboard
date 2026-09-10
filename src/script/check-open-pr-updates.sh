@@ -2108,7 +2108,7 @@ compute_pr_state_json() {
     external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
       # Build combined pattern: optionally include built-in merge pattern + user patterns
       ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
-       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "") + $ignorePatterns else "" end)) as $combinedPattern
+       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
       | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))
@@ -2139,7 +2139,7 @@ compute_pr_state_json() {
     external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
       # Build combined pattern: optionally include built-in merge pattern + user patterns
       ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
-       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "") + $ignorePatterns else "" end)) as $combinedPattern
+       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
       | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))

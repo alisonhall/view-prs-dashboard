@@ -56,6 +56,7 @@ describe("pr render apply helpers", () => {
     const result = applyRenderResults({
       payload,
       allStoredRows: [{ id: 1 }],
+      filteredRows: [{ id: 2 }],
       sectionsHost,
       meta,
       appliedSummaryText: "Applied filters: repo=org/repo",
@@ -84,7 +85,7 @@ describe("pr render apply helpers", () => {
       inReviewByRepo: {},
       repo: "org/repo",
     });
-    expect(applySmartGroups).toHaveBeenCalledWith([{ id: 1 }], [
+    expect(applySmartGroups).toHaveBeenCalledWith([{ id: 2 }], [
       { groupKey: "flagged", predicate: expect.any(Function) },
       { groupKey: "in-review", predicate: expect.any(Function) },
     ]);

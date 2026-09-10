@@ -43,7 +43,6 @@ describe("Data Processing Helpers", () => {
       isViewPrsFixtureRow: jest.fn(() => false),
       toTrimmedString: jest.fn((str) => String(str || "").trim()),
       isRepoSlug: jest.fn(() => true),
-      normalizeDisplayName: jest.fn((str) => String(str || "").trim()),
       isObject: jest.fn((val) => val !== null && typeof val === "object" && !Array.isArray(val)),
       inferFallbackRepoForNotesOnlyEntries: jest.fn(() => "org/repo"),
       buildNotesOnlyMergedEntry: jest.fn((repo, prNum, notes, r) => ({ prNumber: prNum, notes })),
@@ -62,6 +61,7 @@ describe("Data Processing Helpers", () => {
     // Mock actor helpers
     mockActorHelpers = {
       addActorName: jest.fn(),
+      normalizeDisplayName: jest.fn((str) => String(str || "").trim()),
       normalizeActorLoginAliases: jest.fn((data) => data),
       normalizeActorNameCacheEntries: jest.fn((data) => data),
     };

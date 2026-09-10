@@ -29,6 +29,7 @@ describe("pr render finalize helpers", () => {
     const result = deriveRenderFinalizedState({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -46,6 +47,7 @@ describe("pr render finalize helpers", () => {
     expect(deriveRenderApplyInputs).toHaveBeenCalledWith({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -62,6 +64,7 @@ describe("pr render finalize helpers", () => {
     expect(applyRenderResults).toHaveBeenCalledWith({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",

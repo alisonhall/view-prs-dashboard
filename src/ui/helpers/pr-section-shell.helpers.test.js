@@ -43,6 +43,7 @@ describe("pr section shell helpers", () => {
       "open",
       "",
       {},
+      false,
     );
   });
 

@@ -11,6 +11,7 @@ describe("pr render pipeline helpers", () => {
       currentViewerLogin: "me",
     }));
     const deriveRenderFilterSummaryState = jest.fn(() => ({
+      rows: [{ number: 1 }],
       grouped: { opened: [{ number: 1 }] },
       appliedSummaryText: "Repo: org/repo",
       filterChips: ["author:me"],
@@ -70,6 +71,7 @@ describe("pr render pipeline helpers", () => {
     expect(deriveRenderFinalizedState).toHaveBeenCalledWith({
       payload: { actorsMap: { me: {} } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",

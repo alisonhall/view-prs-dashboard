@@ -12,6 +12,7 @@ describe("pr render apply inputs helpers", () => {
     const result = deriveRenderApplyInputs({
       payload,
       allStoredRows: [{ id: 1 }],
+      filteredRows: [{ id: 1 }],
       sectionsHost: { id: "host" },
       meta: { textContent: "" },
       appliedSummaryText: "Applied",
@@ -29,6 +30,7 @@ describe("pr render apply inputs helpers", () => {
     expect(result).toEqual({
       payload,
       allStoredRows: [{ id: 1 }],
+      filteredRows: [{ id: 1 }],
       sectionsHost: { id: "host" },
       meta: { textContent: "" },
       appliedSummaryText: "Applied",
@@ -50,6 +52,7 @@ describe("pr render apply inputs helpers", () => {
     const result = deriveRenderApplyInputs({
       payload: 1,
       allStoredRows: null,
+      filteredRows: null,
       sectionsHost: null,
       meta: 2,
       appliedSummaryText: null,
@@ -67,6 +70,7 @@ describe("pr render apply inputs helpers", () => {
     expect(result).toEqual({
       payload: null,
       allStoredRows: [],
+      filteredRows: [],
       sectionsHost: null,
       meta: null,
       appliedSummaryText: "",

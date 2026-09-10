@@ -63,7 +63,7 @@
         repoFilter,
       });
 
-      const { grouped, appliedSummaryText, filterChips } =
+      const { rows: filteredRows, grouped, appliedSummaryText, filterChips } =
         deriveRenderFilterSummaryStateSafe({
           rowsForRepo,
           ignoreScopeForPrNumberFilter,
@@ -80,6 +80,7 @@
       const committedRenderState = deriveRenderFinalizedStateSafe({
         payload,
         allStoredRows,
+        filteredRows,
         sectionsHost,
         meta,
         appliedSummaryText,

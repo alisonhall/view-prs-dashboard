@@ -31,6 +31,7 @@
     const deriveRenderFinalizedState = ({
       payload,
       allStoredRows,
+      filteredRows,
       sectionsHost,
       meta,
       appliedSummaryText,
@@ -47,6 +48,7 @@
       const renderApplyInputs = deriveRenderApplyInputsSafe({
         payload,
         allStoredRows,
+        filteredRows,
         sectionsHost,
         meta,
         appliedSummaryText,
