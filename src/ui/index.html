@@ -632,7 +632,12 @@
          dev server and the standalone Express server serve static files
          rooted at src/ui, so a path into the repo-root node_modules/ 404s
          under either. Re-copy from node_modules/marked/lib/marked.umd.js
-         when bumping the "marked" dependency version. -->
+         when bumping the "marked" dependency version - and re-copy
+         marked.umd.js.map (node_modules/marked/lib/marked.umd.js.map) at
+         the same time, or Vite's dev server logs a source-map ENOENT for
+         every request once the two drift out of sync (the .js file's own
+         trailing `//# sourceMappingURL=marked.umd.js.map` comment expects
+         it to sit right next to it). -->
     <script src="./vendor/marked.umd.js"></script>
     <script src="./helpers/pr-json-modal.helpers.js"></script>
     <script src="./helpers/pr-notes.helpers.js"></script>
