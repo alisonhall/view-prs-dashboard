@@ -23,8 +23,21 @@
     setPendingLabelFilterSelections,
     getPendingExcludeLabelFilterSelections,
     setPendingExcludeLabelFilterSelections,
+    renderMultiSelectList,
     documentRef,
   } = {}) => {
+    // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): when
+    // provided, `renderMultiSelectList(listId, items)` renders the
+    // checkbox items for a multi-select list (items: [{value, label,
+    // checked}]) and returns true once it has done so, letting the caller
+    // skip its own manual DOM-building fallback below. Optional and
+    // defaults to "not handled" so every existing call site keeps working
+    // unmodified (and every existing unit test, which doesn't pass this)
+    // until a given list is actually converted.
+    const renderMultiSelectListSafe =
+      typeof renderMultiSelectList === "function"
+        ? renderMultiSelectList
+        : () => false;
     const getPreferredActorKeySafe =
       typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
     const resolveActorDisplayNameSafe =
@@ -212,12 +225,24 @@
       );
 
       const sortedLabels = collectSortedLabelOptions(entries, repoFilter);
-      labelList.innerHTML = "";
 
       if (sortedLabels.length === 0) {
         labelList.classList.add("empty");
       } else {
         labelList.classList.remove("empty");
+      }
+
+      const handled = renderMultiSelectListSafe(
+        "label-list",
+        sortedLabels.map(({ normalizedToken, labelName }) => ({
+          value: labelName,
+          label: labelName,
+          checked: selectedTokens.has(normalizedToken),
+        })),
+      );
+
+      if (!handled) {
+        labelList.innerHTML = "";
         sortedLabels.forEach(({ normalizedToken, labelName }, index) => {
           const itemDiv = getDocument().createElement("div");
           itemDiv.className = "multi-select-item";
@@ -267,12 +292,24 @@
       );
 
       const sortedLabels = collectSortedLabelOptions(entries, repoFilter);
-      excludeLabelList.innerHTML = "";
 
       if (sortedLabels.length === 0) {
         excludeLabelList.classList.add("empty");
       } else {
         excludeLabelList.classList.remove("empty");
+      }
+
+      const handled = renderMultiSelectListSafe(
+        "exclude-label-list",
+        sortedLabels.map(({ normalizedToken, labelName }) => ({
+          value: labelName,
+          label: labelName,
+          checked: selectedTokens.has(normalizedToken),
+        })),
+      );
+
+      if (!handled) {
+        excludeLabelList.innerHTML = "";
         sortedLabels.forEach(({ normalizedToken, labelName }, index) => {
           const itemDiv = getDocument().createElement("div");
           itemDiv.className = "multi-select-item";
@@ -332,7 +369,6 @@
         }
       }
 
-      authorList.innerHTML = "";
       const sortedAuthors = Array.from(authors.entries()).sort((a, b) => {
         const textA = String(a[1] || a[0]).toLowerCase();
         const textB = String(b[1] || b[0]).toLowerCase();
@@ -343,6 +379,19 @@
         authorList.classList.add("empty");
       } else {
         authorList.classList.remove("empty");
+      }
+
+      const handled = renderMultiSelectListSafe(
+        "author-list",
+        sortedAuthors.map(([login, displayName]) => ({
+          value: login,
+          label: displayName,
+          checked: selectedLogins.has(login),
+        })),
+      );
+
+      if (!handled) {
+        authorList.innerHTML = "";
         sortedAuthors.forEach(([login, displayName]) => {
           const itemDiv = getDocument().createElement("div");
           itemDiv.className = "multi-select-item";
@@ -407,7 +456,6 @@
         });
       }
 
-      assignedList.innerHTML = "";
       const sortedAssignees = Array.from(assignees.entries()).sort((a, b) => {
         const textA = String(a[1] || a[0]).toLowerCase();
         const textB = String(b[1] || b[0]).toLowerCase();
@@ -418,6 +466,19 @@
         assignedList.classList.add("empty");
       } else {
         assignedList.classList.remove("empty");
+      }
+
+      const handled = renderMultiSelectListSafe(
+        "assigned-list",
+        sortedAssignees.map(([login, displayName]) => ({
+          value: login,
+          label: displayName,
+          checked: selectedLogins.has(login),
+        })),
+      );
+
+      if (!handled) {
+        assignedList.innerHTML = "";
         sortedAssignees.forEach(([login, displayName]) => {
           const itemDiv = getDocument().createElement("div");
           itemDiv.className = "multi-select-item";
@@ -481,7 +542,6 @@
         });
       }
 
-      approverList.innerHTML = "";
       const sortedApprovers = Array.from(approvers.entries()).sort((a, b) => {
         const textA = String(a[1] || a[0]).toLowerCase();
         const textB = String(b[1] || b[0]).toLowerCase();
@@ -492,6 +552,19 @@
         approverList.classList.add("empty");
       } else {
         approverList.classList.remove("empty");
+      }
+
+      const handled = renderMultiSelectListSafe(
+        "approver-list",
+        sortedApprovers.map(([login, displayName]) => ({
+          value: login,
+          label: displayName,
+          checked: selectedLogins.has(login),
+        })),
+      );
+
+      if (!handled) {
+        approverList.innerHTML = "";
         sortedApprovers.forEach(([login, displayName]) => {
           const itemDiv = getDocument().createElement("div");
           itemDiv.className = "multi-select-item";

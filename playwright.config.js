@@ -71,7 +71,16 @@ const isolatedEnv = {
 
 module.exports = defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
+  // Deliberately NOT fullyParallel: every test in this suite shares one
+  // long-lived webServer/data directory (see isolatedEnv above) - there's
+  // no per-test/per-worker isolation. Tests that persist through "Apply
+  // filters (local)" do a real GET-merge-PUT against the same
+  // user-defaults.json file; running them concurrently is a genuine
+  // lost-update race (worker A's PUT can silently overwrite worker B's),
+  // independent of and in addition to each test's own cleanup. Serial
+  // execution is still fast for a suite this size (~10s).
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",

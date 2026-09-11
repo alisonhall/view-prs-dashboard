@@ -1372,13 +1372,13 @@ build_activity_events_json() {
       }),
       ($commits[]? as $commit
         | $commit.authors[]?
-        | select((.login // "") != "")
+        | select(((.login // "") != "") or ((.name // "") != "") or ((.email // "") != ""))
         | {
             sourceId: ($commit.oid // ""),
             threadId: "",
             occurredAt: ($commit.committedAt // ""),
             date: (($commit.committedAt // "") | split("T") | .[0]),
-            actor: .login,
+            actor: (if (.login // "") != "" then .login elif (.name // "") != "" then .name elif (.email // "") != "" then .email else "unknown" end),
             type: "commit",
             channel: "commit",
             messageHeadline: ($commit.messageHeadline // ""),

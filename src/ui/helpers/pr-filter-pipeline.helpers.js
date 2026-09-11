@@ -55,6 +55,12 @@
       selectedApproverLogins,
       openModeFilter,
       alwaysShowInReview,
+      customComments,
+      otherNotes,
+      prDifficulty,
+      rallyStories,
+      rallyLinks,
+      analysisOfPr,
     } = {}) => {
       const safeRows = Array.isArray(rows) ? rows : [];
       const selectedFilters = buildSelectedFiltersViewModelSafe({
@@ -75,6 +81,12 @@
         assignedLogins: selectedFilters.selectedAssignedLogins,
         approverLogins: selectedFilters.selectedApproverLogins,
         alwaysShowInReview: selectedFilters.alwaysShowInReview,
+        customComments,
+        otherNotes,
+        prDifficulty,
+        rallyStories,
+        rallyLinks,
+        analysisOfPr,
       });
 
       return {

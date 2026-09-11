@@ -854,16 +854,44 @@ const restoreUiOptionOverrides = async () => {
     return;
   }
 
+  // Plain `element.value = ...` silently desyncs a React-controlled input:
+  // React installs its own property setter on the native element to track
+  // value changes, and assigning through the DOM's original setter (which
+  // this uses instead, via the prototype descriptor) plus dispatching a
+  // real 'input'/'change' event is the standard, harmless-for-uncontrolled-
+  // elements-too way to make external mutations show up in React state as
+  // well. Needed as more of the Run & Filter form is converted to React
+  // (Phase 2) - vanilla restore logic like this one shouldn't need to know
+  // or care which fields are React-owned yet.
+  const setNativeValueAndDispatch = (element, value) => {
+    const prototype = Object.getPrototypeOf(element);
+    const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    if (nativeSetter) {
+      nativeSetter.call(element, value);
+    } else {
+      element.value = value;
+    }
+    // <input> needs 'input' for React to notice; <select> (which this
+    // helper also restores, e.g. scope-mode) only reliably notifies React
+    // via 'change'. Dispatch both - a real user interaction fires both on
+    // either element type anyway, so this isn't adding any event a normal
+    // interaction wouldn't already produce.
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
   const setText = (id, value) => {
     const element = getOptionalElementById(id);
     if (!element || value === undefined || value === null) return;
-    element.value = String(value);
+    setNativeValueAndDispatch(element, String(value));
   };
 
   const setCheckbox = (id, value) => {
     const element = getOptionalElementById(id);
     if (!element || typeof value !== "boolean") return;
-    element.checked = value;
+    if (element.checked !== value) {
+      element.click();
+    }
   };
 
   [
@@ -992,12 +1020,25 @@ const restoreUiOptionOverrides = async () => {
     }
 
     if (Array.isArray(overrides.changeFilters.ignoreCommitPatterns)) {
-      const textarea = getOptionalElementById(
-        "change-filter-ignore-commit-patterns",
-      );
-      if (textarea && formParsingHelpers?.formatCommitPatternsForTextarea) {
-        textarea.value = formParsingHelpers.formatCommitPatternsForTextarea(
-          overrides.changeFilters.ignoreCommitPatterns,
+      if (formParsingHelpers?.formatCommitPatternsForTextarea) {
+        // setText (native setter + dispatched events, see
+        // setNativeValueAndDispatch above) instead of a plain
+        // `textarea.value = ...` assignment - needed once this field is
+        // React-owned (Phase 2), same reasoning as every other restored
+        // field. HTMLTextAreaElement has its own "value" accessor
+        // property (distinct from HTMLInputElement's), so the same
+        // prototype-descriptor lookup works unchanged for a <textarea>.
+        // Note: this specific ordering (restore arriving *after*
+        // react-app.jsx has already mounted) is hard to force
+        // deterministically in the e2e suite - see
+        // IgnoreCommitPatternsTextarea.test.jsx's own "external native
+        // value change" test for the reliable, deterministic proof this
+        // technique is needed.
+        setText(
+          "change-filter-ignore-commit-patterns",
+          formParsingHelpers.formatCommitPatternsForTextarea(
+            overrides.changeFilters.ignoreCommitPatterns,
+          ),
         );
       }
     }
@@ -2626,6 +2667,15 @@ const {
   setPendingExcludeLabelFilterSelections: (value) => {
     pendingExcludeLabelFilterSelections = value;
   },
+  // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): delegates
+  // to react-app.jsx's bridge when it has mounted a given list id;
+  // pr-filter-panel.component.js falls back to its own vanilla DOM-building
+  // when this returns false (list not converted yet, or React hasn't
+  // finished loading/mounting).
+  renderMultiSelectList: (listId, items) =>
+    typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
+      ? window.renderReactMultiSelectList(listId, items)
+      : false,
   documentRef: typeof document !== "undefined" ? document : null,
 });
 
@@ -2670,11 +2720,31 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
           : [];
     const selectedSet = new Set(seedSelections);
 
-    listNode.innerHTML = "";
     if (actorEntries.length === 0) {
       listNode.classList.add("empty");
     } else {
       listNode.classList.remove("empty");
+    }
+
+    // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md, gotcha
+    // #4): delegates to react-app.jsx's flushSync-wrapped bridge when it
+    // has mounted this list id; falls back to the vanilla DOM-building
+    // path below when it hasn't (not converted yet, or React hasn't
+    // finished loading/mounting).
+    const handled =
+      typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
+        ? window.renderReactMultiSelectList(
+            listId,
+            actorEntries.map(({ login, displayName }) => ({
+              value: login,
+              label: displayName,
+              checked: selectedSet.has(login),
+            })),
+          )
+        : false;
+
+    if (!handled) {
+      listNode.innerHTML = "";
       actorEntries.forEach(({ login, displayName }, index) => {
         const itemDiv = document.createElement("div");
         itemDiv.className = "multi-select-item";
@@ -2766,11 +2836,31 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
           : [];
     const selectedSet = new Set(seedSelections);
 
-    listNode.innerHTML = "";
     if (actorEntries.length === 0) {
       listNode.classList.add("empty");
     } else {
       listNode.classList.remove("empty");
+    }
+
+    // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md, gotcha
+    // #4): delegates to react-app.jsx's flushSync-wrapped bridge when it
+    // has mounted this list id; falls back to the vanilla DOM-building
+    // path below when it hasn't (not converted yet, or React hasn't
+    // finished loading/mounting).
+    const handled =
+      typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
+        ? window.renderReactMultiSelectList(
+            listId,
+            actorEntries.map(({ login, displayName }) => ({
+              value: login,
+              label: displayName,
+              checked: selectedSet.has(login),
+            })),
+          )
+        : false;
+
+    if (!handled) {
+      listNode.innerHTML = "";
       actorEntries.forEach(({ login, displayName }, index) => {
         const itemDiv = document.createElement("div");
         itemDiv.className = "multi-select-item";
@@ -7206,12 +7296,27 @@ const initPage = () => {
     }, 150); // 150ms feels instant but batches rapid changes
   };
   
-  document
-    .getElementById("scope-mode")
-    .addEventListener("change", debouncedApplyFilters);
   getPrNumbersInput().addEventListener("input", handlePrNumbersInputChange);
   getPrNumbersInput().addEventListener("change", handlePrNumbersInputChange);
-  [
+
+  // Delegated on the form (a stable ancestor never replaced by React) for
+  // every field below rather than attached to each field directly:
+  // several of these (scope-mode, filter-pr-numbers, always-show-in-review,
+  // the five attention-* checkboxes, attention-no-activity-mode,
+  // attention-author-thread-resolution-mode) are React-owned fields (see
+  // Phase 2 in REACT_MIGRATION_PLAN.md), and ReactDOM.createRoot().render()
+  // creates a fresh DOM node when it mounts - a listener already attached
+  // directly to the pre-mount static/fallback node is silently orphaned
+  // rather than firing on the field React now owns, since it mounts
+  // *after* this code runs (a classic script, run before react-app.jsx's
+  // deferred module graph finishes loading). The native "change" event
+  // still bubbles up to the form regardless of which side rendered the
+  // target field, so this single delegated listener is immune to that
+  // node-replacement timing entirely - do not revert to direct
+  // addEventListener calls on these ids without re-reading that section of
+  // the plan doc.
+  const debouncedApplyOnChangeIds = new Set([
+    "scope-mode",
     "filter-pr-numbers",
     "always-show-in-review",
     "attention-include-pending-comments",
@@ -7219,27 +7324,32 @@ const initPage = () => {
     "attention-include-closed-merged",
     "attention-include-draft-changed",
     "attention-include-draft-no-activity",
-  ].forEach((id) => {
-    document
-      .getElementById(id)
-      .addEventListener("change", debouncedApplyFilters);
-  });
-
-  const attentionNoActivityModeSelect = getOptionalElementById(
     "attention-no-activity-mode",
-  );
-  if (attentionNoActivityModeSelect) {
-    attentionNoActivityModeSelect.addEventListener("change", debouncedApplyFilters);
-  }
-
-  const authorThreadResolutionModeField = getOptionalElementById(
-    "attention-author-thread-resolution-mode",
-  );
-  if (authorThreadResolutionModeField) {
-    authorThreadResolutionModeField.addEventListener("change", () => {
-      updateAuthorThreadResolutionRuleVisibility();
-      void persistViewFilterOptionOverrides();
-      debouncedApplyFilters();
+  ]);
+  const runScriptForm = getOptionalElementById("run-script-form");
+  if (runScriptForm) {
+    runScriptForm.addEventListener("change", (event) => {
+      const targetId = event.target?.id;
+      if (!targetId) {
+        return;
+      }
+      if (targetId === "attention-author-thread-resolution-mode") {
+        updateAuthorThreadResolutionRuleVisibility();
+        void persistViewFilterOptionOverrides();
+        debouncedApplyFilters();
+        return;
+      }
+      if (
+        targetId === "change-filter-use-builtin-merge-pattern" ||
+        targetId === "change-filter-ignore-commit-patterns"
+      ) {
+        void persistViewFilterOptionOverrides();
+        debouncedApplyFilters();
+        return;
+      }
+      if (debouncedApplyOnChangeIds.has(targetId)) {
+        debouncedApplyFilters();
+      }
     });
   }
 
@@ -7274,26 +7384,12 @@ const initPage = () => {
     }
   });
 
-  // Add event listeners for change filter fields
-  const useBuiltinMergePatternCheckbox = getOptionalElementById(
-    "change-filter-use-builtin-merge-pattern",
-  );
-  if (useBuiltinMergePatternCheckbox) {
-    useBuiltinMergePatternCheckbox.addEventListener("change", () => {
-      void persistViewFilterOptionOverrides();
-      debouncedApplyFilters(); // Use debounced version
-    });
-  }
-
-  const commitPatternsTextarea = getOptionalElementById(
-    "change-filter-ignore-commit-patterns",
-  );
-  if (commitPatternsTextarea) {
-    commitPatternsTextarea.addEventListener("change", () => {
-      void persistViewFilterOptionOverrides();
-      debouncedApplyFilters(); // Use debounced version
-    });
-  }
+  // change-filter-use-builtin-merge-pattern's and
+  // change-filter-ignore-commit-patterns' "change" -> persist + apply are
+  // now handled by the delegated listener on #run-script-form above (see
+  // the special-case branch for their ids) - Phase 2, see
+  // REACT_MIGRATION_PLAN.md gotcha #3. Do not re-add a direct
+  // addEventListener for either once they're React-owned.
 
   setupMultiSelectDropdownClosing();
 

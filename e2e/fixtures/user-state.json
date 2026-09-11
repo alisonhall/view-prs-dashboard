@@ -1,5 +1,14 @@
 {
-  "notesByPrNumber": {},
+  "notesByPrNumber": {
+    "1": {
+      "comments": [],
+      "otherNotes": "",
+      "prDifficulty": "3",
+      "rallyStories": "",
+      "rallyLinks": "",
+      "analysisOfPr": ""
+    }
+  },
   "ackByRepo": {},
   "reverifyByRepo": {},
   "flaggedByRepo": {

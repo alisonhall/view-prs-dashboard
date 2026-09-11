@@ -60,6 +60,33 @@
             background: #fff;
         }
 
+        /* React-mounted form field wrappers (see react-app.jsx's
+           mountPrNumberFilterInput/mountScopeFilterSelect) - transparent to
+           .form-grid layout so the wrapped <input>/<select> is the
+           effective grid item, exactly as when it was a direct child. */
+        #filter-pr-numbers-root,
+        #scope-mode-root,
+        #attention-no-activity-mode-root,
+        #attention-include-pending-comments-root,
+        #attention-ignore-merge-only-commits-root,
+        #attention-include-closed-merged-root,
+        #attention-include-draft-changed-root,
+        #attention-include-draft-no-activity-root,
+        #attention-author-thread-resolution-mode-root,
+        #repo-root,
+        #limit-root,
+        #merged-limit-root,
+        #jobs-root,
+        #open-mode-root,
+        #filter-custom-comments-root,
+        #filter-other-notes-root,
+        #filter-pr-difficulty-root,
+        #filter-rally-stories-root,
+        #filter-rally-links-root,
+        #filter-analysis-of-pr-root {
+            display: contents;
+        }
+
         /* Multi-select dropdown (author, assigned, approver filters) */
         .multi-select-dropdown {
             grid-column: 1 / -1;

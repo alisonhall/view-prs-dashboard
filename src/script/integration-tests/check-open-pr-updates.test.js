@@ -577,4 +577,188 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(row.changedFilesCount).toBe("20");
     expect(row.viewedFilesSummary).toBe("13/20 viewed");
   });
+
+  // Regression coverage for a broken `jq` expression in both
+  // external_commit_count blocks: the combined merge-pattern +
+  // ignore-pattern expression put a nested if-expression as the left
+  // operand of `+` inside a then-branch, which is a jq syntax error (the
+  // `$combinedPattern` binding never evaluated). Because compute_pr_state_json
+  // is only ever invoked as part of processing a real PR (never unit-tested
+  // directly against realistic commit data before), commit-based CHANGED
+  // detection silently never fired for any PR - the tests below exercise
+  // that binding directly, not just "does the script not crash".
+  describe("Given a PR with external commits, when compute_pr_state_json evaluates commit-based change detection", () => {
+    const runComputePrStateJson = (prJson, detailJson) => {
+      const output = runShell(
+        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+      );
+      return JSON.parse(output);
+    };
+
+    const basePr = (overrides = {}) =>
+      JSON.stringify({
+        number: 501,
+        title: "Commit change detection",
+        url: "https://github.com/owner/repo/pull/501",
+        mergedAt: null,
+        closedAt: null,
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-02T00:00:00Z",
+        headRefName: "feature/x",
+        baseRefName: "main",
+        additions: 1,
+        deletions: 1,
+        labels: [],
+        author: { login: "alice", name: "Alice" },
+        mergedBy: null,
+        ...overrides,
+      });
+
+    test("a real external commit (not matching the merge pattern) flips status to CHANGED with a commit reason", () => {
+      const detailJson = JSON.stringify({
+        comments: [],
+        reviews: [],
+        reviewRequests: [],
+        commits: [
+          {
+            oid: "sha-real-change",
+            committedDate: "2026-06-02T00:00:00Z",
+            messageHeadline: "Add new feature",
+            messageBody: "",
+            authors: [{ login: "bob", name: "Bob", email: "bob@example.com" }],
+          },
+        ],
+        assignees: [],
+        statusCheckRollup: [],
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      });
+
+      const row = runComputePrStateJson(basePr(), detailJson);
+
+      expect(row.status).toBe("CHANGED");
+      expect(row.reason).toContain("commit");
+    });
+
+    test("a merge commit from the built-in pattern is excluded, so status stays NO_CHANGE", () => {
+      const detailJson = JSON.stringify({
+        comments: [],
+        reviews: [],
+        reviewRequests: [],
+        commits: [
+          {
+            oid: "sha-merge",
+            committedDate: "2026-06-02T00:00:00Z",
+            messageHeadline: "Merge branch 'main' into feature/x",
+            messageBody: "",
+            authors: [{ login: "bob", name: "Bob", email: "bob@example.com" }],
+          },
+        ],
+        assignees: [],
+        statusCheckRollup: [],
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      });
+
+      const row = runComputePrStateJson(basePr(), detailJson);
+
+      expect(row.status).toBe("NO_CHANGE");
+    });
+
+    test("a commit matching a custom ignore pattern (combined with the built-in pattern) is also excluded", () => {
+      const detailJson = JSON.stringify({
+        comments: [],
+        reviews: [],
+        reviewRequests: [],
+        commits: [
+          {
+            oid: "sha-automated",
+            committedDate: "2026-06-02T00:00:00Z",
+            messageHeadline: "Automated: bump dependency",
+            messageBody: "",
+            authors: [{ login: "bob", name: "Bob", email: "bob@example.com" }],
+          },
+        ],
+        assignees: [],
+        statusCheckRollup: [],
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      });
+
+      const output = runShell(
+        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMIT_PATTERNS='^Automated:'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${basePr()}'`,
+      );
+      const row = JSON.parse(output);
+
+      expect(row.status).toBe("NO_CHANGE");
+    });
+  });
+
+  // Regression coverage: build_activity_events_json used to drop any commit
+  // whose author had an empty GitHub `login` (select((.login // "") != "")),
+  // which silently removed commits from external/corporate authors who
+  // commit with a name+email but no linked GitHub account from the Activity
+  // Timeline.
+  describe("Given a commit author with no GitHub login, when build_activity_events_json builds commit events", () => {
+    const runBuildActivityEvents = (commitsJson) =>
+      JSON.parse(
+        runScriptFn(
+          `build_activity_events_json '[]' '[]' '${commitsJson}' "" "" "" ""`,
+        ),
+      );
+
+    test("falls back to the commit author's name when login is empty", () => {
+      const commitsJson = JSON.stringify([
+        {
+          oid: "sha-1",
+          committedAt: "2026-06-02T00:00:00Z",
+          messageHeadline: "Fix bug",
+          messageBody: "",
+          authors: [{ login: "", name: "External Author", email: "ext@example.com" }],
+        },
+      ]);
+
+      const events = runBuildActivityEvents(commitsJson);
+      const commitEvents = events.filter((e) => e.type === "commit");
+
+      expect(commitEvents).toHaveLength(1);
+      expect(commitEvents[0].actor).toBe("External Author");
+    });
+
+    test("falls back to email when both login and name are empty", () => {
+      const commitsJson = JSON.stringify([
+        {
+          oid: "sha-2",
+          committedAt: "2026-06-02T00:00:00Z",
+          messageHeadline: "Fix bug",
+          messageBody: "",
+          authors: [{ login: "", name: "", email: "ext@example.com" }],
+        },
+      ]);
+
+      const events = runBuildActivityEvents(commitsJson);
+      const commitEvents = events.filter((e) => e.type === "commit");
+
+      expect(commitEvents).toHaveLength(1);
+      expect(commitEvents[0].actor).toBe("ext@example.com");
+    });
+
+    test("still uses login when present, unaffected by the fallback", () => {
+      const commitsJson = JSON.stringify([
+        {
+          oid: "sha-3",
+          committedAt: "2026-06-02T00:00:00Z",
+          messageHeadline: "Fix bug",
+          messageBody: "",
+          authors: [{ login: "regular-user", name: "Regular User", email: "" }],
+        },
+      ]);
+
+      const events = runBuildActivityEvents(commitsJson);
+      const commitEvents = events.filter((e) => e.type === "commit");
+
+      expect(commitEvents).toHaveLength(1);
+      expect(commitEvents[0].actor).toBe("regular-user");
+    });
+  });
 });

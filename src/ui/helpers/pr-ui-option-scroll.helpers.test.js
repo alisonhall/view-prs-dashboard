@@ -3,9 +3,15 @@ const {
 } = require("./pr-ui-option-scroll.helpers.js");
 
 describe("pr ui option scroll helpers", () => {
-  test("given scope mode input, when registering persistence handlers and firing change, then scope-mode override persistence is requested", async () => {
+  test("given a scope-mode change event bubbling to the form, when registering persistence handlers and firing change, then scope-mode override persistence is requested", async () => {
+    // Delegated on the form (not attached to #scope-mode directly): that
+    // field may be React-owned (see ScopeFilterSelect.jsx), and
+    // ReactDOM.createRoot().render() creates a fresh DOM node on mount -
+    // a listener attached directly to the pre-mount node would be
+    // silently orphaned. The native "change" event still bubbles to the
+    // form either way, which is what this test simulates.
     const changeListeners = [];
-    const scopeMode = {
+    const form = {
       addEventListener: (_eventName, handler) => {
         changeListeners.push(handler);
       },
@@ -14,16 +20,39 @@ describe("pr ui option scroll helpers", () => {
 
     const { registerUiOptionPersistenceHandlers } =
       createPrUiOptionScrollHelpers({
-        getOptionalElementById: (id) => (id === "scope-mode" ? scopeMode : null),
+        getOptionalElementById: (id) => (id === "run-script-form" ? form : null),
         persistUiOptionOverrides: async (keys) => {
           persisted.push(keys);
         },
       });
 
     registerUiOptionPersistenceHandlers();
-    await changeListeners[0]();
+    await changeListeners[0]({ target: { id: "scope-mode" } });
 
     expect(persisted).toEqual([["scope-mode"]]);
+  });
+
+  test("given a change event for an unrelated field bubbling to the form, when firing change, then no persistence is requested", async () => {
+    const changeListeners = [];
+    const form = {
+      addEventListener: (_eventName, handler) => {
+        changeListeners.push(handler);
+      },
+    };
+    const persisted = [];
+
+    const { registerUiOptionPersistenceHandlers } =
+      createPrUiOptionScrollHelpers({
+        getOptionalElementById: (id) => (id === "run-script-form" ? form : null),
+        persistUiOptionOverrides: async (keys) => {
+          persisted.push(keys);
+        },
+      });
+
+    registerUiOptionPersistenceHandlers();
+    await changeListeners[0]({ target: { id: "filter-pr-numbers" } });
+
+    expect(persisted).toEqual([]);
   });
 
   test("given auto-scroll toggle and backfill state, when checking shouldAutoScrollBackfillLog, then helper delegates to state rule inputs", () => {

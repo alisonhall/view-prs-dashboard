@@ -112,16 +112,28 @@
 
                         <div class="form-grid">
                             <label for="scope-mode">View scope</label>
-                            <select id="scope-mode" name="scopeMode">
-                                <option value="all" selected>All stored rows</option>
-                                <option value="last-run">Last run rows</option>
-                                <option value="needs-attention">Needs attention rows</option>
-                                <option value="needs-attention-or-interacted">Needs attention or interacted rows
-                                </option>
-                            </select>
+                            <!-- Rendered by React (see react-app.jsx's mountScopeFilterSelect) as a
+                                 <select id="scope-mode">, same id/name/options as before - Phase 2
+                                 second slice, see REACT_MIGRATION_PLAN.md. Falls back to a plain
+                                 select if React fails to load/mount. -->
+                            <span id="scope-mode-root">
+                                <select id="scope-mode" name="scopeMode">
+                                    <option value="all" selected>All stored rows</option>
+                                    <option value="last-run">Last run rows</option>
+                                    <option value="needs-attention">Needs attention rows</option>
+                                    <option value="needs-attention-or-interacted">Needs attention or interacted rows
+                                    </option>
+                                </select>
+                            </span>
 
                             <label for="filter-pr-numbers">Filter by PR number(s)</label>
-                            <input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />
+                            <!-- Rendered by React (see react-app.jsx's mountPrNumberFilterInput) as
+                                 an <input id="filter-pr-numbers">, same id/name/placeholder as
+                                 before - Phase 2 first slice, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain input if React fails to load/mount. -->
+                            <span id="filter-pr-numbers-root">
+                                <input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />
+                            </span>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary">Filter by label name(s)</summary>
@@ -149,20 +161,34 @@
                             </details>
 
                             <label for="filter-custom-comments">Custom comments</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-custom-comments-root">
                             <select id="filter-custom-comments" name="filterCustomComments">
                                 <option value="" selected>Any (with or without)</option>
                                 <option value="with">With custom comments</option>
                                 <option value="without">Without custom comments</option>
                             </select>
+                            </span>
 
                             <label for="filter-other-notes">Other notes</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-other-notes-root">
                             <select id="filter-other-notes" name="filterOtherNotes">
                                 <option value="" selected>Any (with or without)</option>
                                 <option value="with">With other notes</option>
                                 <option value="without">Without other notes</option>
                             </select>
+                            </span>
 
                             <label for="filter-pr-difficulty">PR difficulty</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-pr-difficulty-root">
                             <select id="filter-pr-difficulty" name="filterPrDifficulty">
                                 <option value="" selected>Any (set or not set)</option>
                                 <option value="1">1</option>
@@ -172,27 +198,43 @@
                                 <option value="5">5</option>
                                 <option value="not-set">Not set</option>
                             </select>
+                            </span>
 
                             <label for="filter-rally-stories">Rally stories</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-rally-stories-root">
                             <select id="filter-rally-stories" name="filterRallyStories">
                                 <option value="" selected>Any (with or without)</option>
                                 <option value="with">With Rally stories</option>
                                 <option value="without">Without Rally stories</option>
                             </select>
+                            </span>
 
                             <label for="filter-rally-links">Rally links</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-rally-links-root">
                             <select id="filter-rally-links" name="filterRallyLinks">
                                 <option value="" selected>Any (with or without)</option>
                                 <option value="with">With Rally links</option>
                                 <option value="without">Without Rally links</option>
                             </select>
+                            </span>
 
                             <label for="filter-analysis-of-pr">Analysis of PR</label>
+                            <!-- Rendered by React (mountFilterOptionSelects in react-app.jsx),
+                                 same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain select if React fails to load/mount. -->
+                            <span id="filter-analysis-of-pr-root">
                             <select id="filter-analysis-of-pr" name="filterAnalysisOfPr">
                                 <option value="" selected>Any (with or without)</option>
                                 <option value="with">With analysis</option>
                                 <option value="without">Without analysis</option>
                             </select>
+                            </span>
                         </div>
 
                         <div class="form-actions">
@@ -204,7 +246,11 @@
                             <summary>Advanced visibility and attention rules</summary>
                             <div class="form-grid">
                                 <label class="checkbox-row">
-                                    <input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" />
+                                    <!-- Rendered by React (see react-app.jsx's mountAlwaysShowInReviewCheckbox)
+                                         as an <input id="always-show-in-review">, same id/name as before -
+                                         Phase 2 third slice, see REACT_MIGRATION_PLAN.md. Falls back to a
+                                         plain checkbox if React fails to load/mount. -->
+                                    <span id="always-show-in-review-root"><input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" /></span>
                                     Always show PRs In Review
                                 </label>
 
@@ -212,54 +258,68 @@
                                     <legend>Needs Attention rules</legend>
 
                                     <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
-                                    <select id="attention-no-activity-mode" name="attentionNoActivityMode">
-                                        <option value="all" selected>Mark all NO_ACTIVITY PRs</option>
-                                        <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a
-                                            reviewer</option>
-                                        <option value="assigned-only">Only NO_ACTIVITY PRs assigned to me</option>
-                                        <option value="reviewer-only">Only PRs where I am a reviewer</option>
-                                        <option value="none">Never mark NO_ACTIVITY PRs</option>
-                                    </select>
+                                    <!-- Rendered by React (mountAttentionNoActivityModeSelect in react-app.jsx),
+                                         same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                         Falls back to a plain select if React fails to load/mount. -->
+                                    <span id="attention-no-activity-mode-root">
+                                        <select id="attention-no-activity-mode" name="attentionNoActivityMode">
+                                            <option value="all" selected>Mark all NO_ACTIVITY PRs</option>
+                                            <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a
+                                                reviewer</option>
+                                            <option value="assigned-only">Only NO_ACTIVITY PRs assigned to me</option>
+                                            <option value="reviewer-only">Only PRs where I am a reviewer</option>
+                                            <option value="none">Never mark NO_ACTIVITY PRs</option>
+                                        </select>
+                                    </span>
 
+                                    <!-- The five checkboxes below are rendered by React (mountAttentionRuleCheckboxes
+                                         in react-app.jsx, one AttentionRuleCheckbox instance per id/name pair) - Phase 2,
+                                         see REACT_MIGRATION_PLAN.md. Each falls back to its plain checkbox if React
+                                         fails to load/mount. -->
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-pending-comments"
-                                            name="attentionIncludePendingComments" checked />
+                                        <span id="attention-include-pending-comments-root"><input type="checkbox" id="attention-include-pending-comments"
+                                            name="attentionIncludePendingComments" checked /></span>
                                         Mark PRs with my pending (unsubmitted) comments
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-ignore-merge-only-commits"
-                                            name="attentionIgnoreMergeOnlyCommits" />
+                                        <span id="attention-ignore-merge-only-commits-root"><input type="checkbox" id="attention-ignore-merge-only-commits"
+                                            name="attentionIgnoreMergeOnlyCommits" /></span>
                                         Exclude merge-only commit activity from CHANGED attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-closed-merged"
-                                            name="attentionIncludeClosedMerged" checked />
+                                        <span id="attention-include-closed-merged-root"><input type="checkbox" id="attention-include-closed-merged"
+                                            name="attentionIncludeClosedMerged" checked /></span>
                                         Include closed/merged sections in attention logic
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-changed"
-                                            name="attentionIncludeDraftChanged" checked />
+                                        <span id="attention-include-draft-changed-root"><input type="checkbox" id="attention-include-draft-changed"
+                                            name="attentionIncludeDraftChanged" checked /></span>
                                         Mark CHANGED draft PRs as attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-no-activity"
-                                            name="attentionIncludeDraftNoActivity" />
+                                        <span id="attention-include-draft-no-activity-root"><input type="checkbox" id="attention-include-draft-no-activity"
+                                            name="attentionIncludeDraftNoActivity" /></span>
                                         Apply NO_ACTIVITY attention rules to draft PRs
                                     </label>
 
                                     <label for="attention-author-thread-resolution-mode">PR author thread resolution
                                         policy</label>
-                                    <select id="attention-author-thread-resolution-mode"
-                                        name="attentionAuthorThreadResolutionMode">
-                                        <option value="allow-all" selected>Allow PR authors to resolve all own-PR
-                                            threads</option>
-                                        <option value="allow-only">Allow only for selected thread starters</option>
-                                        <option value="deny-only">Disallow for selected thread starters</option>
-                                    </select>
+                                    <!-- Rendered by React (mountAuthorThreadResolutionModeSelect in react-app.jsx),
+                                         same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                         Falls back to a plain select if React fails to load/mount. -->
+                                    <span id="attention-author-thread-resolution-mode-root">
+                                        <select id="attention-author-thread-resolution-mode"
+                                            name="attentionAuthorThreadResolutionMode">
+                                            <option value="allow-all" selected>Allow PR authors to resolve all own-PR
+                                                threads</option>
+                                            <option value="allow-only">Allow only for selected thread starters</option>
+                                            <option value="deny-only">Disallow for selected thread starters</option>
+                                        </select>
+                                    </span>
 
                                     <details id="attention-author-thread-resolution-allow-options"
                                         class="multi-select-dropdown" hidden>
@@ -311,8 +371,13 @@
                                     </p>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="change-filter-use-builtin-merge-pattern"
-                                            name="changeFilterUseBuiltinMergePattern" checked />
+                                        <!-- Rendered by React (mountFilterCheckboxes in react-app.jsx),
+                                             same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                             Falls back to a plain checkbox if React fails to load/mount. -->
+                                        <span id="change-filter-use-builtin-merge-pattern-root">
+                                            <input type="checkbox" id="change-filter-use-builtin-merge-pattern"
+                                                name="changeFilterUseBuiltinMergePattern" checked />
+                                        </span>
                                         Use built-in merge commit filter (merges from main/origin/main)
                                     </label>
                                     <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
@@ -325,10 +390,15 @@
 
                                     <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
                                         (regex, one per line)</label>
-                                    <textarea id="change-filter-ignore-commit-patterns"
-                                        name="changeFilterIgnoreCommitPatterns" rows="4"
-                                        placeholder="^docs: &#10;^test: &#10;^chore: update dependencies&#10;^style: formatting"
-                                        aria-describedby="commit-patterns-help"></textarea>
+                                    <!-- Rendered by React (mountIgnoreCommitPatternsTextarea in react-app.jsx),
+                                         same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                         Falls back to a plain textarea if React fails to load/mount. -->
+                                    <span id="change-filter-ignore-commit-patterns-root">
+                                        <textarea id="change-filter-ignore-commit-patterns"
+                                            name="changeFilterIgnoreCommitPatterns" rows="4"
+                                            placeholder="^docs: &#10;^test: &#10;^chore: update dependencies&#10;^style: formatting"
+                                            aria-describedby="commit-patterns-help"></textarea>
+                                    </span>
                                     <p class="subtle-copy" id="commit-patterns-help" style="margin-top: 4px;">
                                         📝 Filter commits by message patterns (e.g., <code>^docs:</code> ignores
                                         documentation commits, <code>^test:</code> ignores test-only commits).
@@ -347,37 +417,77 @@
                     <summary>Run Script options (rarely changed)</summary>
                     <div class="form-grid">
                         <label for="repo">Repo (owner/name)</label>
-                        <input type="text" id="repo" name="repo"
-                            placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
+                        <!-- Rendered by React (mountRunScriptTextInputs in react-app.jsx),
+                             same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                             Falls back to a plain input if React fails to load/mount. -->
+                        <span id="repo-root">
+                            <input type="text" id="repo" name="repo"
+                                placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
+                        </span>
 
                         <label for="limit">Open PR limit</label>
-                        <input type="number" id="limit" name="limit" min="1" placeholder="200" />
+                        <!-- Rendered by React (mountRunScriptTextInputs in react-app.jsx),
+                             same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                             Falls back to a plain input if React fails to load/mount. -->
+                        <span id="limit-root">
+                            <input type="number" id="limit" name="limit" min="1" placeholder="200" />
+                        </span>
 
                         <label for="merged-limit">Merged PR limit</label>
-                        <input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />
+                        <!-- Rendered by React (mountRunScriptTextInputs in react-app.jsx),
+                             same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                             Falls back to a plain input if React fails to load/mount. -->
+                        <span id="merged-limit-root">
+                            <input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />
+                        </span>
 
                         <label for="jobs">Parallel jobs</label>
-                        <input type="number" id="jobs" name="jobs" min="1" placeholder="6" />
+                        <!-- Rendered by React (mountRunScriptTextInputs in react-app.jsx),
+                             same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                             Falls back to a plain input if React fails to load/mount. -->
+                        <span id="jobs-root">
+                            <input type="number" id="jobs" name="jobs" min="1" placeholder="6" />
+                        </span>
 
                         <label for="open-mode">Open mode</label>
-                        <select id="open-mode" name="openMode">
-                            <option value="none" selected>none</option>
-                            <option value="changed">changed</option>
-                            <option value="all">all</option>
-                        </select>
+                        <!-- Rendered by React (mountOpenModeSelect in react-app.jsx),
+                             same id/name/options as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                             Falls back to a plain select if React fails to load/mount. -->
+                        <span id="open-mode-root">
+                            <select id="open-mode" name="openMode">
+                                <option value="none" selected>none</option>
+                                <option value="changed">changed</option>
+                                <option value="all">all</option>
+                            </select>
+                        </span>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="ack-changed" name="ackChanged" />
+                            <!-- Rendered by React (mountFilterCheckboxes in react-app.jsx),
+                                 same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain checkbox if React fails to load/mount. -->
+                            <span id="ack-changed-root">
+                                <input type="checkbox" id="ack-changed" name="ackChanged" />
+                            </span>
                             Ack all CHANGED non-draft PRs from this run
                         </label>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="show-reason" name="showReason" checked />
+                            <!-- Rendered by React (mountFilterCheckboxes in react-app.jsx),
+                                 same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain checkbox if React fails to load/mount. -->
+                            <span id="show-reason-root">
+                                <input type="checkbox" id="show-reason" name="showReason" checked />
+                            </span>
                             Show CHANGED reason in status
                         </label>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="quiet" name="quiet" />
+                            <!-- Rendered by React (mountFilterCheckboxes in react-app.jsx),
+                                 same id/name as before - Phase 2, see REACT_MIGRATION_PLAN.md.
+                                 Falls back to a plain checkbox if React fails to load/mount. -->
+                            <span id="quiet-root">
+                                <input type="checkbox" id="quiet" name="quiet" />
+                            </span>
                             Quiet mode (hide run metadata header)
                         </label>
                     </div>
