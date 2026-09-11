@@ -142,16 +142,6 @@
           }),
         );
 
-        appendMergedRequestMoreActionSafe(
-          sectionsHost,
-          buildMergedRequestMoreActionOptionsSafe({
-            selectedScope,
-            repoFilter,
-            lastRunRepo: payload?.lastRun?.repo || "",
-            latestSelectedRepo,
-          }),
-        );
-
         restoreInsightsViewStateSafe(sectionsHost, insightsViewState);
         applyActivePrProgressIndicatorsSafe(
           latestSchedulerState?.activePrNumbers || [],
@@ -159,10 +149,35 @@
         recomputeDirtyPrSectionsFieldsSafe();
       }
 
+      // The "Request more" merged-PRs button lives in its own static host
+      // element (a sibling of sectionsHost in index.html), not inside
+      // sectionsHost itself - unlike the table markup above, React never
+      // owns it, so this can (and must) always run regardless of
+      // skipTableRender. Without this, "Request more" was simply absent
+      // whenever React was rendering the table.
+      const mergedRequestMoreHost =
+        (typeof sectionsHost?.parentElement?.querySelector === "function" &&
+          sectionsHost.parentElement.querySelector("#merged-request-more-action")) ||
+        null;
+      clearElementContentsSafe(mergedRequestMoreHost);
+      appendMergedRequestMoreActionSafe(
+        mergedRequestMoreHost,
+        buildMergedRequestMoreActionOptionsSafe({
+          selectedScope,
+          repoFilter,
+          lastRunRepo: payload?.lastRun?.repo || "",
+          latestSelectedRepo,
+        }),
+      );
+
       return {
         pendingAutoRenderPayload: null,
         lastRenderedPrFingerprint: computePrDataFingerprintSafe(payload),
         latestPrManifest: payload?.dataManifest || computePrDataManifestSafe(payload),
+        // Surfaced so callers (the React rendering path) can restrict what
+        // they render to the same filtered set the vanilla pipeline just
+        // computed - see skipTableRender above.
+        filteredRows: Array.isArray(filteredRows) ? filteredRows : allStoredRows,
       };
     };
 

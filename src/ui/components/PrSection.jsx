@@ -48,6 +48,7 @@ export function PrSection({
   onViewJson,
   getPrFlags,
   checkNeedsAttention,
+  activePrNumbers,
 }) {
   const { key, title, prs, isSmartGroup, lifecycleSection, dateHeader, attentionCount } = section;
 
@@ -94,6 +95,7 @@ export function PrSection({
             onViewJson={onViewJson}
             getPrFlags={getPrFlags}
             checkNeedsAttention={checkNeedsAttention}
+            activePrNumbers={activePrNumbers}
           />
         ) : (
           <pre>(none)</pre>

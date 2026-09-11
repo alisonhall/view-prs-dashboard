@@ -106,3 +106,96 @@ test("Run & Filter dropdowns populate from loaded PR data", async ({ page }) => 
   const authorOptionCount = await page.locator("#author-list input[type='checkbox']").count();
   expect(authorOptionCount).toBeGreaterThan(0);
 });
+
+test("Apply filters (local) actually filters the rendered table, not just the summary line", async ({ page }) => {
+  // Regression test: the React rendering path used to always show every
+  // stored PR for the repo, completely ignoring "Apply filters (local)" -
+  // only the data-meta summary text reflected the filter, because vanilla
+  // computed the filtered set but never told React about it. This only
+  // showed up in a real browser: jsdom-based tests never exercise the
+  // React rendering path at all (window.ReactMountBridge doesn't exist
+  // there), so this bug was invisible to the full jsdom suite.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByRole("button", { name: "Apply filters (local)" }).click();
+  await page.getByRole("tab", { name: "PR data" }).click();
+
+  await expect(page.locator("#data-meta")).toContainText("Rows: 1");
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+});
+
+test("Request more merged PRs button renders (lives outside the React-owned table)", async ({ page }) => {
+  // Regression test: this button is a static sibling of #pr-sections,
+  // toggled by the vanilla pipeline - it used to only be appended as part
+  // of building the vanilla <table> markup, a step skipped entirely when
+  // React renders the table, so the button was simply absent in the real
+  // (React) UI despite the default scope ("all stored rows") making it
+  // eligible to show.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+
+  await expect(page.locator("#merged-request-more-btn")).toBeVisible();
+});
+
+test("scheduler-driven active-PR progress indicator reaches the React-rendered row", async ({ page }) => {
+  // Regression test: applyActivePrProgressIndicators (fired from the
+  // scheduler-status poll loop, independent of the main data render) used
+  // to reach into #pr-sections and flip a .pr-progress-indicator span's
+  // `hidden` property directly - which only works when vanilla itself
+  // built that markup. Once React owns #pr-sections, that direct DOM
+  // manipulation has nothing to reach (or risks fighting React's own
+  // reconciliation), so the spinner never showed. It's now dispatched as a
+  // 'pr-active-progress-update' CustomEvent that PrTableApp listens for.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+
+  // Checks the `hidden` DOM property directly (not Playwright's
+  // toBeVisible/toBeHidden) because this test verifies the React prop
+  // wiring, not whether a human could currently see the row - PR #1 can
+  // legitimately be sitting inside a collapsed lifecycle section
+  // (collapsed by default, and its exact section/smart-group membership
+  // can shift as other tests in this suite toggle its flagged/in-review
+  // state against the same shared dev server) without that being a
+  // regression in this feature.
+  const pr1Indicator = page.locator('[data-pr-number="1"] .pr-progress-indicator').first();
+  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("pr-active-progress-update", { detail: { activePrNumbers: ["1"] } }),
+    );
+  });
+
+  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
+});
+
+test("'View in table' from Author Insights actually expands the insights row content", async ({ page }) => {
+  // Regression test: vanilla's navigateToPrInTable finds the PR's row and
+  // directly flips `.hidden`/textContent on the insights <tr> and toggle
+  // button. Under React that left the toggle button claiming
+  // aria-expanded="true" while the insights row stayed hidden (React's own
+  // expandedInsights state never changed), so the click looked like it
+  // worked but revealed nothing. It now dispatches
+  // 'pr-navigate-to-insights' for PrTableApp to handle via its own state.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  const tableLink = page.locator(".author-insights-table-link").first();
+  await tableLink.waitFor();
+  await tableLink.click();
+
+  const expandedToggle = page.locator('.row-insights-toggle[aria-expanded="true"]').first();
+  await expect(expandedToggle).toBeAttached();
+  const insightsRow = expandedToggle.locator(
+    "xpath=ancestor::tr[1]/following-sibling::tr[contains(@class,'insights-row')][1]",
+  );
+  await expect(insightsRow).toHaveJSProperty("hidden", false);
+});

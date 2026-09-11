@@ -2502,6 +2502,23 @@ const normalizeActivePrNumberSet = (activePrNumbersRaw = []) => {
 };
 
 const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
+  // Dispatched unconditionally (harmless no-op with no listener) so the
+  // React rendering path can show the same "PR update in progress"
+  // indicator the vanilla DOM manipulation below applies directly - React
+  // owns #pr-sections' markup when it's mounted, so that direct
+  // manipulation wouldn't reach (or would be clobbered by) React-rendered
+  // cells. This is also called from its own scheduler-status poll loop
+  // (see renderSchedulerStatus), independent of the main data render, so it
+  // needs its own live-update channel rather than piggybacking on
+  // ReactMountBridge.update()'s payload/visiblePrNumbers plumbing.
+  window.dispatchEvent(
+    new CustomEvent("pr-active-progress-update", {
+      detail: {
+        activePrNumbers: Array.isArray(activePrNumbersRaw) ? activePrNumbersRaw : [],
+      },
+    }),
+  );
+
   const sectionsHost = getOptionalElementById("pr-sections");
   if (!sectionsHost) {
     return;
@@ -4249,6 +4266,7 @@ const prAuthorInsightsPrLinkHelpers =
     DEFAULT_REPO,
     activateDataTab: (...args) => activateDataTab(...args),
     collectNodesByTag: (...args) => collectNodesByTag(...args),
+    isReactTableMounted: () => Boolean(window.ReactMountBridge?.isMounted?.()),
   });
 
 const prAuthorInsightsDisplayHelperFactory =
@@ -6251,10 +6269,19 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // actor lists) — still needs to run. Run the full vanilla pipeline with
   // skipTableRender so it performs those side effects without building or
   // appending its own <table> markup into #pr-sections (which React owns).
-  prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
+  const renderPipelineResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
     ...options,
     skipTableRender: true,
   });
+  // The filtered set the vanilla pipeline just computed (scope, PR-number,
+  // label, author, assigned, approver filters) - React must be told which
+  // PR numbers passed, or it falls back to showing every stored PR for the
+  // repo regardless of the active local filters.
+  const visiblePrNumbers = Array.isArray(renderPipelineResult?.filteredRows)
+    ? renderPipelineResult.filteredRows
+        .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
+        .filter(Boolean)
+    : null;
   populateFilterDropdownsForCurrentPayload(
     latestStoredPayload || payload,
     latestSelectedRepo || selectedRepo,
@@ -6270,7 +6297,8 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     });
     window.ReactMountBridge.update(
       latestStoredPayload || payload,
-      latestSelectedRepo || selectedRepo
+      latestSelectedRepo || selectedRepo,
+      visiblePrNumbers
     );
     return;
   }
@@ -6299,6 +6327,7 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     {
       payload: latestStoredPayload || payload || {},
       selectedRepo: latestSelectedRepo || selectedRepo || '',
+      visiblePrNumbers,
     },
     {
       onCheckboxChange: callbacks.handleCheckboxChange,

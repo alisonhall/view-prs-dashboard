@@ -27,6 +27,14 @@
       host,
       { isVisible = false, repo = "" } = {},
     ) => {
+      // `host` may be a persistent element (e.g. a static sibling of the
+      // React-rendered table) rather than one rebuilt from scratch every
+      // render, so visibility must be set explicitly rather than inferred
+      // from whether a child was ever appended.
+      if (host && typeof host === "object" && "hidden" in host) {
+        host.hidden = !isVisible;
+      }
+
       if (!isVisible || !host) {
         return;
       }

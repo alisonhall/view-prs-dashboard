@@ -29,6 +29,9 @@
           safeState.latestPrManifest && typeof safeState.latestPrManifest === "object"
             ? safeState.latestPrManifest
             : {},
+        filteredRows: Array.isArray(safeState.filteredRows)
+          ? safeState.filteredRows
+          : [],
       };
     };
 

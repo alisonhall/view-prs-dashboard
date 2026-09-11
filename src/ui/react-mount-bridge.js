@@ -25,6 +25,9 @@
    * @param {Object} initialData - Initial data to render
    * @param {Object} initialData.payload - PR data payload
    * @param {string} initialData.selectedRepo - Currently selected repository
+   * @param {string[]} [initialData.visiblePrNumbers] - PR numbers that pass
+   *   the active local filters (scope/PR-number/label/author/assigned/
+   *   approver); null/undefined means "no filter, show everything"
    * @param {Function} callbacks - Callback functions for React → vanilla JS
    * @param {Function} callbacks.onCheckboxChange - Handle checkbox changes
    * @param {Function} callbacks.onAckAction - Handle Ack button clicks
@@ -51,6 +54,7 @@
       reactRootInstance = global.mountReactPrTable(container, {
         initialPayload: initialData.payload || {},
         selectedRepo: initialData.selectedRepo || '',
+        visiblePrNumbers: initialData.visiblePrNumbers || null,
         onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
         onAckAction: callbacks.onAckAction || (() => {}),
       });
@@ -74,15 +78,17 @@
    * 
    * @param {Object} payload - New PR data payload
    * @param {string} selectedRepo - Currently selected repository
+   * @param {string[]} [visiblePrNumbers] - PR numbers that pass the active
+   *   local filters; null/undefined means "no filter, show everything"
    */
-  function updateReactTable(payload, selectedRepo) {
+  function updateReactTable(payload, selectedRepo, visiblePrNumbers) {
     if (!currentUpdateCallback) {
       console.warn('[ReactBridge] Cannot update: React not mounted or update callback unavailable');
       return;
     }
 
     try {
-      currentUpdateCallback(payload, selectedRepo);
+      currentUpdateCallback(payload, selectedRepo, visiblePrNumbers);
     } catch (error) {
       console.error('[ReactBridge] Error updating React:', error);
     }

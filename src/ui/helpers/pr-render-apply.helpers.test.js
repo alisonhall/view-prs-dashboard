@@ -45,7 +45,15 @@ describe("pr render apply helpers", () => {
       computePrDataManifest,
     });
 
-    const sectionsHost = { id: "sections" };
+    const mergedRequestMoreHost = { id: "merged-request-more-action" };
+    const sectionsHost = {
+      id: "sections",
+      parentElement: {
+        querySelector: jest.fn((selector) =>
+          selector === "#merged-request-more-action" ? mergedRequestMoreHost : null,
+        ),
+      },
+    };
     const meta = { textContent: "" };
     const payload = {
       actorsMap: { user1: { displayName: "User One" } },
@@ -103,7 +111,7 @@ describe("pr render apply helpers", () => {
       lastRunRepo: "org/repo",
       latestSelectedRepo: "org/repo",
     });
-    expect(appendMergedRequestMoreAction).toHaveBeenCalledWith(sectionsHost, {
+    expect(appendMergedRequestMoreAction).toHaveBeenCalledWith(mergedRequestMoreHost, {
       enabled: true,
     });
     expect(restoreInsightsViewState).toHaveBeenCalledWith(sectionsHost, {
@@ -117,6 +125,7 @@ describe("pr render apply helpers", () => {
       pendingAutoRenderPayload: null,
       lastRenderedPrFingerprint: "fingerprint-1",
       latestPrManifest: { version: "v1" },
+      filteredRows: [{ id: 2 }],
     });
   });
 

@@ -7,7 +7,7 @@
 
 import React from 'react';
 
-export function PrNumberCell({ pr, repo }) {
+export function PrNumberCell({ pr, repo, isActive = false }) {
   const prNumber = pr?.number || '';
   const href = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
 
@@ -22,7 +22,7 @@ export function PrNumberCell({ pr, repo }) {
         <span className="pr-number-cell-progress">
           <span
             className="pr-progress-indicator"
-            hidden
+            hidden={!isActive}
             title={`PR #${prNumber} update in progress`}
             aria-hidden="true"
           />

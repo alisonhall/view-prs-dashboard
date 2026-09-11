@@ -144,6 +144,12 @@
       stateSetters.setLatestPrManifest(
         committedRenderState.latestPrManifest
       );
+
+      // Returned so the React rendering path (see index.page.js) can
+      // restrict what it renders to the same filtered set this pipeline
+      // just computed, instead of showing every stored PR regardless of
+      // the active local filters.
+      return { filteredRows: committedRenderState.filteredRows || [] };
     }
 
     /**

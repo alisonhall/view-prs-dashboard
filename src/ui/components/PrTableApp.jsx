@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 
@@ -21,6 +21,9 @@ import { PrJsonModal } from './PrJsonModal';
  * @param {Object} props
  * @param {Object} props.initialPayload - Initial PR data payload
  * @param {string} props.selectedRepo - Currently selected repository
+ * @param {string[]} [props.visiblePrNumbers] - PR numbers that pass the
+ *   active local filters (scope/PR-number/label/author/assigned/approver);
+ *   null/undefined means no filter is active (show everything for the repo)
  * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
  * @param {Function} props.onAckAction - Callback for Ack button clicks
  * @returns {JSX.Element}
@@ -28,6 +31,7 @@ import { PrJsonModal } from './PrJsonModal';
 export function PrTableApp({
   initialPayload,
   selectedRepo,
+  visiblePrNumbers,
   onCheckboxChange,
   onAckAction,
 }) {
@@ -49,9 +53,30 @@ export function PrTableApp({
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
   const [openSections, setOpenSections] = useState({});
-  
+
   // State: Expanded insights rows (keyed by composite: 'section:prNumber')
   const [expandedInsights, setExpandedInsights] = useState({});
+
+  // State: PR numbers currently being refreshed by the scheduler (shows the
+  // small in-progress spinner in PrNumberCell). Kept separate from `payload`
+  // since it's driven by its own poll loop (renderSchedulerStatus in
+  // index.page.js), independent of data refresh - see the
+  // 'pr-active-progress-update' listener below. Deliberately NOT a
+  // dependency of the `sections` useMemo: it's threaded straight to
+  // PrSection/PrTable/PrRow as its own prop so only the specific rows whose
+  // active status actually changes re-render (PrRow is memoized).
+  const [activePrNumbers, setActivePrNumbers] = useState([]);
+
+  useEffect(() => {
+    const handleActiveProgressUpdate = (event) => {
+      setActivePrNumbers(event.detail?.activePrNumbers || []);
+    };
+
+    window.addEventListener('pr-active-progress-update', handleActiveProgressUpdate);
+    return () => {
+      window.removeEventListener('pr-active-progress-update', handleActiveProgressUpdate);
+    };
+  }, []);
 
   // The "Needs Attention rules" controls (NO_ACTIVITY handling mode, pending
   // comments, merge-only commits, etc.) live in vanilla DOM elements, not
@@ -239,7 +264,20 @@ export function PrTableApp({
     // the vanilla renderer expects.
     const repo = effectiveRepo;
     const allEntries = Object.values(payload.byPrNumber);
-    const entriesForRepo = allEntries.filter((entry) => entry?.repo === repo);
+    // null/undefined visiblePrNumbers means no local filter is active (show
+    // every stored PR for the repo); an array (even empty) means the
+    // vanilla filter pipeline has run and this is exactly what passed it -
+    // without this, "Apply filters (local)" would have no visible effect on
+    // the React-rendered table at all (see index.page.js's React rendering
+    // path, which computes visiblePrNumbers from that same pipeline).
+    const visiblePrNumberSet = Array.isArray(visiblePrNumbers)
+      ? new Set(visiblePrNumbers.map(String))
+      : null;
+    const entriesForRepo = allEntries.filter(
+      (entry) =>
+        entry?.repo === repo &&
+        (!visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? ""))),
+    );
 
     // Group by lifecycle status using the section already computed
     // server-side, then sort exactly as vanilla's buildGroupedPrSections
@@ -324,7 +362,46 @@ export function PrTableApp({
           : false;
       }).length,
     }));
-  }, [payload, effectiveRepo, openSections, checkNeedsAttention, checkUserInteraction, attentionConfigVersion]);
+  }, [payload, effectiveRepo, visiblePrNumbers, openSections, checkNeedsAttention, checkUserInteraction, attentionConfigVersion]);
+
+  // Kept in sync every render so the 'pr-navigate-to-insights' listener
+  // below (subscribed once) can always read the current sections instead
+  // of a stale closure over whatever `sections` was when it first mounted.
+  const sectionsRef = useRef(sections);
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
+
+  // Listen for "View in table" clicks from the Author Insights tab. Vanilla
+  // handles this by finding the PR's row and directly flipping
+  // `.hidden`/textContent on the insights <tr> and toggle button - which
+  // only works when vanilla itself owns that DOM. Under React, that direct
+  // mutation left the toggle button claiming "expanded" while the insights
+  // content never actually rendered, since React's own expandedInsights
+  // state never changed. See navigateToPrInTable in
+  // pr-author-insights-pr-link.helpers.js, which dispatches this event
+  // instead of mutating the DOM directly when React owns the table.
+  useEffect(() => {
+    const handleNavigateToInsights = (event) => {
+      const prNumber = String(event.detail?.prNumber ?? '').trim();
+      if (!prNumber) {
+        return;
+      }
+      const matchingSection = sectionsRef.current.find((section) =>
+        (section.prs || []).some((entry) => String(entry?.data?.number ?? '') === prNumber),
+      );
+      if (!matchingSection) {
+        return;
+      }
+      const compositeKey = `${matchingSection.key}:${prNumber}`;
+      setExpandedInsights((prev) => ({ ...prev, [compositeKey]: true }));
+    };
+
+    window.addEventListener('pr-navigate-to-insights', handleNavigateToInsights);
+    return () => {
+      window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
+    };
+  }, []);
 
   // Listen for delta updates from vanilla JS polling
   useEffect(() => {
@@ -425,6 +502,7 @@ export function PrTableApp({
           onViewJson={handleViewJson}
           getPrFlags={getPrFlags}
           checkNeedsAttention={checkNeedsAttention}
+          activePrNumbers={activePrNumbers}
         />
       ))}
       <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />

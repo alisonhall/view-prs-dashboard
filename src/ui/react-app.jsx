@@ -18,6 +18,8 @@ import { PrTableApp } from './components/PrTableApp';
  * @param {Object} props - Initial props for PrTableApp
  * @param {Object} props.initialPayload - Initial PR data payload
  * @param {string} props.selectedRepo - Currently selected repository
+ * @param {string[]} [props.visiblePrNumbers] - PR numbers passing active
+ *   local filters; null/undefined means show everything
  * @param {Function} props.onCheckboxChange - Callback for checkbox changes
  * @param {Function} props.onAckAction - Callback for Ack button clicks
  * @returns {Object} React root instance (for unmounting if needed)
@@ -36,12 +38,19 @@ export function mountReactPrTable(containerElement, props) {
   let currentProps = { ...props };
 
   // Create update function
-  const updateTable = (newPayload, newSelectedRepo) => {
+  const updateTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
     console.log('[React Migration] Updating React table with new data...');
     currentProps = {
       ...currentProps,
       initialPayload: newPayload,
       selectedRepo: newSelectedRepo || currentProps.selectedRepo,
+      // undefined (param omitted) keeps the previous value; null/[] are
+      // meaningful ("no filter" / "everything filtered out") and must
+      // overwrite it.
+      visiblePrNumbers:
+        newVisiblePrNumbers !== undefined
+          ? newVisiblePrNumbers
+          : currentProps.visiblePrNumbers,
     };
     root.render(<PrTableApp {...currentProps} />);
   };

@@ -1,4 +1,4 @@
-# React Migration Plan - Phase 1 In Progress
+# React Migration Plan - Phase 1 Functionally Complete
 
 ## 🎯 **Overview**
 
@@ -6,7 +6,7 @@ Migrating view-prs from vanilla JavaScript to React in phases, starting with the
 
 **Key Principle:** Incremental migration with working software at each phase
 
-**Expected Performance:** 19x faster delta updates (1530ms → 80ms for 3 changed PRs)
+**Expected Performance:** 19x faster delta updates (1530ms → 80ms for 3 changed PRs) — not yet formally measured, see "Not Yet Done" below
 
 ---
 
@@ -14,26 +14,22 @@ Migrating view-prs from vanilla JavaScript to React in phases, starting with the
 
 | Phase | Component | Time | Status |
 |-------|-----------|------|--------|
-| **Phase 1** | PR Table (Hybrid) | 30-40h | 🟡 **In Progress (75%)** |
-| **Phase 2** | Filters & Controls | 20-30h | ⬜ Not Started |
+| **Phase 1** | PR Table (Hybrid) | 30-40h | 🟢 **Functionally complete — parity-verified in a real browser** |
+| **Phase 2** | Filters & Controls | 20-30h | 🟡 Some filter-dropdown work already landed alongside Phase 1 (see git history: "Fix dropdown auto-population", "Update attention rules and options") |
 | **Phase 3** | Other Tabs | 20-30h | ⬜ Not Started |
-| **Phase 4** | Testing & Cleanup | 20-30h | ⬜ Not Started |
+| **Phase 4** | Testing & Cleanup | 20-30h | 🟡 jsdom suite at 1615/1615; a Playwright e2e smoke suite now exists too (see below) |
 | **Phase 5** | Performance Tuning | 10-20h | ⬜ Not Started |
 | **Phase 6** | Remove Vanilla JS | 10-20h | ⬜ Not Started |
 
-**Total Estimated Time:** 120-160 hours (3-4 weeks)  
-**Time Invested:** ~12 hours  
-**Remaining (Phase 1):** ~8-12 hours  
+**Total Estimated Time:** 120-160 hours (3-4 weeks)
 
 ---
 
-# 🚀 **PHASE 1: Hybrid React Table** (CURRENT)
+# 🚀 **PHASE 1: Hybrid React Table**
 
 ## **Goal:** Replace PR table rendering with React while keeping everything else in vanilla JS
 
-**Time Estimate:** 30-40 hours  
-**Progress:** 75% complete  
-**Expected Result:** 19x faster delta updates  
+**Status:** All PR-table-rendering functionality works in the real Vite/React UI, verified with a headless browser (Playwright) against isolated fixture data, not just the jsdom unit suite. See "React Rendering Parity Fixes" below for what that verification actually found and fixed.
 
 ---
 
@@ -149,9 +145,9 @@ React re-renders changed rows
 
 ---
 
-## 🟡 **Current Status: Testing Phase**
+## 🟢 **Current Status: Parity-Verified, Performance Not Yet Measured**
 
-### **✅ Fixed Issues:**
+### **✅ Fixed Issues (original, Jan 2026):**
 
 1. ✅ **404 Error on react-app.jsx**
    - **Issue:** Accessing via port 9000 (root server) instead of 3456 (Vite)
@@ -167,197 +163,102 @@ React re-renders changed rows
 
 ---
 
-## 🎯 **Next Steps (Remaining ~8-12 hours)**
+## 🔍 **React Rendering Parity Fixes (Sept 2026)**
 
-### **Step 1.4: Test React Integration** (~2-4 hours)
+The jsdom test suite (1615 tests, all passing) cannot actually exercise the
+React rendering path at all — `window.ReactMountBridge` doesn't exist in
+jsdom, so every one of those tests runs against the vanilla fallback. The
+suite being green said nothing about whether the real, React-rendered UI a
+user actually sees was correct. Driving the real app with a headless
+browser (Playwright, against isolated fixture data — see "E2E Testing"
+below) found five real bugs the jsdom suite structurally could not have
+caught, all now fixed and each covered by an e2e regression test:
 
-**Test checklist:**
+1. **Duplicate PR rows.** `PrTableApp.jsx` read `config.rows` (the full,
+   undeduplicated set — used only for section attention counts) instead of
+   `config.renderRows` (added to `pr-section-config.helpers.js` to exclude
+   rows already shown in a smart group). A PR that was both flagged and
+   e.g. status=CHANGED rendered twice.
+2. **"Apply filters (local)" did nothing to the actual table.** React
+   received the full, unfiltered payload and recomputed its own
+   `entriesForRepo` filtered only by repo — the vanilla-computed filtered
+   PR-number set was never passed through. Only the `data-meta` summary
+   text reflected the filter; the table kept showing everything. Fixed by
+   threading the vanilla pipeline's filtered rows out through
+   `renderPrData`'s return value → `visiblePrNumbers` prop.
+3. **"Request more" merged-PRs button was entirely absent.** It was only
+   ever appended while building the vanilla `<table>` DOM — a step skipped
+   entirely under React. Fixed by giving it its own static sibling element
+   in `index.html` (outside the container React owns), so the vanilla
+   pipeline can always render into it regardless of which backend draws
+   the table.
+4. **The "PR update in progress" spinner never showed.** It's driven by a
+   scheduler-status poll loop separate from the main render cycle, so it
+   couldn't reuse the `visiblePrNumbers` plumbing. Fixed with a
+   `pr-active-progress-update` CustomEvent that `PrTableApp` listens for,
+   threading a plain boolean `isActive` prop down to `PrNumberCell` so
+   `PrRow`'s `React.memo()` still only re-renders the one row that changed.
+5. **"View in table" from Author Insights silently broke.** It scrolled to
+   the row correctly but expanded insights by directly mutating
+   `.hidden`/`textContent`/`aria-expanded` on the DOM — which left the
+   toggle button claiming "expanded" while React's own `expandedInsights`
+   state (and therefore the actual content) never changed. Fixed by
+   dispatching a `pr-navigate-to-insights` CustomEvent instead, handled via
+   `PrTableApp`'s own state, when React is mounted.
 
-#### **Visual Verification:**
-- [ ] Sections render (smart groups + lifecycle)
-- [ ] PRs populate correctly
-- [ ] Icons show (🚩👁️⚠️💬)
-- [ ] Lifecycle badges appear in smart groups
-- [ ] Needs attention icons (⚠️)
-- [ ] Styling matches vanilla version
+**The pattern behind all five:** vanilla computes or mutates something as
+a side effect of building its own `<table>` DOM, and that side effect was
+either skipped outright (`skipTableRender`) or only worked when vanilla
+itself owned the DOM node being touched. Any *other* code that still
+directly manipulates `#pr-sections` DOM, or that assumes vanilla's render
+pipeline ran, is worth checking against this same pattern before trusting
+it works under React.
 
-#### **Interaction Testing:**
-- [ ] Click "Flagged" checkbox → updates all instances
-- [ ] Click "In Review" checkbox → updates all instances
-- [ ] PRs appear in smart groups immediately (no 30s delay)
-- [ ] PRs disappear from smart groups immediately
-- [ ] Click "Ack" button → toggles state
-- [ ] Expand/collapse sections → works
-- [ ] Expand "More Insights" → shows details
-- [ ] Collapse "More Insights" → hides details
-
-#### **Performance Testing:**
-- [ ] Open React DevTools
-- [ ] Verify `PrRow` has `memo` wrapper
-- [ ] Click checkbox → only one row re-renders
-- [ ] Check delta updates (should be ~19x faster)
-
-#### **Console Verification:**
-```
-✅ [ReactBridge] Bridge initialized
-✅ [renderPrData] Using React rendering
-✅ [React Migration] React PR table mounted successfully
-❌ No errors
-❌ No 404s
-```
-
----
-
-### **Step 1.5: Feature Preservation** (~2-4 hours)
-
-**Verify all features work:**
-
-#### **Smart Groups:**
-- [ ] 🚩 Flagged - Shows flagged PRs
-- [ ] 👁️ In Review - Shows in-review PRs
-- [ ] ⚠️ Needs Attention - Shows PRs needing attention (excludes closed)
-- [ ] 💬 Interacted With - Shows PRs user interacted with (open/draft only)
-
-#### **Lifecycle Sections:**
-- [ ] Open PRs - Shows open PRs
-- [ ] Draft PRs - Shows draft PRs
-- [ ] Latest Merged PRs - Shows recently merged
-- [ ] Closed PRs - Shows closed PRs
-
-#### **Lifecycle Badges:**
-- [ ] Badges appear ONLY in smart groups
-- [ ] Correct section shown (OPEN/DRAFT/MERGED/CLOSED)
-- [ ] Pill-shaped styling (subtle)
-- [ ] Color matches section (green/gray/purple/red)
-
-#### **Date Columns:**
-- [ ] Line 1: PR activity (merge/close/commit date)
-- [ ] Line 2: Viewer activity (baseline timestamp)
-- [ ] Relative time format ("2 hours ago")
-
-#### **More Insights:**
-- [ ] Composite keys work (`section:prNumber`)
-- [ ] Same PR can have different insights state in different sections
-- [ ] Expand/collapse state persists correctly
+**Investigated and confirmed NOT a bug:** whether an incoming payload
+update (e.g. from an unrelated poll) could wipe an in-progress, unsaved
+note edit, since `recomputeDirtyPrSectionsFields`'s auto-render-blocking
+check is also skipped under React. Verified live: it isn't at risk — notes
+editing is local `useState` inside `NotesSection.jsx`, initialized once via
+a lazy initializer, so it survives re-renders as long as the component
+doesn't unmount (which a same-`key` payload update doesn't trigger). This
+is actually more robust than vanilla's approach, not less.
 
 ---
 
-### **Step 1.6: Unit Tests** (~2-4 hours)
+## 🎭 **E2E Testing (Playwright)**
 
-**Install testing dependencies:**
-```bash
-cd view-prs
-npm install --save-dev \
-  @testing-library/react@^14.0.0 \
-  @testing-library/jest-dom@^6.1.0 \
-  @testing-library/user-event@^14.5.0
-```
+Added `@playwright/test` as a dev dependency specifically because the bugs
+above are invisible to jsdom. `npm run test:e2e` runs a small (9-test)
+smoke suite in `e2e/smoke.spec.js` against a real Vite + Express server
+pair, driven by headless Chromium.
 
-**Create component tests:**
+**Critical safety detail:** the app has no fixture-data concept of its
+own — by default it reads/writes the developer's real `data/` directory,
+including real PR flagged/in-review/ack tracking state. `playwright.config.js`
+isolates every test run into a fresh temp directory via `VIEW_PRS_*` env
+vars **and** a plain `DATA_DIR` env var (the two are independent — the
+Express server reads `VIEW_PRS_DATA_FILE`/`VIEW_PRS_USER_STATE_FILE` etc.,
+but `check-open-pr-updates.sh`, spawned for checkbox/Ack/"Run script"
+actions, has its own separate `DATA_DIR` env var and silently falls back to
+the real `data/` directory if it's not set). Both must be set for a test
+run to be truly isolated — this cost a real (data/check-open-pr-updates.user-state.json)
+mutation during development to discover. `reuseExistingServer` is also
+deliberately always `false`, even locally, so a developer's own running
+`npm run dev` session can never get silently reused by a test run.
 
-#### **Test 1: PrRow renders correctly**
-```jsx
-import { render, screen } from '@testing-library/react';
-import { PrRow } from '../PrRow';
+Fixture data lives in `e2e/fixtures/{data.json,user-state.json}` — a
+small, synthetic `octocat/hello-world` repo, not real PR data.
 
-test('renders PR number and title', () => {
-  const pr = {
-    number: 123,
-    title: 'Test PR',
-    authorLogin: 'testuser',
-    // ... other fields
-  };
-
-  render(
-    <table><tbody>
-      <PrRow
-        pr={pr}
-        sectionKey="open"
-        isSmartGroup={false}
-        isExpanded={false}
-        needsAttention={false}
-        isFlagged={false}
-        isInReview={false}
-        onToggleInsights={() => {}}
-        onCheckboxChange={() => {}}
-        onAckAction={() => {}}
-      />
-    </tbody></table>
-  );
-
-  expect(screen.getByText(/Test PR/)).toBeInTheDocument();
-  expect(screen.getByText(/#123/)).toBeInTheDocument();
-});
-```
-
-#### **Test 2: Checkbox changes trigger callback**
-```jsx
-test('checkbox change calls onCheckboxChange', async () => {
-  const handleChange = jest.fn();
-  const pr = { number: 123, title: 'Test' };
-
-  render(
-    <table><tbody>
-      <PrRow
-        pr={pr}
-        onCheckboxChange={handleChange}
-        // ... other props
-      />
-    </tbody></table>
-  );
-
-  const checkbox = screen.getByLabelText(/Flagged/);
-  await userEvent.click(checkbox);
-
-  expect(handleChange).toHaveBeenCalledWith(123, 'flagged', true);
-});
-```
-
-#### **Test 3: React.memo prevents unnecessary re-renders**
-```jsx
-test('PrRow does not re-render when unrelated props change', () => {
-  const { rerender } = render(<PrRow pr={pr1} {...props} />);
-  const renderCount = countRenders(PrRow);
-
-  // Change unrelated prop
-  rerender(<PrRow pr={pr1} {...props} unrelatedProp={newValue} />);
-
-  expect(renderCount).toBe(1); // Should not re-render
-});
-```
-
-#### **Test 4: Integration - Delta updates**
-```jsx
-test('updates React table on delta change', async () => {
-  const { container } = render(
-    <PrTableApp
-      initialPayload={initialData}
-      selectedRepo="owner/repo"
-      onCheckboxChange={() => {}}
-      onAckAction={() => {}}
-    />
-  );
-
-  // Simulate delta update
-  const deltaPayload = { ...initialData, /* changed PR */ };
-  act(() => {
-    window.updateReactPrTable(deltaPayload);
-  });
-
-  await waitFor(() => {
-    expect(screen.getByText(/Updated PR/)).toBeInTheDocument();
-  });
-});
-```
-
-**Run tests:**
-```bash
-npm test -- --testPathPattern=PrRow
-```
+Keep this suite deliberately small: it exists to catch what jsdom
+structurally cannot (broken static asset paths, charset/encoding issues,
+vanilla-vs-React DOM ownership conflicts), not to duplicate the jsdom
+suite's interaction coverage.
 
 ---
 
-### **Step 1.7: Performance Validation** (~2-4 hours)
+## 🎯 **Not Yet Done**
+
+### **Performance Validation**
 
 **Measure delta update performance:**
 
@@ -405,22 +306,19 @@ const measureDeltaUpdate = (payload) => {
 
 ## 📦 **Phase 1 Deliverables**
 
-When Phase 1 is complete, we should have:
-
 ✅ **Working hybrid React table**
 - PR table rendered by React
 - Filters/controls still vanilla JS
-- Delta updates 15-19x faster
+- Local filters (PR-number/label/author/assigned/approver/scope) verified
+  to actually restrict the React-rendered table, not just the summary text
 
-✅ **Zero regressions**
-- All existing features preserved
-- All tests passing (1,400+)
-- No visual changes
+✅ **Zero known regressions**
+- jsdom suite: 1615/1615 passing
+- Playwright e2e suite: 9/9 passing, against the real React UI
+- Five real vanilla/React parity bugs found via browser testing, all fixed
+  and each covered by an e2e regression test (see above)
 
-✅ **Performance metrics**
-- Documented performance improvements
-- Before/after measurements
-- React DevTools profiling data
+⬜ **Performance metrics** — not yet measured (see "Not Yet Done" above); the 15-19x figure is the original design target, not a verified result
 
 ✅ **Production-ready**
 - Build process configured (`npm run build:ui`)
@@ -612,11 +510,11 @@ npm run test:coverage       # With coverage
 **Troubleshooting:**
 - Check browser console for errors
 - Use React DevTools to inspect component tree
-- Verify servers are running (ports 3455 + 3456)
+- Verify servers are running (Express on port 9000, Vite on port 3456)
 - Check you're accessing `http://localhost:3456`
 
 ---
 
-**Last Updated:** 2025-01-08  
-**Phase 1 Progress:** 75% complete  
-**Next Milestone:** Complete testing and validation (~8-12 hours)
+**Last Updated:** 2026-09-11
+**Phase 1 Progress:** Functionally complete, parity-verified in a real browser; performance not yet formally measured
+**Next Milestone:** Either measure/document Phase 1 performance (Step "Performance Validation" above), or move on to Phase 2 (Filters & Controls), some of which has already started

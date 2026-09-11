@@ -17,7 +17,10 @@
     DEFAULT_REPO = "",
     activateDataTab,
     collectNodesByTag,
+    isReactTableMounted,
   } = {}) => {
+    const isReactTableMountedSafe =
+      typeof isReactTableMounted === "function" ? isReactTableMounted : () => false;
     /**
      * Creates a PR link element with external GitHub link and table navigation button.
      * 
@@ -71,6 +74,21 @@
       }
 
       activateDataTab("pr-data");
+
+      const reactMounted = isReactTableMountedSafe();
+      if (reactMounted && typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        // React owns the insights row's expand/collapse state (PrTableApp's
+        // expandedInsights) - dispatch and let its own listener update that
+        // state, then scroll below once React's had a chance to render the
+        // now-expanded row. Directly mutating `.hidden`/textContent on a
+        // React-rendered node, like the vanilla branch below does, would
+        // leave the toggle button claiming "expanded" while the insights
+        // content never actually renders.
+        window.dispatchEvent(
+          new CustomEvent("pr-navigate-to-insights", { detail: { prNumber } }),
+        );
+      }
+
       setTimeout(() => {
         const prLinks = collectNodesByTag(document.body, "a")
           .filter((link) => link.className === "pr-link")
@@ -80,6 +98,10 @@
           const prLink = prLinks[0];
           prLink.scrollIntoView({ behavior: "smooth", block: "center" });
           prLink.focus();
+
+          if (reactMounted) {
+            return;
+          }
 
           const prRow = prLink.closest("tr");
           if (prRow) {

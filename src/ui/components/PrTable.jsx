@@ -72,7 +72,9 @@ export function PrTable({
   onViewJson,
   getPrFlags,
   checkNeedsAttention,
+  activePrNumbers,
 }) {
+  const activePrNumberSet = new Set((activePrNumbers || []).map(String));
   return (
     <table className="pr-data-table">
       <colgroup>
@@ -110,6 +112,7 @@ export function PrTable({
             : { isFlagged: false, isInReview: false, isAcknowledged: false };
 
           const needsAttention = checkNeedsAttention ? checkNeedsAttention(entry) : false;
+          const isActive = activePrNumberSet.has(String(entry.data.number));
 
           return (
             <PrRow
@@ -126,6 +129,7 @@ export function PrTable({
               isInReview={flags.isInReview}
               isAcknowledged={flags.isAcknowledged}
               needsAttention={needsAttention}
+              isActive={isActive}
               onToggleInsights={onToggleInsights}
               onCheckboxChange={onCheckboxChange}
               onAckAction={onAckAction}
