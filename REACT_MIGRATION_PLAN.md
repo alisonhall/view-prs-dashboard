@@ -6,7 +6,7 @@ Migrating view-prs from vanilla JavaScript to React in phases, starting with the
 
 **Key Principle:** Incremental migration with working software at each phase
 
-**Expected Performance:** 19x faster delta updates (1530ms → 80ms for 3 changed PRs) — not yet formally measured, see "Not Yet Done" below
+**Measured Performance:** React is 1.4-1.5x faster than vanilla at 50 PRs, 3.8-3.9x faster at 500 PRs, flat across how many PRs changed per update (not the delta-size-scaling 19x originally guessed) — see "Performance Validation" below for the real numbers and why
 
 ---
 
@@ -14,7 +14,7 @@ Migrating view-prs from vanilla JavaScript to React in phases, starting with the
 
 | Phase | Component | Time | Status |
 |-------|-----------|------|--------|
-| **Phase 1** | PR Table (Hybrid) | 30-40h | 🟢 **Functionally complete — parity-verified in a real browser** |
+| **Phase 1** | PR Table (Hybrid) | 30-40h | 🟢 **Complete — parity-verified in a real browser, performance measured** (1.4-3.9x faster than vanilla depending on dataset size, see "Performance Validation") |
 | **Phase 2** | Filters & Controls | 20-30h | 🟢 **Complete** — every field in the Run & Filter tab is React-owned, 35 fields total (PR-number input, 4 selects, 10 checkboxes, 4 plain text/number inputs, 6 "Any (with/without)" plain selects, 1 textarea, all 9 multi-select dropdowns). Found and fixed two systemic bugs, each affecting every field of its kind converted so far at once — see gotcha #3 (orphaned "auto-apply on change" listeners, fixed via event delegation) and gotcha #4 below (multi-select restore-race clobbered by React's non-synchronous commit, fixed via `flushSync`). Also found and **fixed** a pre-existing, unrelated bug while testing the six plain selects: `deriveFilterPipelineState` never forwarded customComments/otherNotes/prDifficulty/rallyStories/rallyLinks/analysisOfPr into the real row-filtering criteria, so those six fields never actually filtered anything despite looking functional - now wired through. Some filter-dropdown compatibility work also landed alongside Phase 1 (see git history: "Fix dropdown auto-population", "Update attention rules and options"). **Decision (2026-09-11):** the original "remove vanilla JS filter variables / migrate debounce to hooks" items are explicitly deferred to Phase 6 rather than pursued here — vanilla staying the source of truth for `applyFiltersFromCache` (with React fields just mirroring it) is what made 35 fields convertible incrementally without Context or a state rewrite; unwinding that now would be a large, high-risk change touching every field's bridge code at once, for a goal ("filters render/behave via React") this phase already achieves |
 | **Phase 3** | Other Tabs | 20-30h | ⬜ Not Started |
 | **Phase 4** | Testing & Cleanup | 20-30h | 🟡 jsdom suite at 1615/1615; a Playwright e2e smoke suite now exists too (see below) |
@@ -145,7 +145,7 @@ React re-renders changed rows
 
 ---
 
-## 🟢 **Current Status: Parity-Verified, Performance Not Yet Measured**
+## 🟢 **Current Status: Parity-Verified, Performance Measured**
 
 ### **✅ Fixed Issues (original, Jan 2026):**
 
@@ -256,51 +256,89 @@ suite's interaction coverage.
 
 ---
 
-## 🎯 **Not Yet Done**
+## ✅ **Performance Validation (measured 2026-09-11)**
 
-### **Performance Validation**
+The numbers below were never actually measured before this — the "15-19x
+faster" figures earlier in this doc were pre-implementation guesses, not
+real timings. Real measurement found a genuinely faster React path, but
+**not** the pattern originally guessed: the speedup neither reaches
+double digits nor shrinks as more PRs change per update. Both are
+explained by what the measurement revealed about where the time actually
+goes.
 
-**Measure delta update performance:**
+**Methodology:** `renderPrData` (the single entry point both the real
+polling delta path and checkbox-toggle path call) auto-detects React via
+`window.mountReactPrTable` and either calls `window.ReactMountBridge.update`
+(React) or `prDataTabOrchestrator.renderPrData` (vanilla, full rebuild) -
+exactly the branch a real update takes. Measured both branches through
+this same entry point by: (1) normal page load for the React branch, (2)
+a page load with `react-app.jsx` network-blocked (so `mountReactPrTable`
+is never defined and every render takes the vanilla branch) for the
+vanilla branch - a true apples-to-apples comparison of the same code path
+decision the app itself makes, not a reimplementation. Each call was
+timed with `performance.now()` before the call and two chained
+`requestAnimationFrame` callbacks after (to capture commit + paint, not
+just the synchronous portion - the same technique this section originally
+suggested), against synthetic fixtures of 50 and 500 PRs, mutating N of
+them (title + `updatedAt`) before each call to simulate "N PRs changed."
+7 repeats per scenario; medians reported. This required a temporary,
+non-committed debug hook (`window.__perfRenderPrData` etc., added and
+reverted via `git checkout` in the same session - never landed in a
+commit) to reach `renderPrData` and the current payload from outside the
+page, since neither is otherwise exposed.
 
-```javascript
-// Add to index.page.js:
-const measureDeltaUpdate = (payload) => {
-  const start = performance.now();
-  
-  if (window.updateReactPrTable) {
-    window.updateReactPrTable(payload);
-  } else {
-    renderPrData(payload);
-  }
+**Results (median of 7 runs):**
 
-  requestAnimationFrame(() => {
-    const duration = performance.now() - start;
-    console.log(`[Performance] Delta update: ${duration.toFixed(2)}ms`);
-  });
-};
-```
+| Dataset | PRs changed | Vanilla | React | Speedup |
+|---------|-------------|---------|-------|---------|
+| 50 PRs  | 1           | 51.0ms  | 33.9ms | 1.5x |
+| 50 PRs  | 3           | 47.7ms  | 31.9ms | 1.5x |
+| 50 PRs  | 10          | 46.2ms  | 31.5ms | 1.5x |
+| 50 PRs  | 50 (all)    | 44.5ms  | 32.3ms | 1.4x |
+| 500 PRs | 1           | 800.6ms | 209.8ms | 3.8x |
+| 500 PRs | 3           | 762.3ms | 193.6ms | 3.9x |
+| 500 PRs | 10          | 765.7ms | 195.8ms | 3.9x |
+| 500 PRs | 50          | 745.1ms | 194.1ms | 3.8x |
 
-**Expected results:**
+**What this actually shows:**
+1. **React is real, meaningfully faster - 1.4-1.5x at 50 PRs, 3.8-3.9x at
+   500 - and the gap widens with total dataset size**, as expected: React
+   reconciles the table instead of vanilla's full `innerHTML` rebuild, and
+   that gap matters more the bigger the table gets.
+2. **The speedup does not scale with delta size** (1 vs 50 PRs changed)
+   the way the original guess assumed, in either direction - it's flat
+   within each dataset size. Root cause, visible directly in
+   `renderPrData` (`index.page.js`): **both** branches unconditionally
+   re-run the *entire* vanilla pipeline (`prDataTabOrchestrator.renderPrData`
+   with `skipTableRender: true` for React, or without it for vanilla) for
+   every single render regardless of delta size - it recomputes the
+   data-meta summary, filter chips, filter dropdown options, author
+   insights panel, and stats view from *all* entries every time, not just
+   the changed ones. That shared, delta-size-independent cost dominates
+   both paths' timing, which is exactly why neither path's numbers move
+   between "1 changed" and "50 changed" at a given dataset size. React's
+   `React.memo`-based row-skipping (confirmed working - unchanged PR
+   entries keep their object identity through `mergeDataDeltaPayload`'s
+   spread, see `pr-data-polling.helpers.js`) is real, but it's shaving
+   time off a relatively small fraction of the total (the table build
+   itself), not off the dominant shared-pipeline cost.
+3. **The original "15-19x for 3 changed, 1.8-2x for all changed" shape
+   was never realistic for this codebase** given (2) - it assumed React
+   would skip re-deriving everything else too, which it structurally
+   cannot while `renderPrData` keeps running the full side-effect
+   pipeline on every render. Closing that gap (making the shared pipeline
+   itself delta-aware, or skipping the parts that didn't change) is a
+   real, identified optimization opportunity for **Phase 5 (Performance
+   Tuning)** - not attempted here, since it touches the core render path
+   for every already-converted field and is out of scope for "measure
+   it."
 
-| Scenario | Vanilla JS | React (Target) | Improvement |
-|----------|------------|----------------|-------------|
-| 3/50 PRs changed | 1530ms | <100ms | **15-19x faster** |
-| 10/50 PRs changed | 1580ms | <200ms | **8-10x faster** |
-| All 50 PRs changed | 1600ms | <900ms | **1.8-2x faster** |
-
-**Test scenarios:**
-1. Click checkbox (1 PR changes)
-2. Auto-refresh with 3 changed PRs
-3. Auto-refresh with 10 changed PRs
-4. Full reload (all PRs change)
-
-**Verify with React DevTools Profiler:**
-1. Open React DevTools
-2. Go to "Profiler" tab
-3. Start recording
-4. Click checkbox
-5. Stop recording
-6. Verify only 1 `PrRow` re-rendered
+**Not separately measured:** the "click checkbox" scenario goes through
+the identical `renderPrData`/`ReactMountBridge.update` machinery as the
+delta scenarios above (via `handleCheckboxChange` in
+`react-callbacks.helpers.js`), just triggered differently - the "1 PR
+changed" row for each dataset size above is a reasonable proxy rather
+than a separately measured number.
 
 ---
 
@@ -797,7 +835,7 @@ started, not before.
 ✅ Smart groups update immediately  
 ✅ Lifecycle badges appear correctly  
 ✅ More Insights expand/collapse works  
-✅ Delta updates are 15-19x faster  
+✅ Delta updates are faster (1.4-1.5x at 50 PRs, 3.8-3.9x at 500 PRs - see "Performance Validation" above for real numbers, not the originally-guessed 15-19x)  
 ✅ All 1,400+ tests pass  
 ✅ No visual regressions  
 ✅ Production build works  
@@ -806,13 +844,13 @@ started, not before.
 
 ## 📈 **Performance Targets**
 
-| Metric | Before | Target | Notes |
+| Metric | Vanilla (measured) | React (measured) | Notes |
 |--------|--------|--------|-------|
-| Delta update (3 PRs) | 1530ms | <100ms | **19x improvement** |
-| Delta update (50 PRs) | 1600ms | <900ms | **1.8x improvement** |
-| Bundle size | 150KB | <500KB | Acceptable for React |
-| Initial load | 200ms | <600ms | Vite dev server overhead |
-| Memory usage | 10MB | <50MB | React Virtual DOM overhead |
+| Delta update, 1-50 PRs changed (50-PR dataset) | 44.5-51.0ms | 31.5-33.9ms | **1.4-1.5x**, flat across delta size - see "Performance Validation" above |
+| Delta update, 1-50 PRs changed (500-PR dataset) | 745.1-800.6ms | 193.6-209.8ms | **3.8-3.9x**, flat across delta size |
+| Bundle size | 150KB | <500KB | Not measured this pass |
+| Initial load | 200ms | <600ms | Not measured this pass |
+| Memory usage | 10MB | <50MB | Not measured this pass |
 | Test coverage | 98% | >95% | Maintain quality |
 
 ---
@@ -835,4 +873,4 @@ started, not before.
 
 **Last Updated:** 2026-09-11
 **Phase 1 Progress:** Functionally complete, parity-verified in a real browser; performance not yet formally measured
-**Next Milestone:** Phases 1 and 2 are both complete. Either measure/document Phase 1 performance (Step "Performance Validation" above) or move on to Phase 3 (Other Tabs: Author Insights, Backfill, Review Stats). Phase 2's state-management cleanup is deferred to Phase 6, not a blocker (see "State management" above)
+**Next Milestone:** Phases 1 and 2 are both complete, including Phase 1's performance measurement (see "Performance Validation" above). Move on to Phase 3 (Other Tabs: Author Insights, Backfill, Review Stats), or Phase 5 (Performance Tuning) to chase the identified optimization opportunity (making the shared render-pipeline side effects delta-aware). Phase 2's state-management cleanup remains deferred to Phase 6, not a blocker

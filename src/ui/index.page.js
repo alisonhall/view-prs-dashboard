@@ -40,6 +40,7 @@ const { getTimelineDateKeys, bucketTimelineChartData } =
 let lastRenderedRunStamp = "";
 let lastSeenDataVersion = "";
 let lastRenderedPrFingerprint = "";
+let lastRenderedMetaFingerprint = "";
 let lastSuccessfulRenderedCheckAt = "";
 let lastSuccessfulPollCheckAt = "";
 let lastPollErrorAt = "";
@@ -3411,6 +3412,7 @@ const prDataPollingHelperFactory =
 
 const {
   computePrDataFingerprint,
+  computePrDataMetaFingerprint,
   computePrDataManifest,
   getManifestDelta,
   mergeDataDeltaPayload,
@@ -6756,9 +6758,12 @@ const pollForDataChanges = async () => {
       dataResult?.dataManifest || computePrDataManifest(dataResult);
 
     const newFingerprint = computePrDataFingerprint(dataResult);
+    const newMetaFingerprint = computePrDataMetaFingerprint(dataResult);
     const renderAction = getDataPollRenderAction({
       newFingerprint,
       lastRenderedPrFingerprint,
+      newMetaFingerprint,
+      lastRenderedMetaFingerprint,
       focusedElement: document.activeElement,
       hasDirtyPrSectionsFields,
       hasPendingAutoRender: pendingAutoRenderPayload != null,
@@ -6784,6 +6789,7 @@ const pollForDataChanges = async () => {
     }
 
     lastRenderedPrFingerprint = newFingerprint;
+    lastRenderedMetaFingerprint = newMetaFingerprint;
     renderPrData(renderAction.payload);
     markPollSuccess(pollAttemptedAt);
 

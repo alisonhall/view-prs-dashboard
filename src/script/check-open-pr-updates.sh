@@ -2067,11 +2067,19 @@ compute_pr_state_json() {
   activity_timeline_summary=$(build_activity_timeline_summary "$activity_timeline_json")
   metrics_json=$(build_pr_metrics_json "$comments_json" "$reviews_json" "$commits_json" "$threads_json" "$comment_events_json" "$activity_events_json" "$author_login" "$merged_at")
 
-  my_last=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
+  # Includes the viewer's own review-thread comments (inline diff replies),
+  # not just top-level PR comments/submitted reviews/commits - a viewer who
+  # only replies inline (a common review flow, e.g. answering a thread
+  # without submitting a formal review) previously had no activity here at
+  # all, leaving effective_last empty below even though the "N open
+  # conversations with me" summary (getOpenConversationCountWithMe in
+  # index.page.js) already proves the viewer's own thread comments exist.
+  my_last=$(jq -nr --arg me "$VIEWER_LOGIN" --argjson detail "$detail_json" --argjson threads "${threads_json:-[]}" '
     [
-      (.comments[]? | select(.author.login == $me) | .createdAt),
-      (.reviews[]? | select(.author.login == $me) | .submittedAt),
-      (.commits[]? | .authors[]? | select(.login == $me) | .committedDate)
+      ($detail.comments[]? | select(.author.login == $me) | .createdAt),
+      ($detail.reviews[]? | select(.author.login == $me) | .submittedAt),
+      ($detail.commits[]? | .authors[]? | select(.login == $me) | .committedDate),
+      ($threads[]? | .comments[]? | select(.authorLogin == $me) | .createdAt)
     ]
     | map(select(. != null and . != ""))
     | sort

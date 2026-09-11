@@ -761,4 +761,165 @@ describe("check-open-pr-updates shell helper behavior", () => {
       expect(commitEvents[0].actor).toBe("regular-user");
     });
   });
+
+  // Regression coverage: `my_last` (the viewer's own last-activity
+  // timestamp, used as `effective_last`/`baseline`) only looked at
+  // top-level PR comments, submitted reviews, and the viewer's own
+  // commits - it never looked at the viewer's own review-thread replies
+  // (fetch_review_threads_json). A viewer who only replies inline in
+  // review threads (never posting a top-level comment or submitting a
+  // formal review) therefore got an empty `baseline` ("You: -" in the UI)
+  // and, since they aren't the PR's author, an incorrect `NO_ACTIVITY`
+  // status (which also flags the PR as Needs Attention) - even though the
+  // "N open conversations with me" summary elsewhere in the app
+  // (getOpenConversationCountWithMe, index.page.js) already proves the
+  // viewer has recent thread activity on the PR.
+  describe("Given a non-author viewer whose only activity is a review-thread reply, when compute_pr_state_json evaluates status and baseline", () => {
+    const runComputePrStateJsonWithThreads = (prJson, detailJson, threadsJson) => {
+      const output = runShell(
+        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '${threadsJson}'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":1}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+      );
+      return JSON.parse(output);
+    };
+
+    const prJson = JSON.stringify({
+      number: 701,
+      title: "Thread-only viewer activity",
+      url: "https://github.com/owner/repo/pull/701",
+      mergedAt: null,
+      closedAt: null,
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-02T00:00:00Z",
+      headRefName: "feature/thread-reply",
+      baseRefName: "main",
+      additions: 1,
+      deletions: 1,
+      labels: [],
+      author: { login: "octocat", name: "Octo Cat" },
+      mergedBy: null,
+    });
+
+    const detailJsonWithNoTopLevelActivity = JSON.stringify({
+      comments: [],
+      reviews: [],
+      reviewRequests: [],
+      commits: [],
+      assignees: [],
+      statusCheckRollup: [],
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+    });
+
+    test("a thread reply from the viewer sets baseline to that reply's timestamp, not empty", () => {
+      const threadsJson = JSON.stringify([
+        {
+          id: "thread-1",
+          isResolved: false,
+          isOutdated: false,
+          resolvedByLogin: "",
+          commentCount: 1,
+          hasMoreComments: false,
+          comments: [
+            {
+              id: "comment-1",
+              authorLogin: "alice",
+              authorName: "Alice",
+              authorAssociation: "COLLABORATOR",
+              createdAt: "2026-06-02T12:00:00Z",
+              publishedAt: "2026-06-02T12:00:00Z",
+              body: "Looks good to me here",
+              url: "https://github.com/owner/repo/pull/701#discussion_r1",
+              replyToId: "",
+              path: "src/file.js",
+              line: 10,
+              originalLine: 10,
+              diffSide: "RIGHT",
+              state: "",
+            },
+          ],
+          participants: ["alice"],
+          latestCommentAt: "2026-06-02T12:00:00Z",
+        },
+      ]);
+
+      const row = runComputePrStateJsonWithThreads(
+        prJson,
+        detailJsonWithNoTopLevelActivity,
+        threadsJson,
+      );
+
+      expect(row.baseline).toBe("2026-06-02T12:00:00Z");
+    });
+
+    test("with no external activity since that thread reply, status is NO_CHANGE, not NO_ACTIVITY", () => {
+      const threadsJson = JSON.stringify([
+        {
+          id: "thread-1",
+          isResolved: false,
+          isOutdated: false,
+          resolvedByLogin: "",
+          commentCount: 1,
+          hasMoreComments: false,
+          comments: [
+            {
+              id: "comment-1",
+              authorLogin: "alice",
+              authorName: "Alice",
+              authorAssociation: "COLLABORATOR",
+              createdAt: "2026-06-02T12:00:00Z",
+              publishedAt: "2026-06-02T12:00:00Z",
+              body: "Looks good to me here",
+              url: "https://github.com/owner/repo/pull/701#discussion_r1",
+              replyToId: "",
+              path: "src/file.js",
+              line: 10,
+              originalLine: 10,
+              diffSide: "RIGHT",
+              state: "",
+            },
+          ],
+          participants: ["alice"],
+          latestCommentAt: "2026-06-02T12:00:00Z",
+        },
+      ]);
+
+      const row = runComputePrStateJsonWithThreads(
+        prJson,
+        detailJsonWithNoTopLevelActivity,
+        threadsJson,
+      );
+
+      expect(row.status).toBe("NO_CHANGE");
+    });
+
+    test("without the fix's thread lookup, a viewer with only a top-level comment still sets baseline (control case, unaffected)", () => {
+      const detailJsonWithTopLevelComment = JSON.stringify({
+        comments: [
+          {
+            author: { login: "alice" },
+            createdAt: "2026-06-02T09:00:00Z",
+          },
+        ],
+        reviews: [],
+        reviewRequests: [],
+        commits: [],
+        assignees: [],
+        statusCheckRollup: [],
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      });
+
+      const row = runComputePrStateJsonWithThreads(prJson, detailJsonWithTopLevelComment, "[]");
+
+      expect(row.baseline).toBe("2026-06-02T09:00:00Z");
+      expect(row.status).toBe("NO_CHANGE");
+    });
+
+    test("with genuinely no viewer activity anywhere (no comments, no threads), status stays NO_ACTIVITY", () => {
+      const row = runComputePrStateJsonWithThreads(prJson, detailJsonWithNoTopLevelActivity, "[]");
+
+      expect(row.baseline).toBe("");
+      expect(row.status).toBe("NO_ACTIVITY");
+    });
+  });
 });

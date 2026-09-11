@@ -3,6 +3,7 @@ const { createPrDataPollingHelpers } = require("../helpers/pr-data-polling.helpe
 describe("pr data polling helpers", () => {
   const {
     computePrDataFingerprint,
+    computePrDataMetaFingerprint,
     computePrDataManifest,
     getManifestDelta,
     mergeDataDeltaPayload,
@@ -141,6 +142,50 @@ describe("pr data polling helpers", () => {
     expect(computePrDataFingerprint({ byPrNumber: {} })).toBe("");
   });
 
+  test("computePrDataMetaFingerprint changes when lastRun/dataMeta/scheduler change, independent of byPrNumber", () => {
+    const withSameContentDifferentLastRun = {
+      byPrNumber: { 1: { repo: "owner/repo", updatedAt: "2026-01-01" } },
+      lastRun: { updatedAt: "2026-01-01T10:00:00Z" },
+      dataMeta: { dataVersion: "v1" },
+      scheduler: { intervalMinutes: 15 },
+    };
+    const withSameContentLaterLastRun = {
+      byPrNumber: { 1: { repo: "owner/repo", updatedAt: "2026-01-01" } },
+      lastRun: { updatedAt: "2026-01-01T10:15:00Z" },
+      dataMeta: { dataVersion: "v2" },
+      scheduler: { intervalMinutes: 15 },
+    };
+
+    // The PR-content fingerprint must NOT change - this is the whole
+    // point of keeping the two fingerprints separate.
+    expect(computePrDataFingerprint(withSameContentDifferentLastRun)).toBe(
+      computePrDataFingerprint(withSameContentLaterLastRun),
+    );
+    // But the meta fingerprint must, so a poll that only advanced
+    // lastRun/dataMeta isn't silently indistinguishable from one that
+    // changed nothing at all.
+    expect(computePrDataMetaFingerprint(withSameContentDifferentLastRun)).not.toBe(
+      computePrDataMetaFingerprint(withSameContentLaterLastRun),
+    );
+  });
+
+  test("computePrDataMetaFingerprint is stable for identical lastRun/dataMeta/scheduler", () => {
+    const payloadA = {
+      lastRun: { updatedAt: "2026-01-01T10:00:00Z" },
+      dataMeta: { dataVersion: "v1" },
+      scheduler: { intervalMinutes: 15 },
+    };
+    const payloadB = {
+      lastRun: { updatedAt: "2026-01-01T10:00:00Z" },
+      dataMeta: { dataVersion: "v1" },
+      scheduler: { intervalMinutes: 15 },
+    };
+
+    expect(computePrDataMetaFingerprint(payloadA)).toBe(
+      computePrDataMetaFingerprint(payloadB),
+    );
+  });
+
   test("isTextEntryElement identifies input and textarea tags", () => {
     expect(isTextEntryElement({ tagName: "INPUT" })).toBe(true);
     expect(isTextEntryElement({ tagName: "textarea" })).toBe(true);
@@ -237,5 +282,57 @@ describe("pr data polling helpers", () => {
         result: { payload: 4 },
       }),
     ).toEqual({ type: "render", payload: { payload: 4 } });
+  });
+
+  // Regression coverage: skip-render used to depend only on the PR-content
+  // fingerprint, so a poll where only lastRun/dataMeta/scheduler changed
+  // (the backend script ran again, no PR actually changed) was
+  // indistinguishable from "nothing changed at all" - renderPrData was
+  // never called, so the visible "Last Updated: Xh ago" indicator and
+  // data-meta summary stayed stuck on stale values (even though
+  // `latestStoredPayload` in index.page.js had already been reassigned to
+  // the fresher payload) until some unrelated interaction forced a
+  // render.
+  test("getDataPollRenderAction still renders when only the meta fingerprint changed, even with an unchanged PR fingerprint", () => {
+    expect(
+      getDataPollRenderAction({
+        newFingerprint: "same",
+        lastRenderedPrFingerprint: "same",
+        newMetaFingerprint: "meta-v2",
+        lastRenderedMetaFingerprint: "meta-v1",
+        hasDirtyPrSectionsFields: false,
+        focusedElement: { tagName: "DIV" },
+        hasPendingAutoRender: false,
+        result: { payload: 5 },
+      }),
+    ).toEqual({ type: "render", payload: { payload: 5 } });
+  });
+
+  test("getDataPollRenderAction skips only when both the PR and meta fingerprints are unchanged", () => {
+    expect(
+      getDataPollRenderAction({
+        newFingerprint: "same",
+        lastRenderedPrFingerprint: "same",
+        newMetaFingerprint: "meta-v1",
+        lastRenderedMetaFingerprint: "meta-v1",
+        hasDirtyPrSectionsFields: false,
+        focusedElement: { tagName: "DIV" },
+        hasPendingAutoRender: false,
+        result: { payload: 6 },
+      }),
+    ).toEqual({ type: "skip-render" });
+  });
+
+  test("getDataPollRenderAction falls back to PR-only comparison when meta fingerprints are omitted (backward compatible)", () => {
+    expect(
+      getDataPollRenderAction({
+        newFingerprint: "same",
+        lastRenderedPrFingerprint: "same",
+        hasDirtyPrSectionsFields: false,
+        focusedElement: { tagName: "DIV" },
+        hasPendingAutoRender: false,
+        result: { payload: 7 },
+      }),
+    ).toEqual({ type: "skip-render" });
   });
 });

@@ -24,6 +24,23 @@
       .join("|");
   };
 
+  // Deliberately separate from computePrDataFingerprint, which is keyed
+  // only by PR content and used to decide whether the table itself needs
+  // rebuilding. lastRun/dataMeta/scheduler drive the "Last Updated"/
+  // "Last Checked" display and the data-meta summary line, and can change
+  // (e.g. the backend script ran again and found nothing new) with zero
+  // byPrNumber change - getDataPollRenderAction needs both fingerprints to
+  // decide whether ANYTHING visible needs a refresh, or the poll can
+  // silently update `latestStoredPayload` in memory while the on-screen
+  // "Last Updated: Xh ago" stays stuck until some unrelated re-render
+  // happens to pick it up.
+  const computePrDataMetaFingerprint = (payload) =>
+    JSON.stringify({
+      lastRun: payload?.lastRun || null,
+      dataMeta: payload?.dataMeta || null,
+      scheduler: payload?.scheduler || null,
+    });
+
   const computePrDataManifest = (payload) => {
     const byPrNumber = payload?.byPrNumber || {};
     const manifest = {};
@@ -143,12 +160,25 @@
   const getDataPollRenderAction = ({
     newFingerprint,
     lastRenderedPrFingerprint,
+    newMetaFingerprint,
+    lastRenderedMetaFingerprint,
     focusedElement,
     hasDirtyPrSectionsFields,
     hasPendingAutoRender,
     result,
   }) => {
-    if (newFingerprint === lastRenderedPrFingerprint) {
+    // Regression guard: skip-render used to depend only on the PR-content
+    // fingerprint, so a poll where only lastRun/dataMeta/scheduler changed
+    // (the backend script ran again, nothing new happened) was silently
+    // dropped - `latestStoredPayload` got the fresher metadata in memory,
+    // but nothing on screen (the "Last Updated: Xh ago" indicator, the
+    // data-meta summary) ever reflected it until some unrelated render
+    // happened to pick it up (e.g. toggling a checkbox). Both fingerprints
+    // (newMetaFingerprint/lastRenderedMetaFingerprint) must be omitted by
+    // a caller for this to fall back to the old PR-only behavior.
+    const prUnchanged = newFingerprint === lastRenderedPrFingerprint;
+    const metaUnchanged = newMetaFingerprint === lastRenderedMetaFingerprint;
+    if (prUnchanged && metaUnchanged) {
       return { type: "skip-render" };
     }
     if (hasDirtyPrSectionsFields) {
@@ -171,6 +201,7 @@
 
   const createPrDataPollingHelpers = () => ({
     computePrDataFingerprint,
+    computePrDataMetaFingerprint,
     computePrDataManifest,
     getManifestDelta,
     mergeDataDeltaPayload,
