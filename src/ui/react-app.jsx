@@ -22,6 +22,14 @@ import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
+import { ReviewStatsControls } from './components/ReviewStatsControls';
+import { ReviewStatsContent } from './components/ReviewStatsContent';
+import { AuthorInsightsSelector } from './components/AuthorInsightsSelector';
+import { AuthorCreatedPrsSection } from './components/AuthorCreatedPrsSection';
+import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
+import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
+import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
+import { BackfillBadges } from './components/BackfillBadges';
 
 /**
  * Mount React app for PR table
@@ -447,6 +455,203 @@ function renderReactMultiSelectList(listId, options) {
 }
 
 /**
+ * Mounts the Review Stats tab's controls (Phase 3 - see
+ * REACT_MIGRATION_PLAN.md). Mounts once into the static #stats-controls-root
+ * container and is never re-mounted or torn down by vanilla afterward
+ * (renderStatsView in index.page.js was updated to only rebuild the
+ * sibling #stats-content-root) - statsViewState has no persisted/restored
+ * override, so there's no restore-race to handle, just a one-time read of
+ * its current value via window.getStatsViewState() for the initial props.
+ */
+function mountReviewStatsControls() {
+  const container = document.getElementById('stats-controls-root');
+  if (!container) {
+    return;
+  }
+  const initialState =
+    typeof window.getStatsViewState === 'function'
+      ? window.getStatsViewState()
+      : { sortBy: 'riskyApprovals', filterMode: 'all', topN: 12, minComments: 0, startDate: '', endDate: '' };
+  ReactDOM.createRoot(container).render(
+    <ReviewStatsControls
+      initialState={initialState}
+      onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
+    />,
+  );
+}
+
+/**
+ * Mounts the Review Stats tab's summary cards/visuals/table/trend note
+ * (Phase 3 - see REACT_MIGRATION_PLAN.md). Same mount-once/update-via-bridge
+ * shape as Phase 1's mountReactPrTable/updateReactPrTable: mounts once into
+ * the static #stats-content-root container with an empty initial state, and
+ * index.page.js's renderStatsView calls window.updateReviewStatsContent(...)
+ * on every subsequent stats render instead of rebuilding this container's
+ * DOM directly (which would tear the mounted root out from under React -
+ * see renderStatsView's own comment).
+ */
+function mountReviewStatsContent() {
+  const container = document.getElementById('stats-content-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  root.render(<ReviewStatsContent stats={null} rows={[]} actorsMap={{}} />);
+  window.updateReviewStatsContent = (stats, rows, actorsMap) => {
+    root.render(<ReviewStatsContent stats={stats} rows={rows} actorsMap={actorsMap} />);
+  };
+}
+
+/**
+ * Mounts the Author Insights tab's "Author" selector (Phase 3 - see
+ * REACT_MIGRATION_PLAN.md). Unlike Review Stats' controls, this
+ * selector's *options* are rebuilt from the PR payload on every
+ * author-insights render, not seeded once at mount - the same shape as
+ * Phase 2's MultiSelectCheckboxList, including the incrementing `key` on
+ * every update() call so this component's internal state fully
+ * re-initializes from fresh props each time (matching the old vanilla
+ * discard-and-rebuild behavior) rather than trying to diff against
+ * whatever was selected before.
+ */
+function mountAuthorInsightsSelector() {
+  const container = document.getElementById('author-insights-selector-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  let renderCount = 0;
+  window.updateAuthorInsightsSelector = (options, selectedLogin) => {
+    renderCount += 1;
+    root.render(
+      <AuthorInsightsSelector
+        key={renderCount}
+        options={options}
+        selectedLogin={selectedLogin}
+        onChange={(login) => window.selectAuthorInsightsAuthor?.(login)}
+      />,
+    );
+    return true;
+  };
+}
+
+/**
+ * Mounts the Author Insights tab's "PRs created by this author" section
+ * (Phase 3 - see REACT_MIGRATION_PLAN.md). Same shape as
+ * mountAuthorInsightsSelector above: mounted once into the static
+ * #author-insights-created-prs-root container, updated via
+ * window.updateAuthorInsightsCreatedPrs(rows) with an incrementing `key`
+ * on every call so the section's DOM (built by the legacy vanilla
+ * builder wrapped inside AuthorCreatedPrsSection) is always rebuilt
+ * fresh, not left stale when only the selected author changed underneath
+ * an unchanged `rows` reference.
+ */
+function mountAuthorCreatedPrsSection() {
+  const container = document.getElementById('author-insights-created-prs-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  let renderCount = 0;
+  window.updateAuthorInsightsCreatedPrs = (rows) => {
+    renderCount += 1;
+    root.render(<AuthorCreatedPrsSection key={renderCount} rows={rows} />);
+    return true;
+  };
+}
+
+/**
+ * Mounts the Author Insights tab's "Showing insights for <author>" header
+ * (Phase 3 - see REACT_MIGRATION_PLAN.md). Mount-once/update-via-bridge, no
+ * key needed: unlike the selector/created-PRs sections, this component has
+ * no internal state to discard on every update, so a plain re-render with
+ * new props is enough.
+ */
+function mountAuthorInsightsHeader() {
+  const container = document.getElementById('author-insights-header-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  root.render(<AuthorInsightsHeader selectedAuthorName="" />);
+  window.updateAuthorInsightsHeader = (selectedAuthorName) => {
+    root.render(<AuthorInsightsHeader selectedAuthorName={selectedAuthorName} />);
+    return true;
+  };
+}
+
+/**
+ * Mounts the Author Insights tab's "PR-linked custom comments and
+ * sentiment" section (Phase 3 - see REACT_MIGRATION_PLAN.md). Mount-once/
+ * update-via-bridge, no key needed: renderAuthorInsights
+ * (pr-author-insights.component.js) passes a freshly-computed
+ * `selectedAuthor` object as a prop (not read from a closure like
+ * AuthorCreatedPrsSection's rows-only prop), so a plain
+ * useEffect([rows, selectedAuthor, actorsMap]) inside
+ * AuthorInsightsNotesSection already re-runs on every author switch
+ * without an incrementing key.
+ */
+function mountAuthorInsightsNotesSection() {
+  const container = document.getElementById('author-insights-notes-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  root.render(<AuthorInsightsNotesSection rows={[]} selectedAuthor={null} actorsMap={{}} />);
+  window.updateAuthorInsightsNotes = (rows, selectedAuthor, actorsMap) => {
+    root.render(
+      <AuthorInsightsNotesSection rows={rows} selectedAuthor={selectedAuthor} actorsMap={actorsMap} />,
+    );
+    return true;
+  };
+}
+
+/**
+ * Mounts the Author Insights tab's "Manual author comments" composer/list
+ * (Phase 3 - see REACT_MIGRATION_PLAN.md). Reuses the existing
+ * #author-insights-content-root container (previously a plain
+ * "rebuild-every-render" scratch host, now this section's own persistent
+ * React root, matching every other Author Insights sibling container) - no
+ * index.html change needed. Mount-once/update-via-bridge, no key needed,
+ * same reasoning as mountAuthorInsightsNotesSection: `selectedAuthor` is a
+ * freshly-computed prop on every call, so a plain re-render already picks
+ * up every author switch.
+ */
+function mountAuthorInsightsCommentsSection() {
+  const container = document.getElementById('author-insights-content-root');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  root.render(<AuthorInsightsCommentsSection rows={[]} selectedAuthor={null} actorsMap={{}} />);
+  window.updateAuthorInsightsComments = (rows, selectedAuthor, actorsMap) => {
+    root.render(
+      <AuthorInsightsCommentsSection rows={rows} selectedAuthor={selectedAuthor} actorsMap={actorsMap} />,
+    );
+    return true;
+  };
+}
+
+/**
+ * Mounts the Backfill tab's status badges (Phase 3 - see
+ * REACT_MIGRATION_PLAN.md). Mounts directly into the existing
+ * #backfill-badges container - see BackfillBadges.jsx's own comment for why
+ * no container-split or `key` remount is needed here, unlike every other
+ * Phase 3 conversion so far.
+ */
+function mountBackfillBadges() {
+  const container = document.getElementById('backfill-badges');
+  if (!container) {
+    return;
+  }
+  const root = ReactDOM.createRoot(container);
+  root.render(<BackfillBadges badges={[]} />);
+  window.updateReactBackfillBadges = (badges) => {
+    root.render(<BackfillBadges badges={badges} />);
+    return true;
+  };
+}
+
+/**
  * Expose mounting function globally for vanilla JS to call
  * This allows the existing index.page.js to mount the React app
  */
@@ -469,6 +674,14 @@ if (typeof window !== 'undefined') {
   mountFilterOptionSelects();
   mountFilterCheckboxes(CHANGE_FILTER_CHECKBOX_FIELDS);
   mountIgnoreCommitPatternsTextarea();
+  mountReviewStatsControls();
+  mountReviewStatsContent();
+  mountAuthorInsightsSelector();
+  mountAuthorInsightsHeader();
+  mountAuthorInsightsNotesSection();
+  mountAuthorInsightsCommentsSection();
+  mountAuthorCreatedPrsSection();
+  mountBackfillBadges();
 
   // react-app.jsx is loaded as an ES module, which the browser always defers
   // until after classic scripts (including index.page.js) have run. If the

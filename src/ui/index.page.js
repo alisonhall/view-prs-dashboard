@@ -2925,22 +2925,32 @@ const renderBackfillStatus = (backfillRaw = {}) => {
     return;
   }
 
-  badgeHost.innerHTML = "";
   const viewModel = getBackfillStatusViewModel({
     backfillRaw: backfill,
     isBackfillActionPending,
   });
 
-  const createBadge = (text, className = "") => {
-    const chip = document.createElement("span");
-    chip.className = `scheduler-badge ${className}`.trim();
-    chip.textContent = text;
-    badgeHost.appendChild(chip);
-  };
-
-  viewModel.badges.forEach((badge) => {
-    createBadge(badge.text, badge.className);
-  });
+  // Phase 3 React migration hook (see REACT_MIGRATION_PLAN.md): renders the
+  // badge list into #backfill-badges via React when mounted (see
+  // mountBackfillBadges in react-app.jsx), falling back to the vanilla
+  // rebuild-from-scratch below when it isn't - same handled/fallback shape
+  // as window.renderReactMultiSelectList.
+  const handled =
+    typeof window !== "undefined" && typeof window.updateReactBackfillBadges === "function"
+      ? window.updateReactBackfillBadges(viewModel.badges)
+      : false;
+  if (!handled) {
+    badgeHost.innerHTML = "";
+    const createBadge = (text, className = "") => {
+      const chip = document.createElement("span");
+      chip.className = `scheduler-badge ${className}`.trim();
+      chip.textContent = text;
+      badgeHost.appendChild(chip);
+    };
+    viewModel.badges.forEach((badge) => {
+      createBadge(badge.text, badge.className);
+    });
+  }
 
   details.textContent = viewModel.detailsText;
   isBackfillRunning = viewModel.isBackfillRunning;
@@ -4301,25 +4311,85 @@ const { renderStatsSummaryAndTable } =
     createStatsVisuals: (...args) => createStatsVisuals(...args),
   });
 
+// Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): expose
+// statsViewState plus everything ReviewStatsControls/ReviewStatsContent
+// (react-app.jsx) need to render and interact without index.page.js
+// needing to know React mounted them.
+if (typeof window !== "undefined") {
+  window.getStatsViewState = () => ({ ...statsViewState });
+  window.updateStatsViewStateAndRerender = (patch) => {
+    Object.assign(statsViewState, patch);
+    applyFiltersFromCache();
+  };
+  // Named distinctly from PrDateCell.jsx's own `window.formatIsoDatetime`
+  // (which falls back to a much cruder default when unset) - deliberately
+  // not reusing that name here, to avoid changing Phase 1's already-shipped
+  // PrTableApp date formatting as a side effect of this Phase 3 work.
+  window.reviewStatsFormatIsoDatetime = (...args) => formatIsoDatetime(...args);
+  window.getNormalizedStatsDateRange = (...args) => getNormalizedStatsDateRange(...args);
+  window.renderActivityTrendNote = (...args) => renderActivityTrendNote(...args);
+  window.createStatsVisuals = (...args) => createStatsVisuals(...args);
+  // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
+  // already provides for Author Insights' own "View in table" button
+  // (dispatches 'pr-navigate-to-insights' when React owns the PR table,
+  // instead of directly mutating `.hidden`/textContent on nodes React
+  // renders - see that helper's own comment). The "View in table" button
+  // built inline in pr-review-stats-summary.component.js does the
+  // *unsafe* raw-DOM version instead and was never fixed - ReviewStatsContent
+  // (react-app.jsx) uses this bridge instead of that broken vanilla
+  // behavior, rather than duplicating either version a third time.
+  window.navigateToPrInTableFromStats = (prNumber) =>
+    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, {
+      activateDataTab,
+      collectNodesByTag,
+    });
+}
+
 const renderStatsView = (rows, actorsMap = {}) => {
   const host = document.getElementById("pr-stats");
   if (!host) return;
 
-  host.innerHTML = "";
+  // Both the controls (#stats-controls-root) and the content
+  // (#stats-content-root) live in their own static sibling containers
+  // (see index.html) that React mounts into once and owns from then on -
+  // this function must never rebuild either (the old vanilla behavior
+  // always did, via a single `host.innerHTML = ""` that covered
+  // everything at once), or it would silently tear the mounted React
+  // root's DOM out from under it on every stats render, exactly the class
+  // of bug Phase 1's #pr-sections handling guards against.
+  const hasReactApp =
+    typeof window !== "undefined" && typeof window.mountReactPrTable === "function";
+  const contentHost = document.getElementById("stats-content-root") || host;
+  const controlsHost = document.getElementById("stats-controls-root");
+
+  if (!hasReactApp && controlsHost) {
+    controlsHost.innerHTML = "";
+    controlsHost.appendChild(createStatsControls());
+  }
 
   if (!rows.length) {
+    if (hasReactApp && typeof window.updateReviewStatsContent === "function") {
+      window.updateReviewStatsContent(null, rows, actorsMap);
+      return;
+    }
+    contentHost.innerHTML = "";
     const empty = document.createElement("p");
     empty.className = "stats-empty";
     empty.textContent = "No filtered rows available for review statistics.";
-    host.appendChild(empty);
+    contentHost.appendChild(empty);
     return;
   }
 
   const { summary, reviewerRows } = buildReviewerStats(rows, actorsMap);
   const stats = applyStatsControls({ summary, reviewerRows });
-  host.appendChild(createStatsControls());
 
-  renderStatsSummaryAndTable(host, stats, rows, actorsMap);
+  if (hasReactApp && typeof window.updateReviewStatsContent === "function") {
+    window.updateReviewStatsContent(stats, rows, actorsMap);
+    return;
+  }
+
+  contentHost.innerHTML = "";
+  renderStatsSummaryAndTable(contentHost, stats, rows, actorsMap);
 };
 
 // Review Stats Tab Orchestrator
@@ -4410,7 +4480,12 @@ const prAuthorInsightsComponentFactory =
     ? require("./components/pr-author-insights.component.js")
     : globalThis.ViewPrsAuthorInsightsComponent;
 
-const { renderAuthorInsights } =
+const {
+  renderAuthorInsights,
+  buildCreatedPrsSection,
+  buildPrLinkedNotesSection,
+  buildManualCommentsSection,
+} =
   prAuthorInsightsComponentFactory.createPrAuthorInsightsComponent({
     prLinkHelpers: prAuthorInsightsPrLinkHelpers,
     displayHelpers: prAuthorInsightsDisplayHelpers,
@@ -4421,7 +4496,65 @@ const { renderAuthorInsights } =
     recomputeDirtyPrSectionsFields: (...args) =>
       recomputeDirtyPrSectionsFields(...args),
     DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
+    // Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): delegate
+    // to react-app.jsx's bridges when they've mounted; pr-author-insights
+    // .component.js falls back to its own vanilla DOM-building when either
+    // returns false (React hasn't loaded/mounted yet).
+    updateReactAuthorInsightsSelector: (options, selectedLogin) =>
+      typeof window !== "undefined" && typeof window.updateAuthorInsightsSelector === "function"
+        ? window.updateAuthorInsightsSelector(options, selectedLogin)
+        : false,
+    updateReactAuthorInsightsCreatedPrs: (rows) =>
+      typeof window !== "undefined" && typeof window.updateAuthorInsightsCreatedPrs === "function"
+        ? window.updateAuthorInsightsCreatedPrs(rows)
+        : false,
+    updateReactAuthorInsightsHeader: (selectedAuthorName) =>
+      typeof window !== "undefined" && typeof window.updateAuthorInsightsHeader === "function"
+        ? window.updateAuthorInsightsHeader(selectedAuthorName)
+        : false,
+    updateReactAuthorInsightsNotes: (rows, selectedAuthor, actorsMap) =>
+      typeof window !== "undefined" && typeof window.updateAuthorInsightsNotes === "function"
+        ? window.updateAuthorInsightsNotes(rows, selectedAuthor, actorsMap)
+        : false,
+    updateReactAuthorInsightsComments: (rows, selectedAuthor, actorsMap) =>
+      typeof window !== "undefined" && typeof window.updateAuthorInsightsComments === "function"
+        ? window.updateAuthorInsightsComments(rows, selectedAuthor, actorsMap)
+        : false,
   });
+
+// Phase 3 React migration hooks: let AuthorInsightsSelector/
+// AuthorCreatedPrsSection (react-app.jsx) reach vanilla behavior without
+// index.page.js needing to know React mounted them - mirrors
+// window.updateStatsViewStateAndRerender for Review Stats' controls.
+if (typeof window !== "undefined") {
+  window.selectAuthorInsightsAuthor = (login) => {
+    authorInsightsState.selectedAuthorLogin = login;
+    renderAuthorInsights(
+      authorInsightsState.latestRows || [],
+      authorInsightsState.latestActorsMap || {},
+    );
+  };
+  // Returns the fully-built <section> DOM node (title + list/empty
+  // message) for the currently-selected author - AuthorCreatedPrsSection
+  // wraps it via a ref instead of reimplementing the same filtering/
+  // sorting/DOM-building logic (createAuthorInsightsPrLink,
+  // createAuthorInsightsPrDataMeta, and their own several helper
+  // dependencies) a second time in JSX, the same "wrap the legacy
+  // DOM-builder" pattern StatsVisuals already uses for the Review Stats
+  // chart visuals.
+  window.buildAuthorInsightsCreatedPrsSection = (rows) =>
+    buildCreatedPrsSection(rows);
+  // Same wrap-the-legacy-DOM-builder pattern, for the "PR-linked custom
+  // comments and sentiment" section - see AuthorInsightsNotesSection.jsx.
+  window.buildAuthorInsightsNotesSection = (selectedAuthor, rows, actorsMap) =>
+    buildPrLinkedNotesSection(selectedAuthor, rows, actorsMap);
+  // Same wrap-the-legacy-DOM-builder pattern, for the "Manual author
+  // comments" composer + list - see AuthorInsightsCommentsSection.jsx. Its
+  // mutable draft state and save/edit POST side effects live entirely
+  // inside buildManualCommentsSection and its own helpers, not in React.
+  window.buildAuthorInsightsCommentsSection = (selectedAuthor, rows, actorsMap) =>
+    buildManualCommentsSection(selectedAuthor, rows, actorsMap);
+}
 
 // Author Insights Tab Orchestrator
 const authorInsightsTabOrchestratorFactory =

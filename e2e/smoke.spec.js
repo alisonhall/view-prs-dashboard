@@ -902,3 +902,431 @@ test("PR author thread resolution policy select shows/hides its dependent allow/
   await expect(allowOptions).toBeHidden();
   await expect(denyOptions).toBeHidden();
 });
+
+test("React-owned Review Stats controls render, respond to changes, and survive an unrelated stats re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the first slice of the Review
+  // Stats tab converted to React. renderStatsView (index.page.js) used to
+  // rebuild the controls from scratch (via `host.innerHTML = ""`) on
+  // *every* stats render, the same discard-and-rebuild shape the old
+  // vanilla multi-select lists had before Phase 2 converted those - so
+  // mirroring Phase 1's #pr-sections approach, renderStatsView was changed
+  // to never touch #stats-controls-root once React has mounted into it,
+  // only the sibling #stats-content-root. This test's second half is the
+  // actual regression guard: it sets a control value, forces a stats
+  // re-render for a completely unrelated reason (switching tabs and
+  // applying an unrelated filter), and confirms the value survived - if
+  // renderStatsView still rebuilt the controls container, this would
+  // reset the control back to its own default.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Review statistics" }).click();
+
+  const controlsRoot = page.locator("#stats-controls-root");
+  await expect(controlsRoot.locator("select, input")).toHaveCount(6);
+
+  const sortSelect = page.locator("#stats-controls-root select").first();
+  await expect(sortSelect).toHaveValue("riskyApprovals");
+  await sortSelect.selectOption("reviews");
+  await expect(sortSelect).toHaveValue("reviews");
+
+  const minCommentsInput = page.locator("#stats-controls-root input[type='number']").first();
+  await minCommentsInput.fill("4");
+  await minCommentsInput.blur();
+  await expect(minCommentsInput).toHaveValue("4");
+
+  // Tag the actual DOM node (not just its displayed value, which vanilla's
+  // createStatsControls() would also get right since it reads from the
+  // same underlying statsViewState - only a survived DOM node reference
+  // proves renderStatsView didn't tear the React-mounted subtree down and
+  // let vanilla silently rebuild an equivalent-looking replacement).
+  await sortSelect.evaluate((node) => {
+    node.dataset.e2eIdentityMarker = "still-the-same-node";
+  });
+
+  // Force an unrelated stats re-render: switch to Run & Filter, apply a
+  // local filter (which re-renders the whole PR data view, including
+  // review stats), then come back.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Review statistics" }).click();
+
+  await expect(page.locator("#stats-controls-root select").first()).toHaveValue("reviews");
+  await expect(page.locator("#stats-controls-root input[type='number']").first()).toHaveValue("4");
+  await expect(page.locator("#stats-controls-root select").first()).toHaveAttribute(
+    "data-e2e-identity-marker",
+    "still-the-same-node",
+  );
+
+  // Reset so this test's filter/stats state doesn't affect whatever
+  // unrelated test happens to load next against this suite's one shared
+  // webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Review Stats content renders cards/table and \"View in table\" navigates to the React-owned PR table correctly", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the second slice of the Review
+  // Stats tab converted to React - <ReviewStatsContent /> (summary cards,
+  // chart visuals wrapper, reviewer table, trend note), replacing
+  // pr-review-stats-summary.component.js's renderStatsSummaryAndTable().
+  //
+  // This is also a real regression fix, not just a port: the vanilla
+  // "View in table" button (on a card's expandable sources) built its own
+  // ad hoc DOM-navigation logic inline, directly mutating `.hidden`/
+  // textContent on the PR table's insights row - exactly the kind of
+  // direct mutation that does nothing once React owns that row (the same
+  // bug class Author Insights' own "View in table" button already hit and
+  // was fixed for, via a 'pr-navigate-to-insights' CustomEvent - see
+  // navigateToPrInTable in pr-author-insights-pr-link.helpers.js). Review
+  // Stats' button was never fixed the same way; this conversion routes it
+  // through that same already-React-safe helper instead of rebuilding the
+  // broken version a third time.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Review statistics" }).click();
+
+  // "Filtered rows" only counts every row unconditionally when there's no
+  // active date-range filter (see buildReviewerStats in
+  // pr-review-stats-aggregation.helpers.js) - statsViewState defaults to a
+  // recent start date that excludes this fixture's Jan 2026 PRs, so clear
+  // it to get a predictable count.
+  const startDateInput = page.locator("#stats-controls-root input[type='date']").first();
+  await startDateInput.fill("");
+  await startDateInput.blur();
+
+  const contentRoot = page.locator("#stats-content-root");
+  await expect(contentRoot.locator(".stat-card")).toHaveCount(4);
+
+  const filteredRowsCard = page.getByText("Filtered rows").locator("xpath=ancestor::div[contains(@class,'stat-card')]");
+  await expect(filteredRowsCard.locator(".stat-card-value")).toHaveText("3");
+
+  await filteredRowsCard.locator("summary").click();
+  const viewInTableButton = filteredRowsCard.locator(".author-insights-table-link").first();
+  await expect(viewInTableButton).toBeVisible();
+  await viewInTableButton.click();
+
+  // Regression assertion: this used to silently do nothing under a
+  // React-owned PR table (the insights row never actually expanded, even
+  // though the vanilla code "succeeded" at finding the link and
+  // scrolling to it) - now it both switches tabs and expands the row.
+  // Checks the toggle's aria-expanded and the insights row's `hidden` DOM
+  // property directly (not Playwright's toBeVisible/toBeHidden), the same
+  // pattern the sibling Author Insights "View in table" test above uses
+  // and for the same reason: PR #1 can legitimately end up inside a
+  // currently-collapsed lifecycle/smart-group section depending on what
+  // earlier tests in this shared-webServer suite did to its flagged/
+  // in-review state, without that being a regression in this feature.
+  await expect(page.locator("#tab-panel-pr-data")).toBeVisible();
+  const expandedToggle = page.locator(".row-insights-toggle[aria-expanded='true']").first();
+  await expect(expandedToggle).toBeAttached();
+  const insightsRow = expandedToggle.locator(
+    "xpath=ancestor::tr[1]/following-sibling::tr[contains(@class,'insights-row')][1]",
+  );
+  await expect(insightsRow).toHaveJSProperty("hidden", false);
+});
+
+test("React-owned Author Insights selector renders options, changes the selected author, and survives an unrelated re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Author Insights tab's
+  // "Author" selector converted to React. Unlike Review Stats' controls
+  // (which mount once and never re-render on their own), this selector's
+  // *options* are rebuilt from the PR payload on every author-insights
+  // render (the same shape as Phase 2's MultiSelectCheckboxList) - it's
+  // *supposed* to remount (via an incrementing `key`) on every render,
+  // including ones triggered for unrelated reasons, so a DOM-node-identity
+  // check (like the Review Stats controls test uses) doesn't apply here.
+  // The real regression this guards is structural: renderAuthorInsights
+  // (pr-author-insights.component.js) used to rebuild the selector via the
+  // *same* `host.innerHTML = ""` that rebuilt every other section - if
+  // that still covered #author-insights-selector-root, the static
+  // container React mounted into would be destroyed and recreated on the
+  // next render, leaving react-app.jsx's mount holding a reference to a
+  // detached node - the selector would silently vanish from the page
+  // after any unrelated re-render, not just fail to preserve a value.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const selectorRoot = page.locator("#author-insights-selector-root");
+  const select = selectorRoot.locator("select");
+  await expect(select).toBeVisible();
+  const optionCount = await select.locator("option").count();
+  expect(optionCount).toBeGreaterThan(1);
+
+  await select.selectOption({ index: 1 });
+  const selectedValue = await select.inputValue();
+  await expect(page.locator(".author-insights-selected")).toBeVisible();
+
+  // Force an unrelated author-insights re-render: switch to Run & Filter,
+  // apply an unrelated local filter (which re-renders the whole PR data
+  // view, including author insights via the same pipeline as review
+  // stats), then come back.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  await expect(select).toBeVisible();
+  await expect(select).toHaveValue(selectedValue);
+
+  // Reset so this test's filter doesn't affect whatever unrelated test
+  // happens to load next against this suite's one shared webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Author Insights \"created PRs\" section updates on author switch and survives an unrelated re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Author Insights tab's "PRs
+  // created by this author" section converted to React
+  // (<AuthorCreatedPrsSection />, wrapping the existing vanilla DOM
+  // builder via a ref rather than reimplementing its several helper
+  // dependencies in JSX - same choice as Review Stats' chart visuals).
+  //
+  // The first assertion here is a real regression this conversion could
+  // have introduced and didn't catch until manual browser testing:
+  // switching authors calls renderAuthorInsights again with the *same*
+  // `rows` array reference (authorInsightsState.latestRows, unchanged),
+  // so a naive `useEffect(..., [rows])` dependency would never re-run and
+  // the section would keep showing the previously-selected author's PRs.
+  // Fixed by mounting with an incrementing `key` on every update call
+  // (forcing a fresh mount, not just a prop diff) - same shape as
+  // AuthorInsightsSelector.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const createdRoot = page.locator("#author-insights-created-prs-root");
+  await expect(createdRoot.locator(".author-insights-section")).toBeVisible();
+
+  const select = page.locator("#author-insights-selector-root select");
+  const optionCount = await select.locator("option").count();
+  expect(optionCount).toBeGreaterThan(1);
+
+  const textForEachAuthor = [];
+  for (let i = 0; i < optionCount; i++) {
+    await select.selectOption({ index: i });
+    textForEachAuthor.push(await createdRoot.textContent());
+  }
+  // Every author's fixture PR is different, so the section's content must
+  // actually change each time, not get stuck on whichever author was
+  // selected first.
+  expect(new Set(textForEachAuthor).size).toBe(optionCount);
+
+  // Select PR #1's own author before filtering the table down to PR #1 -
+  // renderAuthorInsights resets the selected author to the first
+  // remaining option whenever the current selection isn't among the
+  // authors left after a filter, so filtering to PR #1 while a
+  // *different* author was selected would legitimately change the
+  // selection for reasons unrelated to what this test is guarding
+  // against. Selecting PR #1's author first keeps the selection stable
+  // across the filter, so any change in the section afterward is
+  // actually the regression this test exists to catch.
+  await select.selectOption({ label: "The Octocat" });
+  const pr1AuthorText = await createdRoot.textContent();
+
+  // Force an unrelated author-insights re-render: switch to Run & Filter,
+  // apply an unrelated local filter, then come back - the created-PRs
+  // container must still be present and showing the same author's PRs
+  // (not vanished, per the container-split fix's own regression class -
+  // see the sibling Author Insights selector test above for the same
+  // class of bug caught the same way).
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  await expect(createdRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(createdRoot).toHaveText(pr1AuthorText);
+
+  // Reset so this test's filter doesn't affect whatever unrelated test
+  // happens to load next against this suite's one shared webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Author Insights header updates on author switch and survives an unrelated re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the "Showing insights for
+  // <author>" header converted to React (<AuthorInsightsHeader />, mounted
+  // into #author-insights-header-root, same container-split approach as
+  // the selector/created-PRs sections). The regression this guards against
+  // is the same structural one those tests guard against: renderAuthorInsights
+  // used to rebuild every section (including this header) via the same
+  // `host.innerHTML = ""` that rebuilt #author-insights-content-root - if
+  // that coverage regressed to include #author-insights-header-root again,
+  // the mounted React root's container would be destroyed on the next
+  // render and the header would vanish after any unrelated re-render.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const headerRoot = page.locator("#author-insights-header-root");
+  const header = headerRoot.locator(".author-insights-selected");
+  await expect(header).toBeVisible();
+
+  const select = page.locator("#author-insights-selector-root select");
+  const optionCount = await select.locator("option").count();
+  expect(optionCount).toBeGreaterThan(1);
+
+  const textForEachAuthor = [];
+  for (let i = 0; i < optionCount; i++) {
+    await select.selectOption({ index: i });
+    textForEachAuthor.push(await header.textContent());
+  }
+  // Every author's name is different, so the header's text must actually
+  // change each time, not get stuck on whichever author was selected first.
+  expect(new Set(textForEachAuthor).size).toBe(optionCount);
+
+  await select.selectOption({ label: "The Octocat" });
+  const headerText = await header.textContent();
+
+  // Force an unrelated author-insights re-render: switch to Run & Filter,
+  // apply an unrelated local filter, then come back.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  await expect(header).toBeVisible();
+  await expect(header).toHaveText(headerText);
+
+  // Reset so this test's filter doesn't affect whatever unrelated test
+  // happens to load next against this suite's one shared webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Author Insights PR-linked notes section survives an unrelated re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the "PR-linked custom comments
+  // and sentiment" section converted to React (<AuthorInsightsNotesSection />,
+  // mounted into #author-insights-notes-root, wrapping the existing
+  // vanilla DOM builder via a ref - same choice as the created-PRs
+  // section, since it depends on the same PR-link/meta-formatting
+  // helpers). Unlike the created-PRs section, this component receives a
+  // freshly-computed `selectedAuthor` object as a prop on every render
+  // (see AuthorInsightsNotesSection.jsx's own comment), so it needs no
+  // incrementing `key` - a plain effect dependency array already re-runs
+  // on every author switch. This test guards the same structural
+  // container-split regression as the header/selector/created-PRs tests:
+  // the section must not vanish after an unrelated re-render.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const notesRoot = page.locator("#author-insights-notes-root");
+  await expect(notesRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
+
+  // Force an unrelated author-insights re-render: switch to Run & Filter,
+  // apply an unrelated local filter, then come back.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  await expect(notesRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
+
+  // Reset so this test's filter doesn't affect whatever unrelated test
+  // happens to load next against this suite's one shared webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Author Insights manual comments composer can save and edit a comment, and survives an unrelated re-render", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the "Manual author comments"
+  // composer/list converted to React (<AuthorInsightsCommentsSection />,
+  // reusing #author-insights-content-root, wrapping the existing vanilla
+  // builder via a ref - same choice as the created-PRs/notes sections).
+  // This is the highest-risk conversion in Author Insights: it owns
+  // mutable draft state and issues real save/edit POST requests (against
+  // this suite's isolated per-run DATA_DIR, not real data - see
+  // playwright.config.js). The save/edit round-trip below exercises those
+  // side effects end-to-end, not just static rendering; the final section
+  // exercises the same structural container-split regression the
+  // header/notes/created-PRs tests guard against.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const select = page.locator("#author-insights-selector-root select");
+  await select.selectOption({ label: "The Octocat" });
+
+  const commentsRoot = page.locator("#author-insights-content-root");
+  const textarea = commentsRoot.locator(".author-insights-comment-textarea");
+  const saveButton = commentsRoot.locator(".author-insights-comment-save");
+
+  const noteText = `e2e manual comment ${Date.now()}`;
+  await textarea.fill(noteText);
+  await saveButton.click();
+
+  // The save success handler immediately triggers a full renderAuthorInsights
+  // re-render (rebuilding this section from scratch, including the status
+  // span), so "Saved." is too ephemeral to reliably observe here - the
+  // saved comment actually showing up in the rebuilt list is the real proof
+  // the save round-trip worked.
+  const item = commentsRoot.locator(".author-insights-item").filter({ hasText: noteText });
+  await expect(item).toBeVisible();
+
+  // Edit the just-saved comment.
+  await item.locator(".author-insights-comment-edit").click();
+  const editedText = `${noteText} (edited)`;
+  const editTextarea = item.locator(".author-insights-comment-textarea");
+  await editTextarea.fill(editedText);
+  await item.locator(".author-insights-comment-save").click();
+
+  const editedItem = commentsRoot.locator(".author-insights-item").filter({ hasText: editedText });
+  await expect(editedItem).toBeVisible();
+
+  // Force an unrelated author-insights re-render: switch to Run & Filter,
+  // apply an unrelated local filter, then come back - the comments
+  // container must not vanish, and the saved comment must still be there.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+  await clickApplyFiltersAndWaitForPersist(page);
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  await expect(commentsRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(commentsRoot.locator(".author-insights-item").filter({ hasText: editedText })).toBeVisible();
+
+  // Reset so this test's filter doesn't affect whatever unrelated test
+  // happens to load next against this suite's one shared webServer.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await clickApplyFiltersAndWaitForPersist(page);
+});
+
+test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
+  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Backfill tab's status badges
+  // converted to React (<BackfillBadges />, mounted directly into the
+  // existing #backfill-badges container - no container-split needed since
+  // that div isn't shared with anything else, unlike every Author Insights
+  // conversion). Only exercises the read-only status GET (tab activation
+  // and "Refresh status" both just reload status - this test never starts
+  // or stops the actual backfill process).
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Backfill" }).click();
+
+  const badgeHost = page.locator("#backfill-badges");
+  const badges = badgeHost.locator(".scheduler-badge");
+  await expect(badges.first()).toBeVisible();
+  await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
+
+  // Refresh status - a real GET request against this suite's isolated
+  // per-run server, not a destructive action - and confirm the badges are
+  // still there afterward (not vanished, the structural regression class
+  // every other Phase 3 conversion's own tests guard against).
+  await page.locator("#backfill-refresh-btn").click();
+  await expect(badges.first()).toBeVisible();
+  await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
+});

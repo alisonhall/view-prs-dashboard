@@ -504,6 +504,10 @@
             hidden>
             <h3>Backfill (least-used maintenance tool)</h3>
             <div id="backfill-card" class="scheduler-card low-emphasis-card">
+                <!-- Rendered by React (mountBackfillBadges in react-app.jsx) -
+                     Phase 3, see REACT_MIGRATION_PLAN.md. Falls back to a
+                     vanilla-built <span> per badge if React fails to
+                     load/mount. -->
                 <div id="backfill-badges" class="scheduler-badges"></div>
                 <div class="form-actions">
                     <button type="button" id="backfill-start-btn">Start backfill</button>
@@ -619,12 +623,44 @@
 
         <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
             hidden>
-            <div id="pr-stats" class="stats-panel">Loading...</div>
+            <div id="pr-stats" class="stats-panel">
+                <!-- Rendered by React (mountReviewStatsControls in react-app.jsx) -
+                     Phase 3, see REACT_MIGRATION_PLAN.md. renderStatsView
+                     (index.page.js) never rebuilds this container once React has
+                     mounted into it; only #stats-content-root gets rebuilt on
+                     each stats render. Falls back to vanilla-built controls
+                     inside #stats-content-root if React fails to load/mount. -->
+                <div id="stats-controls-root"></div>
+                <div id="stats-content-root">Loading...</div>
+            </div>
         </section>
 
         <section id="tab-panel-author-insights" class="data-tab-panel" role="tabpanel"
             aria-labelledby="tab-author-insights" hidden>
-            <div id="author-insights" class="author-insights-panel">Loading...</div>
+            <div id="author-insights" class="author-insights-panel">
+                <!-- Every container below is rendered by React (see the
+                     matching mount*() function in react-app.jsx) and mounted
+                     into once by createRoot() - Phase 3, see
+                     REACT_MIGRATION_PLAN.md. renderAuthorInsights
+                     (pr-author-insights.component.js) never rebuilds any of
+                     these containers directly (no more `host.innerHTML = ""`
+                     covering them all at once, the original vanilla
+                     behavior); each is updated only via its own
+                     window.updateAuthorInsights*() bridge call, or falls back
+                     to appending a vanilla-built replacement into itself (or
+                     the shared outer #author-insights host, for containers
+                     without a persisted override) if React fails to
+                     load/mount. -->
+                <div id="author-insights-selector-root"></div>
+                <div id="author-insights-header-root"></div>
+                <!-- Manual comments composer/list (mountAuthorInsightsCommentsSection) -
+                     wraps the legacy vanilla builder via a ref; its mutable
+                     draft state and save/edit POST side effects live entirely
+                     inside that builder, not in React. -->
+                <div id="author-insights-content-root">Loading...</div>
+                <div id="author-insights-notes-root"></div>
+                <div id="author-insights-created-prs-root"></div>
+            </div>
         </section>
     </div>
 

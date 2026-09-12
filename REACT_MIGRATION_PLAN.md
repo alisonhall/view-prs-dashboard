@@ -16,7 +16,7 @@ Migrating view-prs from vanilla JavaScript to React in phases, starting with the
 |-------|-----------|------|--------|
 | **Phase 1** | PR Table (Hybrid) | 30-40h | 🟢 **Complete — parity-verified in a real browser, performance measured** (1.4-3.9x faster than vanilla depending on dataset size, see "Performance Validation") |
 | **Phase 2** | Filters & Controls | 20-30h | 🟢 **Complete** — every field in the Run & Filter tab is React-owned, 35 fields total (PR-number input, 4 selects, 10 checkboxes, 4 plain text/number inputs, 6 "Any (with/without)" plain selects, 1 textarea, all 9 multi-select dropdowns). Found and fixed two systemic bugs, each affecting every field of its kind converted so far at once — see gotcha #3 (orphaned "auto-apply on change" listeners, fixed via event delegation) and gotcha #4 below (multi-select restore-race clobbered by React's non-synchronous commit, fixed via `flushSync`). Also found and **fixed** a pre-existing, unrelated bug while testing the six plain selects: `deriveFilterPipelineState` never forwarded customComments/otherNotes/prDifficulty/rallyStories/rallyLinks/analysisOfPr into the real row-filtering criteria, so those six fields never actually filtered anything despite looking functional - now wired through. Some filter-dropdown compatibility work also landed alongside Phase 1 (see git history: "Fix dropdown auto-population", "Update attention rules and options"). **Decision (2026-09-11):** the original "remove vanilla JS filter variables / migrate debounce to hooks" items are explicitly deferred to Phase 6 rather than pursued here — vanilla staying the source of truth for `applyFiltersFromCache` (with React fields just mirroring it) is what made 35 fields convertible incrementally without Context or a state rewrite; unwinding that now would be a large, high-risk change touching every field's bridge code at once, for a goal ("filters render/behave via React") this phase already achieves |
-| **Phase 3** | Other Tabs | 20-30h | ⬜ Not Started |
+| **Phase 3** | Other Tabs | 20-30h | 🟢 **Complete: Review Stats tab converted** (`<ReviewStatsControls />` + `<ReviewStatsContent />`, mounted into static `#stats-controls-root`/`#stats-content-root` siblings - `renderStatsView` never rebuilds either once React owns them), except the chart visuals' internal rendering (~900 lines of hand-rolled SVG/DOM building), which stays vanilla, wrapped via a ref. Found and fixed a real pre-existing bug along the way: a stats card's "View in table" button built its own raw-DOM navigation that never worked under a React-owned PR table - now routed through the same already-React-safe helper Author Insights uses. **Author Insights tab fully converted.** Its "Author" selector is converted (`<AuthorInsightsSelector />`, mounted into `#author-insights-selector-root`, same container-split approach), and its **created-PRs section**, **selected-author header**, **PR-linked notes section**, and **manual comments composer/list are all converted** (`<AuthorCreatedPrsSection />`/`<AuthorInsightsHeader />`/`<AuthorInsightsNotesSection />`/`<AuthorInsightsCommentsSection />`, mounted into their own `#author-insights-created-prs-root`/`#author-insights-header-root`/`#author-insights-notes-root` sibling containers and, for comments, the existing `#author-insights-content-root` - reused rather than a new container, since it was already the one dedicated slot that hadn't been carved out yet. The container-split bug class has now shown up **six** times in this phase alone). The created-PRs, notes, and comments sections all wrap the existing DOM-building helpers (`window.buildAuthorInsightsCreatedPrsSection`/`window.buildAuthorInsightsNotesSection`/`window.buildAuthorInsightsCommentsSection`, extracted as `buildCreatedPrsSection`/`buildPrLinkedNotesSection`/`buildManualCommentsSection` in `pr-author-insights.component.js`) via a ref+`useEffect`, rather than reimplementing their markup in JSX - the comments section especially, since its mutable composer/edit draft state and save/edit POST side effects (via `authorInsightsState`/draft helpers/`postJson`) all live inside the wrapped vanilla builder and its own DOM event listeners, never touched by React, so wrapping it is not just a JSX-verbosity shortcut but the safer choice for state that must survive independently of React's render cycle. The created-PRs section is mounted with an incrementing `key` (not a plain `[rows]` effect dependency) because the same `rows` array reference can recur across author switches - `renderAuthorInsights` reads `authorInsightsState.selectedAuthorLogin` internally rather than passing it as a prop, so a `[rows]`-only effect would silently miss author changes; verified by reverting the `key` and watching the "survives an unrelated re-render" e2e test fail with a stale render count. The notes/comments sections and the header don't need that trick: all three receive a freshly-computed `selectedAuthor`/`selectedAuthorName` value as a prop on every render (unlike created-PRs' `rows`-only prop), so a plain effect/re-render dependency already re-runs on every author switch. Converting the comments section required removing the last unconditional `contentHost.innerHTML = ""` reset that used to run at the top of every `renderAuthorInsights` call (originally there to rebuild the one remaining "scratch" section) - since `#author-insights-content-root` is now itself a persistent React root, that reset would have corrupted it the same way rebuilding `#pr-sections` via `innerHTML` would in Phase 1. The empty-rows/empty-author-options early-return branches' "No local rows/authors" message now appends into the outer `#author-insights` host directly instead. Also fixed two real pre-existing bugs along the way (this slice and the prior one): `renderAuthorInsights`'s empty-state branches cleared the React-owned selector but left the created-PRs/header/notes/comments sections showing stale content - now all five are cleared together; and each converted section's vanilla fallback path (used only when React hasn't mounted, e.g. bare-fixture unit tests, where the selector/header/comments/notes/created-PRs all share one `<div id="author-insights">`) had to specifically avoid resetting that *shared* fallback host's `innerHTML` - only the section's own *dedicated* container gets cleared; clearing the shared host unconditionally would wipe out whatever sibling sections had already appended into it. Verified all of the above by temporarily reverting the container-split fix (rebuilding the whole outer `#author-insights` host, matching the old pre-split behavior) and confirming the header, notes, created-PRs, *and* comments e2e tests all fail as expected, then restoring and confirming green across 3 full playwright runs. The comments e2e test exercises the actual save/edit POST round-trip (against this suite's isolated per-run data directory), not just static rendering - it's the first Author Insights conversion test to do so. **Backfill tab converted, completing Phase 3.** Its status badges are converted (`<BackfillBadges />`, mounted directly into the existing `#backfill-badges` container, same shape as Phase 2's `MultiSelectCheckboxList`/Phase 1's `#pr-sections` - no container-split needed since that div isn't shared with anything else, and no `key` remount needed since the component is a stateless display list, unlike `MultiSelectCheckboxList`'s checked-state). The rest of the tab (start/stop/refresh buttons, the status `<pre>`, the log `<pre>` and its auto-scroll checkbox) stays vanilla - it's plain text/attribute updates and polling, not list rendering, so converting it would add JSX ceremony without removing any real complexity. Verified via a new e2e test that visits the tab and clicks "Refresh status" (a real but non-destructive GET against the isolated per-run data directory - never starts/stops the actual backfill process) and confirms the badges render and survive the refresh; full jest suite and 3 full playwright runs (30/30) green. **Phase 3 is now complete.** |
 | **Phase 4** | Testing & Cleanup | 20-30h | 🟡 jsdom suite at 1615/1615; a Playwright e2e smoke suite now exists too (see below) |
 | **Phase 5** | Performance Tuning | 10-20h | ⬜ Not Started |
 | **Phase 6** | Remove Vanilla JS | 10-20h | ⬜ Not Started |
@@ -782,17 +782,209 @@ started, not before.
 
 ---
 
-### **Phase 3: Other Tabs** (20-30 hours)
+### **Phase 3: Other Tabs** (20-30 hours) — 🟡 Started
 
-**Tabs to migrate:**
-1. Author Insights Tab
-2. Backfill Tab
-3. Review Stats Tab
+**Tabs to migrate, roughly in order of complexity (chosen 2026-09-11 after
+looking at each):**
+1. **Review Stats Tab** (`#pr-stats`) — moderate complexity: its own
+   orchestrator (`review-stats-tab.orchestrator.js`, though only its
+   `initialize()` is actually wired up from `index.page.js` — the rest
+   of its API, `render`/`handleDateRangeChange`/`handleFilterChange`/
+   `updateData`/`activateTab`/`cleanup`, is currently dead code, never
+   called from anywhere), a controls component (converted, see below), a
+   summary/table component, and chart visuals
+   (`pr-review-stats-chart/visuals.component.js`) plus 3 aggregation/
+   timeline/date-bucketing helper files. Renders a dynamic table from PR
+   data - the same shape Phases 1-2 already proved out.
+2. **Author Insights Tab** (`#author-insights`) — most complex: a
+   dedicated component + orchestrator + 5 helper files
+   (`pr-author-insights-identity/drafts/pr-link/display/data.helpers.js`).
+3. **Backfill Tab** (`#backfill-card`) — simplest (mostly static markup
+   with live status/log text updates via polling, no real list-rendering
+   to speak of), but also the worst natural fit for React and lowest
+   value - do last, if at all.
 
-**Approach:**
-- Create tab components
-- Use `useMemo` for expensive calculations
-- Lazy load tabs with `React.lazy()`
+**✅ Done (Review Stats tab, slice 1 of 2 so far):**
+- `<ReviewStatsControls />` — the sort/filter/minComments/topN/start-date/
+  end-date controls, replacing
+  `pr-review-stats-controls.component.js`'s `createStatsControls()`.
+  `statsViewState` (a plain module-level object in `index.page.js`) has no
+  persisted/restored override and is only ever written by these controls
+  themselves - confirmed by grepping every `statsViewState.` write site
+  before converting - so this mounts once with the current
+  `statsViewState` as `initialState` and owns it from then on; no
+  restore-race handling needed (unlike almost every Phase 2 field).
+  - **The one real gotcha, and it's Phase 1's `#pr-sections` gotcha all
+    over again, just in a new tab:** `renderStatsView` (index.page.js)
+    used to rebuild its *entire* content — controls included — via a
+    single `host.innerHTML = ""` on every stats render (the exact
+    discard-and-rebuild shape the old vanilla multi-select lists had
+    before Phase 2 converted those). Once React mounts into a container
+    inside that subtree, an unrelated stats re-render (e.g. switching
+    tabs and applying an unrelated PR filter, which cascades into
+    `renderStatsView` regardless of which tab is visible) would silently
+    tear the React root's DOM out from under it via that same
+    `innerHTML = ""`, without ever calling `root.unmount()` - React's own
+    bookkeeping would think it's still mounted while its DOM is gone.
+    Fixed by giving the controls a separate static sibling container
+    (`#stats-controls-root`, alongside a new `#stats-content-root` for
+    everything else) in `index.html`, and updating `renderStatsView` to
+    only ever rebuild `#stats-content-root` - `#stats-controls-root` is
+    never touched once React has mounted into it (a `hasReactApp` check,
+    same pattern as `renderPrData`'s own React-vs-vanilla branch, guards
+    a vanilla fallback that still rebuilds it the old way if React never
+    loaded).
+  - **A second, smaller gotcha specific to this component:**
+    `minComments`/`topN` must commit (call the `onChange` bridge prop,
+    which mutates `statsViewState` and calls the expensive
+    `applyFiltersFromCache()` to re-render) only on blur, matching the
+    original vanilla control's native `"change"` handler - not on every
+    keystroke, which is what React's `onChange` alone would do for a
+    text-entry `<input>`. The component tracks the raw typed value
+    separately (`onChange` → local state only) from the committed value
+    (`onBlur` → clamped + sent to vanilla), otherwise every keystroke
+    while editing would re-trigger a full stats recompute and fight the
+    user's typing.
+  - Verified both gotchas are real regressions the tests actually catch:
+    temporarily reverted each fix and confirmed the corresponding test
+    failed - see the e2e test `"React-owned Review Stats controls
+    render, respond to changes, and survive an unrelated stats
+    re-render"` (`smoke.spec.js`), which tags the mounted `<select>`
+    DOM node with a custom marker attribute and asserts it survives an
+    unrelated re-render (checking only the *displayed value* survived
+    isn't enough - vanilla's rebuild reads the same `statsViewState` and
+    would show the same value too, so the test's first draft passed even
+    with the bug still present; only a DOM node identity check actually
+    distinguishes "React survived" from "vanilla silently rebuilt an
+    equivalent-looking replacement"), and
+    `ReviewStatsControls.test.jsx`'s "onChange has not fired" /
+    "onChange fires once on blur" tests for the second gotcha.
+
+**✅ Done (Review Stats tab, slice 2 of 2 so far):**
+- `<ReviewStatsContent />` — summary cards (with per-card "Show sources"
+  native `<details>`), the chart-visuals wrapper, the reviewer table (with
+  per-row "Show sources" toggle via React state, since a `<tr>` can't use
+  native `<details>`), the "Showing N of M reviewers..." summary note, and
+  the activity trend note - replacing
+  `pr-review-stats-summary.component.js`'s `renderStatsSummaryAndTable()`
+  entirely. Mounted once into `#stats-content-root` and updated via
+  `window.updateReviewStatsContent(stats, rows, actorsMap)` - the same
+  mount-once/update-via-bridge shape as Phase 1's
+  `mountReactPrTable`/`updateReactPrTable` (pure derived display data, no
+  persisted override to restore), not the restore-race pattern most of
+  Phase 2 used.
+  - **Chart visuals were deliberately not reimplemented in JSX.**
+    `createStatsVisuals` (`pr-review-stats-visuals.component.js` +
+    `pr-review-stats-chart.component.js`, ~900 lines of hand-rolled
+    SVG/DOM chart building) is still called as-is; `<StatsVisuals />` just
+    wraps it via a `ref` + `useEffect` that clears the container and
+    appends whatever DOM node the vanilla builder returns. Rewriting that
+    much custom charting logic in JSX would be a disproportionate lift for
+    this slice - the same "leave it to vanilla where React's diffing
+    wouldn't add real value" reasoning as Phase 2's state-management
+    decision, applied here instead of to the whole tab at once.
+  - **Found and fixed a real, pre-existing bug, not just a port:** the
+    "View in table" button inside a stat card's expandable sources built
+    its own ad hoc navigation inline - `activateDataTab("pr-data")` then a
+    `setTimeout` that directly mutated `.hidden`/`aria-expanded` on the PR
+    table's insights row. That's exactly the same unsafe-under-React
+    pattern Author Insights' own "View in table" button already hit and
+    was fixed for (see `navigateToPrInTable` in
+    `pr-author-insights-pr-link.helpers.js`, which dispatches a
+    `'pr-navigate-to-insights'` CustomEvent for `PrTableApp` to handle via
+    its own state when React owns the table) - Review Stats' copy was
+    simply never updated the same way. `<ReviewStatsContent />` calls a
+    new `window.navigateToPrInTableFromStats` bridge that delegates to
+    that same already-fixed helper instead of rebuilding (a third copy
+    of) the broken version. Confirmed working end-to-end with a real
+    browser (screenshot showing the PR data tab activated and the
+    insights row genuinely expanded, not just the toggle button claiming
+    so) and with the e2e test `"React-owned Review Stats content renders
+    cards/table and \"View in table\" navigates to the React-owned PR
+    table correctly"`.
+  - Two new bridges were added narrowly rather than reusing existing
+    global ones: `window.reviewStatsFormatIsoDatetime` (not
+    `window.formatIsoDatetime`, which `PrDateCell.jsx` already reads with
+    a much cruder fallback - reusing that name here would have changed
+    Phase 1's already-shipped date formatting as an unintended side
+    effect of this Phase 3 work) and `window.navigateToPrInTableFromStats`
+    (not the module-level `navigateToPrInTable` name already in scope in
+    `index.page.js`, which is a *different*, unrelated function from
+    `pr-auto-render-navigation.helpers.js` with a different signature -
+    reusing that name would have been a real naming collision, not just a
+    style choice).
+  - One e2e test-writing lesson worth remembering: the toggle-expanded
+    assertion needed the same `toHaveJSProperty("hidden", false)` +
+    `ancestor::tr`/`following-sibling::tr` technique the existing Author
+    Insights "View in table" test already uses, *not*
+    `expect(...).toBeVisible()` - the target PR can legitimately end up
+    inside a currently-collapsed lifecycle/smart-group section depending
+    on what earlier tests in this shared-webServer suite did to its
+    flagged/in-review state, and `toBeVisible()` fails on that ancestor
+    collapse even when the feature under test is working correctly. The
+    first draft of this test passed in isolation but failed intermittently
+    as part of the full suite for exactly this reason.
+
+**✅ Done (Author Insights tab, slice 1 of several):**
+- `<AuthorInsightsSelector />` — the "Author" dropdown, replacing
+  `pr-author-insights.component.js`'s `renderAuthorSelector()`. Same shape
+  as Phase 2's `MultiSelectCheckboxList` / Review Stats' own multi-select
+  precedent, not `ReviewStatsControls`'s shape: this selector's *options*
+  are rebuilt from the PR payload on every author-insights render (new
+  authors can appear as data changes), so it's mounted once but updated
+  via `window.updateAuthorInsightsSelector(options, selectedLogin)` with
+  an incrementing `key` on every call, fully re-initializing from fresh
+  props each time rather than diffing - matching the old vanilla
+  behavior of discarding and rebuilding the `<select>` from scratch on
+  every render.
+  - **Same container-split gotcha as Review Stats, applied to a third
+    container:** `renderAuthorInsights` used to rebuild the selector via
+    the *same* `host.innerHTML = ""` that rebuilt the selected-author
+    header and every section - given `#author-insights` (like
+    `#pr-stats` before it) has no natural "no rebuild needed" boundary of
+    its own, React mounting into any part of that subtree needed the
+    same static-sibling-container treatment
+    (`#author-insights-selector-root` / `#author-insights-content-root`)
+    `renderStatsView` already got. Verified by temporarily merging the
+    two containers back into one `host.innerHTML = ""` call and
+    confirming the e2e test failed - and more severely than expected:
+    the selector didn't just lose its selected value on a later
+    re-render, it vanished from the page entirely (even before any
+    re-render), because `mountAuthorInsightsSelector`'s `createRoot`
+    call had already captured a reference to the original
+    `#author-insights-selector-root` node, which the merged
+    `innerHTML = ""` immediately detached on the very first render.
+  - This is now the third time this exact class of bug has appeared
+    (Phase 1's `#pr-sections`, Review Stats' `#stats-controls-root`, now
+    this) - a strong signal that "does the vanilla rebuild this
+    container is going into already cover something else, or could it
+    ever need to?" is worth checking explicitly for *every* remaining
+    Author Insights section (comments composer/list, PR-linked notes,
+    created-PRs) before converting each one, not just assumed safe by
+    analogy.
+  - The DI contract for `createPrAuthorInsightsComponent` gained one new
+    optional parameter, `updateReactAuthorInsightsSelector` (handled/
+    fallback shape, same as `pr-filter-panel.component.js`'s
+    `renderMultiSelectList` hook) - every existing unit test, which
+    doesn't pass it, keeps exercising the unchanged vanilla fallback path.
+
+**Approach for the rest of Review Stats, and for Author Insights /
+Backfill when they're picked up:**
+- Continue one slice at a time, same as Phases 1-2 - don't attempt a
+  whole tab in one shot.
+- Before converting any container that a vanilla render function
+  currently rebuilds via `innerHTML = ""`, check whether that rebuild
+  covers (or will come to cover, once React owns part of it) anything
+  React has mounted into - give React-owned pieces their own static
+  sibling container the vanilla rebuild is scoped away from, exactly
+  like `#stats-controls-root` above and `#pr-sections` in Phase 1. This
+  is the single most common way this migration has broken things so far
+  (Phase 1's original #pr-sections issue, several of Phase 2's gotchas,
+  and this one) - always check for it explicitly rather than assuming a
+  new tab's rebuild pattern is safe by default.
+- `useMemo`/`React.lazy()` as originally suggested here remain reasonable
+  ideas for the heavier pieces (chart visuals, Author Insights) once
+  there's an actual component to measure, not upfront.
 
 ---
 
