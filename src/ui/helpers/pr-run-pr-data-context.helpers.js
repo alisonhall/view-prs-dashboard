@@ -12,7 +12,17 @@
     deriveScopeSettings,
     getNeedsAttentionConfig,
     deriveRowSources,
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): "scope-mode" is one of the two
+    // Slice 1 fields migrated onto FilterStateProvider's Context. Optional -
+    // returns undefined by default, so deriveScopeSettings falls back to
+    // reading renderContext.scopeSelect?.value (the original DOM read)
+    // exactly as before when this isn't provided (e.g. existing unit tests
+    // that don't pass it) or when it returns undefined (React hasn't
+    // mounted the provider yet).
+    getFilterStateValue,
   } = {}) => {
+    const getFilterStateValueSafe =
+      typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
     const captureRenderContextSafe =
       typeof captureRenderContext === "function"
         ? captureRenderContext
@@ -63,9 +73,13 @@
         inputRepo,
         lastRun: renderContext.lastRun,
       });
+      const filterStateScopeMode = getFilterStateValueSafe("scopeMode");
       const scopeSettings = deriveScopeSettingsSafe({
         filterPrNumbersRaw,
-        scopeModeValue: renderContext.scopeSelect?.value,
+        scopeModeValue:
+          typeof filterStateScopeMode === "string"
+            ? filterStateScopeMode
+            : renderContext.scopeSelect?.value,
         optionsUseLastRunScope,
       });
       const attentionConfig = getNeedsAttentionConfigSafe();

@@ -9,15 +9,15 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { flushSync } from 'react-dom';
+import { flushSync, createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
 import { PrNumberFilterInput } from './components/PrNumberFilterInput';
 import { ScopeFilterSelect } from './components/ScopeFilterSelect';
 import { AlwaysShowInReviewCheckbox } from './components/AlwaysShowInReviewCheckbox';
-import { FilterCheckbox } from './components/FilterCheckbox';
+import { ContextFilterCheckbox } from './components/ContextFilterCheckbox';
 import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
-import { RunScriptTextInput } from './components/RunScriptTextInput';
+import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
@@ -30,6 +30,7 @@ import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
 import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
 import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
 import { BackfillBadges } from './components/BackfillBadges';
+import { FilterStateProvider } from './state/FilterStateProvider';
 
 /**
  * Mount React app for PR table
@@ -88,188 +89,249 @@ export function mountReactPrTable(containerElement, props) {
 }
 
 /**
- * Mounts the "Filter by PR number(s)" input (Phase 2, first slice - see
- * REACT_MIGRATION_PLAN.md). Unlike the PR table, this control's container
- * is present in the static HTML from page load and doesn't depend on any
- * fetched PR data, so it mounts immediately rather than waiting to be
- * called - there's no "first render needs data" race to bridge.
+ * Mounts the shared filter-state Context provider (Phase 6, Slice 1 - see
+ * REACT_MIGRATION_PLAN.md) and, via `createPortal`, the two fields
+ * migrated onto it so far: the "View scope" dropdown and "Always show PRs
+ * In Review" checkbox (previously `mountScopeFilterSelect`/
+ * `mountAlwaysShowInReviewCheckbox`, each its own independent
+ * `createRoot()`).
+ *
+ * Every field mounted so far in this module gets its *own* `createRoot()`
+ * call, each an independent React tree - fine for a field with no shared
+ * state, but Context can't cross independent tree boundaries, and a
+ * `Provider` needs one shared tree to sit above every field that reads
+ * from it. `createPortal` is what makes that possible without moving any
+ * markup in index.html: this function mounts exactly one root (attached to
+ * a detached anchor node, never inserted into the visible DOM - it doesn't
+ * need to be, since portals render their children into the *target*
+ * nodes below, not the anchor), and portals each migrated field into its
+ * existing `<span id="…-root">` container, so every existing reference to
+ * that container (fallback markup, `document.getElementById` reads
+ * elsewhere) is completely unaffected by which mechanism put React there.
+ *
+ * Same restore-race reasoning as every other Phase 2 mount function
+ * applies to the *initial* Context values: seed them from whatever the
+ * fallback elements currently show, in case `restoreUiOptionOverrides()`
+ * already won the load-order race and set them before this module
+ * finished loading.
  */
-function mountPrNumberFilterInput() {
-  const container = document.getElementById('filter-pr-numbers-root');
-  if (!container) {
-    return;
-  }
-  // index.page.js's restoreUiOptionOverrides() fetches a persisted value
-  // and can resolve before this module (fetched/parsed/executed as a
-  // Vite-bundled ES module, not a fast same-origin JSON call) finishes
-  // loading - if it wins that race, it sets the value on the static
-  // fallback <input> this replaces. Read it as the initial value instead
-  // of hardcoding empty, so createRoot().render() below doesn't wipe out
-  // an already-restored value.
-  const fallbackInput = container.querySelector('input');
-  const initialValue = fallbackInput?.value || '';
-  ReactDOM.createRoot(container).render(<PrNumberFilterInput initialValue={initialValue} />);
-}
+// Context-backed checkboxes with no field-specific behavior (see
+// ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
+// entry in index.page.js's FILTER_STATE_FIELD_MAP for its value to reach
+// the render pipeline/persistence, and in FilterStateProvider's own
+// debounced-apply effect dependency list if it should auto-apply on
+// change. The five "Needs Attention rules" checkboxes do (mirroring their
+// membership in debouncedApplyOnChangeIds); the three "Run Script
+// options" checkboxes don't - they're only ever read via `new
+// FormData(form)` when the "Run script" button is clicked (see
+// getFormBody, index.page.js), same as the Run Script text inputs/select
+// below, so no debounced-apply behavior applies to them either way.
+const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
+  { id: 'attention-include-pending-comments', name: 'attentionIncludePendingComments', key: 'attentionIncludePendingComments' },
+  { id: 'attention-ignore-merge-only-commits', name: 'attentionIgnoreMergeOnlyCommits', key: 'attentionIgnoreMergeOnlyCommits' },
+  { id: 'attention-include-closed-merged', name: 'attentionIncludeClosedMerged', key: 'attentionIncludeClosedMerged' },
+  { id: 'attention-include-draft-changed', name: 'attentionIncludeDraftChanged', key: 'attentionIncludeDraftChanged' },
+  { id: 'attention-include-draft-no-activity', name: 'attentionIncludeDraftNoActivity', key: 'attentionIncludeDraftNoActivity' },
+  { id: 'ack-changed', name: 'ackChanged', key: 'ackChanged' },
+  { id: 'show-reason', name: 'showReason', key: 'showReason' },
+  { id: 'quiet', name: 'quiet', key: 'quiet' },
+  // change-filter-use-builtin-merge-pattern DOES auto-persist+apply on
+  // change (its own special-case branch in the delegated #run-script-form
+  // listener, index.page.js) - but that stays owned entirely by the
+  // delegated listener reacting to the real native "change" event this
+  // element always fires, unaffected by Context migration, so it's added
+  // to FilterStateProvider's own debounced-apply deps below only for the
+  // same "harmless double-hookup" consistency every other auto-apply
+  // field gets, not because it's required for correctness.
+  { id: 'change-filter-use-builtin-merge-pattern', name: 'changeFilterUseBuiltinMergePattern', key: 'changeFilterUseBuiltinMergePattern' },
+];
 
-/**
- * Mounts the "View scope" dropdown (Phase 2, second slice - see
- * REACT_MIGRATION_PLAN.md). Same reasoning as mountPrNumberFilterInput:
- * seeds initialValue from the fallback <select>'s current value in case
- * restoreUiOptionOverrides() already won the race and set it.
- */
-function mountScopeFilterSelect() {
-  const container = document.getElementById('scope-mode-root');
-  if (!container) {
-    return;
-  }
-  const fallbackSelect = container.querySelector('select');
-  const initialValue = fallbackSelect?.value || 'all';
-  ReactDOM.createRoot(container).render(<ScopeFilterSelect initialValue={initialValue} />);
-}
+// Context-backed text/number inputs (see ContextRunScriptTextInput.jsx) -
+// the four "Run Script options" fields. Same "only read via FormData on
+// button click" reasoning as the checkboxes above.
+const FILTER_STATE_TEXT_FIELDS = [
+  { id: 'repo', name: 'repo', key: 'repo', type: 'text', placeholder: 'optum-rx-clinicalproducts/orx-cpp-mp-uis' },
+  { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200' },
+  { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15' },
+  { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6' },
+];
 
-/**
- * Mounts the "Always show PRs In Review" checkbox (Phase 2, third slice -
- * see REACT_MIGRATION_PLAN.md). First checkbox conversion; seeds
- * initialChecked from the fallback <input>'s current `checked` state in
- * case restoreUiOptionOverrides() already won the race and set it (via
- * element.click(), see setCheckbox in index.page.js).
- */
-function mountAlwaysShowInReviewCheckbox() {
-  const container = document.getElementById('always-show-in-review-root');
-  if (!container) {
-    return;
-  }
-  const fallbackInput = container.querySelector('input');
-  const initialChecked = fallbackInput?.checked || false;
-  ReactDOM.createRoot(container).render(
-    <AlwaysShowInReviewCheckbox initialChecked={initialChecked} />,
+function mountFilterStateProvider() {
+  const scopeModeContainer = document.getElementById('scope-mode-root');
+  const alwaysShowInReviewContainer = document.getElementById('always-show-in-review-root');
+  const attentionNoActivityModeContainer = document.getElementById(
+    'attention-no-activity-mode-root',
   );
-}
+  const openModeContainer = document.getElementById('open-mode-root');
+  const filterPrNumbersContainer = document.getElementById('filter-pr-numbers-root');
+  const authorThreadResolutionModeContainer = document.getElementById(
+    'attention-author-thread-resolution-mode-root',
+  );
+  const ignoreCommitPatternsContainer = document.getElementById(
+    'change-filter-ignore-commit-patterns-root',
+  );
+  const contextCheckboxContainers = FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.map((field) => ({
+    ...field,
+    container: document.getElementById(`${field.id}-root`),
+  }));
+  const contextTextContainers = FILTER_STATE_TEXT_FIELDS.map((field) => ({
+    ...field,
+    container: document.getElementById(`${field.id}-root`),
+  }));
+  const contextOptionSelectContainers = FILTER_OPTION_SELECT_FIELDS.map((field) => ({
+    ...field,
+    container: document.getElementById(`${field.id}-root`),
+  }));
 
-/**
- * Mounts the "NO_ACTIVITY handling" dropdown (Phase 2 - see
- * REACT_MIGRATION_PLAN.md). Same reasoning as mountScopeFilterSelect.
- */
-function mountAttentionNoActivityModeSelect() {
-  const container = document.getElementById('attention-no-activity-mode-root');
-  if (!container) {
+  const anyContainerExists =
+    scopeModeContainer ||
+    alwaysShowInReviewContainer ||
+    attentionNoActivityModeContainer ||
+    openModeContainer ||
+    filterPrNumbersContainer ||
+    authorThreadResolutionModeContainer ||
+    ignoreCommitPatternsContainer ||
+    contextCheckboxContainers.some((field) => field.container) ||
+    contextTextContainers.some((field) => field.container) ||
+    contextOptionSelectContainers.some((field) => field.container);
+  if (!anyContainerExists) {
     return;
   }
-  const fallbackSelect = container.querySelector('select');
-  const initialValue = fallbackSelect?.value || 'all';
-  ReactDOM.createRoot(container).render(
-    <AttentionNoActivityModeSelect initialValue={initialValue} />,
-  );
-}
 
-/**
- * Mounts one FilterCheckbox per `{id, name}` pair into its own
- * `#<id>-root` container. Same restore-race reasoning as
- * mountAlwaysShowInReviewCheckbox, applied per field. Shared by the
- * "Needs Attention rules" checkboxes and the "Run Script options"
- * checkboxes below - both are just batches of plain checkboxes with no
- * field-specific behavior.
- */
-function mountFilterCheckboxes(fields) {
-  fields.forEach(({ id, name }) => {
-    const container = document.getElementById(`${id}-root`);
-    if (!container) {
-      return;
-    }
-    const fallbackInput = container.querySelector('input');
-    const initialChecked = fallbackInput?.checked || false;
-    ReactDOM.createRoot(container).render(
-      <FilterCheckbox id={id} name={name} initialChecked={initialChecked} />,
-    );
+  const initialValues = {
+    scopeMode: scopeModeContainer?.querySelector('select')?.value || 'all',
+    alwaysShowInReview: alwaysShowInReviewContainer?.querySelector('input')?.checked || false,
+    attentionNoActivityMode:
+      attentionNoActivityModeContainer?.querySelector('select')?.value || 'all',
+    openMode: openModeContainer?.querySelector('select')?.value || 'none',
+    filterPrNumbers: filterPrNumbersContainer?.querySelector('input')?.value || '',
+    attentionAuthorThreadResolutionMode:
+      authorThreadResolutionModeContainer?.querySelector('select')?.value || 'allow-all',
+    changeFilterIgnoreCommitPatterns:
+      ignoreCommitPatternsContainer?.querySelector('textarea')?.value || '',
+  };
+  contextCheckboxContainers.forEach((field) => {
+    initialValues[field.key] = field.container?.querySelector('input')?.checked || false;
   });
-}
-
-const ATTENTION_RULE_CHECKBOX_FIELDS = [
-  { id: 'attention-include-pending-comments', name: 'attentionIncludePendingComments' },
-  { id: 'attention-ignore-merge-only-commits', name: 'attentionIgnoreMergeOnlyCommits' },
-  { id: 'attention-include-closed-merged', name: 'attentionIncludeClosedMerged' },
-  { id: 'attention-include-draft-changed', name: 'attentionIncludeDraftChanged' },
-  { id: 'attention-include-draft-no-activity', name: 'attentionIncludeDraftNoActivity' },
-];
-
-const RUN_SCRIPT_CHECKBOX_FIELDS = [
-  { id: 'ack-changed', name: 'ackChanged' },
-  { id: 'show-reason', name: 'showReason' },
-  { id: 'quiet', name: 'quiet' },
-];
-
-const CHANGE_FILTER_CHECKBOX_FIELDS = [
-  { id: 'change-filter-use-builtin-merge-pattern', name: 'changeFilterUseBuiltinMergePattern' },
-];
-
-const RUN_SCRIPT_TEXT_FIELDS = [
-  { id: 'repo', name: 'repo', type: 'text', placeholder: 'optum-rx-clinicalproducts/orx-cpp-mp-uis' },
-  { id: 'limit', name: 'limit', type: 'number', placeholder: '200' },
-  { id: 'merged-limit', name: 'mergedLimit', type: 'number', placeholder: '15' },
-  { id: 'jobs', name: 'jobs', type: 'number', placeholder: '6' },
-];
-
-/**
- * Mounts the "Run Script options" plain text/number inputs (repo, Open PR
- * limit, Merged PR limit, Parallel jobs) - Phase 2, see
- * REACT_MIGRATION_PLAN.md. Unlike the "Run & Filter" fields converted so
- * far, none of these have a vanilla "change" listener attached (they're
- * only ever read via `.value` when the "Run script" button is clicked),
- * so there's no event-delegation concern here - just the same
- * restore-race handling as every other field.
- */
-function mountRunScriptTextInputs() {
-  RUN_SCRIPT_TEXT_FIELDS.forEach(({ id, name, type, placeholder }) => {
-    const container = document.getElementById(`${id}-root`);
-    if (!container) {
-      return;
-    }
-    const fallbackInput = container.querySelector('input');
-    const initialValue = fallbackInput?.value || '';
-    ReactDOM.createRoot(container).render(
-      <RunScriptTextInput id={id} name={name} type={type} placeholder={placeholder} initialValue={initialValue} />,
-    );
+  contextTextContainers.forEach((field) => {
+    initialValues[field.key] = field.container?.querySelector('input')?.value || '';
   });
-}
+  contextOptionSelectContainers.forEach((field) => {
+    initialValues[field.key] = field.container?.querySelector('select')?.value || '';
+  });
 
-/**
- * Mounts the "PR author thread resolution policy" dropdown (Phase 2 - see
- * REACT_MIGRATION_PLAN.md). Same reasoning as mountScopeFilterSelect; see
- * AuthorThreadResolutionModeSelect.jsx for why its dependent show/hide UI
- * needed no additional changes.
- */
-function mountAuthorThreadResolutionModeSelect() {
-  const container = document.getElementById('attention-author-thread-resolution-mode-root');
-  if (!container) {
-    return;
-  }
-  const fallbackSelect = container.querySelector('select');
-  const initialValue = fallbackSelect?.value || 'allow-all';
-  ReactDOM.createRoot(container).render(
-    <AuthorThreadResolutionModeSelect initialValue={initialValue} />,
+  // Unlike ReactDOM.createRoot(container).render() (used by every other
+  // Phase 2 field's mount function), which clears a container's existing
+  // children as part of mounting a root into it for the first time,
+  // createPortal(children, container) does NOT clear `container` first -
+  // it just appends its output alongside whatever's already there. Read
+  // each fallback element's value above (already done), then clear its
+  // container explicitly here, or both the vanilla fallback element and
+  // React's portaled one would coexist in the DOM (confirmed the hard way:
+  // a Playwright "strict mode violation: resolved to 2 elements" failure).
+  [
+    scopeModeContainer,
+    alwaysShowInReviewContainer,
+    attentionNoActivityModeContainer,
+    openModeContainer,
+    filterPrNumbersContainer,
+    authorThreadResolutionModeContainer,
+    ignoreCommitPatternsContainer,
+  ].forEach((container) => {
+    if (container) container.innerHTML = '';
+  });
+  contextCheckboxContainers.forEach((field) => {
+    if (field.container) field.container.innerHTML = '';
+  });
+  contextTextContainers.forEach((field) => {
+    if (field.container) field.container.innerHTML = '';
+  });
+  contextOptionSelectContainers.forEach((field) => {
+    if (field.container) field.container.innerHTML = '';
+  });
+
+  // The anchor must actually be attached to the document (just hidden),
+  // not a fully detached node: React attaches this root's own delegated
+  // native event listener to the container passed to createRoot(), and a
+  // detached container would never receive events that bubble through the
+  // real document tree from the portal targets below (which *are*
+  // attached - every "…-root" container is a real part of the page).
+  // Portal targets get their own listener attachment too, but there's no
+  // reason to depend on that nuance when a hidden, attached anchor
+  // sidesteps the question entirely.
+  const anchor = document.createElement('div');
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  const root = ReactDOM.createRoot(anchor);
+  root.render(
+    <FilterStateProvider initialValues={initialValues}>
+      {scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer)}
+      {alwaysShowInReviewContainer &&
+        createPortal(<AlwaysShowInReviewCheckbox />, alwaysShowInReviewContainer)}
+      {attentionNoActivityModeContainer &&
+        createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer)}
+      {openModeContainer && createPortal(<OpenModeSelect />, openModeContainer)}
+      {filterPrNumbersContainer &&
+        createPortal(<PrNumberFilterInput />, filterPrNumbersContainer)}
+      {authorThreadResolutionModeContainer &&
+        createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer)}
+      {ignoreCommitPatternsContainer &&
+        createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer)}
+      {contextCheckboxContainers.map(
+        (field) =>
+          field.container &&
+          createPortal(
+            <ContextFilterCheckbox id={field.id} name={field.name} filterStateKey={field.key} />,
+            field.container,
+            field.id,
+          ),
+      )}
+      {contextTextContainers.map(
+        (field) =>
+          field.container &&
+          createPortal(
+            <ContextRunScriptTextInput
+              id={field.id}
+              name={field.name}
+              type={field.type}
+              placeholder={field.placeholder}
+              filterStateKey={field.key}
+            />,
+            field.container,
+            field.id,
+          ),
+      )}
+      {contextOptionSelectContainers.map(
+        (field) =>
+          field.container &&
+          createPortal(
+            <FilterOptionSelect
+              id={field.id}
+              name={field.name}
+              options={field.options}
+              filterStateKey={field.key}
+            />,
+            field.container,
+            field.id,
+          ),
+      )}
+    </FilterStateProvider>,
   );
 }
 
-/**
- * Mounts the "Open mode" dropdown (Phase 2 - see REACT_MIGRATION_PLAN.md).
- * Like the Run Script text inputs above, has no vanilla "change" listener
- * (only read via `.value` on "Run script" click) - just the same
- * restore-race handling as every other converted select.
- */
-function mountOpenModeSelect() {
-  const container = document.getElementById('open-mode-root');
-  if (!container) {
-    return;
-  }
-  const fallbackSelect = container.querySelector('select');
-  const initialValue = fallbackSelect?.value || 'none';
-  ReactDOM.createRoot(container).render(<OpenModeSelect initialValue={initialValue} />);
-}
-
+// Context-backed "Any (with/without)" plain-metadata filter selects (see
+// FilterOptionSelect.jsx) - each `key` matches the field's `name`
+// attribute and has a corresponding entry in index.page.js's
+// FILTER_STATE_FIELD_MAP. None of these are read via a direct DOM read
+// outside pr-filter-panel.component.js's getCustomCommentsFilter/etc.
+// (each only called when "Apply filters (local)" is clicked), and none
+// are in debouncedApplyOnChangeIds, so FilterStateProvider's
+// debounced-apply effect dependency list doesn't need these keys either.
 const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-custom-comments',
     name: 'filterCustomComments',
+    key: 'filterCustomComments',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With custom comments' },
@@ -279,6 +341,7 @@ const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-other-notes',
     name: 'filterOtherNotes',
+    key: 'filterOtherNotes',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With other notes' },
@@ -288,6 +351,7 @@ const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-pr-difficulty',
     name: 'filterPrDifficulty',
+    key: 'filterPrDifficulty',
     options: [
       { value: '', label: 'Any (set or not set)' },
       { value: '1', label: '1' },
@@ -301,6 +365,7 @@ const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-rally-stories',
     name: 'filterRallyStories',
+    key: 'filterRallyStories',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With Rally stories' },
@@ -310,6 +375,7 @@ const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-rally-links',
     name: 'filterRallyLinks',
+    key: 'filterRallyLinks',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With Rally links' },
@@ -319,6 +385,7 @@ const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-analysis-of-pr',
     name: 'filterAnalysisOfPr',
+    key: 'filterAnalysisOfPr',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With analysis' },
@@ -326,48 +393,6 @@ const FILTER_OPTION_SELECT_FIELDS = [
     ],
   },
 ];
-
-/**
- * Mounts the six "Any (with/without)" plain-metadata filter selects
- * (Phase 2 - see REACT_MIGRATION_PLAN.md). None of these ever had a
- * vanilla "change" listener or a persisted override - each is only read
- * via `.value` when "Apply filters (local)" is clicked - so like
- * RunScriptTextInput/OpenModeSelect, only the standard restore-race
- * handling applies, not event delegation or flushSync.
- */
-function mountFilterOptionSelects() {
-  FILTER_OPTION_SELECT_FIELDS.forEach(({ id, name, options }) => {
-    const container = document.getElementById(`${id}-root`);
-    if (!container) {
-      return;
-    }
-    const fallbackSelect = container.querySelector('select');
-    const initialValue = fallbackSelect?.value || '';
-    ReactDOM.createRoot(container).render(
-      <FilterOptionSelect id={id} name={name} options={options} initialValue={initialValue} />,
-    );
-  });
-}
-
-/**
- * Mounts the "Ignore commits matching patterns" textarea (Phase 2 - see
- * REACT_MIGRATION_PLAN.md). Unlike every field above except the
- * "Use built-in merge pattern" checkbox, this one has a special-case
- * "change" -> persist + apply handler (see the delegated listener in
- * index.page.js) rather than no listener at all, so it needed gotcha #3's
- * treatment, not just the standard restore-race handling.
- */
-function mountIgnoreCommitPatternsTextarea() {
-  const container = document.getElementById('change-filter-ignore-commit-patterns-root');
-  if (!container) {
-    return;
-  }
-  const fallbackTextarea = container.querySelector('textarea');
-  const initialValue = fallbackTextarea?.value || '';
-  ReactDOM.createRoot(container).render(
-    <IgnoreCommitPatternsTextarea initialValue={initialValue} />,
-  );
-}
 
 /**
  * Multi-select checkbox lists (Phase 2 - see REACT_MIGRATION_PLAN.md).
@@ -662,18 +687,7 @@ if (typeof window !== 'undefined') {
   window.renderReactMultiSelectList = renderReactMultiSelectList;
   mountMultiSelectLists();
 
-  mountPrNumberFilterInput();
-  mountScopeFilterSelect();
-  mountAlwaysShowInReviewCheckbox();
-  mountAttentionNoActivityModeSelect();
-  mountFilterCheckboxes(ATTENTION_RULE_CHECKBOX_FIELDS);
-  mountAuthorThreadResolutionModeSelect();
-  mountRunScriptTextInputs();
-  mountOpenModeSelect();
-  mountFilterCheckboxes(RUN_SCRIPT_CHECKBOX_FIELDS);
-  mountFilterOptionSelects();
-  mountFilterCheckboxes(CHANGE_FILTER_CHECKBOX_FIELDS);
-  mountIgnoreCommitPatternsTextarea();
+  mountFilterStateProvider();
   mountReviewStatsControls();
   mountReviewStatsContent();
   mountAuthorInsightsSelector();

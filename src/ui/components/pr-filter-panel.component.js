@@ -25,7 +25,17 @@
     setPendingExcludeLabelFilterSelections,
     renderMultiSelectList,
     documentRef,
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): optional - when provided,
+    // returns a migrated field's current value from FilterStateProvider's
+    // Context by its Context key (not DOM id), or undefined for an
+    // unmigrated key/before the provider mounts. Defaults to always
+    // undefined so every existing call site (and every existing unit
+    // test, which doesn't pass this) falls back to its original DOM read
+    // unchanged.
+    getFilterStateValue,
   } = {}) => {
+    const getFilterStateValueSafe =
+      typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
     // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): when
     // provided, `renderMultiSelectList(listId, items)` renders the
     // checkbox items for a multi-select list (items: [{value, label,
@@ -129,36 +139,33 @@
     const getSelectedExcludeLabelNames = () =>
       getSelectedMultiSelectValues("exclude-label-list");
 
-    const getCustomCommentsFilter = () => {
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): each of these six "Any
+    // (with/without)" filters prefers its migrated value via
+    // getFilterStateValueSafe (Context key, not DOM id) over the DOM read,
+    // same handled/fallback shape as every other bridge in this
+    // migration.
+    const readFilterStateOrDomValue = (contextKey, domId) => {
+      const override = getFilterStateValueSafe(contextKey);
+      if (typeof override === "string") {
+        return override.trim();
+      }
       const doc = getDocument();
-      const element = doc?.getElementById("filter-custom-comments");
+      const element = doc?.getElementById(domId);
       return String(element?.value || "").trim();
     };
-    const getOtherNotesFilter = () => {
-      const doc = getDocument();
-      const element = doc?.getElementById("filter-other-notes");
-      return String(element?.value || "").trim();
-    };
-    const getPrDifficultyFilter = () => {
-      const doc = getDocument();
-      const element = doc?.getElementById("filter-pr-difficulty");
-      return String(element?.value || "").trim();
-    };
-    const getRallyStoriesFilter = () => {
-      const doc = getDocument();
-      const element = doc?.getElementById("filter-rally-stories");
-      return String(element?.value || "").trim();
-    };
-    const getRallyLinksFilter = () => {
-      const doc = getDocument();
-      const element = doc?.getElementById("filter-rally-links");
-      return String(element?.value || "").trim();
-    };
-    const getAnalysisOfPrFilter = () => {
-      const doc = getDocument();
-      const element = doc?.getElementById("filter-analysis-of-pr");
-      return String(element?.value || "").trim();
-    };
+
+    const getCustomCommentsFilter = () =>
+      readFilterStateOrDomValue("filterCustomComments", "filter-custom-comments");
+    const getOtherNotesFilter = () =>
+      readFilterStateOrDomValue("filterOtherNotes", "filter-other-notes");
+    const getPrDifficultyFilter = () =>
+      readFilterStateOrDomValue("filterPrDifficulty", "filter-pr-difficulty");
+    const getRallyStoriesFilter = () =>
+      readFilterStateOrDomValue("filterRallyStories", "filter-rally-stories");
+    const getRallyLinksFilter = () =>
+      readFilterStateOrDomValue("filterRallyLinks", "filter-rally-links");
+    const getAnalysisOfPrFilter = () =>
+      readFilterStateOrDomValue("filterAnalysisOfPr", "filter-analysis-of-pr");
 
     const getMultiSelectCheckboxId = (prefix, value, index) => {
       const normalized = String(value || "")

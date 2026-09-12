@@ -1,37 +1,38 @@
 /**
  * ScopeFilterSelect - React-owned "View scope" dropdown.
  *
- * Phase 2 second slice (see REACT_MIGRATION_PLAN.md) - same pattern as
- * PrNumberFilterInput: renders the same `<select id="scope-mode">` vanilla
- * used to render statically, so every existing vanilla read
- * (`getElementById("scope-mode").value`) and the "change" listener that
- * debounces `applyFiltersFromCache()` (see index.page.js) keep working
- * unchanged - real DOM events, not something React's synthetic event
- * system intercepts or replaces.
+ * Phase 6 (see REACT_MIGRATION_PLAN.md): migrated from local `useState` to
+ * `<FilterStateProvider>`'s shared Context - this is one of the two Slice 1
+ * proof-of-concept fields. Still renders the same `<select id="scope-mode">`
+ * vanilla used to render statically, so every existing vanilla read of the
+ * *element itself* keeps working; `deriveRunPrDataContext`
+ * (pr-run-pr-data-context.helpers.js) now reads its *value* from
+ * `window.getFilterStateValues().scopeMode` instead of `.value` off this
+ * element, and `persistUiOptionOverrides`/`restoreUiOptionOverrides`
+ * (index.page.js) read/write through `window.getFilterStateValues`/
+ * `setFilterStateValue` for this field id too - see those call sites'
+ * own comments.
  *
- * Same restore-race fix applies here as for PrNumberFilterInput:
- * index.page.js's setText() writes through the native value setter and
- * dispatches a real 'input' event (which HTMLSelectElement treats the same
- * as 'change' for React's purposes) so a persisted override picked up
- * after this component mounts still reaches its state; and
- * mountScopeFilterSelect() (react-app.jsx) seeds initialValue from
- * whatever the fallback <select> already shows, in case restore won the
- * race and set it before React replaced the fallback.
+ * A dispatched native "change" event (e.g. some other legacy code
+ * manipulating this element directly) still reaches this component's
+ * `onChange` normally, since React listens for real DOM events - that
+ * property isn't specific to local `useState` vs. Context.
  *
  * @module components/ScopeFilterSelect
  */
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useFilterState } from '../state/FilterStateContext';
 
-export function ScopeFilterSelect({ initialValue = 'all' }) {
-  const [value, setValue] = useState(initialValue);
+export function ScopeFilterSelect() {
+  const { values, setValue } = useFilterState();
 
   return (
     <select
       id="scope-mode"
       name="scopeMode"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
+      value={values.scopeMode}
+      onChange={(e) => setValue('scopeMode', e.target.value)}
     >
       <option value="all">All stored rows</option>
       <option value="last-run">Last run rows</option>

@@ -57,7 +57,16 @@
     // State management (via dependency injection)
     stateGetters,
     stateSetters,
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): optional - when provided,
+    // returns "filter-pr-numbers"'s current value from
+    // FilterStateProvider's Context, or undefined before the provider
+    // mounts/if it's still unmigrated. Defaults to always undefined so
+    // this orchestrator (and every existing unit test, which doesn't pass
+    // this) falls back to reading the DOM element's `.value` unchanged.
+    getFilterStateValue,
   }) {
+    const getFilterStateValueSafe =
+      typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
     // Private state (tab-specific)
     let isInitialized = false;
 
@@ -95,12 +104,22 @@
         return;
       }
 
+      // Phase 6 (see REACT_MIGRATION_PLAN.md): "filter-pr-numbers" is
+      // migrated onto FilterStateProvider's Context - prefer it over the
+      // DOM read when the provider has mounted, same handled/fallback
+      // shape as everywhere else in this migration.
+      const filterPrNumbersOverride = getFilterStateValueSafe("filterPrNumbers");
+      const filterPrNumbersRaw =
+        typeof filterPrNumbersOverride === "string"
+          ? filterPrNumbersOverride.trim()
+          : filterPrNumbersInput.value.trim();
+
       // Derive rendering context using helper
       const runContext = deriveRunPrDataContext({
         payload: effectivePayload,
         selectedRepo,
         inputRepo: repoInput.value.trim(),
-        filterPrNumbersRaw: filterPrNumbersInput.value.trim(),
+        filterPrNumbersRaw,
         optionsUseLastRunScope: options.useLastRunScope,
       });
 

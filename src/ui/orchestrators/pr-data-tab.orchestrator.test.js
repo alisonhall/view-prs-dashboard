@@ -232,6 +232,46 @@ describe("PR Data Tab Orchestrator", () => {
       expect(mockDeps.deriveRunPrDataContext).not.toHaveBeenCalled();
       expect(mockDeps.deriveRenderPipelineState).not.toHaveBeenCalled();
     });
+
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): "filter-pr-numbers" is
+    // migrated onto FilterStateProvider's Context.
+    describe("Given getFilterStateValue is provided (Phase 6)", () => {
+      test("When it returns a string for filterPrNumbers, Then that value is used instead of the DOM read", () => {
+        // Arrange
+        const orchestratorWithFilterState = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getFilterStateValue: (key) => (key === "filterPrNumbers" ? "42, 43" : undefined),
+        });
+        orchestratorWithFilterState.initialize();
+        const mockPayload = { entries: [], meta: {} };
+
+        // Act
+        orchestratorWithFilterState.renderPrData(mockPayload, "test-repo");
+
+        // Assert
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ filterPrNumbersRaw: "42, 43" }),
+        );
+      });
+
+      test("When it returns undefined, Then the original DOM read is used", () => {
+        // Arrange
+        const orchestratorWithFilterState = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getFilterStateValue: () => undefined,
+        });
+        orchestratorWithFilterState.initialize();
+        const mockPayload = { entries: [], meta: {} };
+
+        // Act
+        orchestratorWithFilterState.renderPrData(mockPayload, "test-repo");
+
+        // Assert (the "filter-pr-numbers" DOM mock above returns { value: "" })
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ filterPrNumbersRaw: "" }),
+        );
+      });
+    });
   });
 
   describe("Given data refresh handling", () => {

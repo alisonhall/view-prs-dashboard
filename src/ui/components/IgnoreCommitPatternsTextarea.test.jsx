@@ -5,10 +5,24 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { IgnoreCommitPatternsTextarea } = require('./IgnoreCommitPatternsTextarea');
+const { FilterStateProvider } = require('../state/FilterStateProvider');
+
+const renderWithProvider = (changeFilterIgnoreCommitPatterns = '') =>
+  render(
+    <FilterStateProvider initialValues={{ changeFilterIgnoreCommitPatterns }}>
+      <IgnoreCommitPatternsTextarea />
+    </FilterStateProvider>,
+  );
 
 describe('IgnoreCommitPatternsTextarea', () => {
-  test('given no props, when rendering, then id/name/rows are applied and it starts empty', () => {
-    render(<IgnoreCommitPatternsTextarea />);
+  afterEach(() => {
+    delete window.getFilterStateValues;
+    delete window.setFilterStateValue;
+    delete window.debouncedApplyFilters;
+  });
+
+  test('given the provider seeds an empty value, when rendering, then id/name/rows are applied and it starts empty', () => {
+    renderWithProvider('');
     const textarea = screen.getByRole('textbox');
     expect(textarea.tagName).toBe('TEXTAREA');
     expect(textarea).toHaveAttribute('id', 'change-filter-ignore-commit-patterns');
@@ -17,32 +31,30 @@ describe('IgnoreCommitPatternsTextarea', () => {
     expect(textarea).toHaveValue('');
   });
 
-  test('given an initialValue, when rendering, then the textarea starts with that value', () => {
-    render(<IgnoreCommitPatternsTextarea initialValue={'^docs:\n^test:'} />);
+  test('given the provider seeds a value, when rendering, then the textarea starts with that value', () => {
+    renderWithProvider('^docs:\n^test:');
     expect(screen.getByRole('textbox')).toHaveValue('^docs:\n^test:');
   });
 
-  test('given a user types into the textarea, when typing, then the displayed value updates', async () => {
+  test('given a user types into the textarea, when typing, then the displayed value updates and window.getFilterStateValues() reflects it', async () => {
     const user = userEvent.setup();
-    render(<IgnoreCommitPatternsTextarea />);
+    renderWithProvider();
     const textarea = screen.getByRole('textbox');
 
     await user.type(textarea, '^docs:');
 
     expect(textarea).toHaveValue('^docs:');
+    expect(window.getFilterStateValues().changeFilterIgnoreCommitPatterns).toBe('^docs:');
   });
 
-  test('given an external native value change (e.g. restoring a persisted override), when the native setter + change event fire, then React state picks it up', () => {
-    render(<IgnoreCommitPatternsTextarea />);
+  test('given window.setFilterStateValue is called directly (the new restore path), when called, then the textarea reflects it', () => {
+    const { act } = require('@testing-library/react');
+    renderWithProvider();
     const textarea = screen.getByRole('textbox');
 
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value',
-    ).set;
-    nativeSetter.call(textarea, '^chore:\n^style:');
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    act(() => {
+      window.setFilterStateValue('changeFilterIgnoreCommitPatterns', '^chore:\n^style:');
+    });
 
     expect(textarea).toHaveValue('^chore:\n^style:');
   });

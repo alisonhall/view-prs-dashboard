@@ -661,6 +661,92 @@ const writeUiSessionOverrides = async (
   }
 };
 
+// Phase 6 (see REACT_MIGRATION_PLAN.md): single source of truth mapping a
+// DOM field id to its FilterStateProvider Context key, for every field
+// migrated onto Context so far. Shared by persistUiOptionOverrides/
+// restoreUiOptionOverrides below, getNeedsAttentionConfig, and
+// shouldAlwaysShowInReviewRows - one map instead of one ad hoc copy per
+// call site, so a field's migration only needs to add one entry here.
+const FILTER_STATE_FIELD_MAP = {
+  "scope-mode": "scopeMode",
+  "always-show-in-review": "alwaysShowInReview",
+  "attention-no-activity-mode": "attentionNoActivityMode",
+  "attention-include-pending-comments": "attentionIncludePendingComments",
+  "attention-ignore-merge-only-commits": "attentionIgnoreMergeOnlyCommits",
+  "attention-include-closed-merged": "attentionIncludeClosedMerged",
+  "attention-include-draft-changed": "attentionIncludeDraftChanged",
+  "attention-include-draft-no-activity": "attentionIncludeDraftNoActivity",
+  "repo": "repo",
+  "limit": "limit",
+  "merged-limit": "mergedLimit",
+  "jobs": "jobs",
+  "open-mode": "openMode",
+  "ack-changed": "ackChanged",
+  "show-reason": "showReason",
+  "quiet": "quiet",
+  "filter-pr-numbers": "filterPrNumbers",
+  "attention-author-thread-resolution-mode": "attentionAuthorThreadResolutionMode",
+  "change-filter-use-builtin-merge-pattern": "changeFilterUseBuiltinMergePattern",
+  "change-filter-ignore-commit-patterns": "changeFilterIgnoreCommitPatterns",
+};
+
+// Reads a migrated field's current value from FilterStateProvider's
+// Context (via the window.getFilterStateValues bridge react-app.jsx's
+// mountFilterStateProvider exposes) - returns undefined for an
+// unmigrated field id, or if the provider hasn't mounted yet, so every
+// call site below falls back to its original DOM read exactly as before.
+const getFilterStateOverrideForFieldId = (id) => {
+  const key = FILTER_STATE_FIELD_MAP[id];
+  if (!key || typeof window === "undefined" || typeof window.getFilterStateValues !== "function") {
+    return undefined;
+  }
+  return window.getFilterStateValues()?.[key];
+};
+
+// Writes a migrated field's value straight into Context (via
+// window.setFilterStateValue) instead of mutating the DOM - returns
+// whether it did (`false` for an unmigrated field id or before the
+// provider mounts, letting the caller fall back to its original
+// DOM-mutating approach).
+const setFilterStateOverrideForFieldId = (id, value) => {
+  const key = FILTER_STATE_FIELD_MAP[id];
+  if (!key || typeof window === "undefined" || typeof window.setFilterStateValue !== "function") {
+    return false;
+  }
+  window.setFilterStateValue(key, value);
+  return true;
+};
+
+// Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): the 9 multi-select lists'
+// "pending selections" (used only as a restore-time seed before any
+// checkbox exists yet - see the 9 `let pendingXxx`/`_pendingChangeFilterIgnoreXAuthors`
+// declarations below) have no corresponding DOM element id, so they can't
+// go through FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId like
+// every other field - these two helpers are the same handled/fallback
+// shape, just keyed directly by Context key instead of DOM id.
+// `getPendingSelectionsValue` uses `hasOwnProperty` rather than a falsy/
+// undefined check, since the module-scope fallback variable's own valid
+// values include `null` (its initial/cleared state) and arrays.
+const getPendingSelectionsValue = (contextKey, fallbackValue) => {
+  const values =
+    typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
+      ? window.getFilterStateValues()
+      : undefined;
+  return values && Object.prototype.hasOwnProperty.call(values, contextKey)
+    ? values[contextKey]
+    : fallbackValue;
+};
+const setPendingSelectionsValue = (contextKey, value, setFallback) => {
+  // Always keep the module-scope variable in sync too, regardless of
+  // whether Context has mounted - it's the fallback storage the vanilla
+  // DOM-building path (and any bare-fixture unit test) still reads/writes
+  // directly.
+  setFallback(value);
+  if (typeof window !== "undefined" && typeof window.setFilterStateValue === "function") {
+    window.setFilterStateValue(contextKey, value);
+  }
+};
+
 const persistUiOptionOverrides = async (fieldIds = null) => {
   const defaults = getUiOptionDefaults();
   const existingOverrides = await readUiSessionOverrides();
@@ -670,9 +756,24 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
     Array.isArray(fieldIds) && fieldIds.length > 0 ? new Set(fieldIds) : null;
   const includeField = (id) => !allowedFields || allowedFields.has(id);
 
-  const getText = (id) =>
-    String(getOptionalElementById(id)?.value || "").trim();
-  const getCheckbox = (id) => Boolean(getOptionalElementById(id)?.checked);
+  // Phase 6 (see REACT_MIGRATION_PLAN.md): prefer reading a migrated
+  // field's current value from Context (via getFilterStateOverrideForFieldId,
+  // FILTER_STATE_FIELD_MAP above) over the DOM, same handled/fallback
+  // shape as every other bridge.
+  const getText = (id) => {
+    const override = getFilterStateOverrideForFieldId(id);
+    if (typeof override === "string") {
+      return override.trim();
+    }
+    return String(getOptionalElementById(id)?.value || "").trim();
+  };
+  const getCheckbox = (id) => {
+    const override = getFilterStateOverrideForFieldId(id);
+    if (typeof override === "boolean") {
+      return override;
+    }
+    return Boolean(getOptionalElementById(id)?.checked);
+  };
 
   const textIds = [
     "repo",
@@ -881,15 +982,26 @@ const restoreUiOptionOverrides = async () => {
     element.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
+  // Phase 6 (see REACT_MIGRATION_PLAN.md): a migrated field (per
+  // FILTER_STATE_FIELD_MAP above) restores straight into Context via
+  // window.setFilterStateValue (which itself triggers the provider's own
+  // debounced-apply effect, same as a real user change would) instead of
+  // going through setNativeValueAndDispatch/element.click() below, which
+  // only matters for fields still owned by the DOM. Falls back to the
+  // original DOM-mutating approach when the provider hasn't mounted yet.
   const setText = (id, value) => {
+    if (value === undefined || value === null) return;
+    if (setFilterStateOverrideForFieldId(id, String(value))) return;
     const element = getOptionalElementById(id);
-    if (!element || value === undefined || value === null) return;
+    if (!element) return;
     setNativeValueAndDispatch(element, String(value));
   };
 
   const setCheckbox = (id, value) => {
+    if (typeof value !== "boolean") return;
+    if (setFilterStateOverrideForFieldId(id, value)) return;
     const element = getOptionalElementById(id);
-    if (!element || typeof value !== "boolean") return;
+    if (!element) return;
     if (element.checked !== value) {
       element.click();
     }
@@ -929,55 +1041,83 @@ const restoreUiOptionOverrides = async () => {
   });
 
   if (Array.isArray(overrides.author)) {
-    pendingAuthorFilterSelections = overrides.author
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingAuthorSelections",
+      overrides.author.map((value) => String(value || "").trim()).filter(Boolean),
+      (v) => {
+        pendingAuthorFilterSelections = v;
+      },
+    );
   }
 
   if (Array.isArray(overrides.assigned)) {
-    pendingAssignedFilterSelections = overrides.assigned
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingAssignedSelections",
+      overrides.assigned.map((value) => String(value || "").trim()).filter(Boolean),
+      (v) => {
+        pendingAssignedFilterSelections = v;
+      },
+    );
   }
 
   if (Array.isArray(overrides.approver)) {
-    pendingApproverFilterSelections = overrides.approver
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingApproverSelections",
+      overrides.approver.map((value) => String(value || "").trim()).filter(Boolean),
+      (v) => {
+        pendingApproverFilterSelections = v;
+      },
+    );
   }
 
   if (Object.prototype.hasOwnProperty.call(overrides, "label")) {
     const values = Array.isArray(overrides.label)
       ? overrides.label
       : parseCsvTokens(overrides.label);
-    pendingLabelFilterSelections = values
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingLabelSelections",
+      values.map((value) => String(value || "").trim()).filter(Boolean),
+      (v) => {
+        pendingLabelFilterSelections = v;
+      },
+    );
   }
 
   if (Object.prototype.hasOwnProperty.call(overrides, "exclude-label")) {
     const values = Array.isArray(overrides["exclude-label"])
       ? overrides["exclude-label"]
       : parseCsvTokens(overrides["exclude-label"]);
-    pendingExcludeLabelFilterSelections = values
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingExcludeLabelSelections",
+      values.map((value) => String(value || "").trim()).filter(Boolean),
+      (v) => {
+        pendingExcludeLabelFilterSelections = v;
+      },
+    );
   }
 
   if (Array.isArray(overrides["attention-author-thread-resolution-allow"])) {
-    pendingAuthorThreadResolutionAllowSelections = overrides[
-      "attention-author-thread-resolution-allow"
-    ]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingAuthorThreadResolutionAllowSelections",
+      overrides["attention-author-thread-resolution-allow"]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+      (v) => {
+        pendingAuthorThreadResolutionAllowSelections = v;
+      },
+    );
   }
 
   if (Array.isArray(overrides["attention-author-thread-resolution-deny"])) {
-    pendingAuthorThreadResolutionDenySelections = overrides[
-      "attention-author-thread-resolution-deny"
-    ]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    setPendingSelectionsValue(
+      "pendingAuthorThreadResolutionDenySelections",
+      overrides["attention-author-thread-resolution-deny"]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+      (v) => {
+        pendingAuthorThreadResolutionDenySelections = v;
+      },
+    );
   }
 
   if (Array.isArray(overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY])) {
@@ -1007,17 +1147,27 @@ const restoreUiOptionOverrides = async () => {
     }
 
     if (Array.isArray(overrides.changeFilters.ignoreCommentsFromAuthors)) {
-      _pendingChangeFilterIgnoreCommentAuthors = overrides.changeFilters
-        .ignoreCommentsFromAuthors
-        .map((value) => String(value || "").trim())
-        .filter(Boolean);
+      setPendingSelectionsValue(
+        "pendingChangeFilterIgnoreCommentAuthors",
+        overrides.changeFilters.ignoreCommentsFromAuthors
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
+        (v) => {
+          _pendingChangeFilterIgnoreCommentAuthors = v;
+        },
+      );
     }
 
     if (Array.isArray(overrides.changeFilters.ignoreReviewsFromAuthors)) {
-      _pendingChangeFilterIgnoreReviewAuthors = overrides.changeFilters
-        .ignoreReviewsFromAuthors
-        .map((value) => String(value || "").trim())
-        .filter(Boolean);
+      setPendingSelectionsValue(
+        "pendingChangeFilterIgnoreReviewAuthors",
+        overrides.changeFilters.ignoreReviewsFromAuthors
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
+        (v) => {
+          _pendingChangeFilterIgnoreReviewAuthors = v;
+        },
+      );
     }
 
     if (Array.isArray(overrides.changeFilters.ignoreCommitPatterns)) {
@@ -1156,42 +1306,76 @@ const updateAuthorThreadResolutionRuleVisibility = () => {
   }
 };
 
+// Phase 6 (see REACT_MIGRATION_PLAN.md): every field read here is migrated
+// onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) - prefer it
+// via getFilterStateOverrideForFieldId when mounted, falling back to the
+// original DOM read otherwise, same handled/fallback shape as everywhere
+// else.
+const readAttentionConfigText = (id, fallbackValue) => {
+  const override = getFilterStateOverrideForFieldId(id);
+  if (typeof override === "string") {
+    return override || fallbackValue;
+  }
+  return String(getOptionalElementById(id)?.value || "") || fallbackValue;
+};
+const readAttentionConfigCheckbox = (id) => {
+  const override = getFilterStateOverrideForFieldId(id);
+  if (typeof override === "boolean") {
+    return override;
+  }
+  return Boolean(getOptionalElementById(id)?.checked);
+};
+
 const getNeedsAttentionConfig = () => ({
-  noActivityMode:
-    String(getOptionalElementById("attention-no-activity-mode")?.value || "") ||
-    "all",
-  includePendingComments: Boolean(
-    getOptionalElementById("attention-include-pending-comments")?.checked,
+  noActivityMode: readAttentionConfigText("attention-no-activity-mode", "all"),
+  includePendingComments: readAttentionConfigCheckbox(
+    "attention-include-pending-comments",
   ),
-  ignoreMergeOnlyCommits: Boolean(
-    getOptionalElementById("attention-ignore-merge-only-commits")?.checked,
+  ignoreMergeOnlyCommits: readAttentionConfigCheckbox(
+    "attention-ignore-merge-only-commits",
   ),
-  includeClosedMerged: Boolean(
-    getOptionalElementById("attention-include-closed-merged")?.checked,
+  includeClosedMerged: readAttentionConfigCheckbox(
+    "attention-include-closed-merged",
   ),
-  includeDraftChanged: Boolean(
-    getOptionalElementById("attention-include-draft-changed")?.checked,
+  includeDraftChanged: readAttentionConfigCheckbox(
+    "attention-include-draft-changed",
   ),
-  includeDraftNoActivity: Boolean(
-    getOptionalElementById("attention-include-draft-no-activity")?.checked,
+  includeDraftNoActivity: readAttentionConfigCheckbox(
+    "attention-include-draft-no-activity",
   ),
 });
 
-const getAuthorThreadResolutionPolicy = () => ({
-  mode: normalizeAuthorThreadResolutionMode(
-    getOptionalElementById("attention-author-thread-resolution-mode")?.value,
-  ),
-  allowLoginKeys: new Set(
-    getSelectedAuthorThreadResolutionAllowLogins().map((value) =>
-      String(value || "").trim().toLowerCase(),
+// Phase 6 (see REACT_MIGRATION_PLAN.md): "attention-author-thread-resolution-mode"
+// is migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
+// prefer it via getFilterStateOverrideForFieldId when mounted, falling
+// back to the original DOM read otherwise. Note
+// updateAuthorThreadResolutionRuleVisibility's own read of this same field
+// (for its show/hide UI) is left as a plain DOM read - the real
+// `<select>` element's `.value` always reflects whatever React (Context
+// or local state) currently renders there, so it's already correct
+// either way; only this canonical pipeline read site needed updating.
+const getAuthorThreadResolutionPolicy = () => {
+  const override = getFilterStateOverrideForFieldId(
+    "attention-author-thread-resolution-mode",
+  );
+  const rawMode =
+    typeof override === "string"
+      ? override
+      : getOptionalElementById("attention-author-thread-resolution-mode")?.value;
+  return {
+    mode: normalizeAuthorThreadResolutionMode(rawMode),
+    allowLoginKeys: new Set(
+      getSelectedAuthorThreadResolutionAllowLogins().map((value) =>
+        String(value || "").trim().toLowerCase(),
+      ),
     ),
-  ),
-  denyLoginKeys: new Set(
-    getSelectedAuthorThreadResolutionDenyLogins().map((value) =>
-      String(value || "").trim().toLowerCase(),
+    denyLoginKeys: new Set(
+      getSelectedAuthorThreadResolutionDenyLogins().map((value) =>
+        String(value || "").trim().toLowerCase(),
+      ),
     ),
-  ),
-});
+  };
+};
 
 const prActorIdentityRenderHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -1862,7 +2046,13 @@ const { deriveFilterSelectionInputs } =
     getSelectedAuthorLogins: (...args) => getSelectedAuthorLogins(...args),
     getSelectedAssignedLogins: (...args) => getSelectedAssignedLogins(...args),
     getSelectedApproverLogins: (...args) => getSelectedApproverLogins(...args),
-    getOpenModeFilter: () => document.getElementById("open-mode")?.value || "none",
+    getOpenModeFilter: () => {
+      const override = getFilterStateOverrideForFieldId("open-mode");
+      if (typeof override === "string") {
+        return override || "none";
+      }
+      return document.getElementById("open-mode")?.value || "none";
+    },
     shouldAlwaysShowInReviewRows: (...args) =>
       shouldAlwaysShowInReviewRows(...args),
     getCustomCommentsFilter: (...args) => getCustomCommentsFilter(...args),
@@ -1948,6 +2138,10 @@ const { deriveRunPrDataContext } =
     deriveScopeSettings: (...args) => deriveScopeSettings(...args),
     getNeedsAttentionConfig: (...args) => getNeedsAttentionConfig(...args),
     deriveRowSources: (...args) => deriveRowSources(...args),
+    getFilterStateValue: (name) =>
+      typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
+        ? window.getFilterStateValues()[name]
+        : undefined,
   });
 
 const prStoredDataLoadHelperFactory =
@@ -2647,27 +2841,42 @@ const {
   collectApproversFromRow: (...args) => collectApproversFromRow(...args),
   extractRowLabelNames: (...args) => extractRowLabelNames(...args),
   normalizeFilterToken: (...args) => normalizeFilterToken(...args),
-  getPendingAuthorFilterSelections: () => pendingAuthorFilterSelections,
-  setPendingAuthorFilterSelections: (value) => {
-    pendingAuthorFilterSelections = value;
-  },
-  getPendingAssignedFilterSelections: () => pendingAssignedFilterSelections,
-  setPendingAssignedFilterSelections: (value) => {
-    pendingAssignedFilterSelections = value;
-  },
-  getPendingApproverFilterSelections: () => pendingApproverFilterSelections,
-  setPendingApproverFilterSelections: (value) => {
-    pendingApproverFilterSelections = value;
-  },
-  getPendingLabelFilterSelections: () => pendingLabelFilterSelections,
-  setPendingLabelFilterSelections: (value) => {
-    pendingLabelFilterSelections = value;
-  },
+  // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): these 5 getter/setter
+  // pairs now prefer FilterStateProvider's Context (via
+  // getPendingSelectionsValue/setPendingSelectionsValue) over the plain
+  // module variable, falling back to it when Context hasn't mounted -
+  // pr-filter-panel.component.js itself is unchanged, since it only ever
+  // calls these as opaque functions.
+  getPendingAuthorFilterSelections: () =>
+    getPendingSelectionsValue("pendingAuthorSelections", pendingAuthorFilterSelections),
+  setPendingAuthorFilterSelections: (value) =>
+    setPendingSelectionsValue("pendingAuthorSelections", value, (v) => {
+      pendingAuthorFilterSelections = v;
+    }),
+  getPendingAssignedFilterSelections: () =>
+    getPendingSelectionsValue("pendingAssignedSelections", pendingAssignedFilterSelections),
+  setPendingAssignedFilterSelections: (value) =>
+    setPendingSelectionsValue("pendingAssignedSelections", value, (v) => {
+      pendingAssignedFilterSelections = v;
+    }),
+  getPendingApproverFilterSelections: () =>
+    getPendingSelectionsValue("pendingApproverSelections", pendingApproverFilterSelections),
+  setPendingApproverFilterSelections: (value) =>
+    setPendingSelectionsValue("pendingApproverSelections", value, (v) => {
+      pendingApproverFilterSelections = v;
+    }),
+  getPendingLabelFilterSelections: () =>
+    getPendingSelectionsValue("pendingLabelSelections", pendingLabelFilterSelections),
+  setPendingLabelFilterSelections: (value) =>
+    setPendingSelectionsValue("pendingLabelSelections", value, (v) => {
+      pendingLabelFilterSelections = v;
+    }),
   getPendingExcludeLabelFilterSelections: () =>
-    pendingExcludeLabelFilterSelections,
-  setPendingExcludeLabelFilterSelections: (value) => {
-    pendingExcludeLabelFilterSelections = value;
-  },
+    getPendingSelectionsValue("pendingExcludeLabelSelections", pendingExcludeLabelFilterSelections),
+  setPendingExcludeLabelFilterSelections: (value) =>
+    setPendingSelectionsValue("pendingExcludeLabelSelections", value, (v) => {
+      pendingExcludeLabelFilterSelections = v;
+    }),
   // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): delegates
   // to react-app.jsx's bridge when it has mounted a given list id;
   // pr-filter-panel.component.js falls back to its own vanilla DOM-building
@@ -2678,6 +2887,19 @@ const {
       ? window.renderReactMultiSelectList(listId, items)
       : false,
   documentRef: typeof document !== "undefined" ? document : null,
+  // Phase 6 (see REACT_MIGRATION_PLAN.md): lets getCustomCommentsFilter/
+  // getOtherNotesFilter/etc. prefer a migrated field's Context value over
+  // the DOM read - same FILTER_STATE_FIELD_MAP-backed helper every other
+  // bridge in this migration uses, just exposed by Context key here
+  // rather than DOM id (this factory's getters already know their own
+  // Context key, not the DOM id).
+  getFilterStateValue: (key) => {
+    const values =
+      typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
+        ? window.getFilterStateValues()
+        : undefined;
+    return values?.[key];
+  },
 });
 
 const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
@@ -2780,18 +3002,26 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
 
   renderActorOptionsList({
     listId: "attention-author-thread-resolution-allow-list",
-    pendingSelections: pendingAuthorThreadResolutionAllowSelections,
-    setPendingSelections: (value) => {
-      pendingAuthorThreadResolutionAllowSelections = value;
-    },
+    pendingSelections: getPendingSelectionsValue(
+      "pendingAuthorThreadResolutionAllowSelections",
+      pendingAuthorThreadResolutionAllowSelections,
+    ),
+    setPendingSelections: (value) =>
+      setPendingSelectionsValue("pendingAuthorThreadResolutionAllowSelections", value, (v) => {
+        pendingAuthorThreadResolutionAllowSelections = v;
+      }),
     idPrefix: "attention-author-thread-resolution-allow",
   });
   renderActorOptionsList({
     listId: "attention-author-thread-resolution-deny-list",
-    pendingSelections: pendingAuthorThreadResolutionDenySelections,
-    setPendingSelections: (value) => {
-      pendingAuthorThreadResolutionDenySelections = value;
-    },
+    pendingSelections: getPendingSelectionsValue(
+      "pendingAuthorThreadResolutionDenySelections",
+      pendingAuthorThreadResolutionDenySelections,
+    ),
+    setPendingSelections: (value) =>
+      setPendingSelectionsValue("pendingAuthorThreadResolutionDenySelections", value, (v) => {
+        pendingAuthorThreadResolutionDenySelections = v;
+      }),
     idPrefix: "attention-author-thread-resolution-deny",
   });
 };
@@ -2896,18 +3126,26 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
 
   renderChangeFilterActorList({
     listId: "change-filter-ignore-comment-authors-list",
-    pendingSelections: _pendingChangeFilterIgnoreCommentAuthors,
-    setPendingSelections: (value) => {
-      _pendingChangeFilterIgnoreCommentAuthors = value;
-    },
+    pendingSelections: getPendingSelectionsValue(
+      "pendingChangeFilterIgnoreCommentAuthors",
+      _pendingChangeFilterIgnoreCommentAuthors,
+    ),
+    setPendingSelections: (value) =>
+      setPendingSelectionsValue("pendingChangeFilterIgnoreCommentAuthors", value, (v) => {
+        _pendingChangeFilterIgnoreCommentAuthors = v;
+      }),
     idPrefix: "change-filter-ignore-comment-authors",
   });
   renderChangeFilterActorList({
     listId: "change-filter-ignore-review-authors-list",
-    pendingSelections: _pendingChangeFilterIgnoreReviewAuthors,
-    setPendingSelections: (value) => {
-      _pendingChangeFilterIgnoreReviewAuthors = value;
-    },
+    pendingSelections: getPendingSelectionsValue(
+      "pendingChangeFilterIgnoreReviewAuthors",
+      _pendingChangeFilterIgnoreReviewAuthors,
+    ),
+    setPendingSelections: (value) =>
+      setPendingSelectionsValue("pendingChangeFilterIgnoreReviewAuthors", value, (v) => {
+        _pendingChangeFilterIgnoreReviewAuthors = v;
+      }),
     idPrefix: "change-filter-ignore-review-authors",
   });
 };
@@ -3517,6 +3755,17 @@ const prDataTabOrchestrator =
       setPendingAutoRenderPayload: (value) => {
         pendingAutoRenderPayload = value;
       },
+    },
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): lets renderPrData prefer
+    // "filter-pr-numbers"'s Context value over the DOM read - same bridge
+    // shape as every other Phase 6 wiring, exposed by Context key here
+    // since renderPrData already knows its own key ("filterPrNumbers").
+    getFilterStateValue: (key) => {
+      const values =
+        typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
+          ? window.getFilterStateValues()
+          : undefined;
+      return values?.[key];
     },
   });
 
@@ -6306,8 +6555,19 @@ const normalizeFilterToken = (value) =>
     .replace(/[\u2018\u2019]/g, "'")
     .toLowerCase();
 
-const shouldAlwaysShowInReviewRows = () =>
-  Boolean(getOptionalElementById("always-show-in-review")?.checked);
+// Phase 6 (see REACT_MIGRATION_PLAN.md): "always-show-in-review" is
+// migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
+// prefer it via getFilterStateOverrideForFieldId when mounted, falling
+// back to the original DOM read otherwise (same handled/fallback shape as
+// every other Phase 2/3 bridge, so this keeps working before React
+// loads/mounts).
+const shouldAlwaysShowInReviewRows = () => {
+  const override = getFilterStateOverrideForFieldId("always-show-in-review");
+  if (typeof override === "boolean") {
+    return override;
+  }
+  return Boolean(getOptionalElementById("always-show-in-review")?.checked);
+};
 
 const rowMatchesUiFilters = (entry, filters) => {
   const row = entry?.data || {};
@@ -7434,6 +7694,13 @@ const initPage = () => {
       applyFiltersFromCache();
     }, 150); // 150ms feels instant but batches rapid changes
   };
+  // Phase 6 (see REACT_MIGRATION_PLAN.md): exposed so FilterStateProvider
+  // (react-app.jsx) can trigger the same debounced apply for its own
+  // Context-owned fields (scope-mode/always-show-in-review so far) - this
+  // is still the one function actually doing the debounce+apply; only
+  // *what triggers it* for those fields has moved off the vanilla
+  // delegated "change" listener.
+  window.debouncedApplyFilters = debouncedApplyFilters;
   
   getPrNumbersInput().addEventListener("input", handlePrNumbersInputChange);
   getPrNumbersInput().addEventListener("change", handlePrNumbersInputChange);
