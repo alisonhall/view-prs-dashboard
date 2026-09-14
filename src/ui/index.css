@@ -2444,6 +2444,21 @@
             cursor: not-allowed;
         }
 
+        .row-action-add-label {
+            font-size: 10px;
+            padding: 2px 4px;
+            border: 1px solid #d0d7de;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #f6f8fa;
+            color: #24292f;
+            max-width: 90px;
+        }
+
+        .row-action-add-label:hover {
+            background: #e0e7f0;
+        }
+
         .pr-json-modal {
             position: fixed;
             inset: 0;

@@ -68,6 +68,7 @@ export function PrTable({
   onToggleInsights,
   onCheckboxChange,
   onAckAction,
+  onApplyLabel,
   onDataRefresh,
   onViewJson,
   getPrFlags,
@@ -133,6 +134,7 @@ export function PrTable({
               onToggleInsights={onToggleInsights}
               onCheckboxChange={onCheckboxChange}
               onAckAction={onAckAction}
+              onApplyLabel={onApplyLabel}
               onDataRefresh={onDataRefresh}
               onViewJson={onViewJson}
             />

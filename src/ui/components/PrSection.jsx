@@ -44,6 +44,7 @@ export function PrSection({
   onToggleInsights,
   onCheckboxChange,
   onAckAction,
+  onApplyLabel,
   onDataRefresh,
   onViewJson,
   getPrFlags,
@@ -91,6 +92,7 @@ export function PrSection({
             onToggleInsights={onToggleInsights}
             onCheckboxChange={onCheckboxChange}
             onAckAction={onAckAction}
+            onApplyLabel={onApplyLabel}
             onDataRefresh={onDataRefresh}
             onViewJson={onViewJson}
             getPrFlags={getPrFlags}

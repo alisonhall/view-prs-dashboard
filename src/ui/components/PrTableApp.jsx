@@ -34,6 +34,7 @@ export function PrTableApp({
   visiblePrNumbers,
   onCheckboxChange,
   onAckAction,
+  onApplyLabel,
 }) {
   // State: PR data payload
   const [payload, setPayload] = useState(initialPayload);
@@ -503,6 +504,7 @@ export function PrTableApp({
           onToggleInsights={handleToggleInsights}
           onCheckboxChange={onCheckboxChange}
           onAckAction={onAckAction}
+          onApplyLabel={onApplyLabel}
           onDataRefresh={handleDataRefresh}
           onViewJson={handleViewJson}
           getPrFlags={getPrFlags}

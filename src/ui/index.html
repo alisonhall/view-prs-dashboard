@@ -100,6 +100,16 @@
                             <button type="button" id="ack-only-btn">Apply ack only</button>
                             <button type="button" id="clear-only-btn">Apply clear only</button>
                         </div>
+                        <div class="form-grid single-field-grid">
+                            <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
+                            <div class="form-actions primary-actions">
+                                <select id="apply-label-select">
+                                    <option value="">Choose a label...</option>
+                                </select>
+                                <button type="button" id="apply-label-btn">Apply label</button>
+                                <button type="button" id="refresh-labels-btn" title="Reload labels for the current repo">&#8635; Labels</button>
+                            </div>
+                        </div>
                     </section>
 
                     <section class="section-card visibility-panel">

@@ -536,13 +536,15 @@ describe('PrTableApp', () => {
     expect(openSection.section.attentionCount).toBe(1);
   });
 
-  test('given onCheckboxChange/onAckAction props, when passed through, then the same functions reach PrSection unchanged', () => {
+  test('given onCheckboxChange/onAckAction/onApplyLabel props, when passed through, then the same functions reach PrSection unchanged', () => {
     const onCheckboxChange = jest.fn();
     const onAckAction = jest.fn();
+    const onApplyLabel = jest.fn();
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={onAckAction} />);
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={onAckAction} onApplyLabel={onApplyLabel} />);
     expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
     expect(capturedSectionProps[0].onAckAction).toBe(onAckAction);
+    expect(capturedSectionProps[0].onApplyLabel).toBe(onApplyLabel);
   });
 
   describe('PR JSON modal', () => {

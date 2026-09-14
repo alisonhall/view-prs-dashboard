@@ -37,11 +37,12 @@ describe('ReactMountBridge', () => {
 
     const onCheckboxChange = jest.fn();
     const onAckAction = jest.fn();
+    const onApplyLabel = jest.fn();
     const payload = { byPrNumber: {} };
     const result = window.ReactMountBridge.mount(
       container,
       { payload, selectedRepo: 'owner/repo', visiblePrNumbers: ['1'] },
-      { onCheckboxChange, onAckAction },
+      { onCheckboxChange, onAckAction, onApplyLabel },
     );
 
     expect(result).toBe(true);
@@ -52,6 +53,7 @@ describe('ReactMountBridge', () => {
       visiblePrNumbers: ['1'],
       onCheckboxChange,
       onAckAction,
+      onApplyLabel,
     });
     expect(window.ReactMountBridge.isMounted()).toBe(true);
   });

@@ -685,4 +685,138 @@ describe("view-prs mutation route helpers", () => {
       },
     });
   });
+
+  test("given a repo query and a default repo, when building the list-repo-labels request, then the repo falls back to the default when omitted", () => {
+    const helpers = createHelpers();
+
+    expect(
+      helpers.buildListRepoLabelsRequest({
+        query: { repo: " owner/repo " },
+        defaultViewPrsRepo: "default/repo",
+      }),
+    ).toEqual({ repo: "owner/repo" });
+
+    expect(
+      helpers.buildListRepoLabelsRequest({
+        query: {},
+        defaultViewPrsRepo: "default/repo",
+      }),
+    ).toEqual({ repo: "default/repo" });
+  });
+
+  test("given an invalid repo and a listed-labels payload, when building list-repo-labels results, then route contracts match", () => {
+    const helpers = createHelpers();
+
+    expect(helpers.buildListRepoLabelsInvalidRepoResult("bad-repo")).toEqual({
+      responseStatusCode: 400,
+      responsePayload: { ok: false, error: "Invalid repo: bad-repo" },
+    });
+
+    expect(
+      helpers.buildListRepoLabelsSuccessResult({
+        repo: "owner/repo",
+        labels: [{ name: "bug", color: "d73a4a" }],
+      }),
+    ).toEqual({
+      responseStatusCode: 200,
+      responsePayload: {
+        ok: true,
+        repo: "owner/repo",
+        labels: [{ name: "bug", color: "d73a4a" }],
+      },
+    });
+
+    expect(helpers.buildListRepoLabelsFailureResult(new Error("boom"))).toEqual({
+      responseStatusCode: 500,
+      responsePayload: { ok: false, error: "boom" },
+    });
+  });
+
+  test("given a raw body, when building the apply-label request, then repo/label are trimmed and prNumbers is parsed as numeric CSV", () => {
+    const helpers = createHelpers();
+
+    expect(
+      helpers.buildApplyLabelRequest({
+        body: { repo: " owner/repo ", label: " bug ", prNumbers: "12, abc,34" },
+        defaultViewPrsRepo: "default/repo",
+      }),
+    ).toEqual({ repo: "owner/repo", label: "bug", prNumbers: ["12", "34"] });
+
+    expect(
+      helpers.buildApplyLabelRequest({
+        body: {},
+        defaultViewPrsRepo: "default/repo",
+      }),
+    ).toEqual({ repo: "default/repo", label: "", prNumbers: [] });
+  });
+
+  test("given apply-label success/failure inputs, when building action log entries and results, then route contracts and summary text are preserved", () => {
+    const helpers = createHelpers();
+    const timingContext = { triggeredAt: "2024-01-01T00:00:00.000Z", startedAtMs: Date.now() };
+    const prData = { byPrNumber: { 1: { number: 1 } } };
+
+    expect(
+      helpers.buildApplyLabelSuccessActionLogEntry({
+        timingContext,
+        repo: "owner/repo",
+        label: "bug",
+        appliedPrs: ["12"],
+        applyErrors: [],
+        refreshedPrs: ["12"],
+        refreshErrors: [],
+      }),
+    ).toEqual({
+      action: "post/labels/apply",
+      triggeredAt: timingContext.triggeredAt,
+      durationMs: expect.any(Number),
+      ok: true,
+      detail: {
+        repo: "owner/repo",
+        label: "bug",
+        appliedPrs: ["12"],
+        applyErrorCount: 0,
+        refreshedPrs: ["12"],
+        refreshErrorCount: 0,
+      },
+    });
+
+    expect(
+      helpers.buildApplyLabelSuccessResult({
+        repo: "owner/repo",
+        label: "bug",
+        appliedPrs: ["12"],
+        applyErrors: [],
+        refreshErrors: [],
+        prData,
+      }),
+    ).toEqual({
+      responseStatusCode: 200,
+      responsePayload: {
+        ok: true,
+        repo: "owner/repo",
+        label: "bug",
+        appliedPrs: ["12"],
+        applyErrors: [],
+        refreshErrors: [],
+        summary: 'Applied "bug" to 1 PR.',
+        prData,
+      },
+    });
+
+    expect(
+      helpers.buildApplyLabelSuccessResult({
+        repo: "owner/repo",
+        label: "bug",
+        appliedPrs: [],
+        applyErrors: [{ prNumber: "12", error: "boom" }],
+        refreshErrors: [],
+        prData,
+      }).responsePayload.summary,
+    ).toBe('No PRs were labeled with "bug".');
+
+    expect(helpers.buildApplyLabelFailureResult(new Error("boom"))).toEqual({
+      responseStatusCode: 500,
+      responsePayload: { ok: false, error: "boom" },
+    });
+  });
 });

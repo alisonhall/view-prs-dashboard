@@ -34,6 +34,7 @@
     toggleFlaggedForRow,
     runAckOnlyWorkflow,
     runClearOnlyWorkflow,
+    runApplyLabelWorkflow,
     updateReactTable,
     stateGetters,
   } = {}) => {
@@ -56,6 +57,11 @@
     const runClearOnlyWorkflowSafe =
       typeof runClearOnlyWorkflow === 'function'
         ? runClearOnlyWorkflow
+        : () => Promise.resolve();
+
+    const runApplyLabelWorkflowSafe =
+      typeof runApplyLabelWorkflow === 'function'
+        ? runApplyLabelWorkflow
         : () => Promise.resolve();
 
     const updateReactTableSafe =
@@ -146,9 +152,31 @@
       }
     };
 
+    /**
+     * Handle "add label" selection from React component
+     *
+     * @param {number} prNumber - PR number
+     * @param {string} label - Label name to apply
+     * @param {string} [repoOverride] - The PR's repo (see handleCheckboxChange)
+     * @returns {Promise<void>}
+     */
+    const handleApplyLabel = async (prNumber, label, repoOverride) => {
+      try {
+        const repo = repoOverride || getLatestSelectedRepoSafe();
+
+        await runApplyLabelWorkflowSafe(String(prNumber), label, repo);
+
+        const payload = getLatestStoredPayloadSafe();
+        updateReactTableSafe(payload, repo);
+      } catch (error) {
+        console.error('[ReactCallbacks] Error handling Apply Label action:', error);
+      }
+    };
+
     return {
       handleCheckboxChange,
       handleAckAction,
+      handleApplyLabel,
     };
   };
 

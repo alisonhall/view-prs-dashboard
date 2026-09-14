@@ -26,6 +26,8 @@ const registerViewPrsMutationRoutes = ({
   buildAckRefreshBudgetSkipErrors,
   isRepoSlug,
   listMergedPrCandidates,
+  listRepoLabels,
+  applyLabelToPr,
 }) => {
   const { sendRouteResult } = createViewPrsRouteResponseHelpers();
   const {
@@ -61,6 +63,17 @@ const registerViewPrsMutationRoutes = ({
     buildRequestMoreFailureActionLogEntry,
     buildRequestMoreSuccessResult,
     buildRequestMoreFailureResult,
+    buildListRepoLabelsRequest,
+    buildListRepoLabelsInvalidRepoResult,
+    buildListRepoLabelsSuccessResult,
+    buildListRepoLabelsFailureResult,
+    buildApplyLabelRequest,
+    buildApplyLabelBadRequestResult,
+    buildApplyLabelMissingDependenciesResult,
+    buildApplyLabelSuccessActionLogEntry,
+    buildApplyLabelFailureActionLogEntry,
+    buildApplyLabelSuccessResult,
+    buildApplyLabelFailureResult,
   } = createViewPrsMutationRouteHelpers({
     formatScriptFailureMessage,
   });
@@ -360,6 +373,156 @@ const registerViewPrsMutationRoutes = ({
         buildRequestMoreFailureActionLogEntry({
           timingContext,
           repo,
+          error: failureResult.responsePayload.error,
+        }),
+      );
+      sendRouteResult({ res, result: failureResult });
+    }
+  });
+
+  app.get(["/labels", "/view-prs/labels"], async (req, res) => {
+    const { repo } = buildListRepoLabelsRequest({
+      query: req.query || {},
+      defaultViewPrsRepo,
+    });
+
+    if (!isRepoSlug(repo)) {
+      sendRouteResult({
+        res,
+        result: buildListRepoLabelsInvalidRepoResult(repo),
+      });
+      return;
+    }
+
+    try {
+      const labels = await listRepoLabels({ repo });
+      sendRouteResult({
+        res,
+        result: buildListRepoLabelsSuccessResult({ repo, labels }),
+      });
+    } catch (error) {
+      sendRouteResult({ res, result: buildListRepoLabelsFailureResult(error) });
+    }
+  });
+
+  app.post(["/labels/apply", "/view-prs/labels/apply"], async (req, res) => {
+    const body = req.body || {};
+    const { repo, label, prNumbers } = buildApplyLabelRequest({
+      body,
+      defaultViewPrsRepo,
+    });
+    const timingContext = createTimingContext();
+
+    if (!isRepoSlug(repo)) {
+      sendRouteResult({
+        res,
+        result: buildApplyLabelBadRequestResult(`Invalid repo: ${repo}`),
+      });
+      return;
+    }
+    if (!label) {
+      sendRouteResult({
+        res,
+        result: buildApplyLabelBadRequestResult("Label is required"),
+      });
+      return;
+    }
+    if (prNumbers.length === 0) {
+      sendRouteResult({
+        res,
+        result: buildApplyLabelBadRequestResult(
+          'Provide at least one numeric PR number in "prNumbers"',
+        ),
+      });
+      return;
+    }
+
+    const dependencyStatus = callGetDependencyStatus();
+    if (!dependencyStatus.ok) {
+      const missingDependenciesResult = buildApplyLabelMissingDependenciesResult(
+        dependencyStatus.missing,
+      );
+      appendActionLogEntry(
+        buildApplyLabelFailureActionLogEntry({
+          timingContext,
+          repo,
+          label,
+          error: missingDependenciesResult.responsePayload.error,
+        }),
+      );
+      sendRouteResult({ res, result: missingDependenciesResult });
+      return;
+    }
+
+    try {
+      const appliedPrs = [];
+      const applyErrors = [];
+
+      for (const prNumber of prNumbers) {
+        try {
+          await applyLabelToPr({ repo, prNumber, label });
+          appliedPrs.push(prNumber);
+        } catch (error) {
+          applyErrors.push({
+            prNumber,
+            error: error?.message || "Failed to apply label",
+          });
+        }
+      }
+
+      const runScript = createAckScriptRunner({
+        callRunViewPrsScript,
+        viewPrsAckScriptTimeoutMs,
+      });
+
+      const { refreshedPrs, refreshErrors } =
+        appliedPrs.length > 0
+          ? await runAckRefreshes({
+              refreshList: appliedPrs,
+              effectiveRepo: repo,
+              viewPrsRunScriptRelativePath,
+              runScript,
+              viewPrsAckRefreshScriptTimeoutMs,
+              viewPrsAckTotalRefreshTimeoutMs,
+              buildAckRefreshBudgetSkipErrors,
+            })
+          : { refreshedPrs: [], refreshErrors: [] };
+
+      appendActionLogEntry(
+        buildApplyLabelSuccessActionLogEntry({
+          timingContext,
+          repo,
+          label,
+          appliedPrs,
+          applyErrors,
+          refreshedPrs,
+          refreshErrors,
+        }),
+      );
+
+      const prData = readViewPrsData();
+      if (appliedPrs.length > 0) {
+        enqueuePrDiffRefreshForData(prData);
+      }
+
+      sendRouteResult({
+        res,
+        result: buildApplyLabelSuccessResult({
+          repo,
+          label,
+          appliedPrs,
+          applyErrors,
+          refreshErrors,
+          prData,
+        }),
+      });
+    } catch (error) {
+      const failureResult = buildApplyLabelFailureResult(error);
+      appendActionLogEntry(
+        buildApplyLabelFailureActionLogEntry({
+          timingContext,
+          repo,
+          label,
           error: failureResult.responsePayload.error,
         }),
       );

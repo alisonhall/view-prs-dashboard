@@ -792,6 +792,89 @@ const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
     : [];
 };
 
+// Single-quotes a value for safe interpolation into a `bash -lc "..."`
+// command string (closes the quote, appends an escaped literal quote,
+// reopens it - the standard POSIX-shell single-quote escaping trick).
+const shellQuoteSingle = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+
+const isValidGithubLabelName = (value) => {
+  const trimmed = toTrimmedString(value);
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 50 &&
+    !/[\x00-\x1f\x7f]/.test(trimmed) // eslint-disable-line no-control-regex
+  );
+};
+
+const listRepoLabels = async ({ repo }) => {
+  const safeRepo = toTrimmedString(repo);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+
+  const result = await runViewPrsBashCommand(
+    [
+      "-lc",
+      `GH_PAGER=cat gh label list -R ${shellQuoteSingle(safeRepo)} --limit 200 --json name,color --jq '.'`,
+    ],
+    1 * 1024 * 1024,
+    { timeoutMs: 30000 },
+  );
+
+  // A login shell (`bash -lc`) can echo unrelated startup noise (e.g. a
+  // user's .bash_profile printing "Loaded .bash_profile") ahead of the
+  // command's real output, so parse from the first JSON delimiter rather
+  // than the whole stdout blob.
+  const parsed = (() => {
+    const stdout = String(result?.stdout || "[]");
+    const jsonStart = stdout.search(/[[{]/);
+    if (jsonStart === -1) {
+      return [];
+    }
+    try {
+      return JSON.parse(stdout.slice(jsonStart));
+    } catch (_error) {
+      return [];
+    }
+  })();
+
+  return Array.isArray(parsed)
+    ? parsed
+      .map((item) => ({
+        name: String(item?.name || "").trim(),
+        color: String(item?.color || "").trim(),
+      }))
+      .filter((item) => item.name)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+};
+
+const applyLabelToPr = async ({ repo, prNumber, label }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+  const safeLabel = toTrimmedString(label);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+  if (!/^\d+$/.test(safePrNumber)) {
+    throw new Error(`Invalid PR number: ${safePrNumber}`);
+  }
+  if (!isValidGithubLabelName(safeLabel)) {
+    throw new Error(`Invalid label: ${safeLabel}`);
+  }
+
+  await runViewPrsBashCommand(
+    [
+      "-lc",
+      `gh pr edit ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --add-label ${shellQuoteSingle(safeLabel)}`,
+    ],
+    1 * 1024 * 1024,
+    { timeoutMs: 30000 },
+  );
+};
+
 const parseBackfillCommandOutput = (stdout, stderr) => {
   const combined = [stdout, stderr]
     .filter((value) => String(value || "").trim())
@@ -1496,6 +1579,8 @@ const createViewPrsApp = () => {
     buildAckRefreshBudgetSkipErrors,
     isRepoSlug,
     listMergedPrCandidates,
+    listRepoLabels,
+    applyLabelToPr,
   });
 
   registerViewPrsPrRoutes({

@@ -13,9 +13,25 @@
 
 import React from 'react';
 
-export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onViewJson }) {
+export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
+
+  const getLabelName = window.getLabelName || ((label) => String(label?.name || label || '').trim());
+  const existingLabels = new Set(
+    (Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean),
+  );
+  const availableLabels = ((window.getAvailableRepoLabels || (() => []))() || []).filter(
+    (label) => label?.name && !existingLabels.has(label.name),
+  );
+
+  const handleApplyLabelChange = (e) => {
+    const label = e.target.value;
+    e.target.value = '';
+    if (label) {
+      onApplyLabel?.(pr.number, label, repo);
+    }
+  };
 
   const handleInReviewChange = (e) => {
     onCheckboxChange?.(pr.number, 'inReview', e.target.checked, repo);
@@ -94,6 +110,21 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
         >
           {'{}'}
         </button>
+        <select
+          className="row-action-add-label"
+          aria-label={`Add label to PR #${prNumber}`}
+          title="Add an existing GitHub label to this PR"
+          defaultValue=""
+          onChange={handleApplyLabelChange}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <option value="">+ Label</option>
+          {availableLabels.map((label) => (
+            <option key={label.name} value={label.name}>
+              {label.name}
+            </option>
+          ))}
+        </select>
       </div>
     </td>
   );

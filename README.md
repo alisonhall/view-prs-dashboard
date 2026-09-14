@@ -640,6 +640,10 @@ The UI includes:
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
 - `Apply ack only` (ack updates only)
 - `Apply clear only` (clear updates only)
+- `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
+  - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
+  - `↻ Labels` reloads the dropdown for the current repo
+- per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
 - `Export` management tab to build and export JSON from currently visible PR rows
 - `Actor Names` management tab to view and edit both display-name mappings and canonical login aliases
@@ -718,6 +722,8 @@ The page calls:
 
 - `POST /view-prs/run`
 - `POST /view-prs/ack` (acknowledgment-only updates; no full PR refresh)
+- `GET /view-prs/labels?repo=<owner/name>` (list a repo's existing GitHub labels, for the label picker)
+- `POST /view-prs/labels/apply` (apply an existing GitHub label to one or more PR numbers)
 - `POST /view-prs/notes` (persist notes for a specific PR)
 - `GET /view-prs/author-comments?authorLogin=<login>` (fetch manual comments for selected author)
 - `POST /view-prs/author-comments` (create a manual author comment)
@@ -998,6 +1004,15 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - `--flagged-clear <numbers>`: clear flagged toggle for one or more PRs
 - `--ack-changed`: during this run, auto-ack all `CHANGED` open non-draft PRs
 - `--ack-only`: apply ack/clear/in-review/flagged options only, skip PR retrieval
+
+## Label management
+
+Applies an existing GitHub label (never a newly typed one) to one or more PRs directly via `gh pr edit --add-label`.
+
+- `GET /view-prs/labels?repo=<owner/name>` lists every label currently defined in the repo's GitHub Labels settings (via `gh label list`), including labels not yet applied to any PR.
+- `POST /view-prs/labels/apply` with `{ repo, label, prNumbers }` (`prNumbers` is a comma-separated string, same shape as the Ack endpoints) applies the label to each PR number, then re-runs `check-open-pr-updates.sh --quiet --open none --pr <n>` per successfully-labeled PR to pull the updated `labels` array back into stored data - the same targeted-refresh pattern `/view-prs/ack` uses.
+- Per-PR failures (invalid PR number, `gh` error, refresh failure) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
+- Both the per-row `+ Label` dropdown and the "Run & Filter" tab's `Apply label` control call this same endpoint.
 
 ## Local PR state file
 

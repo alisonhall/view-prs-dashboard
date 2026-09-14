@@ -6614,6 +6614,7 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     {
       onCheckboxChange: callbacks.handleCheckboxChange,
       onAckAction: callbacks.handleAckAction,
+      onApplyLabel: callbacks.handleApplyLabel,
     }
   );
 
@@ -7245,6 +7246,153 @@ const handleClearOnly = async () => {
   await runClearOnlyWorkflow();
 };
 
+// ---- Apply existing GitHub labels to PRs (single-row select or bulk via
+// the "Run & Filter" tab's PR-number selection) ----
+
+let availableRepoLabels = [];
+let isFetchingRepoLabels = false;
+
+const getAvailableRepoLabels = () => availableRepoLabels;
+
+const populateApplyLabelSelect = () => {
+  const select = getOptionalElementById("apply-label-select");
+  if (!select) {
+    return;
+  }
+
+  const previousValue = select.value;
+  select.innerHTML = "";
+
+  const placeholderOption = document.createElement("option");
+  placeholderOption.value = "";
+  placeholderOption.textContent = availableRepoLabels.length
+    ? "Choose a label..."
+    : "No labels found for this repo";
+  select.appendChild(placeholderOption);
+
+  availableRepoLabels.forEach((label) => {
+    const option = document.createElement("option");
+    option.value = label.name;
+    option.textContent = label.name;
+    select.appendChild(option);
+  });
+
+  if (availableRepoLabels.some((label) => label.name === previousValue)) {
+    select.value = previousValue;
+  }
+};
+
+const refreshAvailableRepoLabels = async (repoOverride) => {
+  const repo = String(repoOverride || latestSelectedRepo || DEFAULT_REPO).trim();
+  if (!repo || isFetchingRepoLabels) {
+    return;
+  }
+
+  isFetchingRepoLabels = true;
+  try {
+    const response = await fetch(`/view-prs/labels?repo=${encodeURIComponent(repo)}`);
+    const result = await response.json();
+    if (response.ok && result?.ok !== false) {
+      availableRepoLabels = Array.isArray(result.labels) ? result.labels : [];
+      populateApplyLabelSelect();
+      if (window.ReactMountBridge?.isMounted?.()) {
+        window.ReactMountBridge.update(latestStoredPayload, latestSelectedRepo);
+      }
+    }
+  } catch (_error) {
+    // Best-effort: leave any previously cached labels/options in place.
+  } finally {
+    isFetchingRepoLabels = false;
+  }
+};
+
+const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
+  setStatusMessage(`${actionLabel}...`);
+  setOutputMessage("");
+  const finishActivity = beginRequestActivity("labelApply");
+
+  try {
+    const { response, result } = await postJson("/view-prs/labels/apply", {
+      repo,
+      label,
+      prNumbers,
+    });
+
+    if (!response.ok || result.ok === false) {
+      const authHint = getGithubAuthFailureHint(result);
+      setStatusMessage(
+        authHint
+          ? `Failed (${response.status}) - GitHub auth required`
+          : `Failed (${response.status})`,
+      );
+      setOutputMessage(formatCommandOutputWithAuthHint(result));
+      showErrorNotification(
+        `${actionLabel} failed`,
+        authHint
+          ? "GitHub authentication or SSO required. Check the output below for authorization link."
+          : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
+        0,
+      );
+      return;
+    }
+
+    setStatusMessage(result.summary || `${actionLabel} completed`);
+
+    const combinedErrors = [
+      ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
+      ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
+    ];
+    if (combinedErrors.length) {
+      showWarningNotification(
+        `${actionLabel} completed with ${combinedErrors.length} error(s)`,
+        combinedErrors
+          .map((entry) => `#${entry.prNumber}: ${entry.error}`)
+          .join("\n"),
+      );
+    }
+
+    if (result.prData) {
+      renderPrData(result.prData, repo || DEFAULT_REPO);
+    } else {
+      await loadStoredData(repo || DEFAULT_REPO);
+    }
+  } catch (error) {
+    setStatusMessage("Failed (network/error)");
+    setOutputMessage(String(error));
+    showErrorNotification(
+      `${actionLabel} failed`,
+      String(error || "An unknown error occurred"),
+      0,
+    );
+  } finally {
+    finishActivity();
+  }
+};
+
+const runApplyLabelWorkflow = async (prNumbersValue = "", labelValue = "", repoOverride = "") => {
+  const body = getFormBody();
+
+  const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
+  if (!prNumbers) {
+    setStatusMessage('Apply label requires numeric value(s) in "PR number(s)"');
+    return;
+  }
+
+  const label = String(labelValue || "").trim();
+  if (!label) {
+    setStatusMessage("Choose a label to apply");
+    return;
+  }
+
+  const repo = String(repoOverride || body.repo || "").trim();
+  await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
+};
+
+const handleApplyLabelClick = async () => {
+  const select = getOptionalElementById("apply-label-select");
+  await runApplyLabelWorkflow("", select ? select.value : "", "");
+};
+
 /**
  * Create React callback helpers (lazy initialization)
  * This factory creates the callbacks that React uses to communicate with vanilla JS.
@@ -7268,6 +7416,7 @@ function createReactCallbacks() {
     toggleFlaggedForRow: toggleFlaggedForRow,
     runAckOnlyWorkflow: runAckOnlyWorkflow,
     runClearOnlyWorkflow: runClearOnlyWorkflow,
+    runApplyLabelWorkflow: runApplyLabelWorkflow,
 
     // Update React table function
     updateReactTable: (payload, repo) => {
@@ -7405,6 +7554,7 @@ const initPage = () => {
     getSelectedPrNumbers,
     updateSelectedPrNumbers,
     getLabelName,
+    getAvailableRepoLabels,
     isInReviewEnabled,
     isFlaggedEnabled,
     shouldShowNeedsAttention,
@@ -7479,6 +7629,7 @@ const initPage = () => {
       "Unable to load stored PR data",
     );
   });
+  void refreshAvailableRepoLabels();
   loadBackfillStatus({ includeLog: true }).catch((error) => {
     renderBackfillStatus({
       ok: false,
@@ -7634,6 +7785,18 @@ const initPage = () => {
   document.getElementById("clear-only-btn").addEventListener("click", () => {
     void handleClearOnly();
   });
+  const applyLabelBtn = getOptionalElementById("apply-label-btn");
+  if (applyLabelBtn) {
+    applyLabelBtn.addEventListener("click", () => {
+      void handleApplyLabelClick();
+    });
+  }
+  const refreshLabelsBtn = getOptionalElementById("refresh-labels-btn");
+  if (refreshLabelsBtn) {
+    refreshLabelsBtn.addEventListener("click", () => {
+      void refreshAvailableRepoLabels();
+    });
+  }
   document.getElementById("apply-filters-btn").addEventListener("click", () => {
     void persistViewFilterOptionOverrides();
     applyFiltersFromCache();

@@ -9,6 +9,7 @@ describe('PrActionsCell', () => {
   afterEach(() => {
     delete window.runSinglePrUpdate;
     delete window.openPrJsonModal;
+    delete window.getAvailableRepoLabels;
   });
 
   const renderCell = (props = {}) =>
@@ -104,5 +105,35 @@ describe('PrActionsCell', () => {
       { number: '101' },
     );
     expect(openPrJsonModal).not.toHaveBeenCalled();
+  });
+
+  test('given repo labels from window.getAvailableRepoLabels, when rendering, then lists labels not already on the PR', () => {
+    window.getAvailableRepoLabels = () => [
+      { name: 'bug', color: 'd73a4a' },
+      { name: 'dependencies', color: '0366d6' },
+    ];
+    renderCell({ pr: { number: '101', labels: ['dependencies'] } });
+
+    const select = screen.getByLabelText('Add label to PR #101');
+    const optionLabels = Array.from(select.options).map((option) => option.textContent);
+    expect(optionLabels).toEqual(['+ Label', 'bug']);
+  });
+
+  test('given the label select, when a label is chosen, then onApplyLabel fires with (number, label, repo) and the select resets', () => {
+    window.getAvailableRepoLabels = () => [{ name: 'bug', color: 'd73a4a' }];
+    const onApplyLabel = jest.fn();
+    renderCell({ pr: { number: '101' }, onApplyLabel });
+
+    const select = screen.getByLabelText('Add label to PR #101');
+    require('@testing-library/react').fireEvent.change(select, { target: { value: 'bug' } });
+
+    expect(onApplyLabel).toHaveBeenCalledWith('101', 'bug', 'owner/repo');
+    expect(select.value).toBe('');
+  });
+
+  test('given no window.getAvailableRepoLabels, when rendering, then only the placeholder option is shown', () => {
+    renderCell({ pr: { number: '101' } });
+    const select = screen.getByLabelText('Add label to PR #101');
+    expect(select.options).toHaveLength(1);
   });
 });

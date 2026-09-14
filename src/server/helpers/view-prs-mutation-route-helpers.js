@@ -568,6 +568,123 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     };
   };
 
+  const buildListRepoLabelsRequest = ({ query = {}, defaultViewPrsRepo }) => ({
+    repo: toTrimmedString(query.repo) || defaultViewPrsRepo,
+  });
+
+  const buildListRepoLabelsInvalidRepoResult = (repo) => ({
+    responseStatusCode: 400,
+    responsePayload: {
+      ok: false,
+      error: `Invalid repo: ${repo}`,
+    },
+  });
+
+  const buildListRepoLabelsSuccessResult = ({ repo, labels }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      repo,
+      labels,
+    },
+  });
+
+  const buildListRepoLabelsFailureResult = (error) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: error?.message || "Failed to list labels",
+    },
+  });
+
+  const buildApplyLabelRequest = ({ body = {}, defaultViewPrsRepo }) => ({
+    repo: toTrimmedString(body.repo) || defaultViewPrsRepo,
+    label: toTrimmedString(body.label),
+    prNumbers: parseNumberCsv(body.prNumbers),
+  });
+
+  const buildApplyLabelBadRequestResult = (errorMessage) => ({
+    responseStatusCode: 400,
+    responsePayload: {
+      ok: false,
+      error: errorMessage,
+    },
+  });
+
+  const buildApplyLabelMissingDependenciesResult = (missing) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: buildMissingDependenciesMessage(missing),
+    },
+  });
+
+  const buildApplyLabelSuccessActionLogEntry = ({
+    timingContext,
+    repo,
+    label,
+    appliedPrs,
+    applyErrors,
+    refreshedPrs,
+    refreshErrors,
+  }) => ({
+    action: "post/labels/apply",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: applyErrors.length === 0,
+    detail: {
+      repo,
+      label,
+      appliedPrs,
+      applyErrorCount: applyErrors.length,
+      refreshedPrs,
+      refreshErrorCount: refreshErrors.length,
+    },
+  });
+
+  const buildApplyLabelFailureActionLogEntry = ({ timingContext, repo, label, error }) => ({
+    action: "post/labels/apply",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: false,
+    error,
+    detail: { repo, label },
+  });
+
+  const buildApplyLabelSummary = ({ label, appliedCount }) =>
+    appliedCount > 0
+      ? `Applied "${label}" to ${appliedCount} PR${appliedCount === 1 ? "" : "s"}.`
+      : `No PRs were labeled with "${label}".`;
+
+  const buildApplyLabelSuccessResult = ({
+    repo,
+    label,
+    appliedPrs,
+    applyErrors,
+    refreshErrors,
+    prData,
+  }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      repo,
+      label,
+      appliedPrs,
+      applyErrors,
+      refreshErrors,
+      summary: buildApplyLabelSummary({ label, appliedCount: appliedPrs.length }),
+      prData,
+    },
+  });
+
+  const buildApplyLabelFailureResult = (error) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: error?.message || "Failed to apply label",
+    },
+  });
+
   return {
     createTimingContext,
     buildBadRequestResult,
@@ -606,6 +723,17 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildRequestMoreFailureActionLogEntry,
     buildRequestMoreSuccessResult,
     buildRequestMoreFailureResult,
+    buildListRepoLabelsRequest,
+    buildListRepoLabelsInvalidRepoResult,
+    buildListRepoLabelsSuccessResult,
+    buildListRepoLabelsFailureResult,
+    buildApplyLabelRequest,
+    buildApplyLabelBadRequestResult,
+    buildApplyLabelMissingDependenciesResult,
+    buildApplyLabelSuccessActionLogEntry,
+    buildApplyLabelFailureActionLogEntry,
+    buildApplyLabelSuccessResult,
+    buildApplyLabelFailureResult,
   };
 };
 

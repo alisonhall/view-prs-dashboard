@@ -55,6 +55,7 @@
         visiblePrNumbers: initialData.visiblePrNumbers || null,
         onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
         onAckAction: callbacks.onAckAction || (() => {}),
+        onApplyLabel: callbacks.onApplyLabel || (() => {}),
       });
 
       // Store update callback if provided
