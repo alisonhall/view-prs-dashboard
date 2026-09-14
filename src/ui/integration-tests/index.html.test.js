@@ -8178,4 +8178,29 @@ describe("index page rendering with Testing Library", () => {
       ]);
     });
   });
+
+  describe("React mount failure (Phase 6 - see REACT_MIGRATION_PLAN.md)", () => {
+    test("given window.ReactMountBridge.mount genuinely fails (returns false), when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
+      // Distinct from the ordinary "React's deferred module hasn't finished
+      // loading yet" race (which this suite's installReactTableMountBridge
+      // pairing never simulates - see renderPrData's own comment on why that
+      // race now leaves #pr-sections empty rather than falling back to a
+      // vanilla table build). This is the other branch: mount() itself
+      // returns false, meaning React genuinely failed - renderPrData must
+      // surface renderPrTableMountError()'s honest error state, not pretend
+      // to recover.
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 1 }],
+        }),
+      });
+      window.ReactMountBridge.mount = () => false;
+
+      const errorMessage = await screen.findByText(
+        "Failed to load the PR table. Please refresh the page.",
+      );
+      expect(errorMessage).toHaveClass("pr-table-mount-error");
+      expect(screen.queryByText("#1")).toBeNull();
+    });
+  });
 });

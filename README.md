@@ -12,21 +12,23 @@ Canonical runtime and scripts now live under `src/`:
   - Routes: `src/server/routes/`
   - Shared helpers: `src/server/helpers/`
   - State storage internals: `src/server/storage/`
-  - Tests: `src/server/tests/`
+  - Tests: `src/server/integration-tests/`
 - UI assets and page controller: `src/ui/`
   - UI helpers: `src/ui/helpers/`
-- UI tests: `src/ui/tests/`
+- UI tests: `src/ui/integration-tests/`
 - CLI/update scripts: `src/script/`
-  - Script tests: `src/script/tests/`
+  - Script tests: `src/script/integration-tests/`
 - Backfill tools: `src/backfill/`
 - Schema and validation: `src/schema/`
+- End-to-end (real browser) tests: `e2e/`
 
 Compatibility note: migration shims were removed in Phase 3. Use canonical `src/` paths and npm scripts only.
 
 ## Architecture Snapshot
 
 - Planning and phased modernization checklist: `AI_MODERNIZATION_PLAN.md`
-- Current baseline inventory and hotspot evidence: `PHASE0_BASELINE.md`
+- Vanilla-to-React UI migration (complete): `REACT_MIGRATION_PLAN.md`
+- Server-side helper extraction/integration status: `PHASE_8_STATUS.md`
 
 High-level layering intent:
 
@@ -63,7 +65,7 @@ Contribution guidance:
 - New UI behavior should default to component + helper extraction, not direct growth of `src/ui/index.page.js`.
 - New server behavior should keep routes thin and place reusable logic in helper/service modules.
 - New unit tests should be co-located with source files (`src/ui/components/*.test.js`, `src/ui/helpers/*.test.js`).
-- Integration/wiring tests should remain in `src/ui/tests/` and server integration test folders.
+- Integration/wiring tests should remain in `src/ui/integration-tests/` and server integration test folders.
 - Reusable test data builders should be added under `src/ui/test-fixtures/` and validated with fixture contract tests.
 
 ## Test Ownership
@@ -86,15 +88,17 @@ npm run check:all
 
 Script guide:
 
-- `npm run test:app`: server route/integration/scheduler suites (`src/server/tests/`)
+- `npm run test:app`: server route/integration/scheduler suites (`src/server/integration-tests/`)
 - `npm run test:ui`: UI suites (`src/ui/**/*.test.js`)
-- `npm run test:script`: shell script Jest harness (`src/script/tests/*.test.js`)
-- `npm run test:schema`: schema-focused Jest suites (`src/schema/tests/`)
-- `npm run test:deps`: dependency guard/unit suites (`src/dependencies/tests/`)
-- `npm run test:backfill`: backfill-focused suites (`src/backfill/tests/`)
+- `npm run test:script`: shell script Jest harness (`src/script/integration-tests/*.test.js`)
+- `npm run test:schema`: schema-focused Jest suites (`src/schema/integration-tests/`)
+- `npm run test:deps`: dependency guard/unit suites (`src/dependencies/integration-tests/`)
+- `npm run test:backfill`: backfill-focused suites (`src/backfill/integration-tests/`)
 - `npm run test:all`: guard + full Jest run (no coverage output)
 - `npm run test:coverage` / `npm run test:ci`: guard + full Jest run with coverage output (`coverage/lcov-report`)
 - `npm run check:all`: dependency check + lint + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
+- `npm run test:e2e`: real-browser Playwright suite (`e2e/*.spec.js`) against a live server; not run as part of `test:all`/`check:all`
+- `npm run stability:heap-check`: standalone long-session heap-growth diagnostic (`e2e/stability/long-session-heap-check.js`), run on demand, not part of any `test:*`/`check:*` script
 
 UI test placement conventions:
 
@@ -102,18 +106,20 @@ UI test placement conventions:
   - `src/ui/components/*.test.js`
   - `src/ui/helpers/*.test.js`
 - Shared fixture/factory modules should live under `src/ui/test-fixtures/` and expose reusable builders.
-- Integration/wiring tests should remain centralized under `src/ui/tests/`:
+- Integration/wiring tests should remain centralized under `src/ui/integration-tests/`:
   - `index.html.test.js`
+  - `index.page.memory-leak-prevention.test.js`
   - `index.page.notifications.test.js`
   - `index.page.trends.test.js`
 - `npm run test:ui` discovers all UI tests via `src/ui/**/*.test.js`.
+- Real-browser regressions that jsdom can't see (asset 404s, event-delegation races between vanilla and React, charset handling) belong in `e2e/smoke.spec.js` instead.
 
-Recommended default before opening a PR: `npm run check:all`.
+Recommended default before opening a PR: `npm run check:all`. Run `npm run test:e2e` too if you touched UI rendering/event wiring — it isn't part of `check:all`.
 
 Test decision flow:
 
 - Fast local iteration: run the smallest relevant `npm run test:*` subset.
-- Before PR/merge: run `npm run check:all`.
+- Before PR/merge: run `npm run check:all` (and `npm run test:e2e` for UI changes).
 
 Run from repository root:
 

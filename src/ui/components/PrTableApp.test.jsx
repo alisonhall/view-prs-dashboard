@@ -82,6 +82,7 @@ function clearWindowHelpers() {
   delete window.ViewPrsSmartGroupsHelpers;
   delete window.entryNeedsAttention;
   delete window.getNeedsAttentionConfig;
+  delete window.isInReviewEnabled;
   delete window.countPendingThreadComments;
   delete window.shouldShowNeedsAttention;
   delete window.updateReactPrTable;
@@ -318,6 +319,34 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'merged').isOpen).toBe(false);
     expect(capturedSectionProps.find((p) => p.section.key === 'closed').isOpen).toBe(false);
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(true);
+  });
+
+  test('given window.isInReviewEnabled(entry.data) is true but window.entryNeedsAttention is false, when smart groups are built, then the entry still counts as needing attention', () => {
+    // Regression test: checkNeedsAttention used to only check
+    // window.entryNeedsAttention, dropping the "in review" OR-branch that
+    // pr-section-table.component.js's vanilla predecessor had (needs
+    // attention == entryNeedsAttention() OR isInReviewEnabled()). Fixed by
+    // OR-ing in window.isInReviewEnabled(entry?.data) first.
+    window.entryNeedsAttention = () => false;
+    window.getNeedsAttentionConfig = () => ({});
+    window.isInReviewEnabled = (data) => data?.number === '1';
+    window.ViewPrsSmartGroupsHelpers = {
+      createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: (allEntries) => ({
+          needsAttention: {
+            title: 'Needs Attention',
+            defaultOpen: true,
+            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+          },
+        }),
+      }),
+    };
+
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+    expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(1);
   });
 
   describe('attention config live-update', () => {
