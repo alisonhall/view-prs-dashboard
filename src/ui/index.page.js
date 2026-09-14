@@ -6234,42 +6234,6 @@ const createNotesSection = (entry, row, actorsMap = {}) => {
   return section;
 };
 
-const prRowInsightsComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-row-insights.component.js")
-    : globalThis.ViewPrsRowInsightsComponent;
-
-const { createInsightsDetails } =
-  prRowInsightsComponentFactory.createPrRowInsightsComponent({
-    parseMarkerState: (...args) => parseMarkerState(...args),
-    formatIsoDatetime: (...args) => formatIsoDatetime(...args),
-    buildRowActorsMap: (...args) => buildRowActorsMap(...args),
-    formatApproversDisplay: (...args) => formatApproversDisplay(...args),
-    formatRequestedReviewersDisplay: (...args) =>
-      formatRequestedReviewersDisplay(...args),
-    formatAssignedUsersDisplay: (...args) => formatAssignedUsersDisplay(...args),
-    normalizeRowMetrics: (...args) => normalizeRowMetrics(...args),
-    getOpenConversationCountWithMe: (...args) =>
-      getOpenConversationCountWithMe(...args),
-    toCount: (...args) => toCount(...args),
-    getViewedFilesSummary: (...args) => getViewedFilesSummary(...args),
-    createLinesChangedInsightContent: (...args) =>
-      createLinesChangedInsightContent(...args),
-    buildActivityTimelineSummary: (...args) => buildActivityTimelineSummary(...args),
-    getBadgeClassForStatus: (...args) => getBadgeClassForStatus(...args),
-    getBadgeClassForCheck: (...args) => getBadgeClassForCheck(...args),
-    getBadgeClassForMerge: (...args) => getBadgeClassForMerge(...args),
-    formatReviewFootprint: (...args) => formatReviewFootprint(...args),
-    formatConversationStatus: (...args) => formatConversationStatus(...args),
-    formatApprovalRisk: (...args) => formatApprovalRisk(...args),
-    formatCommentUsefulness: (...args) => formatCommentUsefulness(...args),
-    createActivityEventsSection: (...args) => createActivityEventsSection(...args),
-    createReviewThreadsSection: (...args) => createReviewThreadsSection(...args),
-    createApprovalRiskSection: (...args) => createApprovalRiskSection(...args),
-    createNotesSection: (...args) => createNotesSection(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-  });
-
 const normalizeRows = (rows) =>
   rows.sort((a, b) => {
     const orderA = Number.isFinite(Number(a?.rowOrder))

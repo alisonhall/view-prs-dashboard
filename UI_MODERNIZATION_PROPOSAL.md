@@ -4,11 +4,22 @@
 
 This document tracks UI modernization initiatives for view-prs, inspired by modern PR management tools like GitKraken Launchpad.
 
+> **Note (2026-09-15):** the PR table (including Smart Accordion Groups,
+> below) has since been migrated to React - see `REACT_MIGRATION_PLAN.md`,
+> now complete. The vanilla implementation and file list described in this
+> "Completed" section reflects the original (pre-migration) build; the
+> feature itself is still live, just React-owned now (`PrTableApp`'s
+> `sections`/smart-group derivation, `pr-smart-groups.helpers.js` still
+> used as a shared dependency - see that plan's Phase 1 for the
+> conversion). The "Future Enhancement Ideas" below are unaffected by the
+> migration and remain a valid backlog regardless of implementation.
+
 ---
 
 ## ✅ Completed: Smart Accordion Groups
 
-**Status:** 100% Complete (Production Ready)  
+**Status:** 100% Complete (Production Ready) at the time this was written -
+now superseded by the React conversion, see note above  
 **Completion Date:** Current session  
 **Time Spent:** ~8 hours (under 11-13 hour estimate)
 

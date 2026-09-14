@@ -3,8 +3,10 @@ node_modules
 .npmrc
 data
 coverage
+dist
 test-results
 playwright-report
 blob-report
 playwright/.cache
-.slingshot/code-tagging
+.slingshot
+.claude

@@ -571,34 +571,21 @@ src/ui/orchestrators/
 ---
 
 ## Phase 8: Server Entry Point Refactoring
-**Status:** � BLOCKED (80% complete - Circular dependencies discovered)  
 **Objective:** Extract helper modules from monolithic app.js to enable 85% size reduction
 
-**Current Status:** 85% complete (extraction done, 3 helpers integrated - see below for details)
+**Status: see `PHASE_8_STATUS.md`** for the current, verified state -
+this section used to carry its own detailed progress tracking, but that
+drifted out of sync with reality across several sessions (2026-08-13,
+2026-08-18, and at least one undocumented one since) and spawned 9
+separate snapshot docs that were consolidated into that one file on
+2026-09-15. Keep progress notes there going forward, not here or in a
+new per-session file.
 
-**Integration Progress:** 194/1,909 lines (10.2%)
-- ✅ Configuration integrated (138 lines)
-- ✅ Scheduler integrated (21 lines)  
-- ✅ File I/O integrated (35 lines - readJsonFileIfExists, writeUserDefaults, safeReadJsonFile)
-- ⏳ Commands pending (~600 lines)
-- ⏳ Data Processing pending (~500 lines)
-- ⏳ Backfill pending (~250 lines)
-
-**Current app.js:** 2,065 lines (was 2,259) = **194 lines saved** (8.6% reduction, target: 84%)
-
-### Achievements
-
-**All 6 helper modules extracted and fully tested:**
-
-| Module | File | LOC | Tests | Status |
-|--------|------|-----|-------|--------|
-| File I/O | `helpers/file-io-helpers.js` | 226 | 17 ✅ | Complete |
-| Command Execution | `helpers/command-execution-helpers.js` | 687 | 17 ✅ | Complete |
-| Data Processing | `helpers/data-processing-helpers.js` | 626 | 23 ✅ | Complete |
-| Backfill | `helpers/backfill-helpers.js` | 252 | 17 ✅ | Complete |
-| Scheduler | `helpers/scheduler-helpers.js` | 256 | 17 ✅ | Complete |
-| Configuration | `config/app-config.js` | 248 | 11 ✅ | Complete |
-| **TOTAL** | **6 modules** | **2,295** | **102 ✅** | **All passing** |
+As of that consolidation: extraction 100% complete (all 6 modules,
+fully tested, usable standalone regardless of integration status);
+4 of 6 helpers integrated into `app.js` (Configuration, Scheduler,
+File I/O, Command Execution); Data Processing and Backfill remain.
+`app.js` is at 1,671 lines (from an original 2,259).
 
 ### Implementation Pattern
 
@@ -618,24 +605,6 @@ function createFileIoHelpers({ fs, path, config }) {
 }
 
 module.exports = { createFileIoHelpers };
-```
-
-### Integration Status
-
-**Current state:**
-- ✅ All 6 modules extracted (2,295 lines)
-- ✅ All 102 tests passing (100%)
-- ✅ Helper imports added to app.js
-- ⏳ Integration pending (3-4 hours estimated)
-
-**Integration guide:** See `PHASE_8_INTEGRATION_NEXT_STEPS.md`
-
-**Target reduction:**
-```txt
-app.js current:  2,259 lines
-Extracted code:  2,295 lines (in helpers)
-Integration target: ~350 lines
-Expected reduction: 84% (1,909 lines)
 ```
 
 ### Module Capabilities
@@ -681,43 +650,6 @@ Expected reduction: 84% (1,909 lines)
 - Path construction and validation
 - Timeout/interval settings with bounds checking
 
-### Phase Gate Validation
-
-**Extraction Phase (Complete):**
-- [x] All helper modules follow factory pattern ✅
-- [x] Each module has comprehensive unit tests ✅
-- [x] All 102 tests passing (100%) ✅
-- [x] Server tests: 1,302/1,303 passing (99.9%) ✅
-- [x] Zero regressions from extraction ✅
-- [x] Clean git history (26 commits) ✅
-
-**Integration Phase (Blocked - Circular Dependencies):**
-- [x] Configuration integration complete ✅ (Step 1 done)
-- [ ] 🚫 Helper factory initialization (blocked by circular deps)
-- [ ] Replace inline code section by section
-- [ ] Test after each section
-- [ ] Integration complete
-- [ ] app.js reduced to <500 lines (target: ~350)
-- [ ] Full quality gates passing post-integration
-- [ ] Phase 8 fully complete
-
-**Blocker:** Helper modules have circular dependencies (e.g., `createDataProcessingHelpers` expects `dataHelpers` parameter - itself!). Requires refactoring before integration can proceed. See `PHASE_8_INTEGRATION_BLOCKER.md` for details and solutions.
-
-### Next Steps
-
-**Integration approach** (see `PHASE_8_INTEGRATION_NEXT_STEPS.md`):
-
-1. Initialize all 6 helper factories (30 min)
-2. Replace inline code section by section (2-3h)
-3. Test after each section
-4. Final validation (30 min)
-
-**Success criteria:**
-- All 1,200+ tests passing
-- app.js ≤ 350 lines (≥84% reduction)
-- All functionality preserved
-- Quality gates passing
-
 ### Lessons Learned
 
 **Pattern success factors:**
@@ -740,20 +672,8 @@ Expected reduction: 84% (1,909 lines)
 - Actual extraction: 10 hours
 - **Under budget by 17-44%**
 
-### Integration Reference
-
-For future integration work or similar refactoring efforts:
-
-**Key files created:**
-- `src/server/helpers/file-io-helpers.js` (+ tests)
-- `src/server/helpers/command-execution-helpers.js` (+ tests)
-- `src/server/helpers/data-processing-helpers.js` (+ tests)
-- `src/server/helpers/backfill-helpers.js` (+ tests)
-- `src/server/helpers/scheduler-helpers.js` (+ tests)
-- `src/server/config/app-config.js` (+ tests)
-- `PHASE_8_INTEGRATION_NEXT_STEPS.md` (integration guide)
-
-**Branch:** `phase-8-server-refactoring` (18 commits)
+See `PHASE_8_STATUS.md` for current integration status, what's left, and
+the full history (including the circular-dependency blocker and its fix).
 
 ---
 

@@ -1,5 +1,12 @@
 # Performance Optimization Opportunities
 
+> **Note (2026-09-15):** the PR table has since been migrated to React (see
+> `REACT_MIGRATION_PLAN.md`, now complete). That migration's own Phase 5
+> ("Performance Tuning") superseded #7 and #8 below with a different
+> mechanism than either originally proposed - see those items for details.
+> Everything else here (the completed vanilla debouncing work, and the
+> still-open virtual-scrolling idea) remains accurate.
+
 ## ✅ Already Optimized (Completed)
 
 ### 1. **Checkbox Toggle Performance** ✅ COMPLETED
@@ -78,46 +85,36 @@ if (newFingerprint === lastRenderedPrFingerprint) {
 
 ---
 
-### 7. **Smart Group Count Caching** 💭
+### 7. **Smart Group Count Caching** ✅ COMPLETED (via React migration)
 
-**Problem:**
-- Smart group counts recomputed on every render
-- Predicate functions run for every PR
+**Original problem:** smart group counts recomputed on every render;
+predicate functions run for every PR.
 
-**Solution:**
-- Cache smart group membership
-- Only recompute when PR data changes
-
-**Estimated Impact:**
-- 5-10% faster renders
-- Diminishing returns (already fast)
+**What actually shipped:** not per-render caching of the *count*, but a
+per-entry cache of the *underlying derived values* those predicates read
+(labels, assignee/approver logins) - `pr-entry-derived-cache.helpers.js`,
+added in `REACT_MIGRATION_PLAN.md`'s Phase 5 ("Delta-aware render
+pipeline", 2026-09-14). A `WeakMap` keyed by PR entry object means an
+unchanged entry (same object reference across a polling delta merge)
+reuses its cached derived values instead of recomputing them - see that
+plan's own writeup for the full mechanism and measured impact.
 
 ---
 
-### 8. **Memoize Filter Results** 💭
+### 8. **Memoize Filter Results** ✅ COMPLETED (via React migration)
 
-**Problem:**
-- Filter pipeline re-executes on every render
-- Same filters produce same results
+**Original problem:** filter pipeline re-executes on every render; same
+filters produce same results.
 
-**Solution:**
-```javascript
-const filterCache = new Map();
-
-function applyFiltersWithCache(prs, filters) {
-  const cacheKey = JSON.stringify(filters);
-  if (filterCache.has(cacheKey)) {
-    return filterCache.get(cacheKey);
-  }
-  const result = applyFilters(prs, filters);
-  filterCache.set(cacheKey, result);
-  return result;
-}
-```
-
-**Estimated Impact:**
-- 10-20% faster when filters unchanged
-- Useful for auto-refresh scenarios
+**What actually shipped:** the same `pr-entry-derived-cache.helpers.js`
+cache (see #7 above) applied to `rowMatchesUiFilters`
+(`pr-row-filtering.helpers.js`), keyed per `(entry, current-filter-criteria-fingerprint)`
+rather than a single global `filterCache` keyed on filters alone - so an
+unchanged entry under unchanged filters is a cache hit, while a filter
+change still correctly busts every entry's cached match result. Measured
+result: 8-19% faster across the delta-update scenarios this originally
+targeted - see `REACT_MIGRATION_PLAN.md`'s Phase 5 writeup for the full
+before/after numbers.
 
 ---
 
@@ -166,9 +163,9 @@ function applyFiltersWithCache(prs, filters) {
 
 ### **Future Considerations** (5-20 hours each)
 
-5. Virtual scrolling (if 200+ PRs common)
-6. Smart group caching
-7. Filter result memoization
+5. Virtual scrolling (if 200+ PRs common) - still open
+6. ~~Smart group caching~~ - ✅ done, see #7 above
+7. ~~Filter result memoization~~ - ✅ done, see #8 above
 
 ### **Not Recommended** (low ROI)
 
