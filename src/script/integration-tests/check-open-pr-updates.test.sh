@@ -407,6 +407,11 @@ JSON
 {"comments":[{"author":{"login":"other"},"createdAt":"2026-03-03T00:00:00Z"}],"reviews":[{"author":{"login":"me_user"},"state":"COMMENTED","submittedAt":"2026-03-01T00:00:00Z"}],"commits":[]}
 JSON
         ;;
+      111)
+        cat <<'JSON'
+{"comments":[{"author":{"login":"other"},"createdAt":"2026-03-03T00:00:00Z"}],"reviews":[],"commits":[]}
+JSON
+        ;;
       107)
         cat <<'JSON'
 {"comments":[{"id":"c-1","author":{"login":"alice"},"createdAt":"2026-03-02T09:00:00Z","body":"First pass"},{"id":"c-2","author":{"login":"alice"},"createdAt":"2026-03-02T09:05:00Z","body":"Follow-up"},{"id":"c-3","author":{"login":"alice"},"createdAt":"2026-03-02T09:15:00Z","body":"After reviewer reply"}],"reviews":[{"id":"r-1","author":{"login":"bob"},"state":"COMMENTED","submittedAt":"2026-03-02T09:10:00Z","body":"Needs work"}],"commits":[]}
@@ -485,8 +490,28 @@ JSON
       echo '2026-03-04T00:00:00Z'
       return
     fi
+    if [[ "$number" == '111' ]]; then
+      echo '2026-03-01T00:00:00Z'
+      return
+    fi
     echo ''
   }
+
+  # Seed real ackByRepo entries (get_ack_ts above is mocked and ignores
+  # this file, but clear_ack_ts - called from inside compute_pr_state_json,
+  # not mocked here - operates on the real $USER_STATE_FILE) so the
+  # auto-clear-on-new-activity tests below can observe a real persisted
+  # change, and the "no new activity" case can confirm nothing was touched.
+  seed_ack_entry() {
+    local number="$1"
+    local ts="$2"
+    local tmp
+    tmp=$(mktemp)
+    jq --arg repo "$REPO" --arg number "$number" --arg ts "$ts" '(.ackByRepo //= {}) | (.ackByRepo[$repo] //= {}) | .ackByRepo[$repo][$number] = $ts' "$USER_STATE_FILE" >"$tmp"
+    mv "$tmp" "$USER_STATE_FILE"
+  }
+  seed_ack_entry 106 '2026-03-04T00:00:00Z'
+  seed_ack_entry 111 '2026-03-01T00:00:00Z'
 
   make_pr_json() {
     local n="$1"
@@ -649,6 +674,13 @@ JSON
 
   row=$(compute_pr_state_json "$(make_pr_json 106 'other' 'Other, User')")
   assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'NO_CHANGE' 'ack baseline should suppress older external comment'
+  assert_eq "$(jq -r --arg repo "$REPO" '.ackByRepo[$repo]["106"] // ""' "$USER_STATE_FILE")" '2026-03-04T00:00:00Z' 'a still-valid ack (no activity since ack) should not be auto-cleared'
+
+  row=$(compute_pr_state_json "$(make_pr_json 111 'other' 'Other, User')")
+  assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'CHANGED' 'new external comment after the ack baseline should mark the row CHANGED'
+  assert_eq "$(printf '%s' "$row" | jq -r '.reason')" 'comment' 'the real activity reason should be reported, not a generic ack-cleared placeholder'
+  assert_eq "$(jq -r --arg repo "$REPO" '.ackByRepo[$repo]["111"] // ""' "$USER_STATE_FILE")" '' 'an ack with new activity since it was set should be auto-cleared'
+  assert_eq "$(jq -r --arg repo "$REPO" '.reverifyByRepo[$repo]["111"] // false' "$USER_STATE_FILE")" 'false' 'auto-clearing on new activity should not also set reverifyByRepo (status is already CHANGED for a real reason)'
 
   row=$(compute_pr_state_json "$(make_pr_json 300 'other' 'Other, User')")
   title_display=$(printf '%s' "$row" | jq -r '.titleDisplay')

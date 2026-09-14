@@ -1,14 +1,19 @@
 /**
- * PrActionsCell - In Review / Flagged toggles plus Update, Ack, Clear, and
+ * PrActionsCell - In Review / Flagged toggles plus Update, Ack, and
  * JSON-details buttons. Matches vanilla's actions-cell
  * (helpers/pr-actions-cell.helpers.js, helpers/pr-row-toggle-controls.helpers.js).
+ *
+ * The Ack button is a single toggle, not a separate Ack/Clear pair: it
+ * reads "Ack" and clicking it acknowledges the PR; once acknowledged it
+ * reads "Ack'd" (styled as selected) and clicking it again clears the
+ * acknowledgement.
  *
  * @module components/cells/PrActionsCell
  */
 
 import React from 'react';
 
-export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChange, onAckAction, onViewJson }) {
+export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
 
@@ -25,17 +30,11 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChang
     await (window.runSinglePrUpdate || (async () => {}))(entry, pr);
   };
 
-  const handleAckClick = (e) => {
+  const handleAckToggleClick = (e) => {
     e.stopPropagation();
     // onAckAction's `isAcked` arg means "is it currently acked" (it decides
-    // ack vs. clear from that) — these are unconditional Ack/Clear buttons,
-    // not a toggle, so Ack always passes false (not-currently-acked -> ack).
-    onAckAction?.(pr.number, false, repo);
-  };
-
-  const handleClearClick = (e) => {
-    e.stopPropagation();
-    onAckAction?.(pr.number, true, repo);
+    // ack vs. clear from that) - pass the current state so the toggle flips it.
+    onAckAction?.(pr.number, isAcknowledged, repo);
   };
 
   const handleJsonClick = (e) => {
@@ -77,11 +76,14 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, onCheckboxChang
         <button type="button" className="row-action-btn update" onClick={handleUpdateClick}>
           ↻ Update
         </button>
-        <button type="button" className="row-action-btn ack" onClick={handleAckClick}>
-          ✓ Ack
-        </button>
-        <button type="button" className="row-action-btn clear" onClick={handleClearClick}>
-          ✕ Clear
+        <button
+          type="button"
+          className={isAcknowledged ? 'row-action-btn ack is-acked' : 'row-action-btn ack'}
+          aria-pressed={Boolean(isAcknowledged)}
+          title={isAcknowledged ? 'Acknowledged - click to clear' : 'Click to acknowledge'}
+          onClick={handleAckToggleClick}
+        >
+          {isAcknowledged ? "✓ Ack'd" : '✓ Ack'}
         </button>
         <button
           type="button"

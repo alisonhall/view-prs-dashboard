@@ -681,7 +681,6 @@ describe("index page rendering with Testing Library", () => {
     expect(screen.getByLabelText("Flagged for PR #11")).toBeInTheDocument();
     expect(row?.querySelector(".row-action-btn.update")).toBeTruthy();
     expect(row?.querySelector(".row-action-btn.ack")).toBeTruthy();
-    expect(row?.querySelector(".row-action-btn.clear")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "View PR JSON details for #11" }),
     ).toBeInTheDocument();
@@ -5013,7 +5012,12 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("posts Clear action payload when a user clicks Clear button on a row", async () => {
+  test("posts Clear action payload when a user clicks the Ack'd toggle button on an already-acknowledged row", async () => {
+    // The Ack/Clear pair was replaced by a single toggle button (see
+    // REACT_MIGRATION_PLAN.md and PrActionsCell.jsx's own doc comment):
+    // it reads "Ack" and acknowledges on click when not yet acknowledged,
+    // and reads "Ack'd" and clears on click once it is - this test covers
+    // the latter (clear) half, so the PR must already be acknowledged.
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -5038,6 +5042,7 @@ describe("index page rendering with Testing Library", () => {
             },
           },
         ],
+        ackByRepo: { "owner/repo": { 101: true } },
         lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
       }),
     });
@@ -5045,7 +5050,7 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const clearButton = await screen.findByRole("button", {
-      name: /Clear/,
+      name: "✓ Ack'd",
     });
     expect(clearButton).toBeInTheDocument();
 

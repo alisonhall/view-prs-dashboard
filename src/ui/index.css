@@ -2411,9 +2411,14 @@
             color: #1a7f37;
         }
 
-        .row-action-btn.clear {
-            border-color: #9a6700;
-            color: #9a6700;
+        .row-action-btn.ack.is-acked {
+            background: #1a7f37;
+            border-color: #1a7f37;
+            color: #ffffff;
+        }
+
+        .row-action-btn.ack.is-acked:hover {
+            background: #196c30;
         }
 
         .row-action-btn.view-json {

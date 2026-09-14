@@ -42,17 +42,31 @@ describe('PrActionsCell', () => {
     expect(onCheckboxChange).toHaveBeenCalledWith('101', 'flagged', true, 'owner/repo');
   });
 
-  test('given the Ack button, when clicked, then onAckAction fires with isAcked=false (ack, not clear)', () => {
+  test('given isAcknowledged=false, when rendering, then the Ack button reads "Ack", is not styled as selected, and aria-pressed is false', () => {
+    renderCell({ isAcknowledged: false });
+    const button = screen.getByRole('button', { name: '✓ Ack' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button.className).not.toContain('is-acked');
+  });
+
+  test('given isAcknowledged=true, when rendering, then the Ack button reads "Ack\'d", is styled as selected, and aria-pressed is true', () => {
+    renderCell({ isAcknowledged: true });
+    const button = screen.getByRole('button', { name: "✓ Ack'd" });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button.className).toContain('is-acked');
+  });
+
+  test('given isAcknowledged=false, when the Ack button is clicked, then onAckAction fires with isAcked=false (not-yet-acked -> ack)', () => {
     const onAckAction = jest.fn();
-    renderCell({ onAckAction });
+    renderCell({ isAcknowledged: false, onAckAction });
     screen.getByRole('button', { name: '✓ Ack' }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', false, 'owner/repo');
   });
 
-  test('given the Clear button, when clicked, then onAckAction fires with isAcked=true (clear, not ack)', () => {
+  test('given isAcknowledged=true, when the same button is clicked, then onAckAction fires with isAcked=true (already-acked -> clear)', () => {
     const onAckAction = jest.fn();
-    renderCell({ onAckAction });
-    screen.getByRole('button', { name: '✕ Clear' }).click();
+    renderCell({ isAcknowledged: true, onAckAction });
+    screen.getByRole('button', { name: "✓ Ack'd" }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', true, 'owner/repo');
   });
 

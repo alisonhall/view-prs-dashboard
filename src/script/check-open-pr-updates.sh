@@ -565,15 +565,27 @@ set_ack_ts() {
 
 clear_ack_ts_unlocked() {
   local number="$1"
+  # set_reverify: the manual "--ack-clear" path (default) also sets
+  # reverifyByRepo so the row shows CHANGED("ack-cleared") even absent any
+  # real new activity. The automatic clear-on-new-activity path (see
+  # compute_pr_state_json) passes false: status is already CHANGED for a
+  # real reason there, and forcing reverifyByRepo too would keep pinning it
+  # to CHANGED forever once that real activity ages out of effective_last.
+  local set_reverify="${2:-true}"
   local tmp
   tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  if [[ "$set_reverify" == 'true' ]]; then
+    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  else
+    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+  fi
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }
 
 clear_ack_ts() {
   local number="$1"
-  with_user_state_lock clear_ack_ts_unlocked "$number"
+  local set_reverify="${2:-true}"
+  with_user_state_lock clear_ack_ts_unlocked "$number" "$set_reverify"
 }
 
 clear_all_repo_acks_unlocked() {
@@ -2325,6 +2337,19 @@ compute_pr_state_json() {
         changed_reason='-'
       fi
     fi
+  fi
+
+  # A PR acked earlier that has genuinely new activity since that ack
+  # (effective_last is pinned to at least ack_at above, so a CHANGED status
+  # here always means something happened after the ack) should no longer
+  # read as acknowledged - clear it so the row's Ack button/state matches
+  # the CHANGED status instead of contradicting it. Passes set_reverify=false
+  # since changed_reason already carries the real reason (comment/review/
+  # commit/etc.) - no need for the manual-clear-only 'ack-cleared' pin, which
+  # would keep forcing CHANGED even once this activity ages out of
+  # effective_last on a later run.
+  if [[ "$status" == 'CHANGED' && -n "$ack_at" ]]; then
+    clear_ack_ts "$number" false
   fi
 
   reverify_required=$(get_reverify_required "$number")

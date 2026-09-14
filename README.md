@@ -849,7 +849,7 @@ This two-line format helps you quickly see both when the PR was last updated and
   - Use `./run-prs --help` or `npm run start -- --help`.
 - Web UI run fails with endpoint/network errors
   - Start server from repo root with `npm start` and use `http://localhost:9000/view-prs/index.html`.
-- Ack/Clear buttons fail in UI
+- Ack toggle button fails in UI
   - Verify the server has restarted after updates and `POST /view-prs/ack` is available.
 - Page stays on "Not run" and "Loading..."
   - Hard refresh the browser and ensure the server is restarted so latest `view-prs/src/ui/index.html` is served.
@@ -985,6 +985,7 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - Store location: `view-prs/data/check-open-pr-updates.user-state.json` under `ackByRepo`
 - Locking is used to avoid concurrent write corruption.
 - Acks are namespaced per repo.
+- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack". This does not set the same `reverifyByRepo` flag the manual `--ack-clear`/"Ack'd" button click does, since the row is already `CHANGED` for a real reason.
 
 ### Ack commands
 
