@@ -2,7 +2,10 @@
  * ActivityTimelineSummary - the "Activity timeline" insight-grid value: a
  * per-day table of actor/action counts, extended day-by-day from the oldest
  * activity to today (open PRs) or to the newest activity (merged PRs), with
- * weekend days omitted when they have no activity.
+ * weekend days omitted when they have no activity. A run of consecutive
+ * no-activity weekdays is consolidated into a single "No activity for N
+ * days" row rather than one dash row per day; weekends stay excluded from
+ * both the row list and that day count, and don't break a run in progress.
  *
  * Matches vanilla's buildActivityTimelineSummary (index.page.js) — that
  * function returns a plain string only when there's no timeline data at
@@ -163,16 +166,52 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
     const endDate = isOpen ? new Date() : newest;
     const cursor = new Date(endDate.getTime());
     cursor.setUTCHours(23, 59, 59, 999);
+
+    // A run of consecutive no-activity weekdays gets consolidated into one
+    // summary row (instead of one dash row per day) so a long quiet
+    // stretch doesn't dominate the timeline - weekends stay excluded from
+    // both the row list and this day count, exactly as before (they never
+    // break a run in progress, and never add to its count).
+    let gapNewestKey = null;
+    let gapOldestKey = null;
+    let gapDayCount = 0;
+
+    const flushGap = () => {
+      if (gapDayCount === 0) return;
+      if (gapDayCount === 1) {
+        rows.push({ key: gapNewestKey, items: [] });
+      } else {
+        rows.push({
+          key: gapNewestKey,
+          rangeStartKey: gapOldestKey,
+          dayCount: gapDayCount,
+          items: [],
+        });
+      }
+      gapNewestKey = null;
+      gapOldestKey = null;
+      gapDayCount = 0;
+    };
+
     while (cursor.getTime() >= oldest.getTime()) {
       const key = formatDay(cursor);
       const hasActivity = groupedByDate.has(key);
       const dayOfWeek = cursor.getUTCDay();
       const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-      if (hasActivity || isWeekday) {
-        rows.push({ key, items: groupedByDate.get(key) || [] });
+
+      if (hasActivity) {
+        flushGap();
+        rows.push({ key, items: groupedByDate.get(key) });
+      } else if (isWeekday) {
+        if (gapDayCount === 0) gapNewestKey = key;
+        gapOldestKey = key;
+        gapDayCount += 1;
       }
+      // A no-activity weekend is skipped entirely, same as before.
+
       cursor.setUTCDate(cursor.getUTCDate() - 1);
     }
+    flushGap();
   }
 
   if (!rows.length) return '-';
@@ -182,9 +221,15 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
-            <td style={DATE_CELL_STYLE}>{row.key}</td>
+            <td style={DATE_CELL_STYLE}>
+              {row.dayCount ? `${row.rangeStartKey} – ${row.key}` : row.key}
+            </td>
             <td style={ACTIVITY_CELL_STYLE}>
-              <TimelineItems items={row.items} pr={pr} actorsMap={actorsMap} />
+              {row.dayCount ? (
+                `No activity for ${row.dayCount} days`
+              ) : (
+                <TimelineItems items={row.items} pr={pr} actorsMap={actorsMap} />
+              )}
             </td>
           </tr>
         ))}

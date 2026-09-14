@@ -7636,21 +7636,46 @@ describe("index page rendering with Testing Library", () => {
     expect(limitField.getAttribute("data-1p-ignore")).toBe("true");
   });
 
-  test("activity timeline only shows dates and dashes for weekdays without activity, skipping weekends", async () => {
-    // Regression test for buildActivityTimelineSummary() weekends-filtering behavior.
+  test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
+    // Regression test for ActivityTimelineSummary's weekend-filtering AND
+    // no-activity-run-consolidation behavior (see REACT_MIGRATION_PLAN.md;
+    // the vanilla buildActivityTimelineSummary this mirrors is dead code -
+    // never called at runtime, only kept exported for window.viewPrsInternals).
     //
     // Test timeline spans a full week (Mon-Sun):
-    // - Monday 2026-06-15: has activity (comment)
-    // - Tuesday 2026-06-16: has activity (commit)
-    // - Wed-Fri 2026-06-17-19: no activity, weekdays → should be shown with "-" dash
-    // - Saturday 2026-06-20: no activity, weekend → should be SKIPPED
-    // - Sunday 2026-06-21: no activity, weekend → should be SKIPPED
+    // - Monday 2026-06-15: has activity (comment) -> own row
+    // - Tuesday 2026-06-16: has activity (commit) -> own row
+    // - Wed-Fri 2026-06-17-19: no activity, weekdays -> consolidated into
+    //   one "No activity for 3 days" row instead of 3 separate dash rows
+    // - Saturday 2026-06-20 / Sunday 2026-06-21: no activity, weekend ->
+    //   skipped entirely, and excluded from the consolidated day count
     //
-    // Date.now() is mocked to today (Sunday 2026-06-21), so for an open PR the
-    // timeline extends from today back to the oldest activity (Monday 2026-06-15).
-    const nowSpy = jest
-      .spyOn(Date, "now")
-      .mockReturnValue(new Date("2026-06-21T10:00:00Z").getTime());
+    // jest.spyOn(Date, "now") does NOT intercept `new Date()` (the no-arg
+    // constructor reads the host's current time directly, not through the
+    // Date.now property) - the component's `isOpen ? new Date() : newest`
+    // needs the actual global Date faked, so this uses
+    // jest.useFakeTimers()'s modern implementation scoped to only Date via
+    // `doNotFake`, leaving setInterval/setTimeout (which this suite's own
+    // beforeEach already wraps for cleanup tracking) untouched.
+    jest.useFakeTimers({
+      doNotFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "setImmediate",
+        "clearImmediate",
+        "nextTick",
+        "queueMicrotask",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "requestIdleCallback",
+        "cancelIdleCallback",
+        "performance",
+        "hrtime",
+      ],
+    });
+    jest.setSystemTime(new Date("2026-06-21T10:00:00Z"));
 
     try {
       initTestPage({
@@ -7709,28 +7734,27 @@ describe("index page rendering with Testing Library", () => {
       expect(timelineTable).toBeTruthy();
 
       const rows = Array.from(timelineTable?.querySelectorAll("tr") || []);
-      const dateTexts = rows.map((tr) => tr.querySelector("td")?.textContent?.trim());
+      const rowTexts = rows.map((tr) => {
+        const cells = Array.from(tr.querySelectorAll("td"));
+        return { date: cells[0]?.textContent?.trim(), activity: cells[1]?.textContent?.trim() };
+      });
 
-      // The timeline extends from 2026-06-21 (today) back to 2026-06-15 (oldest activity date)
-      // Should include:
-      // - Monday 2026-06-15 (has activity, so show)
-      // - Tuesday 2026-06-16 (has activity, so show)
-      // - Wednesday 2026-06-17 (no activity, weekday, so show)
-      // - Thursday 2026-06-18 (no activity, weekday, so show)
-      // - Friday 2026-06-19 (no activity, weekday, so show)
-      // Should NOT include:
-      // - Saturday 2026-06-20 (no activity, weekend, so skip)
-      // - Sunday 2026-06-21 (no activity, weekend, so skip)
+      // Newest-first: the consolidated Wed-Fri gap row, then Tuesday, then
+      // Monday - exactly 3 rows, not 5 (no per-day dash rows) and no
+      // weekend dates anywhere.
+      expect(rowTexts).toHaveLength(3);
+      expect(rowTexts[0].date).toBe("2026-06-17 – 2026-06-19");
+      expect(rowTexts[0].activity).toBe("No activity for 3 days");
+      expect(rowTexts[1].date).toBe("2026-06-16");
+      expect(rowTexts[1].activity).toContain("commit");
+      expect(rowTexts[2].date).toBe("2026-06-15");
+      expect(rowTexts[2].activity).toContain("comment");
 
-      expect(dateTexts).toContain("2026-06-15");
-      expect(dateTexts).toContain("2026-06-16");
-      expect(dateTexts).toContain("2026-06-17");
-      expect(dateTexts).toContain("2026-06-18");
-      expect(dateTexts).toContain("2026-06-19");
+      const dateTexts = rowTexts.map((r) => r.date);
       expect(dateTexts).not.toContain("2026-06-20"); // Saturday
       expect(dateTexts).not.toContain("2026-06-21"); // Sunday
     } finally {
-      nowSpy.mockRestore();
+      jest.useRealTimers();
     }
   });
 

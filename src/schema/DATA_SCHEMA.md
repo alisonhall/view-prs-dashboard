@@ -108,7 +108,7 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 | `commentEvents` | object[] | no | Flattened top-level/thread comment events (inline for legacy rows; externalized when `detailRef` is present) |
 | `activityEvents` | object[] | no | Flattened comment, review, approval, commit, open, merge events (inline for legacy rows; externalized when `detailRef` is present) |
 | `metrics` | object | yes | Derived reviewer/comment/conversation metrics |
-| `activityTimelineSummary` | string | yes | Rendered as an HTML table showing activity grouped by date. All dates with activity are shown; weekday dates (Mon-Fri) without activity display a dash; weekend dates (Sat-Sun) without activity are omitted. Timeline extends from today to oldest activity for open PRs, or newest to oldest activity for merged PRs. |
+| `activityTimelineSummary` | string | yes | Rendered as an HTML table showing activity grouped by date. All dates with activity are shown; a run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row instead of a dash row per day (an isolated single no-activity weekday still shows its own dash); weekend dates (Sat-Sun) without activity are omitted and excluded from that day count. Timeline extends from today to oldest activity for open PRs, or newest to oldest activity for merged PRs. |
 | `activityTimeline` | object[] | no | Bucketed activity timeline (inline for legacy rows; externalized when `detailRef` is present) |
 | `baseline` | string | yes | Effective baseline timestamp or empty string |
 | `reason` | string | yes | `-` or a changed-reason string |
