@@ -6506,6 +6506,10 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
   if (selectedRepo) {
     latestSelectedRepo = selectedRepo;
+    if (shouldRefetchLabelsForRepo({ repo: selectedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
+      labelsFetchedForRepo = selectedRepo;
+      void refreshAvailableRepoLabels(selectedRepo);
+    }
   }
 
   // Get container element
@@ -7282,8 +7286,31 @@ const populateApplyLabelSelect = () => {
   }
 };
 
+let labelsFetchedForRepo = "";
+
+// Deliberately does NOT fall back to DEFAULT_REPO: that constant is only
+// ever a placeholder/example value (see the "repo" field's `placeholder`
+// in react-app.jsx) - it isn't guaranteed to be a repo this GitHub account
+// can actually see, and eagerly querying `gh label list` against it on
+// every page load produced a real 500 (repo not found) before the actual
+// selected repo was even known yet. Pure so it's directly unit-testable
+// via __testables without needing a DOM/fetch harness.
+const resolveRepoForLabelsFetch = ({ repoOverride, currentRepo, repoInputValue } = {}) =>
+  String(repoOverride || currentRepo || repoInputValue || "").trim();
+
+// Avoids re-fetching the same repo's labels on every render/poll tick -
+// only worth a network call when the resolved repo actually changed since
+// the last successful (or attempted) fetch.
+const shouldRefetchLabelsForRepo = ({ repo, lastFetchedRepo } = {}) =>
+  Boolean(repo) && repo !== lastFetchedRepo;
+
 const refreshAvailableRepoLabels = async (repoOverride) => {
-  const repo = String(repoOverride || latestSelectedRepo || DEFAULT_REPO).trim();
+  const repoInput = getOptionalElementById("repo");
+  const repo = resolveRepoForLabelsFetch({
+    repoOverride,
+    currentRepo: latestSelectedRepo,
+    repoInputValue: repoInput ? repoInput.value : "",
+  });
   if (!repo || isFetchingRepoLabels) {
     return;
   }
@@ -7455,7 +7482,15 @@ const initPage = () => {
   window.addEventListener(
     "viewprs:react-ready",
     () => {
-      void restoreUiOptionOverrides();
+      void restoreUiOptionOverrides().then(() => {
+        // The "repo" field only actually restores here (see the comment
+        // above): before React mounts it into #repo-root, it has no
+        // Context and no DOM element to restore into, so the saved repo
+        // isn't known yet on the first restoreUiOptionOverrides() call
+        // above. Only fetch labels once the real configured repo (not the
+        // placeholder DEFAULT_REPO) is available.
+        void refreshAvailableRepoLabels();
+      });
     },
     { once: true },
   );
@@ -7629,7 +7664,6 @@ const initPage = () => {
       "Unable to load stored PR data",
     );
   });
-  void refreshAvailableRepoLabels();
   loadBackfillStatus({ includeLog: true }).catch((error) => {
     renderBackfillStatus({
       ok: false,
@@ -8014,6 +8048,8 @@ if (typeof module !== "undefined" && module.exports) {
       normalizeAuthorInsightsSentiment,
       isAuthorInsightsComposerDraftDirty,
       isAuthorInsightsEditDraftDirty,
+      resolveRepoForLabelsFetch,
+      shouldRefetchLabelsForRepo,
     },
   };
 }
