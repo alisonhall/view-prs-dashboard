@@ -96,6 +96,8 @@ const {
   viewPrsActionLogFile,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAutoScriptTimeoutMs,
@@ -130,6 +132,11 @@ const viewPrsSchedulerState = {
   consecutiveAutoFailures: 0,
   autoCircuitOpenUntil: null,
   lastAutoCircuitOpenedAt: null,
+  isQuickCheckInProgress: false,
+  lastQuickCheckAt: null,
+  lastQuickCheckError: null,
+  lastMergedDrainAt: null,
+  pendingByRepo: {},
 };
 
 const VIEW_PRS_PROGRESS_PREFIX = "__VIEW_PRS_PROGRESS__:";
@@ -705,6 +712,11 @@ const {
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
   getViewPrsAutoRefreshRepos,
+  setPendingForRepo,
+  clearPendingForRepo,
+  getReposWithPendingOpen,
+  getReposWithPendingMergedClosed,
+  getPendingUpdatePrNumberKeys,
 } = createViewPrsSchedulerHelpers({
   fs,
   console,
@@ -716,6 +728,8 @@ const {
   defaultViewPrsRepo,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -1071,6 +1085,7 @@ const readViewPrsData = () => {
       byPrNumberRaw,
       parsed.lastRun,
     );
+    const pendingUpdateKeys = getPendingUpdatePrNumberKeys();
     const byPrNumber = Object.fromEntries(
       Object.entries(byPrNumberRaw)
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
@@ -1080,10 +1095,20 @@ const readViewPrsData = () => {
           }
           const hydratedEntry = hydrateViewPrsEntryWithDetail(entry);
           const notes = mergedUserState.notesByPrNumber[prNumber];
-          if (!notes) {
-            return [prNumber, hydratedEntry];
+          const withNotes = notes ? { ...hydratedEntry, notes } : hydratedEntry;
+          const isUpdatePending = pendingUpdateKeys.has(
+            `${toTrimmedString(withNotes?.repo)}#${prNumber}`,
+          );
+          if (!isUpdatePending) {
+            return [prNumber, withNotes];
           }
-          return [prNumber, { ...hydratedEntry, notes }];
+          return [
+            prNumber,
+            {
+              ...withNotes,
+              data: { ...(withNotes.data || {}), updatePending: true },
+            },
+          ];
         }),
     );
     collectMissingPrsFromDiffCache(byPrNumber, fallbackRepo).forEach(
@@ -1179,7 +1204,10 @@ const getViewPrsDataManifest = (dataOverride = null) => {
 };
 
 // Auto-refresh logic
-const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
+const runViewPrsAutoRefresh = async ({
+  skipCooldownChecks = false,
+  reposOverride = null,
+} = {}) => {
   if (viewPrsSchedulerState.isAutoRunInProgress) {
     return;
   }
@@ -1228,7 +1256,10 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
   const autoTriggerMs = Date.now();
 
   try {
-    const reposToRefresh = getViewPrsAutoRefreshRepos();
+    const reposToRefresh =
+      Array.isArray(reposOverride) && reposOverride.length > 0
+        ? reposOverride
+        : getViewPrsAutoRefreshRepos();
     console.log(
       `[view-prs] auto refresh repos (${reposToRefresh.length}): ${reposToRefresh.join(", ") || "(none)"}`,
     );
@@ -1269,6 +1300,9 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
           },
         );
         const repoFinishedMs = Date.now();
+        // A full run refreshes both sections, so anything queued by the
+        // quick-check for this repo has now been addressed.
+        clearPendingForRepo(repo);
         return {
           ok: true,
           repo,
@@ -1432,6 +1466,99 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
   }
 };
 
+// Cheap "did anything change" poll: lists PRs and compares updatedAt against
+// the cache, without fetching details/diffs. Runs far more often than the
+// full fetch above. Open/draft changes trigger an immediate targeted full
+// refresh; closed/merged changes are queued and drained on a longer timer
+// by runViewPrsMergedQueueDrain, since they're lower priority.
+const runViewPrsQuickCheck = async () => {
+  if (
+    viewPrsSchedulerState.isQuickCheckInProgress ||
+    viewPrsSchedulerState.isAutoRunInProgress
+  ) {
+    return;
+  }
+
+  const dependencyStatus = callGetDependencyStatus();
+  if (!dependencyStatus.ok) {
+    return;
+  }
+
+  if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
+    return;
+  }
+
+  viewPrsSchedulerState.isQuickCheckInProgress = true;
+
+  try {
+    const repos = getViewPrsAutoRefreshRepos();
+    const reposWithPendingOpen = new Set();
+
+    await Promise.all(
+      repos.map(async (repo) => {
+        try {
+          const result = await callRunViewPrsScript(
+            [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo],
+            1024 * 1024,
+            { timeoutMs: viewPrsManualScriptTimeoutMs, trackSchedulerPrProgress: false },
+          );
+          const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
+          const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
+          const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
+            ? parsed.pendingMergedClosed
+            : [];
+
+          if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
+            return;
+          }
+
+          setPendingForRepo(repo, { open: pendingOpen, mergedClosed: pendingMergedClosed });
+          if (pendingOpen.length > 0) {
+            reposWithPendingOpen.add(repo);
+          }
+        } catch (repoError) {
+          console.warn(
+            `[view-prs] quick-check failed for ${repo}: ${repoError?.message || repoError}`,
+          );
+        }
+      }),
+    );
+
+    viewPrsSchedulerState.lastQuickCheckAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckError = null;
+    persistViewPrsSchedulerState();
+
+    if (reposWithPendingOpen.size > 0) {
+      // Fast-follow: don't wait for the next full-sweep timer once an open
+      // PR is known to have actually changed.
+      void runViewPrsAutoRefresh({ reposOverride: Array.from(reposWithPendingOpen) });
+    }
+  } catch (error) {
+    viewPrsSchedulerState.lastQuickCheckError = error?.message || "Quick check failed";
+    console.error(`[view-prs] quick check failed: ${viewPrsSchedulerState.lastQuickCheckError}`);
+  } finally {
+    viewPrsSchedulerState.isQuickCheckInProgress = false;
+  }
+};
+
+// Batches up closed/merged PRs flagged by the quick-check into a full fetch.
+// Runs on a much longer interval than the quick-check itself, and does
+// nothing at all when nothing has actually changed (see viewPrsMergedFullSweepIntervalMs).
+const runViewPrsMergedQueueDrain = async () => {
+  const reposToDrain = getReposWithPendingMergedClosed().filter(
+    (repo) => !getReposWithPendingOpen().includes(repo),
+  );
+
+  viewPrsSchedulerState.lastMergedDrainAt = new Date().toISOString();
+  persistViewPrsSchedulerState();
+
+  if (reposToDrain.length === 0) {
+    return;
+  }
+
+  await runViewPrsAutoRefresh({ reposOverride: reposToDrain });
+};
+
 // Vite dev middleware (React/JSX transform)
 //
 // index.html loads react-app.jsx as an ES module. Express can't transpile
@@ -1569,6 +1696,7 @@ const createViewPrsApp = () => {
     viewPrsAckTotalRefreshTimeoutMs,
     defaultViewPrsRepo,
     setLastManualRunNow,
+    clearPendingForRepo,
     appendActionLogEntry,
     readViewPrsData,
     enqueuePrDiffRefreshForData,
@@ -1646,6 +1774,8 @@ const createViewPrsApp = () => {
 const initializeScheduler = () => {
   readViewPrsSchedulerState();
   runViewPrsAutoRefresh();
+  setInterval(runViewPrsQuickCheck, viewPrsQuickCheckIntervalMs);
+  setInterval(runViewPrsMergedQueueDrain, viewPrsMergedFullSweepIntervalMs);
   return setInterval(runViewPrsAutoRefresh, viewPrsAutoIntervalMs);
 };
 
@@ -1654,6 +1784,8 @@ module.exports = {
   createViewPrsApp,
   initializeScheduler,
   runViewPrsAutoRefresh,
+  runViewPrsQuickCheck,
+  runViewPrsMergedQueueDrain,
   // Core config/constants
   viewPrsDir,
   viewPrsUiIndexFile,
@@ -1679,6 +1811,8 @@ module.exports = {
   readActionLog,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAutoScriptTimeoutMs,
@@ -1747,6 +1881,11 @@ module.exports = {
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
   getViewPrsAutoRefreshRepos,
+  setPendingForRepo,
+  clearPendingForRepo,
+  getReposWithPendingOpen,
+  getReposWithPendingMergedClosed,
+  getPendingUpdatePrNumberKeys,
   getPrDiffCacheFilePath,
   getPrDiffCommitFingerprint,
   readPrDiffCache,

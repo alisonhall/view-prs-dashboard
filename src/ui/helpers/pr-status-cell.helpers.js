@@ -93,6 +93,15 @@
       }
       statusCellContent.appendChild(lastCheckedIndicator);
 
+      if (row.updatePending) {
+        const updatePendingBadge = doc.createElement("span");
+        updatePendingBadge.className = "pr-update-pending-badge";
+        updatePendingBadge.title =
+          "A change was detected on GitHub; full details are queued to refresh.";
+        updatePendingBadge.textContent = "Update queued";
+        statusCellContent.appendChild(updatePendingBadge);
+      }
+
       td.appendChild(statusCellContent);
 
       return td;

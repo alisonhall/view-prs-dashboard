@@ -2591,7 +2591,17 @@ const renderSchedulerStatus = (schedulerRaw = {}) => {
   };
 
   createBadge(`Every ${scheduler.intervalMinutes || 15}m`);
+  createBadge(`Quick check: every ${scheduler.quickCheckIntervalMinutes || 5}m`);
   createBadge(`Manual cooldown ${scheduler.manualCooldownMinutes || 15}m`);
+
+  const pendingOpenCount = Number(scheduler.pendingOpenCount || 0);
+  const pendingMergedClosedCount = Number(scheduler.pendingMergedClosedCount || 0);
+  if (pendingOpenCount > 0 || pendingMergedClosedCount > 0) {
+    createBadge(
+      `Update queued: ${pendingOpenCount} open, ${pendingMergedClosedCount} merged/closed`,
+      "scheduler-badge-running",
+    );
+  }
 
   const autoRunBadge = scheduler.isAutoRunInProgress
     ? {
@@ -2618,6 +2628,9 @@ const renderSchedulerStatus = (schedulerRaw = {}) => {
     `Last auto success: ${formatIsoDatetime(scheduler.lastAutoRunAt || "-")}`,
     `Last auto skip: ${scheduler.lastAutoSkipReason || "-"}`,
     `Last auto error: ${scheduler.lastAutoError || "-"}`,
+    `Last quick check: ${formatIsoDatetime(scheduler.lastQuickCheckAt || "-")}`,
+    `Last quick check error: ${scheduler.lastQuickCheckError || "-"}`,
+    `Last merged/closed drain: ${formatIsoDatetime(scheduler.lastMergedDrainAt || "-")}`,
   ];
 
   details.textContent = lines.join("\n");

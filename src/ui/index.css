@@ -1803,6 +1803,19 @@
             font-weight: 700;
         }
 
+        .pr-update-pending-badge {
+            display: inline-block;
+            margin-top: 2px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.4;
+            color: #7a4b00;
+            background: #fff1cc;
+            border: 1px solid #f0b429;
+        }
+
         .pr-progress-indicator {
             display: inline-block;
             width: 10px;

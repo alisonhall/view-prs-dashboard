@@ -53,6 +53,14 @@ export function PrStatusCell({ pr, lastCheckedAt, sectionKey }) {
         <span className={lastCheckedClassName} title={lastChecked.title || undefined}>
           {lastChecked.label}
         </span>
+        {pr?.updatePending ? (
+          <span
+            className="pr-update-pending-badge"
+            title="A change was detected on GitHub; full details are queued to refresh."
+          >
+            Update queued
+          </span>
+        ) : null}
       </div>
     </td>
   );

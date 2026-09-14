@@ -115,6 +115,24 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsAutoIntervalMs = 15 * 60 * 1000;
   const viewPrsManualCooldownMs = 15 * 60 * 1000;
 
+  // Cheap "did it change" poll (listing calls only, no detail/diff fetch).
+  // Runs far more often than the full fetch since it's nearly free.
+  const viewPrsQuickCheckIntervalMs = Math.max(
+    60 * 1000,
+    Number.parseInt(env.VIEW_PRS_QUICK_CHECK_INTERVAL_MS || "300000", 10) ||
+      300000,
+  );
+
+  // How often pending closed/merged PRs (lower priority, rarely change) get
+  // batched into a full detail fetch once the quick-check has flagged them.
+  const viewPrsMergedFullSweepIntervalMs = Math.max(
+    60 * 1000,
+    Number.parseInt(
+      env.VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS || "1800000",
+      10,
+    ) || 1800000,
+  );
+
   const viewPrsBackupRetention = Math.max(
     1,
     Number.parseInt(env.VIEW_PRS_BACKUP_RETENTION || "50", 10) || 50,
@@ -213,6 +231,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     // Timeouts and intervals
     viewPrsAutoIntervalMs,
     viewPrsManualCooldownMs,
+    viewPrsQuickCheckIntervalMs,
+    viewPrsMergedFullSweepIntervalMs,
     viewPrsAutoCircuitFailureThreshold,
     viewPrsAutoCircuitCooldownMs,
     viewPrsAutoScriptTimeoutMs,

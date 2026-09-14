@@ -18,6 +18,7 @@ INCLUDE_AUTHOR=''
 INCLUDE_AUTHORS=''
 SHOW_REASON=1
 QUIET=0
+QUICK_CHECK=0
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -189,6 +190,8 @@ Options:
       --hide-reason            Hide inline changed reason in STATUS
       --quiet                  Hide run metadata header
       --open <mode>            Browser behavior: all | changed | none (default: all)
+      --quick-check            List PRs and report which changed (by updatedAt) without
+                                fetching full details/diffs; prints JSON to stdout and exits
   -h, --help                   Show this help
 
 Examples:
@@ -3143,6 +3146,58 @@ collect_stale_numbers_from_b64() {
   done <<<"$b64_lines"
 }
 
+pr_updated_at_matches_cache() {
+  local number="$1"
+  local section="$2"
+  local source_updated_at="$3"
+  local cached_updated_at
+
+  cached_updated_at=$(
+    jq -r \
+      --arg number "$number" \
+      --arg repo "$REPO" \
+      --arg section "$section" \
+      '.byPrNumber[$number] // empty | select(.repo == $repo and .section == $section) | (.data.sourceUpdatedAt // empty)' \
+      "$PR_STATE_FILE" 2>/dev/null
+  )
+
+  [[ -n "$cached_updated_at" && "$cached_updated_at" == "$source_updated_at" ]]
+}
+
+# Cheap "did it change" check used by --quick-check: compares the just-listed
+# updatedAt against the cached row's sourceUpdatedAt directly, independent of
+# the full-fetch caching gate (VIEW_PRS_SKIP_UNCHANGED, off by default) and
+# without requiring every other detail field to already be populated.
+collect_quick_check_pending_numbers() {
+  local b64_lines="$1"
+  local section="$2"
+  local is_draft number source_updated_at pr_json
+
+  while IFS= read -r pr_item; do
+    [[ -z "$pr_item" ]] && continue
+    pr_json=$(printf '%s' "$pr_item" | base64 --decode)
+    number=$(printf '%s' "$pr_json" | jq -r '.number')
+    [[ -z "$number" || "$number" == 'null' ]] && continue
+
+    is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft // false')
+    if [[ "$section" == 'open' && "$is_draft" == 'true' ]]; then
+      continue
+    fi
+    if [[ "$section" == 'draft' && "$is_draft" != 'true' ]]; then
+      continue
+    fi
+
+    source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
+    [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && continue
+
+    if pr_updated_at_matches_cache "$number" "$section" "$source_updated_at"; then
+      continue
+    fi
+
+    printf '%s\n' "$number"
+  done <<<"$b64_lines"
+}
+
 collect_prioritized_stale_number_sets() {
   local open_b64="$1"
   local closed_b64="$2"
@@ -3165,6 +3220,19 @@ collect_prioritized_stale_number_sets() {
       printf '%s\n' "$STALE_MERGED_PR_NUMBERS"
     } | awk 'NF' | sort -u
   )
+}
+
+emit_quick_check_result() {
+  local repo="$1"
+  local open_draft_numbers="$2"
+  local closed_merged_numbers="$3"
+
+  jq -n \
+    --arg repo "$repo" \
+    --arg checkedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --argjson pendingOpen "$(printf '%s\n' "$open_draft_numbers" | awk 'NF' | jq -R 'tonumber' | jq -s '.')" \
+    --argjson pendingMergedClosed "$(printf '%s\n' "$closed_merged_numbers" | awk 'NF' | jq -R 'tonumber' | jq -s '.')" \
+    '{repo: $repo, checkedAt: $checkedAt, pendingOpen: $pendingOpen, pendingMergedClosed: $pendingMergedClosed}'
 }
 
 parse_number_list() {
@@ -3298,6 +3366,10 @@ parse_args() {
       --open)
         OPEN_MODE="$2"
         shift 2
+        ;;
+      --quick-check)
+        QUICK_CHECK=1
+        shift
         ;;
       -h | --help)
         usage
@@ -3572,6 +3644,23 @@ main() {
   fi
 
   ensure_pr_state_store
+
+  if [[ "$QUICK_CHECK" -eq 1 ]]; then
+    quick_check_open_draft_pending=$(
+      {
+        collect_quick_check_pending_numbers "$prs_b64" 'open'
+        collect_quick_check_pending_numbers "$prs_b64" 'draft'
+      } | awk 'NF' | sort -u
+    )
+    quick_check_closed_merged_pending=$(
+      {
+        collect_quick_check_pending_numbers "$closed_prs_b64" 'closed'
+        collect_quick_check_pending_numbers "$merged_prs_b64" 'merged'
+      } | awk 'NF' | sort -u
+    )
+    emit_quick_check_result "$REPO" "$quick_check_open_draft_pending" "$quick_check_closed_merged_pending"
+    exit 0
+  fi
 
   current_open_numbers=$(collect_numbers_from_b64 "$prs_b64")
   current_closed_numbers=$(collect_numbers_from_b64 "$closed_prs_b64")

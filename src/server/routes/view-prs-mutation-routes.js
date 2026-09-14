@@ -16,6 +16,7 @@ const registerViewPrsMutationRoutes = ({
   viewPrsAckTotalRefreshTimeoutMs,
   defaultViewPrsRepo,
   setLastManualRunNow,
+  clearPendingForRepo,
   appendActionLogEntry,
   readViewPrsData,
   enqueuePrDiffRefreshForData,
@@ -109,6 +110,11 @@ const registerViewPrsMutationRoutes = ({
     })
       .then(({ stdout, stderr }) => {
         setLastManualRunNow();
+        // A full-repo manual run (no single --pr target) covers everything
+        // the quick-check may have queued, so it's resolved now too.
+        if (detail.repo && !detail.prNumber) {
+          clearPendingForRepo(detail.repo);
+        }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({
             timingContext,

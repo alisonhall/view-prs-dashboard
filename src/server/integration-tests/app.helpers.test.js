@@ -354,6 +354,71 @@ describe("helper function behavior", () => {
         "should handle null entry gracefully"
       );
     });
+
+    test("open PR fingerprint changes when updatedAt changes", () => {
+      const base = {
+        data: {
+          commits: [{ oid: "abc123" }],
+          sourceUpdatedAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      };
+      const changed = {
+        data: {
+          ...base.data,
+          sourceUpdatedAt: "2026-01-02T00:00:00Z",
+          updatedAt: "2026-01-02T00:00:00Z",
+        },
+      };
+      assert.notStrictEqual(
+        app.getPrDiffCommitFingerprint(base),
+        app.getPrDiffCommitFingerprint(changed),
+        "open PR fingerprint should track updatedAt since the diff can still change"
+      );
+    });
+
+    test("merged PR fingerprint stays stable when updatedAt changes but commits don't", () => {
+      const base = {
+        data: {
+          commits: [{ oid: "abc123" }],
+          mergedAt: "2026-01-01T00:00:00Z",
+          sourceUpdatedAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      };
+      const laterMetadataOnly = {
+        data: {
+          ...base.data,
+          sourceUpdatedAt: "2026-02-01T00:00:00Z",
+          updatedAt: "2026-02-01T00:00:00Z",
+        },
+      };
+      assert.strictEqual(
+        app.getPrDiffCommitFingerprint(base),
+        app.getPrDiffCommitFingerprint(laterMetadataOnly),
+        "merged PR fingerprint must not change from metadata-only updates since the diff is immutable"
+      );
+    });
+
+    test("merged PR fingerprint still changes if commits differ", () => {
+      const merged1 = {
+        data: {
+          commits: [{ oid: "abc123" }],
+          mergedAt: "2026-01-01T00:00:00Z",
+        },
+      };
+      const merged2 = {
+        data: {
+          commits: [{ oid: "def456" }],
+          mergedAt: "2026-01-01T00:00:00Z",
+        },
+      };
+      assert.notStrictEqual(
+        app.getPrDiffCommitFingerprint(merged1),
+        app.getPrDiffCommitFingerprint(merged2),
+        "merged PR fingerprint should still depend on the commit set"
+      );
+    });
   });
 
   describe("readPrDiffCache", () => {
