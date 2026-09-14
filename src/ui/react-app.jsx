@@ -51,8 +51,6 @@ export function mountReactPrTable(containerElement, props) {
     return null;
   }
 
-  console.log('[React Migration] Mounting React PR table...');
-
   const root = ReactDOM.createRoot(containerElement);
 
   // Store props reference for updates
@@ -60,7 +58,6 @@ export function mountReactPrTable(containerElement, props) {
 
   // Create update function
   const updateTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
-    console.log('[React Migration] Updating React table with new data...');
     currentProps = {
       ...currentProps,
       initialPayload: newPayload,
@@ -84,7 +81,6 @@ export function mountReactPrTable(containerElement, props) {
   // Render the actual PrTableApp component
   root.render(<PrTableApp {...currentProps} />);
 
-  console.log('[React Migration] React PR table mounted successfully');
   return root;
 }
 
@@ -642,7 +638,6 @@ function mountBackfillBadges() {
  */
 if (typeof window !== 'undefined') {
   window.mountReactPrTable = mountReactPrTable;
-  console.log('[React Migration] mountReactPrTable() exposed globally');
 
   window.renderReactMultiSelectList = renderReactMultiSelectList;
   mountMultiSelectLists();

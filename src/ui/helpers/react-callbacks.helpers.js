@@ -111,7 +111,6 @@
         // Get UPDATED payload (toggle function has modified latestStoredPayload by now)
         const payload = getLatestStoredPayloadSafe();
 
-        console.log(`[ReactCallbacks] Updating React after ${type} toggle for PR #${prNumber}`);
         updateReactTableSafe(payload, repo);
       } catch (error) {
         console.error('[ReactCallbacks] Error handling checkbox change:', error);

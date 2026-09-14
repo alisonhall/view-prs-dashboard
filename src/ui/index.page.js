@@ -6536,7 +6536,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     // distinct from the "mount failed"/"callbacks failed" branches
     // further down, which stay as genuine vanilla-fallback recovery for a
     // real React failure, not this race.
-    console.log('[renderPrData] React not mounted yet, running side effects only');
     prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
       ...options,
       skipTableRender: true,
@@ -6547,8 +6546,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // ========================================
   // REACT RENDERING PATH
   // ========================================
-
-  console.log('[renderPrData] Using React rendering');
 
   // The React table renders the PR rows/sections itself, but everything
   // else the vanilla pipeline normally does as a side effect of building
@@ -6589,11 +6586,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // Check if already mounted
   if (window.ReactMountBridge.isMounted()) {
     // Already mounted: just update data
-    console.log('[renderPrData] Updating React table with new data:', {
-      hasPayload: !!(latestStoredPayload || payload),
-      hasPrs: !!(latestStoredPayload?.prs || payload?.prs),
-      prsKeys: Object.keys((latestStoredPayload?.prs || payload?.prs) || {}),
-    });
     window.ReactMountBridge.update(
       latestStoredPayload || payload,
       latestSelectedRepo || selectedRepo,
@@ -6603,8 +6595,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
 
   // First time: mount React
-  console.log('[renderPrData] Mounting React table for first time');
-
   // Create callbacks
   const callbacks = createReactCallbacks();
   if (!callbacks) {
@@ -6614,13 +6604,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
 
   // Mount React
-  console.log('[renderPrData] Mounting with payload:', {
-    hasPayload: !!(latestStoredPayload || payload),
-    hasPrs: !!(latestStoredPayload?.prs || payload?.prs),
-    prsKeys: Object.keys((latestStoredPayload?.prs || payload?.prs) || {}),
-    selectedRepo: latestSelectedRepo || selectedRepo || '',
-  });
-  
   const success = window.ReactMountBridge.mount(
     container,
     {

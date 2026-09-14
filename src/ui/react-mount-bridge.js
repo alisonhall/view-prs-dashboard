@@ -44,8 +44,6 @@
       return false;
     }
 
-    console.log('[ReactBridge] Mounting React PR table...');
-
     try {
       // Clear vanilla JS content
       container.innerHTML = '';
@@ -64,7 +62,6 @@
         currentUpdateCallback = global.updateReactPrTable;
       }
 
-      console.log('[ReactBridge] React PR table mounted successfully');
       return true;
     } catch (error) {
       console.error('[ReactBridge] Error mounting React:', error);
@@ -100,12 +97,10 @@
    */
   function unmountReactTable() {
     if (reactRootInstance && reactRootInstance.unmount) {
-      console.log('[ReactBridge] Unmounting React PR table...');
       try {
         reactRootInstance.unmount();
         reactRootInstance = null;
         currentUpdateCallback = null;
-        console.log('[ReactBridge] React PR table unmounted');
       } catch (error) {
         console.error('[ReactBridge] Error unmounting React:', error);
       }
@@ -127,7 +122,5 @@
     unmount: unmountReactTable,
     isMounted: isReactMounted,
   };
-
-  console.log('[ReactBridge] Bridge initialized and exposed as window.ReactMountBridge');
 
 })(typeof window !== 'undefined' ? window : globalThis);

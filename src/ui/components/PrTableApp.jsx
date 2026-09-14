@@ -413,7 +413,6 @@ export function PrTableApp({
   // Listen for delta updates from vanilla JS polling
   useEffect(() => {
     const handleDeltaUpdate = (event) => {
-      console.log('[PrTableApp] Received delta update', event.detail);
       setPayload(event.detail.payload);
     };
 
@@ -426,7 +425,6 @@ export function PrTableApp({
   // Expose update function globally for vanilla JS bridge
   useEffect(() => {
     window.updateReactPrTable = (newPayload) => {
-      console.log('[PrTableApp] Manual update from vanilla JS', newPayload);
       setPayload(newPayload);
     };
     
