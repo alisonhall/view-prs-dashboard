@@ -12,17 +12,11 @@
     renderAuthorInsights,
     renderStatsView,
     clearElementContents,
-    buildPrSectionConfigs,
-    buildSmartGroupConfigs,
-    applySmartGroups,
-    appendPrSections,
     buildMergedRequestMoreActionOptions,
     appendMergedRequestMoreAction,
-    restoreInsightsViewState,
-    applyActivePrProgressIndicators,
-    recomputeDirtyPrSectionsFields,
     computePrDataFingerprint,
     computePrDataManifest,
+    getOptionalElementById,
   } = {}) => {
     const renderManagementFilterSummarySafe =
       typeof renderManagementFilterSummary === "function"
@@ -38,14 +32,6 @@
       typeof renderStatsView === "function" ? renderStatsView : () => {};
     const clearElementContentsSafe =
       typeof clearElementContents === "function" ? clearElementContents : () => {};
-    const buildPrSectionConfigsSafe =
-      typeof buildPrSectionConfigs === "function" ? buildPrSectionConfigs : () => [];
-    const buildSmartGroupConfigsSafe =
-      typeof buildSmartGroupConfigs === "function" ? buildSmartGroupConfigs : () => [];
-    const applySmartGroupsSafe =
-      typeof applySmartGroups === "function" ? applySmartGroups : () => ({});
-    const appendPrSectionsSafe =
-      typeof appendPrSections === "function" ? appendPrSections : () => {};
     const buildMergedRequestMoreActionOptionsSafe =
       typeof buildMergedRequestMoreActionOptions === "function"
         ? buildMergedRequestMoreActionOptions
@@ -54,24 +40,45 @@
       typeof appendMergedRequestMoreAction === "function"
         ? appendMergedRequestMoreAction
         : () => {};
-    const restoreInsightsViewStateSafe =
-      typeof restoreInsightsViewState === "function"
-        ? restoreInsightsViewState
-        : () => {};
-    const applyActivePrProgressIndicatorsSafe =
-      typeof applyActivePrProgressIndicators === "function"
-        ? applyActivePrProgressIndicators
-        : () => {};
-    const recomputeDirtyPrSectionsFieldsSafe =
-      typeof recomputeDirtyPrSectionsFields === "function"
-        ? recomputeDirtyPrSectionsFields
-        : () => {};
     const computePrDataFingerprintSafe =
       typeof computePrDataFingerprint === "function"
         ? computePrDataFingerprint
         : () => "";
     const computePrDataManifestSafe =
       typeof computePrDataManifest === "function" ? computePrDataManifest : () => ({});
+    const getOptionalElementByIdSafe =
+      typeof getOptionalElementById === "function" ? getOptionalElementById : () => null;
+
+    // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+    // both panels default to visible (no `#tab-panel-xxx` element = jsdom
+    // unit tests using a bare fixture, or a real page where the panel
+    // hasn't rendered yet) so this only ever *skips* work once a real,
+    // genuinely-hidden panel is confirmed - never silently drops a render
+    // for tests/environments that don't set this markup up.
+    const isTabPanelVisible = (panelId) => {
+      const panel = getOptionalElementByIdSafe(panelId);
+      return !panel || !panel.hidden;
+    };
+
+    // The most recent (allStoredRows, actorsMap) applyRenderResults was
+    // called with - kept so a tab that was hidden during the last render
+    // can catch up with the same data once activated, via
+    // renderAuthorInsightsIfVisible/renderStatsViewIfVisible below, without
+    // needing its own separate "what are the current rows" derivation
+    // (which would risk drifting from what the shared pipeline computed).
+    let latestAllStoredRows = [];
+    let latestActorsMap = {};
+
+    const renderAuthorInsightsIfVisible = () => {
+      if (isTabPanelVisible("tab-panel-author-insights")) {
+        renderAuthorInsightsSafe(latestAllStoredRows, latestActorsMap);
+      }
+    };
+    const renderStatsViewIfVisible = () => {
+      if (isTabPanelVisible("tab-panel-review-stats")) {
+        renderStatsViewSafe(latestAllStoredRows, latestActorsMap);
+      }
+    };
 
     const applyRenderResults = ({
       payload,
@@ -81,15 +88,9 @@
       meta,
       appliedSummaryText,
       filterChips,
-      grouped,
-      prSectionOpenState,
-      lastSuccessfulRenderedCheckAt,
       selectedScope,
       repoFilter,
       latestSelectedRepo,
-      insightsViewState,
-      latestSchedulerState,
-      skipTableRender,
     } = {}) => {
       const actorsMap = payload?.actorsMap || {};
       if (meta && typeof meta === "object") {
@@ -102,59 +103,37 @@
       });
       renderExportFieldCatalogSafe(payload);
 
-      renderAuthorInsightsSafe(allStoredRows, actorsMap);
-      renderStatsViewSafe(allStoredRows, actorsMap);
+      // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+      // these two used to run in full on every single render regardless of
+      // which data tab the user is actually looking at - a real,
+      // measured cost with no benefit when the tab is hidden. Skipped here
+      // when hidden; whichever tab just became visible gets a fresh render
+      // triggered directly from its tab-click handler (index.page.js, via
+      // renderAuthorInsightsIfVisible/renderStatsViewIfVisible below), not
+      // tracked as "dirty" here - simpler and correct, since tab clicks
+      // are infrequent and user-initiated, not part of the hot
+      // polling/render path this gate is optimizing.
+      latestAllStoredRows = allStoredRows;
+      latestActorsMap = actorsMap;
+      renderAuthorInsightsIfVisible();
+      renderStatsViewIfVisible();
 
-      // When the React table is handling rendering, it owns sectionsHost
-      // (smart groups, lifecycle sections, progress indicators, insights
-      // expand/collapse state) entirely - the vanilla DOM-building steps
-      // below would just be immediately clobbered by (or fight with)
-      // React's own render, so skip them and only apply the side effects
-      // above, which both rendering paths need regardless of which one
-      // owns the table markup.
-      if (!skipTableRender) {
-        clearElementContentsSafe(sectionsHost);
-
-        // Build smart groups from the currently filtered rows (not
-        // allStoredRows) so smart groups honor the same scope/local filters
-        // (PR number, labels, authors, etc.) as the lifecycle sections below
-        // them, instead of always showing every stored PR regardless of the
-        // active filter.
-        const smartGroupConfigs = buildSmartGroupConfigsSafe({
-          flaggedByRepo: payload?.flaggedByRepo || {},
-          inReviewByRepo: payload?.inReviewByRepo || {},
-          repo: latestSelectedRepo || "",
-        });
-
-        const smartGroups = applySmartGroupsSafe(
-          Array.isArray(filteredRows) ? filteredRows : allStoredRows,
-          smartGroupConfigs,
-        );
-
-        appendPrSectionsSafe(
-          sectionsHost,
-          buildPrSectionConfigsSafe({
-            grouped,
-            smartGroups,
-            prSectionOpenState,
-            lastCheckedAt: lastSuccessfulRenderedCheckAt,
-            actorsMapFromPayload: actorsMap,
-          }),
-        );
-
-        restoreInsightsViewStateSafe(sectionsHost, insightsViewState);
-        applyActivePrProgressIndicatorsSafe(
-          latestSchedulerState?.activePrNumbers || [],
-        );
-        recomputeDirtyPrSectionsFieldsSafe();
-      }
+      // Phase 6 (see REACT_MIGRATION_PLAN.md): sectionsHost (#pr-sections)
+      // is now exclusively React-owned (smart groups, lifecycle sections,
+      // progress indicators, insights expand/collapse state) - the vanilla
+      // DOM-building steps that used to run here (behind a skipTableRender
+      // gate, for when React hadn't mounted yet or genuinely failed to)
+      // have been removed entirely. renderPrData (index.page.js) no longer
+      // builds a vanilla table in either case: it runs nothing but these
+      // side effects during the ordinary React-not-mounted-yet race
+      // (relying on `viewprs:react-ready` to trigger a real render once
+      // React mounts), and shows a minimal error message instead of a
+      // vanilla table on a genuine React mount failure.
 
       // The "Request more" merged-PRs button lives in its own static host
       // element (a sibling of sectionsHost in index.html), not inside
-      // sectionsHost itself - unlike the table markup above, React never
-      // owns it, so this can (and must) always run regardless of
-      // skipTableRender. Without this, "Request more" was simply absent
-      // whenever React was rendering the table.
+      // sectionsHost itself - unlike the table markup that used to live
+      // here, React never owns it, so this always runs.
       const mergedRequestMoreHost =
         (typeof sectionsHost?.parentElement?.querySelector === "function" &&
           sectionsHost.parentElement.querySelector("#merged-request-more-action")) ||
@@ -175,14 +154,15 @@
         lastRenderedPrFingerprint: computePrDataFingerprintSafe(payload),
         latestPrManifest: payload?.dataManifest || computePrDataManifestSafe(payload),
         // Surfaced so callers (the React rendering path) can restrict what
-        // they render to the same filtered set the vanilla pipeline just
-        // computed - see skipTableRender above.
+        // they render to the same filtered set this pipeline just computed.
         filteredRows: Array.isArray(filteredRows) ? filteredRows : allStoredRows,
       };
     };
 
     return {
       applyRenderResults,
+      renderAuthorInsightsIfVisible,
+      renderStatsViewIfVisible,
     };
   };
 

@@ -41,42 +41,23 @@
     DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = "neutral",
     // Optional overrides
     documentRef = typeof document !== "undefined" ? document : null,
-    // Phase 3 React migration hook (see REACT_MIGRATION_PLAN.md): when
-    // provided, renders the author selector into #author-insights-selector-root
-    // via React instead of the vanilla <select> built below, and returns
-    // true - matching the same handled/fallback shape as
-    // pr-filter-panel.component.js's renderMultiSelectList hook. Optional,
-    // defaults to "not handled" so this component works unchanged (and
-    // every existing unit test, which doesn't pass this, keeps passing)
-    // until React is actually available.
+    // React migration hooks (see REACT_MIGRATION_PLAN.md): each renders one
+    // section into its own dedicated root container (mounted by
+    // react-app.jsx) - the vanilla DOM-building fallback these used to have
+    // was removed once every conversion was complete (React is now assumed
+    // always available); the `Safe` wrappers below just guard against a
+    // hook not being passed at all (e.g. an older unit test fixture),
+    // rather than against React being unavailable.
     updateReactAuthorInsightsSelector,
-    // Same handled/fallback shape as updateReactAuthorInsightsSelector
-    // above, for the read-only "PRs created by this author" section -
-    // renders into #author-insights-created-prs-root via React when
-    // available, falls back to appending buildCreatedPrsSection's output
-    // directly into the content host otherwise.
     updateReactAuthorInsightsCreatedPrs,
-    // Same handled/fallback shape, for the trivial "Showing insights for
-    // <author>" header - renders into #author-insights-header-root via
-    // React when available, falls back to appending a plain div into the
-    // content host otherwise.
     updateReactAuthorInsightsHeader,
-    // Same handled/fallback shape, for the read-only "PR-linked custom
-    // comments and sentiment" section - renders into
-    // #author-insights-notes-root via React when available, falls back to
-    // appending buildPrLinkedNotesSection's output directly into the
-    // content host otherwise.
     updateReactAuthorInsightsNotes,
-    // Same handled/fallback shape, for the "Manual author comments"
-    // composer + list - renders into #author-insights-content-root via
-    // React when available, falls back to appending
-    // buildManualCommentsSection's output directly into the content host
-    // otherwise. Unlike the read-only sections above, this section has
-    // mutable draft state and server-write side effects (saving/editing
-    // comments), but they live entirely inside the wrapped vanilla builder
-    // (via authorInsightsState/draftHelpers/postJson), not in this
-    // component's own render logic, so the same wrap-via-ref approach is
-    // safe here too.
+    // Manual comments composer/list - mutable draft state and server-write
+    // side effects (saving/editing comments) live entirely inside the
+    // wrapped vanilla builder (buildManualCommentsSection, via
+    // authorInsightsState/draftHelpers/postJson), not in this component's
+    // own render logic, which is why it's ref-wrapped rather than
+    // reimplemented in JSX.
     updateReactAuthorInsightsComments,
   } = {}) => {
     const updateReactAuthorInsightsSelectorSafe =
@@ -218,7 +199,7 @@
       }
 
       // Render author selector
-      renderAuthorSelector(authorOptions, host);
+      renderAuthorSelector(authorOptions);
 
       const selectedAuthor =
         authorOptions.find(
@@ -226,109 +207,34 @@
         ) || authorOptions[0];
 
       // Render sections
-      renderSelectedHeader(host, selectedAuthor);
-      renderManualCommentsSection(host, selectedAuthor, rows, actorsMap);
-      renderPrLinkedNotesSection(host, selectedAuthor, rows, actorsMap);
-      renderCreatedPrsSection(host, selectedAuthor, rows);
+      renderSelectedHeader(selectedAuthor);
+      renderManualCommentsSection(selectedAuthor, rows, actorsMap);
+      renderPrLinkedNotesSection(selectedAuthor, rows, actorsMap);
+      renderCreatedPrsSection(rows);
 
       recomputeDirtyPrSectionsFields?.();
     };
 
     /**
-     * Renders the author selector dropdown. React-owned when available
-     * (updateReactAuthorInsightsSelectorSafe returns true) - falls back to
-     * building a plain <select> into #author-insights-selector-root
-     * directly when it isn't (React hasn't loaded/mounted yet).
+     * Renders the author selector dropdown - React-owned
+     * (#author-insights-selector-root, via updateReactAuthorInsightsSelectorSafe).
      */
-    const renderAuthorSelector = (authorOptions, fallbackHost) => {
-      const handled = updateReactAuthorInsightsSelectorSafe(
+    const renderAuthorSelector = (authorOptions) => {
+      updateReactAuthorInsightsSelectorSafe(
         authorOptions.map((author) => ({
           login: author.login,
           name: author.name || author.login,
         })),
         authorInsightsState.selectedAuthorLogin,
       );
-      if (handled) {
-        return;
-      }
-
-      // Falls back to the outer #author-insights host when the dedicated
-      // #author-insights-selector-root container doesn't exist (e.g. in
-      // unit tests that build a bare `<div id="author-insights">` fixture,
-      // or if index.html's markup is ever out of sync) - same fallback
-      // pattern renderAuthorInsights itself uses for contentHost above.
-      const selectorHost =
-        documentRef.getElementById("author-insights-selector-root") ||
-        fallbackHost;
-      if (!selectorHost) {
-        return;
-      }
-      selectorHost.innerHTML = "";
-
-      const controls = documentRef.createElement("div");
-      controls.className = "author-insights-controls";
-      const label = documentRef.createElement("label");
-      label.className = "author-insights-label";
-      label.textContent = "Author";
-      const select = documentRef.createElement("select");
-      select.id = "author-insights-select";
-      select.className = "author-insights-select";
-      authorOptions.forEach((author) => {
-        const option = documentRef.createElement("option");
-        option.value = author.login;
-        option.textContent = author.name || author.login;
-        option.selected = author.login === authorInsightsState.selectedAuthorLogin;
-        select.appendChild(option);
-      });
-      select.onchange = () => {
-        authorInsightsState.selectedAuthorLogin = select.value;
-        renderAuthorInsights(
-          authorInsightsState.latestRows,
-          authorInsightsState.latestActorsMap,
-        );
-      };
-      label.appendChild(select);
-      controls.appendChild(label);
-      selectorHost.appendChild(controls);
     };
 
     /**
-     * Renders the selected author header. React-owned when available
-     * (updateReactAuthorInsightsHeaderSafe returns true) - falls back to
-     * building a plain div into #author-insights-header-root (or
-     * `fallbackHost` when that container doesn't exist, e.g. in unit tests
-     * with a bare fixture) when it isn't.
+     * Renders the selected author header - React-owned
+     * (#author-insights-header-root, via updateReactAuthorInsightsHeaderSafe).
      */
-    const renderSelectedHeader = (fallbackHost, selectedAuthor) => {
-      const handled = updateReactAuthorInsightsHeaderSafe(selectedAuthor.name);
-      if (handled) {
-        return;
-      }
-
-      // Only clear the dedicated #author-insights-header-root container
-      // when it actually exists as its own container - it isn't touched by
-      // contentHost's reset above, so it must clear its own stale content
-      // from a prior render. When it doesn't exist (e.g. a bare-fixture
-      // unit test), this falls back to appending directly into the shared
-      // `fallbackHost`, which was already reset once by contentHost above
-      // and may already have other sections' content appended into it
-      // (e.g. the author selector, rendered just before this) - resetting
-      // it again here would wipe that out.
-      const dedicatedHeaderHost = documentRef.getElementById(
-        "author-insights-header-root",
-      );
-      if (dedicatedHeaderHost) {
-        dedicatedHeaderHost.innerHTML = "";
-      }
-      const headerHost = dedicatedHeaderHost || fallbackHost;
-      if (!headerHost) {
-        return;
-      }
-
-      const selectedHeader = documentRef.createElement("div");
-      selectedHeader.className = "author-insights-selected";
-      selectedHeader.textContent = `Showing insights for ${selectedAuthor.name}`;
-      headerHost.appendChild(selectedHeader);
+    const renderSelectedHeader = (selectedAuthor) => {
+      updateReactAuthorInsightsHeaderSafe(selectedAuthor.name);
     };
 
     /**
@@ -385,32 +291,12 @@
     };
 
     /**
-     * Renders the manual comments section. React-owned when available
-     * (updateReactAuthorInsightsCommentsSafe returns true) - falls back to
-     * appending buildManualCommentsSection's output into the dedicated
-     * #author-insights-content-root container (or `fallbackHost` when that
-     * container doesn't exist, e.g. in unit tests with a bare fixture)
-     * when it isn't. Same "only clear the dedicated container, never a
-     * shared fallback host" reasoning as renderSelectedHeader/
-     * renderPrLinkedNotesSection above.
+     * Renders the manual comments section - React-owned
+     * (#author-insights-content-root, via updateReactAuthorInsightsCommentsSafe,
+     * which wraps buildManualCommentsSection via a ref).
      */
-    const renderManualCommentsSection = (fallbackHost, selectedAuthor, rows, actorsMap) => {
-      const handled = updateReactAuthorInsightsCommentsSafe(rows, selectedAuthor, actorsMap);
-      if (handled) {
-        return;
-      }
-
-      const dedicatedCommentsHost = documentRef.getElementById(
-        "author-insights-content-root",
-      );
-      if (dedicatedCommentsHost) {
-        dedicatedCommentsHost.innerHTML = "";
-      }
-      const commentsHost = dedicatedCommentsHost || fallbackHost;
-      if (!commentsHost) {
-        return;
-      }
-      commentsHost.appendChild(buildManualCommentsSection(selectedAuthor, rows, actorsMap));
+    const renderManualCommentsSection = (selectedAuthor, rows, actorsMap) => {
+      updateReactAuthorInsightsCommentsSafe(rows, selectedAuthor, actorsMap);
     };
 
     /**
@@ -841,31 +727,12 @@
     };
 
     /**
-     * Renders the PR-linked notes section. React-owned when available
-     * (updateReactAuthorInsightsNotesSafe returns true) - falls back to
-     * appending buildPrLinkedNotesSection's output into the dedicated
-     * #author-insights-notes-root container (or `fallbackHost` when that
-     * container doesn't exist, e.g. in unit tests with a bare fixture)
-     * when it isn't. Same "only clear the dedicated container, never a
-     * shared fallback host" reasoning as renderSelectedHeader above.
+     * Renders the PR-linked notes section - React-owned
+     * (#author-insights-notes-root, via updateReactAuthorInsightsNotesSafe,
+     * which wraps buildPrLinkedNotesSection via a ref).
      */
-    const renderPrLinkedNotesSection = (fallbackHost, selectedAuthor, rows, actorsMap) => {
-      const handled = updateReactAuthorInsightsNotesSafe(rows, selectedAuthor, actorsMap);
-      if (handled) {
-        return;
-      }
-
-      const dedicatedNotesHost = documentRef.getElementById(
-        "author-insights-notes-root",
-      );
-      if (dedicatedNotesHost) {
-        dedicatedNotesHost.innerHTML = "";
-      }
-      const notesHost = dedicatedNotesHost || fallbackHost;
-      if (!notesHost) {
-        return;
-      }
-      notesHost.appendChild(buildPrLinkedNotesSection(selectedAuthor, rows, actorsMap));
+    const renderPrLinkedNotesSection = (selectedAuthor, rows, actorsMap) => {
+      updateReactAuthorInsightsNotesSafe(rows, selectedAuthor, actorsMap);
     };
 
     /**
@@ -923,17 +790,12 @@
     };
 
     /**
-     * Renders the created PRs section. React-owned when available
-     * (updateReactAuthorInsightsCreatedPrsSafe returns true) - falls back
-     * to appending buildCreatedPrsSection's output directly into `host`
-     * when it isn't (React hasn't loaded/mounted yet).
+     * Renders the created PRs section - React-owned
+     * (#author-insights-created-prs-root, via updateReactAuthorInsightsCreatedPrsSafe,
+     * which wraps buildCreatedPrsSection via a ref).
      */
-    const renderCreatedPrsSection = (host, _selectedAuthor, rows) => {
-      const handled = updateReactAuthorInsightsCreatedPrsSafe(rows);
-      if (handled) {
-        return;
-      }
-      host.appendChild(buildCreatedPrsSection(rows));
+    const renderCreatedPrsSection = (rows) => {
+      updateReactAuthorInsightsCreatedPrsSafe(rows);
     };
 
     return {

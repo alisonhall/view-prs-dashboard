@@ -125,20 +125,54 @@ describe("pr author insights component (refactored)", () => {
     expect(host?.textContent).toContain("No local rows available for author insights.");
   });
 
-  test("given a valid row fixture, when renderAuthorInsights is called, then author controls and selected header are rendered", () => {
-    const component = createPrAuthorInsightsComponent(createDependencies());
+  test("given a valid row fixture, when renderAuthorInsights is called, then the React selector/header bridges are called with the resolved author", () => {
+    const updateReactAuthorInsightsSelector = jest.fn(() => true);
+    const updateReactAuthorInsightsHeader = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({
+        updateReactAuthorInsightsSelector,
+        updateReactAuthorInsightsHeader,
+      }),
+    );
     const rows = [createPrRowEntry()];
 
     component.renderAuthorInsights(rows, {
       "author-login": "Author Name",
     });
 
-    const select = document.querySelector("#author-insights-select");
-    expect(select).toBeTruthy();
-    expect(select?.tagName).toBe("SELECT");
+    expect(updateReactAuthorInsightsSelector).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: "Author Name" })]),
+      expect.any(String),
+    );
+    expect(updateReactAuthorInsightsHeader).toHaveBeenCalledWith("Author Name");
+  });
 
-    const selectedHeader = document.querySelector(".author-insights-selected");
-    expect(selectedHeader?.textContent).toContain("Showing insights for");
+  test("given a composer draft typed for an author, when the manual comments section is rebuilt (simulating the async author-comments load completing and re-triggering a render), then the draft text still shows in the rebuilt textarea", () => {
+    // Regression coverage for a scenario src/ui/integration-tests/index.html.test.js
+    // used to cover end-to-end before the vanilla Author Insights DOM
+    // fallback was removed (React now owns #author-insights-content-root
+    // unconditionally, so that jsdom-only integration suite can no longer
+    // exercise this) - the actual mechanism under test (draft state
+    // surviving a full rebuild) lives entirely in
+    // buildManualCommentsSection/draftHelpers, unrelated to React, so it's
+    // tested directly here instead.
+    const deps = createDependencies();
+    const component = createPrAuthorInsightsComponent(deps);
+    const selectedAuthor = { login: "ahall236_uhg", name: "Alison Hall" };
+
+    deps.draftHelpers.updateAuthorInsightsComposerDraft("ahall236_uhg", {
+      note: "Draft survives rerender",
+    });
+
+    // Simulates the manual comments section being rebuilt from scratch -
+    // the same thing that happens when the async author-comments GET
+    // resolves and calls renderAuthorInsights() again.
+    const rebuiltSection = component.buildManualCommentsSection(selectedAuthor, [], {});
+    const textarea = rebuiltSection.querySelector(
+      "textarea.author-insights-comment-textarea[data-draft-kind='composer']",
+    );
+
+    expect(textarea?.value).toBe("Draft survives rerender");
   });
 
   test("given missing required helpers, when creating component, then error thrown", () => {

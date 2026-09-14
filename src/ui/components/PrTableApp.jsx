@@ -175,16 +175,23 @@ export function PrTableApp({
   // Helper: Check if PR needs attention
   const checkNeedsAttention = useMemo(() => {
     return (entry) => {
-      // Access vanilla JS helper
+      // Matches vanilla's attention-cell condition
+      // (components/pr-section-table.component.js, before it was deleted -
+      // see REACT_MIGRATION_PLAN.md): needs-attention shows for either of
+      // two independent reasons, not just one.
+      if (typeof window.isInReviewEnabled === 'function' && window.isInReviewEnabled(entry?.data)) {
+        return true;
+      }
+
       if (typeof window.entryNeedsAttention !== 'function') {
         return false;
       }
-      
+
       // Get attention config from vanilla JS
       const attentionConfig = typeof window.getNeedsAttentionConfig === 'function'
         ? window.getNeedsAttentionConfig()
         : {};
-      
+
       try {
         return window.entryNeedsAttention(entry, attentionConfig);
       } catch (e) {

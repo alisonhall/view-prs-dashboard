@@ -6,7 +6,10 @@
 
   root.ViewPrsPrDataTabsHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const createPrDataTabsHelpers = ({ getOptionalElementById }) => {
+  const createPrDataTabsHelpers = ({ getOptionalElementById, onTabActivated }) => {
+    const onTabActivatedSafe =
+      typeof onTabActivated === "function" ? onTabActivated : () => {};
+
     const activateDataTab = (key) => {
       const prDataTab = getOptionalElementById("tab-pr-data");
       const reviewStatsTab = getOptionalElementById("tab-review-stats");
@@ -55,6 +58,13 @@
       prDataPanel.hidden = !showPrData;
       reviewStatsPanel.hidden = !showReviewStats;
       authorInsightsPanel.hidden = !showAuthorInsights;
+
+      // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+      // the shared render pipeline now skips rebuilding a hidden tab's
+      // content on every data render - whichever tab just became visible
+      // here needs a catch-up render with the latest data, in case it was
+      // skipped while hidden.
+      onTabActivatedSafe(key);
     };
 
     const initDataTabs = () => {

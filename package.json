@@ -22,6 +22,7 @@
     "build:ui": "vite build",
     "preview": "vite preview",
     "verify:react-setup": "bash verify-react-setup.sh",
+    "stability:heap-check": "node e2e/stability/long-session-heap-check.js",
     "start": "concurrently \"npm run dev:server\" \"npm run dev:ui\"",
     "start:server-only": "node src/server/server.js",
     "test": "jest",

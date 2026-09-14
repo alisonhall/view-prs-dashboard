@@ -1722,7 +1722,7 @@ const prSectionOpenStateHelperFactory =
     ? require("./helpers/pr-section-open-state.helpers.js")
     : globalThis.ViewPrsSectionOpenStateHelpers;
 
-const { capturePrSectionOpenState, resolvePrSectionOpenState } =
+const { capturePrSectionOpenState } =
   prSectionOpenStateHelperFactory.createPrSectionOpenStateHelpers({
     collectNodesByClass: (...args) => collectNodesByClass(...args),
     readElementAttribute: (...args) => readElementAttribute(...args),
@@ -1749,7 +1749,7 @@ const prInsightsViewStateHelperFactory =
     ? require("./helpers/pr-insights-view-state.helpers.js")
     : globalThis.ViewPrsInsightsViewStateHelpers;
 
-const { captureInsightsViewState, restoreInsightsViewState } =
+const { captureInsightsViewState } =
   prInsightsViewStateHelperFactory.createPrInsightsViewStateHelpers({
     captureExpandedInsightsState: (...args) => captureExpandedInsightsState(...args),
     captureOpenInnerInsightSectionsState: (...args) =>
@@ -1787,30 +1787,6 @@ const { appendMergedRequestMoreAction } =
     documentRef: typeof document !== "undefined" ? document : null,
   });
 
-const prSectionShellHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-section-shell.helpers.js")
-    : globalThis.ViewPrsSectionShellHelpers;
-
-const { buildPrSection } =
-  prSectionShellHelperFactory.createPrSectionShellHelpers({
-    getNeedsAttentionConfig: (...args) => getNeedsAttentionConfig(...args),
-    countPendingThreadComments: (...args) => countPendingThreadComments(...args),
-    shouldShowNeedsAttention: (...args) => shouldShowNeedsAttention(...args),
-    buildSectionTable: (...args) => buildSectionTable(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-  });
-
-const prSectionConfigHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-section-config.helpers.js")
-    : globalThis.ViewPrsSectionConfigHelpers;
-
-const { buildPrSectionConfigs } =
-  prSectionConfigHelperFactory.createPrSectionConfigHelpers({
-    resolvePrSectionOpenState: (...args) => resolvePrSectionOpenState(...args),
-  });
-
 const prSectionGroupingHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-section-grouping.helpers.js")
@@ -1820,67 +1796,6 @@ const { buildGroupedPrSections } =
   prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
     sortRowsByPrNumberDesc: (...args) => sortRowsByPrNumberDesc(...args),
     sortRowsByDateFieldDesc: (...args) => sortRowsByDateFieldDesc(...args),
-  });
-
-// Smart groups helpers
-const prSmartGroupsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-smart-groups.helpers.js")
-    : globalThis.ViewPrsSmartGroupsHelpers;
-
-const { buildSmartGroupConfigs, applySmartGroups } =
-  prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({
-    hasNeedsAttentionFlag: (entry) => {
-      // Use the SAME logic as the existing needs attention flag/icon
-      // BUT exclude closed PRs (only show open, draft, merged)
-      const section = String(entry?.section || "").toLowerCase();
-      if (section === "closed") {
-        return false; // Never show closed PRs in Needs Attention smart group
-      }
-
-      const attentionConfig = getNeedsAttentionConfig();
-      return entryNeedsAttention(entry, attentionConfig);
-    },
-    hasUserInteraction: (entry) => {
-      // Only show OPEN PRs that viewer has interacted with
-      // (excluding merged/closed PRs to keep this section actionable)
-      const isOpenPr = entry?.section === "open" || entry?.section === "draft";
-      if (!isOpenPr) return false;
-
-      const row = entry?.data || {};
-      const viewerLogin = String(row?.viewerLogin || "").toLowerCase();
-      if (!viewerLogin) return false;
-
-      // Check if viewer authored the PR
-      const authorLogin = String(row?.authorLogin || "").toLowerCase();
-      if (authorLogin === viewerLogin) return true;
-
-      // Check if viewer has commented
-      const comments = row?.comments || [];
-      if (comments.some((c) => String(c?.author?.login || "").toLowerCase() === viewerLogin)) {
-        return true;
-      }
-
-      // Check if viewer has reviewed
-      const reviews = row?.reviews || [];
-      if (reviews.some((r) => String(r?.author?.login || "").toLowerCase() === viewerLogin)) {
-        return true;
-      }
-
-      // Check if viewer is a requested reviewer
-      const requestedReviewers = row?.requestedReviewers || [];
-      if (requestedReviewers.some((r) => String(r?.login || "").toLowerCase() === viewerLogin)) {
-        return true;
-      }
-
-      // Check if viewer is assigned
-      const assignees = row?.assignees || [];
-      if (assignees.some((a) => String(a?.login || "").toLowerCase() === viewerLogin)) {
-        return true;
-      }
-
-      return false;
-    },
   });
 
 const prScopeSelectionHelperFactory =
@@ -1994,7 +1909,7 @@ const prRenderApplyHelperFactory =
     ? require("./helpers/pr-render-apply.helpers.js")
     : globalThis.ViewPrsRenderApplyHelpers;
 
-const { applyRenderResults } =
+const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
@@ -2002,21 +1917,13 @@ const { applyRenderResults } =
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
     renderStatsView: (...args) => renderStatsView(...args),
     clearElementContents: (...args) => clearElementContents(...args),
-    buildPrSectionConfigs: (...args) => buildPrSectionConfigs(...args),
-    buildSmartGroupConfigs: (...args) => buildSmartGroupConfigs(...args),
-    applySmartGroups: (...args) => applySmartGroups(...args),
-    appendPrSections: (...args) => appendPrSections(...args),
     buildMergedRequestMoreActionOptions: (...args) =>
       buildMergedRequestMoreActionOptions(...args),
     appendMergedRequestMoreAction: (...args) =>
       appendMergedRequestMoreAction(...args),
-    restoreInsightsViewState: (...args) => restoreInsightsViewState(...args),
-    applyActivePrProgressIndicators: (...args) =>
-      applyActivePrProgressIndicators(...args),
-    recomputeDirtyPrSectionsFields: (...args) =>
-      recomputeDirtyPrSectionsFields(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
+    getOptionalElementById: (...args) => getOptionalElementById(...args),
   });
 
 const prFilterPipelineHelperFactory =
@@ -2315,18 +2222,6 @@ const { deriveViewerFilterSetup } =
     populateFilterOptions: (...args) => populateFilterOptions(...args),
   });
 
-const prReactFilterDropdownsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-react-filter-dropdowns.helpers.js")
-    : globalThis.ViewPrsReactFilterDropdownsHelpers;
-
-const { populateFilterDropdownsForCurrentPayload } =
-  prReactFilterDropdownsHelperFactory.createPrReactFilterDropdownsHelpers({
-    getOptionalElementById: (...args) => getOptionalElementById(...args),
-    deriveRunPrDataContext: (...args) => deriveRunPrDataContext(...args),
-    deriveViewerFilterSetup: (...args) => deriveViewerFilterSetup(...args),
-  });
-
 const prSelectedFiltersHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-selected-filters.helpers.js")
@@ -2334,6 +2229,19 @@ const prSelectedFiltersHelperFactory =
 
 const { buildSelectedFiltersViewModel } =
   prSelectedFiltersHelperFactory.createPrSelectedFiltersHelpers();
+
+const prEntryDerivedCacheHelperFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./helpers/pr-entry-derived-cache.helpers.js")
+    : globalThis.ViewPrsEntryDerivedCacheHelpers;
+
+// Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): one
+// shared cache instance for the page's whole lifetime, not recreated per
+// render - its value comes entirely from persisting across renders (an
+// unchanged entry's derived values/filter-match result stay cached from
+// one render to the next).
+const { getOrCompute: getOrComputeEntryDerivedValue } =
+  prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
 
 const prRowFilteringHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -2343,16 +2251,7 @@ const prRowFilteringHelperFactory =
 const { buildRowFilterCriteria, applyRowUiFilters } =
   prRowFilteringHelperFactory.createPrRowFilteringHelpers({
     rowMatchesUiFilters: (...args) => rowMatchesUiFilters(...args),
-  });
-
-const prSectionRenderHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-section-render.helpers.js")
-    : globalThis.ViewPrsSectionRenderHelpers;
-
-const { appendPrSections } =
-  prSectionRenderHelperFactory.createPrSectionRenderHelpers({
-    buildPrSection: (...args) => buildPrSection(...args),
+    getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
   });
 
 const prDomVisibilityHelperFactory =
@@ -2841,6 +2740,7 @@ const {
   collectApproversFromRow: (...args) => collectApproversFromRow(...args),
   extractRowLabelNames: (...args) => extractRowLabelNames(...args),
   normalizeFilterToken: (...args) => normalizeFilterToken(...args),
+  getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
   // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): these 5 getter/setter
   // pairs now prefer FilterStateProvider's Context (via
   // getPendingSelectionsValue/setPendingSelectionsValue) over the plain
@@ -3168,27 +3068,9 @@ const renderBackfillStatus = (backfillRaw = {}) => {
     isBackfillActionPending,
   });
 
-  // Phase 3 React migration hook (see REACT_MIGRATION_PLAN.md): renders the
-  // badge list into #backfill-badges via React when mounted (see
-  // mountBackfillBadges in react-app.jsx), falling back to the vanilla
-  // rebuild-from-scratch below when it isn't - same handled/fallback shape
-  // as window.renderReactMultiSelectList.
-  const handled =
-    typeof window !== "undefined" && typeof window.updateReactBackfillBadges === "function"
-      ? window.updateReactBackfillBadges(viewModel.badges)
-      : false;
-  if (!handled) {
-    badgeHost.innerHTML = "";
-    const createBadge = (text, className = "") => {
-      const chip = document.createElement("span");
-      chip.className = `scheduler-badge ${className}`.trim();
-      chip.textContent = text;
-      badgeHost.appendChild(chip);
-    };
-    viewModel.badges.forEach((badge) => {
-      createBadge(badge.text, badge.className);
-    });
-  }
+  // Renders the badge list into #backfill-badges via React (see
+  // mountBackfillBadges in react-app.jsx).
+  window.updateReactBackfillBadges?.(viewModel.badges);
 
   details.textContent = viewModel.detailsText;
   isBackfillRunning = viewModel.isBackfillRunning;
@@ -3458,6 +3340,15 @@ const isInReviewEnabled = (row) => {
   return value === true || String(value || "").toLowerCase() === "true";
 };
 
+// Expose for the React hybrid table bridge (see components/PrTableApp.jsx),
+// same reasoning as window.entryNeedsAttention/window.getNeedsAttentionConfig
+// above - PrTableApp's needs-attention icon should show for the same two
+// reasons vanilla's attention-cell did (components/pr-section-table.component.js,
+// before it was deleted): shouldShowNeedsAttention() OR isInReviewEnabled().
+if (typeof window !== "undefined") {
+  window.isInReviewEnabled = isInReviewEnabled;
+}
+
 const isFlaggedEnabled = (entry, row) => {
   const rowValue = row?.flagged;
   if (rowValue === true || String(rowValue || "").toLowerCase() === "true") {
@@ -3714,6 +3605,10 @@ const prDataTabsHelperFactory =
 const { activateDataTab, initDataTabs } =
   prDataTabsHelperFactory.createPrDataTabsHelpers({
     getOptionalElementById,
+    onTabActivated: () => {
+      renderAuthorInsightsIfVisible();
+      renderStatsViewIfVisible();
+    },
   });
 
 // PR Data Tab Orchestrator
@@ -4339,19 +4234,6 @@ const { normalizeRowMetrics, buildReviewerStats, applyStatsControls } =
     statsViewState,
   });
 
-const prReviewStatsControlsComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-review-stats-controls.component.js")
-    : globalThis.ViewPrsReviewStatsControlsComponent;
-
-const { createStatsControls } =
-  prReviewStatsControlsComponentFactory.createPrReviewStatsControlsComponent({
-    statsViewState,
-    toCount,
-    markInputAsNonCredentialField,
-    applyFiltersFromCache: (...args) => applyFiltersFromCache(...args),
-  });
-
 const sumReviewerMetric = (reviewerRows, key) =>
   asArray(reviewerRows).reduce(
     (total, reviewer) => total + toCount(reviewer?.[key]),
@@ -4543,23 +4425,6 @@ const renderActivityTrendNote = (rows, actorsMap = {}) => {
   return note;
 };
 
-const prReviewStatsSummaryComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-review-stats-summary.component.js")
-    : globalThis.ViewPrsReviewStatsSummaryComponent;
-
-const { renderStatsSummaryAndTable } =
-  prReviewStatsSummaryComponentFactory.createPrReviewStatsSummaryComponent({
-    asArray,
-    activateDataTab: (...args) => activateDataTab(...args),
-    collectNodesByTag: (...args) => collectNodesByTag(...args),
-    createTextCell,
-    formatIsoDatetime: (...args) => formatIsoDatetime(...args),
-    getNormalizedStatsDateRange: (...args) => getNormalizedStatsDateRange(...args),
-    renderActivityTrendNote: (...args) => renderActivityTrendNote(...args),
-    createStatsVisuals: (...args) => createStatsVisuals(...args),
-  });
-
 // Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): expose
 // statsViewState plus everything ReviewStatsControls/ReviewStatsContent
 // (react-app.jsx) need to render and interact without index.page.js
@@ -4600,45 +4465,16 @@ const renderStatsView = (rows, actorsMap = {}) => {
 
   // Both the controls (#stats-controls-root) and the content
   // (#stats-content-root) live in their own static sibling containers
-  // (see index.html) that React mounts into once and owns from then on -
-  // this function must never rebuild either (the old vanilla behavior
-  // always did, via a single `host.innerHTML = ""` that covered
-  // everything at once), or it would silently tear the mounted React
-  // root's DOM out from under it on every stats render, exactly the class
-  // of bug Phase 1's #pr-sections handling guards against.
-  const hasReactApp =
-    typeof window !== "undefined" && typeof window.mountReactPrTable === "function";
-  const contentHost = document.getElementById("stats-content-root") || host;
-  const controlsHost = document.getElementById("stats-controls-root");
-
-  if (!hasReactApp && controlsHost) {
-    controlsHost.innerHTML = "";
-    controlsHost.appendChild(createStatsControls());
-  }
-
+  // (see index.html), mounted once by react-app.jsx and owned by React
+  // from then on - this function must never rebuild either.
   if (!rows.length) {
-    if (hasReactApp && typeof window.updateReviewStatsContent === "function") {
-      window.updateReviewStatsContent(null, rows, actorsMap);
-      return;
-    }
-    contentHost.innerHTML = "";
-    const empty = document.createElement("p");
-    empty.className = "stats-empty";
-    empty.textContent = "No filtered rows available for review statistics.";
-    contentHost.appendChild(empty);
+    window.updateReviewStatsContent?.(null, rows, actorsMap);
     return;
   }
 
   const { summary, reviewerRows } = buildReviewerStats(rows, actorsMap);
   const stats = applyStatsControls({ summary, reviewerRows });
-
-  if (hasReactApp && typeof window.updateReviewStatsContent === "function") {
-    window.updateReviewStatsContent(stats, rows, actorsMap);
-    return;
-  }
-
-  contentHost.innerHTML = "";
-  renderStatsSummaryAndTable(contentHost, stats, rows, actorsMap);
+  window.updateReviewStatsContent?.(stats, rows, actorsMap);
 };
 
 // Review Stats Tab Orchestrator
@@ -6683,35 +6519,21 @@ const rowMatchesUiFilters = (entry, filters) => {
 
 const ensureDefaultFilterValues = () => {};
 
-const prSectionTableComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-section-table.component.js")
-    : globalThis.ViewPrsSectionTableComponent;
-
-const { buildSectionTable } =
-  prSectionTableComponentFactory.createPrSectionTableComponent({
-    tableHeaders: TABLE_HEADERS,
-    tableColumnClasses: TABLE_COLUMN_CLASSES,
-    defaultRepo: DEFAULT_REPO,
-    getNeedsAttentionConfig: (...args) => getNeedsAttentionConfig(...args),
-    countPendingThreadComments: (...args) => countPendingThreadComments(...args),
-    shouldShowNeedsAttention: (...args) => shouldShowNeedsAttention(...args),
-    isInReviewEnabled: (...args) => isInReviewEnabled(...args),
-    isFlaggedEnabled: (...args) => isFlaggedEnabled(...args),
-    createSelectionCell: (...args) => createSelectionCell(...args),
-    createStatusCell: (...args) => createStatusCell(...args),
-    createApprovedCell: (...args) => createApprovedCell(...args),
-    createInsightsDetails: (...args) => createInsightsDetails(...args),
-    createTitleCell: (...args) => createTitleCell(...args),
-    createAuthorCell: (...args) => createAuthorCell(...args),
-    createLabelsCell: (...args) => createLabelsCell(...args),
-    createTextCell: (...args) => createTextCell(...args),
-    createDateCell: (...args) => createDateCell(...args),
-    createActionsCell: (...args) => createActionsCell(...args),
-    formatChkDisplay: (...args) => formatChkDisplay(...args),
-    createHeaderCell: (...args) => createHeaderCell(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-  });
+// Phase 6 (see REACT_MIGRATION_PLAN.md): renderPrData's two genuine
+// mount-failure branches used to fall back to a full vanilla table build,
+// treating a real React failure the same as the merely-not-loaded-yet
+// race. That vanilla table-build code has been removed - a real mount
+// failure (React threw while rendering, or its bundle never finished
+// loading at all) means the whole app is likely broken well beyond the
+// table, and a one-shot vanilla snapshot wouldn't get live updates from
+// there anyway, so this just surfaces a minimal, honest error state
+// instead of pretending to recover.
+const renderPrTableMountError = () => {
+  const container = getOptionalElementById("pr-sections");
+  if (!container) return;
+  container.innerHTML =
+    '<p class="pr-table-mount-error">Failed to load the PR table. Please refresh the page.</p>';
+};
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // Update global state
@@ -6734,9 +6556,27 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   const hasReactApp = window.mountReactPrTable && typeof window.mountReactPrTable === 'function';
 
   if (!hasReactBridge || !hasReactApp) {
-    console.log('[renderPrData] React not available, using vanilla rendering');
-    // Fallback to vanilla rendering via orchestrator
-    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): this branch used to run the
+    // full vanilla table-build fallback whenever React's deferred module
+    // hadn't loaded/mounted yet - covering both a genuine React failure
+    // and the ordinary load-order race (react-app.jsx not done loading
+    // when the first payload arrives). With vanilla fallback markup now
+    // gone from Phase 2/3's fields, and per explicit sign-off to accept a
+    // brief empty #pr-sections during that race rather than keep building
+    // a whole vanilla table just to immediately discard/replace it once
+    // React does mount, this now only runs the pipeline's side effects
+    // (skipTableRender: true - same call shape the React path below uses)
+    // and leaves the table itself empty. The `viewprs:react-ready`
+    // listener (below) re-invokes renderPrData once React actually
+    // mounts, taking the REACT RENDERING PATH at that point. Note this is
+    // distinct from the "mount failed"/"callbacks failed" branches
+    // further down, which stay as genuine vanilla-fallback recovery for a
+    // real React failure, not this race.
+    console.log('[renderPrData] React not mounted yet, running side effects only');
+    prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
+      ...options,
+      skipTableRender: true,
+    });
     return;
   }
 
@@ -6754,6 +6594,20 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // actor lists) — still needs to run. Run the full vanilla pipeline with
   // skipTableRender so it performs those side effects without building or
   // appending its own <table> markup into #pr-sections (which React owns).
+  // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): this
+  // pipeline call already populates the filter dropdowns as one of those
+  // side effects (deriveViewerFilterSetup -> populateFilterOptions, inside
+  // deriveRenderPipelineState) - a second, separate
+  // populateFilterDropdownsForCurrentPayload() call used to run right
+  // after this one, re-deriving and re-populating the exact same 9 lists
+  // a second time. Its own doc comment explained it as covering a case
+  // where "the React render path... never runs that pipeline" - true of
+  // an earlier architecture where the React path bypassed the orchestrator
+  // entirely, no longer true now that it's called (with skipTableRender)
+  // right above. Removed as a confirmed duplicate, not a real second
+  // effect - verified via the full jest suite and 3 e2e runs (including
+  // the multi-select persisted-restore tests, the ones most likely to
+  // reveal a regression if this had been secretly load-bearing).
   const renderPipelineResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
     ...options,
     skipTableRender: true,
@@ -6767,10 +6621,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
         .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
         .filter(Boolean)
     : null;
-  populateFilterDropdownsForCurrentPayload(
-    latestStoredPayload || payload,
-    latestSelectedRepo || selectedRepo,
-  );
 
   // Check if already mounted
   if (window.ReactMountBridge.isMounted()) {
@@ -6794,8 +6644,8 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // Create callbacks
   const callbacks = createReactCallbacks();
   if (!callbacks) {
-    console.error('[renderPrData] Failed to create React callbacks, falling back to vanilla');
-    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+    console.error('[renderPrData] Failed to create React callbacks - cannot mount table');
+    renderPrTableMountError();
     return;
   }
 
@@ -6821,8 +6671,8 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   );
 
   if (!success) {
-    console.error('[renderPrData] React mount failed, falling back to vanilla rendering');
-    prDataTabOrchestrator.renderPrData(payload, selectedRepo, options);
+    console.error('[renderPrData] React mount failed - cannot render table');
+    renderPrTableMountError();
   }
 };
 
@@ -7495,6 +7345,24 @@ const initPage = () => {
   ensureDefaultFilterValues();
   updateAuthorThreadResolutionRuleVisibility();
   void restoreUiOptionOverrides();
+  // Phase 6 (see REACT_MIGRATION_PLAN.md): restoreUiOptionOverrides' first
+  // call above almost always runs before react-app.jsx's deferred module
+  // has mounted FilterStateProvider, so every Context-migrated field's
+  // setFilterStateOverrideForFieldId call above is a no-op (no
+  // window.setFilterStateValue yet) - and, now that Phase 2 removed the
+  // vanilla fallback markup those fields' setText/setCheckbox used to fall
+  // back to, there's no DOM element left to mutate either, so the restore
+  // was silently dropped instead of merely falling back. Re-running once
+  // React signals it's mounted (same event/pattern the PR table's
+  // renderPrData retry above uses) picks the override values up for real;
+  // this is idempotent with the first call.
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => {
+      void restoreUiOptionOverrides();
+    },
+    { once: true },
+  );
   registerUiOptionPersistenceHandlers();
   initManagementTabs();
   initActorNameCacheControls();

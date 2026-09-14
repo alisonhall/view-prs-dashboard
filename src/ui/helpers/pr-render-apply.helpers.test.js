@@ -5,24 +5,14 @@ const {
 } = require("./pr-render-apply.helpers.js");
 
 describe("pr render apply helpers", () => {
-  test("given render artifacts and payload, when applying render results, then all render side effects are coordinated and next render state is returned", () => {
+  test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
     const renderManagementFilterSummary = jest.fn();
     const renderExportFieldCatalog = jest.fn();
     const renderAuthorInsights = jest.fn();
     const renderStatsView = jest.fn();
     const clearElementContents = jest.fn();
-    const buildPrSectionConfigs = jest.fn(() => [{ id: "section-1" }]);
-    const buildSmartGroupConfigs = jest.fn(() => [
-      { groupKey: "flagged", predicate: () => false },
-      { groupKey: "in-review", predicate: () => false },
-    ]);
-    const applySmartGroups = jest.fn(() => ({}));
-    const appendPrSections = jest.fn();
     const buildMergedRequestMoreActionOptions = jest.fn(() => ({ enabled: true }));
     const appendMergedRequestMoreAction = jest.fn();
-    const restoreInsightsViewState = jest.fn();
-    const applyActivePrProgressIndicators = jest.fn();
-    const recomputeDirtyPrSectionsFields = jest.fn();
     const computePrDataFingerprint = jest.fn(() => "fingerprint-1");
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
 
@@ -32,15 +22,8 @@ describe("pr render apply helpers", () => {
       renderAuthorInsights,
       renderStatsView,
       clearElementContents,
-      buildPrSectionConfigs,
-      buildSmartGroupConfigs,
-      applySmartGroups,
-      appendPrSections,
       buildMergedRequestMoreActionOptions,
       appendMergedRequestMoreAction,
-      restoreInsightsViewState,
-      applyActivePrProgressIndicators,
-      recomputeDirtyPrSectionsFields,
       computePrDataFingerprint,
       computePrDataManifest,
     });
@@ -69,14 +52,9 @@ describe("pr render apply helpers", () => {
       meta,
       appliedSummaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],
-      grouped: { opened: [{ id: 1 }] },
-      prSectionOpenState: { opened: true },
-      lastSuccessfulRenderedCheckAt: "2026-07-17T00:00:00Z",
       selectedScope: "all",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
-      latestSchedulerState: { activePrNumbers: [123, 456] },
     });
 
     expect(meta.textContent).toBe("Applied filters: repo=org/repo");
@@ -87,38 +65,16 @@ describe("pr render apply helpers", () => {
     expect(renderExportFieldCatalog).toHaveBeenCalledWith(payload);
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
-    expect(clearElementContents).toHaveBeenCalledWith(sectionsHost);
-    expect(buildSmartGroupConfigs).toHaveBeenCalledWith({
-      flaggedByRepo: {},
-      inReviewByRepo: {},
-      repo: "org/repo",
-    });
-    expect(applySmartGroups).toHaveBeenCalledWith([{ id: 2 }], [
-      { groupKey: "flagged", predicate: expect.any(Function) },
-      { groupKey: "in-review", predicate: expect.any(Function) },
-    ]);
-    expect(buildPrSectionConfigs).toHaveBeenCalledWith({
-      grouped: { opened: [{ id: 1 }] },
-      smartGroups: {},
-      prSectionOpenState: { opened: true },
-      lastCheckedAt: "2026-07-17T00:00:00Z",
-      actorsMapFromPayload: payload.actorsMap,
-    });
-    expect(appendPrSections).toHaveBeenCalledWith(sectionsHost, [{ id: "section-1" }]);
     expect(buildMergedRequestMoreActionOptions).toHaveBeenCalledWith({
       selectedScope: "all",
       repoFilter: "org/repo",
       lastRunRepo: "org/repo",
       latestSelectedRepo: "org/repo",
     });
+    expect(clearElementContents).toHaveBeenCalledWith(mergedRequestMoreHost);
     expect(appendMergedRequestMoreAction).toHaveBeenCalledWith(mergedRequestMoreHost, {
       enabled: true,
     });
-    expect(restoreInsightsViewState).toHaveBeenCalledWith(sectionsHost, {
-      expanded: ["1"],
-    });
-    expect(applyActivePrProgressIndicators).toHaveBeenCalledWith([123, 456]);
-    expect(recomputeDirtyPrSectionsFields).toHaveBeenCalled();
     expect(computePrDataFingerprint).toHaveBeenCalledWith(payload);
     expect(computePrDataManifest).not.toHaveBeenCalled();
     expect(result).toEqual({
@@ -129,24 +85,16 @@ describe("pr render apply helpers", () => {
     });
   });
 
-  test("given missing payload fields and scheduler state, when applying render results, then fallback values are used", () => {
+  test("given missing payload fields, when applying render results, then fallback values are used", () => {
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
-    const applyActivePrProgressIndicators = jest.fn();
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary: () => {},
       renderExportFieldCatalog: () => {},
       renderAuthorInsights: () => {},
       renderStatsView: () => {},
       clearElementContents: () => {},
-      buildPrSectionConfigs: () => [],
-      buildSmartGroupConfigs: () => [],
-      applySmartGroups: () => ({}),
-      appendPrSections: () => {},
       buildMergedRequestMoreActionOptions: () => ({}),
       appendMergedRequestMoreAction: () => {},
-      restoreInsightsViewState: () => {},
-      applyActivePrProgressIndicators,
-      recomputeDirtyPrSectionsFields: () => {},
       computePrDataFingerprint: () => "",
       computePrDataManifest,
     });
@@ -156,12 +104,72 @@ describe("pr render apply helpers", () => {
       allStoredRows: [],
       sectionsHost: {},
       meta: {},
-      grouped: {},
     });
 
-    expect(applyActivePrProgressIndicators).toHaveBeenCalledWith([]);
     expect(computePrDataManifest).toHaveBeenCalledWith({});
     expect(result.latestPrManifest).toEqual({ fallback: true });
+  });
+
+  test("given the author insights and stats tab panels are both hidden, when applying render results, then their renders are skipped", () => {
+    const renderAuthorInsights = jest.fn();
+    const renderStatsView = jest.fn();
+    const panelsById = {
+      "tab-panel-author-insights": { hidden: true },
+      "tab-panel-review-stats": { hidden: true },
+    };
+    const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
+
+    const { applyRenderResults } = createPrRenderApplyHelpers({
+      renderAuthorInsights,
+      renderStatsView,
+      getOptionalElementById,
+    });
+
+    applyRenderResults({
+      payload: { actorsMap: {} },
+      allStoredRows: [{ id: 1 }],
+      sectionsHost: {},
+      meta: {},
+    });
+
+    expect(renderAuthorInsights).not.toHaveBeenCalled();
+    expect(renderStatsView).not.toHaveBeenCalled();
+  });
+
+  test("given a hidden tab panel becomes visible, when its catch-up render is triggered, then it renders with the most recently applied rows", () => {
+    const renderAuthorInsights = jest.fn();
+    const renderStatsView = jest.fn();
+    const panelsById = {
+      "tab-panel-author-insights": { hidden: true },
+      "tab-panel-review-stats": { hidden: true },
+    };
+    const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
+
+    const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisible } =
+      createPrRenderApplyHelpers({
+        renderAuthorInsights,
+        renderStatsView,
+        getOptionalElementById,
+      });
+
+    const actorsMap = { user1: { displayName: "User One" } };
+    applyRenderResults({
+      payload: { actorsMap },
+      allStoredRows: [{ id: 1 }],
+      sectionsHost: {},
+      meta: {},
+    });
+    expect(renderAuthorInsights).not.toHaveBeenCalled();
+    expect(renderStatsView).not.toHaveBeenCalled();
+
+    panelsById["tab-panel-author-insights"].hidden = false;
+    renderAuthorInsightsIfVisible();
+    expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
+    expect(renderStatsView).not.toHaveBeenCalled();
+
+    panelsById["tab-panel-review-stats"].hidden = false;
+    renderStatsViewIfVisible();
+    expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
   });
 
   test("given missing dependencies, when applying render results, then safe defaults are returned without throwing", () => {

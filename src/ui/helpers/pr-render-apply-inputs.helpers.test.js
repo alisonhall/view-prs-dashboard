@@ -17,34 +17,22 @@ describe("pr render apply inputs helpers", () => {
       meta: { textContent: "" },
       appliedSummaryText: "Applied",
       filterChips: ["repo=org/repo"],
-      grouped: { opened: [{ id: 1 }] },
-      prSectionOpenState: { opened: true },
-      lastSuccessfulRenderedCheckAt: "2026-07-17T00:00:00Z",
       selectedScope: "last-run",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
-      latestSchedulerState: { activePrNumbers: [123] },
-      skipTableRender: true,
     });
 
     expect(result).toEqual({
       payload,
       allStoredRows: [{ id: 1 }],
       filteredRows: [{ id: 1 }],
-      skipTableRender: true,
       sectionsHost: { id: "host" },
       meta: { textContent: "" },
       appliedSummaryText: "Applied",
       filterChips: ["repo=org/repo"],
-      grouped: { opened: [{ id: 1 }] },
-      prSectionOpenState: { opened: true },
-      lastSuccessfulRenderedCheckAt: "2026-07-17T00:00:00Z",
       selectedScope: "last-run",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
-      latestSchedulerState: { activePrNumbers: [123] },
     });
   });
 
@@ -59,34 +47,22 @@ describe("pr render apply inputs helpers", () => {
       meta: 2,
       appliedSummaryText: null,
       filterChips: null,
-      grouped: null,
-      prSectionOpenState: null,
-      lastSuccessfulRenderedCheckAt: null,
       selectedScope: null,
       repoFilter: null,
       latestSelectedRepo: null,
-      insightsViewState: null,
-      latestSchedulerState: null,
-      skipTableRender: null,
     });
 
     expect(result).toEqual({
       payload: null,
       allStoredRows: [],
       filteredRows: [],
-      skipTableRender: false,
       sectionsHost: null,
       meta: null,
       appliedSummaryText: "",
       filterChips: [],
-      grouped: {},
-      prSectionOpenState: {},
-      lastSuccessfulRenderedCheckAt: "",
       selectedScope: "all",
       repoFilter: "",
       latestSelectedRepo: "",
-      insightsViewState: {},
-      latestSchedulerState: {},
     });
   });
 });

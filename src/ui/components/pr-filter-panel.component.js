@@ -33,9 +33,19 @@
     // test, which doesn't pass this) falls back to its original DOM read
     // unchanged.
     getFilterStateValue,
+    // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+    // optional shared per-entry derived-value cache (see
+    // pr-entry-derived-cache.helpers.js) - defaults to an uncached
+    // passthrough so every existing call site/unit test keeps working
+    // unmodified. When provided, label/assignee/approver extraction for
+    // an unchanged entry (same object reference across renders) is reused
+    // instead of recomputed.
+    getOrCompute,
   } = {}) => {
     const getFilterStateValueSafe =
       typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
+    const getOrComputeSafe =
+      typeof getOrCompute === "function" ? getOrCompute : (_entry, _key, compute) => compute();
     // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): when
     // provided, `renderMultiSelectList(listId, items)` renders the
     // checkbox items for a multi-select list (items: [{value, label,
@@ -60,6 +70,17 @@
       typeof collectApproversFromRow === "function" ? collectApproversFromRow : () => [];
     const extractRowLabelNamesSafe =
       typeof extractRowLabelNames === "function" ? extractRowLabelNames : () => [];
+    // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+    // cached per-entry (not per-row) since an entry's own object identity
+    // is what's stable across renders (see pr-entry-derived-cache.helpers.js) -
+    // these three keep their original xxxSafe(row) call sites below
+    // untouched, wrapped one level up here instead.
+    const extractRowLabelNamesForEntry = (entry) =>
+      getOrComputeSafe(entry, "labels", () => extractRowLabelNamesSafe(entry?.data || {}));
+    const collectAssignedUsersForEntry = (entry) =>
+      getOrComputeSafe(entry, "assignedUsers", () => collectAssignedUsersSafe(entry?.data || {}));
+    const collectApproversForEntry = (entry) =>
+      getOrComputeSafe(entry, "approvers", () => collectApproversFromRowSafe(entry?.data || {}));
     const normalizeFilterTokenSafe =
       typeof normalizeFilterToken === "function"
         ? normalizeFilterToken
@@ -199,7 +220,7 @@
 
       entries.forEach((entry) => {
         if (repoFilter && entry?.repo !== repoFilter) return;
-        extractRowLabelNamesSafe(entry?.data || {}).forEach((labelName) => {
+        extractRowLabelNamesForEntry(entry).forEach((labelName) => {
           const normalizedToken = normalizeFilterTokenSafe(labelName);
           if (!normalizedToken || labelsByToken.has(normalizedToken)) return;
           labelsByToken.set(normalizedToken, labelName);
@@ -449,8 +470,7 @@
       for (const entry of entries) {
         if (repoFilter && entry?.repo !== repoFilter) continue;
 
-        const row = entry?.data || {};
-        const rowAssignees = collectAssignedUsersSafe(row);
+        const rowAssignees = collectAssignedUsersForEntry(entry);
         rowAssignees.forEach((assignee) => {
           const login = String(assignee?.login || "").trim();
           if (!login) return;
@@ -536,8 +556,7 @@
       for (const entry of entries) {
         if (repoFilter && entry?.repo !== repoFilter) continue;
 
-        const row = entry?.data || {};
-        collectApproversFromRowSafe(row).forEach((approver) => {
+        collectApproversForEntry(entry).forEach((approver) => {
           const login = String(approver?.login || "").trim();
           if (!login) return;
           if (!approvers.has(login)) {

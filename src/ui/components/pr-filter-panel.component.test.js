@@ -101,4 +101,30 @@ describe("pr filter panel component", () => {
     expect(checkedValues).toEqual(["author-b"]);
     expect(pendingState.authors).toBeNull();
   });
+
+  test("given a getOrCompute cache, when populating include labels twice for the same entries, then label extraction is only computed once per entry", () => {
+    const extractRowLabelNames = jest.fn((row) => row.labels || []);
+    const cache = new Map();
+    const getOrCompute = (entry, cacheKey, compute) => {
+      const key = `${entry.repo}:${entry.data.number}:${cacheKey}`;
+      if (!cache.has(key)) {
+        cache.set(key, compute());
+      }
+      return cache.get(key);
+    };
+    const component = createPrFilterPanelComponent({
+      extractRowLabelNames,
+      getOrCompute,
+      documentRef: document,
+    });
+    const entries = [
+      { repo: "owner/repo", data: { number: "1", labels: ["frontend"] } },
+      { repo: "owner/repo", data: { number: "2", labels: ["backend"] } },
+    ];
+
+    component.populateIncludeLabelOptions(entries, "owner/repo");
+    component.populateIncludeLabelOptions(entries, "owner/repo");
+
+    expect(extractRowLabelNames).toHaveBeenCalledTimes(2);
+  });
 });
