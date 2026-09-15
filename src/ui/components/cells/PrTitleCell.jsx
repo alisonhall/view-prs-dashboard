@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { CopyIconButton } from '../CopyIconButton';
 
 const LIFECYCLE_BADGES = {
   open: { text: 'Open', className: 'lifecycle-badge-open' },
@@ -15,18 +16,32 @@ const LIFECYCLE_BADGES = {
   merged: { text: 'Merged', className: 'lifecycle-badge-merged' },
 };
 
-export function PrTitleCell({ pr, sectionKey, isSmartGroup, lifecycleSection, isExpanded, onToggleInsights }) {
+export function PrTitleCell({ pr, repo, sectionKey, isSmartGroup, lifecycleSection, isExpanded, onToggleInsights }) {
   const formatTitleWithIcons = window.formatTitleWithIcons || ((_titleDisplay, title) => String(title || ''));
   const countPendingThreadComments = window.countPendingThreadComments || (() => 0);
+  const escapeHtml = window.escapeHtml || ((value) => String(value ?? ''));
 
   const badgeConfig = isSmartGroup ? LIFECYCLE_BADGES[String(lifecycleSection || '').toLowerCase()] : null;
   const targetBranch = String(pr?.targetBranch || '').trim();
   const pendingCommentCount = countPendingThreadComments(pr);
 
+  const prNumber = pr?.number || '';
+  const prTitle = String(pr?.title || '').trim();
+  const prUrl = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
+  const copyPlainText = prTitle ? `${prTitle} #${prNumber}` : '';
+  const copyHtmlText = prTitle
+    ? `${escapeHtml(prTitle)} <a href="${escapeHtml(prUrl)}">#${escapeHtml(String(prNumber))}</a>`
+    : '';
+
   return (
     <td className="title-cell">
       <div className="title-text">
         {formatTitleWithIcons(pr?.titleDisplay, pr?.title)}
+        <CopyIconButton
+          text={copyPlainText}
+          html={copyHtmlText}
+          label="Copy PR title and link"
+        />
         {badgeConfig && (
           <>
             {' '}

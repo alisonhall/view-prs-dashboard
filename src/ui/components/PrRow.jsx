@@ -77,6 +77,7 @@ export const PrRow = memo(function PrRow({
         <PrApprovedCell pr={pr} actorsMap={actorsMap} />
         <PrTitleCell
           pr={pr}
+          repo={repo}
           sectionKey={sectionKey}
           isSmartGroup={isSmartGroup}
           lifecycleSection={lifecycleSection}

@@ -7617,6 +7617,7 @@ const initPage = () => {
     getManualNotesFieldSummary,
     buildPrLastCheckedIndicator,
     countPendingThreadComments,
+    escapeHtml,
     getViewedFilesState,
     getViewedFilesSummary,
     getSelectedPrNumbers,
