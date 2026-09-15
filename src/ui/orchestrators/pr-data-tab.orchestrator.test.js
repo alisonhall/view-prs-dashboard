@@ -200,6 +200,24 @@ describe("PR Data Tab Orchestrator", () => {
       );
     });
 
+    // Regression test: renderPrData used to return only { filteredRows },
+    // so a caller invoked with an empty/no selectedRepo (e.g. index.page.js's
+    // initial page-load render) had no way to learn the repo this pipeline
+    // actually resolved against (deriveRunPrDataContext's repoFilter, which
+    // falls back through the #repo input value / lastRun.repo when
+    // selectedRepo is blank) - the caller kept using its own blank
+    // selectedRepo for the React table's `selectedRepo` prop, which
+    // resolved a DIFFERENT effective repo (via its own lastRun.repo
+    // fallback) than the one filteredRows was actually filtered against,
+    // filtering every row out silently.
+    test("When renderPrData called with a blank selectedRepo, Then the returned repoFilter reflects what deriveRunPrDataContext actually resolved (not the blank input)", () => {
+      const mockPayload = { entries: [], meta: {} };
+
+      const result = orchestrator.renderPrData(mockPayload, "");
+
+      expect(result.repoFilter).toBe("test-repo");
+    });
+
     test("When renderPrData called, Then state setters called with correct values", () => {
       // Arrange
       const mockPayload = { entries: [], meta: {} };

@@ -6512,17 +6512,33 @@ const renderPrTableMountError = () => {
     '<p class="pr-table-mount-error">Failed to load the PR table. Please refresh the page.</p>';
 };
 
+// Applies the render pipeline's actually-resolved repo (payload.repo ||
+// #repo input value || lastRun.repo - see deriveRepoRunContext) to
+// latestSelectedRepo/the label-refresh trigger. Pulled out of renderPrData
+// so both the React and non-React-yet branches (which each separately call
+// prDataTabOrchestrator.renderPrData) apply it identically, instead of only
+// the caller-supplied `selectedRepo` (frequently empty - e.g. the initial
+// page-load render passes ""), which is what let latestSelectedRepo/the
+// React table's own selectedRepo prop stay empty indefinitely, silently
+// falling back to lastRun.repo (whichever repo the background scheduler
+// most recently refreshed - not necessarily the user's configured repo)
+// while the just-computed visiblePrNumbers filter still reflected the
+// correct repo, filtering every row out.
+const applyResolvedRepo = (resolvedRepo) => {
+  if (!resolvedRepo) {
+    return;
+  }
+  latestSelectedRepo = resolvedRepo;
+  if (shouldRefetchLabelsForRepo({ repo: resolvedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
+    labelsFetchedForRepo = resolvedRepo;
+    void refreshAvailableRepoLabels(resolvedRepo);
+  }
+};
+
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // Update global state
   if (payload) {
     latestStoredPayload = payload;
-  }
-  if (selectedRepo) {
-    latestSelectedRepo = selectedRepo;
-    if (shouldRefetchLabelsForRepo({ repo: selectedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
-      labelsFetchedForRepo = selectedRepo;
-      void refreshAvailableRepoLabels(selectedRepo);
-    }
   }
 
   // Get container element
@@ -6553,10 +6569,11 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     // distinct from the "mount failed"/"callbacks failed" branches
     // further down, which stay as genuine vanilla-fallback recovery for a
     // real React failure, not this race.
-    prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
+    const preReactRenderResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
       ...options,
       skipTableRender: true,
     });
+    applyResolvedRepo(preReactRenderResult?.repoFilter || selectedRepo);
     return;
   }
 
@@ -6590,6 +6607,8 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     ...options,
     skipTableRender: true,
   });
+  const resolvedRepo = renderPipelineResult?.repoFilter || selectedRepo || latestSelectedRepo || '';
+  applyResolvedRepo(resolvedRepo);
   // The filtered set the vanilla pipeline just computed (scope, PR-number,
   // label, author, assigned, approver filters) - React must be told which
   // PR numbers passed, or it falls back to showing every stored PR for the
@@ -6605,7 +6624,7 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     // Already mounted: just update data
     window.ReactMountBridge.update(
       latestStoredPayload || payload,
-      latestSelectedRepo || selectedRepo,
+      resolvedRepo,
       visiblePrNumbers
     );
     return;
@@ -6625,7 +6644,7 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     container,
     {
       payload: latestStoredPayload || payload || {},
-      selectedRepo: latestSelectedRepo || selectedRepo || '',
+      selectedRepo: resolvedRepo,
       visiblePrNumbers,
     },
     {

@@ -167,8 +167,18 @@
       // Returned so the React rendering path (see index.page.js) can
       // restrict what it renders to the same filtered set this pipeline
       // just computed, instead of showing every stored PR regardless of
-      // the active local filters.
-      return { filteredRows: committedRenderState.filteredRows || [] };
+      // the active local filters. `repoFilter` is the actually-resolved
+      // repo this pipeline filtered against (payload.repo || #repo input
+      // value || lastRun.repo - see deriveRepoRunContext) - callers that
+      // invoked this with an empty/no selectedRepo (e.g. the initial
+      // page-load render) still need the REAL resolved repo to pass to the
+      // React table, or its own independent effectiveRepo fallback can
+      // resolve to a different repo than the one filteredRows was computed
+      // against, filtering every row out.
+      return {
+        filteredRows: committedRenderState.filteredRows || [],
+        repoFilter: runContext.repoFilter || "",
+      };
     }
 
     /**
