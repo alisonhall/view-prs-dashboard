@@ -178,7 +178,7 @@ Options:
       --jobs <number>          Parallel workers for API prefetch (default: 6)
       --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
       --ack-clear <numbers>    Clear acknowledgment for PR number(s)
-      --in-review <numbers>    Mark PR number(s) as in-review (forces NO_CHANGE -> CHANGED)
+      --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
       --in-review-clear <numbers> Clear in-review toggle for PR number(s)
       --flagged <numbers>      Mark PR number(s) as flagged
       --flagged-clear <numbers> Clear flagged toggle for PR number(s)

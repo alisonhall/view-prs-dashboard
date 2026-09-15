@@ -249,14 +249,10 @@ export function PrTableApp({
   // Helper: Check if PR needs attention
   const checkNeedsAttention = useMemo(() => {
     return (entry) => {
-      // Matches vanilla's attention-cell condition
-      // (components/pr-section-table.component.js, before it was deleted -
-      // see REACT_MIGRATION_PLAN.md): needs-attention shows for either of
-      // two independent reasons, not just one.
-      if (typeof window.isInReviewEnabled === 'function' && window.isInReviewEnabled(entry?.data)) {
-        return true;
-      }
-
+      // The "In Review" checkbox is a manual, user-set flag (see
+      // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
+      // NOT feed into needs-attention - it's independent of whether the PR
+      // actually has unreviewed activity per shouldShowNeedsAttention below.
       if (typeof window.entryNeedsAttention !== 'function') {
         return false;
       }
@@ -434,9 +430,10 @@ export function PrTableApp({
       lifecycleSection: config.sectionKey,
       dateHeader: config.dateHeader,
       defaultOpen: config.isOpen,
-      // Section header counts use the narrower shouldShowNeedsAttention (not
-      // entryNeedsAttention, which also ORs in isInReviewEnabled) to match
-      // vanilla's pr-section-shell.helpers.js exactly.
+      // Section header counts use shouldShowNeedsAttention directly (same
+      // status/pending-comments logic checkNeedsAttention above delegates
+      // to via entryNeedsAttention), so the header count always matches
+      // however many rows in this section actually show the attention icon.
       attentionCount: (config.rows || []).filter((entry) => {
         const row = entry?.data || {};
         const hasPendingComments = (window.countPendingThreadComments?.(row) || 0) > 0;

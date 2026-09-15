@@ -2240,7 +2240,7 @@ describe("index page rendering with Testing Library", () => {
     expect(icons[1]?.getAttribute("title")).toBe("PR was flagged");
   });
 
-  test("given a PR that is both in-review and flagged, when rows render, then attention and flag icons are both shown with flag below attention", async () => {
+  test("given a PR that is in-review (but otherwise NO_CHANGE) and flagged, when rows render, then only the flag icon is shown, not attention", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -2272,16 +2272,23 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getAllByText("#202").length).toBeGreaterThan(0);
     });
 
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): this PR now correctly needs
-    // attention (in-review row, matching vanilla's attention-cell condition
-    // - see PrTableApp.jsx's checkNeedsAttention), so it appears twice: once
-    // in its "open" lifecycle section, once in the "Needs Attention" smart
-    // group - both render the same row content, so either match works.
-    const row = screen.getAllByText("#202")[0].closest("tr");
-    const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
+    // Regression test: the "In Review" checkbox must not make a PR count as
+    // needing attention - it's a separate, manually-set flag (see
+    // isInReviewEnabled/AlwaysShowInReviewCheckbox), independent of whether
+    // the PR actually has unreviewed activity (checkNeedsAttention in
+    // PrTableApp.jsx delegates to window.entryNeedsAttention only). This
+    // row's status is NO_CHANGE ("open-in-review" fixture), so only the
+    // flag icon should render on every rendered copy of the row - it still
+    // appears in both its "open" lifecycle section and the (unrelated) "In
+    // Review" smart group, since that group is keyed off inReview directly.
+    const rows = screen.getAllByText("#202").map((link) => link.closest("tr"));
+    expect(rows.length).toBeGreaterThan(0);
 
-    expect(icons.map((node) => node.textContent)).toEqual(["⚠️", "🚩"]);
-    expect(icons[1]?.getAttribute("title")).toBe("PR was flagged");
+    rows.forEach((row) => {
+      const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
+      expect(icons.map((node) => node.textContent)).toEqual(["🚩"]);
+      expect(icons[0]?.getAttribute("title")).toBe("PR was flagged");
+    });
   });
 
   test("scheduler polling toggles active PR progress indicators without row rerender", async () => {

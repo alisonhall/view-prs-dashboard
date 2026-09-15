@@ -448,7 +448,8 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
   - Purpose: High-priority PRs needing immediate attention
   - Shows: Open, Draft, and Merged PRs (excludes Closed PRs)
   - Uses the SAME logic as the existing needs attention flag/icon shown in PR rows
-  - Respects your custom "Needs Attention" configuration (CHANGED status, pending comments, in-review flag, no activity, etc.)
+  - Respects your custom "Needs Attention" configuration (CHANGED status, pending comments, no activity, etc.)
+  - Independent of the `In Review` flag/checkbox - marking a PR in-review does not, by itself, make it need attention or affect its `STATUS`; it only controls membership in the `In Review` smart group above and the row's `In Review` checkbox state
   - Configuration controlled via `user-defaults.json` (see "Needs Attention Configuration" section below)
   - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
@@ -1013,7 +1014,7 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - `--ack <numbers>`: mark one or more PRs as acknowledged
   - supports comma-separated (`--ack 912,921`) or repeated flags (`--ack 912 --ack 921`)
 - `--ack-clear <numbers>`: clear ack for one or more PRs
-- `--in-review <numbers>`: mark one or more PRs as in-review
+- `--in-review <numbers>`: mark one or more PRs as in-review (a manual, UI-only flag - it controls the `In Review` smart group and row checkbox state, and does not change `STATUS` or the Needs Attention icon)
 - `--in-review-clear <numbers>`: clear in-review toggle for one or more PRs
 - `--flagged <numbers>`: mark one or more PRs as flagged
 - `--flagged-clear <numbers>`: clear flagged toggle for one or more PRs
@@ -1083,7 +1084,7 @@ Additional notes:
     --jobs <number>          Parallel workers for API prefetch (default: 6)
     --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
     --ack-clear <numbers>    Clear acknowledgment for PR number(s)
-  --in-review <numbers>    Mark PR number(s) as in-review (forces NO_CHANGE -> CHANGED)
+  --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
   --in-review-clear <numbers> Clear in-review toggle for PR number(s)
   --flagged <numbers>      Mark PR number(s) as flagged
   --flagged-clear <numbers> Clear flagged toggle for PR number(s)
@@ -1142,7 +1143,7 @@ Additional notes:
 # Lightweight clear-only update (no PR fetch)
 ./run-prs --ack-clear 912 --ack-only
 
-# Mark a PR in-review (forces NO_CHANGE -> CHANGED)
+# Mark a PR in-review (UI-only flag; does not change STATUS)
 ./run-prs --in-review 923 --ack-only
 
 # Clear in-review for a PR

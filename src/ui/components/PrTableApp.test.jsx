@@ -321,15 +321,43 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(true);
   });
 
-  test('given window.isInReviewEnabled(entry.data) is true but window.entryNeedsAttention is false, when smart groups are built, then the entry still counts as needing attention', () => {
-    // Regression test: checkNeedsAttention used to only check
-    // window.entryNeedsAttention, dropping the "in review" OR-branch that
-    // pr-section-table.component.js's vanilla predecessor had (needs
-    // attention == entryNeedsAttention() OR isInReviewEnabled()). Fixed by
-    // OR-ing in window.isInReviewEnabled(entry?.data) first.
+  test('given window.isInReviewEnabled(entry.data) is true but window.entryNeedsAttention is false, when smart groups are built, then the entry does NOT count as needing attention', () => {
+    // Regression test: checkNeedsAttention previously OR'd in
+    // window.isInReviewEnabled(entry?.data), so manually checking the "In
+    // Review" checkbox on a PR made it show the Needs Attention icon and
+    // join the Needs Attention smart group even with no actual unreviewed
+    // activity (entryNeedsAttention false). "In Review" is a separate,
+    // manually-set flag (see isInReviewEnabled/AlwaysShowInReviewCheckbox)
+    // and must stay independent of needs-attention - checkNeedsAttention
+    // should delegate to window.entryNeedsAttention only.
     window.entryNeedsAttention = () => false;
     window.getNeedsAttentionConfig = () => ({});
     window.isInReviewEnabled = (data) => data?.number === '1';
+    window.ViewPrsSmartGroupsHelpers = {
+      createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: (allEntries) => ({
+          needsAttention: {
+            title: 'Needs Attention',
+            defaultOpen: true,
+            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+          },
+        }),
+      }),
+    };
+
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+    expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
+  });
+
+  test('given window.isInReviewEnabled(entry.data) is false but window.entryNeedsAttention is true, when smart groups are built, then the entry still counts as needing attention', () => {
+    // Positive control for the regression test above: removing the
+    // isInReviewEnabled OR must not also break the real attention signal.
+    window.entryNeedsAttention = () => true;
+    window.getNeedsAttentionConfig = () => ({});
+    window.isInReviewEnabled = () => false;
     window.ViewPrsSmartGroupsHelpers = {
       createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
         buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
