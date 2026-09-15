@@ -28,16 +28,18 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
   const assigneeLogins = new Set(
     assignees.map((assignee) => String(assignee?.login || '').trim().toLowerCase()).filter(Boolean),
   );
-  // Show a badge for every assignee, plus any requested reviewer who isn't
-  // already an assignee - so the reviewer indicator is visible even for
-  // people who are reviewing but not assigned.
-  const badgeUsers = [
-    ...assignees,
-    ...reviewers.filter((reviewer) => {
-      const login = String(reviewer?.login || '').trim().toLowerCase();
-      return login && !assigneeLogins.has(login);
-    }),
-  ];
+  // Only assignees get a badge - a badge per requested reviewer took up too
+  // much space on PRs with a lot of reviewers. The one exception: if the
+  // viewer themselves is a requested reviewer but not an assignee, still
+  // show a single badge for just them, so there's still a way to tell "I'm
+  // reviewing this" from this column without listing every reviewer.
+  const viewerReviewerOnly =
+    currentViewerLogin && reviewerLogins.has(currentViewerLogin) && !assigneeLogins.has(currentViewerLogin)
+      ? reviewers.find(
+          (reviewer) => String(reviewer?.login || '').trim().toLowerCase() === currentViewerLogin,
+        )
+      : null;
+  const badgeUsers = viewerReviewerOnly ? [...assignees, viewerReviewerOnly] : assignees;
 
   const conversationResult = getOpenConversationCountWithMe(pr);
   const openConversationCount = toCount(conversationResult?.count);
@@ -49,7 +51,7 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
       </div>
 
       {badgeUsers.length > 0 && (
-        <div className="approved-assigned-badges" title="Assigned users and reviewers">
+        <div className="approved-assigned-badges" title="Assigned users">
           {badgeUsers.map((badgeUser) => {
             const login = String(badgeUser?.login || '').trim();
             if (!login) return null;

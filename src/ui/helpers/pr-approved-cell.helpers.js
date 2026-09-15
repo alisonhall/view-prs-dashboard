@@ -74,30 +74,32 @@
           .map((assignee) => String(assignee?.login || "").trim().toLowerCase())
           .filter(Boolean),
       );
-      // Show a badge for every assignee, plus any requested reviewer who
-      // isn't already an assignee - so the reviewer indicator is visible
-      // even for people who are reviewing but not assigned.
-      const badgeUsers = [
-        ...assignees,
-        ...reviewers.filter((reviewer) => {
-          const login = String(reviewer?.login || "").trim().toLowerCase();
-          return login && !assigneeLogins.has(login);
-        }),
-      ];
+      const currentViewerLogin = String(getCurrentViewerLoginSafe() || "")
+        .trim()
+        .toLowerCase();
+      const reviewerLogins = new Set(
+        reviewers
+          .map((reviewer) => String(reviewer?.login || "").trim().toLowerCase())
+          .filter(Boolean),
+      );
+      // Only assignees get a badge - a badge per requested reviewer took up
+      // too much space on PRs with a lot of reviewers. The one exception: if
+      // the viewer themselves is a requested reviewer but not an assignee,
+      // still show a single badge for just them, so there's still a way to
+      // tell "I'm reviewing this" from this column without listing every
+      // reviewer.
+      const viewerReviewerOnly =
+        currentViewerLogin && reviewerLogins.has(currentViewerLogin) && !assigneeLogins.has(currentViewerLogin)
+          ? reviewers.find(
+              (reviewer) => String(reviewer?.login || "").trim().toLowerCase() === currentViewerLogin,
+            )
+          : null;
+      const badgeUsers = viewerReviewerOnly ? [...assignees, viewerReviewerOnly] : assignees;
 
       if (badgeUsers.length > 0) {
         const badges = doc.createElement("div");
         badges.className = "approved-assigned-badges";
-        badges.title = "Assigned users and reviewers";
-
-        const currentViewerLogin = String(getCurrentViewerLoginSafe() || "")
-          .trim()
-          .toLowerCase();
-        const reviewerLogins = new Set(
-          reviewers
-            .map((reviewer) => String(reviewer?.login || "").trim().toLowerCase())
-            .filter(Boolean),
-        );
+        badges.title = "Assigned users";
 
         badgeUsers.forEach((badgeUser) => {
           const login = String(badgeUser?.login || "").trim();

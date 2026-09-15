@@ -111,7 +111,10 @@ describe('PrApprovedCell', () => {
     expect(badge).toHaveAttribute('title', 'The Octocat');
   });
 
-  test('given a requested reviewer who is not assigned, when rendering, then a badge still shows for them with the -reviewer class', () => {
+  // Regression guard for the fix: badges are for assignees only now (a
+  // badge per requested reviewer took up too much space) - a non-viewer
+  // reviewer who isn't assigned must NOT get a badge.
+  test('given a requested reviewer who is not assigned and is not the viewer, when rendering, then no badge is shown at all', () => {
     window.collectAssignedUsers = () => [];
     window.collectRequestedReviewers = () => [{ login: 'reviewer-only', name: 'Reviewer Only' }];
     window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
@@ -125,17 +128,11 @@ describe('PrApprovedCell', () => {
         </tbody>
       </table>,
     );
-    const badge = screen.getByText('RE');
-    expect(badge).toHaveClass(
-      'approved-assigned-badge',
-      'approved-assigned-badge-reviewer',
-      'approved-assigned-badge-reviewer-only',
-    );
-    expect(badge).not.toHaveClass('approved-assigned-badge-me');
-    expect(badge).toHaveAttribute('title', 'Reviewer Only (reviewer) (not assigned)');
+    expect(document.querySelector('.approved-assigned-badge')).not.toBeInTheDocument();
+    expect(document.querySelector('.approved-assigned-badges')).not.toBeInTheDocument();
   });
 
-  test('given assignees and a separate non-assigned reviewer, when rendering, then both badges are shown', () => {
+  test('given assignees and a separate non-viewer non-assigned reviewer, when rendering, then only the assignee badge is shown', () => {
     window.collectAssignedUsers = () => [{ login: 'assignee-only', name: 'Assignee Only' }];
     window.collectRequestedReviewers = () => [{ login: 'reviewer-only', name: 'Reviewer Only' }];
     window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
@@ -149,11 +146,37 @@ describe('PrApprovedCell', () => {
         </tbody>
       </table>,
     );
+    expect(document.querySelectorAll('.approved-assigned-badge')).toHaveLength(1);
+    expect(screen.getByText('AS')).toBeInTheDocument();
+    expect(screen.queryByText('RE')).not.toBeInTheDocument();
+  });
+
+  // The one exception to "assignees only": the viewer themselves, so
+  // there's still a way to tell "I'm reviewing this" without listing every
+  // reviewer.
+  test('given the viewer is a requested reviewer but not assigned, when rendering, then a badge still shows for just the viewer (not other reviewers)', () => {
+    window.collectAssignedUsers = () => [{ login: 'assignee-only', name: 'Assignee Only' }];
+    window.collectRequestedReviewers = () => [
+      { login: 'viewer', name: 'Viewer Name' },
+      { login: 'other-reviewer', name: 'Other Reviewer' },
+    ];
+    window.getEffectiveViewerLogin = () => 'viewer';
+    window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
+    window.getUserInitials = (name) => name.slice(0, 2).toUpperCase();
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <PrApprovedCell pr={{}} />
+          </tr>
+        </tbody>
+      </table>,
+    );
     expect(document.querySelectorAll('.approved-assigned-badge')).toHaveLength(2);
-    const assigneeBadge = screen.getByText('AS');
-    const reviewerBadge = screen.getByText('RE');
-    expect(assigneeBadge).not.toHaveClass('approved-assigned-badge-reviewer', 'approved-assigned-badge-reviewer-only');
-    expect(reviewerBadge).toHaveClass('approved-assigned-badge-reviewer', 'approved-assigned-badge-reviewer-only');
+    const viewerBadge = screen.getByText('VI');
+    expect(viewerBadge).toHaveClass('approved-assigned-badge-me', 'approved-assigned-badge-reviewer-only');
+    expect(viewerBadge).toHaveAttribute('title', 'Viewer Name (you) (reviewer) (not assigned)');
+    expect(screen.queryByText('OT')).not.toBeInTheDocument();
   });
 
   test('given open conversations with the viewer, when rendering, then shows the "with me" detail', () => {
