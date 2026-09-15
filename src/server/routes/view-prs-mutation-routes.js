@@ -29,6 +29,8 @@ const registerViewPrsMutationRoutes = ({
   listMergedPrCandidates,
   listRepoLabels,
   applyLabelToPr,
+  fetchGithubPrLabels,
+  patchStoredPrLabels,
 }) => {
   const { sendRouteResult } = createViewPrsRouteResponseHelpers();
   const {
@@ -476,23 +478,38 @@ const registerViewPrsMutationRoutes = ({
         }
       }
 
-      const runScript = createAckScriptRunner({
-        callRunViewPrsScript,
-        viewPrsAckScriptTimeoutMs,
-      });
+      // Patch just the authoritative label set directly into stored data
+      // instead of running a full check-open-pr-updates.sh --pr <n> refresh
+      // (runAckRefreshes' approach for /ack): a full refresh also re-fetches
+      // comments, reviews, file diffs, and review threads, which can take
+      // minutes for a PR with a lot of history - especially merged PRs -
+      // leaving the just-applied label invisible in the UI until whatever
+      // refresh eventually completes (or the next scheduled auto-refresh).
+      // fetchGithubPrLabels/patchStoredPrLabels are each a single small `gh`
+      // call and a targeted file patch, so this stays fast regardless of a
+      // PR's size or history.
+      const refreshedPrs = [];
+      const refreshErrors = [];
 
-      const { refreshedPrs, refreshErrors } =
-        appliedPrs.length > 0
-          ? await runAckRefreshes({
-              refreshList: appliedPrs,
-              effectiveRepo: repo,
-              viewPrsRunScriptRelativePath,
-              runScript,
-              viewPrsAckRefreshScriptTimeoutMs,
-              viewPrsAckTotalRefreshTimeoutMs,
-              buildAckRefreshBudgetSkipErrors,
-            })
-          : { refreshedPrs: [], refreshErrors: [] };
+      for (const prNumber of appliedPrs) {
+        try {
+          const labels = await fetchGithubPrLabels({ repo, prNumber });
+          const patched = await patchStoredPrLabels({ repo, prNumber, labels });
+          if (patched) {
+            refreshedPrs.push(prNumber);
+          } else {
+            refreshErrors.push({
+              prNumber,
+              error: "No matching stored PR entry to update",
+            });
+          }
+        } catch (error) {
+          refreshErrors.push({
+            prNumber,
+            error: error?.message || "Failed to refresh label state",
+          });
+        }
+      }
 
       appendActionLogEntry(
         buildApplyLabelSuccessActionLogEntry({

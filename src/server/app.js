@@ -889,6 +889,103 @@ const applyLabelToPr = async ({ repo, prNumber, label }) => {
   );
 };
 
+// Fetches just the authoritative current label set for one PR - unlike a
+// full `check-open-pr-updates.sh --pr <n>` refresh (which also re-fetches
+// comments, reviews, file diffs, review threads, etc. and can take minutes
+// for a PR with a lot of history, especially merged ones), this is a single
+// small `gh` call so the UI can reflect a just-applied label immediately
+// instead of waiting on the next scheduled full refresh.
+const fetchGithubPrLabels = async ({ repo, prNumber }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+  if (!/^\d+$/.test(safePrNumber)) {
+    throw new Error(`Invalid PR number: ${safePrNumber}`);
+  }
+
+  const result = await runViewPrsBashCommand(
+    [
+      "-lc",
+      `gh pr view ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --json labels --jq '.labels | map(.name)'`,
+    ],
+    64 * 1024,
+    { timeoutMs: 20000 },
+  );
+
+  const stdout = String(result?.stdout || "[]");
+  const jsonStart = stdout.search(/[[{]/);
+  if (jsonStart === -1) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(stdout.slice(jsonStart));
+    return Array.isArray(parsed) ? parsed.map((name) => String(name || "").trim()).filter(Boolean) : [];
+  } catch (_error) {
+    return [];
+  }
+};
+
+// Same lock directory the shell script's acquire_pr_state_lock()/
+// release_pr_state_lock() use for viewPrsDataFile (PR_STATE_FILE), so a
+// concurrent script run (a scheduled auto-refresh, a manual run, another
+// ack) and this direct patch never interleave their read-modify-write.
+const viewPrsDataFileLockDir = viewPrsDataFile.replace(/\.json$/, ".lock");
+
+const acquirePrStateLockForPatch = async ({ maxWaitMs = 5000 } = {}) => {
+  const deadlineMs = Date.now() + maxWaitMs;
+  for (;;) {
+    try {
+      fs.mkdirSync(viewPrsDataFileLockDir);
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadlineMs) {
+        throw new Error("Unable to acquire PR state lock for label patch", {
+          cause: error,
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+};
+
+const releasePrStateLockForPatch = () => {
+  try {
+    fs.rmdirSync(viewPrsDataFileLockDir);
+  } catch (_error) {
+    // Best effort.
+  }
+};
+
+// Patches just `data.labels` for one stored PR entry directly into
+// PR_STATE_FILE, instead of relying on a full script-driven refresh - see
+// fetchGithubPrLabels for why. Returns true if a matching entry was found
+// and patched.
+const patchStoredPrLabels = async ({ repo, prNumber, labels }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+
+  await acquirePrStateLockForPatch();
+  try {
+    const current = readJsonFileIfExists(viewPrsDataFile, {});
+    const entry = current?.byPrNumber?.[safePrNumber];
+    if (!isObject(entry) || entry.repo !== safeRepo || !isObject(entry.data)) {
+      return false;
+    }
+
+    entry.data.labels = Array.isArray(labels) ? labels : [];
+    writeJsonFileWithBackup(viewPrsDataFile, current, "labels-patch");
+    return true;
+  } finally {
+    releasePrStateLockForPatch();
+  }
+};
+
 const parseBackfillCommandOutput = (stdout, stderr) => {
   const combined = [stdout, stderr]
     .filter((value) => String(value || "").trim())
@@ -1709,6 +1806,8 @@ const createViewPrsApp = () => {
     listMergedPrCandidates,
     listRepoLabels,
     applyLabelToPr,
+    fetchGithubPrLabels,
+    patchStoredPrLabels,
   });
 
   registerViewPrsPrRoutes({

@@ -1010,8 +1010,10 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 Applies an existing GitHub label (never a newly typed one) to one or more PRs directly via `gh pr edit --add-label`.
 
 - `GET /view-prs/labels?repo=<owner/name>` lists every label currently defined in the repo's GitHub Labels settings (via `gh label list`), including labels not yet applied to any PR.
-- `POST /view-prs/labels/apply` with `{ repo, label, prNumbers }` (`prNumbers` is a comma-separated string, same shape as the Ack endpoints) applies the label to each PR number, then re-runs `check-open-pr-updates.sh --quiet --open none --pr <n>` per successfully-labeled PR to pull the updated `labels` array back into stored data - the same targeted-refresh pattern `/view-prs/ack` uses.
-- Per-PR failures (invalid PR number, `gh` error, refresh failure) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
+- `POST /view-prs/labels/apply` with `{ repo, label, prNumbers }` (`prNumbers` is a comma-separated string, same shape as the Ack endpoints) applies the label to each PR number, then fetches just that PR's current label set (`gh pr view --json labels`) and patches it directly into the stored `data.labels` field for that entry.
+  - Deliberately does NOT reuse `/view-prs/ack`'s targeted-refresh pattern (re-running `check-open-pr-updates.sh --pr <n>`), since a full refresh also re-fetches comments, reviews, file diffs, and review threads - for a PR with a lot of history (especially merged PRs) that can take minutes, leaving the just-applied label invisible until it finishes or the next scheduled auto-refresh catches up. The direct label-only patch stays fast regardless of a PR's size.
+  - The patch acquires the same lock directory (`check-open-pr-updates.data.lock`) the shell script's `acquire_pr_state_lock`/`release_pr_state_lock` use for `check-open-pr-updates.data.json`, so it can't interleave its read-modify-write with a concurrent script run.
+- Per-PR failures (invalid PR number, `gh` error, no matching stored entry) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
 - Both the per-row `+ Label` dropdown and the "Run & Filter" tab's `Apply label` control call this same endpoint.
 
 ## Local PR state file
