@@ -13,7 +13,7 @@
 
 import React from 'react';
 
-export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onViewJson }) {
+export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
 
@@ -43,7 +43,11 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
 
   const handleUpdateClick = async (e) => {
     e.stopPropagation();
-    await (window.runSinglePrUpdate || (async () => {}))(entry, pr);
+    if (onUpdatePr) {
+      await onUpdatePr(pr.number, entry, pr);
+    } else {
+      await (window.runSinglePrUpdate || (async () => {}))(entry, pr);
+    }
   };
 
   const handleAckToggleClick = (e) => {

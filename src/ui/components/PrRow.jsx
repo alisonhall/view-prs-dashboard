@@ -60,6 +60,7 @@ export const PrRow = memo(function PrRow({
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
+  onUpdatePr,
   onDataRefresh,
   onViewJson,
 }) {
@@ -95,6 +96,7 @@ export const PrRow = memo(function PrRow({
           onCheckboxChange={onCheckboxChange}
           onAckAction={onAckAction}
           onApplyLabel={onApplyLabel}
+          onUpdatePr={onUpdatePr}
           onViewJson={onViewJson}
         />
       </tr>

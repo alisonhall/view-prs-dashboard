@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 
@@ -78,6 +78,79 @@ export function PrTableApp({
       window.removeEventListener('pr-active-progress-update', handleActiveProgressUpdate);
     };
   }, []);
+
+  // State: PR numbers with a user-initiated Ack/Clear, Update, or Add-Label
+  // request currently in flight - shares the same PrNumberCell spinner as
+  // activePrNumbers (the scheduler's own in-progress set) above, merged
+  // together below, so a row shows "busy" whichever reason applies. A Set
+  // so concurrent actions on different rows (or, briefly, the same row)
+  // don't clobber each other's add/remove.
+  const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
+
+  const markPrBusy = useCallback((prNumber) => {
+    const key = String(prNumber);
+    setBusyPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, []);
+
+  const clearPrBusy = useCallback((prNumber) => {
+    const key = String(prNumber);
+    setBusyPrNumbers((prev) => {
+      if (!prev.has(key)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+
+  // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
+  // in-progress spinner for the duration of the request, regardless of
+  // outcome (success, failure, or thrown error). useCallback keeps these
+  // (and the wrapped handlers below) referentially stable across renders
+  // that don't touch onAckAction/onApplyLabel/busy state - PrRow is
+  // memoized, so a fresh function identity on every PrTableApp render would
+  // defeat that memoization for every row, not just the busy one.
+  const withPrBusy = useCallback(
+    (prNumber, action) => async (...args) => {
+      markPrBusy(prNumber);
+      try {
+        return await action?.(...args);
+      } finally {
+        clearPrBusy(prNumber);
+      }
+    },
+    [markPrBusy, clearPrBusy],
+  );
+
+  const handleAckActionBusy = useCallback(
+    (prNumber, isAcked, repoOverride) =>
+      withPrBusy(prNumber, onAckAction)(prNumber, isAcked, repoOverride),
+    [withPrBusy, onAckAction],
+  );
+
+  const handleApplyLabelBusy = useCallback(
+    (prNumber, label, repoOverride) =>
+      withPrBusy(prNumber, onApplyLabel)(prNumber, label, repoOverride),
+    [withPrBusy, onApplyLabel],
+  );
+
+  // Unlike onAckAction/onApplyLabel, the "↻ Update" button has no callback
+  // prop wired from index.page.js today - PrActionsCell calls
+  // window.runSinglePrUpdate directly. Reusing that same global here (like
+  // other PrTableApp/PrActionsCell code already reads window.* helpers set
+  // up by index.page.js, e.g. getAvailableRepoLabels) avoids adding a new
+  // prop all the way through the mount/callbacks wiring in index.page.js
+  // just for this one busy-tracking wrapper.
+  const handleUpdatePrBusy = useCallback(
+    (prNumber, entry, pr) => withPrBusy(prNumber, window.runSinglePrUpdate)(entry, pr),
+    [withPrBusy],
+  );
+
+  const combinedActivePrNumbers = useMemo(
+    () => Array.from(new Set([...(activePrNumbers || []).map(String), ...busyPrNumbers])),
+    [activePrNumbers, busyPrNumbers],
+  );
 
   // The "Needs Attention rules" controls (NO_ACTIVITY handling mode, pending
   // comments, merge-only commits, etc.) live in vanilla DOM elements, not
@@ -506,13 +579,14 @@ export function PrTableApp({
           onToggleSection={handleToggleSection}
           onToggleInsights={handleToggleInsights}
           onCheckboxChange={onCheckboxChange}
-          onAckAction={onAckAction}
-          onApplyLabel={onApplyLabel}
+          onAckAction={handleAckActionBusy}
+          onApplyLabel={handleApplyLabelBusy}
+          onUpdatePr={handleUpdatePrBusy}
           onDataRefresh={handleDataRefresh}
           onViewJson={handleViewJson}
           getPrFlags={getPrFlags}
           checkNeedsAttention={checkNeedsAttention}
-          activePrNumbers={activePrNumbers}
+          activePrNumbers={combinedActivePrNumbers}
         />
       ))}
       <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />

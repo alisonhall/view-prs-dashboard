@@ -45,6 +45,7 @@ export function PrSection({
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
+  onUpdatePr,
   onDataRefresh,
   onViewJson,
   getPrFlags,
@@ -99,6 +100,7 @@ export function PrSection({
             onCheckboxChange={onCheckboxChange}
             onAckAction={onAckAction}
             onApplyLabel={onApplyLabel}
+            onUpdatePr={onUpdatePr}
             onDataRefresh={onDataRefresh}
             onViewJson={onViewJson}
             getPrFlags={getPrFlags}

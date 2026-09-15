@@ -536,15 +536,81 @@ describe('PrTableApp', () => {
     expect(openSection.section.attentionCount).toBe(1);
   });
 
-  test('given onCheckboxChange/onAckAction/onApplyLabel props, when passed through, then the same functions reach PrSection unchanged', () => {
+  test('given an onCheckboxChange prop, when passed through, then the same function reaches PrSection unchanged', () => {
     const onCheckboxChange = jest.fn();
-    const onAckAction = jest.fn();
-    const onApplyLabel = jest.fn();
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={onAckAction} onApplyLabel={onApplyLabel} />);
+    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={() => {}} onApplyLabel={() => {}} />);
     expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
-    expect(capturedSectionProps[0].onAckAction).toBe(onAckAction);
-    expect(capturedSectionProps[0].onApplyLabel).toBe(onApplyLabel);
+  });
+
+  describe('per-row busy spinner (Ack/Apply-Label/Update in flight)', () => {
+    // onAckAction/onApplyLabel/onUpdatePr reach PrSection as PrTableApp's
+    // own wrapper functions (not the raw props unchanged) so it can track
+    // which PR number is currently mid-request and light up that row's
+    // PrNumberCell spinner (activePrNumbers) - these tests call through the
+    // wrapper the same way PrActionsCell does, and assert both that the
+    // original callback still runs with the same arguments and that the
+    // row's busy state is set/cleared around it.
+    test('given onAckAction, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
+      const onAckAction = jest.fn().mockResolvedValue(undefined);
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+
+      await React.act(async () => {
+        await capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
+      });
+
+      expect(onAckAction).toHaveBeenCalledWith('1', false, 'owner/repo');
+    });
+
+    test('given onApplyLabel, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
+      const onApplyLabel = jest.fn().mockResolvedValue(undefined);
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} onApplyLabel={onApplyLabel} />);
+
+      await React.act(async () => {
+        await capturedSectionProps[0].onApplyLabel('1', 'bug', 'owner/repo');
+      });
+
+      expect(onApplyLabel).toHaveBeenCalledWith('1', 'bug', 'owner/repo');
+    });
+
+    test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
+      let resolveAck;
+      const onAckAction = jest.fn(() => new Promise((resolve) => { resolveAck = resolve; }));
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+
+      let ackPromise;
+      React.act(() => {
+        ackPromise = capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).toContain('1');
+
+      await React.act(async () => {
+        resolveAck();
+        await ackPromise;
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('1');
+    });
+
+    test('given an Ack action that rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
+      const onAckAction = jest.fn().mockRejectedValue(new Error('boom'));
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+
+      await React.act(async () => {
+        await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).rejects.toThrow('boom');
+      });
+
+      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('1');
+    });
+
+    test('given no onUpdatePr-triggering action, when rendering, then a stable onUpdatePr function is passed to PrSection', () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} onApplyLabel={() => {}} />);
+      expect(typeof capturedSectionProps[0].onUpdatePr).toBe('function');
+    });
   });
 
   describe('PR JSON modal', () => {

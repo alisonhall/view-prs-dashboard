@@ -69,6 +69,7 @@ export function PrTable({
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
+  onUpdatePr,
   onDataRefresh,
   onViewJson,
   getPrFlags,
@@ -135,6 +136,7 @@ export function PrTable({
               onCheckboxChange={onCheckboxChange}
               onAckAction={onAckAction}
               onApplyLabel={onApplyLabel}
+              onUpdatePr={onUpdatePr}
               onDataRefresh={onDataRefresh}
               onViewJson={onViewJson}
             />

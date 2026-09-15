@@ -421,6 +421,66 @@ describe("helper function behavior", () => {
     });
   });
 
+  describe("pending update queue (quick-check)", () => {
+    afterEach(() => {
+      // These helpers mutate the shared scheduler state singleton, so reset
+      // it between tests to avoid bleeding into unrelated assertions.
+      app.viewPrsSchedulerState.pendingByRepo = {};
+    });
+
+    test("setPendingForRepo records open and merged/closed pending numbers", () => {
+      app.setPendingForRepo("org/pending-repo-1", { open: [1, 2], mergedClosed: [3] });
+      const keys = app.getPendingUpdatePrNumberKeys();
+      assert.ok(keys.has("org/pending-repo-1#1"));
+      assert.ok(keys.has("org/pending-repo-1#2"));
+      assert.ok(keys.has("org/pending-repo-1#3"));
+    });
+
+    test("setPendingForRepo unions with anything already queued instead of overwriting it", () => {
+      app.setPendingForRepo("org/pending-repo-2", { open: [10], mergedClosed: [] });
+      app.setPendingForRepo("org/pending-repo-2", { open: [11], mergedClosed: [20] });
+      const keys = app.getPendingUpdatePrNumberKeys();
+      assert.ok(keys.has("org/pending-repo-2#10"), "first queued PR should still be pending");
+      assert.ok(keys.has("org/pending-repo-2#11"), "newly queued PR should be pending");
+      assert.ok(keys.has("org/pending-repo-2#20"), "newly queued merged/closed PR should be pending");
+    });
+
+    test("getReposWithPendingOpen and getReposWithPendingMergedClosed only report repos with entries in that bucket", () => {
+      app.setPendingForRepo("org/pending-repo-3", { open: [1], mergedClosed: [] });
+      app.setPendingForRepo("org/pending-repo-4", { open: [], mergedClosed: [2] });
+
+      assert.ok(app.getReposWithPendingOpen().includes("org/pending-repo-3"));
+      assert.ok(!app.getReposWithPendingOpen().includes("org/pending-repo-4"));
+      assert.ok(app.getReposWithPendingMergedClosed().includes("org/pending-repo-4"));
+      assert.ok(!app.getReposWithPendingMergedClosed().includes("org/pending-repo-3"));
+    });
+
+    test("clearPendingForRepo removes the whole repo by default", () => {
+      app.setPendingForRepo("org/pending-repo-5", { open: [1], mergedClosed: [2] });
+      app.clearPendingForRepo("org/pending-repo-5");
+      const keys = app.getPendingUpdatePrNumberKeys();
+      assert.ok(!keys.has("org/pending-repo-5#1"));
+      assert.ok(!keys.has("org/pending-repo-5#2"));
+    });
+
+    test("clearPendingForRepo with onlyMergedClosed leaves the open bucket intact", () => {
+      app.setPendingForRepo("org/pending-repo-6", { open: [1], mergedClosed: [2] });
+      app.clearPendingForRepo("org/pending-repo-6", { onlyMergedClosed: true });
+      const keys = app.getPendingUpdatePrNumberKeys();
+      assert.ok(keys.has("org/pending-repo-6#1"), "open PR should remain pending");
+      assert.ok(!keys.has("org/pending-repo-6#2"), "merged/closed PR should be cleared");
+    });
+
+    test("getViewPrsSchedulerPublicState reports pending counts and quick-check cadence", () => {
+      app.setPendingForRepo("org/pending-repo-7", { open: [1, 2], mergedClosed: [3] });
+      const publicState = app.getViewPrsSchedulerPublicState();
+      assert.strictEqual(publicState.pendingOpenCount, 2);
+      assert.strictEqual(publicState.pendingMergedClosedCount, 1);
+      assert.ok(Number.isInteger(publicState.quickCheckIntervalMinutes));
+      assert.ok(Number.isInteger(publicState.mergedFullSweepIntervalMinutes));
+    });
+  });
+
   describe("readPrDiffCache", () => {
     test("returns null when cache file does not exist", () => {
       if (typeof app.readPrDiffCache !== "function") {

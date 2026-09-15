@@ -71,7 +71,7 @@ describe('PrActionsCell', () => {
     expect(onAckAction).toHaveBeenCalledWith('101', true, 'owner/repo');
   });
 
-  test('given the Update button, when clicked, then calls window.runSinglePrUpdate with an entry carrying the repo', async () => {
+  test('given the Update button and no onUpdatePr prop, when clicked, then falls back to window.runSinglePrUpdate with an entry carrying the repo', async () => {
     const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
     window.runSinglePrUpdate = runSinglePrUpdate;
     renderCell({ pr: { number: '101' } });
@@ -81,6 +81,21 @@ describe('PrActionsCell', () => {
       { prNumber: '101', repo: 'owner/repo' },
       { number: '101' },
     );
+  });
+
+  test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr (not window.runSinglePrUpdate) with the PR number and entry', async () => {
+    const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
+    window.runSinglePrUpdate = runSinglePrUpdate;
+    const onUpdatePr = jest.fn().mockResolvedValue(undefined);
+    renderCell({ pr: { number: '101' }, onUpdatePr });
+    screen.getByRole('button', { name: '↻ Update' }).click();
+    await Promise.resolve();
+    expect(onUpdatePr).toHaveBeenCalledWith(
+      '101',
+      { prNumber: '101', repo: 'owner/repo' },
+      { number: '101' },
+    );
+    expect(runSinglePrUpdate).not.toHaveBeenCalled();
   });
 
   test('given the {} button and no onViewJson prop, when clicked, then falls back to window.openPrJsonModal with an entry carrying the repo', () => {

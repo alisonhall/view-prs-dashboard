@@ -736,6 +736,7 @@ The page calls:
 - `GET /view-prs/data-manifest` (per-PR row-version manifest for selective polling)
 - `POST /view-prs/data-delta` (retrieve only changed PR rows by PR number)
 - `GET /view-prs/scheduler` (scheduler state, including `activePrNumbers` for per-PR in-progress indicators)
+  - The same per-row spinner also lights up while a user-initiated Ack, Clear, `↻ Update`, or `+ Label` request is in flight for that PR (independent of the scheduler's own `activePrNumbers`), and clears once that request settles (success, failure, or error) - so a row stays visibly busy for exactly as long as its own request takes.
 
 Selective polling behavior:
 

@@ -906,6 +906,100 @@ JSON
   assert_eq "$stale_draft" $'1\n2' 'draft stale collection should include all draft rows because draft cache reuse is disabled'
 }
 
+run_quick_check_tests() {
+  source "$SCRIPT_PATH"
+
+  REPO='owner/repo'
+  PR_STATE_FILE="$TEST_TMP/quick-check-state.json"
+  PR_STATE_LOCK_DIR="$TEST_TMP/quick-check-state.lock"
+  TARGET_PR_NUMBER=''
+
+  cat >"$PR_STATE_FILE" <<'JSON'
+{
+  "byPrNumber": {
+    "1": {
+      "prNumber": "1",
+      "repo": "owner/repo",
+      "section": "open",
+      "data": {
+        "number": "1",
+        "sourceUpdatedAt": "2026-03-10T01:00:00Z"
+      }
+    },
+    "4": {
+      "prNumber": "4",
+      "repo": "owner/repo",
+      "section": "merged",
+      "data": {
+        "number": "4",
+        "sourceUpdatedAt": "2026-03-10T01:00:00Z"
+      }
+    }
+  },
+  "ackByRepo": {}
+}
+JSON
+
+  # PR 1: unchanged updatedAt -> should NOT be reported pending.
+  assert_true \
+    "pr_updated_at_matches_cache 1 open '2026-03-10T01:00:00Z'" \
+    'quick check should recognize an unchanged open PR as up to date'
+
+  # PR 1 with a newer updatedAt -> should be reported as changed.
+  assert_true \
+    "! pr_updated_at_matches_cache 1 open '2026-03-10T02:00:00Z'" \
+    'quick check should flag an open PR whose updatedAt moved'
+
+  # PR 4 (merged): unchanged updatedAt -> should NOT be reported pending,
+  # confirming quick-check treats merged PRs the same as any other section.
+  assert_true \
+    "pr_updated_at_matches_cache 4 merged '2026-03-10T01:00:00Z'" \
+    'quick check should recognize an unchanged merged PR as up to date'
+
+  # PR 4 with a newer updatedAt (e.g. a new comment post-merge) -> pending,
+  # even though nothing about the code diff changed.
+  assert_true \
+    "! pr_updated_at_matches_cache 4 merged '2026-03-10T03:00:00Z'" \
+    'quick check should flag a merged PR whose metadata changed after merge'
+
+  # A PR with no cache entry at all -> always pending.
+  assert_true \
+    "! pr_updated_at_matches_cache 999 open '2026-03-10T01:00:00Z'" \
+    'quick check should flag a PR with no cached row as pending'
+
+  # A cache row that exists under a different section should not match.
+  assert_true \
+    "! pr_updated_at_matches_cache 1 draft '2026-03-10T01:00:00Z'" \
+    'quick check should not reuse a cached row across a different section'
+
+  pr1_unchanged=$(jq -cn '{number:1,isDraft:false,updatedAt:"2026-03-10T01:00:00Z"}')
+  pr2_new=$(jq -cn '{number:2,isDraft:false,updatedAt:"2026-03-10T02:00:00Z"}')
+  open_b64=$(printf '%s\n%s\n' \
+    "$(printf '%s' "$pr1_unchanged" | base64)" \
+    "$(printf '%s' "$pr2_new" | base64)")
+
+  pending_open=$(collect_quick_check_pending_numbers "$open_b64" 'open' | tr -d '\r')
+  assert_eq "$pending_open" '2' 'collect_quick_check_pending_numbers should only report the PR whose updatedAt actually changed'
+
+  pr4_unchanged=$(jq -cn '{number:4,updatedAt:"2026-03-10T01:00:00Z"}')
+  pr5_new_merge=$(jq -cn '{number:5,updatedAt:"2026-03-10T05:00:00Z"}')
+  merged_b64=$(printf '%s\n%s\n' \
+    "$(printf '%s' "$pr4_unchanged" | base64)" \
+    "$(printf '%s' "$pr5_new_merge" | base64)")
+
+  pending_merged=$(collect_quick_check_pending_numbers "$merged_b64" 'merged' | tr -d '\r')
+  assert_eq "$pending_merged" '5' 'collect_quick_check_pending_numbers should flag a never-seen merged PR while leaving an unchanged one alone'
+
+  result_json=$(emit_quick_check_result 'owner/repo' "$(printf '2')" "$(printf '5')")
+  assert_eq "$(printf '%s' "$result_json" | jq -r '.repo')" 'owner/repo' 'emit_quick_check_result should include the repo'
+  assert_eq "$(printf '%s' "$result_json" | jq -c '.pendingOpen')" '[2]' 'emit_quick_check_result should emit pendingOpen as a numeric array'
+  assert_eq "$(printf '%s' "$result_json" | jq -c '.pendingMergedClosed')" '[5]' 'emit_quick_check_result should emit pendingMergedClosed as a numeric array'
+
+  empty_result_json=$(emit_quick_check_result 'owner/repo' '' '')
+  assert_eq "$(printf '%s' "$empty_result_json" | jq -c '.pendingOpen')" '[]' 'emit_quick_check_result should emit an empty array when nothing is pending'
+  assert_eq "$(printf '%s' "$empty_result_json" | jq -c '.pendingMergedClosed')" '[]' 'emit_quick_check_result should emit an empty array when nothing is pending'
+}
+
 run_row_order_stability_tests() {
   source "$SCRIPT_PATH"
 
@@ -1194,6 +1288,7 @@ run_all_tests() {
   run_ack_changed_rerun_tests
   run_reconcile_missing_open_rows_tests
   run_cache_freshness_tests
+  run_quick_check_tests
   run_row_order_stability_tests
   run_main_integration_tests
 }
