@@ -50,6 +50,7 @@ describe("pr approved cell helpers", () => {
 
     const badge = result?.querySelector(".approved-assigned-badge");
     expect(String(badge?.className || "")).toContain("approved-assigned-badge-reviewer");
+    expect(String(badge?.className || "")).not.toContain("approved-assigned-badge-reviewer-only");
     expect(badge?.title).toBe("Alice (reviewer)");
   });
 
@@ -72,6 +73,53 @@ describe("pr approved cell helpers", () => {
     const badge = result?.querySelector(".approved-assigned-badge");
     expect(String(badge?.className || "")).not.toContain("approved-assigned-badge-reviewer");
     expect(badge?.title).toBe("Alice");
+  });
+
+  test("given a requested reviewer who is not assigned, when creating approved cell, then a badge still shows for them with the -reviewer class", () => {
+    const helpers = createPrApprovedCellHelpers({
+      approvedClass: () => "",
+      collectAssignedUsers: () => [],
+      collectRequestedReviewers: () => [{ login: "reviewer-only", name: "Reviewer Only" }],
+      getCurrentViewerLogin: () => "",
+      resolveActorDisplayName: (login, _actorsMap, fallbackName) =>
+        String(fallbackName || login || ""),
+      getUserInitials: (displayName) => String(displayName || "").slice(0, 2).toUpperCase(),
+      getOpenConversationCountWithMe: () => ({ count: 0, isViewerSpecific: false }),
+      toCount: (value) => Number.parseInt(String(value ?? "0"), 10) || 0,
+      documentRef: document,
+    });
+
+    const result = helpers.createApprovedCell({ approved: "-", approvalCount: "0" }, {});
+
+    const badge = result?.querySelector(".approved-assigned-badge");
+    expect(badge).not.toBeNull();
+    expect(String(badge?.className || "")).toContain("approved-assigned-badge-reviewer");
+    expect(String(badge?.className || "")).toContain("approved-assigned-badge-reviewer-only");
+    expect(badge?.title).toBe("Reviewer Only (reviewer) (not assigned)");
+  });
+
+  test("given assignees and a separate non-assigned reviewer, when creating approved cell, then both badges are shown", () => {
+    const helpers = createPrApprovedCellHelpers({
+      approvedClass: () => "",
+      collectAssignedUsers: () => [{ login: "assignee-only", name: "Assignee Only" }],
+      collectRequestedReviewers: () => [{ login: "reviewer-only", name: "Reviewer Only" }],
+      getCurrentViewerLogin: () => "",
+      resolveActorDisplayName: (login, _actorsMap, fallbackName) =>
+        String(fallbackName || login || ""),
+      getUserInitials: (displayName) => String(displayName || "").slice(0, 2).toUpperCase(),
+      getOpenConversationCountWithMe: () => ({ count: 0, isViewerSpecific: false }),
+      toCount: (value) => Number.parseInt(String(value ?? "0"), 10) || 0,
+      documentRef: document,
+    });
+
+    const result = helpers.createApprovedCell({ approved: "-", approvalCount: "0" }, {});
+
+    const badges = Array.from(result?.querySelectorAll(".approved-assigned-badge") || []);
+    expect(badges).toHaveLength(2);
+    expect(String(badges[0]?.className || "")).not.toContain("approved-assigned-badge-reviewer");
+    expect(String(badges[1]?.className || "")).toContain("approved-assigned-badge-reviewer");
+    expect(String(badges[0]?.className || "")).not.toContain("approved-assigned-badge-reviewer-only");
+    expect(String(badges[1]?.className || "")).toContain("approved-assigned-badge-reviewer-only");
   });
 
   test("given open conversations with viewer scope, when creating approved cell, then conversation detail line includes viewer suffix", () => {

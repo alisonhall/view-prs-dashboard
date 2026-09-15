@@ -20,12 +20,24 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
   const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);
 
   const assignees = collectAssignedUsers(pr);
+  const reviewers = collectRequestedReviewers(pr);
   const currentViewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
   const reviewerLogins = new Set(
-    collectRequestedReviewers(pr)
-      .map((reviewer) => String(reviewer?.login || '').trim().toLowerCase())
-      .filter(Boolean),
+    reviewers.map((reviewer) => String(reviewer?.login || '').trim().toLowerCase()).filter(Boolean),
   );
+  const assigneeLogins = new Set(
+    assignees.map((assignee) => String(assignee?.login || '').trim().toLowerCase()).filter(Boolean),
+  );
+  // Show a badge for every assignee, plus any requested reviewer who isn't
+  // already an assignee - so the reviewer indicator is visible even for
+  // people who are reviewing but not assigned.
+  const badgeUsers = [
+    ...assignees,
+    ...reviewers.filter((reviewer) => {
+      const login = String(reviewer?.login || '').trim().toLowerCase();
+      return login && !assigneeLogins.has(login);
+    }),
+  ];
 
   const conversationResult = getOpenConversationCountWithMe(pr);
   const openConversationCount = toCount(conversationResult?.count);
@@ -36,14 +48,15 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
         {pr?.approved || '-'} ({pr?.approvalCount || '0'})
       </div>
 
-      {assignees.length > 0 && (
-        <div className="approved-assigned-badges" title="Assigned users">
-          {assignees.map((assignee) => {
-            const login = String(assignee?.login || '').trim();
+      {badgeUsers.length > 0 && (
+        <div className="approved-assigned-badges" title="Assigned users and reviewers">
+          {badgeUsers.map((badgeUser) => {
+            const login = String(badgeUser?.login || '').trim();
             if (!login) return null;
             const isAssignedToViewer = Boolean(currentViewerLogin) && login.toLowerCase() === currentViewerLogin;
             const isReviewer = reviewerLogins.has(login.toLowerCase());
-            const displayName = resolveActorDisplayName(login, actorsMap, assignee?.name);
+            const isAssigned = assigneeLogins.has(login.toLowerCase());
+            const displayName = resolveActorDisplayName(login, actorsMap, badgeUser?.name);
             return (
               <span
                 key={login}
@@ -51,10 +64,11 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
                   'approved-assigned-badge',
                   isAssignedToViewer ? 'approved-assigned-badge-me' : '',
                   isReviewer ? 'approved-assigned-badge-reviewer' : '',
+                  isReviewer && !isAssigned ? 'approved-assigned-badge-reviewer-only' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                title={`${displayName}${isAssignedToViewer ? ' (you)' : ''}${isReviewer ? ' (reviewer)' : ''}`}
+                title={`${displayName}${isAssignedToViewer ? ' (you)' : ''}${isReviewer ? ' (reviewer)' : ''}${!isAssigned ? ' (not assigned)' : ''}`}
               >
                 {getUserInitials(displayName, login)}
               </span>

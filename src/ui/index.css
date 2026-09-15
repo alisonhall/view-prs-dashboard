@@ -1767,8 +1767,8 @@
             color: #0b57d0;
         }
 
-        /* Small corner dot marking an assignee who is also a requested
-           reviewer on the PR - composes with the "me" color scheme above
+        /* Small corner dot marking anyone who is a requested reviewer on the
+           PR (assigned or not) - composes with the "me" color scheme above
            rather than overriding it, since a badge can be both at once. */
         .approved-assigned-badge-reviewer::after {
             content: '';
@@ -1780,6 +1780,14 @@
             border-radius: 50%;
             background: #1a7f37;
             border: 1px solid #ffffff;
+        }
+
+        /* A requested reviewer who is NOT assigned gets a dashed border and
+           a lighter fill, so they're visually distinct from actual
+           assignees while still showing the green reviewer dot above. */
+        .approved-assigned-badge-reviewer-only {
+            border-style: dashed;
+            background: #ffffff;
         }
 
         .approved-viewed-progress {

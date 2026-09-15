@@ -67,7 +67,7 @@ describe('PrApprovedCell', () => {
     );
     const badge = screen.getByText('TH');
     expect(badge).toHaveClass('approved-assigned-badge', 'approved-assigned-badge-reviewer');
-    expect(badge).not.toHaveClass('approved-assigned-badge-me');
+    expect(badge).not.toHaveClass('approved-assigned-badge-me', 'approved-assigned-badge-reviewer-only');
     expect(badge).toHaveAttribute('title', 'The Octocat (reviewer)');
   });
 
@@ -88,6 +88,7 @@ describe('PrApprovedCell', () => {
     );
     const badge = screen.getByText('TH');
     expect(badge).toHaveClass('approved-assigned-badge-me', 'approved-assigned-badge-reviewer');
+    expect(badge).not.toHaveClass('approved-assigned-badge-reviewer-only');
     expect(badge).toHaveAttribute('title', 'The Octocat (you) (reviewer)');
   });
 
@@ -108,6 +109,51 @@ describe('PrApprovedCell', () => {
     const badge = screen.getByText('TH');
     expect(badge).not.toHaveClass('approved-assigned-badge-reviewer');
     expect(badge).toHaveAttribute('title', 'The Octocat');
+  });
+
+  test('given a requested reviewer who is not assigned, when rendering, then a badge still shows for them with the -reviewer class', () => {
+    window.collectAssignedUsers = () => [];
+    window.collectRequestedReviewers = () => [{ login: 'reviewer-only', name: 'Reviewer Only' }];
+    window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
+    window.getUserInitials = (name) => name.slice(0, 2).toUpperCase();
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <PrApprovedCell pr={{}} />
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const badge = screen.getByText('RE');
+    expect(badge).toHaveClass(
+      'approved-assigned-badge',
+      'approved-assigned-badge-reviewer',
+      'approved-assigned-badge-reviewer-only',
+    );
+    expect(badge).not.toHaveClass('approved-assigned-badge-me');
+    expect(badge).toHaveAttribute('title', 'Reviewer Only (reviewer) (not assigned)');
+  });
+
+  test('given assignees and a separate non-assigned reviewer, when rendering, then both badges are shown', () => {
+    window.collectAssignedUsers = () => [{ login: 'assignee-only', name: 'Assignee Only' }];
+    window.collectRequestedReviewers = () => [{ login: 'reviewer-only', name: 'Reviewer Only' }];
+    window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
+    window.getUserInitials = (name) => name.slice(0, 2).toUpperCase();
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <PrApprovedCell pr={{}} />
+          </tr>
+        </tbody>
+      </table>,
+    );
+    expect(document.querySelectorAll('.approved-assigned-badge')).toHaveLength(2);
+    const assigneeBadge = screen.getByText('AS');
+    const reviewerBadge = screen.getByText('RE');
+    expect(assigneeBadge).not.toHaveClass('approved-assigned-badge-reviewer', 'approved-assigned-badge-reviewer-only');
+    expect(reviewerBadge).toHaveClass('approved-assigned-badge-reviewer', 'approved-assigned-badge-reviewer-only');
   });
 
   test('given open conversations with the viewer, when rendering, then shows the "with me" detail', () => {

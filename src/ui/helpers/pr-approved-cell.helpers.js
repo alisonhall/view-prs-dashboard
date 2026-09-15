@@ -68,42 +68,61 @@
       td.appendChild(summary);
 
       const assignees = collectAssignedUsersSafe(row);
-      if (assignees.length > 0) {
+      const reviewers = collectRequestedReviewersSafe(row);
+      const assigneeLogins = new Set(
+        assignees
+          .map((assignee) => String(assignee?.login || "").trim().toLowerCase())
+          .filter(Boolean),
+      );
+      // Show a badge for every assignee, plus any requested reviewer who
+      // isn't already an assignee - so the reviewer indicator is visible
+      // even for people who are reviewing but not assigned.
+      const badgeUsers = [
+        ...assignees,
+        ...reviewers.filter((reviewer) => {
+          const login = String(reviewer?.login || "").trim().toLowerCase();
+          return login && !assigneeLogins.has(login);
+        }),
+      ];
+
+      if (badgeUsers.length > 0) {
         const badges = doc.createElement("div");
         badges.className = "approved-assigned-badges";
-        badges.title = "Assigned users";
+        badges.title = "Assigned users and reviewers";
 
         const currentViewerLogin = String(getCurrentViewerLoginSafe() || "")
           .trim()
           .toLowerCase();
         const reviewerLogins = new Set(
-          collectRequestedReviewersSafe(row)
+          reviewers
             .map((reviewer) => String(reviewer?.login || "").trim().toLowerCase())
             .filter(Boolean),
         );
 
-        assignees.forEach((assignee) => {
-          const login = String(assignee?.login || "").trim();
+        badgeUsers.forEach((badgeUser) => {
+          const login = String(badgeUser?.login || "").trim();
           if (!login) return;
 
           const badge = doc.createElement("span");
           const isAssignedToViewer =
             !!currentViewerLogin && login.toLowerCase() === currentViewerLogin;
           const isReviewer = reviewerLogins.has(login.toLowerCase());
+          const isAssigned = assigneeLogins.has(login.toLowerCase());
           badge.className = [
             "approved-assigned-badge",
             isAssignedToViewer ? "approved-assigned-badge-me" : "",
             isReviewer ? "approved-assigned-badge-reviewer" : "",
+            isReviewer && !isAssigned ? "approved-assigned-badge-reviewer-only" : "",
           ]
             .filter(Boolean)
             .join(" ");
           const displayName = resolveActorDisplayNameSafe(
             login,
             actorsMap,
-            assignee?.name,
+            badgeUser?.name,
           );
           badge.textContent = getUserInitialsSafe(displayName, login);
-          badge.title = `${displayName}${isAssignedToViewer ? " (you)" : ""}${isReviewer ? " (reviewer)" : ""}`;
+          badge.title = `${displayName}${isAssignedToViewer ? " (you)" : ""}${isReviewer ? " (reviewer)" : ""}${!isAssigned ? " (not assigned)" : ""}`;
           badges.appendChild(badge);
         });
 

@@ -979,10 +979,12 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
-Below the summary, assigned users show as small initials badges:
+Below the summary, assigned users and requested reviewers show as small initials badges:
 
+- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the `More insights` reviewers list.
 - The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
-- A badge for an assignee who is also one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip. Both indicators can apply to the same badge at once.
+- A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
+- A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
 
 ## Check indicators in UI vs script
 
