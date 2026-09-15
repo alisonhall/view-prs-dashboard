@@ -8,7 +8,7 @@
  * @module components/PrInsightsRow
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityEventsSection } from './insights/ActivityEventsSection';
 import { ReviewThreadsSection } from './insights/ReviewThreadsSection';
 import { ApprovalRiskSection } from './insights/ApprovalRiskSection';
@@ -16,14 +16,54 @@ import { NotesSection } from './insights/NotesSection';
 import { LinesChangedInsight } from './insights/LinesChangedInsight';
 import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 
-function InsightRow({ label, labelTitle, children }) {
+function InsightRow({ label, labelTitle, children, endAdornment }) {
   return (
     <>
       <span className="insight-key" title={labelTitle || undefined}>
         {label}
       </span>
-      <span className="insight-value">{children}</span>
+      <span className="insight-value">
+        {children}
+        {endAdornment}
+      </span>
     </>
+  );
+}
+
+// Icon-only button (glyph is CSS `::before` content, so it never contributes
+// to the value span's text content) to copy a branch name without disturbing
+// the "get the value by its exact text" pattern the insight grid relies on.
+function CopyBranchButton({ value }) {
+  const [copyState, setCopyState] = useState('idle');
+
+  const handleCopy = async (event) => {
+    event.stopPropagation();
+    if (!value) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        setCopyState('copied');
+      } else {
+        setCopyState('error');
+      }
+    } catch (_error) {
+      setCopyState('error');
+    }
+    setTimeout(() => setCopyState('idle'), 1200);
+  };
+
+  const title =
+    copyState === 'copied' ? 'Copied!' : copyState === 'error' ? 'Copy unavailable' : 'Copy branch name';
+
+  return (
+    <button
+      type="button"
+      className={`insight-copy-btn${copyState === 'copied' ? ' is-copied' : ''}`}
+      aria-label={title}
+      title={title}
+      onClick={handleCopy}
+      disabled={!value}
+    />
   );
 }
 
@@ -65,7 +105,9 @@ export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, comp
       </div>
 
       <div className="insight-grid">
-        <InsightRow label="Source branch">{String(pr.sourceBranch || '-')}</InsightRow>
+        <InsightRow label="Source branch" endAdornment={<CopyBranchButton value={pr.sourceBranch} />}>
+          {String(pr.sourceBranch || '-')}
+        </InsightRow>
         <InsightRow label="Merged to">{String(pr.targetBranch || '-')}</InsightRow>
         <InsightRow label="CHK state">{checkState}</InsightRow>
         <InsightRow label="Mergeability">{mergeState}</InsightRow>

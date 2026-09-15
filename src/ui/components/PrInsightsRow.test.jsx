@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrInsightsRow } = require('./PrInsightsRow');
 
@@ -53,6 +53,40 @@ describe('PrInsightsRow', () => {
     expect(screen.getByText('Source branch')).toHaveClass('insight-key');
     expect(screen.getByText('feature/x')).toHaveClass('insight-value');
     expect(screen.getByText('main')).toBeInTheDocument();
+  });
+
+  describe('copy branch name button', () => {
+    beforeEach(() => {
+      Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
+    });
+
+    test('given a source branch, when rendering, then the copy button is enabled', () => {
+      const pr = { number: '1', sourceBranch: 'feature/x' };
+      render(<PrInsightsRow entry={{}} pr={pr} actorsMap={{}} compositeKey="open:1" />);
+      expect(screen.getByRole('button', { name: 'Copy branch name' })).toBeEnabled();
+    });
+
+    test('given no source branch, when rendering, then the copy button is disabled', () => {
+      const pr = { number: '1' };
+      render(<PrInsightsRow entry={{}} pr={pr} actorsMap={{}} compositeKey="open:1" />);
+      expect(screen.getByRole('button', { name: 'Copy branch name' })).toBeDisabled();
+    });
+
+    test('given the copy button, when clicked, then copies the source branch name to the clipboard', async () => {
+      const pr = { number: '1', sourceBranch: 'feature/x' };
+      render(<PrInsightsRow entry={{}} pr={pr} actorsMap={{}} compositeKey="open:1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy branch name' }));
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('feature/x');
+      expect(await screen.findByRole('button', { name: 'Copied!' })).toHaveClass('is-copied');
+    });
+
+    test('given clipboard is unavailable, when clicking copy, then falls back without throwing', async () => {
+      Object.assign(navigator, { clipboard: undefined });
+      const pr = { number: '1', sourceBranch: 'feature/x' };
+      render(<PrInsightsRow entry={{}} pr={pr} actorsMap={{}} compositeKey="open:1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy branch name' }));
+      expect(await screen.findByRole('button', { name: 'Copy unavailable' })).toBeInTheDocument();
+    });
   });
 
   test('given viewer-specific open conversations, when rendering, then the label reflects that', () => {

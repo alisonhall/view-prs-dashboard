@@ -2348,6 +2348,49 @@
             white-space: pre-line;
         }
 
+        .insight-copy-btn {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-left: 6px;
+            padding: 0;
+            border: 1px solid #d0d7de;
+            border-radius: 3px;
+            background: #f6f8fa;
+            color: #57606a;
+            cursor: pointer;
+            vertical-align: middle;
+            line-height: 1;
+            font-size: 10px;
+        }
+
+        .insight-copy-btn::before {
+            content: '⧉';
+        }
+
+        .insight-copy-btn:hover {
+            background: #e0e7f0;
+        }
+
+        .insight-copy-btn.is-copied {
+            border-color: #1a7f37;
+            color: #1a7f37;
+        }
+
+        .insight-copy-btn.is-copied::before {
+            content: '✓';
+        }
+
+        .insight-copy-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .insight-copy-btn:focus-visible {
+            outline: 2px solid #0969da;
+            outline-offset: 2px;
+        }
+
         .insight-line-changes-additions {
             color: #1f7a1f;
             font-weight: 600;
