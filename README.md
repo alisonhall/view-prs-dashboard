@@ -424,7 +424,7 @@ Date columns in the web table (`YOUR LAST ACTIVITY` and `MERGED AT`) use the sam
 
 Stored PR table rows now include a `LABELS` column and each row persists the PR label names in JSON.
 
-The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available.
+The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (commits whose `messageHeadline` starts with "Merge" are excluded, matching the "ignore merge-only commits" attention rule's definition), deduped so a commit author who is also the PR author only appears once.
 
 Open and draft PR sections are sorted by PR number descending (highest first). Closed PRs sort by close date descending. Merged PRs sort by merge date descending.
 

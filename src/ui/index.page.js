@@ -1577,7 +1577,7 @@ const prAuthorCellHelperFactory =
     ? require("./helpers/pr-author-cell.helpers.js")
     : globalThis.ViewPrsAuthorCellHelpers;
 
-const { createAuthorCell } =
+const { createAuthorCell, collectPrAuthors } =
   prAuthorCellHelperFactory.createPrAuthorCellHelpers({
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
     createActorIdentityElement: (...args) => createActorIdentityElement(...args),
@@ -7584,6 +7584,7 @@ const initPage = () => {
     formatTitleWithIcons,
     formatChkDisplay,
     getPreferredActorKey,
+    collectPrAuthors,
     resolveActorDisplayName,
     buildRowActorsMap,
     normalizeActorLogin,
