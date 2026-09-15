@@ -348,12 +348,15 @@ export function PrTableApp({
     return sectionConfigs.map(config => ({
       key: config.sectionKey,
       title: config.title,
-      // `renderRows` (deduplicated: excludes rows already shown in a smart
-      // group above) is what's actually rendered as PR rows; `rows` (the
-      // full set) only feeds attentionCount below. Falls back to `rows` for
-      // smart-group configs, which don't set renderRows since they're never
-      // deduplicated against anything.
+      // Per the documented "non-exclusive membership" design, a PR shown in
+      // a smart group above is ALSO rendered here in its lifecycle section
+      // (pr-section-config.helpers.js no longer deduplicates them) - `prs`
+      // and `totalCount` are therefore always the same underlying set,
+      // kept as separate fields so PrSection's "Total PRs" badge has a
+      // stable name to read regardless of how rendering/counting evolve
+      // independently in the future.
       prs: config.renderRows || config.rows || [],
+      totalCount: (config.rows || []).length,
       isSmartGroup: config.isSmartGroup,
       lifecycleSection: config.sectionKey,
       dateHeader: config.dateHeader,

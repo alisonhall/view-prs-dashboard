@@ -51,7 +51,13 @@ export function PrSection({
   checkNeedsAttention,
   activePrNumbers,
 }) {
-  const { key, title, prs, isSmartGroup, lifecycleSection, dateHeader, attentionCount } = section;
+  const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, dateHeader, attentionCount } = section;
+  // `totalCount` (the full, undeduplicated row count) is what the "Total
+  // PRs in section" badge must show - `prs` is only the rendered/
+  // deduplicated subset (see PrTableApp.jsx), which undercounts whenever a
+  // PR is already shown in a smart group above. Falls back to prs.length
+  // for any caller that hasn't been updated to pass totalCount.
+  const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
 
   return (
     <details
@@ -68,7 +74,7 @@ export function PrSection({
         <span className="pr-group-section-title">{title}</span>
         <span className="pr-group-section-counts">
           <span className="pr-group-section-count" title="Total PRs in section">
-            {prs.length}
+            {displayedTotalCount}
           </span>
           {attentionCount > 0 && (
             <span className="pr-group-section-attention-count" title="PRs marked as needs attention in this section">

@@ -44,6 +44,32 @@ describe('PrSection', () => {
     expect(screen.getByText('2')).toHaveClass('pr-group-section-count');
   });
 
+  // Regression test: the "Total PRs in section" badge used to read
+  // prs.length - but `prs` is the deduplicated *rendered* row set (a PR
+  // already shown in a smart group above, e.g. "Open PRs I'm Involved In",
+  // is excluded from a lifecycle section's rendered rows so it isn't shown
+  // twice). That made "Open PRs" undercount whenever most of a user's open
+  // PRs were also flagged/in-review/interacted-with. totalCount (the full,
+  // undeduplicated count PrTableApp computes) must be what's displayed.
+  test('given totalCount differs from the deduplicated prs list, when rendering, then the count badge shows totalCount (not prs.length)', () => {
+    renderSection({
+      title: 'Open PRs',
+      prs: [{ data: { number: '2' } }],
+      totalCount: 5,
+    });
+    expect(screen.getByText('5')).toHaveClass('pr-group-section-count');
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
+  });
+
+  test('given no totalCount is provided, when rendering, then the count badge falls back to prs.length', () => {
+    renderSection({
+      title: 'Flagged',
+      prs: [{ data: { number: '1' } }, { data: { number: '2' } }, { data: { number: '3' } }],
+      totalCount: undefined,
+    });
+    expect(screen.getByText('3')).toHaveClass('pr-group-section-count');
+  });
+
   test('given attentionCount is 0, when rendering, then omits the attention badge', () => {
     renderSection({ attentionCount: 0 });
     expect(document.querySelector('.pr-group-section-attention-count')).not.toBeInTheDocument();

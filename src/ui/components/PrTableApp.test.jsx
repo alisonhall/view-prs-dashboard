@@ -593,4 +593,69 @@ describe('PrTableApp', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
+
+  describe('non-exclusive membership: a PR in a smart group still renders in its lifecycle section', () => {
+    // Regression test for a real bug: a prior "fix" added row-level dedup
+    // (pr-section-config.helpers.js's now-removed excludeSmartGroupMembers)
+    // that silently hid a PR's row from its lifecycle section whenever it
+    // was already shown in a smart group above (e.g. "Open PRs I'm
+    // Involved In") - contradicting the documented "non-exclusive
+    // membership" design (README.md, "Smart group features": "A single PR
+    // can appear in multiple smart groups AND its lifecycle section").
+    // That's what actually produced "Open PRs" showing far fewer PRs than
+    // "Open PRs I'm Involved In" reported, even though every PR in the
+    // latter is, by definition, also an open PR.
+    //
+    // installSectionHelpers() above is a simplified test double that never
+    // exercised the real pr-section-config.helpers.js/PrTableApp
+    // interaction, which is exactly why this regressed unnoticed - these
+    // tests install the real helper module instead.
+    beforeEach(() => {
+      window.ViewPrsSectionConfigHelpers = require('../helpers/pr-section-config.helpers.js');
+      window.entryNeedsAttention = () => false;
+      window.getNeedsAttentionConfig = () => ({});
+      window.isInReviewEnabled = () => false;
+      window.countPendingThreadComments = () => 0;
+      window.shouldShowNeedsAttention = () => false;
+    });
+
+    test('given a PR that also belongs to a smart group, when computing the open section, then it still renders there (both totalCount and prs include it)', () => {
+      installSmartGroupHelpers();
+      installSortHelpers();
+      // installSmartGroupHelpers' mock "Flagged" group is driven by
+      // hasNeedsAttentionFlag, which PrTableApp wires to
+      // window.entryNeedsAttention - use that as the smart-group membership
+      // hook for this test.
+      window.entryNeedsAttention = (entry) => String(entry?.prNumber) === '1';
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+          2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+      const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
+      const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
+      expect(flaggedSection.section.prs.map((entry) => entry.prNumber)).toEqual(['1']);
+      expect(openSection.section.totalCount).toBe(2);
+      expect(openSection.section.prs).toHaveLength(2);
+      expect(openSection.section.prs.map((entry) => entry.prNumber).sort()).toEqual(['1', '2']);
+    });
+
+    test('given no PR in a section belongs to any smart group, when computing that section, then totalCount matches prs.length', () => {
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+          2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+
+      const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
+      expect(openSection.section.totalCount).toBe(2);
+      expect(openSection.section.prs).toHaveLength(2);
+    });
+  });
 });

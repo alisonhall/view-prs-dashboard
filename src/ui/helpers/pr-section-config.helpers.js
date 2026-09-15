@@ -40,38 +40,20 @@
             }))
           : [];
 
-      // A PR that is a member of a smart group is already rendered as a row
-      // at the top of the page. It still counts toward its lifecycle
-      // section's "Attention: N" badge (that count is a separate, older
-      // feature - see "section headings show needs-attention counts by PR
-      // group"), but it must not ALSO be rendered as a second, independent
-      // <tr> in the lifecycle section: two rows for the same PR would carry
-      // duplicate text/links/checkboxes with no way to distinguish them,
-      // and their checkbox/selection state would drift out of sync with
-      // each other. `renderRows` (rendered rows) is the deduplicated subset
-      // actually passed to the table builder; `rows` (used for counting)
-      // stays the full, unfiltered set.
-      const smartGroupMemberKeys = new Set();
-      Object.values(smartGroups || {}).forEach((groupData) => {
-        (Array.isArray(groupData?.rows) ? groupData.rows : []).forEach((entry) => {
-          const key = String(entry?.data?.number ?? entry?.prNumber ?? "");
-          if (key) smartGroupMemberKeys.add(key);
-        });
-      });
-      const excludeSmartGroupMembers = (rows) =>
-        smartGroupMemberKeys.size === 0
-          ? rows
-          : rows.filter((entry) => {
-              const key = String(entry?.data?.number ?? entry?.prNumber ?? "");
-              return !key || !smartGroupMemberKeys.has(key);
-            });
-
-      // Build lifecycle sections (mutually exclusive)
+      // Lifecycle sections intentionally do NOT deduplicate against smart
+      // group membership: per the documented "non-exclusive membership"
+      // design (README.md, "Smart group features"), a PR shown in a smart
+      // group above (Flagged, In Review, Needs Attention, Open PRs I'm
+      // Involved In) is ALSO rendered as its own row here - each instance
+      // tracks independent per-section state (see PrRow's compositeKey,
+      // `${sectionKey}:${prNumber}`, for "More Insights", and
+      // syncSelectionCheckboxesWithInput()/getPrFlags for keeping
+      // selection/flag/ack state consistent across every instance of the
+      // same PR).
       const lifecycleSections = [
         {
           title: "Open PRs",
           rows: grouped?.open || [],
-          renderRows: excludeSmartGroupMembers(grouped?.open || []),
           dateHeader: "LAST ACTIVITY",
           dateResolver: (row) => row.baseline,
           sectionKey: "open",
@@ -83,7 +65,6 @@
         {
           title: "Draft PRs",
           rows: grouped?.draft || [],
-          renderRows: excludeSmartGroupMembers(grouped?.draft || []),
           dateHeader: "LAST ACTIVITY",
           dateResolver: (row) => row.baseline,
           sectionKey: "draft",
@@ -95,7 +76,6 @@
         {
           title: "Closed PRs",
           rows: grouped?.closed || [],
-          renderRows: excludeSmartGroupMembers(grouped?.closed || []),
           dateHeader: "CLOSED AT",
           dateResolver: (row) => row.baseline,
           sectionKey: "closed",
@@ -107,7 +87,6 @@
         {
           title: "Latest Merged PRs",
           rows: grouped?.merged || [],
-          renderRows: excludeSmartGroupMembers(grouped?.merged || []),
           dateHeader: "MERGED AT",
           dateResolver: (row) => row.baseline,
           sectionKey: "merged",

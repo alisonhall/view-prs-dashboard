@@ -241,5 +241,42 @@ describe("pr section config helpers", () => {
       expect(typeof configs[0].dateResolver).toBe("function");
       expect(configs[0].dateResolver({ baseline: "test" })).toBe("test");
     });
+
+    // Regression test: a PR that is a member of a smart group must still
+    // appear in its lifecycle section's rows - the "non-exclusive
+    // membership" design documented in README.md's "Smart group features"
+    // ("A single PR can appear in multiple smart groups AND its lifecycle
+    // section"). A prior fix filtered smart-group members out of the
+    // lifecycle section's rows to avoid duplicate <tr>s, which silently
+    // broke this and made lifecycle sections (e.g. "Open PRs") undercount
+    // and under-render relative to smart groups like "Open PRs I'm
+    // Involved In".
+    test("given a PR that is also a smart group member, when building lifecycle section configs, then the lifecycle section's rows still include it (not deduplicated)", () => {
+      const { buildPrSectionConfigs } = createPrSectionConfigHelpers({
+        resolvePrSectionOpenState: () => false,
+      });
+
+      const sharedEntry = { prNumber: "1", data: { number: "1" } };
+      const otherEntry = { prNumber: "2", data: { number: "2" } };
+
+      const smartGroups = {
+        "interacted": {
+          title: "Open PRs I'm Involved In",
+          icon: "💬",
+          rows: [sharedEntry],
+          defaultOpen: false,
+        },
+      };
+
+      const configs = buildPrSectionConfigs({
+        grouped: { open: [sharedEntry, otherEntry], draft: [], closed: [], merged: [] },
+        smartGroups,
+      });
+
+      const openConfig = configs.find((config) => config.sectionKey === "open");
+      expect(openConfig.rows).toHaveLength(2);
+      expect(openConfig.rows.map((entry) => entry.prNumber).sort()).toEqual(["1", "2"]);
+      expect(openConfig.renderRows).toBeUndefined();
+    });
   });
 });

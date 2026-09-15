@@ -672,17 +672,26 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const prLink = await screen.findByText("#11");
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    // This PR's unresolved review thread also independently qualifies it
+    // for the "Needs Attention" smart group, which renders it a second time
+    // there (smart groups have non-exclusive membership by design) - scope
+    // to the "Open PRs" lifecycle section specifically so the query below
+    // is unambiguous.
+    const openSection = document.querySelector('[data-pr-section="open"]');
+    const prLink = within(openSection).getByText("#11");
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
     expect(row?.querySelector("input[type='checkbox']")).toBeTruthy();
-    expect(screen.getByLabelText("In Review for PR #11")).toBeInTheDocument();
-    expect(screen.getByLabelText("Flagged for PR #11")).toBeInTheDocument();
+    expect(within(openSection).getByLabelText("In Review for PR #11")).toBeInTheDocument();
+    expect(within(openSection).getByLabelText("Flagged for PR #11")).toBeInTheDocument();
     expect(row?.querySelector(".row-action-btn.update")).toBeTruthy();
     expect(row?.querySelector(".row-action-btn.ack")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "View PR JSON details for #11" }),
+      within(openSection).getByRole("button", { name: "View PR JSON details for #11" }),
     ).toBeInTheDocument();
 
     const insightsToggle = row?.querySelector(".row-insights-toggle");
@@ -754,7 +763,16 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const prLink = await screen.findByText("#12");
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    // This PR's unresolved review thread also independently qualifies it
+    // for the "Needs Attention" smart group, which renders it a second time
+    // there (smart groups have non-exclusive membership by design) - scope
+    // to the "Open PRs" lifecycle section specifically so the query below
+    // is unambiguous.
+    const openSection = document.querySelector('[data-pr-section="open"]');
+    const prLink = within(openSection).getByText("#12");
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
@@ -1010,8 +1028,22 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
 
+    // This PR's incorrectly-author-resolved thread also independently
+    // qualifies it for the "Needs Attention" smart group in some of the
+    // policy-mode states this test exercises below, which renders it a
+    // second time there (smart groups have non-exclusive membership by
+    // design) - scope every lookup to the "Open PRs" lifecycle section
+    // specifically so these queries stay unambiguous across every mode.
+    const getOpenSection = async () => {
+      await waitFor(() => {
+        expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+      });
+      return document.querySelector('[data-pr-section="open"]');
+    };
+
     const openReviewSection = async () => {
-      const row = (await screen.findByText("#77")).closest("tr");
+      const openSection = await getOpenSection();
+      const row = within(openSection).getByText("#77").closest("tr");
       const toggle = row?.querySelector(".row-insights-toggle");
       if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
         await user.click(toggle);
@@ -1047,8 +1079,9 @@ describe("index page rendering with Testing Library", () => {
     };
 
     await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-    await waitFor(() => {
-      expect(screen.getByText("#77")).toBeInTheDocument();
+    await waitFor(async () => {
+      const openSection = await getOpenSection();
+      expect(within(openSection).getByText("#77")).toBeInTheDocument();
     });
 
     await expectWarningState(false);
@@ -1147,8 +1180,22 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
 
+    // This PR's incorrectly-author-resolved thread also independently
+    // qualifies it for the "Needs Attention" smart group in some of the
+    // policy-mode states this test exercises below, which renders it a
+    // second time there (smart groups have non-exclusive membership by
+    // design) - scope every lookup to the "Open PRs" lifecycle section
+    // specifically so these queries stay unambiguous across every mode.
+    const getOpenSection = async () => {
+      await waitFor(() => {
+        expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+      });
+      return document.querySelector('[data-pr-section="open"]');
+    };
+
     const openReviewSection = async () => {
-      const row = (await screen.findByText("#177")).closest("tr");
+      const openSection = await getOpenSection();
+      const row = within(openSection).getByText("#177").closest("tr");
       const toggle = row?.querySelector(".row-insights-toggle");
       if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
         await user.click(toggle);
@@ -1178,8 +1225,9 @@ describe("index page rendering with Testing Library", () => {
     };
 
     await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-    await waitFor(() => {
-      expect(screen.getByText("#177")).toBeInTheDocument();
+    await waitFor(async () => {
+      const openSection = await getOpenSection();
+      expect(within(openSection).getByText("#177")).toBeInTheDocument();
     });
 
     const modeField = document.getElementById(
@@ -1268,7 +1316,16 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    const row = (await screen.findByText("#79")).closest("tr");
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    // This PR's unresolved review thread also independently qualifies it
+    // for the "Needs Attention" smart group, which renders it a second time
+    // there (smart groups have non-exclusive membership by design) - scope
+    // to the "Open PRs" lifecycle section specifically so the query below
+    // is unambiguous.
+    const openSection = document.querySelector('[data-pr-section="open"]');
+    const row = within(openSection).getByText("#79").closest("tr");
     await user.click(row?.querySelector(".row-insights-toggle"));
 
     const reviewSection = row?.nextElementSibling?.querySelector(
@@ -1370,7 +1427,16 @@ describe("index page rendering with Testing Library", () => {
     document.getElementById("status").textContent = "Viewer : ahall236_uhg";
 
     const user = userEvent.setup();
-    const row = (await screen.findByText("#80")).closest("tr");
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    // This PR's unresolved review thread also independently qualifies it
+    // for the "Needs Attention" smart group, which renders it a second time
+    // there (smart groups have non-exclusive membership by design) - scope
+    // to the "Open PRs" lifecycle section specifically so the query below
+    // is unambiguous.
+    const openSection = document.querySelector('[data-pr-section="open"]');
+    const row = within(openSection).getByText("#80").closest("tr");
     expect(row).toBeTruthy();
 
     const authorCellIdentity = row?.querySelector(".author-cell-name.actor-identity-pr-author");
@@ -1485,7 +1551,16 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    const row = (await screen.findByText("#78")).closest("tr");
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    // This PR's unresolved review thread also independently qualifies it
+    // for the "Needs Attention" smart group, which renders it a second time
+    // there (smart groups have non-exclusive membership by design) - scope
+    // to the "Open PRs" lifecycle section specifically so the query below
+    // is unambiguous.
+    const openSection = document.querySelector('[data-pr-section="open"]');
+    const row = within(openSection).getByText("#78").closest("tr");
     await user.click(row?.querySelector(".row-insights-toggle"));
 
     const reviewSection = row?.nextElementSibling?.querySelector(
@@ -2276,12 +2351,21 @@ describe("index page rendering with Testing Library", () => {
       const pollSchedulerStatusCallback = intervalCallbacks[1];
       expect(typeof pollSchedulerStatusCallback).toBe("function");
 
+      // This PR's CHANGED status also independently qualifies it for the
+      // "Needs Attention" smart group, which renders it a second time there
+      // (smart groups have non-exclusive membership by design) - scope to
+      // the "Open PRs" lifecycle section specifically so the queries below
+      // are unambiguous.
       await waitFor(() => {
-        expect(screen.getByText("#1")).toBeInTheDocument();
+        expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+      });
+      const openSection = document.querySelector('[data-pr-section="open"]');
+      await waitFor(() => {
+        expect(within(openSection).getByText("#1")).toBeInTheDocument();
       });
 
       const getIndicator = () => {
-        const row = screen.getByText("#1").closest("tr");
+        const row = within(openSection).getByText("#1").closest("tr");
         return row?.querySelector(".pr-progress-indicator");
       };
 
@@ -2395,12 +2479,23 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
+    // Whenever a PR here has "Needs Attention" active, it also
+    // independently qualifies for that smart group, which renders it a
+    // second time above its lifecycle section (smart groups have
+    // non-exclusive membership by design) - scope every lookup to the PR's
+    // own lifecycle section ("open" for 101/102, "draft" for 201/202) so
+    // these queries stay unambiguous regardless of attention state.
+    const lifecycleSectionByPrNumber = { 101: "open", 102: "open", 201: "draft", 202: "draft" };
+
     await waitFor(() => {
-      expect(screen.getByText("#101")).toBeInTheDocument();
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+      expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
     });
 
     const hasAttentionForPr = (prNumber) => {
-      const prLink = screen.getByText(`#${prNumber}`);
+      const sectionKey = lifecycleSectionByPrNumber[Number(prNumber)] || "open";
+      const sectionEl = document.querySelector(`[data-pr-section="${sectionKey}"]`);
+      const prLink = within(sectionEl).getByText(`#${prNumber}`);
       const row = prLink.closest("tr");
       return Boolean(row?.querySelector(".attention-icon"));
     };
@@ -2801,15 +2896,28 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
+    // Despite the "merged-approved" scenario name, #999's overrides (no
+    // mergedAt, empty author/comments/etc., status NO_LOCAL_DATA) place it
+    // in the "open" lifecycle section here, alongside #11/#12. #11's
+    // NO_ACTIVITY status and #999's missing local data can each
+    // independently qualify a PR for the "Needs Attention" smart group too,
+    // rendering it a second time there (smart groups have non-exclusive
+    // membership by design) - scope every lookup below to the "Open PRs"
+    // lifecycle section specifically so these queries stay unambiguous.
     await waitFor(() => {
-      expect(screen.getByText("#11")).toBeInTheDocument();
-      expect(screen.getByText("#999")).toBeInTheDocument();
+      expect(
+        document.querySelector("details[data-pr-section='open'] table.pr-data-table"),
+      ).toBeTruthy();
     });
 
     const openSectionTable = document.querySelector(
       "details[data-pr-section='open'] table.pr-data-table",
     );
-    expect(openSectionTable).toBeTruthy();
+
+    await waitFor(() => {
+      expect(within(openSectionTable).getByText("#11")).toBeInTheDocument();
+      expect(within(openSectionTable).getByText("#999")).toBeInTheDocument();
+    });
 
     const openHeaderCells = openSectionTable.querySelectorAll("thead th");
     expect(String(openHeaderCells[0]?.textContent || "")).toContain("Sel");
@@ -2817,7 +2925,7 @@ describe("index page rendering with Testing Library", () => {
     expect(String(openHeaderCells[1]?.textContent || "")).toContain("Attn");
     expect(openHeaderCells[1]).toHaveAttribute("title", "Needs Attention");
 
-    const pr11Link = screen.getByText("#11");
+    const pr11Link = within(openSectionTable).getByText("#11");
     const pr11Row = pr11Link.closest("tr");
     expect(pr11Row).toBeTruthy();
     const pr11AuthorCell = pr11Row?.children?.[6];
@@ -2843,7 +2951,7 @@ describe("index page rendering with Testing Library", () => {
       ),
     ).toBe("4");
 
-    const pr12Link = screen.getByText("#12");
+    const pr12Link = within(openSectionTable).getByText("#12");
     const pr12Row = pr12Link.closest("tr");
     expect(pr12Row).toBeTruthy();
     const pr12AuthorCell = pr12Row?.children?.[6];
@@ -2867,7 +2975,7 @@ describe("index page rendering with Testing Library", () => {
       ),
     ).toBe("");
 
-    const pr999Link = screen.getByText("#999");
+    const pr999Link = within(openSectionTable).getByText("#999");
     const pr999Row = pr999Link.closest("tr");
     expect(pr999Row).toBeTruthy();
     expect(String(pr999Row?.textContent || "")).toContain("NO_LOCAL_DATA");
@@ -2948,15 +3056,27 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const getAttentionIcon = (prNumber) =>
-      screen
+    // Whenever a PR here has "Needs Attention" active, it also
+    // independently qualifies for that smart group, which renders it a
+    // second time above its lifecycle section (smart groups have
+    // non-exclusive membership by design) - scope every lookup to the
+    // "Open PRs" lifecycle section specifically so these queries stay
+    // unambiguous regardless of attention state.
+    const getAttentionIcon = (prNumber) => {
+      const openSection = document.querySelector('[data-pr-section="open"]');
+      return within(openSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
         ?.querySelector(".attention-icon");
+    };
 
     await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(() => {
-      expect(screen.getByText("#101")).toBeInTheDocument();
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    await waitFor(() => {
+      const openSection = document.querySelector('[data-pr-section="open"]');
+      expect(within(openSection).getByText("#101")).toBeInTheDocument();
     });
 
     fetchMock.mockClear();
@@ -3244,16 +3364,28 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const getAttentionIcon = (prNumber) =>
-      screen
+    // Whenever a PR here has "Needs Attention" active, it also
+    // independently qualifies for that smart group, which renders it a
+    // second time above its lifecycle section (smart groups have
+    // non-exclusive membership by design) - scope every lookup to the
+    // "Draft PRs" lifecycle section specifically so these queries stay
+    // unambiguous regardless of attention state.
+    const getAttentionIcon = (prNumber) => {
+      const draftSection = document.querySelector('[data-pr-section="draft"]');
+      return within(draftSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
         ?.querySelector(".attention-icon");
+    };
 
     await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(() => {
-      expect(screen.getByText("#201")).toBeInTheDocument();
-      expect(screen.getByText("#202")).toBeInTheDocument();
+      expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
+    });
+    await waitFor(() => {
+      const draftSection = document.querySelector('[data-pr-section="draft"]');
+      expect(within(draftSection).getByText("#201")).toBeInTheDocument();
+      expect(within(draftSection).getByText("#202")).toBeInTheDocument();
     });
 
     document.getElementById("attention-include-pending-comments").checked = false;
