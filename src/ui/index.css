@@ -1745,6 +1745,7 @@
         }
 
         .approved-assigned-badge {
+            position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1764,6 +1765,21 @@
             border-color: #1f6feb;
             background: #e8f0fe;
             color: #0b57d0;
+        }
+
+        /* Small corner dot marking an assignee who is also a requested
+           reviewer on the PR - composes with the "me" color scheme above
+           rather than overriding it, since a badge can be both at once. */
+        .approved-assigned-badge-reviewer::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #1a7f37;
+            border: 1px solid #ffffff;
         }
 
         .approved-viewed-progress {

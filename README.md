@@ -359,14 +359,18 @@ Then open:
 - `http://localhost:9000/view-prs/index.html`
 - `http://localhost:9000/health/deps` (dependency health)
 
-When localhost is running, the server starts an automatic 15-minute background refresh for `view-prs` data.
+When localhost is running, the server starts an automatic background refresh for `view-prs` data, split into two tiers so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
-- Auto refresh runs every 15 minutes.
-- It skips if a manual `Run script` action completed in the previous 15 minutes.
-- On successful auto refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
+- **Quick check** (every 5 minutes, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. When an **open/draft** PR looks changed, a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it's queued instead.
+- **Merged/closed drain** (every 30 minutes, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
+- **Full sweep** (every 15 minutes, unchanged): runs for all configured repos regardless of the quick check, as a safety net.
+- Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
+- On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
 - While a run is in progress, PR rows currently being refreshed show a small spinner below the PR number link and above the relative "updated ... ago" text without forcing a full table rerender.
+- A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
+- A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
 
 Use the form to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
@@ -504,8 +508,10 @@ The table also includes:
 - a leading attention-icon column (blank header)
 - a dedicated `CHK` column
 - expandable per-row insights in `TITLE` showing source branch, merge target branch, CHK state, mergeability state, source updated timestamp, and baseline timestamp
+  - The source branch value has a small copy-icon button beside it to copy the branch name to the clipboard (e.g. for `git checkout`).
 - expandable per-row insights in `TITLE` also show approver names + approval timestamps and open (unresolved) conversation count
 - expandable per-row insights in `TITLE` also show requested reviewers and assigned users
+- The `TITLE` cell itself also has a copy-icon button beside the PR title that copies `<title> #<number>` to the clipboard - when pasted into a rich-text target (Slack, docs, email) the `#<number>` portion is a link to the PR on GitHub; plain-text targets get `<title> #<number>` with no markup.
 - expandable per-row insights in `TITLE` also show GitHub viewed-files progress (`viewed/changed`, like `29/37 viewed`)
 - expandable per-row insights in `TITLE` also show GitHub-style line-change totals when available (`<files> changed, +<additions>, -<deletions>, <total> lines changed`)
 - expandable insights include a compact colored badge strip for `STATUS`, `CHK`, and `MRG`
@@ -728,7 +734,7 @@ The page calls:
 - `GET /view-prs/author-comments?authorLogin=<login>` (fetch manual comments for selected author)
 - `POST /view-prs/author-comments` (create a manual author comment)
 - `PUT /view-prs/author-comments` (edit an existing manual author comment)
-- `GET /view-prs/diff?repo=<owner/name>&prNumber=<number>` (read cached PR diff; refreshes when commit fingerprint changed)
+- `GET /view-prs/diff?repo=<owner/name>&prNumber=<number>` (read cached PR diff; refreshes when the commit fingerprint changes - for a merged PR that fingerprint depends only on the commit set, so it never changes again once merged)
 - `GET /view-prs/user-defaults` (read persisted default filter/visibility/attention overrides)
 - `PUT /view-prs/user-defaults` (save persisted default filter/visibility/attention overrides)
 - `GET /view-prs/data` (load persisted data for display)
@@ -737,6 +743,7 @@ The page calls:
 - `POST /view-prs/data-delta` (retrieve only changed PR rows by PR number)
 - `GET /view-prs/scheduler` (scheduler state, including `activePrNumbers` for per-PR in-progress indicators)
   - The same per-row spinner also lights up while a user-initiated Ack, Clear, `↻ Update`, or `+ Label` request is in flight for that PR (independent of the scheduler's own `activePrNumbers`), and clears once that request settles (success, failure, or error) - so a row stays visibly busy for exactly as long as its own request takes.
+  - Also includes `quickCheckIntervalMinutes`, `mergedFullSweepIntervalMinutes`, `lastQuickCheckAt`, `lastQuickCheckError`, `lastMergedDrainAt`, `pendingOpenCount`, and `pendingMergedClosedCount` for the two-tier scheduler described above.
 
 Selective polling behavior:
 
@@ -972,6 +979,11 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
+Below the summary, assigned users show as small initials badges:
+
+- The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
+- A badge for an assignee who is also one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip. Both indicators can apply to the same badge at once.
+
 ## Check indicators in UI vs script
 
 - Script output/title metadata includes `CHK:<state>` where `<state>` is one of `PASS`, `FAIL`, `RUN`, `SKIP`, `NA`.
@@ -1031,8 +1043,7 @@ Behavior:
 - Each run updates (upserts) entries for PRs processed in that run.
 - PR IDs not processed in a run are **not removed** from the file.
 - Display filters do not trim what is stored in this file.
-- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current.
-- If needed for performance experiments, cache reuse can be re-enabled by setting `VIEW_PRS_ALLOW_CACHE_REUSE=1`.
+- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current. See [Performance Toggle](#performance-toggle) (`VIEW_PRS_SKIP_UNCHANGED`) to re-enable per-row cache reuse within a full run - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
 
 Top-level structure:
 
@@ -1082,6 +1093,8 @@ Additional notes:
     --hide-reason            Hide inline changed reason in STATUS
     --quiet                  Hide run metadata header
     --open <mode>            Browser behavior: all | changed | none (default: all)
+    --quick-check            List PRs and report which changed (by updatedAt) without
+                              fetching full details/diffs; prints JSON to stdout and exits
 -h, --help                   Show this help
 ```
 

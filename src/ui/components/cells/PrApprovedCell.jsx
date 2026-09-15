@@ -11,6 +11,7 @@ import React from 'react';
 export function PrApprovedCell({ pr, actorsMap = {} }) {
   const approvedClass = window.approvedClass || (() => '');
   const collectAssignedUsers = window.collectAssignedUsers || (() => []);
+  const collectRequestedReviewers = window.collectRequestedReviewers || (() => []);
   const getEffectiveViewerLogin = window.getEffectiveViewerLogin || (() => '');
   const resolveActorDisplayName =
     window.resolveActorDisplayName || ((login, _actorsMap, fallback) => String(fallback || login || '').trim());
@@ -20,6 +21,11 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
 
   const assignees = collectAssignedUsers(pr);
   const currentViewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
+  const reviewerLogins = new Set(
+    collectRequestedReviewers(pr)
+      .map((reviewer) => String(reviewer?.login || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
 
   const conversationResult = getOpenConversationCountWithMe(pr);
   const openConversationCount = toCount(conversationResult?.count);
@@ -36,14 +42,19 @@ export function PrApprovedCell({ pr, actorsMap = {} }) {
             const login = String(assignee?.login || '').trim();
             if (!login) return null;
             const isAssignedToViewer = Boolean(currentViewerLogin) && login.toLowerCase() === currentViewerLogin;
+            const isReviewer = reviewerLogins.has(login.toLowerCase());
             const displayName = resolveActorDisplayName(login, actorsMap, assignee?.name);
             return (
               <span
                 key={login}
-                className={['approved-assigned-badge', isAssignedToViewer ? 'approved-assigned-badge-me' : '']
+                className={[
+                  'approved-assigned-badge',
+                  isAssignedToViewer ? 'approved-assigned-badge-me' : '',
+                  isReviewer ? 'approved-assigned-badge-reviewer' : '',
+                ]
                   .filter(Boolean)
                   .join(' ')}
-                title={`${displayName}${isAssignedToViewer ? ' (you)' : ''}`}
+                title={`${displayName}${isAssignedToViewer ? ' (you)' : ''}${isReviewer ? ' (reviewer)' : ''}`}
               >
                 {getUserInitials(displayName, login)}
               </span>

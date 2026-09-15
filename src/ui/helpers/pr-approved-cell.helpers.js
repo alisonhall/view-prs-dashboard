@@ -9,6 +9,7 @@
   const createPrApprovedCellHelpers = ({
     approvedClass,
     collectAssignedUsers,
+    collectRequestedReviewers,
     getCurrentViewerLogin,
     resolveActorDisplayName,
     getUserInitials,
@@ -20,6 +21,8 @@
       typeof approvedClass === "function" ? approvedClass : () => "";
     const collectAssignedUsersSafe =
       typeof collectAssignedUsers === "function" ? collectAssignedUsers : () => [];
+    const collectRequestedReviewersSafe =
+      typeof collectRequestedReviewers === "function" ? collectRequestedReviewers : () => [];
     const getCurrentViewerLoginSafe =
       typeof getCurrentViewerLogin === "function"
         ? getCurrentViewerLogin
@@ -73,6 +76,11 @@
         const currentViewerLogin = String(getCurrentViewerLoginSafe() || "")
           .trim()
           .toLowerCase();
+        const reviewerLogins = new Set(
+          collectRequestedReviewersSafe(row)
+            .map((reviewer) => String(reviewer?.login || "").trim().toLowerCase())
+            .filter(Boolean),
+        );
 
         assignees.forEach((assignee) => {
           const login = String(assignee?.login || "").trim();
@@ -81,9 +89,11 @@
           const badge = doc.createElement("span");
           const isAssignedToViewer =
             !!currentViewerLogin && login.toLowerCase() === currentViewerLogin;
+          const isReviewer = reviewerLogins.has(login.toLowerCase());
           badge.className = [
             "approved-assigned-badge",
             isAssignedToViewer ? "approved-assigned-badge-me" : "",
+            isReviewer ? "approved-assigned-badge-reviewer" : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -93,7 +103,7 @@
             assignee?.name,
           );
           badge.textContent = getUserInitialsSafe(displayName, login);
-          badge.title = `${displayName}${isAssignedToViewer ? " (you)" : ""}`;
+          badge.title = `${displayName}${isAssignedToViewer ? " (you)" : ""}${isReviewer ? " (reviewer)" : ""}`;
           badges.appendChild(badge);
         });
 

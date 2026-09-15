@@ -1564,6 +1564,7 @@ const { createApprovedCell } =
   prApprovedCellHelperFactory.createPrApprovedCellHelpers({
     approvedClass: (...args) => approvedClass(...args),
     collectAssignedUsers: (...args) => collectAssignedUsers(...args),
+    collectRequestedReviewers: (...args) => collectRequestedReviewers(...args),
     getCurrentViewerLogin: () => currentViewerLogin,
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
     getUserInitials: (...args) => getUserInitials(...args),
@@ -7608,6 +7609,7 @@ const initPage = () => {
     buildRowActorsMap,
     normalizeActorLogin,
     collectAssignedUsers,
+    collectRequestedReviewers,
     buildActorIdentityClassName,
     buildActorIdentityTitle,
     getEffectiveViewerLogin,
