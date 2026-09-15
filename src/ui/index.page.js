@@ -4235,129 +4235,6 @@ const { normalizeRowMetrics, buildReviewerStats, applyStatsControls } =
     statsViewState,
   });
 
-const sumReviewerMetric = (reviewerRows, key) =>
-  asArray(reviewerRows).reduce(
-    (total, reviewer) => total + toCount(reviewer?.[key]),
-    0,
-  );
-
-const createStatsGraphCard = (title, subtitle, items, onHeaderClick = null) => {
-  if (!Array.isArray(items) || items.length === 0) return null;
-
-  const card = document.createElement("section");
-  card.className = "stats-graph-card";
-
-  const heading = document.createElement("h3");
-  heading.className = "stats-graph-title";
-  heading.textContent = title;
-  if (onHeaderClick) {
-    heading.style.cursor = "pointer";
-    heading.title = "Click to sort table by this metric";
-    heading.onclick = onHeaderClick;
-    heading.className += " stats-graph-title-clickable";
-  }
-  card.appendChild(heading);
-
-  if (subtitle) {
-    const subtitleEl = document.createElement("p");
-    subtitleEl.className = "stats-graph-subtitle";
-    subtitleEl.textContent = subtitle;
-    card.appendChild(subtitleEl);
-  }
-
-  const list = document.createElement("div");
-  list.className = "stats-graph-list";
-  const maxValue = Math.max(
-    1,
-    ...items.map((item) => {
-      if (Array.isArray(item?.segments)) {
-        return item.segments.reduce(
-          (sum, seg) => sum + Math.max(0, toCount(seg?.value)),
-          0,
-        );
-      }
-      return Math.max(0, toCount(item?.value));
-    }),
-  );
-
-  items.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "stats-graph-row";
-
-    const header = document.createElement("div");
-    header.className = "stats-graph-row-header";
-
-    const label = document.createElement("span");
-    label.className = "stats-graph-label";
-    label.textContent = String(item?.label || "-");
-    header.appendChild(label);
-
-    const isStacked = Array.isArray(item?.segments);
-    const segmentValues = isStacked
-      ? item.segments.map((seg) => Math.max(0, toCount(seg?.value)))
-      : [Math.max(0, toCount(item?.value))];
-    const totalValue = segmentValues.reduce((a, b) => a + b, 0);
-
-    const valueLabel = document.createElement("span");
-    valueLabel.className = "stats-graph-value";
-    valueLabel.textContent = String(totalValue);
-    header.appendChild(valueLabel);
-
-    row.appendChild(header);
-
-    const track = document.createElement("div");
-    track.className = "stats-graph-track";
-
-    if (isStacked) {
-      const totalPercent = Math.max(
-        8,
-        Math.round((totalValue / maxValue) * 100),
-      );
-      segmentValues.forEach((segValue, idx) => {
-        const segment = item.segments[idx];
-        const segPercent = (segValue / Math.max(1, totalValue)) * totalPercent;
-        const fill = document.createElement("div");
-        fill.className = [
-          "stats-graph-fill",
-          segment?.tone ? `stats-graph-fill-${segment.tone}` : "",
-          "stats-graph-fill-segment",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        fill.style.width = `${Math.max(2, segPercent)}%`;
-        fill.title = `${segment?.label}: ${segValue}`;
-        fill.setAttribute("aria-hidden", "true");
-        track.appendChild(fill);
-      });
-    } else {
-      const fill = document.createElement("div");
-      fill.className = [
-        "stats-graph-fill",
-        item?.tone ? `stats-graph-fill-${item.tone}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      fill.style.width = `${Math.max(8, Math.round((totalValue / maxValue) * 100))}%`;
-      fill.setAttribute("aria-hidden", "true");
-      track.appendChild(fill);
-    }
-
-    row.appendChild(track);
-
-    if (item?.detail) {
-      const detail = document.createElement("div");
-      detail.className = "stats-graph-detail";
-      detail.textContent = String(item.detail);
-      row.appendChild(detail);
-    }
-
-    list.appendChild(row);
-  });
-
-  card.appendChild(list);
-  return card;
-};
-
 const prReviewStatsTimelineHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-review-stats-timeline.helpers.js")
@@ -4375,35 +4252,6 @@ const {
   resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   getTimelineDateKeys,
 });
-
-const prReviewStatsChartComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-review-stats-chart.component.js")
-    : globalThis.ViewPrsReviewStatsChartComponent;
-
-const { createReviewerActivityChart } =
-  prReviewStatsChartComponentFactory.createPrReviewStatsChartComponent({
-    bucketTimelineChartData,
-  });
-
-const prReviewStatsVisualsComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-review-stats-visuals.component.js")
-    : globalThis.ViewPrsReviewStatsVisualsComponent;
-
-const { createStatsVisuals } =
-  prReviewStatsVisualsComponentFactory.createPrReviewStatsVisualsComponent({
-    asArray,
-    toCount,
-    sumReviewerMetric,
-    aggregateReviewerCommentsTimeline,
-    aggregateReviewerApprovalsTimeline,
-    getNormalizedStatsDateRange,
-    createStatsGraphCard,
-    createReviewerActivityChart,
-    statsViewState,
-    applyFiltersFromCache: (...args) => applyFiltersFromCache(...args),
-  });
 
 const renderActivityTrendNote = (rows, actorsMap = {}) => {
   const note = document.createElement("p");
@@ -4443,7 +4291,14 @@ if (typeof window !== "undefined") {
   window.reviewStatsFormatIsoDatetime = (...args) => formatIsoDatetime(...args);
   window.getNormalizedStatsDateRange = (...args) => getNormalizedStatsDateRange(...args);
   window.renderActivityTrendNote = (...args) => renderActivityTrendNote(...args);
-  window.createStatsVisuals = (...args) => createStatsVisuals(...args);
+  // Pure data-shaping helpers (no DOM) consumed directly by StatsVisuals.jsx/
+  // ReviewerActivityChart.jsx now that the chart visuals are real JSX
+  // (Track A, REACT_MIGRATION_PLAN.md) - not part of the mount-bridge
+  // surface, just formatting/business logic exposed the same way every
+  // other leaf component already reads window.toCount/window.asArray etc.
+  window.bucketTimelineChartData = (...args) => bucketTimelineChartData(...args);
+  window.aggregateReviewerCommentsTimeline = (...args) => aggregateReviewerCommentsTimeline(...args);
+  window.aggregateReviewerApprovalsTimeline = (...args) => aggregateReviewerApprovalsTimeline(...args);
   // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
   // already provides for Author Insights' own "View in table" button
   // (dispatches 'pr-navigate-to-insights' when React owns the PR table,

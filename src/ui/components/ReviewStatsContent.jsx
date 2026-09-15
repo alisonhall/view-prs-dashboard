@@ -12,16 +12,12 @@
  * of Phase 2 used, since this is pure derived display data with no
  * persisted override.
  *
- * The chart visuals (createStatsVisuals, pr-review-stats-visuals/chart
- * .component.js - ~900 lines of hand-rolled SVG/DOM chart building) are
- * deliberately NOT reimplemented in JSX here - they're wrapped via a ref
- * and useEffect instead, calling the existing vanilla builder and
- * inserting its returned DOM node directly. Rewriting that much
- * custom charting logic is a disproportionate lift for this slice and is
- * exactly the kind of complexity this migration has consistently left to
- * vanilla where React's DOM-diffing wouldn't add real value (see
- * REACT_MIGRATION_PLAN.md's Phase 2 "state management" decision for the
- * same reasoning applied elsewhere).
+ * The chart visuals (formerly createStatsVisuals in
+ * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
+ * DOM chart building) are now real JSX (see StatsVisuals.jsx,
+ * GraphCard.jsx, ReviewerActivityChart.jsx - Track A of the post-Phase-6
+ * migration follow-up, REACT_MIGRATION_PLAN.md), rendered directly below
+ * rather than wrapped via a ref+useEffect bridge into a vanilla builder.
  *
  * The "View in table" buttons (cards' and the reviewer table's own
  * expandable sources) go through window.navigateToPrInTableFromStats,
@@ -34,7 +30,8 @@
  * @module components/ReviewStatsContent
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
+import { StatsVisuals } from './StatsVisuals';
 
 const formatIsoDatetime = (value) =>
   window.reviewStatsFormatIsoDatetime ? window.reviewStatsFormatIsoDatetime(value) : String(value || '-');
@@ -185,24 +182,6 @@ function ReviewerRow({ reviewer }) {
       </tr>
     </>
   );
-}
-
-function StatsVisuals({ stats, rows, actorsMap }) {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    container.innerHTML = '';
-    const visuals = window.createStatsVisuals?.(stats, rows, actorsMap);
-    if (visuals) {
-      container.appendChild(visuals);
-    }
-  }, [stats, rows, actorsMap]);
-
-  return <div ref={containerRef} />;
 }
 
 export function ReviewStatsContent({ stats, rows, actorsMap }) {

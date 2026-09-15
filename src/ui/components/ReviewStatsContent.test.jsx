@@ -70,7 +70,6 @@ describe('ReviewStatsContent', () => {
       note.textContent = 'Total reviewer activity: 5 events across 3 days.';
       return note;
     };
-    window.createStatsVisuals = () => null;
     window.navigateToPrInTableFromStats = jest.fn();
   });
 
@@ -78,7 +77,6 @@ describe('ReviewStatsContent', () => {
     delete window.reviewStatsFormatIsoDatetime;
     delete window.getNormalizedStatsDateRange;
     delete window.renderActivityTrendNote;
-    delete window.createStatsVisuals;
     delete window.navigateToPrInTableFromStats;
   });
 
@@ -139,5 +137,15 @@ describe('ReviewStatsContent', () => {
     await user.click(filteredRowsCard.querySelector('.author-insights-table-link'));
 
     expect(window.navigateToPrInTableFromStats).toHaveBeenCalledWith('101');
+  });
+
+  test('given reviewer stats with comments/approvals, when rendering, then the chart visuals (StatsVisuals) actually render', () => {
+    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+
+    // Alex has comments/approvals/usefulness signals; Jamie has none - so
+    // the "top reviewers by ..." cards render (real integration through to
+    // StatsVisuals/GraphCard, not a stubbed bridge).
+    expect(screen.getByText('Top reviewers by comments')).toBeInTheDocument();
+    expect(screen.getByText('Top reviewers by approvals')).toBeInTheDocument();
   });
 });
