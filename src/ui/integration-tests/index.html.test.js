@@ -13,6 +13,7 @@ const React = require("react");
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
 const { render: rtlRender, cleanup } = require("@testing-library/react");
+const { flushSync } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -21,6 +22,8 @@ const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
+const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
+const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
@@ -337,12 +340,86 @@ const injectRunFilterFieldElements = () => {
 // delegation (a typed input's native value updated the DOM but never
 // reached React's onChange/state at all). cleanup() is RTL's own
 // real, battle-tested fix for exactly this class of problem.
+// Phase 6 (see REACT_MIGRATION_PLAN.md): pr-filter-panel.helpers.js's
+// multi-select populate functions and renderManagementFilterSummary have
+// no DOM-building of their own anymore - they only call
+// window.renderReactMultiSelectList/window.renderReactFilterSummary
+// (real react-app.jsx bridges, never loaded in this jsdom-only suite - see
+// installReactTableMountBridge's own comment for why the PR table gets the
+// same "reimplement just the bridge, not the whole module" treatment).
+// Real containers already exist in index.html for all of these (no
+// `-root` placeholder/portal involved, matching react-app.jsx's own
+// comment on MULTI_SELECT_LIST_ID_PREFIXES and mountAppliedFilterSummary),
+// so this mounts the same real components react-app.jsx does, directly
+// into them, via RTL's render()/cleanup() like every other bridge here.
+const MULTI_SELECT_LIST_ID_PREFIXES = {
+  "label-list": "label",
+  "exclude-label-list": "exclude-label",
+  "author-list": "author",
+  "assigned-list": "assigned",
+  "approver-list": "approver",
+};
+
+const installReactFilterPanelMountBridges = () => {
+  const multiSelectEntries = {};
+  window.renderReactMultiSelectList = (listId, options) => {
+    const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
+    const container = document.getElementById(listId);
+    if (!idPrefix || !container) return false;
+    // Matches react-app.jsx's renderReactMultiSelectList exactly: an
+    // incrementing `key` forces a full remount (not a prop-diff update) on
+    // every call, so the component's internal `checked` state always
+    // re-initializes fresh from `options` - see MultiSelectCheckboxList.jsx's
+    // own comment for why a plain rerender() would be wrong here.
+    const entry = multiSelectEntries[listId] || { rerender: null, renderCount: 0 };
+    entry.renderCount += 1;
+    const element = React.createElement(MultiSelectCheckboxList, {
+      key: entry.renderCount,
+      options,
+      idPrefix,
+    });
+    // flushSync, matching react-app.jsx's real renderReactMultiSelectList:
+    // a same-tick DOM read right after this call (getSelectedMultiSelectValues,
+    // used to seed a *different* list or the filter-apply pipeline that
+    // triggered this render in the first place) must see the committed
+    // result, not React 18's default batched/deferred commit.
+    if (entry.rerender) {
+      flushSync(() => entry.rerender(element));
+    } else {
+      let rerender;
+      flushSync(() => {
+        ({ rerender } = rtlRender(element, { container }));
+      });
+      entry.rerender = rerender;
+    }
+    multiSelectEntries[listId] = entry;
+    return true;
+  };
+
+  let filterSummaryRerender = null;
+  window.renderReactFilterSummary = (summaryText, filterChips) => {
+    const container = document.getElementById("management-filter-summary-root");
+    if (!container) return false;
+    if (filterSummaryRerender) {
+      filterSummaryRerender(React.createElement(AppliedFilterSummary, { summaryText, filterChips }));
+    } else {
+      const { rerender } = rtlRender(
+        React.createElement(AppliedFilterSummary, { summaryText, filterChips }),
+        { container },
+      );
+      filterSummaryRerender = rerender;
+    }
+    return true;
+  };
+};
+
 const installReactTableMountBridge = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
   window.mountReactPrTable = () => {};
+  installReactFilterPanelMountBridges();
 
   let rerender = null;
   let currentTableProps = null;

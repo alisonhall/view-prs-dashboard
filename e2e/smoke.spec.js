@@ -573,7 +573,7 @@ test("React-owned label multi-select renders options from payload data and filte
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  // updateMultiSelectSummary (pr-filter-panel.component.js) always
+  // updateMultiSelectSummary (pr-filter-panel.helpers.js) always
   // re-derives the summary's base text as everything before the first "(",
   // which strips the "(s)" from the original "Filter by label name(s)"
   // markup the very first time it runs (pre-existing behavior, unrelated
@@ -639,7 +639,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   const authorList = page.locator("#author-list");
   const assignedList = page.locator("#assigned-list");
   const approverList = page.locator("#approver-list");
-  // setupMultiSelectDropdownClosing (pr-filter-panel.component.js) closes
+  // setupMultiSelectDropdownClosing (pr-filter-panel.helpers.js) closes
   // every OTHER open <details class="multi-select-dropdown"> on any click
   // outside it - opening one dropdown, leaving it open, and then opening
   // the next closes the first, so each dropdown must be (re-)opened
@@ -726,7 +726,7 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // Covers the last four multi-selects converted (see REACT_MIGRATION_PLAN.md):
   // unlike every list in the batch test above, these are built directly in
   // index.page.js's own renderActorOptionsList/renderChangeFilterActorList
-  // (not pr-filter-panel.component.js), which is a different call site
+  // (not pr-filter-panel.helpers.js), which is a different call site
   // feeding the same MultiSelectCheckboxList/flushSync bridge - this test
   // confirms the conversion works from that call site too, not just that
   // the bridge itself works (already proven above).

@@ -30,6 +30,7 @@ import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
 import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
 import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
 import { BackfillBadges } from './components/BackfillBadges';
+import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { FilterStateProvider } from './state/FilterStateProvider';
 
 /**
@@ -283,7 +284,7 @@ function mountFilterStateProvider() {
 // FilterOptionSelect.jsx) - each `key` matches the field's `name`
 // attribute and has a corresponding entry in index.page.js's
 // FILTER_STATE_FIELD_MAP. None of these are read via a direct DOM read
-// outside pr-filter-panel.component.js's getCustomCommentsFilter/etc.
+// outside pr-filter-panel.helpers.js's getCustomCommentsFilter/etc.
 // (each only called when "Apply filters (local)" is clicked), and none
 // are in debouncedApplyOnChangeIds, so FilterStateProvider's
 // debounced-apply effect dependency list doesn't need these keys either.
@@ -364,12 +365,13 @@ const FILTER_OPTION_SELECT_FIELDS = [
  * wrapper span, so no index.html/index.css change is needed for these.
  *
  * MULTI_SELECT_LIST_ID_PREFIXES maps each list's container id to the
- * checkbox-id prefix its options previously used (see
- * getMultiSelectCheckboxId in pr-filter-panel.component.js, and the
- * `${idPrefix}-${login}-${index}` scheme in index.page.js's own
+ * checkbox-id prefix its options previously used (the vanilla fallback's
+ * own id-generation scheme, since removed along with the rest of its
+ * DOM-building code from pr-filter-panel.helpers.js - see the
+ * `${idPrefix}-${login}-${index}` scheme still in index.page.js's own
  * renderActorOptionsList/renderChangeFilterActorList) so generated ids
  * stay stable across the conversion. Covers every multi-select in the app:
- * five owned by pr-filter-panel.component.js (label/exclude-label/author/
+ * five owned by pr-filter-panel.helpers.js (label/exclude-label/author/
  * assigned/approver) and four built directly in index.page.js
  * (thread-resolution allow/deny, change-filter ignore-comment/review-
  * authors) - same bridge, same flushSync fix (gotcha #4), just two
@@ -401,7 +403,7 @@ function mountMultiSelectLists() {
 
 /**
  * Renders one multi-select list's checkbox items via React. Called by
- * index.page.js (via pr-filter-panel.component.js's `renderMultiSelectList`
+ * index.page.js (via pr-filter-panel.helpers.js's `renderMultiSelectList`
  * DI hook) every time that list's options are (re)populated from fresh PR
  * data. Returns false for any list id not yet converted (or if this module
  * hasn't mounted it yet - the same load-order race every other Phase 2
@@ -632,6 +634,46 @@ function mountBackfillBadges() {
   };
 }
 
+let appliedFilterSummaryRoot = null;
+
+/**
+ * Mounts the "Applied filters: ..." summary line + chip list (Run & Filter
+ * tab, Visibility Filters panel) into the single #management-filter-summary-root
+ * placeholder that replaced the old standalone <pre>/<div> pair in
+ * index.html - one container for both pieces, since AppliedFilterSummary
+ * renders them together as a fragment.
+ */
+function mountAppliedFilterSummary() {
+  const container = document.getElementById('management-filter-summary-root');
+  if (!container) {
+    return;
+  }
+  appliedFilterSummaryRoot = ReactDOM.createRoot(container);
+  appliedFilterSummaryRoot.render(<AppliedFilterSummary summaryText="" filterChips={[]} />);
+}
+
+/**
+ * Renders the Applied-filters summary/chips via React. Called by
+ * index.page.js (via pr-filter-panel.helpers.js's
+ * renderManagementFilterSummary) every time filters are (re)applied.
+ * Returns false if this module hasn't mounted it yet - the same load-order
+ * race every other Phase 2/3 field tolerates - so the caller just skips
+ * that one render instead of falling back to manual DOM-building.
+ *
+ * @param {string} summaryText
+ * @param {string[]} filterChips
+ * @returns {boolean} whether React handled the render
+ */
+function renderReactFilterSummary(summaryText, filterChips) {
+  if (!appliedFilterSummaryRoot) {
+    return false;
+  }
+  appliedFilterSummaryRoot.render(
+    <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />,
+  );
+  return true;
+}
+
 /**
  * Expose mounting function globally for vanilla JS to call
  * This allows the existing index.page.js to mount the React app
@@ -641,6 +683,9 @@ if (typeof window !== 'undefined') {
 
   window.renderReactMultiSelectList = renderReactMultiSelectList;
   mountMultiSelectLists();
+
+  window.renderReactFilterSummary = renderReactFilterSummary;
+  mountAppliedFilterSummary();
 
   mountFilterStateProvider();
   mountReviewStatsControls();

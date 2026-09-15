@@ -1611,7 +1611,6 @@ const { createActionsCell } =
     runSinglePrUpdate: (...args) => runSinglePrUpdate(...args),
     runAckOnlyWorkflow: (...args) => runAckOnlyWorkflow(...args),
     runClearOnlyWorkflow: (...args) => runClearOnlyWorkflow(...args),
-    openPrJsonModal: (...args) => openPrJsonModal(...args),
     getLatestSelectedRepo: () => latestSelectedRepo,
     defaultRepo: DEFAULT_REPO,
     documentRef: typeof document !== "undefined" ? document : null,
@@ -1636,7 +1635,7 @@ const prUiRenderUtilsHelperFactory =
     ? require("./helpers/pr-ui-render-utils.helpers.js")
     : globalThis.ViewPrsUiRenderUtilsHelpers;
 
-const { parseMarkerState, safeJsonStringify, setClassToken } =
+const { parseMarkerState, safeJsonStringify } =
   prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
 
 const prActivityTimelineRenderHelperFactory =
@@ -2722,10 +2721,10 @@ const handleTriggerAutoRun = async () => {
   }
 };
 
-const prFilterPanelComponentFactory =
+const prFilterPanelHelperFactory =
   typeof module !== "undefined" && module.exports
-    ? require("./components/pr-filter-panel.component.js")
-    : globalThis.ViewPrsFilterPanelComponent;
+    ? require("./helpers/pr-filter-panel.helpers.js")
+    : globalThis.ViewPrsFilterPanelHelpers;
 
 const {
   getSelectedAuthorLogins,
@@ -2747,7 +2746,7 @@ const {
   populateApproverOptions,
   renderManagementFilterSummary,
   setupMultiSelectDropdownClosing,
-} = prFilterPanelComponentFactory.createPrFilterPanelComponent({
+} = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
   getPreferredActorKey: (...args) => getPreferredActorKey(...args),
   resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   collectAssignedUsers: (...args) => collectAssignedUsers(...args),
@@ -2759,7 +2758,7 @@ const {
   // pairs now prefer FilterStateProvider's Context (via
   // getPendingSelectionsValue/setPendingSelectionsValue) over the plain
   // module variable, falling back to it when Context hasn't mounted -
-  // pr-filter-panel.component.js itself is unchanged, since it only ever
+  // pr-filter-panel.helpers.js itself is unchanged, since it only ever
   // calls these as opaque functions.
   getPendingAuthorFilterSelections: () =>
     getPendingSelectionsValue("pendingAuthorSelections", pendingAuthorFilterSelections),
@@ -2792,13 +2791,20 @@ const {
       pendingExcludeLabelFilterSelections = v;
     }),
   // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): delegates
-  // to react-app.jsx's bridge when it has mounted a given list id;
-  // pr-filter-panel.component.js falls back to its own vanilla DOM-building
-  // when this returns false (list not converted yet, or React hasn't
-  // finished loading/mounting).
+  // to react-app.jsx's bridge when it has mounted a given list id; a no-op
+  // (React hasn't finished loading/mounting yet) when this returns false -
+  // pr-filter-panel.helpers.js no longer has any DOM-building of its own to
+  // fall back to.
   renderMultiSelectList: (listId, items) =>
     typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
       ? window.renderReactMultiSelectList(listId, items)
+      : false,
+  // Delegates the "Applied filters: ..." summary/chips to react-app.jsx's
+  // bridge (AppliedFilterSummary.jsx) - same handled/fallback-to-no-op
+  // shape as renderMultiSelectList above.
+  renderFilterSummary: (summaryText, filterChips) =>
+    typeof window !== "undefined" && typeof window.renderReactFilterSummary === "function"
+      ? window.renderReactFilterSummary(summaryText, filterChips)
       : false,
   documentRef: typeof document !== "undefined" ? document : null,
   // Phase 6 (see REACT_MIGRATION_PLAN.md): lets getCustomCommentsFilter/
@@ -3825,25 +3831,6 @@ const {
 } = prExportHelperFactory.createPrExportHelpers({
   getPerPrUserStateFromPayload,
 });
-
-const prJsonModalComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-json-modal.component.js")
-    : globalThis.ViewPrsJsonModalComponent;
-
-const { openPrJsonModal } =
-  prJsonModalComponentFactory.createPrJsonModalComponent({
-    getPerPrUserStateFromPayload: (...args) => getPerPrUserStateFromPayload(...args),
-    getLatestStoredPayload: () => latestStoredPayload,
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    defaultRepo: DEFAULT_REPO,
-    safeJsonStringify: (...args) => safeJsonStringify(...args),
-    setClassToken: (...args) => setClassToken(...args),
-    fetchFn: (...args) => fetch(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-    navigatorRef: typeof navigator !== "undefined" ? navigator : null,
-    setTimeoutFn: (...args) => setTimeout(...args),
-  });
 
 const buildActivityTimelineSummary = (
   activityTimelineRaw,
@@ -7632,7 +7619,6 @@ const initPage = () => {
     toCount,
     formatIsoDatetime,
     runSinglePrUpdate,
-    openPrJsonModal,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
     parseMarkerState,

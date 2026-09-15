@@ -11,7 +11,7 @@
  * unmigrated consumers), so there was no reason to fork a parallel
  * Context-backed component here; every usage just gained the prop. Each
  * field is only ever read via `getCustomCommentsFilter` etc.
- * (pr-filter-panel.component.js) when "Apply filters (local)" is clicked -
+ * (pr-filter-panel.helpers.js) when "Apply filters (local)" is clicked -
  * those now prefer Context the same handled/fallback way as everywhere
  * else in this migration.
  *

@@ -521,8 +521,8 @@ export function PrTableApp({
     }));
   };
 
-  // Handler: Open the PR JSON details modal for a row (mirrors vanilla's
-  // window.openPrJsonModal(entry, pr) signature).
+  // Handler: Open the PR JSON details modal for a row ((entry, pr)
+  // signature, matching PrActionsCell's onViewJson call).
   const handleViewJson = (entry, pr) => {
     setJsonModalTarget({ entry, pr });
   };

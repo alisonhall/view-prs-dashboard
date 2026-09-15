@@ -1,7 +1,11 @@
 /**
  * PrJsonModal - "View PR JSON details" dialog (data file entry, pr-detail
  * file entry, user-state entry, and the PR diff with wrap/copy controls).
- * Matches vanilla's components/pr-json-modal.component.js.
+ * The React version now used everywhere - the vanilla original
+ * (components/pr-json-modal.component.js, plus its
+ * helpers/pr-json-modal.helpers.js) was deleted once this fully replaced
+ * it; its "Copy for AI"/diff-summary logic below is a standalone
+ * reimplementation, not a shared helper.
  *
  * @module components/PrJsonModal
  */

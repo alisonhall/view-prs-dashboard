@@ -8,7 +8,6 @@ const { PrActionsCell } = require('./PrActionsCell');
 describe('PrActionsCell', () => {
   afterEach(() => {
     delete window.runSinglePrUpdate;
-    delete window.openPrJsonModal;
     delete window.getAvailableRepoLabels;
   });
 
@@ -98,20 +97,14 @@ describe('PrActionsCell', () => {
     expect(runSinglePrUpdate).not.toHaveBeenCalled();
   });
 
-  test('given the {} button and no onViewJson prop, when clicked, then falls back to window.openPrJsonModal with an entry carrying the repo', () => {
-    const openPrJsonModal = jest.fn();
-    window.openPrJsonModal = openPrJsonModal;
+  test('given the {} button and no onViewJson prop, when clicked, then does nothing (no crash)', () => {
     renderCell({ pr: { number: '101' } });
-    screen.getByRole('button', { name: 'View PR JSON details for #101' }).click();
-    expect(openPrJsonModal).toHaveBeenCalledWith(
-      { prNumber: '101', repo: 'owner/repo' },
-      { number: '101' },
-    );
+    expect(() =>
+      screen.getByRole('button', { name: 'View PR JSON details for #101' }).click(),
+    ).not.toThrow();
   });
 
-  test('given the {} button and an onViewJson prop, when clicked, then calls onViewJson (not window.openPrJsonModal) with an entry carrying the repo', () => {
-    const openPrJsonModal = jest.fn();
-    window.openPrJsonModal = openPrJsonModal;
+  test('given the {} button and an onViewJson prop, when clicked, then calls onViewJson with an entry carrying the repo', () => {
     const onViewJson = jest.fn();
     renderCell({ pr: { number: '101' }, onViewJson });
     screen.getByRole('button', { name: 'View PR JSON details for #101' }).click();
@@ -119,7 +112,6 @@ describe('PrActionsCell', () => {
       { prNumber: '101', repo: 'owner/repo' },
       { number: '101' },
     );
-    expect(openPrJsonModal).not.toHaveBeenCalled();
   });
 
   test('given repo labels from window.getAvailableRepoLabels, when rendering, then lists labels not already on the PR', () => {

@@ -116,9 +116,10 @@
                         <h3>Visibility Filters</h3>
                         <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub
                             requests.</p>
-                        <pre id="management-filter-summary"
-                            class="management-filter-summary">Applied filters summary will appear here after data loads.</pre>
-                        <div id="management-filter-chips" class="applied-filter-chips"></div>
+                        <!-- Rendered by React (see react-app.jsx's mountAppliedFilterSummary) as
+                             the <pre id="management-filter-summary">/<div id="management-filter-chips">
+                             pair, same ids/classes as before. -->
+                        <span id="management-filter-summary-root"></span>
 
                         <div class="form-grid">
                             <label for="scope-mode">View scope</label>
@@ -541,7 +542,6 @@
          trailing `//# sourceMappingURL=marked.umd.js.map` comment expects
          it to sit right next to it). -->
     <script src="./vendor/marked.umd.js"></script>
-    <script src="./helpers/pr-json-modal.helpers.js"></script>
     <script src="./helpers/pr-notes.helpers.js"></script>
     <script src="./helpers/pr-data-polling.helpers.js"></script>
     <script src="./helpers/pr-http.helpers.js"></script>
@@ -643,8 +643,7 @@
     <script src="./components/pr-review-stats-chart.component.js"></script>
     <script src="./components/pr-review-stats-visuals.component.js"></script>
     <script src="./components/pr-author-insights.component.js"></script>
-    <script src="./components/pr-json-modal.component.js"></script>
-    <script src="./components/pr-filter-panel.component.js"></script>
+    <script src="./helpers/pr-filter-panel.helpers.js"></script>
     <script src="./orchestrators/pr-data-tab.orchestrator.js"></script>
     <script src="./orchestrators/author-insights-tab.orchestrator.js"></script>
     <script src="./orchestrators/review-stats-tab.orchestrator.js"></script>

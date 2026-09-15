@@ -4,9 +4,9 @@
     return;
   }
 
-  root.ViewPrsFilterPanelComponent = factory();
+  root.ViewPrsFilterPanelHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const createPrFilterPanelComponent = ({
+  const createPrFilterPanelHelpers = ({
     getPreferredActorKey,
     resolveActorDisplayName,
     collectAssignedUsers,
@@ -24,6 +24,12 @@
     getPendingExcludeLabelFilterSelections,
     setPendingExcludeLabelFilterSelections,
     renderMultiSelectList,
+    // Renders the "Applied filters: ..." summary line + chip list via React
+    // (react-app.jsx's renderReactFilterSummary, mounted into
+    // #management-filter-summary-root - see AppliedFilterSummary.jsx).
+    // Optional and defaults to a no-op so every existing call site/unit
+    // test keeps working unmodified before React has mounted it.
+    renderFilterSummary,
     documentRef,
     // Phase 6 (see REACT_MIGRATION_PLAN.md): optional - when provided,
     // returns a migrated field's current value from FilterStateProvider's
@@ -58,6 +64,8 @@
       typeof renderMultiSelectList === "function"
         ? renderMultiSelectList
         : () => false;
+    const renderFilterSummarySafe =
+      typeof renderFilterSummary === "function" ? renderFilterSummary : () => false;
     const getPreferredActorKeySafe =
       typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
     const resolveActorDisplayNameSafe =
@@ -188,15 +196,6 @@
     const getAnalysisOfPrFilter = () =>
       readFilterStateOrDomValue("filterAnalysisOfPr", "filter-analysis-of-pr");
 
-    const getMultiSelectCheckboxId = (prefix, value, index) => {
-      const normalized = String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      return `${prefix}-${normalized || "item"}-${index}`;
-    };
-
     const updateMultiSelectSummary = (listId) => {
       const list = getListElement(listId);
       if (!list) return;
@@ -260,7 +259,7 @@
         labelList.classList.remove("empty");
       }
 
-      const handled = renderMultiSelectListSafe(
+      renderMultiSelectListSafe(
         "label-list",
         sortedLabels.map(({ normalizedToken, labelName }) => ({
           value: labelName,
@@ -268,28 +267,6 @@
           checked: selectedTokens.has(normalizedToken),
         })),
       );
-
-      if (!handled) {
-        labelList.innerHTML = "";
-        sortedLabels.forEach(({ normalizedToken, labelName }, index) => {
-          const itemDiv = getDocument().createElement("div");
-          itemDiv.className = "multi-select-item";
-
-          const checkbox = getDocument().createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.id = getMultiSelectCheckboxId("label", labelName, index);
-          checkbox.value = labelName;
-          checkbox.checked = selectedTokens.has(normalizedToken);
-
-          const label = getDocument().createElement("label");
-          label.htmlFor = checkbox.id;
-          label.textContent = labelName;
-
-          itemDiv.appendChild(checkbox);
-          itemDiv.appendChild(label);
-          labelList.appendChild(itemDiv);
-        });
-      }
 
       if (Array.isArray(pendingSelections)) {
         const appliedCount = sortedLabels.filter(({ normalizedToken }) =>
@@ -327,7 +304,7 @@
         excludeLabelList.classList.remove("empty");
       }
 
-      const handled = renderMultiSelectListSafe(
+      renderMultiSelectListSafe(
         "exclude-label-list",
         sortedLabels.map(({ normalizedToken, labelName }) => ({
           value: labelName,
@@ -335,28 +312,6 @@
           checked: selectedTokens.has(normalizedToken),
         })),
       );
-
-      if (!handled) {
-        excludeLabelList.innerHTML = "";
-        sortedLabels.forEach(({ normalizedToken, labelName }, index) => {
-          const itemDiv = getDocument().createElement("div");
-          itemDiv.className = "multi-select-item";
-
-          const checkbox = getDocument().createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.id = getMultiSelectCheckboxId("exclude-label", labelName, index);
-          checkbox.value = labelName;
-          checkbox.checked = selectedTokens.has(normalizedToken);
-
-          const label = getDocument().createElement("label");
-          label.htmlFor = checkbox.id;
-          label.textContent = labelName;
-
-          itemDiv.appendChild(checkbox);
-          itemDiv.appendChild(label);
-          excludeLabelList.appendChild(itemDiv);
-        });
-      }
 
       if (Array.isArray(pendingSelections)) {
         const appliedCount = sortedLabels.filter(({ normalizedToken }) =>
@@ -409,7 +364,7 @@
         authorList.classList.remove("empty");
       }
 
-      const handled = renderMultiSelectListSafe(
+      renderMultiSelectListSafe(
         "author-list",
         sortedAuthors.map(([login, displayName]) => ({
           value: login,
@@ -417,28 +372,6 @@
           checked: selectedLogins.has(login),
         })),
       );
-
-      if (!handled) {
-        authorList.innerHTML = "";
-        sortedAuthors.forEach(([login, displayName]) => {
-          const itemDiv = getDocument().createElement("div");
-          itemDiv.className = "multi-select-item";
-
-          const checkbox = getDocument().createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.id = `author-${login}`;
-          checkbox.value = login;
-          checkbox.checked = selectedLogins.has(login);
-
-          const label = getDocument().createElement("label");
-          label.htmlFor = `author-${login}`;
-          label.textContent = displayName;
-
-          itemDiv.appendChild(checkbox);
-          itemDiv.appendChild(label);
-          authorList.appendChild(itemDiv);
-        });
-      }
 
       if (Array.isArray(pendingSelections)) {
         const appliedCount = sortedAuthors.filter(([login]) =>
@@ -495,7 +428,7 @@
         assignedList.classList.remove("empty");
       }
 
-      const handled = renderMultiSelectListSafe(
+      renderMultiSelectListSafe(
         "assigned-list",
         sortedAssignees.map(([login, displayName]) => ({
           value: login,
@@ -503,28 +436,6 @@
           checked: selectedLogins.has(login),
         })),
       );
-
-      if (!handled) {
-        assignedList.innerHTML = "";
-        sortedAssignees.forEach(([login, displayName]) => {
-          const itemDiv = getDocument().createElement("div");
-          itemDiv.className = "multi-select-item";
-
-          const checkbox = getDocument().createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.id = `assigned-${login}`;
-          checkbox.value = login;
-          checkbox.checked = selectedLogins.has(login);
-
-          const label = getDocument().createElement("label");
-          label.htmlFor = `assigned-${login}`;
-          label.textContent = displayName;
-
-          itemDiv.appendChild(checkbox);
-          itemDiv.appendChild(label);
-          assignedList.appendChild(itemDiv);
-        });
-      }
 
       if (Array.isArray(pendingSelections)) {
         const appliedCount = sortedAssignees.filter(([login]) =>
@@ -580,7 +491,7 @@
         approverList.classList.remove("empty");
       }
 
-      const handled = renderMultiSelectListSafe(
+      renderMultiSelectListSafe(
         "approver-list",
         sortedApprovers.map(([login, displayName]) => ({
           value: login,
@@ -588,28 +499,6 @@
           checked: selectedLogins.has(login),
         })),
       );
-
-      if (!handled) {
-        approverList.innerHTML = "";
-        sortedApprovers.forEach(([login, displayName]) => {
-          const itemDiv = getDocument().createElement("div");
-          itemDiv.className = "multi-select-item";
-
-          const checkbox = getDocument().createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.id = `approver-${login}`;
-          checkbox.value = login;
-          checkbox.checked = selectedLogins.has(login);
-
-          const label = getDocument().createElement("label");
-          label.htmlFor = `approver-${login}`;
-          label.textContent = displayName;
-
-          itemDiv.appendChild(checkbox);
-          itemDiv.appendChild(label);
-          approverList.appendChild(itemDiv);
-        });
-      }
 
       if (Array.isArray(pendingSelections)) {
         const appliedCount = sortedApprovers.filter(([login]) =>
@@ -627,38 +516,7 @@
       summaryText = "",
       filterChips = [],
     } = {}) => {
-      const doc = getDocument();
-      if (!doc) {
-        return;
-      }
-
-      const summaryNode = doc.getElementById("management-filter-summary");
-      const chipsNode = doc.getElementById("management-filter-chips");
-
-      if (summaryNode) {
-        summaryNode.textContent = summaryText || "Applied filters summary unavailable.";
-      }
-
-      if (!chipsNode) {
-        return;
-      }
-
-      chipsNode.innerHTML = "";
-      const chips = Array.isArray(filterChips) ? filterChips.filter(Boolean) : [];
-      if (chips.length === 0) {
-        const chip = doc.createElement("span");
-        chip.className = "applied-filter-chip";
-        chip.textContent = "No filters applied";
-        chipsNode.appendChild(chip);
-        return;
-      }
-
-      chips.forEach((label) => {
-        const chip = doc.createElement("span");
-        chip.className = "applied-filter-chip";
-        chip.textContent = String(label);
-        chipsNode.appendChild(chip);
-      });
+      renderFilterSummarySafe(summaryText, filterChips);
     };
 
     const setupMultiSelectDropdownClosing = () => {
@@ -702,6 +560,6 @@
   };
 
   return {
-    createPrFilterPanelComponent,
+    createPrFilterPanelHelpers,
   };
 });

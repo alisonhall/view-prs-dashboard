@@ -59,11 +59,7 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
 
   const handleJsonClick = (e) => {
     e.stopPropagation();
-    if (onViewJson) {
-      onViewJson(entry, pr);
-    } else {
-      (window.openPrJsonModal || (() => {}))(entry, pr);
-    }
+    onViewJson?.(entry, pr);
   };
 
   return (
