@@ -54,4 +54,24 @@ describe('PrStatusCell', () => {
     expect(indicator).toHaveClass('pr-last-checked-indicator-stale');
     expect(indicator).toHaveAttribute('title', 'Checked 2 hours ago');
   });
+
+  test('given updatePending is true, when rendering, then shows the update-queued badge', () => {
+    renderCell({ updatePending: true });
+    const badge = document.querySelector('.pr-update-pending-badge');
+    expect(badge).toHaveTextContent('Update queued');
+    expect(badge).toHaveAttribute(
+      'title',
+      'A change was detected on GitHub; full details are queued to refresh.',
+    );
+  });
+
+  test('given updatePending is false, when rendering, then omits the update-queued badge', () => {
+    renderCell({ updatePending: false });
+    expect(document.querySelector('.pr-update-pending-badge')).not.toBeInTheDocument();
+  });
+
+  test('given no updatePending field at all, when rendering, then omits the update-queued badge', () => {
+    renderCell({});
+    expect(document.querySelector('.pr-update-pending-badge')).not.toBeInTheDocument();
+  });
 });

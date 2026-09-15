@@ -99,4 +99,46 @@ describe("pr status cell helpers", () => {
     expect(result?.querySelector(".status-cell-content > div")?.textContent).toBe("-");
     expect(result?.querySelector(".approved-viewed-progress")?.textContent).toBe("0/0");
   });
+
+  test("given updatePending is true on the row, when creating status cell, then the update-queued badge is rendered", () => {
+    const helpers = createPrStatusCellHelpers({
+      isChangedStatus: () => false,
+      statusClass: () => "",
+      getViewedFilesState: () => ({
+        viewedFilesCount: 0,
+        changedFilesCount: 0,
+        isComplete: false,
+        hasUnviewedFiles: false,
+      }),
+      buildPrLastCheckedIndicator: () => ({ label: "", title: "", isStale: false }),
+      documentRef: document,
+    });
+
+    const result = helpers.createStatusCell({ status: "NO_CHANGE", updatePending: true }, {});
+
+    const badge = result?.querySelector(".pr-update-pending-badge");
+    expect(badge?.textContent).toBe("Update queued");
+    expect(badge?.title).toBe(
+      "A change was detected on GitHub; full details are queued to refresh.",
+    );
+  });
+
+  test("given updatePending is not set on the row, when creating status cell, then no update-queued badge is rendered", () => {
+    const helpers = createPrStatusCellHelpers({
+      isChangedStatus: () => false,
+      statusClass: () => "",
+      getViewedFilesState: () => ({
+        viewedFilesCount: 0,
+        changedFilesCount: 0,
+        isComplete: false,
+        hasUnviewedFiles: false,
+      }),
+      buildPrLastCheckedIndicator: () => ({ label: "", title: "", isStale: false }),
+      documentRef: document,
+    });
+
+    const result = helpers.createStatusCell({ status: "NO_CHANGE" }, {});
+
+    expect(result?.querySelector(".pr-update-pending-badge")).toBeNull();
+  });
 });
