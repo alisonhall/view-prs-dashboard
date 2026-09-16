@@ -1,62 +1,65 @@
 /**
  * AuthorCreatedPrsSection - React-owned "PRs created by this author"
- * section for the Author Insights tab, replacing
- * pr-author-insights.component.js's renderCreatedPrsSection().
+ * section for the Author Insights tab.
  *
- * Phase 3 (see REACT_MIGRATION_PLAN.md). This section is read-only (no
- * drafts, no server writes), so it's a lower-risk pick than the manual
- * comments composer/PR-linked notes sections still remaining in this tab.
+ * Track B (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): real JSX
+ * now, replacing the ref+useEffect wrapper around
+ * pr-author-insights.component.js's buildCreatedPrsSection() (deleted).
+ * `selectedAuthorLogin` is now passed as a real prop from
+ * renderAuthorInsights (via window.updateAuthorInsightsCreatedPrs) instead
+ * of being read from authorInsightsState internally by the wrapped
+ * builder - this removes the need for react-app.jsx's previous
+ * incrementing-`key` remount hack, since a real prop change is enough to
+ * re-derive the filtered/sorted list on every render.
  *
- * Deliberately NOT reimplemented item-by-item in JSX: each item's DOM is
- * built by calling window.buildAuthorInsightsCreatedPrsSection(rows) -
- * which returns the exact same <section> node
- * pr-author-insights.component.js's own buildCreatedPrsSection() builds
- * (title, list, "View in table" links via the already-React-safe
- * navigateToPrInTable, and per-PR status/approval/CHK/conversation meta
- * via createAuthorInsightsPrDataMeta, which itself depends on several
- * more small display helpers) - and inserted via a ref. Reimplementing
- * that whole derivation chain in JSX for this slice would duplicate a
- * lot of logic for no real benefit; the same "wrap the legacy
- * DOM-builder" choice StatsVisuals already made for the Review Stats
- * chart visuals.
+ * Still reads the pure filtering/sorting helpers off window
+ * (getPreferredActorKey, sortAuthorInsightsCreatedPrsDesc,
+ * formatIsoDatetime) - moving that off window is Track C's concern.
  *
  * Mounted once into the static #author-insights-created-prs-root
  * container and updated via
- * window.updateAuthorInsightsCreatedPrs(rows) - pr-author-insights
- * .component.js's renderAuthorInsights never rebuilds this container
- * once React owns it, only the other content around it (the same
- * container-split fix already applied to #author-insights-selector-root
- * and Review Stats' #stats-controls-root/#stats-content-root).
+ * window.updateAuthorInsightsCreatedPrs(rows, selectedAuthorLogin).
  *
  * @module components/AuthorCreatedPrsSection
  */
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
+import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
+import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
 
-// Mounted with a `key` that changes on every update() call (see
-// react-app.jsx's mountAuthorCreatedPrsSection) rather than depending on
-// `rows` here: the *same* `rows` array reference gets passed again
-// whenever only the selected author changes (renderAuthorInsights re-runs
-// with authorInsightsState.latestRows unchanged), which
-// buildAuthorInsightsCreatedPrsSection needs to react to (it reads
-// authorInsightsState.selectedAuthorLogin internally) even though `rows`
-// itself didn't change identity. A changing `key` forces a fresh mount -
-// and therefore a fresh effect run - on every real update, matching
-// AuthorInsightsSelector's own reasoning for the same bridge shape.
-export function AuthorCreatedPrsSection({ rows }) {
-  const containerRef = useRef(null);
+const getPreferredActorKey = (login, fallback) =>
+  window.getPreferredActorKey ? window.getPreferredActorKey(login, fallback) : String(login || fallback || '').trim();
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    container.innerHTML = '';
-    const section = window.buildAuthorInsightsCreatedPrsSection?.(rows);
-    if (section) {
-      container.appendChild(section);
-    }
-  }, [rows]);
+const sortCreatedPrsDesc = (rows) => (window.sortAuthorInsightsCreatedPrsDesc ? window.sortAuthorInsightsCreatedPrsDesc(rows) : rows);
 
-  return <div ref={containerRef} />;
+const formatIsoDatetime = (value) => (window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-'));
+
+export function AuthorCreatedPrsSection({ rows, selectedAuthorLogin }) {
+  const createdPrs = sortCreatedPrsDesc(
+    (Array.isArray(rows) ? rows : []).filter(
+      (entry) => getPreferredActorKey(entry?.data?.authorLogin, entry?.data?.author) === selectedAuthorLogin,
+    ),
+  );
+
+  return (
+    <section className="author-insights-section">
+      <h3>PRs created by this author</h3>
+      {createdPrs.length === 0 ? (
+        <p className="stats-empty">No PRs by this author in the current local data scope.</p>
+      ) : (
+        <div className="author-insights-list">
+          {createdPrs.map((entry, index) => (
+            <div className="author-insights-item" key={entry?.prNumber || entry?.data?.number || index}>
+              <AuthorInsightsPrLink entry={entry} />
+              <AuthorInsightsPrDataMeta entry={entry}>
+                <span className="author-insights-meta-detail">
+                  {formatIsoDatetime(entry?.data?.mergedAt || entry?.data?.sourceUpdatedAt || '-')}
+                </span>
+              </AuthorInsightsPrDataMeta>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

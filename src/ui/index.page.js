@@ -3,12 +3,6 @@ const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
 
-// Interval timer IDs for cleanup (prevent memory leaks)
-let pollDataInterval = null;
-let pollSchedulerInterval = null;
-let pollBackfillInterval = null;
-let activityRenderInterval = null;
-
 const formatDateInputValue = (date) => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -2658,7 +2652,7 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
   // cells. This is also called from its own scheduler-status poll loop
   // (see renderSchedulerStatus), independent of the main data render, so it
   // needs its own live-update channel rather than piggybacking on
-  // ReactMountBridge.update()'s payload/visiblePrNumbers plumbing.
+  // updateReactTable()'s payload/visiblePrNumbers plumbing.
   window.dispatchEvent(
     new CustomEvent("pr-active-progress-update", {
       detail: {
@@ -4369,7 +4363,7 @@ const prAuthorInsightsPrLinkHelpers =
     DEFAULT_REPO,
     activateDataTab: (...args) => activateDataTab(...args),
     collectNodesByTag: (...args) => collectNodesByTag(...args),
-    isReactTableMounted: () => Boolean(window.ReactMountBridge?.isMounted?.()),
+    isReactTableMounted: () => isReactTableMounted(),
   });
 
 const prAuthorInsightsDisplayHelperFactory =
@@ -4423,9 +4417,6 @@ const prAuthorInsightsComponentFactory =
 
 const {
   renderAuthorInsights,
-  buildCreatedPrsSection,
-  buildPrLinkedNotesSection,
-  buildManualCommentsSection,
 } =
   prAuthorInsightsComponentFactory.createPrAuthorInsightsComponent({
     prLinkHelpers: prAuthorInsightsPrLinkHelpers,
@@ -4433,10 +4424,8 @@ const {
     dataHelpers: prAuthorInsightsDataHelpers,
     draftHelpers: prAuthorInsightsDraftsHelpers,
     authorInsightsState,
-    postJson: (...args) => postJson(...args),
     recomputeDirtyPrSectionsFields: (...args) =>
       recomputeDirtyPrSectionsFields(...args),
-    DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
     // Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): delegate
     // to react-app.jsx's bridges when they've mounted; pr-author-insights
     // .component.js falls back to its own vanilla DOM-building when either
@@ -4445,9 +4434,9 @@ const {
       typeof window !== "undefined" && typeof window.updateAuthorInsightsSelector === "function"
         ? window.updateAuthorInsightsSelector(options, selectedLogin)
         : false,
-    updateReactAuthorInsightsCreatedPrs: (rows) =>
+    updateReactAuthorInsightsCreatedPrs: (rows, selectedAuthorLogin) =>
       typeof window !== "undefined" && typeof window.updateAuthorInsightsCreatedPrs === "function"
-        ? window.updateAuthorInsightsCreatedPrs(rows)
+        ? window.updateAuthorInsightsCreatedPrs(rows, selectedAuthorLogin)
         : false,
     updateReactAuthorInsightsHeader: (selectedAuthorName) =>
       typeof window !== "undefined" && typeof window.updateAuthorInsightsHeader === "function"
@@ -4475,26 +4464,85 @@ if (typeof window !== "undefined") {
       authorInsightsState.latestActorsMap || {},
     );
   };
-  // Returns the fully-built <section> DOM node (title + list/empty
-  // message) for the currently-selected author - AuthorCreatedPrsSection
-  // wraps it via a ref instead of reimplementing the same filtering/
-  // sorting/DOM-building logic (createAuthorInsightsPrLink,
-  // createAuthorInsightsPrDataMeta, and their own several helper
-  // dependencies) a second time in JSX, the same "wrap the legacy
-  // DOM-builder" pattern StatsVisuals already uses for the Review Stats
-  // chart visuals.
-  window.buildAuthorInsightsCreatedPrsSection = (rows) =>
-    buildCreatedPrsSection(rows);
-  // Same wrap-the-legacy-DOM-builder pattern, for the "PR-linked custom
-  // comments and sentiment" section - see AuthorInsightsNotesSection.jsx.
-  window.buildAuthorInsightsNotesSection = (selectedAuthor, rows, actorsMap) =>
-    buildPrLinkedNotesSection(selectedAuthor, rows, actorsMap);
-  // Same wrap-the-legacy-DOM-builder pattern, for the "Manual author
-  // comments" composer + list - see AuthorInsightsCommentsSection.jsx. Its
-  // mutable draft state and save/edit POST side effects live entirely
-  // inside buildManualCommentsSection and its own helpers, not in React.
-  window.buildAuthorInsightsCommentsSection = (selectedAuthor, rows, actorsMap) =>
-    buildManualCommentsSection(selectedAuthor, rows, actorsMap);
+  // Post-Phase-6 follow-up, Track B (REACT_MIGRATION_PLAN.md): the
+  // created-PRs and PR-linked-notes sections are now real JSX
+  // (AuthorCreatedPrsSection.jsx/AuthorInsightsNotesSection.jsx,
+  // AuthorInsightsPrLink.jsx/AuthorInsightsPrDataMeta.jsx) instead of
+  // wrapping pr-author-insights.component.js's buildCreatedPrsSection/
+  // buildPrLinkedNotesSection via a ref - those two builders have been
+  // deleted. These bridges expose the pure filtering/sorting/formatting
+  // helpers those sections need, the same "leaf components read window.*
+  // for pure data-shaping" pattern StatsVisuals/GraphCard use for Review
+  // Stats (Track A).
+  window.navigateToPrInTableFromAuthorInsights = (prNumber) =>
+    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, {
+      activateDataTab,
+      collectNodesByTag,
+    });
+  window.getOpenConversationCount = (...args) => getOpenConversationCount(...args);
+  window.normalizeAuthorInsightsSentiment = (...args) => normalizeAuthorInsightsSentiment(...args);
+  window.parseSortableTime = (...args) => parseSortableTime(...args);
+  window.getAuthorInsightsSentimentLabel = (...args) =>
+    prAuthorInsightsDisplayHelpers.getAuthorInsightsSentimentLabel(...args);
+  window.getAuthorInsightsSentimentBadgeClassName = (...args) =>
+    prAuthorInsightsDisplayHelpers.getAuthorInsightsSentimentBadgeClassName(...args);
+  window.getAuthorInsightsStatusBadgeClassName = (...args) =>
+    prAuthorInsightsDisplayHelpers.getAuthorInsightsStatusBadgeClassName(...args);
+  window.getAuthorInsightsCreatedPrStatus = (...args) =>
+    prAuthorInsightsDisplayHelpers.getAuthorInsightsCreatedPrStatus(...args);
+  window.sortAuthorInsightsCreatedPrsDesc = (...args) =>
+    prAuthorInsightsDisplayHelpers.sortAuthorInsightsCreatedPrsDesc(...args);
+  window.sortAuthorInsightsNoteMatchesDesc = (...args) =>
+    prAuthorInsightsDisplayHelpers.sortAuthorInsightsNoteMatchesDesc(...args);
+  window.getAuthorInsightsNoteDisplayTimestamp = (...args) =>
+    prAuthorInsightsDisplayHelpers.getAuthorInsightsNoteDisplayTimestamp(...args);
+  // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
+  // composer/editor is now real JSX too (AuthorInsightsCommentsSection.jsx)
+  // instead of wrapping buildManualCommentsSection via a ref - that builder
+  // (and its renderComposerForm/renderManualCommentList/
+  // renderManualCommentItem/renderEditForm helpers) has been deleted.
+  // These bridges expose the draft-state/data helpers that section needs.
+  // Important: draft mutations still write through
+  // getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/etc
+  // into authorInsightsState - NOT local-only React state - because
+  // pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
+  // reads authorInsightsState.manualCommentDraftByAuthorLogin/
+  // manualCommentEditDraftByAuthorLogin/manualCommentsByAuthorLogin
+  // directly to decide whether an incoming poll should be blocked because
+  // the user has unsaved author comment edits. Moving that shared-state
+  // concern into React itself (so this bridge surface can eventually go
+  // away) is Track C's job, not this one.
+  window.getAuthorInsightsComposerDraft = (...args) => getAuthorInsightsComposerDraft(...args);
+  window.updateAuthorInsightsComposerDraft = (...args) => updateAuthorInsightsComposerDraft(...args);
+  window.resetAuthorInsightsComposerDraft = (...args) => resetAuthorInsightsComposerDraft(...args);
+  window.getAuthorInsightsEditDraft = (...args) => getAuthorInsightsEditDraft(...args);
+  window.updateAuthorInsightsEditDraft = (...args) => updateAuthorInsightsEditDraft(...args);
+  window.resetAuthorInsightsEditDraft = (...args) => resetAuthorInsightsEditDraft(...args);
+  window.getAuthorManualCommentsForLogin = (...args) => getAuthorManualCommentsForLogin(...args);
+  window.getAuthorInsightsManualCommentsLoadState = (login) => ({
+    loading: Boolean(authorInsightsState.manualCommentsLoadingByAuthorLogin[login]),
+    error: authorInsightsState.manualCommentsErrorByAuthorLogin[login] || "",
+  });
+  window.setAuthorInsightsManualComments = (login, comments) => {
+    authorInsightsState.manualCommentsByAuthorLogin[login] = Array.isArray(comments)
+      ? comments
+      : [];
+  };
+  window.loadAuthorManualComments = (login, onComplete) =>
+    prAuthorInsightsDataHelpers.loadAuthorManualComments(login, authorInsightsState, onComplete);
+  window.saveAuthorManualComment = ({ authorLogin, note, sentiment }) =>
+    prAuthorInsightsDataHelpers.saveAuthorManualComment({
+      authorLogin,
+      note,
+      sentiment,
+      postJson: (...args) => postJson(...args),
+    });
+  window.updateAuthorManualComment = (args) =>
+    prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
+  window.AUTHOR_COMMENT_SENTIMENT_OPTIONS = prAuthorInsightsDataHelpers.AUTHOR_COMMENT_SENTIMENT_OPTIONS;
+  window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
+  window.sortAuthorInsightsManualCommentsDesc = (...args) =>
+    prAuthorInsightsDisplayHelpers.sortAuthorInsightsManualCommentsDesc(...args);
 }
 
 // Author Insights Tab Orchestrator
@@ -6355,6 +6403,63 @@ const renderPrTableMountError = () => {
     '<p class="pr-table-mount-error">Failed to load the PR table. Please refresh the page.</p>';
 };
 
+// Track C, slice C2b (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+// replaces react-mount-bridge.js (deleted, along with its dedicated test
+// file) - that module was just a thin wrapper around
+// window.mountReactPrTable/window.updateReactPrTable (both still owned and
+// exposed by react-app.jsx) plus an isMounted() flag and a console-logging
+// layer; inlining it here removes one indirection layer with identical
+// behavior. Its unmount() was confirmed dead code (no production caller
+// anywhere in the app) and isn't ported.
+let reactTableMounted = false;
+
+const mountReactTable = (container, initialData, callbacks) => {
+  if (!container) {
+    console.error("[ReactBridge] Cannot mount: no container element");
+    return false;
+  }
+  if (typeof window.mountReactPrTable !== "function") {
+    console.error(
+      "[ReactBridge] mountReactPrTable not available - is react-app.jsx loaded?",
+    );
+    return false;
+  }
+
+  try {
+    container.innerHTML = "";
+    window.mountReactPrTable(container, {
+      initialPayload: initialData.payload || {},
+      selectedRepo: initialData.selectedRepo || "",
+      visiblePrNumbers: initialData.visiblePrNumbers || null,
+      onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
+      onAckAction: callbacks.onAckAction || (() => {}),
+      onApplyLabel: callbacks.onApplyLabel || (() => {}),
+    });
+    reactTableMounted = true;
+    return true;
+  } catch (error) {
+    console.error("[ReactBridge] Error mounting React:", error);
+    return false;
+  }
+};
+
+const updateReactTable = (payload, selectedRepo, visiblePrNumbers) => {
+  if (!reactTableMounted || typeof window.updateReactPrTable !== "function") {
+    console.warn(
+      "[ReactBridge] Cannot update: React not mounted or update callback unavailable",
+    );
+    return;
+  }
+
+  try {
+    window.updateReactPrTable(payload, selectedRepo, visiblePrNumbers);
+  } catch (error) {
+    console.error("[ReactBridge] Error updating React:", error);
+  }
+};
+
+const isReactTableMounted = () => reactTableMounted;
+
 // Applies the render pipeline's actually-resolved repo (payload.repo ||
 // #repo input value || lastRun.repo - see deriveRepoRunContext) to
 // latestSelectedRepo/the label-refresh trigger. Pulled out of renderPrData
@@ -6392,10 +6497,9 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
 
   // Check if React is available
-  const hasReactBridge = window.ReactMountBridge && typeof window.ReactMountBridge.mount === 'function';
   const hasReactApp = window.mountReactPrTable && typeof window.mountReactPrTable === 'function';
 
-  if (!hasReactBridge || !hasReactApp) {
+  if (!hasReactApp) {
     // Phase 6 (see REACT_MIGRATION_PLAN.md): this branch used to run the
     // full vanilla table-build fallback whenever React's deferred module
     // hadn't loaded/mounted yet - covering both a genuine React failure
@@ -6463,9 +6567,9 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     : null;
 
   // Check if already mounted
-  if (window.ReactMountBridge.isMounted()) {
+  if (isReactTableMounted()) {
     // Already mounted: just update data
-    window.ReactMountBridge.update(
+    updateReactTable(
       latestStoredPayload || payload,
       resolvedRepo,
       visiblePrNumbers
@@ -6483,7 +6587,7 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
 
   // Mount React
-  const success = window.ReactMountBridge.mount(
+  const success = mountReactTable(
     container,
     {
       payload: latestStoredPayload || payload || {},
@@ -6500,6 +6604,23 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   if (!success) {
     console.error('[renderPrData] React mount failed - cannot render table');
     renderPrTableMountError();
+  }
+};
+
+// Track C, slice C2a (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+// the *only* other way React's PR table gets new data besides the full
+// renderPrData pipeline above - a deliberate perf optimization used by the
+// checkbox/Ack/Apply-Label React callbacks and the label-dropdown refresh,
+// which push a mutated latestStoredPayload straight to the mounted React
+// table without re-running the whole orchestrator pipeline (stats/filter-
+// dropdown/export-catalog/author-insights side effects), since none of
+// that changed. Previously this exact three-line check was duplicated
+// inline at two call sites; consolidating it here means moving the payload
+// itself into Context/hooks later only has to change what happens *inside*
+// this one function, not hunt down every direct call site across the file.
+const pushPayloadToReactTable = (payload, repo) => {
+  if (isReactTableMounted()) {
+    updateReactTable(payload, repo);
   }
 };
 
@@ -6902,6 +7023,23 @@ const pollSchedulerStatus = async () => {
   }
 };
 
+// Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+// <PrDataPolling /> (react-app.jsx) now owns the setInterval lifecycle for
+// these four functions (and the visibility-pause/beforeunload-cleanup
+// behavior that used to live in index.page.js's cleanupIntervals/
+// restartIntervals) - it calls them via these bridges on the same cadence
+// (AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, also exposed here so the
+// interval timing has one source of truth). The functions themselves are
+// unchanged; only *what decides when they run* moved.
+if (typeof window !== "undefined") {
+  window.pollForDataChanges = (...args) => pollForDataChanges(...args);
+  window.pollSchedulerStatus = (...args) => pollSchedulerStatus(...args);
+  window.pollBackfillStatus = (...args) => pollBackfillStatus(...args);
+  window.renderRequestActivity = (...args) => renderRequestActivity(...args);
+  window.AUTO_DATA_POLL_MS = AUTO_DATA_POLL_MS;
+  window.AUTO_BACKFILL_POLL_MS = AUTO_BACKFILL_POLL_MS;
+}
+
 const getFormBody = () => {
   const form = document.getElementById("run-script-form");
   const formData = new FormData(form);
@@ -7197,9 +7335,7 @@ const refreshAvailableRepoLabels = async (repoOverride) => {
     if (response.ok && result?.ok !== false) {
       availableRepoLabels = Array.isArray(result.labels) ? result.labels : [];
       populateApplyLabelSelect();
-      if (window.ReactMountBridge?.isMounted?.()) {
-        window.ReactMountBridge.update(latestStoredPayload, latestSelectedRepo);
-      }
+      pushPayloadToReactTable(latestStoredPayload, latestSelectedRepo);
     }
   } catch (_error) {
     // Best-effort: leave any previously cached labels/options in place.
@@ -7320,12 +7456,10 @@ function createReactCallbacks() {
     runClearOnlyWorkflow: runClearOnlyWorkflow,
     runApplyLabelWorkflow: runApplyLabelWorkflow,
 
-    // Update React table function
-    updateReactTable: (payload, repo) => {
-      if (window.ReactMountBridge?.isMounted?.()) {
-        window.ReactMountBridge.update(payload, repo);
-      }
-    },
+    // Update React table function - see pushPayloadToReactTable's own
+    // comment (Track C, slice C2a, REACT_MIGRATION_PLAN.md) for why this
+    // is a deliberately separate fast path from renderPrData.
+    updateReactTable: pushPayloadToReactTable,
 
     // State getters
     stateGetters: {
@@ -7524,7 +7658,7 @@ const initPage = () => {
   window.addEventListener(
     "viewprs:react-ready",
     () => {
-      if (!window.ReactMountBridge || !window.ReactMountBridge.isMounted()) {
+      if (!isReactTableMounted()) {
         renderPrData(latestStoredPayload, latestSelectedRepo);
       }
     },
@@ -7834,61 +7968,15 @@ const initPage = () => {
     });
   }
 
-  // Start auto-polling intervals (stored for cleanup to prevent memory leaks)
-  if (typeof setInterval === "function") {
-    pollDataInterval = setInterval(pollForDataChanges, AUTO_DATA_POLL_MS);
-    pollSchedulerInterval = setInterval(pollSchedulerStatus, AUTO_DATA_POLL_MS);
-    pollBackfillInterval = setInterval(pollBackfillStatus, AUTO_BACKFILL_POLL_MS);
-    activityRenderInterval = setInterval(renderRequestActivity, 1000);
-  }
-
-  /**
-   * Cleanup all polling intervals to prevent memory leaks.
-   * Called when tab is hidden or page is unloaded.
-   */
-  const cleanupIntervals = () => {
-    if (pollDataInterval) {
-      clearInterval(pollDataInterval);
-      pollDataInterval = null;
-    }
-    if (pollSchedulerInterval) {
-      clearInterval(pollSchedulerInterval);
-      pollSchedulerInterval = null;
-    }
-    if (pollBackfillInterval) {
-      clearInterval(pollBackfillInterval);
-      pollBackfillInterval = null;
-    }
-    if (activityRenderInterval) {
-      clearInterval(activityRenderInterval);
-      activityRenderInterval = null;
-    }
-  };
-
-  /**
-   * Restart all polling intervals after cleanup.
-   * Called when tab becomes visible again.
-   */
-  const restartIntervals = () => {
-    if (typeof setInterval === "function") {
-      pollDataInterval = setInterval(pollForDataChanges, AUTO_DATA_POLL_MS);
-      pollSchedulerInterval = setInterval(pollSchedulerStatus, AUTO_DATA_POLL_MS);
-      pollBackfillInterval = setInterval(pollBackfillStatus, AUTO_BACKFILL_POLL_MS);
-      activityRenderInterval = setInterval(renderRequestActivity, 1000);
-    }
-  };
-
-  // Pause intervals when tab is hidden, resume when visible (saves CPU and battery)
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      cleanupIntervals();
-    } else {
-      restartIntervals();
-    }
-  });
-
-  // Cleanup intervals when page is unloaded (prevent memory leaks)
-  window.addEventListener("beforeunload", cleanupIntervals);
+  // Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+  // the four auto-polling intervals (data/scheduler/backfill/activity-
+  // render) and their visibility-pause/beforeunload-cleanup lifecycle used
+  // to be owned here (setInterval/cleanupIntervals/restartIntervals). That
+  // ownership moved to <PrDataPolling /> (react-app.jsx, mounted as a
+  // headless React root with no visible UI) - it calls the same underlying
+  // functions via window.pollForDataChanges/pollSchedulerStatus/
+  // pollBackfillStatus/renderRequestActivity (exposed below), just with
+  // React now deciding *when* they run instead of index.page.js.
 };
 
 if (typeof window !== "undefined") {

@@ -1,48 +1,69 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render } = require('@testing-library/react');
+const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorCreatedPrsSection } = require('./AuthorCreatedPrsSection');
 
+const buildEntry = (overrides = {}) => ({
+  prNumber: '1',
+  repo: 'owner/repo',
+  ...overrides,
+  data: {
+    number: '1',
+    title: 'Fix the thing',
+    authorLogin: 'octocat',
+    author: 'The Octocat',
+    status: 'NO_CHANGE',
+    approved: 'NO',
+    approvalCount: 0,
+    labels: [],
+    ...overrides.data,
+  },
+});
+
 describe('AuthorCreatedPrsSection', () => {
   afterEach(() => {
-    delete window.buildAuthorInsightsCreatedPrsSection;
+    delete window.getPreferredActorKey;
+    delete window.sortAuthorInsightsCreatedPrsDesc;
+    delete window.formatIsoDatetime;
+    delete window.navigateToPrInTableFromAuthorInsights;
+    delete window.getAuthorInsightsCreatedPrStatus;
   });
 
-  test('given the bridge returns a section node, when rendering, then it is appended into the container', () => {
-    window.buildAuthorInsightsCreatedPrsSection = jest.fn((rows) => {
-      const section = document.createElement('section');
-      section.className = 'author-insights-section';
-      section.textContent = `built for ${rows.length} rows`;
-      return section;
-    });
-
-    const { container } = render(<AuthorCreatedPrsSection rows={[{ prNumber: '1' }, { prNumber: '2' }]} />);
-
-    expect(window.buildAuthorInsightsCreatedPrsSection).toHaveBeenCalledWith([
-      { prNumber: '1' },
-      { prNumber: '2' },
-    ]);
-    expect(container.querySelector('.author-insights-section')?.textContent).toBe('built for 2 rows');
+  test('given no PRs by the selected author, when rendering, then the empty message is shown', () => {
+    render(<AuthorCreatedPrsSection rows={[buildEntry()]} selectedAuthorLogin="someone-else" />);
+    expect(screen.getByText('No PRs by this author in the current local data scope.')).toBeInTheDocument();
   });
 
-  test('given the bridge is missing, when rendering, then nothing is appended and it does not throw', () => {
-    const { container } = render(<AuthorCreatedPrsSection rows={[]} />);
-    expect(container.querySelector('.author-insights-section')).toBeNull();
+  test('given PRs by the selected author, when rendering, then the PR link and meta render', () => {
+    window.getAuthorInsightsCreatedPrStatus = () => 'NO_CHANGE';
+    render(<AuthorCreatedPrsSection rows={[buildEntry()]} selectedAuthorLogin="octocat" />);
+
+    expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();
+    expect(screen.getByText(/Status: NO_CHANGE/)).toBeInTheDocument();
   });
 
-  test('given a re-render with a new key and different rows, when re-rendering, then the container reflects the latest bridge output', () => {
-    window.buildAuthorInsightsCreatedPrsSection = jest.fn((rows) => {
-      const section = document.createElement('section');
-      section.textContent = `count:${rows.length}`;
-      return section;
-    });
+  test('given "View in table", when clicked, then the navigation bridge fires with the PR number', () => {
+    const navigate = jest.fn();
+    window.navigateToPrInTableFromAuthorInsights = navigate;
+    render(<AuthorCreatedPrsSection rows={[buildEntry()]} selectedAuthorLogin="octocat" />);
 
-    const { container, rerender } = render(<AuthorCreatedPrsSection key={1} rows={[{ prNumber: '1' }]} />);
-    expect(container.textContent).toBe('count:1');
+    screen.getByRole('button', { name: 'View in table' }).click();
+    expect(navigate).toHaveBeenCalledWith('1');
+  });
 
-    rerender(<AuthorCreatedPrsSection key={2} rows={[{ prNumber: '1' }, { prNumber: '2' }]} />);
-    expect(container.textContent).toBe('count:2');
+  test('given a re-render with a different selectedAuthorLogin, when re-rendering, then the list reflects the new author (no key remount needed)', () => {
+    const { rerender } = render(
+      <AuthorCreatedPrsSection rows={[buildEntry(), buildEntry({ prNumber: '2', data: { number: '2', authorLogin: 'other' } })]} selectedAuthorLogin="octocat" />,
+    );
+    expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();
+    expect(screen.queryByText('#2 Fix the thing')).not.toBeInTheDocument();
+
+    rerender(
+      <AuthorCreatedPrsSection rows={[buildEntry(), buildEntry({ prNumber: '2', data: { number: '2', authorLogin: 'other' } })]} selectedAuthorLogin="other" />,
+    );
+    expect(screen.queryByText('#1 Fix the thing')).not.toBeInTheDocument();
+    expect(screen.getByText('#2 Fix the thing')).toBeInTheDocument();
   });
 });

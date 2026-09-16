@@ -311,16 +311,16 @@ const injectRunFilterFieldElements = () => {
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite never loads the real
 // react-app.jsx bundle (an ES module, and heavy with its own import-time
 // side effects mounting ~10 unrelated React roots), so index.page.js's
-// renderPrData always used to see hasReactBridge/hasReactApp as false and
-// take its "React not available" branch, which used to build a full
-// vanilla table. That branch (and the vanilla table-build code it called)
-// is gone now, so this suite needs a real React-rendered table to keep
-// exercising real row/checkbox/Ack DOM the same way a real browser does.
-// Rather than importing the whole react-app.jsx module, this reimplements
-// just its mountReactPrTable/ReactMountBridge.mount pairing directly
-// against the same PrTableApp component real production mounts - see
-// react-app.jsx's mountReactPrTable and react-mount-bridge.js's
-// mountReactTable/updateReactTable for the real (equivalent) versions.
+// renderPrData always used to see hasReactApp as false and take its
+// "React not available" branch, which used to build a full vanilla table.
+// That branch (and the vanilla table-build code it called) is gone now, so
+// this suite needs a real React-rendered table to keep exercising real
+// row/checkbox/Ack DOM the same way a real browser does. Rather than
+// importing the whole react-app.jsx module, this reimplements just its
+// mountReactPrTable/updateReactPrTable pairing directly against the same
+// PrTableApp component real production mounts - see react-app.jsx's real
+// mountReactPrTable, and index.page.js's mountReactTable/updateReactTable
+// (Track C slice C2b, REACT_MIGRATION_PLAN.md) for the real callers.
 // Called both from initTestPage() and from the one test below that builds
 // its own page setup from scratch instead of using it.
 //
@@ -413,32 +413,30 @@ const installReactFilterPanelMountBridges = () => {
   };
 };
 
+// Track C, slice C2b (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+// index.page.js no longer calls window.ReactMountBridge (that module was
+// deleted - it was just a thin wrapper around window.mountReactPrTable/
+// window.updateReactPrTable plus an isMounted() flag, now inlined directly
+// into index.page.js as mountReactTable/updateReactTable/
+// isReactTableMounted). This stub now defines window.mountReactPrTable/
+// window.updateReactPrTable themselves - the same functions react-app.jsx
+// really exposes - using real RTL rendering, matching
+// mountReactPrTable's own real contract (mounting sets
+// window.updateReactPrTable as a side effect, returns a root-like value).
 const installReactTableMountBridge = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
-  window.mountReactPrTable = () => {};
   installReactFilterPanelMountBridges();
 
-  let rerender = null;
-  let currentTableProps = null;
-  window.ReactMountBridge = {
-    isMounted: () => Boolean(rerender),
-    mount: (container, data, callbacks) => {
-      if (!container) return false;
-      currentTableProps = {
-        initialPayload: data?.payload || {},
-        selectedRepo: data?.selectedRepo || "",
-        visiblePrNumbers: data?.visiblePrNumbers || null,
-        onCheckboxChange: callbacks?.onCheckboxChange || (() => {}),
-        onAckAction: callbacks?.onAckAction || (() => {}),
-      };
-      ({ rerender } = rtlRender(React.createElement(PrTableApp, currentTableProps), { container }));
-      return true;
-    },
-    update: (payload, selectedRepo, visiblePrNumbers) => {
-      if (!rerender || !currentTableProps) return;
+  window.mountReactPrTable = (containerElement, props) => {
+    if (!containerElement) return null;
+    let currentTableProps = { ...props };
+    const { rerender } = rtlRender(React.createElement(PrTableApp, currentTableProps), {
+      container: containerElement,
+    });
+    window.updateReactPrTable = (payload, selectedRepo, visiblePrNumbers) => {
       currentTableProps = {
         ...currentTableProps,
         initialPayload: payload || {},
@@ -447,7 +445,8 @@ const installReactTableMountBridge = () => {
           visiblePrNumbers !== undefined ? visiblePrNumbers : currentTableProps.visiblePrNumbers,
       };
       rerender(React.createElement(PrTableApp, currentTableProps));
-    },
+    };
+    return { unmount: () => {} };
   };
 };
 
@@ -2369,16 +2368,7 @@ describe("index page rendering with Testing Library", () => {
   });
 
   test("scheduler polling toggles active PR progress indicators without row rerender", async () => {
-    const originalSetInterval = global.setInterval;
-    const intervalCallbacks = [];
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000) {
-        intervalCallbacks.push(callback);
-      }
-      return intervalCallbacks.length;
-    });
-
-    try {
+    {
       jest.resetModules();
       latestDataPayload = createMultiPrPayload({
         prs: [
@@ -2431,9 +2421,7 @@ describe("index page rendering with Testing Library", () => {
 
       require("../index.page.js");
 
-      expect(intervalCallbacks.length).toBeGreaterThanOrEqual(2);
-      const pollSchedulerStatusCallback = intervalCallbacks[1];
-      expect(typeof pollSchedulerStatusCallback).toBe("function");
+      expect(typeof window.pollSchedulerStatus).toBe("function");
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there
@@ -2458,7 +2446,7 @@ describe("index page rendering with Testing Library", () => {
       expect(initialIndicator?.hidden).toBe(true);
 
       schedulerActivePrNumbers = ["1"];
-      await pollSchedulerStatusCallback();
+      await window.pollSchedulerStatus();
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();
@@ -2467,15 +2455,13 @@ describe("index page rendering with Testing Library", () => {
       });
 
       schedulerActivePrNumbers = [];
-      await pollSchedulerStatusCallback();
+      await window.pollSchedulerStatus();
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();
         expect(updatedIndicator).toBe(initialIndicator);
         expect(updatedIndicator?.hidden).toBe(true);
       });
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
@@ -6485,17 +6471,7 @@ describe("index page rendering with Testing Library", () => {
   });
 
   test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -6522,7 +6498,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       fetchMock.mockClear();
       let dataFallbackCalls = 0;
@@ -6588,8 +6564,8 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
+      await window.pollForDataChanges();
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6608,23 +6584,11 @@ describe("index page rendering with Testing Library", () => {
 
       expect(metaCalls.length).toBe(1);
       expect(dataCalls.length).toBe(2);
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("given polling recovers after a transient failure, when the next poll succeeds, then auto-refresh warning snackbar is cleared", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -6651,7 +6615,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6676,7 +6640,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       fetchMock.mockImplementation(async (url, init = {}) => {
         const normalizedUrl = String(url || "");
@@ -6697,7 +6661,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       const snackbar = document.getElementById("error-snackbar");
       const snackbarMessage = document.getElementById("error-snackbar-message");
@@ -6733,26 +6697,14 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       expect(snackbar).toHaveAttribute("hidden");
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("skips full data fetch when polling sees an unchanged data version", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -6779,7 +6731,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6812,7 +6764,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6831,23 +6783,11 @@ describe("index page rendering with Testing Library", () => {
 
       expect(metaCalls.length).toBe(1);
       expect(dataCalls.length).toBe(0);
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("rerenders visible PR cells when polling detects non-status data changes", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -6875,7 +6815,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
       await waitFor(() => {
         const row = document.querySelector(
           "#pr-sections .pr-group-section-content table tbody tr",
@@ -6950,7 +6890,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       let firstMainRowTextAfter = "";
       await waitFor(() => {
@@ -6980,22 +6920,10 @@ describe("index page rendering with Testing Library", () => {
 
       expect(metaCalls.length).toBe(1);
       expect(dataCalls.length).toBe(1);
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("given review conversations view controls changed, when polling rerenders the row, then filter mode and summaries toggle remain selected", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
     const buildPayload = ({
       dataVersion,
       titleDisplay,
@@ -7098,7 +7026,7 @@ describe("index page rendering with Testing Library", () => {
       },
     });
 
-    try {
+    {
       initTestPage({
         dataPayload: buildPayload({
           dataVersion: "review-state-v1",
@@ -7108,7 +7036,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       const user = userEvent.setup();
       await waitFor(() => {
@@ -7188,7 +7116,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
@@ -7224,23 +7152,11 @@ describe("index page rendering with Testing Library", () => {
       expect(String(refreshedActivitySection?.textContent || "")).not.toContain(
         "Thread: open",
       );
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("uses manifest and delta polling endpoints when supported", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -7267,7 +7183,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -7356,7 +7272,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -7394,23 +7310,11 @@ describe("index page rendering with Testing Library", () => {
 
       const deltaCallBody = String(deltaCalls[0]?.[1]?.body || "");
       expect(deltaCallBody).toContain("101");
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
   test("preserves expanded insights panel and open inner sections after polling rerenders", async () => {
-    const originalSetInterval = global.setInterval;
-    let pollForDataChangesCallback = null;
-
-    global.setInterval = jest.fn((callback, intervalMs) => {
-      if (intervalMs === 30000 && !pollForDataChangesCallback) {
-        pollForDataChangesCallback = callback;
-      }
-      return 1;
-    });
-
-    try {
+    {
       initTestPage({
         dataPayload: {
           dataMeta: {
@@ -7449,7 +7353,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof pollForDataChangesCallback).toBe("function");
+      expect(typeof window.pollForDataChanges).toBe("function");
 
       const insightsToggle = await screen.findByRole("button", {
         name: "More insights",
@@ -7546,7 +7450,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await pollForDataChangesCallback();
+      await window.pollForDataChanges();
 
       await waitFor(() => {
         const toggle = document.querySelector(".row-insights-toggle");
@@ -7564,8 +7468,6 @@ describe("index page rendering with Testing Library", () => {
       );
       expect(activityDetailsAfter).toBeTruthy();
       expect(activityDetailsAfter.open).toBe(true);
-    } finally {
-      global.setInterval = originalSetInterval;
     }
   });
 
@@ -8425,21 +8327,24 @@ describe("index page rendering with Testing Library", () => {
   });
 
   describe("React mount failure (Phase 6 - see REACT_MIGRATION_PLAN.md)", () => {
-    test("given window.ReactMountBridge.mount genuinely fails (returns false), when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
+    test("given window.mountReactPrTable genuinely throws, when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
       // Distinct from the ordinary "React's deferred module hasn't finished
       // loading yet" race (which this suite's installReactTableMountBridge
       // pairing never simulates - see renderPrData's own comment on why that
       // race now leaves #pr-sections empty rather than falling back to a
-      // vanilla table build). This is the other branch: mount() itself
-      // returns false, meaning React genuinely failed - renderPrData must
-      // surface renderPrTableMountError()'s honest error state, not pretend
-      // to recover.
+      // vanilla table build). This is the other branch: mountReactTable's
+      // (index.page.js) try/catch around window.mountReactPrTable() catches
+      // a genuine failure - renderPrData must surface
+      // renderPrTableMountError()'s honest error state, not pretend to
+      // recover.
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 1 }],
         }),
       });
-      window.ReactMountBridge.mount = () => false;
+      window.mountReactPrTable = () => {
+        throw new Error("React mount failed");
+      };
 
       const errorMessage = await screen.findByText(
         "Failed to load the PR table. Please refresh the page.",

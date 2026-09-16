@@ -31,6 +31,7 @@ import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSect
 import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
+import { PrDataPolling } from './components/PrDataPolling';
 import { FilterStateProvider } from './state/FilterStateProvider';
 
 /**
@@ -519,14 +520,15 @@ function mountAuthorInsightsSelector() {
 
 /**
  * Mounts the Author Insights tab's "PRs created by this author" section
- * (Phase 3 - see REACT_MIGRATION_PLAN.md). Same shape as
- * mountAuthorInsightsSelector above: mounted once into the static
- * #author-insights-created-prs-root container, updated via
- * window.updateAuthorInsightsCreatedPrs(rows) with an incrementing `key`
- * on every call so the section's DOM (built by the legacy vanilla
- * builder wrapped inside AuthorCreatedPrsSection) is always rebuilt
- * fresh, not left stale when only the selected author changed underneath
- * an unchanged `rows` reference.
+ * (Phase 3, real JSX since Track B - see REACT_MIGRATION_PLAN.md). Mounted
+ * once into the static #author-insights-created-prs-root container,
+ * updated via window.updateAuthorInsightsCreatedPrs(rows,
+ * selectedAuthorLogin). No `key` remount needed anymore: now that
+ * AuthorCreatedPrsSection is real JSX filtering directly on the
+ * `selectedAuthorLogin` prop (rather than wrapping a vanilla builder that
+ * read authorInsightsState.selectedAuthorLogin from a closure), a plain
+ * prop change is enough to re-derive the filtered/sorted list on every
+ * author switch, even when the `rows` reference itself is unchanged.
  */
 function mountAuthorCreatedPrsSection() {
   const container = document.getElementById('author-insights-created-prs-root');
@@ -534,10 +536,8 @@ function mountAuthorCreatedPrsSection() {
     return;
   }
   const root = ReactDOM.createRoot(container);
-  let renderCount = 0;
-  window.updateAuthorInsightsCreatedPrs = (rows) => {
-    renderCount += 1;
-    root.render(<AuthorCreatedPrsSection key={renderCount} rows={rows} />);
+  window.updateAuthorInsightsCreatedPrs = (rows, selectedAuthorLogin) => {
+    root.render(<AuthorCreatedPrsSection rows={rows} selectedAuthorLogin={selectedAuthorLogin} />);
     return true;
   };
 }
@@ -564,14 +564,11 @@ function mountAuthorInsightsHeader() {
 
 /**
  * Mounts the Author Insights tab's "PR-linked custom comments and
- * sentiment" section (Phase 3 - see REACT_MIGRATION_PLAN.md). Mount-once/
- * update-via-bridge, no key needed: renderAuthorInsights
- * (pr-author-insights.component.js) passes a freshly-computed
- * `selectedAuthor` object as a prop (not read from a closure like
- * AuthorCreatedPrsSection's rows-only prop), so a plain
- * useEffect([rows, selectedAuthor, actorsMap]) inside
- * AuthorInsightsNotesSection already re-runs on every author switch
- * without an incrementing key.
+ * sentiment" section (Phase 3, real JSX since Track B - see
+ * REACT_MIGRATION_PLAN.md). Mount-once/update-via-bridge, no key needed:
+ * renderAuthorInsights (pr-author-insights.component.js) passes a
+ * freshly-computed `selectedAuthor` object as a prop on every call, so a
+ * plain re-render already reflects every author switch.
  */
 function mountAuthorInsightsNotesSection() {
   const container = document.getElementById('author-insights-notes-root');
@@ -590,14 +587,15 @@ function mountAuthorInsightsNotesSection() {
 
 /**
  * Mounts the Author Insights tab's "Manual author comments" composer/list
- * (Phase 3 - see REACT_MIGRATION_PLAN.md). Reuses the existing
- * #author-insights-content-root container (previously a plain
- * "rebuild-every-render" scratch host, now this section's own persistent
- * React root, matching every other Author Insights sibling container) - no
- * index.html change needed. Mount-once/update-via-bridge, no key needed,
- * same reasoning as mountAuthorInsightsNotesSection: `selectedAuthor` is a
- * freshly-computed prop on every call, so a plain re-render already picks
- * up every author switch.
+ * (Phase 3, real JSX since Track B batch 2 - see REACT_MIGRATION_PLAN.md).
+ * Reuses the existing #author-insights-content-root container (previously
+ * a plain "rebuild-every-render" scratch host, now this section's own
+ * persistent React root, matching every other Author Insights sibling
+ * container) - no index.html change needed. Mount-once/update-via-bridge,
+ * no key needed: `selectedAuthor` is a freshly-computed prop on every
+ * call, so a plain re-render already picks up every author switch (the
+ * component's own useEffect on selectedAuthor.login resets its local
+ * composer/edit-draft mirror state and reloads that author's comments).
  */
 function mountAuthorInsightsCommentsSection() {
   const container = document.getElementById('author-insights-content-root');
@@ -675,6 +673,16 @@ function renderReactFilterSummary(summaryText, filterChips) {
 }
 
 /**
+ * Mounts <PrDataPolling /> as a headless React root (no visible UI, so no
+ * specific DOM container needed - see PrDataPolling.jsx). Track C, slice
+ * C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md).
+ */
+function mountPrDataPolling() {
+  const root = ReactDOM.createRoot(document.createElement('div'));
+  root.render(<PrDataPolling />);
+}
+
+/**
  * Expose mounting function globally for vanilla JS to call
  * This allows the existing index.page.js to mount the React app
  */
@@ -696,6 +704,7 @@ if (typeof window !== 'undefined') {
   mountAuthorInsightsCommentsSection();
   mountAuthorCreatedPrsSection();
   mountBackfillBadges();
+  mountPrDataPolling();
 
   // react-app.jsx is loaded as an ES module, which the browser always defers
   // until after classic scripts (including index.page.js) have run. If the

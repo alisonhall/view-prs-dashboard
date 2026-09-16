@@ -39,8 +39,9 @@ export function PrTableApp({
   // State: PR data payload
   const [payload, setPayload] = useState(initialPayload);
 
-  // The vanilla bridge's update path (react-mount-bridge.js -> react-app.jsx's
-  // mountReactPrTable) re-renders this component with a new `initialPayload`
+  // index.page.js's update path (updateReactTable -> react-app.jsx's
+  // mountReactPrTable/updateReactPrTable, see REACT_MIGRATION_PLAN.md
+  // Track C slice C2b) re-renders this component with a new `initialPayload`
   // prop via root.render() rather than calling setPayload directly. useState's
   // initial value is only read on the very first render, so without this sync
   // any update delivered that way (e.g. after toggling a Flagged/In Review

@@ -1,20 +1,22 @@
 /**
  * PR Author Insights Component (Refactored)
- * 
- * Provides author-centric insights including manual comments, PR-linked sentiment,
- * and created PRs summary. Now uses focused helper modules for reduced coupling.
- * 
- * Dependency Contract (Narrowed from 33 to 11):
- * - prLinkHelpers: PR link and navigation helpers
- * - displayHelpers: Display/formatting helpers
- * - dataHelpers: API/data loading helpers
- * - draftHelpers: Draft state management helpers
+ *
+ * Now just orchestrates renderAuthorInsights (selector + header + the
+ * created-PRs/notes/comments React sections) - the created-PRs/notes/
+ * manual-comments DOM builders this used to own were converted to real
+ * JSX (AuthorCreatedPrsSection.jsx/AuthorInsightsNotesSection.jsx/
+ * AuthorInsightsCommentsSection.jsx - Track B, REACT_MIGRATION_PLAN.md),
+ * which is why postJson/DEFAULT_AUTHOR_INSIGHTS_SENTIMENT are no longer
+ * accepted here even though index.page.js's factory call may still pass
+ * them - dataHelpers/draftHelpers/prLinkHelpers remain required
+ * (validated below) for contract stability, but are no longer
+ * destructured since their only consumers moved to those components.
+ *
+ * Dependency Contract:
+ * - prLinkHelpers/dataHelpers/draftHelpers: required but unused, see above
+ * - displayHelpers: Display/formatting helpers (buildAuthorInsightsEntries)
  * - authorInsightsState: Component state object
- * - postJson: API POST helper
  * - recomputeDirtyPrSectionsFields: Side effect for dirty field tracking
- * - DEFAULT_REPO: Default repository name
- * - DEFAULT_AUTHOR_INSIGHTS_SENTIMENT: Default sentiment value
- * - fetchFn: Fetch function (optional, defaults to global fetch)
  * - documentRef: Document reference (optional, defaults to global document)
  */
 
@@ -34,11 +36,8 @@
     draftHelpers,
     // State and API
     authorInsightsState,
-    postJson,
     // Side effects
     recomputeDirtyPrSectionsFields,
-    // Configuration
-    DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = "neutral",
     // Optional overrides
     documentRef = typeof document !== "undefined" ? document : null,
     // React migration hooks (see REACT_MIGRATION_PLAN.md): each renders one
@@ -52,12 +51,6 @@
     updateReactAuthorInsightsCreatedPrs,
     updateReactAuthorInsightsHeader,
     updateReactAuthorInsightsNotes,
-    // Manual comments composer/list - mutable draft state and server-write
-    // side effects (saving/editing comments) live entirely inside the
-    // wrapped vanilla builder (buildManualCommentsSection, via
-    // authorInsightsState/draftHelpers/postJson), not in this component's
-    // own render logic, which is why it's ref-wrapped rather than
-    // reimplemented in JSX.
     updateReactAuthorInsightsComments,
   } = {}) => {
     const updateReactAuthorInsightsSelectorSafe =
@@ -90,36 +83,15 @@
       throw new Error("Author Insights Component requires authorInsightsState");
     }
 
-    // Extract helpers for readability
-    const { createAuthorInsightsPrLink } = prLinkHelpers;
-    const {
-      buildAuthorInsightsEntries,
-      noteAuthorMatchesSelection,
-      getAuthorInsightsSentimentLabel,
-      getAuthorInsightsSentimentBadgeClassName,
-      appendAuthorInsightsMetaDetail,
-      appendAuthorInsightsBadge,
-      sortAuthorInsightsManualCommentsDesc,
-      sortAuthorInsightsNoteMatchesDesc,
-      createAuthorInsightsPrDataMeta,
-      sortAuthorInsightsCreatedPrsDesc,
-      getAuthorInsightsNoteDisplayTimestamp,
-    } = displayHelpers;
-    const {
-      AUTHOR_COMMENT_SENTIMENT_OPTIONS,
-      getAuthorManualCommentsForLogin,
-      loadAuthorManualComments,
-      saveAuthorManualComment,
-      updateAuthorManualComment,
-    } = dataHelpers;
-    const {
-      getAuthorInsightsComposerDraft,
-      updateAuthorInsightsComposerDraft,
-      resetAuthorInsightsComposerDraft,
-      updateAuthorInsightsEditDraft,
-      resetAuthorInsightsEditDraft,
-      getAuthorInsightsEditDraft,
-    } = draftHelpers;
+    // Extract helpers for readability. Note: prLinkHelpers/dataHelpers/
+    // draftHelpers are still required dependencies (validated below) but
+    // no longer destructured here - their only consumers were the DOM
+    // builders for the created-PRs/PR-linked-notes/manual-comments
+    // sections, all now real JSX (AuthorInsightsPrLink.jsx,
+    // AuthorInsightsPrDataMeta.jsx, AuthorInsightsCommentsSection.jsx -
+    // Track B, REACT_MIGRATION_PLAN.md), reading the same underlying
+    // authorInsightsState-backed helpers via window bridges instead.
+    const { buildAuthorInsightsEntries } = displayHelpers;
 
     /**
      * Main render function for author insights.
@@ -238,580 +210,48 @@
     };
 
     /**
-     * Builds the manual comments <section> DOM node (title, composer form,
-     * comment list) without appending it anywhere - shared by the vanilla
-     * fallback below and the React ref-wrapper bridge
-     * (window.buildAuthorInsightsCommentsSection), same reasoning as
-     * buildCreatedPrsSection/buildPrLinkedNotesSection above. The mutable
-     * draft state and server-write side effects (composer/edit forms,
-     * saveAuthorManualComment/updateAuthorManualComment POSTs) all live
-     * inside this vanilla builder and its helpers (authorInsightsState,
-     * draftHelpers), not in any React component - only the DOM node it
-     * produces is handed to React, which is why this section is
-     * ref-wrapped rather than reimplemented in JSX, same choice as the
-     * two sections above.
-     */
-    const buildManualCommentsSection = (selectedAuthor, rows, actorsMap) => {
-      const manualCommentsSection = documentRef.createElement("section");
-      manualCommentsSection.className = "author-insights-section";
-      const manualCommentsTitle = documentRef.createElement("h3");
-      manualCommentsTitle.textContent = "Manual author comments";
-      manualCommentsSection.appendChild(manualCommentsTitle);
-
-      const composerDraft = getAuthorInsightsComposerDraft(selectedAuthor.login);
-
-      // Load comments
-      void loadAuthorManualComments(selectedAuthor.login, authorInsightsState, () => {
-        if (authorInsightsState.latestRows && authorInsightsState.latestActorsMap) {
-          renderAuthorInsights(
-            authorInsightsState.latestRows,
-            authorInsightsState.latestActorsMap,
-          );
-        }
-      });
-
-      // Render composer form
-      const { commentForm } = renderComposerForm(
-        selectedAuthor,
-        composerDraft,
-        rows,
-        actorsMap,
-      );
-      manualCommentsSection.appendChild(commentForm);
-
-      // Render comment list
-      const commentList = renderManualCommentList(
-        selectedAuthor,
-        rows,
-        actorsMap,
-      );
-      manualCommentsSection.appendChild(commentList);
-
-      return manualCommentsSection;
-    };
-
-    /**
-     * Renders the manual comments section - React-owned
-     * (#author-insights-content-root, via updateReactAuthorInsightsCommentsSafe,
-     * which wraps buildManualCommentsSection via a ref).
+     * Renders the manual comments section - real JSX
+     * (AuthorInsightsCommentsSection.jsx, #author-insights-content-root, via
+     * updateReactAuthorInsightsCommentsSafe). Composer/edit draft state and
+     * save/edit POST side effects moved into that component, still writing
+     * through the same authorInsightsState-backed draft/data helpers
+     * (exposed as window bridges in index.page.js) rather than local-only
+     * React state, since pr-auto-render-blocking.helpers.js reads that
+     * shared state directly (Track B batch 2, REACT_MIGRATION_PLAN.md).
      */
     const renderManualCommentsSection = (selectedAuthor, rows, actorsMap) => {
       updateReactAuthorInsightsCommentsSafe(rows, selectedAuthor, actorsMap);
     };
 
     /**
-     * Renders the composer form for creating new manual comments.
-     */
-    const renderComposerForm = (selectedAuthor, composerDraft, rows, actorsMap) => {
-      const commentForm = documentRef.createElement("div");
-      commentForm.className = "author-insights-comment-form";
-
-      const commentInput = documentRef.createElement("textarea");
-      commentInput.className = "author-insights-comment-textarea";
-      commentInput.rows = 3;
-      commentInput.placeholder = "Add a manual comment about this author...";
-      commentInput.value = String(composerDraft.note || "");
-      commentInput.setAttribute("data-author-login", selectedAuthor.login);
-      commentInput.setAttribute("data-draft-kind", "composer");
-
-      const formControls = documentRef.createElement("div");
-      formControls.className = "author-insights-comment-controls";
-
-      const sentimentSelect = documentRef.createElement("select");
-      sentimentSelect.className = "author-insights-comment-sentiment";
-      sentimentSelect.setAttribute("data-author-login", selectedAuthor.login);
-      sentimentSelect.setAttribute("data-draft-kind", "composer");
-      AUTHOR_COMMENT_SENTIMENT_OPTIONS.forEach(({ value, label }) => {
-        const option = documentRef.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        option.selected = composerDraft.sentiment === value;
-        sentimentSelect.appendChild(option);
-      });
-      sentimentSelect.value = composerDraft.sentiment || DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
-
-      // Event listeners for draft updates
-      commentInput.addEventListener("input", () => {
-        updateAuthorInsightsComposerDraft(selectedAuthor.login, {
-          note: commentInput.value,
-          sentiment: sentimentSelect.value,
-        });
-        recomputeDirtyPrSectionsFields?.();
-      });
-
-      sentimentSelect.addEventListener("change", () => {
-        updateAuthorInsightsComposerDraft(selectedAuthor.login, {
-          note: commentInput.value,
-          sentiment: sentimentSelect.value,
-        });
-        recomputeDirtyPrSectionsFields?.();
-      });
-
-      const saveCommentBtn = documentRef.createElement("button");
-      saveCommentBtn.type = "button";
-      saveCommentBtn.className = "author-insights-comment-save";
-      saveCommentBtn.textContent = "Save comment";
-
-      const saveStatus = documentRef.createElement("span");
-      saveStatus.className = "author-insights-comment-status";
-
-      // Save button handler
-      saveCommentBtn.onclick = async () => {
-        const note = String(commentInput.value || "");
-        if (!note.trim()) {
-          saveStatus.textContent = "Comment note is required";
-          return;
-        }
-
-        saveCommentBtn.disabled = true;
-        saveStatus.textContent = "Saving...";
-        try {
-          const { response, result } = await saveAuthorManualComment({
-            authorLogin: selectedAuthor.login,
-            note,
-            sentiment: sentimentSelect.value,
-            postJson,
-          });
-          if (!response.ok || result.ok === false) {
-            saveStatus.textContent = result.error || "Save failed";
-            return;
-          }
-
-          authorInsightsState.manualCommentsByAuthorLogin[selectedAuthor.login] =
-            Array.isArray(result.comments) ? result.comments : [];
-          resetAuthorInsightsComposerDraft(selectedAuthor.login);
-          commentInput.value = "";
-          sentimentSelect.value = DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
-          saveStatus.textContent = "Saved.";
-          setTimeout(() => {
-            saveStatus.textContent = "";
-          }, 2500);
-          recomputeDirtyPrSectionsFields?.();
-          renderAuthorInsights(rows, actorsMap);
-        } catch (_error) {
-          saveStatus.textContent = "Save failed";
-        } finally {
-          saveCommentBtn.disabled = false;
-        }
-      };
-
-      commentForm.appendChild(commentInput);
-      formControls.appendChild(sentimentSelect);
-      formControls.appendChild(saveCommentBtn);
-      formControls.appendChild(saveStatus);
-      commentForm.appendChild(formControls);
-
-      return { commentForm, saveStatus };
-    };
-
-    /**
-     * Renders the list of manual comments for the selected author.
-     */
-    const renderManualCommentList = (selectedAuthor, rows, actorsMap) => {
-      const commentList = documentRef.createElement("div");
-      commentList.className = "author-insights-list";
-
-      const isLoadingComments =
-        authorInsightsState.manualCommentsLoadingByAuthorLogin[selectedAuthor.login] ===
-        true;
-      const commentsError =
-        authorInsightsState.manualCommentsErrorByAuthorLogin[selectedAuthor.login] || "";
-      const savedAuthorComments = sortAuthorInsightsManualCommentsDesc(
-        getAuthorManualCommentsForLogin(selectedAuthor.login, authorInsightsState),
-      );
-
-      if (isLoadingComments) {
-        const loading = documentRef.createElement("p");
-        loading.className = "stats-empty";
-        loading.textContent = "Loading author comments...";
-        commentList.appendChild(loading);
-      } else if (commentsError) {
-        const error = documentRef.createElement("p");
-        error.className = "stats-empty";
-        error.textContent = commentsError;
-        commentList.appendChild(error);
-      } else if (!savedAuthorComments.length) {
-        const empty = documentRef.createElement("p");
-        empty.className = "stats-empty";
-        empty.textContent = "No manual comments saved for this author.";
-        commentList.appendChild(empty);
-      } else {
-        savedAuthorComments.forEach((comment) => {
-          const item = renderManualCommentItem(
-            comment,
-            selectedAuthor,
-            rows,
-            actorsMap,
-          );
-          commentList.appendChild(item);
-        });
-      }
-
-      return commentList;
-    };
-
-    /**
-     * Renders a single manual comment item with edit functionality.
-     */
-    const renderManualCommentItem = (comment, selectedAuthor, rows, actorsMap) => {
-      const item = documentRef.createElement("div");
-      item.className = "author-insights-item";
-
-      const meta = documentRef.createElement("div");
-      meta.className = "author-insights-meta";
-      appendAuthorInsightsBadge(
-        meta,
-        `Sentiment: ${getAuthorInsightsSentimentLabel(comment?.sentiment)}`,
-        getAuthorInsightsSentimentBadgeClassName(comment?.sentiment),
-      );
-      appendAuthorInsightsMetaDetail(
-        meta,
-        `Added: ${displayHelpers.formatIsoDatetime(comment?.createdAt || "-")}`,
-      );
-      item.appendChild(meta);
-
-      const body = documentRef.createElement("div");
-      body.className = "author-insights-body";
-      body.textContent =
-        String(comment?.note || "").trim() || "(No manual comment text)";
-      item.appendChild(body);
-
-      const actions = documentRef.createElement("div");
-      actions.className = "author-insights-comment-actions";
-      const editBtn = documentRef.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "author-insights-comment-edit";
-      editBtn.textContent = "Edit";
-      actions.appendChild(editBtn);
-      item.appendChild(actions);
-
-      // Edit form logic
-      const openEditForm = () => {
-        if (item.dataset.editing === "true") return;
-
-        const draft = updateAuthorInsightsEditDraft(
-          selectedAuthor.login,
-          String(comment?.id || ""),
-          { isEditing: true },
-        );
-
-        item.dataset.editing = "true";
-        body.hidden = true;
-        actions.innerHTML = "";
-
-        const editForm = renderEditForm(
-          comment,
-          selectedAuthor,
-          draft,
-          rows,
-          actorsMap,
-          item,
-          body,
-          actions,
-          editBtn,
-        );
-        item.appendChild(editForm);
-      };
-
-      editBtn.onclick = () => {
-        openEditForm();
-      };
-
-      if (
-        getAuthorInsightsEditDraft(selectedAuthor.login, comment).isEditing === true
-      ) {
-        openEditForm();
-      }
-
-      return item;
-    };
-
-    /**
-     * Renders the edit form for a manual comment.
-     */
-    const renderEditForm = (
-      comment,
-      selectedAuthor,
-      draft,
-      rows,
-      actorsMap,
-      item,
-      body,
-      actions,
-      editBtn,
-    ) => {
-      const editForm = documentRef.createElement("div");
-      editForm.className = "author-insights-comment-form";
-      editForm.setAttribute("data-author-login", selectedAuthor.login);
-      editForm.setAttribute("data-comment-id", String(comment?.id || ""));
-
-      const editTextarea = documentRef.createElement("textarea");
-      editTextarea.className = "author-insights-comment-textarea";
-      editTextarea.rows = 3;
-      editTextarea.value = String(draft?.note || "");
-      editTextarea.setAttribute("data-author-login", selectedAuthor.login);
-      editTextarea.setAttribute("data-comment-id", String(comment?.id || ""));
-
-      const editControls = documentRef.createElement("div");
-      editControls.className = "author-insights-comment-controls";
-
-      const editSentiment = documentRef.createElement("select");
-      editSentiment.className = "author-insights-comment-sentiment";
-      editSentiment.setAttribute("data-author-login", selectedAuthor.login);
-      editSentiment.setAttribute("data-comment-id", String(comment?.id || ""));
-      AUTHOR_COMMENT_SENTIMENT_OPTIONS.forEach(({ value, label }) => {
-        const option = documentRef.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        option.selected = draft?.sentiment === value;
-        editSentiment.appendChild(option);
-      });
-      editSentiment.value = draft?.sentiment || DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
-
-      // Event listeners
-      editTextarea.addEventListener("input", () => {
-        updateAuthorInsightsEditDraft(selectedAuthor.login, String(comment?.id || ""), {
-          note: editTextarea.value,
-          sentiment: editSentiment.value,
-          isEditing: true,
-        });
-        recomputeDirtyPrSectionsFields?.();
-      });
-
-      editSentiment.addEventListener("change", () => {
-        updateAuthorInsightsEditDraft(selectedAuthor.login, String(comment?.id || ""), {
-          note: editTextarea.value,
-          sentiment: editSentiment.value,
-          isEditing: true,
-        });
-        recomputeDirtyPrSectionsFields?.();
-      });
-
-      const saveEditBtn = documentRef.createElement("button");
-      saveEditBtn.type = "button";
-      saveEditBtn.className = "author-insights-comment-save";
-      saveEditBtn.textContent = "Save changes";
-
-      const cancelEditBtn = documentRef.createElement("button");
-      cancelEditBtn.type = "button";
-      cancelEditBtn.className = "author-insights-comment-cancel";
-      cancelEditBtn.textContent = "Cancel";
-
-      const editStatus = documentRef.createElement("span");
-      editStatus.className = "author-insights-comment-status";
-
-      const restoreReadOnlyView = () => {
-        item.dataset.editing = "false";
-        if (editForm.parentNode) {
-          editForm.parentNode.removeChild(editForm);
-        }
-        body.hidden = false;
-        actions.innerHTML = "";
-        actions.appendChild(editBtn);
-      };
-
-      cancelEditBtn.onclick = () => {
-        resetAuthorInsightsEditDraft(selectedAuthor.login, String(comment?.id || ""));
-        recomputeDirtyPrSectionsFields?.();
-        restoreReadOnlyView();
-      };
-
-      saveEditBtn.onclick = async () => {
-        saveEditBtn.disabled = true;
-        editStatus.textContent = "Saving...";
-        try {
-          const { response, result } = await updateAuthorManualComment({
-            authorLogin: selectedAuthor.login,
-            id: String(comment?.id || ""),
-            note: editTextarea.value,
-            sentiment: editSentiment.value,
-          });
-          if (!response.ok || result.ok === false) {
-            editStatus.textContent = result.error || "Failed to save comment edits";
-            return;
-          }
-
-          resetAuthorInsightsEditDraft(selectedAuthor.login, String(comment?.id || ""));
-          authorInsightsState.manualCommentsByAuthorLogin[selectedAuthor.login] =
-            Array.isArray(result.comments) ? result.comments : [];
-          recomputeDirtyPrSectionsFields?.();
-          renderAuthorInsights(rows, actorsMap);
-        } catch (_error) {
-          editStatus.textContent = "Failed to save comment edits";
-        } finally {
-          saveEditBtn.disabled = false;
-        }
-      };
-
-      editForm.appendChild(editTextarea);
-      editControls.appendChild(editSentiment);
-      editControls.appendChild(saveEditBtn);
-      editControls.appendChild(cancelEditBtn);
-      editControls.appendChild(editStatus);
-      editForm.appendChild(editControls);
-
-      return editForm;
-    };
-
-    /**
-     * Builds the PR-linked notes <section> DOM node (title, list or empty
-     * message) without appending it anywhere - shared by the vanilla
-     * fallback below and the React ref-wrapper bridge
-     * (window.buildAuthorInsightsNotesSection), same reasoning as
-     * buildCreatedPrsSection above.
-     */
-    const buildPrLinkedNotesSection = (selectedAuthor, rows, actorsMap) => {
-      const noteMatches = rows
-        .flatMap((entry) =>
-          displayHelpers.asArray(entry?.notes?.comments)
-            .filter((comment) =>
-              noteAuthorMatchesSelection(comment?.author, selectedAuthor, actorsMap),
-            )
-            .map((comment) => ({ entry, comment })),
-        );
-      const sortedNoteMatches = sortAuthorInsightsNoteMatchesDesc(noteMatches);
-
-      const notesSection = documentRef.createElement("section");
-      notesSection.className = "author-insights-section";
-      const notesTitle = documentRef.createElement("h3");
-      notesTitle.textContent = "PR-linked custom comments and sentiment";
-      notesSection.appendChild(notesTitle);
-
-      if (!sortedNoteMatches.length) {
-        const empty = documentRef.createElement("p");
-        empty.className = "stats-empty";
-        empty.textContent = "No saved custom comments or sentiment for this author.";
-        notesSection.appendChild(empty);
-      } else {
-        const notesList = documentRef.createElement("div");
-        notesList.className = "author-insights-list";
-        sortedNoteMatches.forEach(({ entry, comment }) => {
-          const item = documentRef.createElement("div");
-          item.className = "author-insights-item";
-
-          const prLink = createAuthorInsightsPrLink(entry);
-          item.appendChild(prLink);
-
-          item.appendChild(createAuthorInsightsPrDataMeta(entry));
-
-          const tone = documentRef.createElement("div");
-          tone.className = "author-insights-meta";
-          const noteAuthorLabel = displayHelpers.resolveActorDisplayName(
-            comment?.author,
-            actorsMap,
-            comment?.author,
-          );
-          appendAuthorInsightsMetaDetail(tone, `Author: ${noteAuthorLabel}`);
-          appendAuthorInsightsMetaDetail(
-            tone,
-            `Added: ${getAuthorInsightsNoteDisplayTimestamp(comment, entry)}`,
-          );
-          appendAuthorInsightsBadge(
-            tone,
-            `Sentiment: ${getAuthorInsightsSentimentLabel(comment?.tone)}`,
-            getAuthorInsightsSentimentBadgeClassName(comment?.tone),
-          );
-          item.appendChild(tone);
-
-          const noteBody = documentRef.createElement("div");
-          noteBody.className = "author-insights-body";
-          noteBody.textContent =
-            String(comment?.note || "").trim() || "(No custom comment text)";
-          item.appendChild(noteBody);
-
-          notesList.appendChild(item);
-        });
-        notesSection.appendChild(notesList);
-      }
-      return notesSection;
-    };
-
-    /**
-     * Renders the PR-linked notes section - React-owned
-     * (#author-insights-notes-root, via updateReactAuthorInsightsNotesSafe,
-     * which wraps buildPrLinkedNotesSection via a ref).
+     * Renders the PR-linked notes section - real JSX
+     * (AuthorInsightsNotesSection.jsx, #author-insights-notes-root, via
+     * updateReactAuthorInsightsNotesSafe). Filtering/sorting/DOM-building
+     * for this section moved into that component when it was converted
+     * from a ref-wrapped vanilla builder (Track B, REACT_MIGRATION_PLAN.md).
      */
     const renderPrLinkedNotesSection = (selectedAuthor, rows, actorsMap) => {
       updateReactAuthorInsightsNotesSafe(rows, selectedAuthor, actorsMap);
     };
 
     /**
-     * Builds the created-PRs <section> DOM node (title, list or empty
-     * message) without appending it anywhere - shared by the vanilla
-     * fallback below and the React ref-wrapper bridge
-     * (window.buildAuthorInsightsCreatedPrsSection), so both paths reuse
-     * the exact same filtering/sorting/DOM-building logic rather than
-     * keeping two copies in sync.
-     */
-    const buildCreatedPrsSection = (rows) => {
-      const createdPrs = sortAuthorInsightsCreatedPrsDesc(
-        rows.filter(
-          (entry) =>
-            displayHelpers.getPreferredActorKey(
-              entry?.data?.authorLogin,
-              entry?.data?.author,
-            ) === authorInsightsState.selectedAuthorLogin,
-        ),
-      );
-
-      const createdSection = documentRef.createElement("section");
-      createdSection.className = "author-insights-section";
-      const createdTitle = documentRef.createElement("h3");
-      createdTitle.textContent = "PRs created by this author";
-      createdSection.appendChild(createdTitle);
-
-      if (!createdPrs.length) {
-        const empty = documentRef.createElement("p");
-        empty.className = "stats-empty";
-        empty.textContent = "No PRs by this author in the current local data scope.";
-        createdSection.appendChild(empty);
-      } else {
-        const prList = documentRef.createElement("div");
-        prList.className = "author-insights-list";
-        createdPrs.forEach((entry) => {
-          const item = documentRef.createElement("div");
-          item.className = "author-insights-item";
-          item.appendChild(createAuthorInsightsPrLink(entry));
-
-          const meta = createAuthorInsightsPrDataMeta(entry);
-          appendAuthorInsightsMetaDetail(
-            meta,
-            displayHelpers.formatIsoDatetime(
-              entry?.data?.mergedAt || entry?.data?.sourceUpdatedAt || "-",
-            ),
-          );
-          item.appendChild(meta);
-
-          prList.appendChild(item);
-        });
-        createdSection.appendChild(prList);
-      }
-      return createdSection;
-    };
-
-    /**
-     * Renders the created PRs section - React-owned
-     * (#author-insights-created-prs-root, via updateReactAuthorInsightsCreatedPrsSafe,
-     * which wraps buildCreatedPrsSection via a ref).
+     * Renders the created PRs section - real JSX
+     * (AuthorCreatedPrsSection.jsx, #author-insights-created-prs-root, via
+     * updateReactAuthorInsightsCreatedPrsSafe). Passes
+     * authorInsightsState.selectedAuthorLogin explicitly now, since the
+     * component filters by it directly instead of reading it from a
+     * closure (Track B, REACT_MIGRATION_PLAN.md) - this also removed the
+     * need for react-app.jsx's previous incrementing-`key` remount hack.
      */
     const renderCreatedPrsSection = (rows) => {
-      updateReactAuthorInsightsCreatedPrsSafe(rows);
+      updateReactAuthorInsightsCreatedPrsSafe(
+        rows,
+        authorInsightsState.selectedAuthorLogin,
+      );
     };
 
     return {
       renderAuthorInsights,
-      buildCreatedPrsSection,
-      buildPrLinkedNotesSection,
-      buildManualCommentsSection,
-      loadAuthorManualComments: (authorLogin) =>
-        loadAuthorManualComments(authorLogin, authorInsightsState, () => {
-          if (authorInsightsState.latestRows && authorInsightsState.latestActorsMap) {
-            renderAuthorInsights(
-              authorInsightsState.latestRows,
-              authorInsightsState.latestActorsMap,
-            );
-          }
-        }),
     };
   };
 
