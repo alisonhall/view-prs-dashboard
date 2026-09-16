@@ -7,7 +7,7 @@
  * - Provides bridge between vanilla JS and React
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { flushSync, createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
@@ -32,73 +32,25 @@ import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommen
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { PrDataPolling } from './components/PrDataPolling';
+import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
 
 /**
- * Mount React app for PR table
+ * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+ * unifying all of react-app.jsx's independent React roots into one shared
+ * tree (see <AppRoot /> below and its own doc comment) means every field
+ * migrated onto FilterStateProvider - previously mounted into its own
+ * dedicated root (this function) - is now just a piece of that one tree,
+ * via the same `createPortal` technique this function always used. This is
+ * no longer a standalone mount function; it returns the initial Context
+ * values plus the portal elements themselves, for <AppRoot /> to render as
+ * part of its own single root.
  *
- * @param {HTMLElement} containerElement - DOM element to mount React into
- * @param {Object} props - Initial props for PrTableApp
- * @param {Object} props.initialPayload - Initial PR data payload
- * @param {string} props.selectedRepo - Currently selected repository
- * @param {string[]} [props.visiblePrNumbers] - PR numbers passing active
- *   local filters; null/undefined means show everything
- * @param {Function} props.onCheckboxChange - Callback for checkbox changes
- * @param {Function} props.onAckAction - Callback for Ack button clicks
- * @returns {Object} React root instance (for unmounting if needed)
- */
-export function mountReactPrTable(containerElement, props) {
-  if (!containerElement) {
-    console.error('[React Migration] Cannot mount: container element not found');
-    return null;
-  }
-
-  const root = ReactDOM.createRoot(containerElement);
-
-  // Store props reference for updates
-  let currentProps = { ...props };
-
-  // Create update function
-  const updateTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
-    currentProps = {
-      ...currentProps,
-      initialPayload: newPayload,
-      selectedRepo: newSelectedRepo || currentProps.selectedRepo,
-      // undefined (param omitted) keeps the previous value; null/[] are
-      // meaningful ("no filter" / "everything filtered out") and must
-      // overwrite it.
-      visiblePrNumbers:
-        newVisiblePrNumbers !== undefined
-          ? newVisiblePrNumbers
-          : currentProps.visiblePrNumbers,
-    };
-    root.render(<PrTableApp {...currentProps} />);
-  };
-
-  // Expose update function globally
-  if (typeof window !== 'undefined') {
-    window.updateReactPrTable = updateTable;
-  }
-
-  // Render the actual PrTableApp component
-  root.render(<PrTableApp {...currentProps} />);
-
-  return root;
-}
-
-/**
- * Mounts the shared filter-state Context provider (Phase 6 - see
- * REACT_MIGRATION_PLAN.md) and, via `createPortal`, every Run & Filter
- * field migrated onto it.
- *
- * Every field mounted by this module needs its value to reach a *shared*
- * Context, and Context can't cross independent `createRoot()` tree
- * boundaries - `createPortal` is what makes one shared tree possible
- * without moving any markup in index.html: this function mounts exactly
- * one root (attached to a detached anchor node, never inserted into the
- * visible DOM - it doesn't need to be, since portals render their
- * children into the *target* nodes below, not the anchor), and portals
- * each field into its existing, now-empty `<span id="…-root">` container.
+ * Every field rendered here needs its value to reach a *shared* Context,
+ * and Context can't cross independent `createRoot()` tree boundaries -
+ * `createPortal` is what makes one shared tree possible without moving any
+ * markup in index.html: each field portals into its existing, now-empty
+ * `<span id="…-root">` container.
  *
  * Initial Context values are the same hardcoded defaults
  * `getUiOptionDefaults()` (index.page.js) uses - there's no vanilla
@@ -149,7 +101,7 @@ const FILTER_STATE_TEXT_FIELDS = [
   { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },
 ];
 
-function mountFilterStateProvider() {
+function buildFilterStateFieldPortals() {
   const scopeModeContainer = document.getElementById('scope-mode-root');
   const alwaysShowInReviewContainer = document.getElementById('always-show-in-review-root');
   const attentionNoActivityModeContainer = document.getElementById(
@@ -176,21 +128,6 @@ function mountFilterStateProvider() {
     container: document.getElementById(`${field.id}-root`),
   }));
 
-  const anyContainerExists =
-    scopeModeContainer ||
-    alwaysShowInReviewContainer ||
-    attentionNoActivityModeContainer ||
-    openModeContainer ||
-    filterPrNumbersContainer ||
-    authorThreadResolutionModeContainer ||
-    ignoreCommitPatternsContainer ||
-    contextCheckboxContainers.some((field) => field.container) ||
-    contextTextContainers.some((field) => field.container) ||
-    contextOptionSelectContainers.some((field) => field.container);
-  if (!anyContainerExists) {
-    return;
-  }
-
   // Same defaults as getUiOptionDefaults() (index.page.js) - no vanilla
   // fallback markup is left to read a "currently showing" value from.
   const initialValues = {
@@ -212,73 +149,60 @@ function mountFilterStateProvider() {
     initialValues[field.key] = field.options[0]?.value ?? '';
   });
 
-  // The anchor must actually be attached to the document (just hidden),
-  // not a fully detached node: React attaches this root's own delegated
-  // native event listener to the container passed to createRoot(), and a
-  // detached container would never receive events that bubble through the
-  // real document tree from the portal targets below (which *are*
-  // attached - every "…-root" container is a real part of the page).
-  // Portal targets get their own listener attachment too, but there's no
-  // reason to depend on that nuance when a hidden, attached anchor
-  // sidesteps the question entirely.
-  const anchor = document.createElement('div');
-  anchor.hidden = true;
-  document.body.appendChild(anchor);
-  const root = ReactDOM.createRoot(anchor);
-  root.render(
-    <FilterStateProvider initialValues={initialValues}>
-      {scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer)}
-      {alwaysShowInReviewContainer &&
-        createPortal(<AlwaysShowInReviewCheckbox />, alwaysShowInReviewContainer)}
-      {attentionNoActivityModeContainer &&
-        createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer)}
-      {openModeContainer && createPortal(<OpenModeSelect />, openModeContainer)}
-      {filterPrNumbersContainer &&
-        createPortal(<PrNumberFilterInput />, filterPrNumbersContainer)}
-      {authorThreadResolutionModeContainer &&
-        createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer)}
-      {ignoreCommitPatternsContainer &&
-        createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer)}
-      {contextCheckboxContainers.map(
-        (field) =>
-          field.container &&
-          createPortal(
-            <ContextFilterCheckbox id={field.id} name={field.name} filterStateKey={field.key} />,
-            field.container,
-            field.id,
-          ),
-      )}
-      {contextTextContainers.map(
-        (field) =>
-          field.container &&
-          createPortal(
-            <ContextRunScriptTextInput
-              id={field.id}
-              name={field.name}
-              type={field.type}
-              placeholder={field.placeholder}
-              filterStateKey={field.key}
-            />,
-            field.container,
-            field.id,
-          ),
-      )}
-      {contextOptionSelectContainers.map(
-        (field) =>
-          field.container &&
-          createPortal(
-            <FilterOptionSelect
-              id={field.id}
-              name={field.name}
-              options={field.options}
-              filterStateKey={field.key}
-            />,
-            field.container,
-            field.id,
-          ),
-      )}
-    </FilterStateProvider>,
-  );
+  const portals = [
+    scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer, 'scope-mode'),
+    alwaysShowInReviewContainer &&
+      createPortal(<AlwaysShowInReviewCheckbox />, alwaysShowInReviewContainer, 'always-show-in-review'),
+    attentionNoActivityModeContainer &&
+      createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer, 'attention-no-activity-mode'),
+    openModeContainer && createPortal(<OpenModeSelect />, openModeContainer, 'open-mode'),
+    filterPrNumbersContainer &&
+      createPortal(<PrNumberFilterInput />, filterPrNumbersContainer, 'filter-pr-numbers'),
+    authorThreadResolutionModeContainer &&
+      createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
+    ignoreCommitPatternsContainer &&
+      createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer, 'ignore-commit-patterns'),
+    ...contextCheckboxContainers.map(
+      (field) =>
+        field.container &&
+        createPortal(
+          <ContextFilterCheckbox id={field.id} name={field.name} filterStateKey={field.key} />,
+          field.container,
+          field.id,
+        ),
+    ),
+    ...contextTextContainers.map(
+      (field) =>
+        field.container &&
+        createPortal(
+          <ContextRunScriptTextInput
+            id={field.id}
+            name={field.name}
+            type={field.type}
+            placeholder={field.placeholder}
+            filterStateKey={field.key}
+          />,
+          field.container,
+          field.id,
+        ),
+    ),
+    ...contextOptionSelectContainers.map(
+      (field) =>
+        field.container &&
+        createPortal(
+          <FilterOptionSelect
+            id={field.id}
+            name={field.name}
+            options={field.options}
+            filterStateKey={field.key}
+          />,
+          field.container,
+          field.id,
+        ),
+    ),
+  ].filter(Boolean);
+
+  return { initialValues, portals };
 }
 
 // Context-backed "Any (with/without)" plain-metadata filter selects (see
@@ -390,321 +314,347 @@ const MULTI_SELECT_LIST_ID_PREFIXES = {
   'change-filter-ignore-review-authors-list': 'change-filter-ignore-review-authors',
 };
 
-const multiSelectListRoots = new Map();
-
-function mountMultiSelectLists() {
+/**
+ * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+ * looks up every static DOM container this app mounts into, once. Kept
+ * separate from <AppRoot />'s render body so it only runs a single time
+ * (via useState's lazy initializer), not on every re-render - AppRoot
+ * re-renders on every bridge update (poll tick, filter change, author
+ * switch, etc.), and re-querying ~20 elements on each of those would be
+ * pure waste.
+ */
+function computeStaticContainers() {
+  const multiSelect = {};
   Object.keys(MULTI_SELECT_LIST_ID_PREFIXES).forEach((listId) => {
-    const container = document.getElementById(listId);
-    if (!container) {
-      return;
-    }
-    multiSelectListRoots.set(listId, { root: ReactDOM.createRoot(container), renderCount: 0 });
+    multiSelect[listId] = document.getElementById(listId);
   });
+
+  return {
+    filterFields: buildFilterStateFieldPortals(),
+    multiSelect,
+    reviewStatsControls: document.getElementById('stats-controls-root'),
+    reviewStatsContent: document.getElementById('stats-content-root'),
+    authorInsightsSelector: document.getElementById('author-insights-selector-root'),
+    authorInsightsCreatedPrs: document.getElementById('author-insights-created-prs-root'),
+    authorInsightsHeader: document.getElementById('author-insights-header-root'),
+    authorInsightsNotes: document.getElementById('author-insights-notes-root'),
+    authorInsightsComments: document.getElementById('author-insights-content-root'),
+    backfillBadges: document.getElementById('backfill-badges'),
+    appliedFilterSummary: document.getElementById('management-filter-summary-root'),
+    reviewStatsControlsInitialState:
+      typeof window.getStatsViewState === 'function'
+        ? window.getStatsViewState()
+        : { sortBy: 'riskyApprovals', filterMode: 'all', topN: 12, minComments: 0, startDate: '', endDate: '' },
+  };
 }
 
 /**
- * Renders one multi-select list's checkbox items via React. Called by
- * index.page.js (via pr-filter-panel.helpers.js's `renderMultiSelectList`
- * DI hook) every time that list's options are (re)populated from fresh PR
- * data. Returns false for any list id not yet converted (or if this module
- * hasn't mounted it yet - the same load-order race every other Phase 2
- * field handles), so the caller falls back to its own vanilla DOM-building
- * path instead of silently doing nothing.
+ * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+ * the single React root for the whole app. Every piece that used to be its
+ * own independent `ReactDOM.createRoot()` (PrTableApp, the Run & Filter
+ * Context fields, every multi-select list, Review Stats, Author Insights,
+ * Backfill badges, the applied-filter summary, PrDataPolling) is now a
+ * child of this one tree, portaled into its existing DOM container via
+ * `createPortal` - the same technique FilterStateProvider's fields already
+ * used, just extended to everything. <PrDataProvider /> now wraps the
+ * *whole* tree (not just PrTableApp), which is what actually unlocks
+ * Context-based data sharing for a future slice (e.g. Review Stats/Author
+ * Insights reading PR payload directly instead of via a push bridge,
+ * Track C's original C3) - today, every non-PrTableApp consumer still
+ * reads via the same window.* bridges as before, this slice only unifies
+ * *where* everything renders, not yet *how* each piece gets its data.
  *
- * @param {string} listId
- * @param {Array<{value: string, label: string, checked: boolean}>} options
- * @returns {boolean} whether React handled the render
+ * PrTableApp is the one consumer that doesn't mount eagerly (index.page.js
+ * calls window.mountReactPrTable(container, props) lazily, once PR data
+ * first loads) - `prTable` state starts null and the portal only renders
+ * once that bridge call has actually happened.
  */
-function renderReactMultiSelectList(listId, options) {
-  const entry = multiSelectListRoots.get(listId);
-  const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-  if (!entry || !idPrefix) {
-    return false;
-  }
-  entry.renderCount += 1;
-  // root.render() alone doesn't commit synchronously (React 18 batches
-  // it) - without flushSync, a same-tick DOM read right after this call
-  // (e.g. getSelectedMultiSelectValues, used to seed a *different* list's
-  // selections or a later render's "currently checked" state) could see
-  // the pre-commit (stale/unchecked) state and clobber a just-restored
-  // selection before the user ever sees it - vanilla's direct DOM
-  // mutation never had this problem, since a plain
-  // `checkbox.checked = true` assignment is synchronous.
-  flushSync(() => {
-    entry.root.render(
-      <MultiSelectCheckboxList key={entry.renderCount} options={options} idPrefix={idPrefix} />,
-    );
-  });
-  return true;
-}
+function AppRoot() {
+  const [containers] = useState(computeStaticContainers);
 
-/**
- * Mounts the Review Stats tab's controls (Phase 3 - see
- * REACT_MIGRATION_PLAN.md). Mounts once into the static #stats-controls-root
- * container and is never re-mounted or torn down by vanilla afterward
- * (renderStatsView in index.page.js was updated to only rebuild the
- * sibling #stats-content-root) - statsViewState has no persisted/restored
- * override, so there's no restore-race to handle, just a one-time read of
- * its current value via window.getStatsViewState() for the initial props.
- */
-function mountReviewStatsControls() {
-  const container = document.getElementById('stats-controls-root');
-  if (!container) {
-    return;
-  }
-  const initialState =
-    typeof window.getStatsViewState === 'function'
-      ? window.getStatsViewState()
-      : { sortBy: 'riskyApprovals', filterMode: 'all', topN: 12, minComments: 0, startDate: '', endDate: '' };
-  ReactDOM.createRoot(container).render(
-    <ReviewStatsControls
-      initialState={initialState}
-      onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
-    />,
+  const [prTable, setPrTable] = useState(null);
+  const [multiSelectStates, setMultiSelectStates] = useState({});
+  const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
+  const [reviewStatsContent, setReviewStatsContent] = useState({ stats: null, rows: [], actorsMap: {} });
+  const [authorInsightsSelector, setAuthorInsightsSelector] = useState({ options: [], selectedLogin: '', renderKey: 0 });
+  const [authorInsightsCreatedPrs, setAuthorInsightsCreatedPrs] = useState({ rows: [], selectedAuthorLogin: '' });
+  const [authorInsightsHeader, setAuthorInsightsHeader] = useState({ selectedAuthorName: '' });
+  const [authorInsightsNotes, setAuthorInsightsNotes] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
+  const [authorInsightsComments, setAuthorInsightsComments] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
+  const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
+
+  useEffect(() => {
+    window.mountReactPrTable = (containerElement, props) => {
+      if (!containerElement) {
+        console.error('[React Migration] Cannot mount: container element not found');
+        return null;
+      }
+      setPrTable({
+        container: containerElement,
+        onCheckboxChange: props?.onCheckboxChange,
+        onAckAction: props?.onAckAction,
+        onApplyLabel: props?.onApplyLabel,
+      });
+      // Seed the initial payload through the same path every later update
+      // uses (window.updateReactPrTable, owned by <PrDataProvider />, which
+      // is always mounted below - see its own file) rather than threading
+      // initialPayload/selectedRepo/visiblePrNumbers through this function
+      // as a second, parallel way to get data in.
+      window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo, props?.visiblePrNumbers);
+      return { unmount: () => setPrTable(null) };
+    };
+    return () => {
+      delete window.mountReactPrTable;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.renderReactMultiSelectList = (listId, options) => {
+      const container = containers.multiSelect[listId];
+      const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
+      if (!container || !idPrefix) {
+        return false;
+      }
+      // flushSync: see MultiSelectCheckboxList's own callers historically -
+      // a same-tick DOM read right after this call (e.g.
+      // getSelectedMultiSelectValues) must see the just-committed state,
+      // not a pre-commit stale one.
+      flushSync(() => {
+        setMultiSelectStates((previous) => ({
+          ...previous,
+          [listId]: { options, renderKey: (previous[listId]?.renderKey || 0) + 1 },
+        }));
+      });
+      return true;
+    };
+    return () => {
+      delete window.renderReactMultiSelectList;
+    };
+  }, [containers]);
+
+  useEffect(() => {
+    window.renderReactFilterSummary = (summaryText, filterChips) => {
+      if (!containers.appliedFilterSummary) {
+        return false;
+      }
+      setFilterSummary({ summaryText, filterChips });
+      return true;
+    };
+    return () => {
+      delete window.renderReactFilterSummary;
+    };
+  }, [containers]);
+
+  useEffect(() => {
+    window.updateReviewStatsContent = (stats, rows, actorsMap) => {
+      setReviewStatsContent({ stats, rows, actorsMap });
+    };
+    return () => {
+      delete window.updateReviewStatsContent;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateAuthorInsightsSelector = (options, selectedLogin) => {
+      setAuthorInsightsSelector((previous) => ({ options, selectedLogin, renderKey: previous.renderKey + 1 }));
+      return true;
+    };
+    return () => {
+      delete window.updateAuthorInsightsSelector;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateAuthorInsightsCreatedPrs = (rows, selectedAuthorLogin) => {
+      setAuthorInsightsCreatedPrs({ rows, selectedAuthorLogin });
+      return true;
+    };
+    return () => {
+      delete window.updateAuthorInsightsCreatedPrs;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateAuthorInsightsHeader = (selectedAuthorName) => {
+      setAuthorInsightsHeader({ selectedAuthorName });
+      return true;
+    };
+    return () => {
+      delete window.updateAuthorInsightsHeader;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateAuthorInsightsNotes = (rows, selectedAuthor, actorsMap) => {
+      setAuthorInsightsNotes({ rows, selectedAuthor, actorsMap });
+      return true;
+    };
+    return () => {
+      delete window.updateAuthorInsightsNotes;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateAuthorInsightsComments = (rows, selectedAuthor, actorsMap) => {
+      setAuthorInsightsComments({ rows, selectedAuthor, actorsMap });
+      return true;
+    };
+    return () => {
+      delete window.updateAuthorInsightsComments;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactBackfillBadges = (badges) => {
+      setBackfillBadges({ badges });
+      return true;
+    };
+    return () => {
+      delete window.updateReactBackfillBadges;
+    };
+  }, []);
+
+  return (
+    <PrDataProvider initialPayload={{}} initialSelectedRepo="" initialVisiblePrNumbers={null}>
+      <FilterStateProvider initialValues={containers.filterFields.initialValues}>
+        {containers.filterFields.portals}
+
+        {prTable &&
+          createPortal(
+            <PrTableApp
+              onCheckboxChange={prTable.onCheckboxChange}
+              onAckAction={prTable.onAckAction}
+              onApplyLabel={prTable.onApplyLabel}
+            />,
+            prTable.container,
+            'pr-table',
+          )}
+
+        {Object.entries(containers.multiSelect).map(([listId, container]) => {
+          if (!container) {
+            return null;
+          }
+          const state = multiSelectStates[listId];
+          return createPortal(
+            <MultiSelectCheckboxList
+              key={listId}
+              options={state?.options || []}
+              idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
+            />,
+            container,
+            listId,
+          );
+        })}
+
+        {containers.appliedFilterSummary &&
+          createPortal(
+            <AppliedFilterSummary
+              summaryText={filterSummary.summaryText}
+              filterChips={filterSummary.filterChips}
+            />,
+            containers.appliedFilterSummary,
+            'applied-filter-summary',
+          )}
+
+        {containers.reviewStatsControls &&
+          createPortal(
+            <ReviewStatsControls
+              initialState={containers.reviewStatsControlsInitialState}
+              onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
+            />,
+            containers.reviewStatsControls,
+            'review-stats-controls',
+          )}
+
+        {containers.reviewStatsContent &&
+          createPortal(
+            <ReviewStatsContent
+              stats={reviewStatsContent.stats}
+              rows={reviewStatsContent.rows}
+              actorsMap={reviewStatsContent.actorsMap}
+            />,
+            containers.reviewStatsContent,
+            'review-stats-content',
+          )}
+
+        {containers.authorInsightsSelector &&
+          createPortal(
+            <AuthorInsightsSelector
+              key={authorInsightsSelector.renderKey}
+              options={authorInsightsSelector.options}
+              selectedLogin={authorInsightsSelector.selectedLogin}
+              onChange={(login) => window.selectAuthorInsightsAuthor?.(login)}
+            />,
+            containers.authorInsightsSelector,
+            'author-insights-selector',
+          )}
+
+        {containers.authorInsightsCreatedPrs &&
+          createPortal(
+            <AuthorCreatedPrsSection
+              rows={authorInsightsCreatedPrs.rows}
+              selectedAuthorLogin={authorInsightsCreatedPrs.selectedAuthorLogin}
+            />,
+            containers.authorInsightsCreatedPrs,
+            'author-insights-created-prs',
+          )}
+
+        {containers.authorInsightsHeader &&
+          createPortal(
+            <AuthorInsightsHeader selectedAuthorName={authorInsightsHeader.selectedAuthorName} />,
+            containers.authorInsightsHeader,
+            'author-insights-header',
+          )}
+
+        {containers.authorInsightsNotes &&
+          createPortal(
+            <AuthorInsightsNotesSection
+              rows={authorInsightsNotes.rows}
+              selectedAuthor={authorInsightsNotes.selectedAuthor}
+              actorsMap={authorInsightsNotes.actorsMap}
+            />,
+            containers.authorInsightsNotes,
+            'author-insights-notes',
+          )}
+
+        {containers.authorInsightsComments &&
+          createPortal(
+            <AuthorInsightsCommentsSection
+              rows={authorInsightsComments.rows}
+              selectedAuthor={authorInsightsComments.selectedAuthor}
+              actorsMap={authorInsightsComments.actorsMap}
+            />,
+            containers.authorInsightsComments,
+            'author-insights-comments',
+          )}
+
+        {containers.backfillBadges &&
+          createPortal(
+            <BackfillBadges badges={backfillBadges.badges} />,
+            containers.backfillBadges,
+            'backfill-badges',
+          )}
+      </FilterStateProvider>
+      <PrDataPolling />
+    </PrDataProvider>
   );
 }
 
 /**
- * Mounts the Review Stats tab's summary cards/visuals/table/trend note
- * (Phase 3 - see REACT_MIGRATION_PLAN.md). Same mount-once/update-via-bridge
- * shape as Phase 1's mountReactPrTable/updateReactPrTable: mounts once into
- * the static #stats-content-root container with an empty initial state, and
- * index.page.js's renderStatsView calls window.updateReviewStatsContent(...)
- * on every subsequent stats render instead of rebuilding this container's
- * DOM directly (which would tear the mounted root out from under React -
- * see renderStatsView's own comment).
+ * Mounts <AppRoot /> once, into a hidden-but-attached anchor node (not a
+ * detached one - see buildFilterStateFieldPortals' former doc comment on
+ * mountFilterStateProvider for why attached-but-hidden matters for native
+ * event delegation). Called from the bootstrap block below.
  */
-function mountReviewStatsContent() {
-  const container = document.getElementById('stats-content-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  root.render(<ReviewStatsContent stats={null} rows={[]} actorsMap={{}} />);
-  window.updateReviewStatsContent = (stats, rows, actorsMap) => {
-    root.render(<ReviewStatsContent stats={stats} rows={rows} actorsMap={actorsMap} />);
-  };
+function mountAppRoot() {
+  const anchor = document.createElement('div');
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  ReactDOM.createRoot(anchor).render(<AppRoot />);
 }
 
-/**
- * Mounts the Author Insights tab's "Author" selector (Phase 3 - see
- * REACT_MIGRATION_PLAN.md). Unlike Review Stats' controls, this
- * selector's *options* are rebuilt from the PR payload on every
- * author-insights render, not seeded once at mount - the same shape as
- * Phase 2's MultiSelectCheckboxList, including the incrementing `key` on
- * every update() call so this component's internal state fully
- * re-initializes from fresh props each time (matching the old vanilla
- * discard-and-rebuild behavior) rather than trying to diff against
- * whatever was selected before.
- */
-function mountAuthorInsightsSelector() {
-  const container = document.getElementById('author-insights-selector-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  let renderCount = 0;
-  window.updateAuthorInsightsSelector = (options, selectedLogin) => {
-    renderCount += 1;
-    root.render(
-      <AuthorInsightsSelector
-        key={renderCount}
-        options={options}
-        selectedLogin={selectedLogin}
-        onChange={(login) => window.selectAuthorInsightsAuthor?.(login)}
-      />,
-    );
-    return true;
-  };
-}
-
-/**
- * Mounts the Author Insights tab's "PRs created by this author" section
- * (Phase 3, real JSX since Track B - see REACT_MIGRATION_PLAN.md). Mounted
- * once into the static #author-insights-created-prs-root container,
- * updated via window.updateAuthorInsightsCreatedPrs(rows,
- * selectedAuthorLogin). No `key` remount needed anymore: now that
- * AuthorCreatedPrsSection is real JSX filtering directly on the
- * `selectedAuthorLogin` prop (rather than wrapping a vanilla builder that
- * read authorInsightsState.selectedAuthorLogin from a closure), a plain
- * prop change is enough to re-derive the filtered/sorted list on every
- * author switch, even when the `rows` reference itself is unchanged.
- */
-function mountAuthorCreatedPrsSection() {
-  const container = document.getElementById('author-insights-created-prs-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  window.updateAuthorInsightsCreatedPrs = (rows, selectedAuthorLogin) => {
-    root.render(<AuthorCreatedPrsSection rows={rows} selectedAuthorLogin={selectedAuthorLogin} />);
-    return true;
-  };
-}
-
-/**
- * Mounts the Author Insights tab's "Showing insights for <author>" header
- * (Phase 3 - see REACT_MIGRATION_PLAN.md). Mount-once/update-via-bridge, no
- * key needed: unlike the selector/created-PRs sections, this component has
- * no internal state to discard on every update, so a plain re-render with
- * new props is enough.
- */
-function mountAuthorInsightsHeader() {
-  const container = document.getElementById('author-insights-header-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  root.render(<AuthorInsightsHeader selectedAuthorName="" />);
-  window.updateAuthorInsightsHeader = (selectedAuthorName) => {
-    root.render(<AuthorInsightsHeader selectedAuthorName={selectedAuthorName} />);
-    return true;
-  };
-}
-
-/**
- * Mounts the Author Insights tab's "PR-linked custom comments and
- * sentiment" section (Phase 3, real JSX since Track B - see
- * REACT_MIGRATION_PLAN.md). Mount-once/update-via-bridge, no key needed:
- * renderAuthorInsights (pr-author-insights.component.js) passes a
- * freshly-computed `selectedAuthor` object as a prop on every call, so a
- * plain re-render already reflects every author switch.
- */
-function mountAuthorInsightsNotesSection() {
-  const container = document.getElementById('author-insights-notes-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  root.render(<AuthorInsightsNotesSection rows={[]} selectedAuthor={null} actorsMap={{}} />);
-  window.updateAuthorInsightsNotes = (rows, selectedAuthor, actorsMap) => {
-    root.render(
-      <AuthorInsightsNotesSection rows={rows} selectedAuthor={selectedAuthor} actorsMap={actorsMap} />,
-    );
-    return true;
-  };
-}
-
-/**
- * Mounts the Author Insights tab's "Manual author comments" composer/list
- * (Phase 3, real JSX since Track B batch 2 - see REACT_MIGRATION_PLAN.md).
- * Reuses the existing #author-insights-content-root container (previously
- * a plain "rebuild-every-render" scratch host, now this section's own
- * persistent React root, matching every other Author Insights sibling
- * container) - no index.html change needed. Mount-once/update-via-bridge,
- * no key needed: `selectedAuthor` is a freshly-computed prop on every
- * call, so a plain re-render already picks up every author switch (the
- * component's own useEffect on selectedAuthor.login resets its local
- * composer/edit-draft mirror state and reloads that author's comments).
- */
-function mountAuthorInsightsCommentsSection() {
-  const container = document.getElementById('author-insights-content-root');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  root.render(<AuthorInsightsCommentsSection rows={[]} selectedAuthor={null} actorsMap={{}} />);
-  window.updateAuthorInsightsComments = (rows, selectedAuthor, actorsMap) => {
-    root.render(
-      <AuthorInsightsCommentsSection rows={rows} selectedAuthor={selectedAuthor} actorsMap={actorsMap} />,
-    );
-    return true;
-  };
-}
-
-/**
- * Mounts the Backfill tab's status badges (Phase 3 - see
- * REACT_MIGRATION_PLAN.md). Mounts directly into the existing
- * #backfill-badges container - see BackfillBadges.jsx's own comment for why
- * no container-split or `key` remount is needed here, unlike every other
- * Phase 3 conversion so far.
- */
-function mountBackfillBadges() {
-  const container = document.getElementById('backfill-badges');
-  if (!container) {
-    return;
-  }
-  const root = ReactDOM.createRoot(container);
-  root.render(<BackfillBadges badges={[]} />);
-  window.updateReactBackfillBadges = (badges) => {
-    root.render(<BackfillBadges badges={badges} />);
-    return true;
-  };
-}
-
-let appliedFilterSummaryRoot = null;
-
-/**
- * Mounts the "Applied filters: ..." summary line + chip list (Run & Filter
- * tab, Visibility Filters panel) into the single #management-filter-summary-root
- * placeholder that replaced the old standalone <pre>/<div> pair in
- * index.html - one container for both pieces, since AppliedFilterSummary
- * renders them together as a fragment.
- */
-function mountAppliedFilterSummary() {
-  const container = document.getElementById('management-filter-summary-root');
-  if (!container) {
-    return;
-  }
-  appliedFilterSummaryRoot = ReactDOM.createRoot(container);
-  appliedFilterSummaryRoot.render(<AppliedFilterSummary summaryText="" filterChips={[]} />);
-}
-
-/**
- * Renders the Applied-filters summary/chips via React. Called by
- * index.page.js (via pr-filter-panel.helpers.js's
- * renderManagementFilterSummary) every time filters are (re)applied.
- * Returns false if this module hasn't mounted it yet - the same load-order
- * race every other Phase 2/3 field tolerates - so the caller just skips
- * that one render instead of falling back to manual DOM-building.
- *
- * @param {string} summaryText
- * @param {string[]} filterChips
- * @returns {boolean} whether React handled the render
- */
-function renderReactFilterSummary(summaryText, filterChips) {
-  if (!appliedFilterSummaryRoot) {
-    return false;
-  }
-  appliedFilterSummaryRoot.render(
-    <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />,
-  );
-  return true;
-}
-
-/**
- * Mounts <PrDataPolling /> as a headless React root (no visible UI, so no
- * specific DOM container needed - see PrDataPolling.jsx). Track C, slice
- * C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md).
- */
-function mountPrDataPolling() {
-  const root = ReactDOM.createRoot(document.createElement('div'));
-  root.render(<PrDataPolling />);
-}
-
-/**
- * Expose mounting function globally for vanilla JS to call
- * This allows the existing index.page.js to mount the React app
- */
 if (typeof window !== 'undefined') {
-  window.mountReactPrTable = mountReactPrTable;
-
-  window.renderReactMultiSelectList = renderReactMultiSelectList;
-  mountMultiSelectLists();
-
-  window.renderReactFilterSummary = renderReactFilterSummary;
-  mountAppliedFilterSummary();
-
-  mountFilterStateProvider();
-  mountReviewStatsControls();
-  mountReviewStatsContent();
-  mountAuthorInsightsSelector();
-  mountAuthorInsightsHeader();
-  mountAuthorInsightsNotesSection();
-  mountAuthorInsightsCommentsSection();
-  mountAuthorCreatedPrsSection();
-  mountBackfillBadges();
-  mountPrDataPolling();
+  mountAppRoot();
 
   // react-app.jsx is loaded as an ES module, which the browser always defers
   // until after classic scripts (including index.page.js) have run. If the

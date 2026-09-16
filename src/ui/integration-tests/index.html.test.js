@@ -22,6 +22,7 @@ const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
+const { PrDataProvider } = require("../state/PrDataProvider");
 const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
@@ -413,16 +414,19 @@ const installReactFilterPanelMountBridges = () => {
   };
 };
 
-// Track C, slice C2b (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// index.page.js no longer calls window.ReactMountBridge (that module was
-// deleted - it was just a thin wrapper around window.mountReactPrTable/
-// window.updateReactPrTable plus an isMounted() flag, now inlined directly
-// into index.page.js as mountReactTable/updateReactTable/
-// isReactTableMounted). This stub now defines window.mountReactPrTable/
-// window.updateReactPrTable themselves - the same functions react-app.jsx
-// really exposes - using real RTL rendering, matching
-// mountReactPrTable's own real contract (mounting sets
-// window.updateReactPrTable as a side effect, returns a root-like value).
+// Track C, slices C2b/C2c (post-Phase-6 follow-up, see
+// REACT_MIGRATION_PLAN.md): index.page.js no longer calls
+// window.ReactMountBridge (that module was deleted - it was just a thin
+// wrapper around window.mountReactPrTable/window.updateReactPrTable plus an
+// isMounted() flag, now inlined directly into index.page.js as
+// mountReactTable/updateReactTable/isReactTableMounted). This stub now
+// defines window.mountReactPrTable/window.updateReactPrTable themselves -
+// the same functions react-app.jsx really exposes - using real RTL
+// rendering, matching mountReactPrTable's own real contract: it mounts the
+// real <PrDataProvider /> (state/PrDataProvider.jsx) wrapping PrTableApp,
+// exactly like react-app.jsx's own mountReactPrTable does, and lets the
+// Provider's own useEffect assign window.updateReactPrTable - this stub no
+// longer reimplements that merge logic itself.
 const installReactTableMountBridge = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
@@ -432,20 +436,22 @@ const installReactTableMountBridge = () => {
 
   window.mountReactPrTable = (containerElement, props) => {
     if (!containerElement) return null;
-    let currentTableProps = { ...props };
-    const { rerender } = rtlRender(React.createElement(PrTableApp, currentTableProps), {
-      container: containerElement,
-    });
-    window.updateReactPrTable = (payload, selectedRepo, visiblePrNumbers) => {
-      currentTableProps = {
-        ...currentTableProps,
-        initialPayload: payload || {},
-        selectedRepo: selectedRepo || currentTableProps.selectedRepo,
-        visiblePrNumbers:
-          visiblePrNumbers !== undefined ? visiblePrNumbers : currentTableProps.visiblePrNumbers,
-      };
-      rerender(React.createElement(PrTableApp, currentTableProps));
-    };
+    rtlRender(
+      React.createElement(
+        PrDataProvider,
+        {
+          initialPayload: props?.initialPayload,
+          initialSelectedRepo: props?.selectedRepo,
+          initialVisiblePrNumbers: props?.visiblePrNumbers,
+        },
+        React.createElement(PrTableApp, {
+          onCheckboxChange: props?.onCheckboxChange,
+          onAckAction: props?.onAckAction,
+          onApplyLabel: props?.onApplyLabel,
+        }),
+      ),
+      { container: containerElement },
+    );
     return { unmount: () => {} };
   };
 };

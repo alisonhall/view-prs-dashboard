@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
+import { usePrData } from '../state/PrDataContext';
 
 /**
  * Main PR Table Application Component
@@ -19,39 +20,20 @@ import { PrJsonModal } from './PrJsonModal';
  * Manages section open/closed state and expandable insights state.
  * 
  * @param {Object} props
- * @param {Object} props.initialPayload - Initial PR data payload
- * @param {string} props.selectedRepo - Currently selected repository
- * @param {string[]} [props.visiblePrNumbers] - PR numbers that pass the
- *   active local filters (scope/PR-number/label/author/assigned/approver);
- *   null/undefined means no filter is active (show everything for the repo)
  * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
  * @param {Function} props.onAckAction - Callback for Ack button clicks
  * @returns {JSX.Element}
  */
 export function PrTableApp({
-  initialPayload,
-  selectedRepo,
-  visiblePrNumbers,
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
 }) {
-  // State: PR data payload
-  const [payload, setPayload] = useState(initialPayload);
-
-  // index.page.js's update path (updateReactTable -> react-app.jsx's
-  // mountReactPrTable/updateReactPrTable, see REACT_MIGRATION_PLAN.md
-  // Track C slice C2b) re-renders this component with a new `initialPayload`
-  // prop via root.render() rather than calling setPayload directly. useState's
-  // initial value is only read on the very first render, so without this sync
-  // any update delivered that way (e.g. after toggling a Flagged/In Review
-  // checkbox) would silently never reach `payload`.
-  useEffect(() => {
-    if (initialPayload && initialPayload !== payload) {
-      setPayload(initialPayload);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPayload]);
+  // PR data payload/selectedRepo/visiblePrNumbers - owned by <PrDataProvider />
+  // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
+  // which also owns window.updateReactPrTable itself. Replaces this
+  // component's own former useState(initialPayload) + prop-resync useEffect.
+  const { payload, selectedRepo, visiblePrNumbers, setPayload } = usePrData();
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
   const [openSections, setOpenSections] = useState({});
@@ -485,35 +467,6 @@ export function PrTableApp({
     };
   }, []);
 
-  // Listen for delta updates from vanilla JS polling
-  useEffect(() => {
-    const handleDeltaUpdate = (event) => {
-      setPayload(event.detail.payload);
-    };
-
-    window.addEventListener('pr-delta-update', handleDeltaUpdate);
-    return () => {
-      window.removeEventListener('pr-delta-update', handleDeltaUpdate);
-    };
-  }, []);
-
-  // Expose update function globally for vanilla JS bridge
-  useEffect(() => {
-    window.updateReactPrTable = (newPayload) => {
-      setPayload(newPayload);
-    };
-    
-    return () => {
-      delete window.updateReactPrTable;
-    };
-  }, []);
-
-  // Handler: apply a fresh payload returned by a save (e.g. Notes) directly
-  // into React state, without going through the vanilla bridge.
-  const handleDataRefresh = (newPayload) => {
-    setPayload(newPayload);
-  };
-
   // Handler: Toggle section open/closed
   const handleToggleSection = (sectionKey) => {
     setOpenSections((prev) => ({
@@ -580,7 +533,7 @@ export function PrTableApp({
           onAckAction={handleAckActionBusy}
           onApplyLabel={handleApplyLabelBusy}
           onUpdatePr={handleUpdatePrBusy}
-          onDataRefresh={handleDataRefresh}
+          onDataRefresh={setPayload}
           onViewJson={handleViewJson}
           getPrFlags={getPrFlags}
           checkNeedsAttention={checkNeedsAttention}

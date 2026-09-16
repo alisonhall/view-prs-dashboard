@@ -4327,31 +4327,6 @@ const renderStatsView = (rows, actorsMap = {}) => {
   window.updateReviewStatsContent?.(stats, rows, actorsMap);
 };
 
-// Review Stats Tab Orchestrator
-const reviewStatsTabOrchestratorFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./orchestrators/review-stats-tab.orchestrator.js")
-    : globalThis.ViewPrsReviewStatsTabOrchestrator;
-
-const reviewStatsTabOrchestrator =
-  reviewStatsTabOrchestratorFactory.createReviewStatsTabOrchestrator({
-    // Helper functions
-    renderStatsView,
-    activateDataTab,
-    getOptionalElementById,
-    // State management via dependency injection
-    stateGetters: {
-      getStatsViewState: () => statsViewState,
-      getLatestRows: () => latestStoredPayload?.rows || [],
-      getLatestActorsMap: () => latestStoredPayload?.actorsMap || {},
-    },
-    stateSetters: {
-      setStatsViewState: (value) => {
-        Object.assign(statsViewState, value);
-      },
-    },
-  });
-
 // Author Insights helper modules (refactored dependency injection)
 const prAuthorInsightsPrLinkHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -4544,37 +4519,6 @@ if (typeof window !== "undefined") {
   window.sortAuthorInsightsManualCommentsDesc = (...args) =>
     prAuthorInsightsDisplayHelpers.sortAuthorInsightsManualCommentsDesc(...args);
 }
-
-// Author Insights Tab Orchestrator
-const authorInsightsTabOrchestratorFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./orchestrators/author-insights-tab.orchestrator.js")
-    : globalThis.ViewPrsAuthorInsightsTabOrchestrator;
-
-const authorInsightsTabOrchestrator =
-  authorInsightsTabOrchestratorFactory.createAuthorInsightsTabOrchestrator({
-    // Helper functions
-    renderAuthorInsights,
-    activateDataTab,
-    getOptionalElementById,
-    // State management via dependency injection
-    stateGetters: {
-      getAuthorInsightsState: () => authorInsightsState,
-      getLatestStoredPayload: () => latestStoredPayload,
-      getLatestSelectedRepo: () => latestSelectedRepo,
-    },
-    stateSetters: {
-      setSelectedAuthorLogin: (value) => {
-        authorInsightsState.selectedAuthorLogin = value;
-      },
-      setLatestRows: (value) => {
-        authorInsightsState.latestRows = value;
-      },
-      setLatestActorsMap: (value) => {
-        authorInsightsState.latestActorsMap = value;
-      },
-    },
-  });
 
 const prActorIdentityHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -7508,12 +7452,8 @@ const initPage = () => {
   initActorNameCacheControls();
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
-  // Initialize Author Insights Tab orchestrator
-  authorInsightsTabOrchestrator.initialize();
   // Initialize Backfill Tab orchestrator
   backfillTabOrchestrator.initialize();
-  // Initialize Review Stats Tab orchestrator
-  reviewStatsTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
   setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();

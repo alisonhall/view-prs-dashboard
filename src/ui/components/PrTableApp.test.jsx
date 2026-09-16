@@ -24,6 +24,25 @@ jest.mock('./PrSection', () => {
 });
 
 const { PrTableApp } = require('./PrTableApp');
+const { PrDataProvider } = require('../state/PrDataProvider');
+
+// Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+// PrTableApp reads payload/selectedRepo/visiblePrNumbers from
+// <PrDataProvider /> now, not as direct props - this wraps every render the
+// same way mountReactPrTable (react-app.jsx) really does. Updates after the
+// initial render go through window.updateReactPrTable (the Provider's own
+// bridge), not a `rerender` with new props - see the "delivers a fresh
+// payload" test below for the real post-mount update path.
+const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, ...tableProps } = {}) =>
+  render(
+    <PrDataProvider
+      initialPayload={initialPayload}
+      initialSelectedRepo={selectedRepo}
+      initialVisiblePrNumbers={visiblePrNumbers}
+    >
+      <PrTableApp {...tableProps} />
+    </PrDataProvider>,
+  );
 
 function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
@@ -131,7 +150,7 @@ describe('PrTableApp', () => {
   afterEach(clearWindowHelpers);
 
   test('given no payload, when rendering, then shows the loading state instead of any sections', () => {
-    render(<PrTableApp initialPayload={null} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: null, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(screen.getByText('Loading Pull Requests...')).toBeInTheDocument();
     expect(screen.queryByTestId('section')).not.toBeInTheDocument();
   });
@@ -139,7 +158,7 @@ describe('PrTableApp', () => {
   test('given a payload but no window.ViewPrsSectionConfigHelpers, when rendering, then still shows the loading state', () => {
     clearWindowHelpers(); // no section helpers installed for this test
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'o/r', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="o/r" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'o/r', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(screen.getByText('Loading Pull Requests...')).toBeInTheDocument();
   });
 
@@ -150,7 +169,7 @@ describe('PrTableApp', () => {
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'closed' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps[0].repo).toBe('owner/repo');
   });
 
@@ -169,7 +188,7 @@ describe('PrTableApp', () => {
         102: makeEntry({ prNumber: '102', repo: 'real-org/real-repo', section: 'merged' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps[0].repo).toBe('real-org/real-repo');
   });
 
@@ -188,7 +207,7 @@ describe('PrTableApp', () => {
         4: makeEntry({ prNumber: '4', repo: 'new-org/new-repo', section: 'open' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps[0].repo).toBe('new-org/new-repo');
   });
 
@@ -199,7 +218,7 @@ describe('PrTableApp', () => {
         1: makeEntry({ prNumber: '1', repo: 'real-org/real-repo', section: 'open' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps[0].repo).toBe('real-org/real-repo');
   });
 
@@ -210,7 +229,7 @@ describe('PrTableApp', () => {
         2: makeEntry({ prNumber: '2', repo: 'owner/repo-b', section: 'open' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo-b" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo-b', onCheckboxChange: () => {}, onAckAction: () => {} });
     const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
     expect(openSection.section.prs).toHaveLength(1);
     expect(openSection.section.prs[0].repo).toBe('owner/repo-b');
@@ -223,18 +242,18 @@ describe('PrTableApp', () => {
       inReviewByRepo: { 'owner/repo': {} },
       ackByRepo: { 'owner/repo': { 1: '2026-01-01T00:00:00Z' } },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const flags = capturedSectionProps[0].getPrFlags('1');
     expect(flags).toEqual({ isFlagged: true, isInReview: false, isAcknowledged: true });
   });
 
   test('given getPrFlags for a repo with no stored flags at all, when called, then returns all-false rather than throwing', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps[0].getPrFlags('1')).toEqual({ isFlagged: false, isInReview: false, isAcknowledged: false });
   });
 
-  test('given a fresh initialPayload prop on re-render, when the bridge delivers it via root.render (not setState), then the new payload is reflected', () => {
+  test('given window.updateReactPrTable delivers a fresh payload (the real post-mount update path - see PrDataProvider.jsx, Track C slice C2c), when called, then the new payload is reflected', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     const payloadB = {
       byPrNumber: {
@@ -242,30 +261,29 @@ describe('PrTableApp', () => {
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
       },
     };
-    const { rerender } = render(<PrTableApp initialPayload={payloadA} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payloadA, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(1);
 
     capturedSectionProps.length = 0;
-    rerender(<PrTableApp initialPayload={payloadB} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
-    // The prop-sync useEffect (see PrTableApp.jsx) commits one render with the
-    // still-stale state before its setPayload triggers a second render with
-    // the new payload — so take the *last* capture for this section, not the
-    // first.
-    const openCaptures = capturedSectionProps.filter((p) => p.section.key === 'open');
-    expect(openCaptures.at(-1).section.prs).toHaveLength(2);
+    React.act(() => {
+      window.updateReactPrTable(payloadB);
+    });
+    expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(2);
   });
 
-  test('given the exact same initialPayload object reference on re-render, when nothing changed, then does not clobber payload state', () => {
+  test('given window.updateReactPrTable is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    const { rerender } = render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     capturedSectionProps.length = 0;
-    rerender(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    React.act(() => {
+      window.updateReactPrTable(payload);
+    });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(1);
   });
 
   test('given onDataRefresh is called by a descendant (e.g. after a Notes save), when invoked with a new payload, then state updates to it', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payloadA} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payloadA, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const { onDataRefresh } = capturedSectionProps[0];
 
     const payloadB = {
@@ -283,7 +301,7 @@ describe('PrTableApp', () => {
 
   test('given onToggleSection is called, when toggled, then the matching section\'s isOpen flips', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const openSectionBefore = capturedSectionProps.find((p) => p.section.key === 'open');
     expect(openSectionBefore.isOpen).toBe(false); // defaultOpen: false from the mocked helper
 
@@ -312,7 +330,7 @@ describe('PrTableApp', () => {
     };
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
 
     expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(false);
     expect(capturedSectionProps.find((p) => p.section.key === 'draft').isOpen).toBe(false);
@@ -347,7 +365,7 @@ describe('PrTableApp', () => {
     };
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
 
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
   });
@@ -372,7 +390,7 @@ describe('PrTableApp', () => {
     };
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
 
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(1);
   });
@@ -403,7 +421,7 @@ describe('PrTableApp', () => {
       };
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
 
       expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
 
@@ -440,7 +458,7 @@ describe('PrTableApp', () => {
       };
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
 
       const unrelated = document.createElement('input');
       unrelated.id = 'some-unrelated-control';
@@ -472,7 +490,7 @@ describe('PrTableApp', () => {
           20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }),
         },
       };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
       expect(openSection.section.prs.map((entry) => entry.prNumber)).toEqual(['30', '20', '10']);
     });
@@ -485,7 +503,7 @@ describe('PrTableApp', () => {
           3: makeEntry({ prNumber: '3', repo: 'owner/repo', section: 'merged', mergedAt: '2026-02-01T00:00:00Z' }),
         },
       };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
       const mergedSection = capturedSectionProps.find((p) => p.section.key === 'merged');
       expect(mergedSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '3', '1']);
     });
@@ -511,7 +529,7 @@ describe('PrTableApp', () => {
           2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'merged', rowOrder: 1, mergedAt: '2026-01-01T00:00:00Z' }),
         },
       };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
       const needsAttentionSection = capturedSectionProps.find((p) => p.section.key === 'needsAttention');
       expect(needsAttentionSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '1']);
     });
@@ -519,7 +537,7 @@ describe('PrTableApp', () => {
 
   test('given onToggleInsights is called for a PR, when toggled twice, then expandedInsights returns to its original state', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const { onToggleInsights } = capturedSectionProps[0];
 
     React.act(() => {
@@ -543,7 +561,7 @@ describe('PrTableApp', () => {
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
     expect(flaggedSection).toBeDefined();
     expect(flaggedSection.section.prs.map((e) => e.prNumber)).toEqual(['1']);
@@ -559,7 +577,7 @@ describe('PrTableApp', () => {
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
       },
     };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
     expect(openSection.section.attentionCount).toBe(1);
   });
@@ -567,7 +585,7 @@ describe('PrTableApp', () => {
   test('given an onCheckboxChange prop, when passed through, then the same function reaches PrSection unchanged', () => {
     const onCheckboxChange = jest.fn();
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    render(<PrTableApp initialPayload={payload} selectedRepo="" onCheckboxChange={onCheckboxChange} onAckAction={() => {}} onApplyLabel={() => {}} />);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: onCheckboxChange, onAckAction: () => {}, onApplyLabel: () => {} });
     expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
   });
 
@@ -582,7 +600,7 @@ describe('PrTableApp', () => {
     test('given onAckAction, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
       const onAckAction = jest.fn().mockResolvedValue(undefined);
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
 
       await React.act(async () => {
         await capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
@@ -594,7 +612,7 @@ describe('PrTableApp', () => {
     test('given onApplyLabel, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
       const onApplyLabel = jest.fn().mockResolvedValue(undefined);
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} onApplyLabel={onApplyLabel} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: onApplyLabel });
 
       await React.act(async () => {
         await capturedSectionProps[0].onApplyLabel('1', 'bug', 'owner/repo');
@@ -607,7 +625,7 @@ describe('PrTableApp', () => {
       let resolveAck;
       const onAckAction = jest.fn(() => new Promise((resolve) => { resolveAck = resolve; }));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
 
       let ackPromise;
       React.act(() => {
@@ -625,7 +643,7 @@ describe('PrTableApp', () => {
     test('given an Ack action that rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
       const onAckAction = jest.fn().mockRejectedValue(new Error('boom'));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={onAckAction} onApplyLabel={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
 
       await React.act(async () => {
         await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).rejects.toThrow('boom');
@@ -636,7 +654,7 @@ describe('PrTableApp', () => {
 
     test('given no onUpdatePr-triggering action, when rendering, then a stable onUpdatePr function is passed to PrSection', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} onApplyLabel={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
       expect(typeof capturedSectionProps[0].onUpdatePr).toBe('function');
     });
   });
@@ -654,13 +672,13 @@ describe('PrTableApp', () => {
 
     test('given no PR has been requested, when rendering, then the PR JSON modal is not shown', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     test('given onViewJson is called (as PrActionsCell would via the {} button), when invoked, then opens the PR JSON modal for that PR', async () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
       const { onViewJson } = capturedSectionProps[0];
 
       React.act(() => {
@@ -674,7 +692,7 @@ describe('PrTableApp', () => {
 
     test('given the PR JSON modal is open, when its close button is clicked, then it is dismissed', async () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      render(<PrTableApp initialPayload={payload} selectedRepo="" />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
       const { onViewJson } = capturedSectionProps[0];
 
       React.act(() => {
@@ -728,7 +746,7 @@ describe('PrTableApp', () => {
           2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
         },
       };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {} });
 
       const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
@@ -745,7 +763,7 @@ describe('PrTableApp', () => {
           2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
         },
       };
-      render(<PrTableApp initialPayload={payload} selectedRepo="owner/repo" onCheckboxChange={() => {}} onAckAction={() => {}} />);
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {} });
 
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
       expect(openSection.section.totalCount).toBe(2);
