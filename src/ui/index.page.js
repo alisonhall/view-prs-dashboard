@@ -3550,28 +3550,18 @@ const backfillTabOrchestrator =
     },
   });
 
-const prActionLogHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-action-log.helpers.js")
-    : globalThis.ViewPrsPrActionLogHelpers;
+// Action Log's fetch/render is React-owned (ActionLogSection.jsx, mounted
+// into #action-log-container) - this just forwards to the bridge it
+// registers on mount, so the tab-switch chrome (pr-management-tabs.helpers.js)
+// and the Refresh button below can keep calling `loadActionLog()` unchanged.
+const loadActionLog = () => window.triggerActionLogLoad?.();
 
-const { loadActionLog } = prActionLogHelperFactory.createPrActionLogHelpers({
-    fetch: (...args) => fetch(...args),
-    getOptionalElementById,
-    escapeHtml,
-    formatIsoDatetime,
-  });
-
-const prActorNameCacheHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-actor-name-cache.helpers.js")
-    : globalThis.ViewPrsPrActorNameCacheHelpers;
-
-const { loadActorNameCache, initActorNameCacheControls } =
-  prActorNameCacheHelperFactory.createPrActorNameCacheHelpers({
-    fetch: (...args) => fetch(...args),
-    getOptionalElementById,
-  });
+// Actor Names' fetch/render/save is fully React-owned (ActorNamesTab.jsx,
+// mounted into #actor-names-root - its own buttons included, not just a
+// container-split like Action Log) - this just forwards to the bridge it
+// registers on mount, so the tab-switch chrome (pr-management-tabs.helpers.js)
+// can keep calling `loadActorNameCache()` unchanged on tab activation.
+const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
 
 const prManagementTabsHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -5900,7 +5890,6 @@ const initPage = () => {
   );
   registerUiOptionPersistenceHandlers();
   initManagementTabs();
-  initActorNameCacheControls();
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
   // Initialize Backfill Tab orchestrator

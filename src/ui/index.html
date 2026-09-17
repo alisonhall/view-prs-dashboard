@@ -403,7 +403,7 @@
                 <button type="button" id="action-log-refresh-btn">Refresh</button>
             </div>
             <div id="action-log-container" class="action-log-container">
-                <p id="action-log-empty" class="action-log-empty">No actions logged yet.</p>
+                <!-- Rendered by React (ActionLogSection, mounted in react-app.jsx) -->
             </div>
         </section>
 
@@ -412,25 +412,7 @@
             <h3>Actor Names</h3>
             <p class="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering,
                 insights, and stats.</p>
-            <h4>Display Name Mappings</h4>
-            <div class="actor-name-cache-controls form-actions">
-                <button type="button" id="actor-name-cache-refresh-btn">Refresh</button>
-                <button type="button" id="actor-name-cache-add-row-btn">Add display-name row</button>
-                <button type="button" id="actor-name-cache-save-btn">Save display names</button>
-            </div>
-            <p id="actor-name-cache-status" class="actor-name-cache-status">Loading cache...</p>
-            <div id="actor-name-cache-rows" class="actor-name-cache-rows"></div>
-
-            <h4>Login Alias Mappings</h4>
-            <p class="subtle-copy">Use alias login to canonical login mappings when the same person appears under
-                multiple GitHub identities.</p>
-            <div class="actor-name-cache-controls form-actions">
-                <button type="button" id="actor-login-aliases-refresh-btn">Refresh</button>
-                <button type="button" id="actor-login-aliases-add-row-btn">Add alias row</button>
-                <button type="button" id="actor-login-aliases-save-btn">Save login aliases</button>
-            </div>
-            <p id="actor-login-aliases-status" class="actor-name-cache-status">Loading aliases...</p>
-            <div id="actor-login-aliases-rows" class="actor-name-cache-rows"></div>
+            <div id="actor-names-root"></div>
         </section>
 
         <section id="tab-panel-export" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-export" hidden>
@@ -550,8 +532,6 @@
     <script src="./helpers/pr-data-tabs.helpers.js"></script>
     <script src="./helpers/pr-backfill.helpers.js"></script>
     <script src="./helpers/pr-backfill-actions.helpers.js"></script>
-    <script src="./helpers/pr-action-log.helpers.js"></script>
-    <script src="./helpers/pr-actor-name-cache.helpers.js"></script>
     <script src="./helpers/pr-management-tabs.helpers.js"></script>
     <script src="./helpers/pr-formatting.helpers.js"></script>
     <script src="./helpers/pr-actor-identity.helpers.js"></script>

@@ -29,6 +29,8 @@ import { AuthorCreatedPrsSection } from './components/AuthorCreatedPrsSection';
 import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
 import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
 import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
+import { ActionLogSection } from './components/ActionLogSection';
+import { ActorNamesTab } from './components/ActorNamesTab';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { PrDataPolling } from './components/PrDataPolling';
@@ -341,6 +343,8 @@ function computeStaticContainers() {
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
+    actionLog: document.getElementById('action-log-container'),
+    actorNames: document.getElementById('actor-names-root'),
     reviewStatsControlsInitialState:
       typeof window.getStatsViewState === 'function'
         ? window.getStatsViewState()
@@ -634,6 +638,12 @@ function AppRoot() {
             containers.backfillBadges,
             'backfill-badges',
           )}
+
+        {containers.actionLog &&
+          createPortal(<ActionLogSection />, containers.actionLog, 'action-log')}
+
+        {containers.actorNames &&
+          createPortal(<ActorNamesTab />, containers.actorNames, 'actor-names')}
       </FilterStateProvider>
       <PrDataPolling />
     </PrDataProvider>

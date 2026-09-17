@@ -4447,138 +4447,22 @@ describe("index page rendering with Testing Library", () => {
     expect(document.activeElement).toBe(firstElement);
   });
 
-  test("loads and displays action-log entries when a user opens the Action Log tab", async () => {
-    initTestPage({
-      actionEntries: [
-        {
-          triggeredAt: "2026-03-10T10:15:00Z",
-          action: "backfill:start",
-          ok: true,
-          durationMs: 345,
-          detail: { repo: "owner/repo", actor: "ahall236_uhg" },
-        },
-      ],
-    });
+  test("given a user opens the Action Log tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActionLogSection.test.jsx)", async () => {
+    initTestPage();
     const user = userEvent.setup();
-    fetchMock.mockClear();
 
     await user.click(screen.getByRole("tab", { name: "Action Log" }));
 
-    await waitFor(() => {
-      expect(screen.getByText(/backfill:start/i)).toBeInTheDocument();
-    });
-
-    const actionLogCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/action-log" &&
-        String(init?.method || "GET").toUpperCase() === "GET"
-      );
-    });
-
-    expect(actionLogCall).toBeDefined();
     expect(document.getElementById("tab-panel-action-log").hidden).toBe(false);
   });
 
-  test("given actor-name and login-alias entries exist, when a user opens Actor Names and saves changes, then both mapping endpoints are called", async () => {
-    initTestPage({
-      actorNameEntries: {
-        ahall236_uhg: "Alison Hall",
-      },
-      actorLoginAliasEntries: {
-        "alias-login": "canonical-login",
-      },
-    });
-
+  test("given a user opens the Actor Names tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActorNamesTab.test.jsx)", async () => {
+    initTestPage();
     const user = userEvent.setup();
-    fetchMock.mockClear();
 
     await user.click(screen.getByRole("tab", { name: "Actor Names" }));
 
-    await waitFor(() => {
-      expect(
-        document.querySelector(".actor-name-cache-row .actor-name-cache-id")?.value,
-      ).toBe("ahall236_uhg");
-      expect(
-        document.querySelector(".actor-login-alias-row .actor-login-alias-id")?.value,
-      ).toBe("alias-login");
-    });
-
-    const getCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/actor-name-cache" &&
-        String(init?.method || "GET").toUpperCase() === "GET"
-      );
-    });
-    expect(getCall).toBeDefined();
-
-    const aliasGetCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/actor-login-aliases" &&
-        String(init?.method || "GET").toUpperCase() === "GET"
-      );
-    });
-    expect(aliasGetCall).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "Add display-name row" }));
-
-    const rows = Array.from(document.querySelectorAll(".actor-name-cache-row"));
-    const newestRow = rows[rows.length - 1];
-    const idInput = newestRow.querySelector(".actor-name-cache-id");
-    const nameInput = newestRow.querySelector(".actor-name-cache-name");
-    await user.type(idInput, "reviewer1");
-    await user.type(nameInput, "Reviewer One");
-
-    await user.click(screen.getByRole("button", { name: "Save display names" }));
-
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/actor-name-cache" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
-    });
-
-    const putBody = JSON.parse(String(putCall[1]?.body || "{}"));
-    expect(putBody).toMatchObject({
-      ahall236_uhg: "Alison Hall",
-      reviewer1: "Reviewer One",
-    });
-
-    await user.click(screen.getByRole("button", { name: "Add alias row" }));
-
-    const aliasRows = Array.from(document.querySelectorAll(".actor-login-alias-row"));
-    const newestAliasRow = aliasRows[aliasRows.length - 1];
-    const aliasInput = newestAliasRow.querySelector(".actor-login-alias-id");
-    const canonicalInput = newestAliasRow.querySelector(".actor-login-alias-canonical");
-    await user.type(aliasInput, "legacy-login");
-    await user.type(canonicalInput, "canonical-login");
-
-    await user.click(screen.getByRole("button", { name: "Save login aliases" }));
-
-    let aliasPutCall;
-    await waitFor(() => {
-      aliasPutCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/actor-login-aliases" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(aliasPutCall).toBeDefined();
-    });
-
-    const aliasPutBody = JSON.parse(String(aliasPutCall[1]?.body || "{}"));
-    expect(aliasPutBody).toMatchObject({
-      "alias-login": "canonical-login",
-      "legacy-login": "canonical-login",
-    });
+    expect(document.getElementById("tab-panel-actor-name-cache").hidden).toBe(false);
   });
 
   test("posts to backfill start endpoint when a user starts backfill from the Backfill tab", async () => {
@@ -5971,38 +5855,6 @@ describe("index page rendering with Testing Library", () => {
       );
     });
     expect(logTailCall).toBeDefined();
-  });
-
-  test("re-fetches action-log entries when a user clicks Refresh in the Action Log tab", async () => {
-    initTestPage({
-      actionEntries: [
-        {
-          triggeredAt: "2026-03-10T10:16:00Z",
-          action: "post/run-auto",
-          ok: true,
-          durationMs: 120,
-          detail: { repo: "owner/repo" },
-        },
-      ],
-    });
-    const user = userEvent.setup();
-    fetchMock.mockClear();
-
-    await user.click(screen.getByRole("tab", { name: "Action Log" }));
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/post\/run-auto/i)).toBeInTheDocument();
-    });
-
-    const actionLogGetCalls = fetchMock.mock.calls.filter((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/action-log" &&
-        String(init?.method || "GET").toUpperCase() === "GET"
-      );
-    });
-    expect(actionLogGetCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   test("generates and displays JSON export preview when a user clicks Preview in the Export tab", async () => {
