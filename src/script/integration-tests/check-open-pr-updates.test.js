@@ -145,10 +145,15 @@ describe("check-open-pr-updates shell helper behavior", () => {
     );
 
     const parsed = JSON.parse(output);
-    expect(parsed.detailRef).toEqual({
-      file: `${detailDir}/owner_repo__pr-123.json`,
-      version: "v1",
-    });
+    // Compared by basename, not full path: on Windows, jq is a native
+    // (non-MSYS) binary, so Git Bash's MSYS layer auto-translates the POSIX
+    // `detailDir` argument (from `mktemp -d`) into a Windows-style path
+    // before jq ever sees it - jq then embeds that translated form in its
+    // JSON output, which never textually matches `detailDir` itself even
+    // though both refer to the same real file (confirmed below via `cat`,
+    // which resolves either form correctly through bash/coreutils).
+    expect(parsed.detailRef.version).toBe("v1");
+    expect(parsed.detailRef.file.split("/").pop()).toBe("owner_repo__pr-123.json");
     expect(parsed.activityTimeline).toBeUndefined();
     expect(parsed.activityEvents).toBeUndefined();
     expect(parsed.reviewThreads).toBeUndefined();

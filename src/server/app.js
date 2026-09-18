@@ -1758,6 +1758,20 @@ const createViewPrsApp = () => {
     });
   });
 
+  // Dependency health route - README's own "Troubleshooting" section
+  // already documents `curl -s http://localhost:9000/health/deps` as the
+  // way to check this, but the route itself was never implemented; wires
+  // it up now, reusing the same getDependencyStatus() the scheduler
+  // already calls internally before attempting an auto-refresh.
+  app.get("/health/deps", (_req, res) => {
+    // Matches the override-checking pattern every other internal call site
+    // for this function already uses (see runViewPrsScript/getDependencyStatus
+    // usage above) - lets tests monkeypatch module.exports.getDependencyStatus
+    // before createViewPrsApp() without needing a real shell/PATH.
+    const status = (module.exports.getDependencyStatus || getDependencyStatus)();
+    res.status(status.ok ? 200 : 503).json(status);
+  });
+
   // Legacy compatibility route for UI files
   app.get(["/", "/index.html"], async (req, res) => {
     if (isProductionEnv) {

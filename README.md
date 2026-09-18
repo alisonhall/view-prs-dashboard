@@ -204,8 +204,11 @@ See [Development Servers](#development-servers) section for more details.
 ## Requirements
 
 - `gh` (GitHub CLI), authenticated (`gh auth login`)
-- `jq`
 - Bash shell
+
+`jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
+
+Run `npm run deps:check` any time to verify all of the above (plus a few coreutils the script also needs) are actually present - it also runs automatically before `npm test` and (as a non-blocking warning) after `npm install`. Once the server is running, `curl -s http://localhost:9000/health/deps` reports the same thing live.
 
 Optional for date formatting fallback:
 

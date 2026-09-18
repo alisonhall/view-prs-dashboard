@@ -7,7 +7,6 @@ const {
 describe("pr render apply helpers", () => {
   test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
     const renderManagementFilterSummary = jest.fn();
-    const renderExportFieldCatalog = jest.fn();
     const renderAuthorInsights = jest.fn();
     const renderStatsView = jest.fn();
     const clearElementContents = jest.fn();
@@ -18,7 +17,6 @@ describe("pr render apply helpers", () => {
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary,
-      renderExportFieldCatalog,
       renderAuthorInsights,
       renderStatsView,
       clearElementContents,
@@ -62,7 +60,6 @@ describe("pr render apply helpers", () => {
       summaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],
     });
-    expect(renderExportFieldCatalog).toHaveBeenCalledWith(payload);
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(buildMergedRequestMoreActionOptions).toHaveBeenCalledWith({
@@ -89,7 +86,6 @@ describe("pr render apply helpers", () => {
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary: () => {},
-      renderExportFieldCatalog: () => {},
       renderAuthorInsights: () => {},
       renderStatsView: () => {},
       clearElementContents: () => {},

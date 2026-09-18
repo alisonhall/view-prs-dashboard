@@ -30,6 +30,8 @@ import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
 import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
 import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
 import { ActionLogSection } from './components/ActionLogSection';
+import { ExportTab } from './components/ExportTab';
+import { ApplyLabelSelect } from './components/ApplyLabelSelect';
 import { ActorNamesTab } from './components/ActorNamesTab';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
@@ -342,9 +344,13 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
+    schedulerBadges: document.getElementById('scheduler-badges'),
+    requestActivityBadges: document.getElementById('request-activity-badges'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
+    export: document.getElementById('export-container'),
+    applyLabelSelect: document.getElementById('apply-label-select-root'),
     reviewStatsControlsInitialState:
       typeof window.getStatsViewState === 'function'
         ? window.getStatsViewState()
@@ -386,6 +392,9 @@ function AppRoot() {
   const [authorInsightsNotes, setAuthorInsightsNotes] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
   const [authorInsightsComments, setAuthorInsightsComments] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
+  const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
+  const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
+  const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -518,6 +527,36 @@ function AppRoot() {
     };
   }, []);
 
+  useEffect(() => {
+    window.updateReactSchedulerBadges = (badges) => {
+      setSchedulerBadges({ badges });
+      return true;
+    };
+    return () => {
+      delete window.updateReactSchedulerBadges;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactRequestActivityBadges = (badges) => {
+      setRequestActivityBadges({ badges });
+      return true;
+    };
+    return () => {
+      delete window.updateReactRequestActivityBadges;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactApplyLabelOptions = (labels) => {
+      setApplyLabelOptions({ labels });
+      return true;
+    };
+    return () => {
+      delete window.updateReactApplyLabelOptions;
+    };
+  }, []);
+
   return (
     <PrDataProvider initialPayload={{}} initialSelectedRepo="" initialVisiblePrNumbers={null}>
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
@@ -639,11 +678,35 @@ function AppRoot() {
             'backfill-badges',
           )}
 
+        {containers.schedulerBadges &&
+          createPortal(
+            <BackfillBadges badges={schedulerBadges.badges} />,
+            containers.schedulerBadges,
+            'scheduler-badges',
+          )}
+
+        {containers.requestActivityBadges &&
+          createPortal(
+            <BackfillBadges badges={requestActivityBadges.badges} />,
+            containers.requestActivityBadges,
+            'request-activity-badges',
+          )}
+
         {containers.actionLog &&
           createPortal(<ActionLogSection />, containers.actionLog, 'action-log')}
 
         {containers.actorNames &&
           createPortal(<ActorNamesTab />, containers.actorNames, 'actor-names')}
+
+        {containers.export &&
+          createPortal(<ExportTab />, containers.export, 'export')}
+
+        {containers.applyLabelSelect &&
+          createPortal(
+            <ApplyLabelSelect labels={applyLabelOptions.labels} />,
+            containers.applyLabelSelect,
+            'apply-label-select',
+          )}
       </FilterStateProvider>
       <PrDataPolling />
     </PrDataProvider>

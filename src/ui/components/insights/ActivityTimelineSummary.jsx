@@ -7,10 +7,15 @@
  * days" row rather than one dash row per day; weekends stay excluded from
  * both the row list and that day count, and don't break a run in progress.
  *
- * Matches vanilla's buildActivityTimelineSummary (index.page.js) — that
- * function returns a plain string only when there's no timeline data at
- * all; otherwise it builds and returns an actual <table> DOM node, which is
- * why this needs to be a real component rather than a formatted string.
+ * Originally mirrored vanilla's buildActivityTimelineSummary (index.page.js)
+ * - that function returned a plain string only when there was no timeline
+ * data at all, otherwise building and returning an actual <table> DOM node,
+ * which is why this needed to be a real component rather than a formatted
+ * string. That vanilla function was dead code once this component existed
+ * (nothing called it at runtime) and has since been deleted (post-Phase-6
+ * follow-up, see REACT_MIGRATION_PLAN.md), along with its own
+ * pr-activity-timeline-render.helpers.js - this component's own logic is
+ * unchanged, it's simply the only implementation left.
  *
  * @module components/insights/ActivityTimelineSummary
  */

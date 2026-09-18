@@ -8,7 +8,6 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrRenderApplyHelpers = ({
     renderManagementFilterSummary,
-    renderExportFieldCatalog,
     renderAuthorInsights,
     renderStatsView,
     clearElementContents,
@@ -21,10 +20,6 @@
     const renderManagementFilterSummarySafe =
       typeof renderManagementFilterSummary === "function"
         ? renderManagementFilterSummary
-        : () => {};
-    const renderExportFieldCatalogSafe =
-      typeof renderExportFieldCatalog === "function"
-        ? renderExportFieldCatalog
         : () => {};
     const renderAuthorInsightsSafe =
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
@@ -101,8 +96,6 @@
         summaryText: appliedSummaryText,
         filterChips,
       });
-      renderExportFieldCatalogSafe(payload);
-
       // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
       // these two used to run in full on every single render regardless of
       // which data tab the user is actually looking at - a real,

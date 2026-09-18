@@ -1,11 +1,14 @@
 /**
  * Command Execution Helpers - Extracted from app.js
- * 
+ *
  * Provides utilities for executing commands, scripts, and managing processes.
  * Handles timeouts, process trees, progress tracking, and dependency checking.
- * 
+ *
  * @module command-execution-helpers
  */
+
+const fs = require("fs");
+const path = require("path");
 
 /**
  * Creates command execution helper functions.
@@ -595,15 +598,27 @@ function createCommandExecutionHelpers({
     return check.status === 0;
   };
 
+  // jq is a special case: check-open-pr-updates.sh prefers the binary
+  // node-jq's postinstall downloaded into node_modules over a system-wide
+  // `jq` (see the script's own JQ_BIN resolution), so it's genuinely
+  // available here too as long as `npm install` has run, even with
+  // nothing on PATH - matches src/dependencies/check-deps.js's own
+  // isJqAvailable, kept as a separate check here since this module has no
+  // shared import path to that CLI-only script.
+  const isJqAvailable = () =>
+    fs.existsSync(path.join(viewPrsDir, "node_modules", "node-jq", "bin", "jq.exe")) ||
+    fs.existsSync(path.join(viewPrsDir, "node_modules", "node-jq", "bin", "jq")) ||
+    isCommandAvailable("jq");
+
   /**
    * Gets the status of all required dependencies.
-   * 
+   *
    * @returns {Object} Dependency status with commands, packages, and missing items
    */
   const getDependencyStatus = () => {
     const commands = {};
     for (const cmd of requiredCommands) {
-      commands[cmd] = isCommandAvailable(cmd);
+      commands[cmd] = cmd === "jq" ? isJqAvailable() : isCommandAvailable(cmd);
     }
 
     const packages = {};

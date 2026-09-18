@@ -412,5 +412,37 @@ describe("Command Execution Helpers", () => {
       expect(result.commands.jq).toBe(false);
       expect(result.missingCommands).toContain("jq");
     });
+
+    test("When system jq is absent but node-jq's bundled binary is present, Then jq is still reported available", () => {
+      // Arrange: a real temp dir standing in for viewPrsDir, with a fake
+      // node_modules/node-jq/bin/jq the way `npm install` would create it -
+      // proves isJqAvailable() checks the filesystem, not just PATH.
+      const fs = require("fs");
+      const os = require("os");
+      const path = require("path");
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-jq-bundle-"));
+      const jqBinDir = path.join(tempDir, "node_modules", "node-jq", "bin");
+      fs.mkdirSync(jqBinDir, { recursive: true });
+      fs.writeFileSync(path.join(jqBinDir, "jq"), "");
+
+      const helpersWithBundledJq = createCommandExecutionHelpers({
+        spawn: mockSpawn,
+        spawnSync: jest.fn(() => ({ status: 1 })), // simulate nothing on PATH
+        process: mockProcess,
+        viewPrsDir: tempDir,
+        viewPrsScriptsDir: "/test/scripts",
+        requiredCommands: ["bash", "gh", "jq"],
+        requiredPackages: ["marked"],
+        viewPrsProgressTracker: null,
+      });
+
+      // Act
+      const result = helpersWithBundledJq.getDependencyStatus();
+
+      // Assert
+      expect(result.commands.jq).toBe(true);
+      expect(result.commands.bash).toBe(false);
+      expect(result.missingCommands).not.toContain("jq");
+    });
   });
 });

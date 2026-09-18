@@ -50,6 +50,28 @@ VIEWED_FILES_FRESH_CACHE_DIR="${VIEWED_FILES_FRESH_CACHE_DIR:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEW_PRS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Portability (see REACT_MIGRATION_PLAN.md-adjacent dependency work): prefer
+# the jq binary npm already downloaded via the node-jq devDependency over a
+# system-wide `jq` on PATH, so `npm install` alone provides a working jq
+# with no manual system install step. Falls back to plain `jq` (relying on
+# PATH, as before) when node_modules/node-jq isn't present - e.g. this
+# script run standalone outside the npm-managed project. Shadowing `jq`
+# itself as a function (rather than rewriting every call site below) means
+# every existing invocation picks this up unchanged; `export -f` propagates
+# it into the `bash -c` subshells the parallel-fetch helpers below spawn.
+if [[ -x "$VIEW_PRS_DIR/node_modules/node-jq/bin/jq" ]]; then
+  JQ_BIN="$VIEW_PRS_DIR/node_modules/node-jq/bin/jq"
+elif [[ -x "$VIEW_PRS_DIR/node_modules/node-jq/bin/jq.exe" ]]; then
+  JQ_BIN="$VIEW_PRS_DIR/node_modules/node-jq/bin/jq.exe"
+else
+  JQ_BIN=""
+fi
+if [[ -n "$JQ_BIN" ]]; then
+  jq() { "$JQ_BIN" "$@"; }
+  export -f jq
+fi
+
 DATA_DIR="${DATA_DIR:-$VIEW_PRS_DIR/data}"
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"

@@ -1,4 +1,4 @@
-/** @jest-environment jsdom */
+﻿/** @jest-environment jsdom */
 
 const fs = require("fs");
 const path = require("path");
@@ -359,6 +359,18 @@ const MULTI_SELECT_LIST_ID_PREFIXES = {
   "author-list": "author",
   "assigned-list": "assigned",
   "approver-list": "approver",
+  // Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): these 4 are built
+  // directly in index.page.js (not pr-filter-panel.helpers.js) but share
+  // the exact same window.renderReactMultiSelectList bridge/no-fallback
+  // shape - added here to match react-app.jsx's real
+  // MULTI_SELECT_LIST_ID_PREFIXES after index.page.js's own vanilla
+  // DOM-building fallback for them was deleted as dead code (it was never
+  // reachable in production, only in this stub, once it always returned
+  // `false` for these 4 ids for lack of an entry here).
+  "attention-author-thread-resolution-allow-list": "attention-author-thread-resolution-allow",
+  "attention-author-thread-resolution-deny-list": "attention-author-thread-resolution-deny",
+  "change-filter-ignore-comment-authors-list": "change-filter-ignore-comment-authors",
+  "change-filter-ignore-review-authors-list": "change-filter-ignore-review-authors",
 };
 
 const installReactFilterPanelMountBridges = () => {
@@ -1781,13 +1793,14 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMeta).toContain("Rows: 1");
     });
 
-    const schedulerBadgesText =
-      document.getElementById("scheduler-badges")?.textContent || "";
-    expect(schedulerBadgesText).toContain("Every");
-    expect(schedulerBadgesText).toContain("Auto run: timed out");
-    const schedulerBadgesClass =
-      document.getElementById("scheduler-badges")?.innerHTML || "";
-    expect(schedulerBadgesClass).toContain("scheduler-badge-error");
+    // The scheduler badges themselves are React-owned (#scheduler-badges,
+    // mounted by react-app.jsx, reusing <BackfillBadges />) and no longer
+    // have a vanilla-DOM fallback to assert against in this jsdom-only
+    // suite (which never loads react-app.jsx) - see SchedulerBadges
+    // coverage via BackfillBadges.test.jsx (shared component) plus the
+    // "React-owned scheduler status badges..." e2e test for that coverage.
+    // `details` stays vanilla-rendered regardless, so it's still asserted
+    // on directly here.
     expect(document.getElementById("scheduler-details")?.textContent || "").toContain(
       "Last auto error:",
     );
@@ -1831,11 +1844,17 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("renders request-activity badges and details from JavaScript init logic", async () => {
+  test("renders request-activity details from JavaScript init logic", async () => {
+    // The request-activity badges themselves are React-owned
+    // (#request-activity-badges, mounted by react-app.jsx, reusing
+    // <BackfillBadges />) and no longer have a vanilla-DOM fallback to
+    // assert against in this jsdom-only suite (which never loads
+    // react-app.jsx) - see pr-activity-badges.helpers.test.js for
+    // getRequestActivityBadges' own coverage. `details` stays
+    // vanilla-rendered regardless, so it's still asserted on directly here.
     await waitFor(() => {
-      expect(screen.getByText("No request in progress")).toBeInTheDocument();
+      expect(screen.getByText(/Current status: Not run/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Current status: Not run/i)).toBeInTheDocument();
     expect(screen.getByText(/Active requests: none/i)).toBeInTheDocument();
   });
 
@@ -5857,364 +5876,13 @@ describe("index page rendering with Testing Library", () => {
     expect(logTailCall).toBeDefined();
   });
 
-  test("generates and displays JSON export preview when a user clicks Preview in the Export tab", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "open-no-change",
-            prNumber: 11,
-            overrides: {
-              data: {
-                title: "Open PR",
-                titleDisplay: "Open PR [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/11",
-                updatedAt: "2026-06-16T10:00:00Z",
-              },
-            },
-          },
-          {
-            scenario: "open-approved",
-            prNumber: 22,
-            overrides: {
-              section: "closed",
-              data: {
-                title: "Closed PR",
-                titleDisplay: "Closed PR [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/22",
-                updatedAt: "2026-06-16T09:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
-      }),
-    });
+  test("given a user opens the Export tab, when it activates, then the tab panel becomes visible (content is React-owned - see ExportTab.test.jsx)", async () => {
+    initTestPage();
     const user = userEvent.setup();
-    fetchMock.mockClear();
 
     await user.click(screen.getByRole("tab", { name: "Export" }));
 
-    const previewButton = screen.getByRole("button", { name: /preview/i });
-    expect(previewButton).toBeInTheDocument();
-
-    await user.click(previewButton);
-
-    await waitFor(() => {
-      const previewText = document.getElementById("export-preview");
-      expect(previewText?.textContent).toBeTruthy();
-      const parsed = JSON.parse(String(previewText?.textContent || "{}"));
-      expect(parsed).toHaveProperty("prs");
-    });
-
-    const putCalls = fetchMock.mock.calls.filter((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/user-defaults" &&
-        String(init?.method || "GET").toUpperCase() === "PUT"
-      );
-    });
-    expect(putCalls.length).toBeGreaterThanOrEqual(1);
-  });
-
-  test("copies export JSON to clipboard when a user clicks Copy JSON in the Export tab", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "open-no-change",
-            prNumber: 11,
-            overrides: {
-              data: {
-                title: "Test PR",
-                titleDisplay: "Test PR [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/11",
-                updatedAt: "2026-06-16T10:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
-      }),
-    });
-    const user = userEvent.setup();
-
-    const clipboardWriteMock = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: clipboardWriteMock },
-      configurable: true,
-    });
-
-    await user.click(screen.getByRole("tab", { name: "Export" }));
-
-    const copyButton = screen.getByRole("button", { name: /copy json/i });
-    expect(copyButton).toBeInTheDocument();
-
-    await user.click(copyButton);
-
-    await waitFor(() => {
-      expect(clipboardWriteMock).toHaveBeenCalled();
-      const callArg = clipboardWriteMock.mock.calls[0]?.[0];
-      expect(typeof callArg).toBe("string");
-      const parsed = JSON.parse(callArg);
-      expect(parsed).toHaveProperty("prs");
-      expect(Array.isArray(parsed.prs)).toBe(true);
-    });
-
-    clipboardWriteMock.mockRestore?.();
-  });
-
-  test("downloads export JSON file when a user clicks Download JSON in the Export tab", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "open-no-change",
-            prNumber: 11,
-            overrides: {
-              data: {
-                title: "Download Test",
-                titleDisplay: "Download Test [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/11",
-                updatedAt: "2026-06-16T10:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
-      }),
-    });
-    const user = userEvent.setup();
-
-    const createObjectURLMock = jest.fn(() => "blob:http://localhost/mock-uuid");
-    const revokeObjectURLMock = jest.fn();
-    Object.defineProperty(window.URL, "createObjectURL", {
-      value: createObjectURLMock,
-      configurable: true,
-    });
-    Object.defineProperty(window.URL, "revokeObjectURL", {
-      value: revokeObjectURLMock,
-      configurable: true,
-    });
-
-    // Mock anchor.click to capture the download attribute
-    const clickedAnchors = [];
-    HTMLAnchorElement.prototype.click = function () {
-      clickedAnchors.push(this);
-    };
-
-    await user.click(screen.getByRole("tab", { name: "Export" }));
-
-    const downloadButton = screen.getByRole("button", { name: /download json/i });
-    expect(downloadButton).toBeInTheDocument();
-
-    await user.click(downloadButton);
-
-    await waitFor(() => {
-      expect(createObjectURLMock).toHaveBeenCalled();
-      expect(clickedAnchors.length).toBeGreaterThan(0);
-      const anchor = clickedAnchors[clickedAnchors.length - 1];
-      expect(anchor.download).toMatch(/view-prs-export.*\.json/);
-      expect(anchor.href).toContain("blob:");
-    });
-
-    expect(revokeObjectURLMock).toHaveBeenCalled();
-  });
-
-  test("export field selections are persisted to user-defaults and only expanded-section rows appear in the preview", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "open-no-change",
-            prNumber: 11,
-            overrides: {
-              notes: { otherNotes: "open note" },
-              data: {
-                title: "Open PR for export",
-                titleDisplay: "Open PR for export [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/11",
-                updatedAt: "2026-06-16T10:00:00Z",
-              },
-            },
-          },
-          {
-            scenario: "open-approved",
-            prNumber: 22,
-            overrides: {
-              section: "closed",
-              notes: { otherNotes: "closed note" },
-              data: {
-                title: "Closed PR for export",
-                titleDisplay: "Closed PR for export [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/22",
-                updatedAt: "2026-06-16T09:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
-      }),
-    });
-    const user = userEvent.setup();
-
-    // Lifecycle sections collapse by default; only rows in an expanded
-    // section are considered "visible" for export, so open the "Open PRs"
-    // section that PR #11 lives in.
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-pr-section="open"]'),
-      ).toBeTruthy();
-    });
-    document.querySelector('[data-pr-section="open"]').open = true;
-
-    await user.click(screen.getByRole("tab", { name: "Export" }));
-
-    await waitFor(() => {
-      const fieldList = document.getElementById("export-field-list");
-      expect(fieldList?.querySelectorAll("input[type='checkbox']").length).toBeGreaterThan(0);
-    });
-
-    const fieldList = document.getElementById("export-field-list");
-    const allCheckboxes = Array.from(fieldList.querySelectorAll("input[type='checkbox']"));
-    allCheckboxes.forEach((cb) => {
-      cb.checked = false;
-    });
-
-    const prNumberCheckbox = allCheckboxes.find(
-      (cb) => cb.getAttribute("data-export-field-id") === "data:prNumber",
-    );
-    const otherNotesCheckbox = allCheckboxes.find(
-      (cb) =>
-        cb.getAttribute("data-export-field-id") ===
-        "user-state:notesByPrNumber.otherNotes",
-    );
-    expect(prNumberCheckbox).toBeDefined();
-    expect(otherNotesCheckbox).toBeDefined();
-    prNumberCheckbox.checked = true;
-    otherNotesCheckbox.checked = true;
-
-    fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: /preview/i }));
-
-    await waitFor(() => {
-      const previewEl = document.getElementById("export-preview");
-      expect(previewEl?.textContent).toBeTruthy();
-    });
-
-    const putCalls = fetchMock.mock.calls.filter((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/user-defaults" &&
-        String(init?.method || "GET").toUpperCase() === "PUT"
-      );
-    });
-    expect(putCalls.length).toBeGreaterThanOrEqual(1);
-    const lastPutBody = JSON.parse(
-      String(putCalls[putCalls.length - 1]?.[1]?.body || "{}"),
-    );
-    expect(lastPutBody["export-data-fields"]).toEqual(["prNumber"]);
-    expect(lastPutBody["export-user-state-fields"]).toEqual([
-      "notesByPrNumber.otherNotes",
-    ]);
-
-    const previewEl = document.getElementById("export-preview");
-    const parsed = JSON.parse(String(previewEl?.textContent || "{}"));
-    const exportedNumbers = Array.isArray(parsed?.prs)
-      ? parsed.prs.map((item) => String(item?.prNumber ?? ""))
-      : [];
-    expect(exportedNumbers).toContain("11");
-    expect(exportedNumbers).not.toContain("22");
-  });
-
-  test("export field checkboxes are restored from user-defaults on rerender", async () => {
-    const savedOverrides = {
-      "export-data-fields": ["prNumber"],
-      "export-user-state-fields": ["notesByPrNumber.otherNotes"],
-    };
-
-    initTestPage({
-      userDefaultsOverrides: savedOverrides,
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "open-no-change",
-            prNumber: 11,
-            overrides: {
-              notes: { otherNotes: "open note" },
-              data: {
-                title: "Restore fields test",
-                titleDisplay: "Restore fields test [CHK:PASS]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/11",
-                updatedAt: "2026-06-16T10:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
-      }),
-    });
-
-    const user = userEvent.setup();
-
-    await waitFor(() => {
-      const defaultsCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "GET"
-        );
-      });
-      expect(defaultsCall).toBeDefined();
-    });
-
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-    await user.click(screen.getByRole("tab", { name: "Export" }));
-
-    await waitFor(() => {
-      const fieldList = document.getElementById("export-field-list");
-      expect(fieldList?.querySelectorAll("input[type='checkbox']").length).toBeGreaterThan(0);
-    });
-
-    const fieldList = document.getElementById("export-field-list");
-    const allCheckboxes = Array.from(fieldList.querySelectorAll("input[type='checkbox']"));
-
-    const prNumberCheckbox = allCheckboxes.find(
-      (cb) => cb.getAttribute("data-export-field-id") === "data:prNumber",
-    );
-    const otherNotesCheckbox = allCheckboxes.find(
-      (cb) =>
-        cb.getAttribute("data-export-field-id") ===
-        "user-state:notesByPrNumber.otherNotes",
-    );
-    const sectionCheckbox = allCheckboxes.find(
-      (cb) => cb.getAttribute("data-export-field-id") === "data:section",
-    );
-
-    expect(prNumberCheckbox).toBeDefined();
-    expect(otherNotesCheckbox).toBeDefined();
-
-    await waitFor(() => {
-      expect(
-        document.getElementById("export-field-list")?.querySelector(
-          "input[data-export-field-id='data:prNumber']",
-        )?.checked,
-      ).toBe(true);
-    });
-
-    expect(otherNotesCheckbox?.checked).toBe(true);
-    if (sectionCheckbox) {
-      expect(sectionCheckbox.checked).toBe(false);
-    }
+    expect(document.getElementById("tab-panel-export").hidden).toBe(false);
   });
 
   test("backfill log auto-scrolls to bottom when running and auto-scroll is enabled", async () => {
@@ -7619,9 +7287,11 @@ describe("index page rendering with Testing Library", () => {
 
   test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
     // Regression test for ActivityTimelineSummary's weekend-filtering AND
-    // no-activity-run-consolidation behavior (see REACT_MIGRATION_PLAN.md;
-    // the vanilla buildActivityTimelineSummary this mirrors is dead code -
-    // never called at runtime, only kept exported for window.viewPrsInternals).
+    // no-activity-run-consolidation behavior (see REACT_MIGRATION_PLAN.md).
+    // The vanilla buildActivityTimelineSummary this component mirrors was
+    // dead code (never called at runtime once this component existed) and
+    // has since been deleted, along with its own now-orphaned
+    // pr-activity-timeline-render.helpers.js.
     //
     // Test timeline spans a full week (Mon-Sun):
     // - Monday 2026-06-15: has activity (comment) -> own row

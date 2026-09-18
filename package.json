@@ -5,6 +5,8 @@
   "main": "src/server/server.js",
   "scripts": {
     "deps:check": "node src/dependencies/check-deps.js",
+    "postinstall": "node src/dependencies/check-deps.js --soft",
+    "pretest": "node src/dependencies/check-deps.js --scope=test",
     "report:auto-refresh": "node src/dependencies/report-auto-refresh-metrics.js",
     "guard:state-writes": "node src/dependencies/check-protected-state-writes.js",
     "guard:state-health": "node src/dependencies/check-state-health.js",
@@ -44,9 +46,13 @@
   },
   "author": "Alison Hall",
   "license": "ISC",
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "dependencies": {
     "express": "^4.21.2",
-    "marked": "^17.0.5"
+    "marked": "^17.0.5",
+    "node-jq": "^6.3.1"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.29.7",

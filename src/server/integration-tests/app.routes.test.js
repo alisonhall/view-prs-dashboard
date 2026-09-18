@@ -662,6 +662,51 @@ describe("route behavior", () => {
     }
   });
 
+  test("returns 200 and dependency status when GET /health/deps is requested and all deps are present", async () => {
+    const original = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({
+      ok: true,
+      commands: { bash: true, gh: true, jq: true },
+      packages: { marked: true },
+      missingCommands: [],
+      missingPackages: [],
+      missing: [],
+    });
+
+    try {
+      const { response, payload } = await requestJson(server, "/health/deps");
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.missing).toEqual([]);
+    } finally {
+      appModule.getDependencyStatus = original;
+    }
+  });
+
+  test("returns 503 and the missing list when GET /health/deps is requested and a dependency is absent", async () => {
+    const original = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({
+      ok: false,
+      commands: { bash: true, gh: false, jq: true },
+      packages: { marked: true },
+      missingCommands: ["gh"],
+      missingPackages: [],
+      missing: ["gh"],
+    });
+
+    try {
+      const { response, payload } = await requestJson(server, "/health/deps");
+
+      expect(response.status).toBe(503);
+      expect(payload.ok).toBe(false);
+      expect(payload.missing).toEqual(["gh"]);
+      expect(payload.missingCommands).toEqual(["gh"]);
+    } finally {
+      appModule.getDependencyStatus = original;
+    }
+  });
+
   test("creates the user-defaults file on startup when it is missing", () => {
     expect(fs.existsSync(userDefaultsFilePath)).toBe(true);
 

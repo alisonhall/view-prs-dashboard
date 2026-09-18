@@ -1,4 +1,4 @@
-const DEFAULT_REPO = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
+﻿const DEFAULT_REPO = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
@@ -98,15 +98,7 @@ const authorInsightsState = {
   latestRows: null,
   latestActorsMap: null,
 };
-let exportFieldCatalog = {
-  dataPaths: [],
-  userStatePaths: [],
-};
-let pendingExportDataFieldSelections = null;
-let pendingExportUserStateFieldSelections = null;
 const reviewConversationsUiStateByKey = new Map();
-const EXPORT_DATA_FIELDS_OVERRIDE_KEY = "export-data-fields";
-const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = "export-user-state-fields";
 const formParsingHelpersSource =
   globalThis.ViewPrsFormParsingHelpers ||
   (typeof module !== "undefined" && module.exports && typeof require === "function"
@@ -242,13 +234,11 @@ const getActiveRequestActivityEntries = () => {
 };
 
 const renderRequestActivity = () => {
-  const badgeHost = getOptionalElementById("request-activity-badges");
   const details = getOptionalElementById("request-activity-details");
-  if (!badgeHost || !details) {
+  if (!details) {
     return;
   }
 
-  badgeHost.innerHTML = "";
   const activeEntries = getActiveRequestActivityEntries();
   const isAutoRunInProgress = Boolean(
     latestSchedulerState?.isAutoRunInProgress,
@@ -258,35 +248,16 @@ const renderRequestActivity = () => {
         Date.parse(String(latestSchedulerState?.lastAutoAttemptAt || "")),
       )
     : null;
-  const createBadge = (text, className = "") => {
-    const chip = document.createElement("span");
-    chip.className = `scheduler-badge ${className}`.trim();
-    chip.textContent = text;
-    badgeHost.appendChild(chip);
-  };
 
   const totalActive = activeEntries.length + (isAutoRunInProgress ? 1 : 0);
 
-  if (totalActive === 0) {
-    createBadge("No request in progress", "scheduler-badge-idle");
-  } else {
-    createBadge(
-      `${totalActive} request${totalActive === 1 ? "" : "s"} in progress`,
-      "scheduler-badge-running",
-    );
-    if (isAutoRunInProgress) {
-      createBadge(
-        withElapsedSuffix("Auto run", autoRunElapsedMs),
-        `scheduler-badge-running ${getRequestActivitySeverityClass(autoRunElapsedMs)}`,
-      );
-    }
-    activeEntries.forEach((entry) => {
-      createBadge(
-        withElapsedSuffix(entry.label, entry.elapsedMs),
-        `scheduler-badge-running ${getRequestActivitySeverityClass(entry.elapsedMs)}`,
-      );
-    });
-  }
+  // Renders the badge list into #request-activity-badges via React (see
+  // mountRequestActivityBadges in react-app.jsx) - same
+  // compute-a-badges-array-then-hand-it-to-React shape renderBackfillStatus
+  // and renderSchedulerStatus already use.
+  window.updateReactRequestActivityBadges?.(
+    getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
+  );
 
   const statusLine = String(
     getOptionalElementById("status")?.textContent || "-",
@@ -1114,19 +1085,6 @@ const restoreUiOptionOverrides = async () => {
     );
   }
 
-  if (Array.isArray(overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY])) {
-    pendingExportDataFieldSelections = overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
-  }
-
-  if (Array.isArray(overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY])) {
-    pendingExportUserStateFieldSelections =
-      overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean);
-  }
-
   // Restore change detection filters
   if (
     overrides.changeFilters &&
@@ -1483,16 +1441,6 @@ const prUiRenderUtilsHelperFactory =
 const { parseMarkerState, safeJsonStringify } =
   prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
 
-const prActivityTimelineRenderHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-activity-timeline-render.helpers.js")
-    : globalThis.ViewPrsActivityTimelineRenderHelpers;
-
-const { renderTimelineItems } =
-  prActivityTimelineRenderHelperFactory.createPrActivityTimelineRenderHelpers({
-    createActorIdentityElement: (...args) => createActorIdentityElement(...args),
-  });
-
 const prNeedsAttentionHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-needs-attention.helpers.js")
@@ -1758,7 +1706,6 @@ const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisi
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
-    renderExportFieldCatalog: (...args) => renderExportFieldCatalog(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
     renderStatsView: (...args) => renderStatsView(...args),
     clearElementContents: (...args) => clearElementContents(...args),
@@ -1993,56 +1940,6 @@ const { applyFiltersFromCache } =
     renderPrData: (...args) => renderPrData(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
     logError: (...args) => console.error(...args),
-  });
-
-const prExportActionsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-export-actions.helpers.js")
-    : globalThis.ViewPrsExportActionsHelpers;
-
-const {
-  handlePreviewExport,
-  handleCopyExport,
-  handleDownloadExport,
-} = prExportActionsHelperFactory.createPrExportActionsHelpers({
-  getOptionalElementById: (...args) => getOptionalElementById(...args),
-  persistExportFieldSelections: (...args) => persistExportFieldSelections(...args),
-  buildVisibleExportJson: (...args) => buildVisibleExportJson(...args),
-  setExportStatus: (...args) => setExportStatus(...args),
-  getLatestStoredPayload: () => latestStoredPayload,
-  getLatestSelectedRepo: () => latestSelectedRepo,
-});
-
-const prExportPreviewSummaryHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-export-preview-summary.helpers.js")
-    : globalThis.ViewPrsExportPreviewSummaryHelpers;
-
-const { updateExportPreviewSummary } =
-  prExportPreviewSummaryHelperFactory.createPrExportPreviewSummaryHelpers({
-    getLatestStoredPayload: () => latestStoredPayload,
-    getOptionalElementById: (...args) => getOptionalElementById(...args),
-    getVisiblePrNumbersFromSectionsHost: (...args) =>
-      getVisiblePrNumbersFromSectionsHost(...args),
-    getSelectedExportFieldPaths: (...args) => getSelectedExportFieldPaths(...args),
-    renderExportSelectionSummary: (...args) => renderExportSelectionSummary(...args),
-    collectNodesByClass: (...args) => collectNodesByClass(...args),
-  });
-
-const prExportJsonBuildHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-export-json-build.helpers.js")
-    : globalThis.ViewPrsExportJsonBuildHelpers;
-
-const { buildVisibleExportJson } =
-  prExportJsonBuildHelperFactory.createPrExportJsonBuildHelpers({
-    getLatestStoredPayload: () => latestStoredPayload,
-    getSelectedExportFieldPaths: (...args) => getSelectedExportFieldPaths(...args),
-    getOptionalElementById: (...args) => getOptionalElementById(...args),
-    getVisiblePrNumbersFromSectionsHost: (...args) =>
-      getVisiblePrNumbersFromSectionsHost(...args),
-    buildExportPayload: (...args) => buildExportPayload(...args),
-    safeJsonStringify: (...args) => safeJsonStringify(...args),
   });
 
 const prRenderViewerFilterSetupHelperFactory =
@@ -2424,48 +2321,12 @@ const renderMarkdownAsHtml = (markdownText) => {
 const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
   latestSchedulerState = scheduler;
-  const badgeHost = document.getElementById("scheduler-badges");
   const details = document.getElementById("scheduler-details");
-  badgeHost.innerHTML = "";
 
-  const createBadge = (text, className = "") => {
-    const chip = document.createElement("span");
-    chip.className = `scheduler-badge ${className}`.trim();
-    chip.textContent = text;
-    badgeHost.appendChild(chip);
-  };
-
-  createBadge(`Every ${scheduler.intervalMinutes || 15}m`);
-  createBadge(`Quick check: every ${scheduler.quickCheckIntervalMinutes || 5}m`);
-  createBadge(`Manual cooldown ${scheduler.manualCooldownMinutes || 15}m`);
-
-  const pendingOpenCount = Number(scheduler.pendingOpenCount || 0);
-  const pendingMergedClosedCount = Number(scheduler.pendingMergedClosedCount || 0);
-  if (pendingOpenCount > 0 || pendingMergedClosedCount > 0) {
-    createBadge(
-      `Update queued: ${pendingOpenCount} open, ${pendingMergedClosedCount} merged/closed`,
-      "scheduler-badge-running",
-    );
-  }
-
-  const autoRunBadge = scheduler.isAutoRunInProgress
-    ? {
-        text: "Auto run: in progress",
-        className: "scheduler-badge-running",
-      }
-    : scheduler.lastAutoError
-      ? {
-          text: /timed out/i.test(String(scheduler.lastAutoError))
-            ? "Auto run: timed out"
-            : "Auto run: error",
-          className: "scheduler-badge-error",
-        }
-      : {
-          text: "Auto run: idle",
-          className: "scheduler-badge-idle",
-        };
-
-  createBadge(autoRunBadge.text, autoRunBadge.className);
+  // Renders the badge list into #scheduler-badges via React (see
+  // mountSchedulerBadges in react-app.jsx) - same shape renderBackfillStatus
+  // already uses for #backfill-badges.
+  window.updateReactSchedulerBadges?.(getSchedulerBadges(scheduler));
 
   const lines = [
     `Last manual run: ${formatIsoDatetime(scheduler.lastManualRunAt || "-")}`,
@@ -2692,7 +2553,6 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
     listId,
     pendingSelections,
     setPendingSelections,
-    idPrefix,
   }) => {
     const listNode = getOptionalElementById(listId);
     if (!listNode) {
@@ -2714,43 +2574,22 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
       listNode.classList.remove("empty");
     }
 
-    // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md, gotcha
-    // #4): delegates to react-app.jsx's flushSync-wrapped bridge when it
-    // has mounted this list id; falls back to the vanilla DOM-building
-    // path below when it hasn't (not converted yet, or React hasn't
-    // finished loading/mounting).
-    const handled =
-      typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
-        ? window.renderReactMultiSelectList(
-            listId,
-            actorEntries.map(({ login, displayName }) => ({
-              value: login,
-              label: displayName,
-              checked: selectedSet.has(login),
-            })),
-          )
-        : false;
-
-    if (!handled) {
-      listNode.innerHTML = "";
-      actorEntries.forEach(({ login, displayName }, index) => {
-        const itemDiv = document.createElement("div");
-        itemDiv.className = "multi-select-item";
-
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.id = `${idPrefix}-${login}-${index}`;
-        checkbox.value = login;
-        checkbox.checked = selectedSet.has(login);
-
-        const label = document.createElement("label");
-        label.htmlFor = checkbox.id;
-        label.textContent = displayName;
-
-        itemDiv.appendChild(checkbox);
-        itemDiv.appendChild(label);
-        listNode.appendChild(itemDiv);
-      });
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
+    // fallback here any more - same always-available assumption (and same
+    // typeof guard, only for the brief pre-mount race, never a real
+    // fallback path) the pr-filter-panel/pr-json-modal cleanup slice
+    // already relied on to delete that file's 5 equivalent fallback
+    // blocks. This one (and renderChangeFilterActorList's identical twin
+    // below) were missed in that slice; removed here the same way.
+    if (typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function") {
+      window.renderReactMultiSelectList(
+        listId,
+        actorEntries.map(({ login, displayName }) => ({
+          value: login,
+          label: displayName,
+          checked: selectedSet.has(login),
+        })),
+      );
     }
 
     if (Array.isArray(pendingSelections)) {
@@ -2775,7 +2614,6 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
       setPendingSelectionsValue("pendingAuthorThreadResolutionAllowSelections", value, (v) => {
         pendingAuthorThreadResolutionAllowSelections = v;
       }),
-    idPrefix: "attention-author-thread-resolution-allow",
   });
   renderActorOptionsList({
     listId: "attention-author-thread-resolution-deny-list",
@@ -2787,7 +2625,6 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
       setPendingSelectionsValue("pendingAuthorThreadResolutionDenySelections", value, (v) => {
         pendingAuthorThreadResolutionDenySelections = v;
       }),
-    idPrefix: "attention-author-thread-resolution-deny",
   });
 };
 
@@ -2816,7 +2653,6 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
     listId,
     pendingSelections,
     setPendingSelections,
-    idPrefix,
   }) => {
     const listNode = getOptionalElementById(listId);
     if (!listNode) {
@@ -2838,43 +2674,19 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
       listNode.classList.remove("empty");
     }
 
-    // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md, gotcha
-    // #4): delegates to react-app.jsx's flushSync-wrapped bridge when it
-    // has mounted this list id; falls back to the vanilla DOM-building
-    // path below when it hasn't (not converted yet, or React hasn't
-    // finished loading/mounting).
-    const handled =
-      typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
-        ? window.renderReactMultiSelectList(
-            listId,
-            actorEntries.map(({ login, displayName }) => ({
-              value: login,
-              label: displayName,
-              checked: selectedSet.has(login),
-            })),
-          )
-        : false;
-
-    if (!handled) {
-      listNode.innerHTML = "";
-      actorEntries.forEach(({ login, displayName }, index) => {
-        const itemDiv = document.createElement("div");
-        itemDiv.className = "multi-select-item";
-
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.id = `${idPrefix}-${login}-${index}`;
-        checkbox.value = login;
-        checkbox.checked = selectedSet.has(login);
-
-        const label = document.createElement("label");
-        label.htmlFor = checkbox.id;
-        label.textContent = displayName;
-
-        itemDiv.appendChild(checkbox);
-        itemDiv.appendChild(label);
-        listNode.appendChild(itemDiv);
-      });
+    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
+    // fallback here any more - see renderActorOptionsList's identical twin
+    // above for why (this one was missed in the pr-filter-panel/
+    // pr-json-modal cleanup slice; removed here the same way).
+    if (typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function") {
+      window.renderReactMultiSelectList(
+        listId,
+        actorEntries.map(({ login, displayName }) => ({
+          value: login,
+          label: displayName,
+          checked: selectedSet.has(login),
+        })),
+      );
     }
 
     if (Array.isArray(pendingSelections)) {
@@ -2899,7 +2711,6 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
       setPendingSelectionsValue("pendingChangeFilterIgnoreCommentAuthors", value, (v) => {
         _pendingChangeFilterIgnoreCommentAuthors = v;
       }),
-    idPrefix: "change-filter-ignore-comment-authors",
   });
   renderChangeFilterActorList({
     listId: "change-filter-ignore-review-authors-list",
@@ -2911,7 +2722,6 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
       setPendingSelectionsValue("pendingChangeFilterIgnoreReviewAuthors", value, (v) => {
         _pendingChangeFilterIgnoreReviewAuthors = v;
       }),
-    idPrefix: "change-filter-ignore-review-authors",
   });
 };
 
@@ -3474,6 +3284,17 @@ const prDataTabOrchestrator =
     },
   });
 
+const prActivityBadgesHelperFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./helpers/pr-activity-badges.helpers.js")
+    : globalThis.ViewPrsActivityBadgesHelpers;
+
+const { getRequestActivityBadges, getSchedulerBadges } =
+  prActivityBadgesHelperFactory.createPrActivityBadgesHelpers({
+    withElapsedSuffix,
+    getRequestActivitySeverityClass,
+  });
+
 const prBackfillHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-backfill.helpers.js")
@@ -3611,336 +3432,6 @@ const {
 } = prExportHelperFactory.createPrExportHelpers({
   getPerPrUserStateFromPayload,
 });
-
-const buildActivityTimelineSummary = (
-  activityTimelineRaw,
-  fallbackSummary = "",
-  isOpen = false,
-  row = {},
-  actorsMap = {},
-) => {
-  // Builds an activity timeline summary table showing bucketed activity grouped by date.
-  // For open PRs, extends the timeline from today back to the oldest activity date.
-  // For merged PRs, extends from the newest activity date back to the oldest.
-  //
-  // Filtering logic:
-  // - All dates with activity are shown.
-  // - Weekday dates (Mon-Fri) without activity are shown with a dash ("-").
-  // - Weekend dates (Sat-Sun) without activity are omitted to reduce visual clutter.
-  //
-  // Timeline is sorted newest-to-oldest and grouped by date, then by actor and type.
-  
-  const normalizeTimelineType = (type) => {
-    const normalized = String(type || "activity").trim() || "activity";
-    // In condensed timeline view, treat review + comment as the same activity bucket.
-    if (normalized === "review") return "comment";
-    return normalized;
-  };
-
-  const timeline = Array.isArray(activityTimelineRaw)
-    ? activityTimelineRaw
-        .filter((item) => item && typeof item === "object")
-        .map((item) => ({
-          date: String(item.date || "").trim(),
-          actor: String(item.actor || "unknown").trim() || "unknown",
-          type: normalizeTimelineType(item.type),
-          count: Number.isFinite(Number(item.count)) ? Number(item.count) : 1,
-          latestAt: String(item.latestAt || "").trim(),
-        }))
-        .filter((item) => item.date)
-    : [];
-
-  if (!timeline.length) {
-    const fallback = String(fallbackSummary || "").trim();
-    return fallback || "-";
-  }
-
-  // Build a map of actor login -> display name, prioritizing the passed-in actorsMap
-  const actorNameMap = new Map(
-    Object.entries(actorsMap || {}).filter(([k, v]) => k && v),
-  );
-
-  // Additionally extract from timeline items themselves if not already mapped
-  asArray(activityTimelineRaw).forEach((bucket) => {
-    const login = String(bucket?.actor || "").trim();
-    if (login && !actorNameMap.has(login)) {
-      const name =
-        String(bucket?.author?.name || "").trim() ||
-        String(bucket?.author || "").trim() ||
-        login;
-      if (name && name !== login) {
-        actorNameMap.set(login, name);
-      }
-    }
-    // Extract from events within the bucket
-    asArray(bucket?.events).forEach((event) => {
-      const eventLogin = String(event?.actor || "").trim();
-      if (eventLogin && !actorNameMap.has(eventLogin)) {
-        const eventName =
-          String(event?.author?.name || "").trim() ||
-          String(event?.author || "").trim() ||
-          eventLogin;
-        if (eventName && eventName !== eventLogin) {
-          actorNameMap.set(eventLogin, eventName);
-        }
-      }
-    });
-  });
-
-  // Extract from comments if not already mapped
-  asArray(row.comments).forEach((comment) => {
-    const login = String(comment?.authorLogin || "").trim();
-    if (login && !actorNameMap.has(login)) {
-      const name =
-        String(comment?.author?.name || "").trim() ||
-        String(comment?.authorName || "").trim() ||
-        login;
-      if (name && name !== login) {
-        actorNameMap.set(login, name);
-      }
-    }
-  });
-
-  // Extract from commentEvents if not already mapped
-  asArray(row.commentEvents).forEach((event) => {
-    const login = String(event?.actor || "").trim();
-    if (login && !actorNameMap.has(login)) {
-      const name = String(event?.actorName || "").trim() || login;
-      if (name && name !== login) {
-        actorNameMap.set(login, name);
-      }
-    }
-  });
-
-  // Extract from reviews if not already mapped
-  asArray(row.reviews).forEach((review) => {
-    const login = String(review?.authorLogin || "").trim();
-    if (login && !actorNameMap.has(login)) {
-      const name =
-        String(review?.author?.name || "").trim() ||
-        String(review?.authorName || "").trim() ||
-        login;
-      if (name && name !== login) {
-        actorNameMap.set(login, name);
-      }
-    }
-  });
-
-  // Extract from review threads if not already mapped
-  asArray(row.reviewThreads).forEach((thread) => {
-    asArray(thread?.comments).forEach((comment) => {
-      const login = String(comment?.authorLogin || "").trim();
-      if (login && !actorNameMap.has(login)) {
-        const name =
-          String(comment?.author?.name || "").trim() ||
-          String(comment?.authorName || "").trim() ||
-          login;
-        if (name && name !== login) {
-          actorNameMap.set(login, name);
-        }
-      }
-    });
-  });
-
-  // Extract from commits if not already mapped
-  asArray(row.commits).forEach((commit) => {
-    asArray(commit?.authors).forEach((author) => {
-      const login = String(author?.login || "").trim();
-      if (login && !actorNameMap.has(login)) {
-        const name = String(author?.name || "").trim() || login;
-        if (name && name !== login) {
-          actorNameMap.set(login, name);
-        }
-      }
-    });
-  });
-
-  // Helper to get display name for an actor
-  const getActorDisplay = (login) => {
-    return actorNameMap.has(login) ? actorNameMap.get(login) : login;
-  };
-
-  const typeLabel = (type, count) => {
-    if (type === "comment") return count > 1 ? "comments" : "comment";
-    if (type === "approval") return "approved";
-    if (type === "commit") return count > 1 ? "commits" : "commit";
-    if (type === "opened") return "opened PR";
-    if (type === "merged") return "merged PR";
-    return count > 1 ? `${type}s` : type;
-  };
-
-  const parseDay = (value) => {
-    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const dt = new Date(Date.UTC(year, month - 1, day));
-    if (Number.isNaN(dt.getTime())) return null;
-    return dt;
-  };
-
-  const formatDay = (date) => {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(date.getUTCDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  const sorted = timeline.sort((a, b) => {
-    if (a.date !== b.date) return String(b.date).localeCompare(String(a.date));
-    if (a.latestAt !== b.latestAt)
-      return String(b.latestAt).localeCompare(String(a.latestAt));
-    if (a.actor !== b.actor)
-      return String(a.actor).localeCompare(String(b.actor));
-    return String(a.type).localeCompare(String(b.type));
-  });
-
-  let currentDate = "";
-  let itemsByActorType = new Map();
-  const groupedByDate = new Map();
-
-  const flush = () => {
-    if (!currentDate) return;
-    const items = Array.from(itemsByActorType.values()).map((entry) => {
-      return {
-        actor: entry.actor,
-        fallbackName: getActorDisplay(entry.actor),
-        label: typeLabel(entry.type, entry.count),
-        count: entry.count,
-      };
-    });
-    groupedByDate.set(currentDate, items);
-  };
-
-  for (const item of sorted) {
-    if (item.date !== currentDate) {
-      flush();
-      currentDate = item.date;
-      itemsByActorType = new Map();
-    }
-
-    const key = `${item.actor}::${item.type}`;
-    const existing = itemsByActorType.get(key);
-    if (existing) {
-      existing.count += item.count;
-      if (String(item.latestAt).localeCompare(String(existing.latestAt)) > 0) {
-        existing.latestAt = item.latestAt;
-      }
-    } else {
-      itemsByActorType.set(key, {
-        actor: item.actor,
-        type: item.type,
-        count: item.count,
-        latestAt: item.latestAt,
-      });
-    }
-  }
-
-  flush();
-
-  const dateKeys = Array.from(groupedByDate.keys()).sort((a, b) =>
-    String(b).localeCompare(String(a)),
-  );
-  if (!dateKeys.length) {
-    return "-";
-  }
-
-  const newest = parseDay(dateKeys[0]);
-  const oldest = parseDay(dateKeys[dateKeys.length - 1]);
-
-  const table = document.createElement("table");
-  if (table?.style) {
-    table.style.borderCollapse = "collapse";
-    table.style.width = "100%";
-  }
-
-  if (!newest || !oldest) {
-    for (const date of dateKeys) {
-      const tr = document.createElement("tr");
-
-      const tdDate = document.createElement("td");
-      if (tdDate?.style) {
-        tdDate.style.paddingRight = "12px";
-        tdDate.style.paddingTop = "2px";
-        tdDate.style.paddingBottom = "2px";
-        tdDate.style.verticalAlign = "top";
-        tdDate.style.whiteSpace = "nowrap";
-      }
-      tdDate.textContent = date;
-      tr.appendChild(tdDate);
-
-      const tdActivity = document.createElement("td");
-      if (tdActivity?.style) {
-        tdActivity.style.paddingTop = "2px";
-        tdActivity.style.paddingBottom = "2px";
-      }
-      renderTimelineItems({
-        container: tdActivity,
-        items: groupedByDate.get(date) || [],
-        row,
-        actorsMap,
-      });
-      tr.appendChild(tdActivity);
-
-      table.appendChild(tr);
-    }
-    return table;
-  }
-
-  // For open PRs, extend timeline to today; for merged PRs, use newest activity date
-  const endDate = isOpen ? new Date() : newest;
-  const cursor = new Date(endDate.getTime());
-  // Set to UTC end of day for proper comparison
-  cursor.setUTCHours(23, 59, 59, 999);
-
-  while (cursor.getTime() >= oldest.getTime()) {
-    const key = formatDay(cursor);
-    const hasActivity = groupedByDate.has(key);
-    const dayOfWeek = cursor.getUTCDay();
-    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-
-    // Skip weekends without activity
-    if (!hasActivity && !isWeekday) {
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
-      continue;
-    }
-
-    const tr = document.createElement("tr");
-
-    const tdDate = document.createElement("td");
-    if (tdDate?.style) {
-      tdDate.style.paddingRight = "12px";
-      tdDate.style.paddingTop = "2px";
-      tdDate.style.paddingBottom = "2px";
-      tdDate.style.verticalAlign = "top";
-      tdDate.style.whiteSpace = "nowrap";
-    }
-    tdDate.textContent = key;
-    tr.appendChild(tdDate);
-
-    const tdActivity = document.createElement("td");
-    if (tdActivity?.style) {
-      tdActivity.style.paddingTop = "2px";
-      tdActivity.style.paddingBottom = "2px";
-    }
-    renderTimelineItems({
-      container: tdActivity,
-      items: groupedByDate.get(key) || [],
-      row,
-      actorsMap,
-    });
-    tr.appendChild(tdActivity);
-
-    table.appendChild(tr);
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-
-  const rowCount = Number.isFinite(Number(table?.rows?.length))
-    ? Number(table.rows.length)
-    : Number(table?.children?.length || 0);
-  return rowCount > 0 ? table : "-";
-};
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -5009,187 +4500,6 @@ const pushPayloadToReactTable = (payload, repo) => {
   }
 };
 
-const setExportStatus = (message) => {
-  const node = getOptionalElementById("export-status");
-  if (node) {
-    node.textContent = String(message || "");
-  }
-};
-
-const getExportFieldCheckboxes = () => {
-  const host = getOptionalElementById("export-field-list");
-  if (!host) return [];
-  return collectNodesByTag(host, "input").filter(
-    (node) =>
-      String(node?.type || "").toLowerCase() === "checkbox" &&
-      Boolean(readElementAttribute(node, "data-export-field-id").trim()),
-  );
-};
-
-const getSelectedExportFieldPaths = () => {
-  const dataPaths = [];
-  const userStatePaths = [];
-
-  getExportFieldCheckboxes().forEach((checkbox) => {
-    if (!checkbox.checked) return;
-    const source = readElementAttribute(checkbox, "data-export-source").trim();
-    const path = readElementAttribute(checkbox, "data-export-path").trim();
-    if (!path) return;
-    if (source === "user-state") {
-      userStatePaths.push(path);
-      return;
-    }
-    dataPaths.push(path);
-  });
-
-  return {
-    dataPaths,
-    userStatePaths,
-  };
-};
-
-const persistExportFieldSelections = async () => {
-  const selected = getSelectedExportFieldPaths();
-  pendingExportDataFieldSelections = [...selected.dataPaths];
-  pendingExportUserStateFieldSelections = [...selected.userStatePaths];
-
-  const existingOverrides = await readUiSessionOverrides();
-  const overrides = { ...existingOverrides };
-  overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY] = [...selected.dataPaths];
-  overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY] = [
-    ...selected.userStatePaths,
-  ];
-
-  await writeUiSessionOverrides(overrides, {
-    preserveEmptyArrayKeys: [
-      EXPORT_DATA_FIELDS_OVERRIDE_KEY,
-      EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY,
-    ],
-  });
-
-  return selected;
-};
-
-const renderExportSelectionSummary = ({
-  dataCount = 0,
-  userStateCount = 0,
-  visibleCount = 0,
-  totalVisibleCount = 0,
-  openSectionsCount = 0,
-} = {}) => {
-  const summaryNode = getOptionalElementById("export-selection-summary");
-  if (!summaryNode) return;
-
-  summaryNode.textContent = [
-    `Selected fields: ${dataCount} data + ${userStateCount} user state`,
-    `Visible PR rows eligible for export: ${visibleCount}/${totalVisibleCount}`,
-    `Expanded PR sections: ${openSectionsCount}`,
-  ].join("\n");
-};
-
-const setExportCheckboxSelection = (predicate) => {
-  const checkboxes = getExportFieldCheckboxes();
-  checkboxes.forEach((checkbox) => {
-    checkbox.checked = Boolean(predicate(checkbox));
-  });
-  void updateExportPreviewSummary();
-};
-
-const renderExportFieldCatalog = (payload = {}) => {
-  const listNode = getOptionalElementById("export-field-list");
-  if (!listNode) return;
-
-  const previousSelection = new Set(
-    getExportFieldCheckboxes()
-      .filter((node) => node.checked)
-      .map((node) => readElementAttribute(node, "data-export-field-id").trim())
-      .filter(Boolean),
-  );
-  const hasSavedSelection =
-    Array.isArray(pendingExportDataFieldSelections) ||
-    Array.isArray(pendingExportUserStateFieldSelections);
-  const savedSelection = new Set([
-    ...(
-      Array.isArray(pendingExportDataFieldSelections)
-        ? pendingExportDataFieldSelections
-        : []
-    ).map((path) => `data:${path}`),
-    ...(
-      Array.isArray(pendingExportUserStateFieldSelections)
-        ? pendingExportUserStateFieldSelections
-        : []
-    ).map((path) => `user-state:${path}`),
-  ]);
-
-  exportFieldCatalog = getExportFieldCatalog(payload);
-  const dataPaths = Array.isArray(exportFieldCatalog?.dataPaths)
-    ? exportFieldCatalog.dataPaths
-    : [];
-  const userStatePaths = Array.isArray(exportFieldCatalog?.userStatePaths)
-    ? exportFieldCatalog.userStatePaths
-    : [];
-  const allFieldIds = [
-    ...dataPaths.map((path) => `data:${path}`),
-    ...userStatePaths.map((path) => `user-state:${path}`),
-  ];
-  const shouldPreferSavedSelectionOverPrevious =
-    hasSavedSelection &&
-    allFieldIds.length > 0 &&
-    previousSelection.size === allFieldIds.length &&
-    allFieldIds.every((fieldId) => previousSelection.has(fieldId));
-  const shouldUsePreviousSelection =
-    previousSelection.size > 0 && !shouldPreferSavedSelectionOverPrevious;
-
-  listNode.innerHTML = "";
-  const buildOption = (source, path) => {
-    const label = document.createElement("label");
-    label.className = "export-field-option";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    const fieldId = `${source}:${path}`;
-    checkbox.setAttribute("data-export-field-id", fieldId);
-    checkbox.setAttribute("data-export-source", source);
-    checkbox.setAttribute("data-export-path", path);
-    checkbox.checked =
-      shouldUsePreviousSelection
-        ? previousSelection.has(fieldId)
-        : hasSavedSelection
-          ? savedSelection.has(fieldId)
-          : true;
-    checkbox.addEventListener("change", () => {
-      void updateExportPreviewSummary();
-    });
-
-    const text = document.createElement("span");
-    const sourceToken =
-      source === "user-state"
-        ? '<span class="export-field-option-source">USER</span>'
-        : '<span class="export-field-option-source">DATA</span>';
-    text.innerHTML = `${sourceToken}${escapeHtml(path)}`;
-
-    label.appendChild(checkbox);
-    label.appendChild(text);
-    return label;
-  };
-
-  dataPaths.forEach((path) => {
-    listNode.appendChild(buildOption("data", path));
-  });
-  userStatePaths.forEach((path) => {
-    listNode.appendChild(buildOption("user-state", path));
-  });
-
-  if (dataPaths.length === 0 && userStatePaths.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "stats-empty";
-    empty.textContent = "No exportable fields found in current payload.";
-    listNode.appendChild(empty);
-  }
-
-  void updateExportPreviewSummary();
-};
-
 // Renders the pending auto-update payload once the user is no longer focused on an input/textarea.
 // Re-attaches itself as a blur listener if focus moves to another field.
 const flushPendingAutoRender = () => {
@@ -5656,32 +4966,13 @@ let isFetchingRepoLabels = false;
 
 const getAvailableRepoLabels = () => availableRepoLabels;
 
+// Renders the dropdown into #apply-label-select-root via React (see
+// ApplyLabelSelect.jsx, mounted in react-app.jsx) - a native <select>'s own
+// selection-preservation behavior on re-render replaces the vanilla
+// version's manual "restore previous value if still valid" logic, so no
+// bridge return value or key remount is needed here.
 const populateApplyLabelSelect = () => {
-  const select = getOptionalElementById("apply-label-select");
-  if (!select) {
-    return;
-  }
-
-  const previousValue = select.value;
-  select.innerHTML = "";
-
-  const placeholderOption = document.createElement("option");
-  placeholderOption.value = "";
-  placeholderOption.textContent = availableRepoLabels.length
-    ? "Choose a label..."
-    : "No labels found for this repo";
-  select.appendChild(placeholderOption);
-
-  availableRepoLabels.forEach((label) => {
-    const option = document.createElement("option");
-    option.value = label.name;
-    option.textContent = label.name;
-    select.appendChild(option);
-  });
-
-  if (availableRepoLabels.some((label) => label.name === previousValue)) {
-    select.value = previousValue;
-  }
+  window.updateReactApplyLabelOptions?.(availableRepoLabels);
 };
 
 let labelsFetchedForRepo = "";
@@ -5895,7 +5186,6 @@ const initPage = () => {
   // Initialize Backfill Tab orchestrator
   backfillTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
-  setExportStatus("Waiting for data...");
   renderAutoRenderBlockedIndicator();
 
   const prSectionsHost = document.getElementById("pr-sections");
@@ -6002,7 +5292,6 @@ const initPage = () => {
     formatConversationStatus,
     formatApprovalRisk,
     formatCommentUsefulness,
-    buildActivityTimelineSummary,
     buildFallbackActivityEvents,
     buildActivityEventKey,
     normalizePrRootUrl,
@@ -6024,6 +5313,10 @@ const initPage = () => {
     safeJsonStringify,
     getPerPrUserStateFromPayload,
     DEFAULT_REPO,
+    // ---- Export tab (see components/ExportTab.jsx) ----
+    getExportFieldCatalog,
+    getVisiblePrNumbersFromSectionsHost,
+    buildExportPayload,
     // ---- Row sorting (see components/PrTableApp.jsx) ----
     normalizeRows,
     sortRowsByPrNumberDesc,
@@ -6286,64 +5579,6 @@ const initPage = () => {
   if (actionLogRefreshBtn) {
     actionLogRefreshBtn.addEventListener("click", () => {
       void loadActionLog();
-    });
-  }
-
-  const exportPreviewBtn = getOptionalElementById("export-preview-btn");
-  if (exportPreviewBtn) {
-    exportPreviewBtn.addEventListener("click", () => {
-      void handlePreviewExport();
-    });
-  }
-
-  const exportCopyBtn = getOptionalElementById("export-copy-btn");
-  if (exportCopyBtn) {
-    exportCopyBtn.addEventListener("click", () => {
-      void handleCopyExport();
-    });
-  }
-
-  const exportDownloadBtn = getOptionalElementById("export-download-btn");
-  if (exportDownloadBtn) {
-    exportDownloadBtn.addEventListener("click", () => {
-      void handleDownloadExport();
-    });
-  }
-
-  const exportSelectAllBtn = getOptionalElementById("export-select-all-btn");
-  if (exportSelectAllBtn) {
-    exportSelectAllBtn.addEventListener("click", () => {
-      setExportCheckboxSelection(() => true);
-    });
-  }
-
-  const exportSelectNoneBtn = getOptionalElementById("export-select-none-btn");
-  if (exportSelectNoneBtn) {
-    exportSelectNoneBtn.addEventListener("click", () => {
-      setExportCheckboxSelection(() => false);
-    });
-  }
-
-  const exportSelectDataBtn = getOptionalElementById("export-select-data-btn");
-  if (exportSelectDataBtn) {
-    exportSelectDataBtn.addEventListener("click", () => {
-      setExportCheckboxSelection(
-        (checkbox) =>
-          readElementAttribute(checkbox, "data-export-source") === "data",
-      );
-    });
-  }
-
-  const exportSelectUserStateBtn = getOptionalElementById(
-    "export-select-user-state-btn",
-  );
-  if (exportSelectUserStateBtn) {
-    exportSelectUserStateBtn.addEventListener("click", () => {
-      setExportCheckboxSelection(
-        (checkbox) =>
-          readElementAttribute(checkbox, "data-export-source") ===
-          "user-state",
-      );
     });
   }
 

@@ -103,9 +103,9 @@
                         <div class="form-grid single-field-grid">
                             <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
                             <div class="form-actions primary-actions">
-                                <select id="apply-label-select">
-                                    <option value="">Choose a label...</option>
-                                </select>
+                                <!-- Rendered by React (ApplyLabelSelect, mounted in react-app.jsx) as
+                                     a <select id="apply-label-select">, same id/options shape as before. -->
+                                <span id="apply-label-select-root"></span>
                                 <button type="button" id="apply-label-btn">Apply label</button>
                                 <button type="button" id="refresh-labels-btn" title="Reload labels for the current repo">&#8635; Labels</button>
                             </div>
@@ -419,28 +419,9 @@
             <h3>Export Visible PR JSON</h3>
             <p class="subtle-copy">Choose PR fields from data and user state, then export only rows currently visible in
                 PR Data and only sections currently expanded.</p>
-            <pre id="export-selection-summary"
-                class="management-filter-summary">Select export fields to build a JSON preview.</pre>
-
-            <div class="export-field-controls form-actions">
-                <button type="button" id="export-select-all-btn">Select all</button>
-                <button type="button" id="export-select-none-btn">Select none</button>
-                <button type="button" id="export-select-data-btn">Data only</button>
-                <button type="button" id="export-select-user-state-btn">User state only</button>
+            <div id="export-container">
+                <!-- Rendered by React (ExportTab, mounted in react-app.jsx) -->
             </div>
-
-            <div id="export-field-list" class="export-field-list"></div>
-
-            <div class="form-actions export-actions">
-                <button type="button" id="export-preview-btn">Preview JSON</button>
-                <button type="button" id="export-copy-btn">Copy JSON</button>
-                <button type="button" id="export-download-btn">Download JSON</button>
-            </div>
-            <pre id="export-status" class="scheduler-details">Waiting for data...</pre>
-            <details class="advanced-options section-card low-emphasis-card" open>
-                <summary>Export preview</summary>
-                <pre id="export-preview">Run Preview JSON to inspect the export payload.</pre>
-            </details>
         </section>
     </div>
 
@@ -530,6 +511,7 @@
     <script src="./helpers/pr-status-display.helpers.js"></script>
     <script src="./helpers/pr-command-output.helpers.js"></script>
     <script src="./helpers/pr-data-tabs.helpers.js"></script>
+    <script src="./helpers/pr-activity-badges.helpers.js"></script>
     <script src="./helpers/pr-backfill.helpers.js"></script>
     <script src="./helpers/pr-backfill-actions.helpers.js"></script>
     <script src="./helpers/pr-management-tabs.helpers.js"></script>
@@ -537,7 +519,6 @@
     <script src="./helpers/pr-actor-identity.helpers.js"></script>
     <script src="./helpers/pr-actor-identity-style.helpers.js"></script>
     <script src="./helpers/pr-actor-identity-render.helpers.js"></script>
-    <script src="./helpers/pr-activity-timeline-render.helpers.js"></script>
     <script src="./helpers/pr-requested-reviewers.helpers.js"></script>
     <script src="./helpers/pr-assigned-users.helpers.js"></script>
     <script src="./helpers/pr-approvers.helpers.js"></script>
@@ -605,9 +586,6 @@
     <script src="./helpers/pr-auto-render-state.helpers.js"></script>
     <script src="./helpers/pr-apply-filters-cache.helpers.js"></script>
     <script src="./helpers/pr-export.helpers.js"></script>
-    <script src="./helpers/pr-export-actions.helpers.js"></script>
-    <script src="./helpers/pr-export-preview-summary.helpers.js"></script>
-    <script src="./helpers/pr-export-json-build.helpers.js"></script>
     <script src="./helpers/form-parsing.helpers.js"></script>
     <script src="./components/pr-author-insights.component.js"></script>
     <script src="./helpers/pr-filter-panel.helpers.js"></script>
