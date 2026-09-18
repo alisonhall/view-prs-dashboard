@@ -757,6 +757,14 @@ const runViewPrsScript = (scriptArgs, maxBufferBytes, options) =>
 const callRunViewPrsScript = (...args) =>
   (module.exports.runViewPrsScript || runViewPrsScript)(...args);
 
+// Same override-checking pattern as callRunViewPrsScript/callGetDependencyStatus
+// above - lets tests monkeypatch module.exports.runViewPrsBashCommand before
+// createViewPrsApp() so listMergedPrCandidates/listRepoLabels/applyLabelToPr/
+// fetchGithubPrLabels below (all of which shell out to `gh` via this) can be
+// tested without a real shell/gh/network call.
+const callRunViewPrsBashCommand = (...args) =>
+  (module.exports.runViewPrsBashCommand || runViewPrsBashCommand)(...args);
+
 const callGetDependencyStatus = () =>
   (module.exports.getDependencyStatus || getDependencyStatus)();
 
@@ -775,7 +783,7 @@ const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
     throw new Error(`Invalid repo: ${safeRepo}`);
   }
 
-  const result = await runViewPrsBashCommand(
+  const result = await callRunViewPrsBashCommand(
     [
       "-lc",
       `GH_PAGER=cat gh pr list -R ${safeRepo} --state merged --limit ${safeLimit} --json number,mergedAt --jq '.'`,
@@ -828,7 +836,7 @@ const listRepoLabels = async ({ repo }) => {
     throw new Error(`Invalid repo: ${safeRepo}`);
   }
 
-  const result = await runViewPrsBashCommand(
+  const result = await callRunViewPrsBashCommand(
     [
       "-lc",
       `GH_PAGER=cat gh label list -R ${shellQuoteSingle(safeRepo)} --limit 200 --json name,color --jq '.'`,
@@ -880,7 +888,7 @@ const applyLabelToPr = async ({ repo, prNumber, label }) => {
     throw new Error(`Invalid label: ${safeLabel}`);
   }
 
-  await runViewPrsBashCommand(
+  await callRunViewPrsBashCommand(
     [
       "-lc",
       `gh pr edit ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --add-label ${shellQuoteSingle(safeLabel)}`,
@@ -907,7 +915,7 @@ const fetchGithubPrLabels = async ({ repo, prNumber }) => {
     throw new Error(`Invalid PR number: ${safePrNumber}`);
   }
 
-  const result = await runViewPrsBashCommand(
+  const result = await callRunViewPrsBashCommand(
     [
       "-lc",
       `gh pr view ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --json labels --jq '.labels | map(.name)'`,
@@ -1991,6 +1999,7 @@ module.exports = {
   setLastManualRunNow,
   formatScriptFailureMessage,
   runViewPrsScript,
+  runViewPrsBashCommand,
   runViewPrsShellScript,
   parseBackfillCommandOutput,
   getBackfillLogTail,

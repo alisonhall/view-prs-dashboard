@@ -1356,4 +1356,414 @@ describe("route behavior", () => {
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
     }
   });
+
+  test("returns 500 when POST /run is requested while a dependency is missing", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
+    try {
+      const { response, payload } = await postJson(server, "/run", {
+        repo: "owner/repo",
+        openMode: "none",
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("Missing required command(s): gh");
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+    }
+  });
+
+  test("returns 500 when POST /run's script execution rejects", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    appModule.runViewPrsScript = async () => {
+      // Matches the real rejection shape from command-execution-helpers.js's
+      // finishReject: { error, stdout, stderr, ... }, not a plain Error -
+      // formatScriptFailureMessage reads failure.error.message.
+      throw { error: new Error("script exploded"), stdout: "partial output", stderr: "boom" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/run", {
+        repo: "owner/repo",
+        openMode: "none",
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toContain("script exploded");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+    }
+  });
+
+  test("returns 500 when POST /run-auto is requested while a dependency is missing", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["jq"] });
+    try {
+      const { response, payload } = await postJson(server, "/run-auto", {});
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("Missing required command(s): jq");
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+    }
+  });
+
+  test("returns 500 when POST /ack's script execution rejects", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    appModule.runViewPrsScript = async () => {
+      throw { error: new Error("ack script exploded"), stdout: "", stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/ack", {
+        repo: "owner/repo",
+        ack: "501",
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toContain("ack script exploded");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+    }
+  });
+
+  test("refreshes each acknowledged PR when POST /ack includes an ack (non-checkbox) operation", async () => {
+    const { response, payload } = await postJson(server, "/ack", {
+      repo: "owner/repo",
+      ack: "501",
+    });
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.refreshedPrs).toContain("501");
+    expect(payload.refreshErrors).toEqual([]);
+  });
+
+  test("returns 500 when POST /merged/request-more is requested while a dependency is missing", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
+    try {
+      const { response, payload } = await postJson(server, "/merged/request-more", {
+        repo: "owner/repo",
+        count: 10,
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("Missing required command(s): gh");
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+    }
+  });
+
+  test("lists scanned/missing candidates when POST /merged/request-more succeeds", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async () => ({
+      stdout: JSON.stringify([
+        { number: 601, mergedAt: "2026-01-01T00:00:00Z" },
+        { number: 602, mergedAt: "2026-01-02T00:00:00Z" },
+      ]),
+      stderr: "",
+    });
+    try {
+      const { response, payload } = await postJson(server, "/merged/request-more", {
+        repo: "owner/repo",
+        count: 2,
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.scannedCandidates).toBe(2);
+      expect(payload.missingCandidates).toEqual(
+        expect.arrayContaining(["601", "602"]),
+      );
+      expect(payload.refreshedPrs).toEqual(
+        expect.arrayContaining(["601", "602"]),
+      );
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
+
+  test("returns 500 when POST /merged/request-more's candidate lookup rejects", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async () => {
+      throw new Error("gh call failed");
+    };
+    try {
+      const { response, payload } = await postJson(server, "/merged/request-more", {
+        repo: "owner/repo",
+        count: 2,
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toContain("gh call failed");
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
+
+  test("returns a repo's labels when GET /labels succeeds", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async () => ({
+      stdout: JSON.stringify([
+        { name: "bug", color: "ff0000" },
+        { name: "frontend", color: "00ff00" },
+      ]),
+      stderr: "",
+    });
+    try {
+      const { response, payload } = await requestJson(
+        server,
+        "/labels?repo=owner/repo",
+      );
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.labels).toEqual([
+        { name: "bug", color: "ff0000" },
+        { name: "frontend", color: "00ff00" },
+      ]);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
+
+  test("returns 500 when GET /labels's gh call rejects", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async () => {
+      throw new Error("gh label list failed");
+    };
+    try {
+      const { response, payload } = await requestJson(
+        server,
+        "/labels?repo=owner/repo",
+      );
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toContain("gh label list failed");
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
+
+  test("returns 400 when GET /labels receives an invalid repo", async () => {
+    const { response, payload } = await requestJson(
+      server,
+      "/labels?repo=owner/repo/extra",
+    );
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toContain("Invalid repo");
+  });
+
+  test("returns 400 when POST /labels/apply receives an invalid repo", async () => {
+    const { response, payload } = await postJson(server, "/labels/apply", {
+      repo: "owner/repo/extra",
+      label: "bug",
+      prNumbers: "701",
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toContain("Invalid repo");
+  });
+
+  test("returns 400 when POST /labels/apply is missing a label", async () => {
+    const { response, payload } = await postJson(server, "/labels/apply", {
+      repo: "owner/repo",
+      prNumbers: "701",
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toBe("Label is required");
+  });
+
+  test("returns 400 when POST /labels/apply is missing PR numbers", async () => {
+    const { response, payload } = await postJson(server, "/labels/apply", {
+      repo: "owner/repo",
+      label: "bug",
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toContain('"prNumbers"');
+  });
+
+  test("returns 500 when POST /labels/apply is requested while a dependency is missing", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", {
+        repo: "owner/repo",
+        label: "bug",
+        prNumbers: "701",
+      });
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("Missing required command(s): gh");
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+    }
+  });
+
+  test("applies a label and reports it could not patch stored state for a PR with no matching stored row", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async () => ({ stdout: "[]", stderr: "" });
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", {
+        repo: "owner/repo",
+        label: "bug",
+        prNumbers: "701",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.appliedPrs).toEqual(["701"]);
+      expect(payload.applyErrors).toEqual([]);
+      // No stored PR entry for 701 exists in this test's data file, so the
+      // label-state patch step can't find a row to update - covers that
+      // "found nothing to patch" branch distinctly from a `gh` failure.
+      expect(payload.refreshErrors).toEqual([
+        { prNumber: "701", error: "No matching stored PR entry to update" },
+      ]);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
+
+  test("patches the stored PR entry's labels when POST /labels/apply succeeds and a matching stored row exists", async () => {
+    const dataFilePath = appModule.viewPrsDataFile;
+    const dataFileExisted = fs.existsSync(dataFilePath);
+    const originalDataRaw = dataFileExisted
+      ? fs.readFileSync(dataFilePath, "utf8")
+      : "";
+    const originalBash = appModule.runViewPrsBashCommand;
+
+    fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+    fs.writeFileSync(
+      dataFilePath,
+      JSON.stringify({
+        byPrNumber: {
+          703: { repo: "owner/repo", data: { number: 703, labels: [] } },
+        },
+        lastRun: null,
+      }),
+      "utf8",
+    );
+    appModule.runViewPrsBashCommand = async (bashArgs) => {
+      const command = String(bashArgs?.[1] || "");
+      if (command.includes("gh pr view")) {
+        return { stdout: JSON.stringify(["bug"]), stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", {
+        repo: "owner/repo",
+        label: "bug",
+        prNumbers: "703",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.appliedPrs).toEqual(["703"]);
+      expect(payload.refreshErrors).toEqual([]);
+
+      const updated = JSON.parse(fs.readFileSync(dataFilePath, "utf8"));
+      expect(updated.byPrNumber["703"].data.labels).toEqual(["bug"]);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+      if (dataFileExisted) {
+        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+      } else {
+        fs.rmSync(dataFilePath, { force: true });
+      }
+    }
+  });
+
+  test("collects a refresh error without failing the whole request when POST /labels/apply's post-apply label lookup fails", async () => {
+    const dataFilePath = appModule.viewPrsDataFile;
+    const dataFileExisted = fs.existsSync(dataFilePath);
+    const originalDataRaw = dataFileExisted
+      ? fs.readFileSync(dataFilePath, "utf8")
+      : "";
+    const originalBash = appModule.runViewPrsBashCommand;
+
+    fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+    fs.writeFileSync(
+      dataFilePath,
+      JSON.stringify({
+        byPrNumber: {
+          704: { repo: "owner/repo", data: { number: 704, labels: [] } },
+        },
+        lastRun: null,
+      }),
+      "utf8",
+    );
+    appModule.runViewPrsBashCommand = async (bashArgs) => {
+      const command = String(bashArgs?.[1] || "");
+      if (command.includes("gh pr view")) {
+        throw new Error("gh pr view failed");
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", {
+        repo: "owner/repo",
+        label: "bug",
+        prNumbers: "704",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.appliedPrs).toEqual(["704"]);
+      expect(payload.refreshErrors).toEqual([
+        { prNumber: "704", error: "gh pr view failed" },
+      ]);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+      if (dataFileExisted) {
+        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+      } else {
+        fs.rmSync(dataFilePath, { force: true });
+      }
+    }
+  });
+
+  test("collects a per-PR error without failing the whole request when POST /labels/apply's gh call fails for one PR", async () => {
+    const originalBash = appModule.runViewPrsBashCommand;
+    appModule.runViewPrsBashCommand = async (bashArgs) => {
+      const command = String(bashArgs?.[1] || "");
+      if (command.includes("gh pr edit")) {
+        throw new Error("gh pr edit failed");
+      }
+      return { stdout: "[]", stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", {
+        repo: "owner/repo",
+        label: "bug",
+        prNumbers: "702",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.appliedPrs).toEqual([]);
+      expect(payload.applyErrors).toEqual([
+        { prNumber: "702", error: "gh pr edit failed" },
+      ]);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+    }
+  });
 });

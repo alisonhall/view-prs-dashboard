@@ -6,6 +6,8 @@ const {
   getViewPrsAutoCircuitOpenState,
   buildAckRefreshBudgetSkipErrors,
   runViewPrsAutoRefresh,
+  runViewPrsQuickCheck,
+  runViewPrsMergedQueueDrain,
   resetViewPrsAutoRefreshFailureState,
   viewPrsSchedulerState,
 } = appModule;
@@ -416,6 +418,261 @@ describe("runViewPrsAutoRefresh behavior", () => {
         seededPrCount: expect.any(Number),
         timeToFirstPrProgressMs: expect.any(Number),
       }),
+    );
+  });
+});
+
+describe("runViewPrsQuickCheck behavior", () => {
+  const savedDependencyStatus = appModule.getDependencyStatus;
+  const savedRunViewPrsScript = appModule.runViewPrsScript;
+
+  const resetQuickCheckState = () => {
+    viewPrsSchedulerState.isQuickCheckInProgress = false;
+    viewPrsSchedulerState.isAutoRunInProgress = false;
+    viewPrsSchedulerState.lastQuickCheckAt = null;
+    viewPrsSchedulerState.lastQuickCheckError = null;
+    viewPrsSchedulerState.pendingByRepo = {};
+    viewPrsSchedulerState.autoCircuitOpenUntil = null;
+    viewPrsSchedulerState.consecutiveAutoFailures = 0;
+    appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
+  };
+
+  beforeEach(() => {
+    resetQuickCheckState();
+  });
+
+  afterAll(() => {
+    if (savedDependencyStatus !== undefined) {
+      appModule.getDependencyStatus = savedDependencyStatus;
+    } else {
+      delete appModule.getDependencyStatus;
+    }
+    if (savedRunViewPrsScript !== undefined) {
+      appModule.runViewPrsScript = savedRunViewPrsScript;
+    } else {
+      delete appModule.runViewPrsScript;
+    }
+  });
+
+  const withAutoRepos = async (reposCsv, fn) => {
+    const saved = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = reposCsv;
+    try {
+      await fn();
+    } finally {
+      if (saved === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = saved;
+      }
+    }
+  };
+
+  test("does nothing when a quick check is already in progress", async () => {
+    viewPrsSchedulerState.isQuickCheckInProgress = true;
+
+    await runViewPrsQuickCheck();
+
+    expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+  });
+
+  test("does nothing while a full auto-refresh run is in progress", async () => {
+    viewPrsSchedulerState.isAutoRunInProgress = true;
+
+    await runViewPrsQuickCheck();
+
+    expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+  });
+
+  test("does nothing when required dependencies are missing", async () => {
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
+
+    await runViewPrsQuickCheck();
+
+    expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+  });
+
+  test("does nothing while the auto-refresh circuit is open", async () => {
+    viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
+      Date.now() + 60 * 60 * 1000,
+    ).toISOString();
+    viewPrsSchedulerState.consecutiveAutoFailures = 3;
+
+    await runViewPrsQuickCheck();
+
+    expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+  });
+
+  test("records a successful check with no pending changes when nothing changed", async () => {
+    appModule.runViewPrsScript = async () => ({
+      stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }),
+      stderr: "",
+    });
+
+    await withAutoRepos("owner/repo-quickcheck", async () => {
+      await runViewPrsQuickCheck();
+    });
+
+    expect(viewPrsSchedulerState.lastQuickCheckAt).not.toBeNull();
+    expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
+    expect(viewPrsSchedulerState.isQuickCheckInProgress).toBe(false);
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-quickcheck"]).toBeUndefined();
+  });
+
+  test("queues pending open PRs for a repo whose quick check reports changes", async () => {
+    // A non-empty pendingOpen also fires a fire-and-forget fast-follow
+    // runViewPrsAutoRefresh call (not awaited by runViewPrsQuickCheck),
+    // which itself calls clearPendingForRepo on success - delaying the
+    // (unflagged, i.e. non-quick-check) full-refresh script call keeps that
+    // race from clearing pendingByRepo before this assertion runs.
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const isQuickCheckCall = commandArgs.includes("--quick-check");
+      if (!isQuickCheckCall) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { stdout: "", stderr: "" };
+      }
+      return {
+        stdout: JSON.stringify({ pendingOpen: ["101"], pendingMergedClosed: [] }),
+        stderr: "",
+      };
+    };
+
+    await withAutoRepos("owner/repo-pending-open", async () => {
+      await runViewPrsQuickCheck();
+    });
+
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-pending-open"]).toEqual(
+      expect.objectContaining({ open: ["101"], mergedClosed: [] }),
+    );
+
+    // Let the fire-and-forget fast-follow finish inside this test's own
+    // lifetime instead of leaking into the next test / logging after Jest
+    // considers the suite done.
+    await new Promise((resolve) => setTimeout(resolve, 75));
+  });
+
+  test("queues pending merged/closed PRs without them counting as pending-open", async () => {
+    appModule.runViewPrsScript = async () => ({
+      stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["202"] }),
+      stderr: "",
+    });
+
+    await withAutoRepos("owner/repo-pending-merged", async () => {
+      await runViewPrsQuickCheck();
+    });
+
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-pending-merged"]).toEqual(
+      expect.objectContaining({ open: [], mergedClosed: ["202"] }),
+    );
+  });
+
+  test("continues checking other repos and records no top-level error when one repo's quick check fails", async () => {
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      const repo = repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "";
+      if (repo === "owner/repo-failing") {
+        throw new Error("quick-check script failed");
+      }
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+
+    try {
+      await withAutoRepos("owner/repo-failing,owner/repo-ok", async () => {
+        await runViewPrsQuickCheck();
+      });
+
+      expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
+      expect(viewPrsSchedulerState.lastQuickCheckAt).not.toBeNull();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("quick-check failed for owner/repo-failing"),
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  test("treats unparseable script output as no pending changes rather than throwing", async () => {
+    appModule.runViewPrsScript = async () => ({ stdout: "not json", stderr: "" });
+
+    await withAutoRepos("owner/repo-bad-json", async () => {
+      await runViewPrsQuickCheck();
+    });
+
+    expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-bad-json"]).toBeUndefined();
+  });
+});
+
+describe("runViewPrsMergedQueueDrain behavior", () => {
+  const savedRunViewPrsScript = appModule.runViewPrsScript;
+
+  beforeEach(() => {
+    resetSchedulerState();
+    viewPrsSchedulerState.pendingByRepo = {};
+    viewPrsSchedulerState.lastMergedDrainAt = null;
+    appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
+    appModule.runViewPrsScript = async () => ({ stdout: "", stderr: "" });
+  });
+
+  afterAll(() => {
+    if (savedRunViewPrsScript !== undefined) {
+      appModule.runViewPrsScript = savedRunViewPrsScript;
+    } else {
+      delete appModule.runViewPrsScript;
+    }
+  });
+
+  test("records the drain attempt and does nothing else when nothing is queued", async () => {
+    await runViewPrsMergedQueueDrain();
+
+    expect(viewPrsSchedulerState.lastMergedDrainAt).not.toBeNull();
+    expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
+  });
+
+  test("runs a full refresh for repos with a queued merged/closed change", async () => {
+    viewPrsSchedulerState.pendingByRepo["owner/repo-drain"] = {
+      open: [],
+      mergedClosed: ["301"],
+    };
+
+    const observedRepos = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      observedRepos.push(
+        repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "",
+      );
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsMergedQueueDrain();
+
+    expect(observedRepos).toContain("owner/repo-drain");
+    // A successful full refresh clears whatever the quick-check queued.
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-drain"]).toBeUndefined();
+  });
+
+  test("skips a repo that also has a pending open change, leaving it for the fast-follow path instead", async () => {
+    viewPrsSchedulerState.pendingByRepo["owner/repo-both-pending"] = {
+      open: ["401"],
+      mergedClosed: ["402"],
+    };
+
+    const observedRepos = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      observedRepos.push(
+        repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "",
+      );
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsMergedQueueDrain();
+
+    expect(observedRepos).not.toContain("owner/repo-both-pending");
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-both-pending"]).toEqual(
+      expect.objectContaining({ open: ["401"], mergedClosed: ["402"] }),
     );
   });
 });
