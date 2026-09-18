@@ -43,6 +43,30 @@ describe("check-state-health", () => {
     );
   });
 
+  test("warns rather than fails when user-state file is an untouched {}", () => {
+    // A fresh install's user-state file starts as `{}` before the app's
+    // first write - same situation as the file not existing yet, not
+    // corruption, so it should warn (like the missing-file case) rather
+    // than fail on missing keys.
+    const tempDir = makeTempDir();
+    const dataFile = path.join(tempDir, "data.json");
+    const userStateFile = path.join(tempDir, "user-state.json");
+
+    fs.writeFileSync(
+      dataFile,
+      JSON.stringify({ byPrNumber: { "123": { repo: "owner/repo" } } }),
+      "utf8",
+    );
+    fs.writeFileSync(userStateFile, JSON.stringify({}), "utf8");
+
+    const summary = evaluateStateHealth({ dataFile, userStateFile });
+
+    expect(summary.failures).toEqual([]);
+    expect(summary.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("user-state file is empty")]),
+    );
+  });
+
   test("passes for healthy files", () => {
     const tempDir = makeTempDir();
     const dataFile = path.join(tempDir, "data.json");

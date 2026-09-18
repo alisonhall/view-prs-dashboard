@@ -389,10 +389,15 @@ describe("integration behavior", () => {
   });
 
   test("returns success when POST /run receives valid input with mocked script execution", async () => {
-    // Mock runViewPrsScript to avoid running shell
+    // Mock runViewPrsScript to avoid running shell, and getDependencyStatus so
+    // this doesn't depend on gh/jq/bash actually being installed on whatever
+    // machine runs the suite (see the same pattern used further down this
+    // file for the missing-dependency tests).
     const app = require("../app.js");
     const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
     app.runViewPrsScript = () => Promise.resolve({ stdout: "ok", stderr: "" });
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
     const testApp = createViewPrsApp();
     const testServer = testApp.listen(0);
     if (typeof testServer.unref === "function") {
@@ -407,6 +412,7 @@ describe("integration behavior", () => {
       expect(res.body.ok).toBe(true);
     } finally {
       app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
       if (typeof testServer.closeAllConnections === "function") {
         testServer.closeAllConnections();
       }
@@ -420,7 +426,9 @@ describe("integration behavior", () => {
   test("returns success when POST /view-prs/run alias receives valid input with mocked script execution", async () => {
     const app = require("../app.js");
     const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
     app.runViewPrsScript = () => Promise.resolve({ stdout: "ok", stderr: "" });
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
     const testApp = createViewPrsApp();
     const testServer = testApp.listen(0);
     if (typeof testServer.unref === "function") {
@@ -435,6 +443,7 @@ describe("integration behavior", () => {
       expect(res.body.ok).toBe(true);
     } finally {
       app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
       if (typeof testServer.closeAllConnections === "function") {
         testServer.closeAllConnections();
       }

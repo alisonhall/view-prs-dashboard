@@ -259,6 +259,15 @@ describe("server startup behavior", () => {
     }
   });
 
+  // On Windows, child_process's .kill("SIGTERM"/"SIGINT") has no real POSIX
+  // signal to deliver - libuv just calls TerminateProcess, which kills the
+  // child immediately without ever running its process.on("SIGTERM"/"SIGINT")
+  // handler in server.js. That's a platform limitation, not an app bug: the
+  // graceful-shutdown code path itself is only actually exercisable on
+  // POSIX. On win32 we only assert the process does terminate (not hang);
+  // elsewhere we keep the full graceful-exit-code assertion.
+  const exitCodeExpectation = process.platform === "win32" ? null : 0;
+
   test("exits cleanly when the server receives SIGTERM", async () => {
     const child = spawnServer({ VIEW_PRS_PORT: "0" });
 
@@ -280,7 +289,7 @@ describe("server startup behavior", () => {
       child.kill("SIGTERM");
       const exitCode = await exitPromise;
 
-      expect(exitCode).toBe(0);
+      expect(exitCode).toBe(exitCodeExpectation);
     } finally {
       if (child.exitCode === null) {
         await stopProcess(child);
@@ -309,7 +318,7 @@ describe("server startup behavior", () => {
       child.kill("SIGINT");
       const exitCode = await exitPromise;
 
-      expect(exitCode).toBe(0);
+      expect(exitCode).toBe(exitCodeExpectation);
     } finally {
       if (child.exitCode === null) {
         await stopProcess(child);

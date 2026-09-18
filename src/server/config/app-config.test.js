@@ -10,13 +10,15 @@ describe("App Configuration", () => {
       // Act - pass empty env to avoid Jest's test env vars
       const config = createAppConfig({ viewPrsDir, env: {}, isTestEnv: false });
 
-      // Assert
-      expect(config.viewPrsDir).toBe("/test/view-prs");
+      // Assert - path.join produces the platform's native separator, so
+      // expected paths are built the same way rather than hardcoded as
+      // POSIX strings (which fail on Windows).
+      expect(config.viewPrsDir).toBe(viewPrsDir);
       expect(config.viewPrsDataFile).toBe(
-        "/test/view-prs/data/check-open-pr-updates.data.json",
+        path.join(viewPrsDir, "data/check-open-pr-updates.data.json"),
       );
       expect(config.viewPrsUserStateFile).toBe(
-        "/test/view-prs/data/check-open-pr-updates.user-state.json",
+        path.join(viewPrsDir, "data/check-open-pr-updates.user-state.json"),
       );
       expect(config.viewPrsAutoIntervalMs).toBe(15 * 60 * 1000);
       expect(config.requiredCommands).toEqual(["bash", "gh", "jq"]);
@@ -189,7 +191,9 @@ describe("App Configuration", () => {
 
       // Assert
       expect(config.viewPrsUiDir).toBe(path.join(viewPrsDir, "src/ui"));
-      expect(config.viewPrsBackfillManagerScript).toContain("src/backfill");
+      expect(config.viewPrsBackfillManagerScript).toContain(
+        path.join("src", "backfill"),
+      );
       expect(config.viewPrsBackfillPidFile).toBe(
         path.join(viewPrsDir, "data/backfill-missing.pid"),
       );
@@ -209,7 +213,9 @@ describe("App Configuration", () => {
       const config = createAppConfig({ viewPrsDir, env, isTestEnv: true });
 
       // Assert
-      expect(config.viewPrsPrDetailDir).toBe("/custom/location/pr-details");
+      expect(config.viewPrsPrDetailDir).toBe(
+        path.join(path.dirname(env.VIEW_PRS_DATA_FILE), "pr-details"),
+      );
     });
   });
 });

@@ -1,3 +1,4 @@
+const path = require("path");
 const {
   VIEW_PRS_DETAIL_SCHEMA_VERSION,
   HEAVY_PR_DETAIL_FIELDS,
@@ -16,8 +17,14 @@ describe("view-prs PR detail storage helpers", () => {
       "1234",
     );
 
+    // getPrDetailStorageFilePath uses path.join internally, which emits the
+    // platform's native separator - build the expectation the same way
+    // rather than hardcoding a POSIX path (fails on Windows).
     expect(filePath).toBe(
-      "/tmp/pr-details/optum_rx_clinicalproducts_orx_cpp_mp_uis__pr-1234.json",
+      path.join(
+        "/tmp/pr-details",
+        "optum_rx_clinicalproducts_orx_cpp_mp_uis__pr-1234.json",
+      ),
     );
   });
 

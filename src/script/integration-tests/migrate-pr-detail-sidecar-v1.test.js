@@ -84,7 +84,7 @@ describe("migrate-pr-detail-sidecar-v1", () => {
     const row = updated.byPrNumber[123].data;
 
     expect(row.detailRef).toEqual({
-      file: `${detailDir}/owner_repo__pr-123.json`,
+      file: path.join(detailDir, "owner_repo__pr-123.json"),
       version: "v1",
     });
     expect(row.activityTimeline).toBeUndefined();

@@ -46,9 +46,13 @@ describe("report-auto-refresh-metrics parseArgs", () => {
   test("resolves custom file path", () => {
     const options = parseArgs(["--file", "data/custom-action-log.json"]);
     expect(path.isAbsolute(options.actionLogFile)).toBe(true);
-    expect(options.actionLogFile.endsWith("data/custom-action-log.json")).toBe(
-      true,
-    );
+    // path.resolve() below uses the platform's native separator, so the
+    // expected suffix must too (hardcoding "/" fails on Windows).
+    expect(
+      options.actionLogFile.endsWith(
+        path.join("data", "custom-action-log.json"),
+      ),
+    ).toBe(true);
   });
 });
 
