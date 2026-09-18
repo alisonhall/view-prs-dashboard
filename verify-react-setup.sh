@@ -65,18 +65,29 @@ fi
 echo ""
 
 # Test 6: Check ports availability
+# Uses node's own net module rather than `lsof` - `lsof` isn't installed by
+# default in Git Bash on Windows, which silently makes `! lsof ...` report
+# "available" for every port regardless of what's actually listening.
 echo "Test 6: Checking ports availability..."
-if ! lsof -Pi :3455 -sTCP:LISTEN -t >/dev/null 2>&1; then
-  echo -e "${GREEN}✅ Port 3455 (backend) available${NC}"
-else
-  echo -e "${YELLOW}⚠️  Port 3455 already in use (backend server running?)${NC}"
-fi
 
-if ! lsof -Pi :3456 -sTCP:LISTEN -t >/dev/null 2>&1; then
-  echo -e "${GREEN}✅ Port 3456 (Vite) available${NC}"
-else
-  echo -e "${YELLOW}⚠️  Port 3456 already in use (Vite dev server running?)${NC}"
-fi
+check_port() {
+  local port="$1"
+  local label="$2"
+  if node -e "
+    const net = require('net');
+    const server = net.createServer();
+    server.once('error', () => process.exit(1));
+    server.once('listening', () => server.close(() => process.exit(0)));
+    server.listen($port, '127.0.0.1');
+  " >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Port $port ($label) available${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Port $port already in use ($label server running?)${NC}"
+  fi
+}
+
+check_port 9000 "backend"
+check_port 3456 "Vite"
 echo ""
 
 # Test 7: Verify file structure
@@ -109,11 +120,11 @@ if [ $ERRORS -eq 0 ]; then
   echo "  2. Open: http://localhost:3456"
   echo "  3. Look for: Blue 'React Migration' box"
   echo ""
-  echo "See TEST_REACT_SETUP.md for detailed testing guide."
+  echo "See README.md's 'React Development Scripts' section for the full workflow."
 else
   echo -e "${RED}❌ $ERRORS error(s) found${NC}"
   echo ""
   echo "Please fix the errors above before proceeding."
-  echo "See PHASE1_STEP1_COMPLETE.md for setup instructions."
+  echo "See README.md's 'Quick Start' and 'Requirements' sections for setup instructions."
 fi
 echo "================================"

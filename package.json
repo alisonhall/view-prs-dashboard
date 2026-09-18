@@ -18,7 +18,7 @@
     "backfill:missing:bg": "node src/dependencies/run-bash-script.js src/backfill/backfill-missing-bg.sh start",
     "backfill:missing:bg:stop": "node src/dependencies/run-bash-script.js src/backfill/backfill-missing-bg.sh stop",
     "backfill:missing:bg:status": "node src/dependencies/run-bash-script.js src/backfill/backfill-missing-bg.sh status",
-    "cli-view": "npm run deps:check && sh src/script/check-open-pr-updates.sh --open none",
+    "cli-view": "npm run deps:check && bash src/script/check-open-pr-updates.sh --open none",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:ui\"",
     "dev:server": "node src/server/server.js",
     "dev:ui": "vite",

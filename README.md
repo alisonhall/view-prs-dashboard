@@ -6,6 +6,8 @@ Utilities for checking open and recently merged pull requests in a GitHub reposi
 
 ## Quick Start
 
+> **Windows:** this project needs a real `bash` (for `check-open-pr-updates.sh` and friends). Install [Git for Windows](https://git-scm.com/download/win) and run every command below from its **Git Bash** terminal (or WSL) - plain `cmd.exe`/PowerShell won't have `bash` on `PATH`. `npm install`/`npm run setup` will also tell you this if `bash` is missing.
+
 ```bash
 npm run setup   # npm install, then checks deps (jq is auto-provided; bash/gh you provide) and prints next steps
 ```
@@ -15,6 +17,8 @@ Then, to point this at your own repo:
 ```bash
 export VIEW_PRS_REPO='owner/repo'   # or pass --repo owner/repo directly to the CLI script
 ```
+
+(PowerShell: `$env:VIEW_PRS_REPO = 'owner/repo'`. cmd.exe: `set VIEW_PRS_REPO=owner/repo`. Either way, run the actual commands from Git Bash/WSL as noted above - only the env var needs to be set in your native shell if you're setting it outside Git Bash.)
 
 Authenticate the GitHub CLI once, if you haven't already (`gh auth login`), then start the server:
 
@@ -228,7 +232,7 @@ See [Development Servers](#development-servers) section for more details.
 ## Requirements
 
 - `gh` (GitHub CLI), authenticated (`gh auth login`)
-- Bash shell
+- Bash shell (on Windows: [Git for Windows](https://git-scm.com/download/win)'s Git Bash, or WSL - there's no bash on `PATH` in a native `cmd.exe`/PowerShell terminal)
 
 `jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
 
@@ -888,7 +892,7 @@ This two-line format helps you quickly see both when the PR was last updated and
 - `Permission denied` when running scripts
   - Run `chmod +x run-prs src/script/check-open-pr-updates.sh` from `view-prs`.
 - `npm start --help` shows npm help instead of script help
-  - Use `./run-prs --help` or `npm run start -- --help`.
+  - `npm start` launches the React dev servers, not the CLI script - use `./run-prs --help` or `npm run cli-view -- --help` instead.
 - Web UI run fails with endpoint/network errors
   - Start server from repo root with `npm start` and use `http://localhost:9000/view-prs/index.html`.
 - Ack toggle button fails in UI
