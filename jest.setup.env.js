@@ -37,5 +37,18 @@ if (!process.env.VIEW_PRS_DATA_FILE) {
   process.env.VIEW_PRS_TEST_STATE_DIR = tempDir;
 }
 
+// defaultViewPrsRepo (app-config.js) has no hardcoded fallback (deliberately
+// removed - it was the repo owner's own private repo). Tests that exercise
+// app.js's real scheduler/auto-refresh bootstrap logic with no other repo
+// signal (no stored lastRun.repo, no VIEW_PRS_AUTO_REPOS) need *some* stable
+// value here to have anything to do - a clearly-fake placeholder, not a
+// real repo, and never used for any actual `gh` call in these tests (they
+// mock runViewPrsScript). Tests that need "no repo configured at all"
+// specifically (e.g. app-config.test.js) already pass their own `env: {}`
+// override to createAppConfig(), bypassing this.
+if (!process.env.VIEW_PRS_REPO) {
+  process.env.VIEW_PRS_REPO = "test-org/test-repo";
+}
+
 // Required for the hard-enforcement gate in app.js.
 process.env.NODE_ENV = "test";

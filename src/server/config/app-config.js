@@ -196,7 +196,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsViewerLoginCacheTtlMs = 5 * 60 * 1000;
 
   // Constants
-  const defaultViewPrsRepo = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
+  const defaultViewPrsRepo = env.VIEW_PRS_REPO;
   const requiredCommands = ["bash", "gh", "jq"];
   const requiredPackages = ["marked"];
 

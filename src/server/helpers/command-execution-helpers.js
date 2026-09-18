@@ -611,6 +611,30 @@ function createCommandExecutionHelpers({
     isCommandAvailable("jq");
 
   /**
+   * Checks whether `gh` is actually authenticated (`gh auth status`), not
+   * just installed. Deliberately kept OUT of getDependencyStatus() below:
+   * that function is also called on every scheduler auto-refresh attempt
+   * (see app.js's callGetDependencyStatus() call sites) as a cheap
+   * pre-flight gate, and `gh auth status` makes a real GitHub API call to
+   * validate the token - fine for an on-demand /health/deps request, too
+   * costly (extra API calls + latency) to run on every scheduler tick.
+   * check-open-pr-updates.sh already has its own `gh auth status` gate
+   * for the scheduler's actual run attempts, which is reactive but
+   * sufficient there; this is the proactive version for the health route.
+   *
+   * @returns {boolean|null} true/false if gh is installed, null if it
+   *   isn't (so callers can distinguish "not authenticated" from
+   *   "nothing to check")
+   */
+  const isGhAuthenticated = () => {
+    if (!isCommandAvailable("gh")) {
+      return null;
+    }
+    const check = spawnSync("gh", ["auth", "status"], { stdio: "ignore" });
+    return check.status === 0;
+  };
+
+  /**
    * Gets the status of all required dependencies.
    *
    * @returns {Object} Dependency status with commands, packages, and missing items
@@ -664,6 +688,7 @@ function createCommandExecutionHelpers({
     runViewPrsShellScript,
     isCommandAvailable,
     getDependencyStatus,
+    isGhAuthenticated,
     // For testing
     _getWatchdogForceStopCount: () => viewPrsWatchdogForceStopCount,
   };

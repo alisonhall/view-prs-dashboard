@@ -22,6 +22,38 @@ describe("App Configuration", () => {
       expect(config.requiredCommands).toEqual(["bash", "gh", "jq"]);
     });
 
+    // Deliberately no hardcoded fallback repo (removed - it was the repo
+    // owner's own private repo, not something any other user of this tool
+    // would want defaulted for them). Every real consumer of
+    // defaultViewPrsRepo downstream (mutation routes' isRepoSlug guards,
+    // the scheduler's addRepo) already treats an empty/undefined repo as
+    // "nothing to do" rather than crashing - see check-open-pr-updates.sh's
+    // own equivalent fix for the one place that DID need one (a `set -u`
+    // "unbound variable" crash), which isn't reachable from this Node-side
+    // config at all.
+    test("When VIEW_PRS_REPO is not set, Then defaultViewPrsRepo is undefined rather than falling back to a hardcoded repo", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+
+      // Act - pass empty env to avoid Jest's test env vars
+      const config = createAppConfig({ viewPrsDir, env: {}, isTestEnv: false });
+
+      // Assert
+      expect(config.defaultViewPrsRepo).toBeUndefined();
+    });
+
+    test("When VIEW_PRS_REPO is set, Then it overrides the default repo", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = { VIEW_PRS_REPO: "someone-else/their-repo" };
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env, isTestEnv: false });
+
+      // Assert
+      expect(config.defaultViewPrsRepo).toBe("someone-else/their-repo");
+    });
+
     test("When env overrides provided, Then uses env values", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";

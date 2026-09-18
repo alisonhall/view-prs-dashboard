@@ -374,6 +374,47 @@ describe("Command Execution Helpers", () => {
     });
   });
 
+  describe("Given isGhAuthenticated", () => {
+    test("When gh is not installed, Then returns null without checking auth status", () => {
+      // Arrange
+      mockSpawnSync.mockReturnValue({ status: 1 }); // `command -v gh` fails
+
+      // Act
+      const result = commandHelpers.isGhAuthenticated();
+
+      // Assert
+      expect(result).toBeNull();
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1); // never got to `gh auth status`
+    });
+
+    test("When gh is installed and authenticated, Then returns true", () => {
+      // Arrange
+      mockSpawnSync.mockImplementation((cmd) => ({ status: cmd === "gh" ? 0 : 0 }));
+
+      // Act
+      const result = commandHelpers.isGhAuthenticated();
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockSpawnSync).toHaveBeenCalledWith("gh", ["auth", "status"], {
+        stdio: "ignore",
+      });
+    });
+
+    test("When gh is installed but not authenticated, Then returns false", () => {
+      // Arrange: `command -v gh` succeeds, `gh auth status` fails
+      mockSpawnSync.mockImplementation((cmd) => ({
+        status: cmd === "gh" ? 1 : 0,
+      }));
+
+      // Act
+      const result = commandHelpers.isGhAuthenticated();
+
+      // Assert
+      expect(result).toBe(false);
+    });
+  });
+
   describe("Given getDependencyStatus", () => {
     test("When all dependencies available, Then returns ok status", () => {
       // Arrange

@@ -286,7 +286,7 @@ const injectRunFilterFieldElements = () => {
   );
   setRootContent(
     "repo-root",
-    '<input type="text" id="repo" name="repo" placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />',
+    '<input type="text" id="repo" name="repo" placeholder="owner/repo" />',
   );
   setRootContent(
     "limit-root",
@@ -1782,7 +1782,7 @@ describe("index page rendering with Testing Library", () => {
           manualCooldownMinutes: 15,
           isAutoRunInProgress: false,
           lastAutoError:
-            "optum-rx-clinicalproducts/orx-cpp-mp-uis: Auto refresh timed out after 900s",
+            "owner/repo: Auto refresh timed out after 900s",
         },
       }),
     });

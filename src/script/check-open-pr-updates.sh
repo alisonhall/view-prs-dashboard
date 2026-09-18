@@ -2,7 +2,12 @@
 
 set -euo pipefail
 
-REPO='optum-rx-clinicalproducts/orx-cpp-mp-uis'
+# Precedence: --repo CLI flag (parse_args, below) > VIEW_PRS_REPO env var.
+# No hardcoded fallback repo - defaults to empty (not unset) specifically so
+# `set -u` above doesn't crash the whole script, including --help, before
+# parse_args/the real "$REPO" validation below even run; an empty/missing
+# value is instead caught there with a clear message.
+REPO="${VIEW_PRS_REPO:-}"
 LIMIT=200
 OPEN_MODE='all'
 MERGED_LIMIT=15
@@ -190,7 +195,7 @@ Checks open PRs, closed PRs that were not merged, and latest merged PRs,
 reporting status/approval and changed reasons.
 
 Options:
-  -r, --repo <owner/name>      Repository to scan (default: optum-rx-clinicalproducts/orx-cpp-mp-uis)
+  -r, --repo <owner/name>      Repository to scan (default: $VIEW_PRS_REPO env var)
   -p, --pr <number>            Inspect a single PR number only
       --label <name(s)>        Include only PRs that have these label(s), comma-separated
       --exclude-label <name(s)> Exclude PRs that have these label(s), comma-separated
@@ -3423,6 +3428,11 @@ main() {
   if [[ -n "$BACKUP_RESTORE_NAME" ]]; then
     restore_state_backup "$BACKUP_RESTORE_NAME"
     exit 0
+  fi
+
+  if [[ -z "$REPO" ]]; then
+    echo "No repo specified. Set VIEW_PRS_REPO=owner/name or pass --repo owner/name." >&2
+    exit 1
   fi
 
   if [[ "$REPO" != */* ]]; then

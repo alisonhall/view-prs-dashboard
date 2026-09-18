@@ -99,7 +99,7 @@ const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
 // the four "Run Script options" fields. Same "only read via FormData on
 // button click" reasoning as the checkboxes above.
 const FILTER_STATE_TEXT_FIELDS = [
-  { id: 'repo', name: 'repo', key: 'repo', type: 'text', placeholder: 'optum-rx-clinicalproducts/orx-cpp-mp-uis', defaultValue: '' },
+  { id: 'repo', name: 'repo', key: 'repo', type: 'text', placeholder: 'owner/repo', defaultValue: '' },
   { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200', defaultValue: '' },
   { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15', defaultValue: '' },
   { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },

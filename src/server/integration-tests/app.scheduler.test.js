@@ -97,10 +97,16 @@ describe("scheduler helper behavior", () => {
       expect(result).toEqual(["owner/extra-repo", "owner/real-repo"]);
     });
 
-    test("given no configured repos, no stored data, and no last-run repo, when building auto-refresh repos, then falls back to the hardcoded default repo so a fresh install can still bootstrap", () => {
+    // defaultViewPrsRepo (app-config.js) no longer has a hardcoded fallback
+    // - it's whatever VIEW_PRS_REPO resolves to (a fake placeholder here,
+    // via jest.setup.env.js; undefined/empty on a real machine that hasn't
+    // set it, in which case this correctly returns [] instead of
+    // bootstrapping against some other user's repo - see
+    // app-config.test.js's own "no fallback" test for that case).
+    test("given no configured repos, no stored data, and no last-run repo, when building auto-refresh repos, then falls back to VIEW_PRS_REPO so a fresh install can still bootstrap", () => {
       const result = getViewPrsAutoRefreshRepos({ byPrNumber: {}, lastRun: null }, "");
 
-      expect(result).toEqual(["optum-rx-clinicalproducts/orx-cpp-mp-uis"]);
+      expect(result).toEqual(["test-org/test-repo"]);
     });
   });
 

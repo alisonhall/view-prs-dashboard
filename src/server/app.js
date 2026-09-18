@@ -254,6 +254,7 @@ const {
   formatScriptFailureMessage: _formatScriptFailureMessage,
   isCommandAvailable: _isCommandAvailable,
   getDependencyStatus: _getDependencyStatus,
+  isGhAuthenticated: _isGhAuthenticated,
 } = commandHelpers;
 
 const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
@@ -1117,6 +1118,7 @@ const runViewPrsBackfillAction = async (action) => {
 // Use command execution helpers
 const isCommandAvailable = (cmd) => _isCommandAvailable(cmd);
 const getDependencyStatus = () => _getDependencyStatus();
+const isGhAuthenticated = () => _isGhAuthenticated();
 
 const getViewPrsViewerLogin = () => {
   const now = Date.now();
@@ -1769,7 +1771,22 @@ const createViewPrsApp = () => {
     // usage above) - lets tests monkeypatch module.exports.getDependencyStatus
     // before createViewPrsApp() without needing a real shell/PATH.
     const status = (module.exports.getDependencyStatus || getDependencyStatus)();
-    res.status(status.ok ? 200 : 503).json(status);
+    // ghAuthenticated is intentionally NOT part of getDependencyStatus()
+    // itself (see isGhAuthenticated's own comment) - it's a real GitHub API
+    // call, only worth making for this on-demand route, not the
+    // scheduler's per-attempt pre-flight check. null means "gh isn't
+    // installed, so there's nothing to check" - distinct from `false`
+    // (installed but not logged in).
+    const ghAuthenticated = (module.exports.isGhAuthenticated || isGhAuthenticated)();
+    const fullStatus = {
+      ...status,
+      ghAuthenticated,
+      ok: status.ok && ghAuthenticated !== false,
+    };
+    if (ghAuthenticated === false && !fullStatus.missing.includes("gh:auth")) {
+      fullStatus.missing = [...fullStatus.missing, "gh:auth"];
+    }
+    res.status(fullStatus.ok ? 200 : 503).json(fullStatus);
   });
 
   // Legacy compatibility route for UI files
@@ -1981,6 +1998,7 @@ module.exports = {
   runViewPrsBackfillAction,
   isCommandAvailable,
   getDependencyStatus,
+  isGhAuthenticated,
   getViewPrsViewerLogin,
   resolveViewPrsDetailFilePath,
   readViewPrsDetailPayload,

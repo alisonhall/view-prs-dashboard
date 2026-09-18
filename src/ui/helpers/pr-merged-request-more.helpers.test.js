@@ -43,12 +43,12 @@ describe("pr merged request more helpers", () => {
 
     appendMergedRequestMoreAction(host, {
       isVisible: true,
-      repo: "optum-rx-clinicalproducts/orx-cpp-mp-uis",
+      repo: "owner/repo",
     });
 
     host.querySelector("#merged-request-more-btn").click();
     expect(handleRequestMoreMerged).toHaveBeenCalledWith(
-      "optum-rx-clinicalproducts/orx-cpp-mp-uis",
+      "owner/repo",
     );
   });
 });

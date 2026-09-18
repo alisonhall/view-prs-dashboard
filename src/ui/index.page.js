@@ -1,4 +1,9 @@
-﻿const DEFAULT_REPO = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
+﻿// Deliberately empty - not a real repo any other user of this tool would
+// have access to (see src/server/config/app-config.js's own
+// defaultViewPrsRepo, which dropped the same hardcoded value for the same
+// reason). Every consumer below already treats a missing repo as "nothing
+// to do yet" rather than crashing (see each call site's own guard).
+const DEFAULT_REPO = "";
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;

@@ -662,8 +662,9 @@ describe("route behavior", () => {
     }
   });
 
-  test("returns 200 and dependency status when GET /health/deps is requested and all deps are present", async () => {
-    const original = appModule.getDependencyStatus;
+  test("returns 200 and dependency status when GET /health/deps is requested and all deps are present and gh is authenticated", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    const originalAuth = appModule.isGhAuthenticated;
     appModule.getDependencyStatus = () => ({
       ok: true,
       commands: { bash: true, gh: true, jq: true },
@@ -672,6 +673,7 @@ describe("route behavior", () => {
       missingPackages: [],
       missing: [],
     });
+    appModule.isGhAuthenticated = () => true;
 
     try {
       const { response, payload } = await requestJson(server, "/health/deps");
@@ -679,13 +681,16 @@ describe("route behavior", () => {
       expect(response.status).toBe(200);
       expect(payload.ok).toBe(true);
       expect(payload.missing).toEqual([]);
+      expect(payload.ghAuthenticated).toBe(true);
     } finally {
-      appModule.getDependencyStatus = original;
+      appModule.getDependencyStatus = originalDeps;
+      appModule.isGhAuthenticated = originalAuth;
     }
   });
 
   test("returns 503 and the missing list when GET /health/deps is requested and a dependency is absent", async () => {
-    const original = appModule.getDependencyStatus;
+    const originalDeps = appModule.getDependencyStatus;
+    const originalAuth = appModule.isGhAuthenticated;
     appModule.getDependencyStatus = () => ({
       ok: false,
       commands: { bash: true, gh: false, jq: true },
@@ -694,6 +699,7 @@ describe("route behavior", () => {
       missingPackages: [],
       missing: ["gh"],
     });
+    appModule.isGhAuthenticated = () => null;
 
     try {
       const { response, payload } = await requestJson(server, "/health/deps");
@@ -702,8 +708,39 @@ describe("route behavior", () => {
       expect(payload.ok).toBe(false);
       expect(payload.missing).toEqual(["gh"]);
       expect(payload.missingCommands).toEqual(["gh"]);
+      expect(payload.ghAuthenticated).toBeNull();
     } finally {
-      appModule.getDependencyStatus = original;
+      appModule.getDependencyStatus = originalDeps;
+      appModule.isGhAuthenticated = originalAuth;
+    }
+  });
+
+  test("returns 503 when GET /health/deps is requested, gh is installed, but not authenticated", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    const originalAuth = appModule.isGhAuthenticated;
+    appModule.getDependencyStatus = () => ({
+      ok: true,
+      commands: { bash: true, gh: true, jq: true },
+      packages: { marked: true },
+      missingCommands: [],
+      missingPackages: [],
+      missing: [],
+    });
+    appModule.isGhAuthenticated = () => false;
+
+    try {
+      const { response, payload } = await requestJson(server, "/health/deps");
+
+      expect(response.status).toBe(503);
+      expect(payload.ok).toBe(false);
+      expect(payload.ghAuthenticated).toBe(false);
+      expect(payload.missing).toContain("gh:auth");
+      // The base dependency status itself is untouched - only the merged
+      // route response reflects the auth failure.
+      expect(payload.missingCommands).toEqual([]);
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+      appModule.isGhAuthenticated = originalAuth;
     }
   });
 

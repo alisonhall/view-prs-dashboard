@@ -4,6 +4,30 @@
 
 Utilities for checking open and recently merged pull requests in a GitHub repository.
 
+## Quick Start
+
+```bash
+npm run setup   # npm install, then checks deps (jq is auto-provided; bash/gh you provide) and prints next steps
+```
+
+Then, to point this at your own repo:
+
+```bash
+export VIEW_PRS_REPO='owner/repo'   # or pass --repo owner/repo directly to the CLI script
+```
+
+Authenticate the GitHub CLI once, if you haven't already (`gh auth login`), then start the server:
+
+```bash
+npm start
+```
+
+- UI (with React HMR): `http://localhost:3456`
+- Backend only, no HMR: `http://localhost:9000/view-prs/index.html` (via `npm run start:server-only`)
+- Dependency health, once running: `curl -s http://localhost:9000/health/deps`
+
+See `## Requirements` below for what `npm run setup`/`npm run deps:check` actually verify, and the full CLI/script reference further down for every other option.
+
 ## Project Layout
 
 Canonical runtime and scripts now live under `src/`:
@@ -132,7 +156,7 @@ npm run test:view-prs
 The following scripts support the React migration and development workflow:
 
 ```bash
-npm start                    # Start both Node.js backend (3455) + Vite dev server (3456)
+npm start                    # Start both Node.js backend (9000) + Vite dev server (3456)
 npm run dev                  # Alias for npm start
 npm run start:server-only    # Start Node.js backend only (no Vite)
 npm run dev:server           # Alias for start:server-only
@@ -145,19 +169,19 @@ npm run verify:react-setup   # Verify React development environment setup
 Script guide:
 
 - **`npm start`** (recommended): Starts both servers for full React development with Hot Module Replacement (HMR)
-  - Node.js backend on `http://localhost:3455` (API server)
+  - Node.js backend on `http://localhost:9000` (API server)
   - Vite dev server on `http://localhost:3456` (frontend with HMR)
   - Access UI at: `http://localhost:3456`
   - Use this for React/UI development work
 
 - **`npm run start:server-only`**: Backend-only mode for API development
-  - Starts only Node.js server on `http://localhost:3455`
+  - Starts only Node.js server on `http://localhost:9000`
   - Serves static files but no HMR
   - Use when working on backend logic without UI changes
 
 - **`npm run dev:ui`**: Frontend-only Vite server
   - Requires backend to be running separately
-  - Proxies `/view-prs/*` API calls to backend on port 3455
+  - Proxies `/view-prs/*` API calls to backend on port 9000
   - Use for frontend-focused work with backend already running
 
 - **`npm run build:ui`**: Production build
@@ -208,7 +232,7 @@ See [Development Servers](#development-servers) section for more details.
 
 `jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
 
-Run `npm run deps:check` any time to verify all of the above (plus a few coreutils the script also needs) are actually present - it also runs automatically before `npm test` and (as a non-blocking warning) after `npm install`. Once the server is running, `curl -s http://localhost:9000/health/deps` reports the same thing live.
+Run `npm run deps:check` any time to verify all of the above (plus a few coreutils the script also needs) are actually present - it also runs automatically before `npm test` and (as a non-blocking warning) after `npm install`. Once the server is running, `curl -s http://localhost:9000/health/deps` reports the same thing live, plus a `ghAuthenticated` field (`true`/`false`/`null` if `gh` isn't installed at all) - `gh` being installed but not logged in (`gh auth login`) is treated as unhealthy (`ok: false`, `503`) since that's the one dependency issue `deps:check`/`postinstall` can't catch on their own without an extra network call.
 
 Optional for date formatting fallback:
 
@@ -245,7 +269,7 @@ npm start
 ```
 
 This starts TWO servers:
-- **Node.js backend** on `http://localhost:3455` (API server)
+- **Node.js backend** on `http://localhost:9000` (API server)
 - **Vite dev server** on `http://localhost:3456` (frontend with Hot Module Replacement)
 
 **Access the UI at:** `http://localhost:3456`
@@ -265,7 +289,7 @@ cd view-prs
 npm run start:server-only
 ```
 
-**Access the UI at:** `http://localhost:3455`
+**Access the UI at:** `http://localhost:9000`
 
 Note: This mode serves static files but does not provide Hot Module Replacement.
 
@@ -298,7 +322,7 @@ cd view-prs
 npm run cli-view -- --help
 npm run cli-view -- --open changed
 npm run cli-view -- --ack 912,921
-npm start  # Starts Node.js backend (3455) + Vite dev server (3456) with React HMR
+npm start  # Starts Node.js backend (9000) + Vite dev server (3456) with React HMR
 npm run start:server-only  # Node.js backend only (no Vite)
 npm run backfill:missing:dry -- --max-prs 20
 npm run backfill:missing -- --max-prs 50 --delay-ms 3000
@@ -1077,7 +1101,7 @@ Additional notes:
 ## Modifier options
 
 ```text
--r, --repo <owner/name>      Repository to scan (default: optum-rx-clinicalproducts/orx-cpp-mp-uis)
+-r, --repo <owner/name>      Repository to scan
 -p, --pr <number>            Inspect a single PR number only
     --label <name(s)>        Include only PRs that have these label(s), comma-separated
     --exclude-label <name(s)> Exclude PRs that have these label(s), comma-separated

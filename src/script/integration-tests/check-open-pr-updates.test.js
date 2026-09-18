@@ -67,6 +67,51 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(output).toBe("ahall236_uhg");
   });
 
+  test("REPO defaults to empty (not a crash) when VIEW_PRS_REPO is unset, and the real validation catches it with a clear message", () => {
+    // Explicitly unset, rather than relying on the ambient test env not
+    // having it set: this exercises the `set -u`-safety fix directly (a
+    // bare `"${VIEW_PRS_REPO}"` here would abort with "unbound variable"
+    // before REPO is even assigned, breaking --help along with everything
+    // else - see the script's own comment on this line).
+    const output = execFileSync(
+      "bash",
+      ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; echo "[$REPO]"`],
+      { cwd: scriptDir, encoding: "utf8", env: { ...process.env, BASH_ENV: "" } },
+    ).trim();
+    expect(output).toBe("[]");
+
+    // main() calls `exit 1` directly on a missing repo, which terminates
+    // the shell immediately (not interceptable with `|| true`) - so this
+    // expects the real thrown execFileSync error and reads its stderr,
+    // same as this suite's other exit-1-path assertions.
+    let thrown = null;
+    try {
+      execFileSync(
+        "bash",
+        ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; main --open none`],
+        { cwd: scriptDir, encoding: "utf8", env: { ...process.env, BASH_ENV: "" } },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).not.toBeNull();
+    expect(thrown.stderr).toContain("No repo specified");
+  });
+
+  test("REPO uses VIEW_PRS_REPO when set, so a different repo can be targeted without editing the script", () => {
+    const output = runShell(
+      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; echo "$REPO"`,
+    );
+    expect(output).toBe("someone-else/their-repo");
+  });
+
+  test("the --repo CLI flag still overrides VIEW_PRS_REPO", () => {
+    const output = runShell(
+      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; parse_args --repo cli-wins/repo; echo "$REPO"`,
+    );
+    expect(output).toBe("cli-wins/repo");
+  });
+
   test("returns active reasons when build_reasons receives mixed change flags", () => {
     const output = runScriptFn(
       `build_reasons "comment" 0 "review" 2 "commit" 1`,
