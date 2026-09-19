@@ -416,6 +416,18 @@ function AppRoot() {
       window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo, props?.visiblePrNumbers);
       return { unmount: () => setPrTable(null) };
     };
+    // Announce readiness only now that window.mountReactPrTable actually
+    // exists - dispatching this any earlier (e.g. synchronously right after
+    // the initial ReactDOM.createRoot(...).render() call, which schedules
+    // work rather than running it inline) races this effect, which React
+    // only runs after the first commit. index.page.js's one-time
+    // 'viewprs:react-ready' listener has no second chance if it fires
+    // before the bridge is real: it re-checks window.mountReactPrTable,
+    // finds it still undefined, and permanently gives up, leaving the PR
+    // table stuck on "Loading..." forever even though data fetched fine -
+    // confirmed via a CI trace showing exactly that (valid data fetched in
+    // 41ms, zero console errors, table never painted).
+    window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
     return () => {
       delete window.mountReactPrTable;
     };
@@ -728,12 +740,8 @@ function mountAppRoot() {
 
 if (typeof window !== 'undefined') {
   mountAppRoot();
-
-  // react-app.jsx is loaded as an ES module, which the browser always defers
-  // until after classic scripts (including index.page.js) have run. If the
-  // initial PR data fetch in index.page.js resolves before this module graph
-  // finishes loading, its first renderPrData() call falls back to vanilla
-  // rendering since window.mountReactPrTable isn't defined yet. Announce
-  // readiness so index.page.js can retry once React is actually available.
-  window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
+  // 'viewprs:react-ready' is now dispatched from inside AppRoot's own
+  // useEffect, once window.mountReactPrTable is actually assigned - see
+  // that effect's comment for why dispatching it here (immediately after
+  // .render(), which only schedules the initial commit) was a race.
 }

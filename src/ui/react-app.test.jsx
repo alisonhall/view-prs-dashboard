@@ -36,9 +36,30 @@ jest.mock('./components/PrTableApp', () => {
 // useEffect, which React only flushes once the initial render commits -
 // wrap the module's own top-level mountAppRoot() call in act() so those
 // bridges are already assigned by the time the first test runs.
+//
+// Regression guard (recorded here, not in its own test, since the module
+// bootstrap this checks only ever runs once at file scope - see the
+// load-order race described in react-app.jsx's own AppRoot effect
+// comment): 'viewprs:react-ready' must fire only once
+// window.mountReactPrTable actually exists. Dispatching it any earlier
+// (e.g. synchronously right after ReactDOM.createRoot(...).render(), which
+// only schedules the initial commit rather than running it inline) let
+// index.page.js's one-time listener consume its only retry before the
+// bridge was real, permanently leaving the PR table on "Loading..." even
+// though data had fetched fine - a real bug this same top-level bootstrap
+// call didn't previously guard against.
+let reactReadyBridgeWasFunctionWhenDispatched = null;
+window.addEventListener('viewprs:react-ready', () => {
+  reactReadyBridgeWasFunctionWhenDispatched = typeof window.mountReactPrTable === 'function';
+});
 React.act(() => {
   require('./react-app');
 });
+if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
+  throw new Error(
+    "'viewprs:react-ready' fired before window.mountReactPrTable was assigned",
+  );
+}
 
 describe('react-app.jsx: window.mountReactPrTable / window.updateReactPrTable bridge (AppRoot)', () => {
   beforeEach(() => {
@@ -121,20 +142,5 @@ describe('react-app.jsx: window.mountReactPrTable / window.updateReactPrTable br
     });
 
     expect(capturedContext.at(-1).visiblePrNumbers).toBeNull();
-  });
-
-  test('given react-app.jsx finishes loading, when the module initializes, then it dispatches viewprs:react-ready so index.page.js can retry a mount that raced module loading', () => {
-    // Regression guard for the load-order race described in react-app.jsx's
-    // own trailing comment: index.page.js's first renderPrData() call can
-    // resolve before this ES module (always deferred by the browser) has
-    // finished loading, in which case it needs this event to know when a
-    // retry is worthwhile.
-    const handler = jest.fn();
-    window.addEventListener('viewprs:react-ready', handler);
-    jest.isolateModules(() => {
-      require('./react-app');
-    });
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener('viewprs:react-ready', handler);
   });
 });
