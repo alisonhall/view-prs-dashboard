@@ -5243,7 +5243,25 @@ const initPage = () => {
   renderRequestActivity();
   ensureDefaultFilterValues();
   updateAuthorThreadResolutionRuleVisibility();
-  void restoreUiOptionOverrides();
+  // restoreUiOptionOverrides() and loadStoredData() below both fire their
+  // own independent fetches ("/view-prs/user-defaults" and "/view-prs/data"
+  // respectively) with no ordering guarantee between them. The multi-select
+  // filter lists (label/exclude-label/author/assigned/approver/thread-
+  // resolution allow-deny/change-filter actor lists) seed their checked
+  // state from the pending*FilterSelections this call populates - if
+  // loadStoredData's renderPrData call runs first (a real, reproducible
+  // race, not just theoretical - confirmed locally and in CI), those lists
+  // render with nothing checked, restoreUiOptionOverrides() only ever runs
+  // once more (on 'viewprs:react-ready', below) and never re-triggers a
+  // populate, so the "restore a persisted selection" e2e tests saw a
+  // permanently unchecked box after every reload. Re-render with whatever
+  // payload has already loaded once overrides actually land, so the
+  // apply-then-reload sequence works regardless of which fetch wins.
+  void restoreUiOptionOverrides().then(() => {
+    if (latestStoredPayload) {
+      renderPrData(latestStoredPayload, latestSelectedRepo);
+    }
+  });
   // Phase 6 (see REACT_MIGRATION_PLAN.md): restoreUiOptionOverrides' first
   // call above almost always runs before react-app.jsx's deferred module
   // has mounted FilterStateProvider, so every Context-migrated field's
@@ -5266,6 +5284,25 @@ const initPage = () => {
         // above. Only fetch labels once the real configured repo (not the
         // placeholder DEFAULT_REPO) is available.
         void refreshAvailableRepoLabels();
+        // The 9 multi-select lists' pending selections (label,
+        // exclude-label, author, assigned, approver, thread-resolution
+        // allow/deny, change-filter ignore-author) have no DOM id and so go
+        // through getPendingSelectionsValue/setPendingSelectionsValue
+        // instead of FILTER_STATE_FIELD_MAP (see that helper's own
+        // comment) - this restore call is what actually syncs them into
+        // Context for real (the first call above almost always predates
+        // FilterStateProvider mounting, so it only ever reaches the
+        // module-scope fallback var). But nothing was re-reading that fresh
+        // Context value afterward: if loadStoredData's own renderPrData
+        // call had already populated these lists (raced ahead of both
+        // restoreUiOptionOverrides calls), their checkboxes were seeded
+        // from whatever was visible at that time and never revisited,
+        // leaving a persisted selection unchecked after every reload even
+        // though Context now genuinely has it. Re-render so the just-synced
+        // pending selections actually reach the checkboxes.
+        if (latestStoredPayload) {
+          renderPrData(latestStoredPayload, latestSelectedRepo);
+        }
       });
     },
     { once: true },
@@ -5418,10 +5455,27 @@ const initPage = () => {
   // deferred react-app.jsx module (and its full import graph) finishes
   // loading, so the first renderPrData() call falls back to vanilla
   // rendering. Re-render once React signals it's actually ready.
+  //
+  // Guard on latestStoredPayload (not just isReactTableMounted()): now that
+  // 'viewprs:react-ready' only fires once window.mountReactPrTable is truly
+  // assigned (see react-app.jsx's AppRoot effect), this listener typically
+  // fires *before* loadStoredData() below has resolved, not after. Without
+  // this guard, that made renderPrData(undefined, "") run here and, since
+  // hasReactApp is now already true, take the REACT RENDERING PATH and
+  // mount the table with an empty payload - marking isReactTableMounted()
+  // true before the real data arrived. The real data's later renderPrData
+  // call would then see "already mounted" and skip straight to
+  // updateReactTable, re-running the vanilla filter-dropdown population a
+  // second time in the process (once for this empty mount, once for the
+  // real update) - exactly the stale-DOM-read double-populate race
+  // flushSync (see renderReactMultiSelectList in react-app.jsx) exists to
+  // guard against, just one extra time. Only re-render here once real data
+  // has actually loaded; otherwise loadStoredData()'s own renderPrData call
+  // below already lands on the correct (mount, not update) path unaided.
   window.addEventListener(
     "viewprs:react-ready",
     () => {
-      if (!isReactTableMounted()) {
+      if (!isReactTableMounted() && latestStoredPayload) {
         renderPrData(latestStoredPayload, latestSelectedRepo);
       }
     },

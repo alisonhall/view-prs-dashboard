@@ -416,18 +416,6 @@ function AppRoot() {
       window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo, props?.visiblePrNumbers);
       return { unmount: () => setPrTable(null) };
     };
-    // Announce readiness only now that window.mountReactPrTable actually
-    // exists - dispatching this any earlier (e.g. synchronously right after
-    // the initial ReactDOM.createRoot(...).render() call, which schedules
-    // work rather than running it inline) races this effect, which React
-    // only runs after the first commit. index.page.js's one-time
-    // 'viewprs:react-ready' listener has no second chance if it fires
-    // before the bridge is real: it re-checks window.mountReactPrTable,
-    // finds it still undefined, and permanently gives up, leaving the PR
-    // table stuck on "Loading..." forever even though data fetched fine -
-    // confirmed via a CI trace showing exactly that (valid data fetched in
-    // 41ms, zero console errors, table never painted).
-    window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
     return () => {
       delete window.mountReactPrTable;
     };
@@ -569,6 +557,25 @@ function AppRoot() {
     };
   }, []);
 
+  // Announce readiness only once every window.* bridge above has actually
+  // been assigned. React runs useEffects in declaration order after commit,
+  // so this must be the LAST effect in the component - dispatching from
+  // any earlier effect (even one that itself assigns a real bridge, e.g.
+  // window.mountReactPrTable) fires before later effects in this list have
+  // run, racing them the same way. index.page.js's one-time
+  // 'viewprs:react-ready' listeners have no second chance if they fire
+  // before their specific bridge is real: they re-check the relevant
+  // window.* function, find it still undefined, and permanently give up.
+  // Confirmed two real instances of this: window.mountReactPrTable
+  // undefined left the PR table stuck on "Loading..." forever (CI trace:
+  // valid data fetched in 41ms, zero console errors, table never painted);
+  // window.renderReactMultiSelectList undefined (when dispatch lived in the
+  // mountReactPrTable effect above, which runs before this one) left every
+  // filter multi-select (label/author/assigned/etc.) permanently empty.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
+  }, []);
+
   return (
     <PrDataProvider initialPayload={{}} initialSelectedRepo="" initialVisiblePrNumbers={null}>
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
@@ -591,8 +598,24 @@ function AppRoot() {
           }
           const state = multiSelectStates[listId];
           return createPortal(
+            // key includes renderKey (bumped on every populate call, see
+            // window.renderReactMultiSelectList above) so this remounts on
+            // every populate, matching MultiSelectCheckboxList's own doc
+            // comment - its `checked` state is seeded once from `options`
+            // via a lazy useState initializer, not kept in sync with
+            // subsequent prop updates, since the caller (populateXOptions
+            // in pr-filter-panel.helpers.js) already does its own
+            // checked/unchecked diffing before calling in. A static
+            // `key={listId}` (the bug this fixes) meant every populate
+            // after the very first silently no-op'd on the checked state:
+            // confirmed via a reload repro where a persisted "enhancement"
+            // label selection rendered into the DOM with checked: true
+            // (traced through populateIncludeLabelOptions and
+            // window.renderReactMultiSelectList) yet the actual checkbox
+            // stayed unchecked, because this component was never told to
+            // re-run its initializer.
             <MultiSelectCheckboxList
-              key={listId}
+              key={`${listId}-${state?.renderKey ?? 0}`}
               options={state?.options || []}
               idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
             />,
