@@ -54,7 +54,12 @@ const REQUIRED_SYSTEM_COMMANDS = [
     install: {
       darwin: "brew install gh",
       linux: "See https://github.com/cli/cli/blob/trunk/docs/install_linux.md",
-      win32: "winget install GitHub.cli",
+      win32:
+        "winget install GitHub.cli - then fully close and reopen your terminal " +
+        "(Git Bash won't see the PATH update in an already-open window). If " +
+        "`gh --version` still fails afterward and winget reports it's already " +
+        "installed, add its install directory (usually " +
+        '"C:\\Program Files\\GitHub CLI") to your Windows PATH manually.',
       default: "See https://cli.github.com/",
     },
   },

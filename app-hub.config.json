@@ -3,7 +3,7 @@
   "slug": "view-prs",
   "description": "Dashboard for tracking the status of open PRs across repos",
   "icon": "🔎",
-  "start": "VIEW_PRS_PORT=$PORT node src/server/server.js",
+  "start": "node src/server/server.js",
   "port": 4007,
   "healthPath": "/",
   "mountPath": "/view-prs",
