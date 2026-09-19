@@ -79,6 +79,58 @@ describe("pr filter pipeline helpers", () => {
     });
   });
 
+  test("given the six plain-metadata filter values, when deriving filter pipeline state, then they are forwarded into buildRowFilterCriteria", () => {
+    // Regression test: these six values (customComments/otherNotes/
+    // prDifficulty/rallyStories/rallyLinks/analysisOfPr) used to be read
+    // off the DOM into filterSelectionInputs and passed into this
+    // function, but deriveFilterPipelineState silently dropped them
+    // instead of forwarding them into buildRowFilterCriteria - so none of
+    // the six "Any (with/without)" filter selects ever actually filtered
+    // anything, despite looking functional.
+    const buildSelectedFiltersViewModel = jest.fn(() => ({
+      selectedAuthorLogins: [],
+      selectedAssignedLogins: [],
+      selectedApproverLogins: [],
+      includeLabelFilter: "",
+      excludeLabelFilter: "",
+      authorFilter: "",
+      assignedFilter: "",
+      approverFilter: "",
+      includeLabels: [],
+      excludeLabels: [],
+      openModeFilter: "none",
+      alwaysShowInReview: false,
+    }));
+    const buildRowFilterCriteria = jest.fn(() => ({ criteria: true }));
+    const applyRowUiFilters = jest.fn(() => []);
+    const { deriveFilterPipelineState } = createPrFilterPipelineHelpers({
+      buildSelectedFiltersViewModel,
+      buildRowFilterCriteria,
+      applyRowUiFilters,
+    });
+
+    deriveFilterPipelineState({
+      rows: [],
+      customComments: "with",
+      otherNotes: "without",
+      prDifficulty: "3",
+      rallyStories: "with",
+      rallyLinks: "without",
+      analysisOfPr: "with",
+    });
+
+    expect(buildRowFilterCriteria).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customComments: "with",
+        otherNotes: "without",
+        prDifficulty: "3",
+        rallyStories: "with",
+        rallyLinks: "without",
+        analysisOfPr: "with",
+      }),
+    );
+  });
+
   test("given invalid rows input, when deriving filter pipeline state, then an empty row list is passed to filtering", () => {
     const applyRowUiFilters = jest.fn(() => []);
     const { deriveFilterPipelineState } = createPrFilterPipelineHelpers({

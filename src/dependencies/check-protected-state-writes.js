@@ -32,6 +32,20 @@ const ALLOWED_WRITER_FILES = new Set([
   "src/server/storage/view-prs-state-storage.js",
   "src/script/check-open-pr-updates.sh",
   "src/dependencies/check-protected-state-writes.js",
+  // Not real production writers - the marker/write-op combo below is a
+  // false positive in each case, confirmed by inspection:
+  // - file-io-helpers.js only *reads* viewPrsUserStateFile; its
+  //   writeFileSync/writeJsonFile helpers are generic and, elsewhere in the
+  //   codebase, are only ever called with other (non-protected) file paths.
+  // - playwright.config.js and long-session-heap-check.js both write into a
+  //   freshly created os.tmpdir() temp directory, deliberately reusing the
+  //   same basenames (check-open-pr-updates.data.json / .user-state.json)
+  //   so check-open-pr-updates.sh's own filename derivation matches - see
+  //   each file's own comments. Real production state, at its real path,
+  //   is never touched here.
+  "src/server/helpers/file-io-helpers.js",
+  "playwright.config.js",
+  "e2e/stability/long-session-heap-check.js",
 ]);
 
 const EXCLUDED_DIRS = new Set(["node_modules", ".git", "data", "coverage"]);

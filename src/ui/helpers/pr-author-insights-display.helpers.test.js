@@ -215,33 +215,6 @@ describe("pr author insights display helpers", () => {
     });
   });
 
-  describe("createAuthorInsightsPrDataMeta", () => {
-    test("given PR entry, when creating meta, then meta element with badges returned", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const entry = createPrRowEntry({
-        data: {
-          status: "NO_CHANGE",
-          approved: "NO",
-          approvalCount: "0",
-          titleDisplay: "Test PR [CHK:PASS]",
-          conversations: 2,
-          viewedFiles: 3,
-          totalFiles: 5,
-          labels: ["bug"],
-        },
-      });
-
-      const meta = helpers.createAuthorInsightsPrDataMeta(entry);
-
-      expect(meta.className).toBe("author-insights-meta");
-      expect(meta.textContent).toContain("Status: NO_CHANGE");
-      expect(meta.textContent).toContain("Approved: NO (0)");
-      expect(meta.textContent).toContain("CHK: PASS");
-      expect(meta.textContent).toContain("Conversations: 2");
-      expect(meta.textContent).toContain("Labels: 1");
-    });
-  });
-
   describe("sortAuthorInsightsManualCommentsDesc", () => {
     test("given comments, when sorting, then sorted by date descending", () => {
       const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());

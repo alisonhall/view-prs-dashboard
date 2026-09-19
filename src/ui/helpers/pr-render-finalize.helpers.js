@@ -31,6 +31,7 @@
     const deriveRenderFinalizedState = ({
       payload,
       allStoredRows,
+      filteredRows,
       sectionsHost,
       meta,
       appliedSummaryText,
@@ -43,10 +44,12 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => {
       const renderApplyInputs = deriveRenderApplyInputsSafe({
         payload,
         allStoredRows,
+        filteredRows,
         sectionsHost,
         meta,
         appliedSummaryText,
@@ -59,6 +62,7 @@
         latestSelectedRepo,
         insightsViewState,
         latestSchedulerState,
+        skipTableRender,
       });
       const nextRenderState = applyRenderResultsSafe(renderApplyInputs);
 

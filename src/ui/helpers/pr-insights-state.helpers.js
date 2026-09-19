@@ -21,19 +21,24 @@
         : () => "";
 
     const captureExpandedInsightsState = (sectionsHost) => {
-      const expandedByPr = new Map();
+      const expandedByKey = new Map();
       collectNodesByClassSafe(sectionsHost, "row-insights-toggle").forEach(
         (button) => {
           const prNumber = readElementAttributeSafe(button, "data-pr-number").trim();
-          if (!prNumber) return;
+          const sectionKey = readElementAttributeSafe(button, "data-section-key").trim();
+          if (!prNumber || !sectionKey) return;
+          
+          // Use composite key: "section:prNumber" to track each instance independently
+          // This allows same PR in multiple sections to have different states
+          const compositeKey = `${sectionKey}:${prNumber}`;
           const isExpanded =
             readElementAttributeSafe(button, "aria-expanded") === "true";
-          if (isExpanded) {
-            expandedByPr.set(prNumber, true);
-          }
+          // Store BOTH expanded (true) and collapsed (false) states
+          // This ensures closed PRs are restored to closed state on re-render
+          expandedByKey.set(compositeKey, isExpanded);
         },
       );
-      return expandedByPr;
+      return expandedByKey;
     };
 
     const captureOpenInnerInsightSectionsState = (sectionsHost) => {
@@ -60,15 +65,27 @@
       return openByPr;
     };
 
-    const restoreExpandedInsightsState = (sectionsHost, expandedByPr) => {
-      if (!(expandedByPr instanceof Map) || expandedByPr.size === 0) return;
+    const restoreExpandedInsightsState = (sectionsHost, expandedByKey) => {
+      if (!(expandedByKey instanceof Map) || expandedByKey.size === 0) return;
       collectNodesByClassSafe(sectionsHost, "row-insights-toggle").forEach(
         (button) => {
           const prNumber = readElementAttributeSafe(button, "data-pr-number").trim();
-          if (!prNumber || !expandedByPr.get(prNumber)) return;
-          const isExpanded =
+          const sectionKey = readElementAttributeSafe(button, "data-section-key").trim();
+          if (!prNumber || !sectionKey) return;
+          
+          // Use same composite key: "section:prNumber"
+          const compositeKey = `${sectionKey}:${prNumber}`;
+          
+          // Skip if this specific section+PR instance was never tracked
+          if (!expandedByKey.has(compositeKey)) return;
+          
+          // Get saved state for this specific section+PR combination
+          const savedIsExpanded = expandedByKey.get(compositeKey);
+          const currentIsExpanded =
             readElementAttributeSafe(button, "aria-expanded") === "true";
-          if (!isExpanded && typeof button.onclick === "function") {
+          
+          // Toggle only if saved state doesn't match current state
+          if (savedIsExpanded !== currentIsExpanded && typeof button.onclick === "function") {
             button.onclick();
           }
         },

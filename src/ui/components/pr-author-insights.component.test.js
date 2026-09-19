@@ -125,20 +125,42 @@ describe("pr author insights component (refactored)", () => {
     expect(host?.textContent).toContain("No local rows available for author insights.");
   });
 
-  test("given a valid row fixture, when renderAuthorInsights is called, then author controls and selected header are rendered", () => {
-    const component = createPrAuthorInsightsComponent(createDependencies());
+  test("given a valid row fixture, when renderAuthorInsights is called, then the React selector/header bridges are called with the resolved author", () => {
+    const updateReactAuthorInsightsSelector = jest.fn(() => true);
+    const updateReactAuthorInsightsHeader = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({
+        updateReactAuthorInsightsSelector,
+        updateReactAuthorInsightsHeader,
+      }),
+    );
     const rows = [createPrRowEntry()];
 
     component.renderAuthorInsights(rows, {
       "author-login": "Author Name",
     });
 
-    const select = document.querySelector("#author-insights-select");
-    expect(select).toBeTruthy();
-    expect(select?.tagName).toBe("SELECT");
+    expect(updateReactAuthorInsightsSelector).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: "Author Name" })]),
+      expect.any(String),
+    );
+    expect(updateReactAuthorInsightsHeader).toHaveBeenCalledWith("Author Name");
+  });
 
-    const selectedHeader = document.querySelector(".author-insights-selected");
-    expect(selectedHeader?.textContent).toContain("Showing insights for");
+  test("given a rows update, when renderAuthorInsights re-runs, then the manual comments React bridge is called with the resolved author (composer draft persistence is now covered by AuthorInsightsCommentsSection.test.jsx, since the composer moved into that component - Track B batch 2, REACT_MIGRATION_PLAN.md)", () => {
+    const updateReactAuthorInsightsComments = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({ updateReactAuthorInsightsComments }),
+    );
+    const rows = [createPrRowEntry()];
+
+    component.renderAuthorInsights(rows, { "author-login": "Author Name" });
+
+    expect(updateReactAuthorInsightsComments).toHaveBeenCalledWith(
+      rows,
+      expect.objectContaining({ name: "Author Name" }),
+      { "author-login": "Author Name" },
+    );
   });
 
   test("given missing required helpers, when creating component, then error thrown", () => {

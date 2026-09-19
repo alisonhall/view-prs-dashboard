@@ -1,5 +1,8 @@
 const path = require("path");
 
+const isPlainObject = (value) =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const createViewPrsSchedulerHelpers = ({
   fs,
   console,
@@ -11,6 +14,8 @@ const createViewPrsSchedulerHelpers = ({
   defaultViewPrsRepo,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs = 5 * 60 * 1000,
+  viewPrsMergedFullSweepIntervalMs = 30 * 60 * 1000,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -60,6 +65,18 @@ const createViewPrsSchedulerHelpers = ({
         viewPrsSchedulerState.lastAutoRunAt = parsed.lastAutoRunAt;
       }
 
+      if (typeof parsed.lastQuickCheckAt === "string") {
+        viewPrsSchedulerState.lastQuickCheckAt = parsed.lastQuickCheckAt;
+      }
+
+      if (typeof parsed.lastMergedDrainAt === "string") {
+        viewPrsSchedulerState.lastMergedDrainAt = parsed.lastMergedDrainAt;
+      }
+
+      if (isPlainObject(parsed.pendingByRepo)) {
+        viewPrsSchedulerState.pendingByRepo = parsed.pendingByRepo;
+      }
+
       if (schedulerFileToRead === viewPrsLegacySchedulerFile) {
         persistViewPrsSchedulerState();
       }
@@ -74,6 +91,9 @@ const createViewPrsSchedulerHelpers = ({
     const persisted = {
       lastManualRunAt: viewPrsSchedulerState.lastManualRunAt,
       lastAutoRunAt: viewPrsSchedulerState.lastAutoRunAt,
+      lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt || null,
+      lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
+      pendingByRepo: viewPrsSchedulerState.pendingByRepo || {},
     };
 
     try {
@@ -96,6 +116,19 @@ const createViewPrsSchedulerHelpers = ({
     persistViewPrsSchedulerState();
   };
 
+  const getPendingCounts = () => {
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    let pendingOpenCount = 0;
+    let pendingMergedClosedCount = 0;
+    Object.values(pendingByRepo).forEach((entry) => {
+      pendingOpenCount += Array.isArray(entry?.open) ? entry.open.length : 0;
+      pendingMergedClosedCount += Array.isArray(entry?.mergedClosed)
+        ? entry.mergedClosed.length
+        : 0;
+    });
+    return { pendingOpenCount, pendingMergedClosedCount };
+  };
+
   const getViewPrsSchedulerPublicState = () => ({
     activePrNumbers: Array.isArray(viewPrsSchedulerState.activePrNumbers)
       ? viewPrsSchedulerState.activePrNumbers
@@ -104,6 +137,14 @@ const createViewPrsSchedulerHelpers = ({
       : [],
     intervalMinutes: Math.round(viewPrsAutoIntervalMs / 60000),
     manualCooldownMinutes: Math.round(viewPrsManualCooldownMs / 60000),
+    quickCheckIntervalMinutes: Math.max(
+      1,
+      Math.round(viewPrsQuickCheckIntervalMs / 60000),
+    ),
+    mergedFullSweepIntervalMinutes: Math.max(
+      1,
+      Math.round(viewPrsMergedFullSweepIntervalMs / 60000),
+    ),
     autoCircuitFailureThreshold: viewPrsAutoCircuitFailureThreshold,
     autoCircuitCooldownMinutes: Math.round(viewPrsAutoCircuitCooldownMs / 60000),
     startedAt: viewPrsSchedulerState.startedAt,
@@ -113,10 +154,91 @@ const createViewPrsSchedulerHelpers = ({
     lastAutoRunAt: viewPrsSchedulerState.lastAutoRunAt,
     lastAutoSkipReason: viewPrsSchedulerState.lastAutoSkipReason,
     lastAutoError: viewPrsSchedulerState.lastAutoError,
+    lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt || null,
+    lastQuickCheckError: viewPrsSchedulerState.lastQuickCheckError || null,
+    lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
+    ...getPendingCounts(),
     consecutiveAutoFailures: viewPrsSchedulerState.consecutiveAutoFailures,
     autoCircuitOpenUntil: viewPrsSchedulerState.autoCircuitOpenUntil,
     lastAutoCircuitOpenedAt: viewPrsSchedulerState.lastAutoCircuitOpenedAt,
   });
+
+  // --- Pending-update queue (populated by quick-check, drained by full fetch) ---
+
+  const setPendingForRepo = (repo, { open = [], mergedClosed = [] } = {}) => {
+    const safeRepo = toTrimmedString(repo);
+    if (!isRepoSlug(safeRepo)) {
+      return;
+    }
+    const normalizeNumbers = (list) =>
+      Array.from(
+        new Set(
+          (Array.isArray(list) ? list : [])
+            .map((value) => String(value || "").trim())
+            .filter((value) => /^\d+$/.test(value)),
+        ),
+      );
+
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    const existing = pendingByRepo[safeRepo] || { open: [], mergedClosed: [] };
+    pendingByRepo[safeRepo] = {
+      // Union with anything already queued but not yet drained by a full
+      // fetch, so a repeated quick-check never drops a pending PR.
+      open: normalizeNumbers([...(existing.open || []), ...open]),
+      mergedClosed: normalizeNumbers([
+        ...(existing.mergedClosed || []),
+        ...mergedClosed,
+      ]),
+      detectedAt: new Date().toISOString(),
+    };
+    viewPrsSchedulerState.pendingByRepo = pendingByRepo;
+  };
+
+  const clearPendingForRepo = (repo, { onlyMergedClosed = false } = {}) => {
+    const safeRepo = toTrimmedString(repo);
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    if (!pendingByRepo[safeRepo]) {
+      return;
+    }
+    if (onlyMergedClosed) {
+      pendingByRepo[safeRepo] = {
+        ...pendingByRepo[safeRepo],
+        mergedClosed: [],
+      };
+      return;
+    }
+    delete pendingByRepo[safeRepo];
+  };
+
+  const getReposWithPendingOpen = () => {
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    return Object.entries(pendingByRepo)
+      .filter(([, entry]) => Array.isArray(entry?.open) && entry.open.length > 0)
+      .map(([repo]) => repo);
+  };
+
+  const getReposWithPendingMergedClosed = () => {
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    return Object.entries(pendingByRepo)
+      .filter(
+        ([, entry]) =>
+          Array.isArray(entry?.mergedClosed) && entry.mergedClosed.length > 0,
+      )
+      .map(([repo]) => repo);
+  };
+
+  const getPendingUpdatePrNumberKeys = () => {
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    const keys = new Set();
+    Object.entries(pendingByRepo).forEach(([repo, entry]) => {
+      [...(entry?.open || []), ...(entry?.mergedClosed || [])].forEach(
+        (prNumber) => {
+          keys.add(`${repo}#${prNumber}`);
+        },
+      );
+    });
+    return keys;
+  };
 
   const getViewPrsAutoCircuitOpenState = ({
     nowMs = Date.now(),
@@ -203,8 +325,16 @@ const createViewPrsSchedulerHelpers = ({
       addRepo(entry?.repo);
     });
 
-    addRepo(defaultViewPrsRepo);
     addRepo(data?.lastRun?.repo);
+
+    // Only fall back to the hardcoded default repo when nothing else names a
+    // repo at all (e.g. a brand-new install with no stored data yet and no
+    // VIEW_PRS_AUTO_REPOS override) — otherwise a machine that has always
+    // tracked a different repo would silently have this unrelated one
+    // auto-refreshed alongside it too.
+    if (repos.length === 0) {
+      addRepo(defaultViewPrsRepo);
+    }
 
     return repos;
   };
@@ -220,6 +350,11 @@ const createViewPrsSchedulerHelpers = ({
     recordViewPrsAutoRefreshFailure,
     resetViewPrsAutoRefreshFailureState,
     getViewPrsAutoRefreshRepos,
+    setPendingForRepo,
+    clearPendingForRepo,
+    getReposWithPendingOpen,
+    getReposWithPendingMergedClosed,
+    getPendingUpdatePrNumberKeys,
   };
 };
 

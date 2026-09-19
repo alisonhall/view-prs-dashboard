@@ -10,7 +10,9 @@ const {
   appendActionLogEntry,
 } = require("./app.js");
 
-const rawRequestedPort = String(process.env.VIEW_PRS_PORT || "").trim();
+const rawRequestedPort = String(
+  process.env.VIEW_PRS_PORT || process.env.PORT || "",
+).trim();
 const shouldDisableSchedulerStartup = ["1", "true", "yes", "on"].includes(
   String(process.env.VIEW_PRS_DISABLE_SCHEDULER_STARTUP || "")
     .trim()

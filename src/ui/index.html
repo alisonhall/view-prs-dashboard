@@ -1,6 +1,7 @@
 <html lang="en">
 
 <head>
+    <meta charset="utf-8" />
     <title>View PR Updates</title>
     <link rel="stylesheet" href="./index.css" />
 </head>
@@ -96,8 +97,19 @@
                         </div>
                         <div class="form-actions primary-actions">
                             <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
+                            <button type="button" id="quick-check-btn" title="Cheap listing-only pass: checks whether anything changed without fetching full PR details">Quick check</button>
                             <button type="button" id="ack-only-btn">Apply ack only</button>
                             <button type="button" id="clear-only-btn">Apply clear only</button>
+                        </div>
+                        <div class="form-grid single-field-grid">
+                            <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
+                            <div class="form-actions primary-actions">
+                                <!-- Rendered by React (ApplyLabelSelect, mounted in react-app.jsx) as
+                                     a <select id="apply-label-select">, same id/options shape as before. -->
+                                <span id="apply-label-select-root"></span>
+                                <button type="button" id="apply-label-btn">Apply label</button>
+                                <button type="button" id="refresh-labels-btn" title="Reload labels for the current repo">&#8635; Labels</button>
+                            </div>
                         </div>
                     </section>
 
@@ -105,22 +117,21 @@
                         <h3>Visibility Filters</h3>
                         <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub
                             requests.</p>
-                        <pre id="management-filter-summary"
-                            class="management-filter-summary">Applied filters summary will appear here after data loads.</pre>
-                        <div id="management-filter-chips" class="applied-filter-chips"></div>
+                        <!-- Rendered by React (see react-app.jsx's mountAppliedFilterSummary) as
+                             the <pre id="management-filter-summary">/<div id="management-filter-chips">
+                             pair, same ids/classes as before. -->
+                        <span id="management-filter-summary-root"></span>
 
                         <div class="form-grid">
                             <label for="scope-mode">View scope</label>
-                            <select id="scope-mode" name="scopeMode">
-                                <option value="all" selected>All stored rows</option>
-                                <option value="last-run">Last run rows</option>
-                                <option value="needs-attention">Needs attention rows</option>
-                                <option value="needs-attention-or-interacted">Needs attention or interacted rows
-                                </option>
-                            </select>
+                            <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider) as
+                                 a <select id="scope-mode">, same id/name/options as before. -->
+                            <span id="scope-mode-root"></span>
 
                             <label for="filter-pr-numbers">Filter by PR number(s)</label>
-                            <input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />
+                            <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider) as
+                                 an <input id="filter-pr-numbers">, same id/name/placeholder as before. -->
+                            <span id="filter-pr-numbers-root"></span>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary">Filter by label name(s)</summary>
@@ -146,6 +157,30 @@
                                 <summary class="multi-select-summary">Filter by PR approver(s)</summary>
                                 <div id="approver-list" class="multi-select-list"></div>
                             </details>
+
+                            <label for="filter-custom-comments">Custom comments</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-custom-comments-root"></span>
+
+                            <label for="filter-other-notes">Other notes</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-other-notes-root"></span>
+
+                            <label for="filter-pr-difficulty">PR difficulty</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-pr-difficulty-root"></span>
+
+                            <label for="filter-rally-stories">Rally stories</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-rally-stories-root"></span>
+
+                            <label for="filter-rally-links">Rally links</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-rally-links-root"></span>
+
+                            <label for="filter-analysis-of-pr">Analysis of PR</label>
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="filter-analysis-of-pr-root"></span>
                         </div>
 
                         <div class="form-actions">
@@ -157,7 +192,9 @@
                             <summary>Advanced visibility and attention rules</summary>
                             <div class="form-grid">
                                 <label class="checkbox-row">
-                                    <input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" />
+                                    <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider)
+                                         as an <input id="always-show-in-review">, same id/name as before. -->
+                                    <span id="always-show-in-review-root"></span>
                                     Always show PRs In Review
                                 </label>
 
@@ -165,52 +202,41 @@
                                     <legend>Needs Attention rules</legend>
 
                                     <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
-                                    <select id="attention-no-activity-mode" name="attentionNoActivityMode">
-                                        <option value="all" selected>Mark all NO_ACTIVITY PRs</option>
-                                        <option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a
-                                            reviewer</option>
-                                        <option value="none">Never mark NO_ACTIVITY PRs</option>
-                                    </select>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="attention-no-activity-mode-root"></span>
 
+                                    <!-- The five checkboxes below are rendered by React
+                                         (mountFilterStateProvider in react-app.jsx, one ContextFilterCheckbox
+                                         instance per id/name pair). -->
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-pending-comments"
-                                            name="attentionIncludePendingComments" checked />
+                                        <span id="attention-include-pending-comments-root"></span>
                                         Mark PRs with my pending (unsubmitted) comments
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-ignore-merge-only-commits"
-                                            name="attentionIgnoreMergeOnlyCommits" />
+                                        <span id="attention-ignore-merge-only-commits-root"></span>
                                         Exclude merge-only commit activity from CHANGED attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-closed-merged"
-                                            name="attentionIncludeClosedMerged" checked />
+                                        <span id="attention-include-closed-merged-root"></span>
                                         Include closed/merged sections in attention logic
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-changed"
-                                            name="attentionIncludeDraftChanged" checked />
+                                        <span id="attention-include-draft-changed-root"></span>
                                         Mark CHANGED draft PRs as attention
                                     </label>
 
                                     <label class="checkbox-row">
-                                        <input type="checkbox" id="attention-include-draft-no-activity"
-                                            name="attentionIncludeDraftNoActivity" />
+                                        <span id="attention-include-draft-no-activity-root"></span>
                                         Apply NO_ACTIVITY attention rules to draft PRs
                                     </label>
 
                                     <label for="attention-author-thread-resolution-mode">PR author thread resolution
                                         policy</label>
-                                    <select id="attention-author-thread-resolution-mode"
-                                        name="attentionAuthorThreadResolutionMode">
-                                        <option value="allow-all" selected>Allow PR authors to resolve all own-PR
-                                            threads</option>
-                                        <option value="allow-only">Allow only for selected thread starters</option>
-                                        <option value="deny-only">Disallow for selected thread starters</option>
-                                    </select>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="attention-author-thread-resolution-mode-root"></span>
 
                                     <details id="attention-author-thread-resolution-allow-options"
                                         class="multi-select-dropdown" hidden>
@@ -261,20 +287,30 @@
                                         reviewers whose approval isn't required.
                                     </p>
 
+                                    <label class="checkbox-row">
+                                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                        <span id="change-filter-use-builtin-merge-pattern-root"></span>
+                                        Use built-in merge commit filter (merges from main/origin/main)
+                                    </label>
+                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
+                                        🔀 Built-in pattern:
+                                        <code>^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main
+                                            into )</code><br>
+                                        Uncheck to use only your custom patterns below, or to define your own merge
+                                        filter.
+                                    </p>
+
                                     <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
                                         (regex, one per line)</label>
-                                    <textarea id="change-filter-ignore-commit-patterns"
-                                        name="changeFilterIgnoreCommitPatterns" rows="4"
-                                        placeholder="^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )&#10;^chore: update dependencies&#10;^docs: &#10;^style: formatting&#10;^test: "
-                                        aria-describedby="commit-patterns-help"></textarea>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="change-filter-ignore-commit-patterns-root"></span>
                                     <p class="subtle-copy" id="commit-patterns-help" style="margin-top: 4px;">
                                         📝 Filter commits by message patterns (e.g., <code>^docs:</code> ignores
                                         documentation commits, <code>^test:</code> ignores test-only commits).
                                     </p>
 
                                     <p class="subtle-copy" style="margin-top: 16px;">
-                                        <strong>Note:</strong> Approved reviews and merge commits from main are always
-                                        ignored (built-in behavior).
+                                        <strong>Note:</strong> Approved reviews are always ignored (built-in behavior).
                                     </p>
                                 </fieldset>
                             </div>
@@ -286,37 +322,40 @@
                     <summary>Run Script options (rarely changed)</summary>
                     <div class="form-grid">
                         <label for="repo">Repo (owner/name)</label>
-                        <input type="text" id="repo" name="repo"
-                            placeholder="optum-rx-clinicalproducts/orx-cpp-mp-uis" />
+                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                        <span id="repo-root"></span>
 
                         <label for="limit">Open PR limit</label>
-                        <input type="number" id="limit" name="limit" min="1" placeholder="200" />
+                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                        <span id="limit-root"></span>
 
                         <label for="merged-limit">Merged PR limit</label>
-                        <input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />
+                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                        <span id="merged-limit-root"></span>
 
                         <label for="jobs">Parallel jobs</label>
-                        <input type="number" id="jobs" name="jobs" min="1" placeholder="6" />
+                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                        <span id="jobs-root"></span>
 
                         <label for="open-mode">Open mode</label>
-                        <select id="open-mode" name="openMode">
-                            <option value="none" selected>none</option>
-                            <option value="changed">changed</option>
-                            <option value="all">all</option>
-                        </select>
+                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                        <span id="open-mode-root"></span>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="ack-changed" name="ackChanged" />
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="ack-changed-root"></span>
                             Ack all CHANGED non-draft PRs from this run
                         </label>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="show-reason" name="showReason" checked />
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="show-reason-root"></span>
                             Show CHANGED reason in status
                         </label>
 
                         <label class="checkbox-row">
-                            <input type="checkbox" id="quiet" name="quiet" />
+                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                            <span id="quiet-root"></span>
                             Quiet mode (hide run metadata header)
                         </label>
                     </div>
@@ -333,6 +372,10 @@
             hidden>
             <h3>Backfill (least-used maintenance tool)</h3>
             <div id="backfill-card" class="scheduler-card low-emphasis-card">
+                <!-- Rendered by React (mountBackfillBadges in react-app.jsx) -
+                     Phase 3, see REACT_MIGRATION_PLAN.md. Falls back to a
+                     vanilla-built <span> per badge if React fails to
+                     load/mount. -->
                 <div id="backfill-badges" class="scheduler-badges"></div>
                 <div class="form-actions">
                     <button type="button" id="backfill-start-btn">Start backfill</button>
@@ -361,7 +404,7 @@
                 <button type="button" id="action-log-refresh-btn">Refresh</button>
             </div>
             <div id="action-log-container" class="action-log-container">
-                <p id="action-log-empty" class="action-log-empty">No actions logged yet.</p>
+                <!-- Rendered by React (ActionLogSection, mounted in react-app.jsx) -->
             </div>
         </section>
 
@@ -370,53 +413,16 @@
             <h3>Actor Names</h3>
             <p class="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering,
                 insights, and stats.</p>
-            <h4>Display Name Mappings</h4>
-            <div class="actor-name-cache-controls form-actions">
-                <button type="button" id="actor-name-cache-refresh-btn">Refresh</button>
-                <button type="button" id="actor-name-cache-add-row-btn">Add display-name row</button>
-                <button type="button" id="actor-name-cache-save-btn">Save display names</button>
-            </div>
-            <p id="actor-name-cache-status" class="actor-name-cache-status">Loading cache...</p>
-            <div id="actor-name-cache-rows" class="actor-name-cache-rows"></div>
-
-            <h4>Login Alias Mappings</h4>
-            <p class="subtle-copy">Use alias login to canonical login mappings when the same person appears under
-                multiple GitHub identities.</p>
-            <div class="actor-name-cache-controls form-actions">
-                <button type="button" id="actor-login-aliases-refresh-btn">Refresh</button>
-                <button type="button" id="actor-login-aliases-add-row-btn">Add alias row</button>
-                <button type="button" id="actor-login-aliases-save-btn">Save login aliases</button>
-            </div>
-            <p id="actor-login-aliases-status" class="actor-name-cache-status">Loading aliases...</p>
-            <div id="actor-login-aliases-rows" class="actor-name-cache-rows"></div>
+            <div id="actor-names-root"></div>
         </section>
 
         <section id="tab-panel-export" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-export" hidden>
             <h3>Export Visible PR JSON</h3>
             <p class="subtle-copy">Choose PR fields from data and user state, then export only rows currently visible in
                 PR Data and only sections currently expanded.</p>
-            <pre id="export-selection-summary"
-                class="management-filter-summary">Select export fields to build a JSON preview.</pre>
-
-            <div class="export-field-controls form-actions">
-                <button type="button" id="export-select-all-btn">Select all</button>
-                <button type="button" id="export-select-none-btn">Select none</button>
-                <button type="button" id="export-select-data-btn">Data only</button>
-                <button type="button" id="export-select-user-state-btn">User state only</button>
+            <div id="export-container">
+                <!-- Rendered by React (ExportTab, mounted in react-app.jsx) -->
             </div>
-
-            <div id="export-field-list" class="export-field-list"></div>
-
-            <div class="form-actions export-actions">
-                <button type="button" id="export-preview-btn">Preview JSON</button>
-                <button type="button" id="export-copy-btn">Copy JSON</button>
-                <button type="button" id="export-download-btn">Download JSON</button>
-            </div>
-            <pre id="export-status" class="scheduler-details">Waiting for data...</pre>
-            <details class="advanced-options section-card low-emphasis-card" open>
-                <summary>Export preview</summary>
-                <pre id="export-preview">Run Preview JSON to inspect the export payload.</pre>
-            </details>
         </section>
     </div>
 
@@ -440,54 +446,86 @@
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <pre id="data-meta" style="white-space: break-spaces;">Loading...</pre>
             <div id="pr-sections"></div>
+            <div id="merged-request-more-action" class="merged-request-more-action" hidden>
+                <button type="button" id="merged-request-more-btn">Request more</button>
+                <span id="merged-request-more-status" class="merged-request-more-status"></span>
+            </div>
         </section>
 
         <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
             hidden>
-            <div id="pr-stats" class="stats-panel">Loading...</div>
+            <div id="pr-stats" class="stats-panel">
+                <!-- Rendered by React (mountReviewStatsControls in react-app.jsx) -
+                     Phase 3, see REACT_MIGRATION_PLAN.md. renderStatsView
+                     (index.page.js) never rebuilds this container once React has
+                     mounted into it; only #stats-content-root gets rebuilt on
+                     each stats render. Falls back to vanilla-built controls
+                     inside #stats-content-root if React fails to load/mount. -->
+                <div id="stats-controls-root"></div>
+                <div id="stats-content-root">Loading...</div>
+            </div>
         </section>
 
         <section id="tab-panel-author-insights" class="data-tab-panel" role="tabpanel"
             aria-labelledby="tab-author-insights" hidden>
-            <div id="author-insights" class="author-insights-panel">Loading...</div>
+            <div id="author-insights" class="author-insights-panel">
+                <!-- Every container below is rendered by React (see the
+                     matching mount*() function in react-app.jsx) and mounted
+                     into once by createRoot() - Phase 3, see
+                     REACT_MIGRATION_PLAN.md. renderAuthorInsights
+                     (pr-author-insights.component.js) never rebuilds any of
+                     these containers directly (no more `host.innerHTML = ""`
+                     covering them all at once, the original vanilla
+                     behavior); each is updated only via its own
+                     window.updateAuthorInsights*() bridge call, or falls back
+                     to appending a vanilla-built replacement into itself (or
+                     the shared outer #author-insights host, for containers
+                     without a persisted override) if React fails to
+                     load/mount. -->
+                <div id="author-insights-selector-root"></div>
+                <div id="author-insights-header-root"></div>
+                <!-- Manual comments composer/list (mountAuthorInsightsCommentsSection) -
+                     wraps the legacy vanilla builder via a ref; its mutable
+                     draft state and save/edit POST side effects live entirely
+                     inside that builder, not in React. -->
+                <div id="author-insights-content-root">Loading...</div>
+                <div id="author-insights-notes-root"></div>
+                <div id="author-insights-created-prs-root"></div>
+            </div>
         </section>
     </div>
 
-    <script src="./node_modules/marked/lib/marked.umd.js"></script>
-    <script src="./helpers/pr-json-modal.helpers.js"></script>
+    <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
+         dev server and the standalone Express server serve static files
+         rooted at src/ui, so a path into the repo-root node_modules/ 404s
+         under either. Re-copy from node_modules/marked/lib/marked.umd.js
+         when bumping the "marked" dependency version - and re-copy
+         marked.umd.js.map (node_modules/marked/lib/marked.umd.js.map) at
+         the same time, or Vite's dev server logs a source-map ENOENT for
+         every request once the two drift out of sync (the .js file's own
+         trailing `//# sourceMappingURL=marked.umd.js.map` comment expects
+         it to sit right next to it). -->
+    <script src="./vendor/marked.umd.js"></script>
     <script src="./helpers/pr-notes.helpers.js"></script>
     <script src="./helpers/pr-data-polling.helpers.js"></script>
     <script src="./helpers/pr-http.helpers.js"></script>
     <script src="./helpers/pr-status-display.helpers.js"></script>
     <script src="./helpers/pr-command-output.helpers.js"></script>
     <script src="./helpers/pr-data-tabs.helpers.js"></script>
+    <script src="./helpers/pr-activity-badges.helpers.js"></script>
     <script src="./helpers/pr-backfill.helpers.js"></script>
     <script src="./helpers/pr-backfill-actions.helpers.js"></script>
-    <script src="./helpers/pr-action-log.helpers.js"></script>
-    <script src="./helpers/pr-actor-name-cache.helpers.js"></script>
     <script src="./helpers/pr-management-tabs.helpers.js"></script>
     <script src="./helpers/pr-formatting.helpers.js"></script>
     <script src="./helpers/pr-actor-identity.helpers.js"></script>
     <script src="./helpers/pr-actor-identity-style.helpers.js"></script>
     <script src="./helpers/pr-actor-identity-render.helpers.js"></script>
-    <script src="./helpers/pr-activity-event-description.helpers.js"></script>
-    <script src="./helpers/pr-activity-timeline-render.helpers.js"></script>
     <script src="./helpers/pr-requested-reviewers.helpers.js"></script>
     <script src="./helpers/pr-assigned-users.helpers.js"></script>
     <script src="./helpers/pr-approvers.helpers.js"></script>
-    <script src="./helpers/pr-lines-changed-insight.helpers.js"></script>
     <script src="./helpers/pr-insight-badge-class.helpers.js"></script>
     <script src="./helpers/pr-insight-metrics-summary.helpers.js"></script>
-    <script src="./helpers/pr-labels-cell.helpers.js"></script>
-    <script src="./helpers/pr-date-cell.helpers.js"></script>
-    <script src="./helpers/pr-selection-cell.helpers.js"></script>
-    <script src="./helpers/pr-status-cell.helpers.js"></script>
-    <script src="./helpers/pr-table-cell-primitives.helpers.js"></script>
-    <script src="./helpers/pr-approved-cell.helpers.js"></script>
     <script src="./helpers/pr-author-cell.helpers.js"></script>
-    <script src="./helpers/pr-title-cell.helpers.js"></script>
-    <script src="./helpers/pr-row-toggle-controls.helpers.js"></script>
-    <script src="./helpers/pr-actions-cell.helpers.js"></script>
     <script src="./helpers/pr-ui-render-utils.helpers.js"></script>
     <script src="./helpers/pr-diff-render.helpers.js"></script>
     <script src="./helpers/pr-review-stats-date-bucketing.helpers.js"></script>
@@ -534,10 +572,12 @@
     <script src="./helpers/pr-render-pipeline.helpers.js"></script>
     <script src="./helpers/pr-render-state-commit.helpers.js"></script>
     <script src="./helpers/pr-selected-filters.helpers.js"></script>
+    <script src="./helpers/pr-entry-derived-cache.helpers.js"></script>
     <script src="./helpers/pr-row-filtering.helpers.js"></script>
+    <script src="./helpers/pr-smart-groups.helpers.js"></script>
+    <script src="./helpers/pr-smart-group-manipulation.helpers.js"></script>
     <script src="./helpers/pr-section-config.helpers.js"></script>
-    <script src="./helpers/pr-section-shell.helpers.js"></script>
-    <script src="./helpers/pr-section-render.helpers.js"></script>
+    <script src="./helpers/react-callbacks.helpers.js"></script>
     <script src="./helpers/pr-dom-visibility.helpers.js"></script>
     <script src="./helpers/pr-auto-render-blocking.helpers.js"></script>
     <script src="./helpers/pr-auto-render-unsaved.helpers.js"></script>
@@ -547,20 +587,15 @@
     <script src="./helpers/pr-auto-render-state.helpers.js"></script>
     <script src="./helpers/pr-apply-filters-cache.helpers.js"></script>
     <script src="./helpers/pr-export.helpers.js"></script>
-    <script src="./helpers/pr-export-actions.helpers.js"></script>
-    <script src="./helpers/pr-export-preview-summary.helpers.js"></script>
-    <script src="./helpers/pr-export-json-build.helpers.js"></script>
     <script src="./helpers/form-parsing.helpers.js"></script>
-    <script src="./components/pr-review-stats-controls.component.js"></script>
-    <script src="./components/pr-review-stats-chart.component.js"></script>
-    <script src="./components/pr-review-stats-visuals.component.js"></script>
-    <script src="./components/pr-review-stats-summary.component.js"></script>
     <script src="./components/pr-author-insights.component.js"></script>
-    <script src="./components/pr-json-modal.component.js"></script>
-    <script src="./components/pr-filter-panel.component.js"></script>
-    <script src="./components/pr-section-table.component.js"></script>
-    <script src="./components/pr-row-insights.component.js"></script>
+    <script src="./helpers/pr-filter-panel.helpers.js"></script>
+    <script src="./orchestrators/pr-data-tab.orchestrator.js"></script>
+    <script src="./orchestrators/backfill-tab.orchestrator.js"></script>
     <script src="./index.page.js"></script>
+
+    <!-- React App Entry Point (Phase 1: Hybrid Migration) -->
+    <script type="module" src="./react-app.jsx"></script>
 </body>
 
 </html>

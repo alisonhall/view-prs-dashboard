@@ -49,6 +49,7 @@
       latestSelectedRepo,
       insightsViewState,
       latestSchedulerState,
+      skipTableRender,
     } = {}) => {
       const nextLastSuccessfulRenderedCheckAt =
         typeof normalizedRunStamp === "string" && normalizedRunStamp
@@ -63,7 +64,7 @@
         repoFilter,
       });
 
-      const { grouped, appliedSummaryText, filterChips } =
+      const { rows: filteredRows, grouped, appliedSummaryText, filterChips } =
         deriveRenderFilterSummaryStateSafe({
           rowsForRepo,
           ignoreScopeForPrNumberFilter,
@@ -80,6 +81,7 @@
       const committedRenderState = deriveRenderFinalizedStateSafe({
         payload,
         allStoredRows,
+        filteredRows,
         sectionsHost,
         meta,
         appliedSummaryText,
@@ -92,6 +94,7 @@
         latestSelectedRepo,
         insightsViewState,
         latestSchedulerState,
+        skipTableRender,
       });
 
       return {

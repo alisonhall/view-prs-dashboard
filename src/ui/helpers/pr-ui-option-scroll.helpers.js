@@ -36,10 +36,20 @@
         : () => false;
 
     const registerUiOptionPersistenceHandlers = () => {
-      const scopeMode = getOptionalElementByIdSafe("scope-mode");
-      if (scopeMode) {
-        scopeMode.addEventListener("change", () => {
-          void persistUiOptionOverridesSafe(["scope-mode"]);
+      // Delegated on the form (a stable ancestor never replaced by React),
+      // not attached directly to #scope-mode: that element may be a
+      // React-owned field (see ScopeFilterSelect.jsx / Phase 2 in
+      // REACT_MIGRATION_PLAN.md), and ReactDOM.createRoot().render()
+      // creates a fresh DOM node when it mounts - any listener already
+      // attached to the pre-mount static/fallback node would otherwise be
+      // silently orphaned rather than firing on the field React now owns.
+      // The native "change" event still bubbles up to the form either way.
+      const form = getOptionalElementByIdSafe("run-script-form");
+      if (form) {
+        form.addEventListener("change", (event) => {
+          if (event.target?.id === "scope-mode") {
+            void persistUiOptionOverridesSafe(["scope-mode"]);
+          }
         });
       }
     };

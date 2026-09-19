@@ -1,0 +1,11 @@
+{
+  "name": "View PRs",
+  "slug": "view-prs",
+  "description": "Dashboard for tracking the status of open PRs across repos",
+  "icon": "🔎",
+  "start": "node src/server/server.js",
+  "port": 4007,
+  "healthPath": "/",
+  "mountPath": "/view-prs",
+  "requiredCommands": ["bash", "gh"]
+}
