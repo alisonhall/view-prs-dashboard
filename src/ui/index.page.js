@@ -2828,8 +2828,15 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
   });
 };
 
+// Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
+// window.updateReactBackfillBadges actually exists - see that listener's
+// own comment for why (same bridge-not-ready-yet race the PR table and
+// filter dropdowns already guard against).
+let latestBackfillStatus = null;
+
 const renderBackfillStatus = (backfillRaw = {}) => {
   const backfill = backfillRaw || {};
+  latestBackfillStatus = backfill;
   const badgeHost = getOptionalElementById("backfill-badges");
   const details = getOptionalElementById("backfill-details");
   const startButton = getOptionalElementById("backfill-start-btn");
@@ -5257,9 +5264,25 @@ const initPage = () => {
   // permanently unchecked box after every reload. Re-render with whatever
   // payload has already loaded once overrides actually land, so the
   // apply-then-reload sequence works regardless of which fetch wins.
+  //
+  // queueMicrotask, not a direct call: this .then() can run essentially
+  // immediately (a fast/local fetch resolving inside the same microtask
+  // flush React is still processing from its own initial-mount effects),
+  // and renderPrData()'s multi-select repopulate calls
+  // window.renderReactMultiSelectList, which is flushSync-wrapped -
+  // calling that reentrantly mid-render throws "flushSync was called from
+  // inside a lifecycle method" (confirmed via this exact warning in a CI
+  // run). Queuing a fresh microtask guarantees React has fully finished
+  // whatever it was doing first, exactly as that warning's own message
+  // suggests ("Consider moving this call to a scheduler task or micro
+  // task") - a plain setTimeout also works in a real browser, but jsdom
+  // integration tests that `await user.click(...)` and assert immediately
+  // (no `waitFor`) only drain the microtask queue, not macrotasks, and
+  // would see the pre-restore value; a microtask still resolves within
+  // that same drain.
   void restoreUiOptionOverrides().then(() => {
     if (latestStoredPayload) {
-      renderPrData(latestStoredPayload, latestSelectedRepo);
+      queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
     }
   });
   // Phase 6 (see REACT_MIGRATION_PLAN.md): restoreUiOptionOverrides' first
@@ -5300,10 +5323,35 @@ const initPage = () => {
         // leaving a persisted selection unchecked after every reload even
         // though Context now genuinely has it. Re-render so the just-synced
         // pending selections actually reach the checkboxes.
+        //
+        // queueMicrotask: same flushSync-reentrancy/jsdom-await reasons as
+        // the first restoreUiOptionOverrides().then() above - this one is
+        // reachable even more directly, since it runs from inside a
+        // 'viewprs:react-ready' listener that dispatchEvent invoked
+        // synchronously from within a React effect.
         if (latestStoredPayload) {
-          renderPrData(latestStoredPayload, latestSelectedRepo);
+          queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
         }
       });
+    },
+    { once: true },
+  );
+  // The Backfill tab's status badges (<BackfillBadges />, mounted via
+  // window.updateReactBackfillBadges) have the exact same load-order race
+  // as the PR table above: loadBackfillStatus() below often resolves
+  // before react-app.jsx has mounted, and renderBackfillStatus's
+  // window.updateReactBackfillBadges?.(...) call silently no-ops when the
+  // bridge isn't there yet - with no retry, unlike the PR table and filter
+  // dropdowns, so the badges stayed permanently empty. Only actually
+  // reproduces when React's mount is slow enough to lose the race (a real
+  // CI-only flake - always won locally, confirmed failing intermittently
+  // in CI's slower/shared runners). Re-render once React signals ready.
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => {
+      if (latestBackfillStatus) {
+        renderBackfillStatus(latestBackfillStatus);
+      }
     },
     { once: true },
   );

@@ -52,16 +52,26 @@ let reactReadyBridgeWasFunctionWhenDispatched = null;
 window.addEventListener('viewprs:react-ready', () => {
   reactReadyBridgeWasFunctionWhenDispatched = typeof window.mountReactPrTable === 'function';
 });
-React.act(() => {
-  require('./react-app');
-});
-if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
-  throw new Error(
-    "'viewprs:react-ready' fired before window.mountReactPrTable was assigned",
-  );
-}
 
 describe('react-app.jsx: window.mountReactPrTable / window.updateReactPrTable bridge (AppRoot)', () => {
+  // The module require (and its bootstrap dispatch check) live in
+  // beforeAll, not file scope, because 'viewprs:react-ready' now dispatches
+  // via queueMicrotask (see that effect's own comment in react-app.jsx - a
+  // flushSync-reentrancy fix) - an actual `await` is needed to let that
+  // microtask run before checking it fired, and only an async Jest
+  // lifecycle hook can do that; top-level file scope can't await.
+  beforeAll(async () => {
+    React.act(() => {
+      require('./react-app');
+    });
+    await Promise.resolve();
+    if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
+      throw new Error(
+        "'viewprs:react-ready' fired before window.mountReactPrTable was assigned",
+      );
+    }
+  });
+
   beforeEach(() => {
     capturedContext.length = 0;
     document.body.innerHTML = '';

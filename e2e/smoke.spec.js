@@ -41,6 +41,31 @@ const clickApplyFiltersAndWaitForPersist = async (page) => {
   return response;
 };
 
+// "Apply existing GitHub label to selected PR(s)" (the admin dropdown, not
+// the payload-derived #label-list filter - see that field's own test
+// comment further down) is the one feature in this whole suite with no
+// fixture/isolation story: refreshAvailableRepoLabels() (index.page.js)
+// hits GET /view-prs/labels, which shells out to the real `gh label list`
+// CLI (src/server/app.js's listRepoLabels) against whatever repo is
+// configured - there is no GH_TOKEN or network access to github.com in
+// CI, so every real run 500s. That 500 is otherwise harmless (the vanilla
+// code already treats it as best-effort and leaves the dropdown showing
+// "No labels found for this repo"), but this suite's own
+// collectPageErrors() below asserts zero failed requests/console errors
+// per test, so left unmocked, EVERY test failed this exact way once the
+// suite got far enough to stop hanging - not a React timing bug, a
+// missing fixture for a genuinely external dependency. Stub it here,
+// suite-wide, the same way playwright.config.js's isolatedEnv keeps every
+// other feature off real external/production state.
+const mockRepoLabelsRoute = (page) =>
+  page.route("**/view-prs/labels?*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, repo: "octocat/hello-world", labels: [] }),
+    }),
+  );
+
 const collectPageErrors = (page) => {
   const consoleErrors = [];
   const failedRequests = [];
@@ -53,6 +78,10 @@ const collectPageErrors = (page) => {
   });
   return { consoleErrors, failedRequests };
 };
+
+test.beforeEach(async ({ page }) => {
+  await mockRepoLabelsRoute(page);
+});
 
 test("page loads, PR table renders, and no requests or console calls fail", async ({ page }) => {
   const { consoleErrors, failedRequests } = collectPageErrors(page);

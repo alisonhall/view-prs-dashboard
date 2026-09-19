@@ -573,7 +573,22 @@ function AppRoot() {
   // mountReactPrTable effect above, which runs before this one) left every
   // filter multi-select (label/author/assigned/etc.) permanently empty.
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
+    // queueMicrotask, not a direct dispatch: every listener (index.page.js)
+    // is invoked synchronously by dispatchEvent, and several call back into
+    // flushSync-wrapped bridges (window.renderReactMultiSelectList,
+    // window.setFilterStateValue) either directly or via a fetch
+    // continuation that can resolve fast enough to still be "inside"
+    // React's own effect-flush for this commit. flushSync reentrant with
+    // an in-progress render throws "flushSync was called from inside a
+    // lifecycle method" (confirmed via this exact warning in CI) - queuing
+    // a fresh microtask guarantees this commit (including its own effect
+    // flush) has fully finished before any listener runs, exactly as that
+    // warning's own message suggests ("...scheduler task or micro task").
+    // A plain setTimeout also works in a real browser, but jsdom
+    // integration tests that assert immediately after an awaited user
+    // interaction (no explicit wait) only drain the microtask queue, not
+    // macrotasks, and would see pre-restore state.
+    queueMicrotask(() => window.dispatchEvent(new CustomEvent('viewprs:react-ready')));
   }, []);
 
   return (
