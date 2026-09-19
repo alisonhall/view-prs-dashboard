@@ -3628,13 +3628,10 @@ const {
 });
 
 const renderActivityTrendNote = (rows, actorsMap = {}) => {
-  const note = document.createElement("p");
-  note.className = "stats-note";
   const range = getNormalizedStatsDateRange();
   const chartData = aggregateReviewerActivityTimeline(rows, actorsMap, range);
   if (!chartData?.series || chartData.series.length === 0) {
-    note.textContent = "No reviewer activity data available to render trends.";
-    return note;
+    return "No reviewer activity data available to render trends.";
   }
   const totalActivity = chartData.series.reduce(
     (sum, s) => sum + s.points.reduce((ps, p) => ps + p.value, 0),
@@ -3644,8 +3641,7 @@ const renderActivityTrendNote = (rows, actorsMap = {}) => {
     chartData.dates.length > 0
       ? Math.round(totalActivity / chartData.dates.length)
       : 0;
-  note.textContent = `Total reviewer activity: ${totalActivity} events across ${chartData.dates.length} days (~${avgDaily}/day). Showing top ${chartData.series.length} reviewers. Activity includes comments and submitted reviews on PRs authored by others, excluding Copilot actors.`;
-  return note;
+  return `Total reviewer activity: ${totalActivity} events across ${chartData.dates.length} days (~${avgDaily}/day). Showing top ${chartData.series.length} reviewers. Activity includes comments and submitted reviews on PRs authored by others, excluding Copilot actors.`;
 };
 
 // Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): expose
@@ -3715,9 +3711,6 @@ const prAuthorInsightsPrLinkHelperFactory =
 
 const prAuthorInsightsPrLinkHelpers =
   prAuthorInsightsPrLinkHelperFactory.createPrAuthorInsightsPrLinkHelpers({
-    DEFAULT_REPO,
-    activateDataTab: (...args) => activateDataTab(...args),
-    collectNodesByTag: (...args) => collectNodesByTag(...args),
     isReactTableMounted: () => isReactTableMounted(),
   });
 
@@ -3734,11 +3727,6 @@ const prAuthorInsightsDisplayHelpers =
     normalizeAuthorInsightsSentiment: (...args) =>
       normalizeAuthorInsightsSentiment(...args),
     isChangedStatus: (...args) => isChangedStatus(...args),
-    toCount,
-    parseMarkerState: (...args) => parseMarkerState(...args),
-    formatChkDisplay: (...args) => formatChkDisplay(...args),
-    getOpenConversationCount: (...args) => getOpenConversationCount(...args),
-    getViewedFilesSummary: (...args) => getViewedFilesSummary(...args),
     asArray,
     parseSortableTime: (...args) => parseSortableTime(...args),
     formatIsoDatetime: (...args) => formatIsoDatetime(...args),

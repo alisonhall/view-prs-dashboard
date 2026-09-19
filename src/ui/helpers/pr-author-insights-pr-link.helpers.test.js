@@ -9,79 +9,10 @@
 const {
   createPrAuthorInsightsPrLinkHelpers,
 } = require("./pr-author-insights-pr-link.helpers.js");
-const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.js");
 
 describe("pr author insights pr-link helpers", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
-  });
-
-  describe("createAuthorInsightsPrLink", () => {
-    test("given PR entry, when creating link, then external link and table button rendered", () => {
-      const helpers = createPrAuthorInsightsPrLinkHelpers({
-        DEFAULT_REPO: "owner/repo",
-      });
-      const entry = createPrRowEntry({
-        prNumber: "123",
-        repo: "owner/repo",
-        data: {
-          number: "123",
-          title: "Test PR",
-          url: "https://github.com/owner/repo/pull/123",
-        },
-      });
-
-      const container = helpers.createAuthorInsightsPrLink(entry);
-
-      expect(container.tagName).toBe("DIV");
-      const link = container.querySelector("a.author-insights-link");
-      expect(link).toBeTruthy();
-      expect(link.textContent).toBe("#123 Test PR");
-      expect(link.href).toBe("https://github.com/owner/repo/pull/123");
-
-      const button = container.querySelector("button.author-insights-table-link");
-      expect(button).toBeTruthy();
-      expect(button.textContent).toBe("View in table");
-    });
-
-    test("given entry without URL, when creating link, then GitHub URL generated from repo", () => {
-      const helpers = createPrAuthorInsightsPrLinkHelpers({
-        DEFAULT_REPO: "owner/repo",
-      });
-      const entry = createPrRowEntry({
-        prNumber: "456",
-        repo: "custom/repo",
-        data: {
-          number: "456",
-          title: "Another PR",
-          url: "",
-        },
-      });
-
-      const container = helpers.createAuthorInsightsPrLink(entry);
-      const link = container.querySelector("a.author-insights-link");
-
-      expect(link.href).toBe("https://github.com/custom/repo/pull/456");
-    });
-
-    test("given entry with titleDisplay, when creating link, then title display used", () => {
-      const helpers = createPrAuthorInsightsPrLinkHelpers({
-        DEFAULT_REPO: "owner/repo",
-      });
-      const entry = createPrRowEntry({
-        prNumber: "789",
-        data: {
-          number: "789",
-          title: "",
-          titleDisplay: "Test PR [CHK:PASS]",
-        },
-      });
-
-      const container = helpers.createAuthorInsightsPrLink(entry);
-      const link = container.querySelector("a.author-insights-link");
-
-      expect(link.textContent).toBe("#789 Test PR [CHK:PASS]");
-    });
   });
 
   describe("navigateToPrInTable", () => {

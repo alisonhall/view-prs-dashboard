@@ -195,7 +195,7 @@ export function ReviewStatsContent({ stats, rows, actorsMap }) {
       ? ` Date range: ${dateRange.startDate || 'start'} to ${dateRange.endDate || 'end'}.`
       : '';
   const trendNoteText = window.renderActivityTrendNote
-    ? window.renderActivityTrendNote(rows, actorsMap)?.textContent || ''
+    ? window.renderActivityTrendNote(rows, actorsMap) || ''
     : '';
 
   return (

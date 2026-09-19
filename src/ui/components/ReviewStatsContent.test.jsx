@@ -65,11 +65,7 @@ describe('ReviewStatsContent', () => {
   beforeEach(() => {
     window.reviewStatsFormatIsoDatetime = (value) => String(value || '-');
     window.getNormalizedStatsDateRange = () => ({ startDate: '', endDate: '' });
-    window.renderActivityTrendNote = () => {
-      const note = document.createElement('p');
-      note.textContent = 'Total reviewer activity: 5 events across 3 days.';
-      return note;
-    };
+    window.renderActivityTrendNote = () => 'Total reviewer activity: 5 events across 3 days.';
     window.navigateToPrInTableFromStats = jest.fn();
   });
 

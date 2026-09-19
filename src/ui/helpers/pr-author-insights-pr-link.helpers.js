@@ -1,7 +1,9 @@
 /**
  * PR Link and Navigation Helpers for Author Insights
  * 
- * Provides helpers for creating PR links and navigating to PR rows in the main table.
+ * Provides helpers for navigating to PR rows in the main table. The
+ * DOM-building link element helper that used to live here was ported to
+ * AuthorInsightsPrLink.jsx.
  * UMD pattern for browser + Jest compatibility.
  */
 
@@ -14,52 +16,10 @@
   root.ViewPrsAuthorInsightsPrLinkHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrAuthorInsightsPrLinkHelpers = ({
-    DEFAULT_REPO = "",
-    activateDataTab,
-    collectNodesByTag,
     isReactTableMounted,
   } = {}) => {
     const isReactTableMountedSafe =
       typeof isReactTableMounted === "function" ? isReactTableMounted : () => false;
-    /**
-     * Creates a PR link element with external GitHub link and table navigation button.
-     * 
-     * @param {Object} entry - PR entry object
-     * @returns {HTMLElement} Container with external link and table navigation button
-     */
-    const createAuthorInsightsPrLink = (entry) => {
-      const row = entry?.data || {};
-      const prNumber = String(row.number || entry?.prNumber || "").trim();
-
-      const container = document.createElement("div");
-      container.style.display = "flex";
-      container.style.gap = "8px";
-      container.style.alignItems = "center";
-
-      // External GitHub link
-      const externalLink = document.createElement("a");
-      externalLink.className = "author-insights-link";
-      externalLink.href =
-        row.url ||
-        `https://github.com/${entry?.repo || DEFAULT_REPO}/pull/${prNumber}`;
-      externalLink.target = "_blank";
-      externalLink.rel = "noopener noreferrer";
-      externalLink.textContent = `#${prNumber} ${String(row.title || row.titleDisplay || "").trim()}`;
-      externalLink.title = "Open PR on GitHub";
-      container.appendChild(externalLink);
-
-      // Table navigation button
-      const tableLink = document.createElement("button");
-      tableLink.textContent = "View in table";
-      tableLink.className = "author-insights-table-link";
-      tableLink.title = "Navigate to PR data tab and scroll to this PR";
-      tableLink.onclick = () => {
-        navigateToPrInTable(prNumber, { activateDataTab, collectNodesByTag });
-      };
-      container.appendChild(tableLink);
-
-      return container;
-    };
 
     /**
      * Navigates to a PR row in the main data table.
@@ -120,7 +80,6 @@
     };
 
     return {
-      createAuthorInsightsPrLink,
       navigateToPrInTable,
     };
   };

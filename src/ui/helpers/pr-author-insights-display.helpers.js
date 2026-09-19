@@ -1,8 +1,9 @@
 /**
  * Author Insights Display and Formatting Helpers
  * 
- * Provides helpers for formatting author insights data, building author options,
- * and creating display elements like badges and meta information.
+ * Provides helpers for formatting author insights data, building author
+ * options, and sorting/matching entries. The DOM-building badge/meta helpers
+ * that used to live here were ported to AuthorInsightsPrDataMeta.jsx.
  * UMD pattern for browser + Jest compatibility.
  */
 
@@ -20,11 +21,6 @@
     normalizeActorLogin,
     normalizeAuthorInsightsSentiment,
     isChangedStatus,
-    toCount,
-    parseMarkerState,
-    formatChkDisplay,
-    getOpenConversationCount,
-    getViewedFilesSummary,
     asArray,
     parseSortableTime,
     formatIsoDatetime,
@@ -167,33 +163,6 @@
     };
 
     /**
-     * Creates a DOM element for meta detail text.
-     * 
-     * @param {HTMLElement} meta - Parent meta container
-     * @param {string} text - Detail text
-     */
-    const appendAuthorInsightsMetaDetail = (meta, text) => {
-      const detail = document.createElement("span");
-      detail.className = "author-insights-meta-detail";
-      detail.textContent = text;
-      meta.appendChild(detail);
-    };
-
-    /**
-     * Creates a DOM element for a badge.
-     * 
-     * @param {HTMLElement} meta - Parent meta container
-     * @param {string} text - Badge text
-     * @param {string} className - Badge CSS class
-     */
-    const appendAuthorInsightsBadge = (meta, text, className) => {
-      const badge = document.createElement("span");
-      badge.className = `author-insights-badge ${className}`.trim();
-      badge.textContent = text;
-      meta.appendChild(badge);
-    };
-
-    /**
      * Sorts manual comments in descending order by date.
      * 
      * @param {Array} comments - Array of comment objects
@@ -278,48 +247,6 @@
         return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
       });
 
-    /**
-     * Creates PR data meta element with status, approvals, CHK, conversations, and labels.
-     * 
-     * @param {Object} entry - PR entry
-     * @returns {HTMLElement} Meta container element
-     */
-    const createAuthorInsightsPrDataMeta = (entry) => {
-      const row = entry?.data || {};
-      const meta = document.createElement("div");
-      meta.className = "author-insights-meta";
-
-      const status = getAuthorInsightsCreatedPrStatus(entry);
-      appendAuthorInsightsBadge(
-        meta,
-        `Status: ${status}`,
-        getAuthorInsightsStatusBadgeClassName(status),
-      );
-
-      const approvedLabel = `${String(row?.approved || "-").trim() || "-"} (${toCount(row?.approvalCount)})`;
-      appendAuthorInsightsMetaDetail(meta, `Approved: ${approvedLabel}`);
-
-      const chkState = parseMarkerState(row?.titleDisplay, "CHK") || "-";
-      appendAuthorInsightsMetaDetail(
-        meta,
-        `CHK: ${formatChkDisplay(chkState, row?.failureCount)}`,
-      );
-
-      appendAuthorInsightsMetaDetail(
-        meta,
-        `Conversations: ${getOpenConversationCount(row)}`,
-      );
-
-      appendAuthorInsightsMetaDetail(meta, getViewedFilesSummary(row));
-
-      const labelsCount = asArray(row?.labels).filter(Boolean).length;
-      if (labelsCount > 0) {
-        appendAuthorInsightsMetaDetail(meta, `Labels: ${labelsCount}`);
-      }
-
-      return meta;
-    };
-
     return {
       buildAuthorInsightsEntries,
       noteAuthorMatchesSelection,
@@ -327,13 +254,10 @@
       getAuthorInsightsSentimentBadgeClassName,
       getAuthorInsightsStatusBadgeClassName,
       getAuthorInsightsCreatedPrStatus,
-      appendAuthorInsightsMetaDetail,
-      appendAuthorInsightsBadge,
       sortAuthorInsightsManualCommentsDesc,
       sortAuthorInsightsNoteMatchesDesc,
       getAuthorInsightsNoteDisplayTimestamp,
       sortAuthorInsightsCreatedPrsDesc,
-      createAuthorInsightsPrDataMeta,
       // Pass-through dependencies
       resolveActorDisplayName,
       getPreferredActorKey,
