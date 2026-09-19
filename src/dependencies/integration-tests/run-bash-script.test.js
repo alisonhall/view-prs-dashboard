@@ -6,7 +6,15 @@ const projectRoot = path.join(__dirname, "..", "..", "..");
 
 const runWrapper = (args, env) => {
   try {
-    const stdout = execFileSync("node", [wrapperPath, ...args], {
+    // Spawn node by its own resolved absolute path (not the bare "node"
+    // string) so that stripping PATH to simulate "no bash" below can't
+    // also accidentally hide node itself - on CI runners (e.g. GitHub
+    // Actions' actions/setup-node) node commonly lives in a directory
+    // ending in "bin" (e.g. /opt/hostedtoolcache/node/.../bin), which the
+    // PATH-stripping regex below would otherwise strip too, making
+    // execFileSync fail to spawn node at all (status: null) rather than
+    // exercising the wrapper's own "bash missing" logic.
+    const stdout = execFileSync(process.execPath, [wrapperPath, ...args], {
       cwd: projectRoot,
       encoding: "utf8",
       env: env || process.env,

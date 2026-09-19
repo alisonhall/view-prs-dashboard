@@ -14,9 +14,15 @@ const {
 describe("check-deps", () => {
   describe("getInstallHint", () => {
     test("returns the platform-specific hint when present", () => {
-      expect(getInstallHint({ win32: "winget install foo", default: "see docs" })).toBe(
-        "winget install foo",
-      );
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32" });
+      try {
+        expect(getInstallHint({ win32: "winget install foo", default: "see docs" })).toBe(
+          "winget install foo",
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+      }
     });
 
     test("falls back to the default hint on an unlisted platform", () => {
