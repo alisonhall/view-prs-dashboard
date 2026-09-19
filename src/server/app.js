@@ -102,6 +102,7 @@ const {
   viewPrsAutoCircuitCooldownMs,
   viewPrsAutoScriptTimeoutMs,
   viewPrsManualScriptTimeoutMs,
+  viewPrsQuickCheckScriptTimeoutMs,
   viewPrsAckScriptTimeoutMs,
   viewPrsAckRefreshScriptTimeoutMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -1578,21 +1579,28 @@ const runViewPrsAutoRefresh = async ({
 // full fetch above. Open/draft changes trigger an immediate targeted full
 // refresh; closed/merged changes are queued and drained on a longer timer
 // by runViewPrsMergedQueueDrain, since they're lower priority.
+// Return value is consumed by the manual POST /quick-check route (see
+// registerViewPrsMutationRoutes) to report an honest, per-run result -
+// the background setInterval caller ignores it, so this is a safe,
+// additive contract change. `skipped`/`reposFailed` specifically exist so
+// a caller can tell "confirmed nothing changed" apart from "the check
+// didn't actually run" (every repo failing used to look identical to a
+// clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
 const runViewPrsQuickCheck = async () => {
   if (
     viewPrsSchedulerState.isQuickCheckInProgress ||
     viewPrsSchedulerState.isAutoRunInProgress
   ) {
-    return;
+    return { skipped: true, skipReason: "already-in-progress" };
   }
 
   const dependencyStatus = callGetDependencyStatus();
   if (!dependencyStatus.ok) {
-    return;
+    return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
   }
 
   if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
-    return;
+    return { skipped: true, skipReason: "circuit-open" };
   }
 
   viewPrsSchedulerState.isQuickCheckInProgress = true;
@@ -1600,6 +1608,10 @@ const runViewPrsQuickCheck = async () => {
   try {
     const repos = getViewPrsAutoRefreshRepos();
     const reposWithPendingOpen = new Set();
+    const reposChecked = [];
+    const reposFailed = [];
+    let newPendingOpenCount = 0;
+    let newPendingMergedClosedCount = 0;
 
     await Promise.all(
       repos.map(async (repo) => {
@@ -1607,7 +1619,7 @@ const runViewPrsQuickCheck = async () => {
           const result = await callRunViewPrsScript(
             [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo],
             1024 * 1024,
-            { timeoutMs: viewPrsManualScriptTimeoutMs, trackSchedulerPrProgress: false },
+            { timeoutMs: viewPrsQuickCheckScriptTimeoutMs, trackSchedulerPrProgress: false },
           );
           const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
           const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
@@ -1615,7 +1627,16 @@ const runViewPrsQuickCheck = async () => {
             ? parsed.pendingMergedClosed
             : [];
 
+          reposChecked.push(repo);
+          newPendingOpenCount += pendingOpen.length;
+          newPendingMergedClosedCount += pendingMergedClosed.length;
+
           if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
+            // Clear any stale pending flag this repo left behind from an
+            // earlier quick check - previously this returned early here
+            // without clearing, so a since-resolved repo could keep
+            // reporting an old pending count indefinitely.
+            clearPendingForRepo(repo);
             return;
           }
 
@@ -1624,9 +1645,9 @@ const runViewPrsQuickCheck = async () => {
             reposWithPendingOpen.add(repo);
           }
         } catch (repoError) {
-          console.warn(
-            `[view-prs] quick-check failed for ${repo}: ${repoError?.message || repoError}`,
-          );
+          const message = repoError?.message || String(repoError);
+          reposFailed.push({ repo, error: message });
+          console.warn(`[view-prs] quick-check failed for ${repo}: ${message}`);
         }
       }),
     );
@@ -1640,9 +1661,18 @@ const runViewPrsQuickCheck = async () => {
       // PR is known to have actually changed.
       void runViewPrsAutoRefresh({ reposOverride: Array.from(reposWithPendingOpen) });
     }
+
+    return {
+      skipped: false,
+      reposChecked,
+      reposFailed,
+      newPendingOpenCount,
+      newPendingMergedClosedCount,
+    };
   } catch (error) {
     viewPrsSchedulerState.lastQuickCheckError = error?.message || "Quick check failed";
     console.error(`[view-prs] quick check failed: ${viewPrsSchedulerState.lastQuickCheckError}`);
+    return { skipped: false, fatalError: viewPrsSchedulerState.lastQuickCheckError };
   } finally {
     viewPrsSchedulerState.isQuickCheckInProgress = false;
   }
@@ -1840,6 +1870,7 @@ const createViewPrsApp = () => {
     viewPrsSchedulerState,
     resetViewPrsAutoRefreshFailureState,
     runViewPrsAutoRefresh,
+    runViewPrsQuickCheck,
     buildAckRefreshBudgetSkipErrors,
     isRepoSlug,
     listMergedPrCandidates,
@@ -1955,6 +1986,7 @@ module.exports = {
   viewPrsAutoCircuitCooldownMs,
   viewPrsAutoScriptTimeoutMs,
   viewPrsManualScriptTimeoutMs,
+  viewPrsQuickCheckScriptTimeoutMs,
   viewPrsAckScriptTimeoutMs,
   viewPrsAckRefreshScriptTimeoutMs,
   viewPrsAckTotalRefreshTimeoutMs,

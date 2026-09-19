@@ -158,6 +158,16 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_MANUAL_SCRIPT_TIMEOUT_MS || "1200000", 10) || 1200000,
   );
 
+  // The quick check is a single listing-only `gh` call per repo (no
+  // comments/reviews/diffs), so it should complete in seconds - not the
+  // full manual-run timeout above, which is now also awaited synchronously
+  // by the manual "Quick check" button (POST /quick-check) rather than only
+  // ever running invisibly in the background scheduler.
+  const viewPrsQuickCheckScriptTimeoutMs = Math.max(
+    30 * 1000,
+    Number.parseInt(env.VIEW_PRS_QUICK_CHECK_SCRIPT_TIMEOUT_MS || "60000", 10) || 60000,
+  );
+
   const viewPrsAckScriptTimeoutMs = Math.max(
     60 * 1000,
     Number.parseInt(env.VIEW_PRS_ACK_SCRIPT_TIMEOUT_MS || "600000", 10) || 600000,
@@ -237,6 +247,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAutoCircuitCooldownMs,
     viewPrsAutoScriptTimeoutMs,
     viewPrsManualScriptTimeoutMs,
+    viewPrsQuickCheckScriptTimeoutMs,
     viewPrsAckScriptTimeoutMs,
     viewPrsAckRefreshScriptTimeoutMs,
     viewPrsAckTotalRefreshTimeoutMs,

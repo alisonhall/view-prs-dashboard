@@ -471,25 +471,32 @@ describe("runViewPrsQuickCheck behavior", () => {
   test("does nothing when a quick check is already in progress", async () => {
     viewPrsSchedulerState.isQuickCheckInProgress = true;
 
-    await runViewPrsQuickCheck();
+    const result = await runViewPrsQuickCheck();
 
     expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+    expect(result).toEqual({ skipped: true, skipReason: "already-in-progress" });
   });
 
   test("does nothing while a full auto-refresh run is in progress", async () => {
     viewPrsSchedulerState.isAutoRunInProgress = true;
 
-    await runViewPrsQuickCheck();
+    const result = await runViewPrsQuickCheck();
 
     expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+    expect(result).toEqual({ skipped: true, skipReason: "already-in-progress" });
   });
 
   test("does nothing when required dependencies are missing", async () => {
     appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
 
-    await runViewPrsQuickCheck();
+    const result = await runViewPrsQuickCheck();
 
     expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+    expect(result).toEqual({
+      skipped: true,
+      skipReason: "missing-dependencies",
+      missing: ["gh"],
+    });
   });
 
   test("does nothing while the auto-refresh circuit is open", async () => {
@@ -498,9 +505,10 @@ describe("runViewPrsQuickCheck behavior", () => {
     ).toISOString();
     viewPrsSchedulerState.consecutiveAutoFailures = 3;
 
-    await runViewPrsQuickCheck();
+    const result = await runViewPrsQuickCheck();
 
     expect(viewPrsSchedulerState.lastQuickCheckAt).toBeNull();
+    expect(result).toEqual({ skipped: true, skipReason: "circuit-open" });
   });
 
   test("records a successful check with no pending changes when nothing changed", async () => {
@@ -509,14 +517,75 @@ describe("runViewPrsQuickCheck behavior", () => {
       stderr: "",
     });
 
+    let result;
     await withAutoRepos("owner/repo-quickcheck", async () => {
-      await runViewPrsQuickCheck();
+      result = await runViewPrsQuickCheck();
     });
 
     expect(viewPrsSchedulerState.lastQuickCheckAt).not.toBeNull();
     expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
     expect(viewPrsSchedulerState.isQuickCheckInProgress).toBe(false);
     expect(viewPrsSchedulerState.pendingByRepo["owner/repo-quickcheck"]).toBeUndefined();
+    // Regression coverage: the return value is what the manual POST
+    // /quick-check route reports back to the button - it must reflect
+    // what THIS run found (all zero here), not any stale accumulated state.
+    expect(result).toEqual({
+      skipped: false,
+      reposChecked: ["owner/repo-quickcheck"],
+      reposFailed: [],
+      newPendingOpenCount: 0,
+      newPendingMergedClosedCount: 0,
+    });
+  });
+
+  test("clears a repo's stale pending flag once it reports no changes on a later check", async () => {
+    viewPrsSchedulerState.pendingByRepo["owner/repo-stale-pending"] = {
+      open: ["501"],
+      mergedClosed: [],
+    };
+    appModule.runViewPrsScript = async () => ({
+      stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }),
+      stderr: "",
+    });
+
+    await withAutoRepos("owner/repo-stale-pending", async () => {
+      await runViewPrsQuickCheck();
+    });
+
+    // Before this fix, a repo that used to have pending changes kept
+    // reporting them forever once resolved, since the early-return path
+    // for "nothing pending" never cleared the old entry.
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-stale-pending"]).toBeUndefined();
+  });
+
+  test("reports ok-shaped result with reposFailed populated when a repo's script call throws", async () => {
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      const repo = repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "";
+      if (repo === "owner/repo-qc-fails") {
+        throw new Error("gh rate limited");
+      }
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+
+    let result;
+    await withAutoRepos("owner/repo-qc-fails", async () => {
+      result = await runViewPrsQuickCheck();
+    });
+
+    // A total failure still updates lastQuickCheckAt/clears lastQuickCheckError
+    // (per-repo failures are handled, not fatal to the whole run) - the
+    // *return value* is what distinguishes this from a clean pass, which is
+    // exactly what the manual route needs to avoid reporting "No changes
+    // found" for a check that never actually completed against GitHub.
+    expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
+    expect(result).toEqual({
+      skipped: false,
+      reposChecked: [],
+      reposFailed: [{ repo: "owner/repo-qc-fails", error: "gh rate limited" }],
+      newPendingOpenCount: 0,
+      newPendingMergedClosedCount: 0,
+    });
   });
 
   test("queues pending open PRs for a repo whose quick check reports changes", async () => {

@@ -2025,6 +2025,192 @@ describe("index page rendering with Testing Library", () => {
     expect(secondBody.prNumber).toBe("202");
   });
 
+  test("given the Quick check button when clicked then it posts to /view-prs/quick-check and shows the pending-change count", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo"],
+          reposFailed: [],
+          newPendingOpenCount: 2,
+          newPendingMergedClosedCount: 1,
+        });
+      }
+      if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+        return createOkJsonResponse({ ok: true, scheduler: {} });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      const quickCheckCalls = fetchMock.mock.calls.filter((call) => {
+        const [url, callInit] = call;
+        return (
+          String(url || "") === "/view-prs/quick-check" &&
+          String(callInit?.method || "GET").toUpperCase() === "POST"
+        );
+      });
+      expect(quickCheckCalls.length).toBe(1);
+    });
+
+    await waitFor(() => {
+      expect(quickCheckBtn.textContent).toBe("3 updates found");
+    });
+    expect(quickCheckBtn.disabled).toBe(false);
+  });
+
+  test("given nothing changed when Quick check succeeds then the button reports no changes found", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo"],
+          reposFailed: [],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 0,
+        });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      expect(quickCheckBtn.textContent).toBe("No changes found");
+    });
+  });
+
+  test("given one repo failed but others succeeded when Quick check completes then a warning notes the incomplete check", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo-ok"],
+          reposFailed: [{ repo: "owner/repo-broken", error: "gh auth expired" }],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 0,
+          error: "Quick check failed for 1 of 2 repo(s): owner/repo-broken",
+        });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      expect(quickCheckBtn.textContent).toBe("No changes found");
+    });
+    const snackbarMessage = document.getElementById("error-snackbar-message");
+    expect(String(snackbarMessage?.textContent || "")).toContain(
+      "Quick check incomplete",
+    );
+    expect(String(snackbarMessage?.textContent || "")).toContain(
+      "owner/repo-broken",
+    );
+  });
+
+  test("given the auto-refresh circuit is open when Quick check is clicked then a warning notification is shown", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return {
+          ok: false,
+          status: 503,
+          json: async () => ({
+            ok: false,
+            error:
+              "Auto refresh circuit breaker is open after repeated failures - try again later.",
+          }),
+        };
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      const snackbar = document.getElementById("error-snackbar");
+      expect(snackbar).not.toHaveAttribute("hidden");
+    });
+    const snackbarMessage = document.getElementById("error-snackbar-message");
+    expect(String(snackbarMessage?.textContent || "")).toContain(
+      "Quick check unavailable",
+    );
+    expect(quickCheckBtn.textContent).toBe("Quick check");
+  });
+
+  test("given a quick check already in progress when Quick check is clicked then a conflict notification is shown", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            ok: false,
+            error: "Quick check or auto refresh already in progress",
+          }),
+        };
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      const snackbar = document.getElementById("error-snackbar");
+      expect(snackbar).not.toHaveAttribute("hidden");
+    });
+    const snackbarMessage = document.getElementById("error-snackbar-message");
+    expect(String(snackbarMessage?.textContent || "")).toContain(
+      "Quick check already in progress",
+    );
+    expect(quickCheckBtn.textContent).toBe("Quick check");
+  });
+
   test("given label dropdown selections when Run script posts payload then label and excludeLabel map from selected label checkboxes", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({

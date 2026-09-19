@@ -1357,6 +1357,126 @@ describe("route behavior", () => {
     }
   });
 
+  test("runs a quick check and reports this run's own pending counts when POST /quick-check succeeds", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-quick-check-route";
+    appModule.runViewPrsScript = async () => ({
+      stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
+      stderr: "",
+    });
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.newPendingOpenCount).toBe(2);
+      expect(payload.newPendingMergedClosedCount).toBe(1);
+      expect(payload.reposChecked).toContain("owner/repo-quick-check-route");
+      expect(payload.reposFailed).toEqual([]);
+      expect(payload).toHaveProperty("lastQuickCheckAt");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      if (originalAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = originalAutoRepos;
+      }
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-quick-check-route"];
+    }
+  });
+
+  test("reports ok:true with reposFailed populated when one of several repos fails to check", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-qc-ok,owner/repo-qc-broken";
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      const repo = repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "";
+      if (repo === "owner/repo-qc-broken") {
+        throw new Error("gh auth expired");
+      }
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.reposChecked).toContain("owner/repo-qc-ok");
+      expect(payload.reposFailed).toEqual([
+        expect.objectContaining({ repo: "owner/repo-qc-broken" }),
+      ]);
+      expect(String(payload.error || "")).toContain("owner/repo-qc-broken");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      if (originalAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = originalAutoRepos;
+      }
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-qc-ok"];
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-qc-broken"];
+    }
+  });
+
+  test("returns 503 when POST /quick-check is requested while the auto-refresh circuit is open", async () => {
+    appModule.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
+      Date.now() + 60 * 60 * 1000,
+    ).toISOString();
+    appModule.viewPrsSchedulerState.consecutiveAutoFailures = 3;
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(503);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toMatch(/circuit breaker is open/i);
+    } finally {
+      appModule.viewPrsSchedulerState.autoCircuitOpenUntil = null;
+      appModule.viewPrsSchedulerState.consecutiveAutoFailures = 0;
+    }
+  });
+
+  test("returns 409 when POST /quick-check is requested while a quick check is already in progress", async () => {
+    appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(409);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toMatch(/already in progress/i);
+    } finally {
+      appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+    }
+  });
+
+  test("returns 409 when POST /quick-check is requested during an active auto run", async () => {
+    appModule.viewPrsSchedulerState.isAutoRunInProgress = true;
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(409);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toMatch(/already in progress/i);
+    } finally {
+      appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
+    }
+  });
+
+  test("returns 500 when POST /quick-check is requested while a dependency is missing", async () => {
+    const originalDeps = appModule.getDependencyStatus;
+    appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(500);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("Missing required command(s): gh");
+    } finally {
+      appModule.getDependencyStatus = originalDeps;
+    }
+  });
+
   test("returns 500 when POST /run is requested while a dependency is missing", async () => {
     const originalDeps = appModule.getDependencyStatus;
     appModule.getDependencyStatus = () => ({ ok: false, missing: ["gh"] });

@@ -2432,6 +2432,104 @@ const handleTriggerAutoRun = async () => {
   }
 };
 
+const QUICK_CHECK_BUTTON_LABEL = "Quick check";
+
+// Manually triggers the scheduler's own cheap "did anything change" pass
+// (POST /view-prs/quick-check -> runViewPrsQuickCheck on the server) - a
+// single listing-only `gh` call per repo, no comments/reviews/diffs, so it's
+// fast enough to await directly and report the result inline instead of
+// firing-and-forgetting like "Trigger auto run" does for the full refresh.
+const handleQuickCheck = async () => {
+  const btn = getOptionalElementById("quick-check-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Checking...";
+  }
+
+  const resetLabelSoon = () => {
+    if (!btn) return;
+    setTimeout(() => {
+      btn.textContent = QUICK_CHECK_BUTTON_LABEL;
+    }, 2500);
+  };
+
+  try {
+    const { response, result } = await postJson("/view-prs/quick-check", {});
+    if (response.status === 409) {
+      showErrorNotification(
+        "Quick check already in progress",
+        result?.error ||
+          "A quick check or auto refresh is already running. Try again shortly.",
+        6000,
+      );
+      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
+      return;
+    }
+    if (response.status === 503) {
+      showWarningNotification(
+        "Quick check unavailable",
+        result?.error ||
+          "Auto refresh circuit breaker is open after repeated failures. Try again later.",
+        8000,
+      );
+      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
+      return;
+    }
+    if (!response.ok || result.ok === false) {
+      notifyFailureSnackbar(
+        "Quick check failed",
+        result,
+        result?.error || "Unexpected error running quick check",
+      );
+      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
+      return;
+    }
+
+    // Counts reflect only what THIS run found (server-side newPendingOpenCount/
+    // newPendingMergedClosedCount), not the scheduler's accumulated backlog -
+    // showing the latter here would misrepresent stale, already-known pending
+    // state as something this click just discovered.
+    const pendingTotal =
+      (result.newPendingOpenCount || 0) + (result.newPendingMergedClosedCount || 0);
+    const failedCount = Array.isArray(result.reposFailed) ? result.reposFailed.length : 0;
+
+    if (btn) {
+      btn.textContent =
+        pendingTotal > 0
+          ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
+          : "No changes found";
+    }
+    resetLabelSoon();
+
+    // A repo failing to check (e.g. expired gh auth) still returns ok:true
+    // when other repos succeeded - surface it anyway so "No changes found"
+    // is never confused with "the check for this repo didn't actually run".
+    if (failedCount > 0) {
+      showWarningNotification(
+        "Quick check incomplete",
+        result?.error ||
+          `Quick check failed for ${failedCount} repo(s). See server logs for details.`,
+        10000,
+      );
+    }
+
+    // Reflects the fresh pending counts in the Auto Refresh panel right
+    // away instead of waiting for its own independent poll interval.
+    void loadSchedulerStatus();
+  } catch (error) {
+    notifyFailureSnackbar(
+      "Quick check failed",
+      error,
+      "Unable to reach the server",
+    );
+    if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+    }
+  }
+};
+
 const prFilterPanelHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-filter-panel.helpers.js")
@@ -5491,6 +5589,12 @@ const initPage = () => {
     void persistRunScriptOptionOverrides();
     void handleRunScript();
   });
+  const quickCheckBtn = getOptionalElementById("quick-check-btn");
+  if (quickCheckBtn) {
+    quickCheckBtn.addEventListener("click", () => {
+      void handleQuickCheck();
+    });
+  }
   const triggerAutoRunBtn = getOptionalElementById("trigger-auto-run-btn");
   if (triggerAutoRunBtn) {
     triggerAutoRunBtn.addEventListener("click", () => {

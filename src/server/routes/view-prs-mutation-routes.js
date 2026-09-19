@@ -24,6 +24,7 @@ const registerViewPrsMutationRoutes = ({
   viewPrsSchedulerState,
   resetViewPrsAutoRefreshFailureState,
   runViewPrsAutoRefresh,
+  runViewPrsQuickCheck,
   buildAckRefreshBudgetSkipErrors,
   isRepoSlug,
   listMergedPrCandidates,
@@ -47,6 +48,13 @@ const registerViewPrsMutationRoutes = ({
     buildRunAutoSuccessResult,
     buildRunAutoFailureActionLogEntry,
     buildRunAutoSuccessActionLogEntry,
+    buildQuickCheckAlreadyInProgressResult,
+    buildQuickCheckMissingDependenciesResult,
+    buildQuickCheckCircuitOpenResult,
+    buildQuickCheckFatalFailureResult,
+    buildQuickCheckSuccessResult,
+    buildQuickCheckSuccessActionLogEntry,
+    buildQuickCheckFailureActionLogEntry,
     buildAckRequest,
     createAckScriptRunner,
     buildAckRefreshList,
@@ -185,6 +193,60 @@ const registerViewPrsMutationRoutes = ({
     appendActionLogEntry(buildRunAutoSuccessActionLogEntry({ timingContext }));
 
     const successResult = buildRunAutoSuccessResult();
+    sendRouteResult({ res, result: successResult });
+  });
+
+  // Manual trigger for the scheduler's own cheap "did anything change" pass
+  // (see runViewPrsQuickCheck) - unlike /run-auto this is awaited directly
+  // rather than fire-and-forget, since it's a single listing-only `gh` call
+  // per repo (no comments/reviews/diffs), fast enough to return inline.
+  // Branches entirely on runViewPrsQuickCheck's own returned result rather
+  // than re-checking scheduler state independently beforehand, so the
+  // route can't drift from what the function actually decided.
+  app.post(["/quick-check", "/view-prs/quick-check"], async (_req, res) => {
+    const timingContext = createTimingContext();
+
+    const checkResult = await runViewPrsQuickCheck();
+
+    if (checkResult.skipped) {
+      const skipResult =
+        checkResult.skipReason === "missing-dependencies"
+          ? buildQuickCheckMissingDependenciesResult(checkResult.missing || [])
+          : checkResult.skipReason === "circuit-open"
+            ? buildQuickCheckCircuitOpenResult()
+            : buildQuickCheckAlreadyInProgressResult();
+      appendActionLogEntry(
+        buildQuickCheckFailureActionLogEntry({
+          timingContext,
+          error: skipResult.responsePayload.error,
+        }),
+      );
+      sendRouteResult({ res, result: skipResult });
+      return;
+    }
+
+    if (checkResult.fatalError) {
+      const failureResult = buildQuickCheckFatalFailureResult(checkResult.fatalError);
+      appendActionLogEntry(
+        buildQuickCheckFailureActionLogEntry({
+          timingContext,
+          error: checkResult.fatalError,
+        }),
+      );
+      sendRouteResult({ res, result: failureResult });
+      return;
+    }
+
+    const successResult = buildQuickCheckSuccessResult({
+      lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt,
+      reposChecked: checkResult.reposChecked,
+      reposFailed: checkResult.reposFailed,
+      newPendingOpenCount: checkResult.newPendingOpenCount,
+      newPendingMergedClosedCount: checkResult.newPendingMergedClosedCount,
+    });
+    appendActionLogEntry(
+      buildQuickCheckSuccessActionLogEntry({ timingContext, result: successResult }),
+    );
     sendRouteResult({ res, result: successResult });
   });
 
