@@ -437,7 +437,7 @@ describe("Command Execution Helpers", () => {
 
     test("When some dependencies missing, Then returns not ok status", () => {
       // Arrange
-      mockSpawnSync.mockImplementation((cmd, args) => {
+      mockSpawnSync.mockImplementation((_cmd, args) => {
         const command = args[1];
         if (command.includes("jq")) {
           return { status: 1 }; // jq not found

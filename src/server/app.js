@@ -57,8 +57,6 @@ const {
 const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers } = require("./helpers/command-execution-helpers");
-const { createDataProcessingHelpers } = require("./helpers/data-processing-helpers");
-const { createBackfillHelpers } = require("./helpers/backfill-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 
 // Configuration and constants
@@ -73,8 +71,6 @@ const config = createAppConfig({
 // Extract commonly used config values for compatibility
 const {
   defaultViewPrsRepo,
-  requiredCommands,
-  requiredPackages,
   viewPrsUiDir,
   viewPrsUiIndexFile,
   viewPrsDataFile,
@@ -140,7 +136,6 @@ const viewPrsSchedulerState = {
   pendingByRepo: {},
 };
 
-const VIEW_PRS_PROGRESS_PREFIX = "__VIEW_PRS_PROGRESS__:";
 const viewPrsActivePrCounts = new Map();
 
 // Initialize scheduler helpers (uses only fs, path, config - no circular deps)
@@ -278,8 +273,6 @@ const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
     .map((entry) => String(entry?.prNumber || entry?.data?.number || "").trim())
     .filter((prNumber) => /^\d+$/.test(prNumber));
 };
-
-let viewPrsWatchdogForceStopCount = 0;
 
 // Use scheduler helpers for action log management
 const appendActionLogEntry = (entry) => _appendActionLogEntry(entry);
@@ -743,8 +736,6 @@ const {
 // Use command execution helpers
 const formatScriptFailureMessage = (failure, fallbackMessage) =>
   _formatScriptFailureMessage(failure, fallbackMessage);
-
-const { terminateProcessTree } = commandHelpers;
 
 // Use command execution helper
 const runViewPrsBashCommand = (bashArgs, maxBufferBytes, options) =>

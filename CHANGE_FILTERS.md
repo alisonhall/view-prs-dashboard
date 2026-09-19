@@ -423,7 +423,7 @@ If you previously relied on the hardcoded merge filter and want to disable it:
 **Steps:**
 1. Uncheck "Use built-in merge commit filter"
 2. Add to commit patterns:
-   ```
+   ```text
    ^Merge branch '(develop|staging)'
    ^Merge pull request #
    ```

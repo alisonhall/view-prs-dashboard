@@ -29,7 +29,7 @@ function createCommandExecutionHelpers({
   spawnSync,
   process,
   viewPrsDir,
-  viewPrsScriptsDir,
+  viewPrsScriptsDir: _viewPrsScriptsDir,
   requiredCommands,
   requiredPackages,
   viewPrsProgressTracker,

@@ -45,8 +45,8 @@ describe("Data Processing Helpers", () => {
       isRepoSlug: jest.fn(() => true),
       isObject: jest.fn((val) => val !== null && typeof val === "object" && !Array.isArray(val)),
       inferFallbackRepoForNotesOnlyEntries: jest.fn(() => "org/repo"),
-      buildNotesOnlyMergedEntry: jest.fn((repo, prNum, notes, r) => ({ prNumber: prNum, notes })),
-      buildGitDiffOnlyMergedEntry: jest.fn((repo, prNum, r, f) => ({ prNumber: prNum, repo: r })),
+      buildNotesOnlyMergedEntry: jest.fn((_repo, prNum, notes, _r) => ({ prNumber: prNum, notes })),
+      buildGitDiffOnlyMergedEntry: jest.fn((_repo, prNum, r, _f) => ({ prNumber: prNum, repo: r })),
       normalizeViewPrsUserState: jest.fn((state) => ({
         ackByRepo: {},
         reverifyByRepo: {},
@@ -68,7 +68,7 @@ describe("Data Processing Helpers", () => {
 
     // Mock state storage
     mockStateStorage = {
-      migrateLegacyViewPrsUserState: jest.fn((parsed, normalized) => normalized),
+      migrateLegacyViewPrsUserState: jest.fn((_parsed, normalized) => normalized),
     };
 
     // Mock PR detail helpers
@@ -372,7 +372,7 @@ describe("Data Processing Helpers", () => {
       };
 
       // Act
-      const result = dataProcessingHelpers.buildViewPrsActorsMap(byPrNumber);
+      dataProcessingHelpers.buildViewPrsActorsMap(byPrNumber);
 
       // Assert
       expect(mockActorHelpers.addActorName).toHaveBeenCalledWith(

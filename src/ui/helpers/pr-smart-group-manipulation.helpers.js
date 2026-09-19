@@ -24,7 +24,7 @@
     getPrRowElement = () => null,
     updateSectionCount = () => {},
     entryNeedsAttention = () => false,
-    hasUserInteraction = () => false,
+    hasUserInteraction: _hasUserInteraction = () => false,
   } = {}) => {
     /**
      * Move a PR row into a smart group section.

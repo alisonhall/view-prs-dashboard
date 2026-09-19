@@ -18,7 +18,7 @@ describe("Backfill Helpers", () => {
     mockCommandHelpers = {
       runViewPrsBashCommand: jest.fn(),
       runViewPrsShellScript: jest.fn(),
-      formatScriptFailureMessage: jest.fn((failure, fallback) => fallback),
+      formatScriptFailureMessage: jest.fn((_failure, fallback) => fallback),
     };
 
     // Mock data helpers

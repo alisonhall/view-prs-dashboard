@@ -7,7 +7,27 @@ import globals from "globals";
 
 export default defineConfig([
   {
-    ignores: ["**/package-lock.json", "coverage/**"],
+    // PHASE_*.md/PHASES_*.md/ROADMAP.md/src/ui/vendor were previously listed
+    // in .eslintignore, which ESLint 9's flat config no longer reads (see
+    // the ESLintIgnoreWarning) - migrated here so they're actually honored.
+    // REACT_MIGRATION_PLAN.md is new: one of its lines has grown past 150K
+    // characters, which sends the markdown parser into a multi-hour hang -
+    // confirmed by timing `eslint REACT_MIGRATION_PLAN.md` alone against a
+    // 20s timeout with no completion, vs. a normal few seconds once excluded.
+    ignores: [
+      "**/package-lock.json",
+      "coverage/**",
+      "PHASE_*.md",
+      "PHASES_*.md",
+      "ROADMAP.md",
+      "REACT_MIGRATION_PLAN.md",
+      "src/ui/vendor/**",
+      // Tool scaffolding/sample content, not authored project docs - its
+      // sample prompt deliberately lists literal special characters
+      // (including brackets) that the markdown parser misreads as broken
+      // reference links.
+      ".slingshot/**",
+    ],
   },
   {
     files: ["**/*.{js,mjs,cjs}"],
@@ -20,6 +40,13 @@ export default defineConfig([
     languageOptions: { sourceType: "commonjs", globals: { ...globals.jest } },
   },
   {
+    // vite.config.js is loaded by Vite as a real ES module regardless of
+    // the rest of the project staying CommonJS - override the blanket
+    // sourceType: "commonjs" above just for this file.
+    files: ["vite.config.js"],
+    languageOptions: { sourceType: "module" },
+  },
+  {
     files: ["**/*.json"],
     plugins: { json },
     language: "json/json",
@@ -28,7 +55,12 @@ export default defineConfig([
   {
     files: ["**/*.md"],
     plugins: { markdown },
-    language: "markdown/commonmark",
+    // gfm (not commonmark): these docs use GitHub-flavored task-list
+    // checkboxes ("- [ ]"/"- [x]"), which pure CommonMark has no concept
+    // of - it parses "[ ]"/"[x]" as reference-style link shorthand instead,
+    // and markdown/no-missing-label-refs then flags every single checkbox
+    // as a broken link reference. gfm parses task lists correctly.
+    language: "markdown/gfm",
     extends: ["markdown/recommended"],
   },
   {

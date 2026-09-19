@@ -871,7 +871,7 @@ The "LAST ACTIVITY" column displays two lines of information:
   - Otherwise shows `sourceUpdatedAt` or `updatedAt` (last commit timestamp)
   - Tooltip: "Merged at", "Closed at", or "Last commit"
 - **Line 2 (muted)**: Your last activity on the PR
-  - Format: "You: [datetime]"
+  - Format: "You: `[datetime]`"
   - Shows the `baseline` field (your last interaction with the PR)
   - Tooltip: "Your last activity on this PR"
 

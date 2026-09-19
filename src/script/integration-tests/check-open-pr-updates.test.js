@@ -11,7 +11,19 @@ const runShell = (command) =>
     env: { ...process.env, BASH_ENV: "" },
   }).trim();
 
-const runScriptFn = (expression) => runShell(`source "${scriptPath}"; ${expression}`);
+// check-open-pr-updates.sh defaults USER_STATE_FILE to
+// $VIEW_PRS_DIR/data/check-open-pr-updates.user-state.json, and several
+// helpers (get_ack_ts, get_reverify_required, get_in_review_required) read
+// it directly via jq. On a real dev machine that file already exists (from
+// having run the script for real), masking the fact that this suite never
+// isolates it - on a fresh checkout (data/ is gitignored) jq fails against
+// the missing file and compute_pr_state_json aborts. Point every sourced
+// command at an isolated, empty-but-valid state file instead.
+const isolatedUserStateFile = runShell("mktemp");
+runShell(`printf '%s' '{}' > "${isolatedUserStateFile}"`);
+
+const runScriptFn = (expression) =>
+  runShell(`source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}"; ${expression}`);
 
 const seedCacheFingerprint = () => {
   const detailDir = runShell("mktemp -d");
@@ -33,7 +45,7 @@ const seedCacheFingerprint = () => {
   );
 
   const fingerprint = runShell(
-    `source "${scriptPath}"; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; build_pr_source_fingerprint "123"`,
+    `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; build_pr_source_fingerprint "123"`,
   );
 
   return {
@@ -75,7 +87,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     // else - see the script's own comment on this line).
     const output = execFileSync(
       "bash",
-      ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; echo "[$REPO]"`],
+      ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";echo "[$REPO]"`],
       { cwd: scriptDir, encoding: "utf8", env: { ...process.env, BASH_ENV: "" } },
     ).trim();
     expect(output).toBe("[]");
@@ -88,7 +100,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     try {
       execFileSync(
         "bash",
-        ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; main --open none`],
+        ["-c", `unset VIEW_PRS_REPO; source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";main --open none`],
         { cwd: scriptDir, encoding: "utf8", env: { ...process.env, BASH_ENV: "" } },
       );
     } catch (error) {
@@ -100,14 +112,14 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
   test("REPO uses VIEW_PRS_REPO when set, so a different repo can be targeted without editing the script", () => {
     const output = runShell(
-      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; echo "$REPO"`,
+      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";echo "$REPO"`,
     );
     expect(output).toBe("someone-else/their-repo");
   });
 
   test("the --repo CLI flag still overrides VIEW_PRS_REPO", () => {
     const output = runShell(
-      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; parse_args --repo cli-wins/repo; echo "$REPO"`,
+      `VIEW_PRS_REPO='someone-else/their-repo'; source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";parse_args --repo cli-wins/repo; echo "$REPO"`,
     );
     expect(output).toBe("cli-wins/repo");
   });
@@ -155,7 +167,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
 
     const output = runShell(
-      `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '{"comments":[],"reviews":[],"reviewRequests":[],"commits":[],"assignees":[],"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '{"comments":[],"reviews":[],"reviewRequests":[],"commits":[],"assignees":[],"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
     );
 
     const parsed = JSON.parse(output);
@@ -186,7 +198,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
 
     const output = runShell(
-      `source "${scriptPath}"; REPO='owner/repo'; VIEW_PRS_DIR='${scriptDir}/../..'; PR_DETAIL_DIR='${detailDir}'; attach_pr_detail_ref '${row}'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";REPO='owner/repo'; VIEW_PRS_DIR='${scriptDir}/../..'; PR_DETAIL_DIR='${detailDir}'; attach_pr_detail_ref '${row}'`,
     );
 
     const parsed = JSON.parse(output);
@@ -229,7 +241,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
 
     runShell(
-      `source "${scriptPath}"; REPO='owner/repo'; VIEW_PRS_DIR='${scriptDir}/../..'; PR_DETAIL_DIR='${detailDir}'; attach_pr_detail_ref '${row}' >/dev/null`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";REPO='owner/repo'; VIEW_PRS_DIR='${scriptDir}/../..'; PR_DETAIL_DIR='${detailDir}'; attach_pr_detail_ref '${row}' >/dev/null`,
     );
 
     const sidecar = JSON.parse(
@@ -256,7 +268,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
     expect(() =>
       runShell(
-        `source "${scriptPath}"; replace_state_file "${empty}" "${target}" "user-state"`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";replace_state_file "${empty}" "${target}" "user-state"`,
       ),
     ).toThrow();
 
@@ -275,7 +287,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
     expect(() =>
       runShell(
-        `source "${scriptPath}"; replace_state_file "${invalid}" "${target}" "user-state"`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";replace_state_file "${invalid}" "${target}" "user-state"`,
       ),
     ).toThrow();
 
@@ -318,7 +330,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     ).toString("base64");
 
     const output = runShell(
-      `source "${scriptPath}"; get_cached_row_json_for_pr() { printf ''; }; collect_prioritized_stale_number_sets '${openPr}\n${draftPr}' '${closedPr}' '${mergedPr}'; printf 'OPEN_DRAFT=%s\nCLOSED=%s\nMERGED=%s\nALL=%s' "$STALE_OPEN_DRAFT_PR_NUMBERS" "$STALE_CLOSED_PR_NUMBERS" "$STALE_MERGED_PR_NUMBERS" "$STALE_ALL_PR_NUMBERS"`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";get_cached_row_json_for_pr() { printf ''; }; collect_prioritized_stale_number_sets '${openPr}\n${draftPr}' '${closedPr}' '${mergedPr}'; printf 'OPEN_DRAFT=%s\nCLOSED=%s\nMERGED=%s\nALL=%s' "$STALE_OPEN_DRAFT_PR_NUMBERS" "$STALE_CLOSED_PR_NUMBERS" "$STALE_MERGED_PR_NUMBERS" "$STALE_ALL_PR_NUMBERS"`,
     );
 
     expect(output).toContain("OPEN_DRAFT=102");
@@ -335,7 +347,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     );
 
     const output = runShell(
-      `source "${scriptPath}"; CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '{"number":123,"title":"PR title","checkState":"RUN","mergeState":"UNK","titleDisplay":"PR title [CHK:RUN][MRG:UNK]"}' "123"`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '{"number":123,"title":"PR title","checkState":"RUN","mergeState":"UNK","titleDisplay":"PR title [CHK:RUN][MRG:UNK]"}' "123"`,
     );
 
     const row = JSON.parse(output);
@@ -347,7 +359,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   test("falls back to NA and UNK when enrich_cached_row_with_ci_merge cannot find cached CI data", () => {
     const cacheDir = runShell("mktemp -d");
     const output = runShell(
-      `source "${scriptPath}"; CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '{"number":456,"title":"Another PR","checkState":"RUN","mergeState":"YES","titleDisplay":"Another PR [CHK:RUN][MRG:YES]"}' "456"`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '{"number":456,"title":"Another PR","checkState":"RUN","mergeState":"YES","titleDisplay":"Another PR [CHK:RUN][MRG:YES]"}' "456"`,
     );
 
     const row = JSON.parse(output);
@@ -394,7 +406,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
 
     const output = runShell(
-      `source "${scriptPath}"; VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='bob'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='bob'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
     );
 
     expect(output).toBe("");
@@ -438,7 +450,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
 
     const output = runShell(
-      `source "${scriptPath}"; VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
     );
 
     expect(output).toContain('"number":"123"');
@@ -492,7 +504,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
 
     const output = runShell(
-      `source "${scriptPath}"; VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
     );
 
     expect(output).toContain('"number":"123"');
@@ -552,7 +564,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     );
 
     const output = runShell(
-      `source "${scriptPath}"; VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_PROGRESS_MARKERS=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; get_pr_row_json '${prJson}' 'open' 2>&1`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_PROGRESS_MARKERS=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; get_pr_row_json '${prJson}' 'open' 2>&1`,
     );
 
     expect(output).toContain("__VIEW_PRS_PROGRESS__:START:123");
@@ -606,7 +618,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
 
     const output = runShell(
-      `source "${scriptPath}"; VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=60; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=60; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
     );
 
     expect(output).toBe("");
@@ -619,7 +631,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     );
 
     const output = runShell(
-      `source "${scriptPath}"; VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; enrich_cached_row_with_viewed_files '{"number":789,"title":"Viewed files","viewedFilesCount":"1","changedFilesCount":"2","viewedFilesSummary":"1/2 viewed"}' "789"`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; enrich_cached_row_with_viewed_files '{"number":789,"title":"Viewed files","viewedFilesCount":"1","changedFilesCount":"2","viewedFilesSummary":"1/2 viewed"}' "789"`,
     );
 
     const row = JSON.parse(output);
@@ -640,7 +652,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   describe("Given a PR with external commits, when compute_pr_state_json evaluates commit-based change detection", () => {
     const runComputePrStateJson = (prJson, detailJson) => {
       const output = runShell(
-        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
       );
       return JSON.parse(output);
     };
@@ -736,7 +748,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
       });
 
       const output = runShell(
-        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMIT_PATTERNS='^Automated:'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${basePr()}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMIT_PATTERNS='^Automated:'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${basePr()}'`,
       );
       const row = JSON.parse(output);
 
@@ -827,7 +839,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   describe("Given a non-author viewer whose only activity is a review-thread reply, when compute_pr_state_json evaluates status and baseline", () => {
     const runComputePrStateJsonWithThreads = (prJson, detailJson, threadsJson) => {
       const output = runShell(
-        `source "${scriptPath}"; VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '${threadsJson}'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":1}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '${threadsJson}'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":1}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
       );
       return JSON.parse(output);
     };

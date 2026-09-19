@@ -44,17 +44,17 @@
   function createBackfillTabOrchestrator({
     // Helper functions (already extracted)
     loadBackfillStatus,
-    loadBackfillLogTail,
+    loadBackfillLogTail: _loadBackfillLogTail,
     handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
     activateDataTab,
-    getOptionalElementById,
+    getOptionalElementById: _getOptionalElementById,
     beginRequestActivity,
     notifyFailureSnackbar,
     // State management (via dependency injection)
-    stateGetters,
-    stateSetters,
+    stateGetters: _stateGetters,
+    stateSetters: _stateSetters,
   }) {
     // Private state (tab-specific)
     let isInitialized = false;

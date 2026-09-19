@@ -97,7 +97,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "bot1,bot2" '(\$ignoreAuthors | split(",") | map(select(length > 0))) as \$ignored | [.comments[]? | select((.author.login // "") != "" and .author.login != \$me) | select((\$ignored | length) == 0 or (.author.login as \$author | \$ignored | index(\$author) | not))] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "bot1,bot2" '($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored | [.comments[]? | select((.author.login // "") != "" and .author.login != $me) | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))] | length'`,
     );
 
     expect(count).toBe("2"); // Only alice and bob counted
@@ -113,7 +113,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "" '(\$ignoreAuthors | split(",") | map(select(length > 0))) as \$ignored | [.comments[]? | select((.author.login // "") != "" and .author.login != \$me) | select((\$ignored | length) == 0 or (.author.login as \$author | \$ignored | index(\$author) | not))] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "" '($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored | [.comments[]? | select((.author.login // "") != "" and .author.login != $me) | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))] | length'`,
     );
 
     expect(count).toBe("3");
@@ -130,7 +130,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "optional-reviewer" '(\$ignoreAuthors | split(",") | map(select(length > 0))) as \$ignored | [.reviews[]? | select((.author.login // "") != "" and .author.login != \$me) | select((.state // "") != "APPROVED") | select((\$ignored | length) == 0 or (.author.login as \$author | \$ignored | index(\$author) | not))] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignoreAuthors "optional-reviewer" '($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored | [.reviews[]? | select((.author.login // "") != "" and .author.login != $me) | select((.state // "") != "APPROVED") | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))] | length'`,
     );
 
     expect(count).toBe("2"); // alice COMMENTED and bob CHANGES_REQUESTED
@@ -148,7 +148,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if (\$ignorePatterns | length) > 0 then "|" + \$ignorePatterns else "" end)) as \$combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != \$me)) | select(((.messageHeadline // "") | test(\$combinedPattern)) | not)] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
     );
 
     expect(count).toBe("2"); // Only "feat: add new feature" and "fix: resolve bug"
@@ -164,7 +164,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if (\$ignorePatterns | length) > 0 then "|" + \$ignorePatterns else "" end)) as \$combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != \$me)) | select(((.messageHeadline // "") | test(\$combinedPattern)) | not)] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
     );
 
     expect(count).toBe("2"); // "feat: add feature" and "docs: update docs" (merge filtered)
@@ -182,7 +182,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:|^style:|^chore:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if (\$ignorePatterns | length) > 0 then "|" + \$ignorePatterns else "" end)) as \$combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != \$me)) | select(((.messageHeadline // "") | test(\$combinedPattern)) | not)] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:|^style:|^chore:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
     );
 
     expect(count).toBe("1"); // Only "feat: new feature"
@@ -198,7 +198,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^chore\\(deps\\):" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if (\$ignorePatterns | length) > 0 then "|" + \$ignorePatterns else "" end)) as \$combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != \$me)) | select(((.messageHeadline // "") | test(\$combinedPattern)) | not)] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^chore\\(deps\\):" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
     );
 
     expect(count).toBe("2"); // "chore: general maintenance" and "feat: new feature"
@@ -214,7 +214,7 @@ describe("change filter application in jq queries", () => {
     });
 
     const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "(?i)^wip:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if (\$ignorePatterns | length) > 0 then "|" + \$ignorePatterns else "" end)) as \$combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != \$me)) | select(((.messageHeadline // "") | test(\$combinedPattern)) | not)] | length'`,
+      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "(?i)^wip:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
     );
 
     expect(count).toBe("1"); // Only "feat: completed feature"

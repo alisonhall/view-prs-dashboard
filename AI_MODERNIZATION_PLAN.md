@@ -1,5 +1,3 @@
-<!-- eslint-disable markdown/no-missing-label-refs -->
-
 # AI Modernization Plan and Checklist
 
 ## Goal
