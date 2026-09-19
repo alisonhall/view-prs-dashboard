@@ -631,7 +631,7 @@ describe("index page rendering with Testing Library", () => {
     // empty-payload render landed. One tick here lets it settle against
     // *this* call's own (about-to-be-discarded) DOM instead.
     await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+  }, 20_000);
 
   afterEach(async () => {
     // Some click handlers (e.g. "Apply filters (local)") kick off a

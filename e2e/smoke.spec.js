@@ -1,5 +1,15 @@
 const { test, expect } = require("@playwright/test");
 
+// Vite's dev server transforms each ES module on-demand per request rather
+// than serving a pre-bundled file, so the very first page load (React,
+// ReactDOM, and dozens of helper/component files, all cold) can take
+// meaningfully longer on a slow/shared CI runner than on a warm local dev
+// machine - confirmed via a CI trace showing the /view-prs/data fetch
+// itself succeeding in 41ms with valid PR data, zero console/page errors,
+// yet the table still not painted 15s later. Give CI runs a more generous
+// budget; keep local runs fast-failing at the original value.
+const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
+
 /**
  * Real-browser smoke tests for the hybrid vanilla/React PR table.
  *
@@ -48,7 +58,7 @@ test("page loads, PR table renders, and no requests or console calls fail", asyn
   const { consoleErrors, failedRequests } = collectPageErrors(page);
 
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   const rowCount = await page.locator("#pr-sections tr").count();
   expect(rowCount).toBeGreaterThan(0);
@@ -64,7 +74,7 @@ test("page loads, PR table renders, and no requests or console calls fail", asyn
 
 test("non-ASCII glyphs render correctly (charset regression guard)", async ({ page }) => {
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   // A missing <meta charset="utf-8"> makes the browser guess the page's
   // encoding, turning multi-byte UTF-8 glyphs (the CSS dropdown-arrow
@@ -79,7 +89,7 @@ test("checkbox toggle and More insights expand work", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
 
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   // Flagged/in-review checkboxes live in the smart groups, open by default.
   const checkbox = page
@@ -101,7 +111,7 @@ test("lifecycle section expand/collapse and tab switching work", async ({ page }
   const { consoleErrors } = collectPageErrors(page);
 
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   const openSection = page.locator('[data-pr-section="open"]');
   await expect(openSection).toHaveJSProperty("open", false);
@@ -119,7 +129,7 @@ test("lifecycle section expand/collapse and tab switching work", async ({ page }
 
 test("Run & Filter dropdowns populate from loaded PR data", async ({ page }) => {
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
@@ -136,7 +146,7 @@ test("Apply filters (local) actually filters the rendered table, not just the su
   // React rendering path at all (window.ReactMountBridge doesn't exist
   // there), so this bug was invisible to the full jsdom suite.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
@@ -168,7 +178,7 @@ test("Request more merged PRs button renders (lives outside the React-owned tabl
   // (React) UI despite the default scope ("all stored rows") making it
   // eligible to show.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await expect(page.locator("#merged-request-more-btn")).toBeVisible();
 });
@@ -183,7 +193,7 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   // reconciliation), so the spinner never showed. It's now dispatched as a
   // 'pr-active-progress-update' CustomEvent that PrTableApp listens for.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   // Checks the `hidden` DOM property directly (not Playwright's
   // toBeVisible/toBeHidden) because this test verifies the React prop
@@ -214,7 +224,7 @@ test("'View in table' from Author Insights actually expands the insights row con
   // worked but revealed nothing. It now dispatches
   // 'pr-navigate-to-insights' for PrTableApp to handle via its own state.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Author Insights" }).click();
   const tableLink = page.locator(".author-insights-table-link").first();
@@ -242,7 +252,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   // `.value = ...` assignment, so a controlled React input's state stays
   // in sync however external code writes to it after mount.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   const input = page.locator("#filter-pr-numbers");
@@ -250,7 +260,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await clickApplyFiltersAndWaitForPersist(page);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
   await expect(page.locator("#filter-pr-numbers")).toHaveValue("1");
@@ -269,14 +279,14 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
   // dispatched (not just 'input') for React to notice an externally-set
   // value; see setNativeValueAndDispatch in index.page.js.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.selectOption("#scope-mode", "last-run");
   await clickApplyFiltersAndWaitForPersist(page);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
   await expect(page.locator("#scope-mode")).toHaveValue("last-run");
@@ -299,7 +309,7 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   // assignment) - that's what a controlled React checkbox needs to notice
   // an externally-driven change.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -309,7 +319,7 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   await clickApplyFiltersAndWaitForPersist(page);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
@@ -332,7 +342,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   // controls restore together on the same page load and a field NOT in
   // the persisted overrides correctly keeps its own default.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -343,7 +353,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await clickApplyFiltersAndWaitForPersist(page);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
@@ -378,7 +388,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // "change" event still bubbles up to the form regardless of which side
   // rendered the field that changed.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await expect(page.locator("#data-meta")).toContainText("scope=all stored rows");
@@ -404,7 +414,7 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   // alone) is exactly what a direct, un-delegated addEventListener left on
   // the fallback node would silently fail to do once React replaced it.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -420,7 +430,7 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   ]);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
@@ -447,7 +457,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   // instead of going through setText's native-setter-plus-event helper,
   // which would silently fail to notify a controlled React textarea.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -464,7 +474,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   ]);
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
@@ -497,7 +507,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   // clicking it would actually kick off the (heavy, real-GH-API) backing
   // script.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   // PUT /view-prs/user-defaults replaces the whole overrides object (see
   // writeUserDefaults in view-prs-data-routes.js) rather than merging - GET
@@ -524,7 +534,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   });
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Run Script options (rarely changed)").click();
 
@@ -567,7 +577,7 @@ test("React-owned label multi-select renders options from payload data and filte
   // keeps working unmodified - this test also confirms that by actually
   // filtering, not just checking the checkbox's visual state.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
@@ -609,7 +619,7 @@ test("React-owned label multi-select renders options from payload data and filte
   // paint. Confirmed by temporarily removing flushSync and seeing this
   // exact assertion fail.
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await labelDropdownSummary.click();
   await expect(labelList.getByLabel("enhancement", { exact: true })).toBeChecked();
@@ -631,7 +641,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   // the label-list test alone) and that a persisted selection survives a
   // reload (the exact case gotcha #4's flushSync fix was needed for).
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
@@ -694,7 +704,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   });
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
   await openDropdown(excludeLabelList);
@@ -731,7 +741,7 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // confirms the conversion works from that call site too, not just that
   // the bridge itself works (already proven above).
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -785,7 +795,7 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   });
 
   await page.reload();
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
@@ -853,7 +863,7 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
   // through. PR #1's fixture note (prDifficulty: "3") is the one
   // differentiator among the three fixture PRs.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
@@ -880,7 +890,7 @@ test("PR author thread resolution policy select shows/hides its dependent allow/
   // from every other Phase 2 field converted so far, so it gets its own
   // dedicated interaction test rather than folding into the batch test.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
@@ -918,7 +928,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // renderStatsView still rebuilt the controls container, this would
   // reset the control back to its own default.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Review statistics" }).click();
 
   const controlsRoot = page.locator("#stats-controls-root");
@@ -985,7 +995,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // through that same already-React-safe helper instead of rebuilding the
   // broken version a third time.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Review statistics" }).click();
 
   // "Filtered rows" only counts every row unconditionally when there's no
@@ -1046,7 +1056,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // detached node - the selector would silently vanish from the page
   // after any unrelated re-render, not just fail to preserve a value.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const selectorRoot = page.locator("#author-insights-selector-root");
@@ -1096,7 +1106,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // (forcing a fresh mount, not just a prop diff) - same shape as
   // AuthorInsightsSelector.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const createdRoot = page.locator("#author-insights-created-prs-root");
@@ -1162,7 +1172,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // the mounted React root's container would be destroyed on the next
   // render and the header would vanish after any unrelated re-render.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const headerRoot = page.locator("#author-insights-header-root");
@@ -1217,7 +1227,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // container-split regression as the header/selector/created-PRs tests:
   // the section must not vanish after an unrelated re-render.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const notesRoot = page.locator("#author-insights-notes-root");
@@ -1255,7 +1265,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // exercises the same structural container-split regression the
   // header/notes/created-PRs tests guard against.
   await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15_000 });
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const select = page.locator("#author-insights-selector-root select");

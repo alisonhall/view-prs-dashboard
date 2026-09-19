@@ -84,6 +84,20 @@ module.exports = defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
+  // Default is 30s - raised for CI so the whole-test budget doesn't run out
+  // before the more generous per-wait timeouts below (up to 45s) even get a
+  // chance to succeed.
+  timeout: process.env.CI ? 60_000 : 30_000,
+  // Vite's dev server transforms modules on-demand rather than serving a
+  // pre-bundled file, so cold page loads can be noticeably slower on a
+  // shared/weaker CI runner than on a local dev machine - a CI trace
+  // showed a fetch succeeding in 41ms with valid data and zero console
+  // errors, yet the page still hadn't painted 15s later. Give every
+  // `expect(...)` a more generous default timeout under CI (the default is
+  // 5s) rather than only the handful of explicit waits already covered.
+  expect: {
+    timeout: process.env.CI ? 15_000 : 5_000,
+  },
   use: {
     baseURL: "http://localhost:3456",
     trace: "on-first-retry",

@@ -17,6 +17,8 @@ export default defineConfig([
     ignores: [
       "**/package-lock.json",
       "coverage/**",
+      "test-results/**",
+      "playwright-report/**",
       "PHASE_*.md",
       "PHASES_*.md",
       "ROADMAP.md",
