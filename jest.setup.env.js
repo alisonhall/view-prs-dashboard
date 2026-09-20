@@ -81,9 +81,9 @@ process.env.NODE_ENV = "test";
 // node/jsdom each run test code inside a fresh vm context), but Node's
 // built-in modules like child_process are the one real, process-wide
 // singleton shared across all of them. That combination means the wrapper
-// below must be reinstalled on every file (each file's own `global`, e.g.
-// its own global.__viewPrsAllowRealSpawn, must be the one the *active*
-// wrapper reads) - a wrapper closure created once, during only the first
+// below must be reinstalled on every file (each file's own `global` must be
+// the one the *active* wrapper reads) - a wrapper closure created once,
+// during only the first
 // file's setup, keeps whichever file's `global` was in scope at that
 // moment forever, silently going stale for every later file. Confirmed
 // this exact bug: real, allowlisted spawns from later files were
@@ -121,27 +121,9 @@ if (!childProcess.__viewPrsRealSpawn) {
     // real stdout) against a real bash one-liner, on purpose - there's
     // nothing to mock here, the marker-parsing logic *is* the subject.
     "app.helpers.test.js",
-    // Both of these run real, end-to-end supertest requests against a real
-    // Express app/server instance (not mocked route handlers) - GET
-    // /data-family routes trigger a real runViewPrsBackfillAction("status")
-    // (bash backfill-missing-bg.sh) as a side effect on essentially every
-    // request, and POST /backfill/start,/stop go through
-    // runViewPrsShellScript directly, which (unlike runViewPrsScript/
-    // runViewPrsBashCommand) has no module.exports.X override hook at all
-    // yet. A real fix would add that override hook and mock the status
-    // side effect; allowlisting these two files preserves today's actual
-    // (already-passing) behavior without that larger refactor here.
-    "app.integration-extra.test.js",
-    "app.routes.test.js",
   ];
 
-  // global.__viewPrsAllowRealSpawn is the fallback for callers whose real
-  // spawn happens inside async route-handling machinery (Express/http)
-  // that never puts the test file's own frame on the call stack - see
-  // app.routes.test.js/app.integration-extra.test.js's own
-  // beforeAll/afterAll, which toggle it for their real-server lifetime.
   const isRealSpawnAllowedHere = (stack) =>
-    global.__viewPrsAllowRealSpawn === true ||
     REAL_SPAWN_ALLOWED_FILES.some((allowedFile) => stack.includes(allowedFile));
 
   childProcess.spawn = (...args) => {

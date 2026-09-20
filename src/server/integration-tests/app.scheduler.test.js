@@ -413,6 +413,66 @@ describe("runViewPrsAutoRefresh behavior", () => {
     }
   });
 
+  test("on startup, initializeScheduler does not re-refresh a repo the quick check's targeted pass already covered", async () => {
+    const realSetInterval = global.setInterval;
+    const createdIntervals = [];
+    const setIntervalSpy = jest
+      .spyOn(global, "setInterval")
+      .mockImplementation((...args) => {
+        const realId = realSetInterval(...args);
+        createdIntervals.push(realId);
+        return realId;
+      });
+
+    const fullRefreshRepos = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoIndex = commandArgs.indexOf("--repo");
+      const repo = repoIndex !== -1 ? commandArgs[repoIndex + 1] : null;
+      if (commandArgs.includes("--quick-check")) {
+        // Only the fixture's own repo reports a pending open change - the
+        // second repo (added via VIEW_PRS_AUTO_REPOS below) reports
+        // nothing pending, so it's untouched by the targeted pass and
+        // should only be refreshed once, by initializeScheduler's own
+        // follow-up.
+        const pendingOpen = repo === "acme-org/acme-repo" ? ["1"] : [];
+        return {
+          stdout: JSON.stringify({ pendingOpen, pendingMergedClosed: [] }),
+          stderr: "",
+        };
+      }
+      fullRefreshRepos.push(repo);
+      return { stdout: "", stderr: "" };
+    };
+
+    const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "acme-org/other-repo";
+
+    try {
+      initializeScheduler();
+      // Everything above resolves near-instantly; this gives the
+      // unawaited startup chain room to actually run.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // "acme-org/acme-repo" gets exactly one real full-refresh script
+      // call (from the quick check's own targeted pass) - not a second
+      // one from initializeScheduler's own follow-up full update, which
+      // should only cover "acme-org/other-repo" (never touched by the
+      // targeted pass, since it had nothing pending).
+      expect(
+        fullRefreshRepos.filter((repo) => repo === "acme-org/acme-repo").length,
+      ).toBe(1);
+      expect(fullRefreshRepos).toContain("acme-org/other-repo");
+    } finally {
+      createdIntervals.forEach((id) => clearInterval(id));
+      setIntervalSpy.mockRestore();
+      if (savedAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
+      }
+    }
+  });
+
   test("uses bounded repo concurrency during auto refresh when configured", async () => {
     const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
     const savedAutoRepoConcurrency = process.env.VIEW_PRS_AUTO_REPO_CONCURRENCY;
@@ -614,6 +674,7 @@ describe("runViewPrsQuickCheck behavior", () => {
       reposFailed: [],
       newPendingOpenCount: 0,
       newPendingMergedClosedCount: 0,
+      reposWithPendingOpen: [],
     });
   });
 
@@ -664,6 +725,7 @@ describe("runViewPrsQuickCheck behavior", () => {
       reposFailed: [{ repo: "owner/repo-qc-fails", error: "gh rate limited" }],
       newPendingOpenCount: 0,
       newPendingMergedClosedCount: 0,
+      reposWithPendingOpen: [],
     });
   });
 

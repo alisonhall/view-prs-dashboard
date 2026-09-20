@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const appModule = require("../app.js");
 const {
   createViewPrsApp,
   initializeScheduler,
@@ -15,7 +16,20 @@ const {
   getPrDiffCacheFilePath,
   getPrDiffCommitFingerprint,
   viewPrsSchedulerState,
-} = require("../app.js");
+} = appModule;
+
+// getViewPrsBackfillPublicState (a fire-and-forget side effect of
+// GET /data-family routes, called on essentially every request below) goes
+// through runViewPrsShellScript, which has no mock/override in this file
+// otherwise - without this, every one of those requests would shell out to
+// the real backfill-missing-bg.sh script. "Backfill status: not running"
+// matches what parseBackfillCommandOutput (app.js) looks for, so routes
+// that surface backfill state still see a real-looking, non-running result.
+appModule.runViewPrsShellScript = async () => ({
+  stdout: "Backfill status: not running",
+  stderr: "",
+  command: "bash backfill-missing-bg.sh status",
+});
 
 const supertest = require("supertest");
 
@@ -39,17 +53,6 @@ describe("integration behavior", () => {
   jest.setTimeout(60000);
   let server, request;
   beforeAll(() => {
-    // Real supertest requests below trigger real child_process.spawn calls
-    // (e.g. GET /data-family routes' fire-and-forget backfill status
-    // check) via Express's own async request-handling machinery, which
-    // never has this test file's own frame on its call stack -
-    // jest.setup.env.js's spawn guard can't spot these as "from an allowed
-    // file" via a stack trace the way it does for tests that call
-    // spawn-triggering code directly, so this flag is the fallback signal
-    // for exactly that case. See jest.setup.env.js's own comment on
-    // REAL_SPAWN_ALLOWED_FILES for why a testPath/currentTestName check
-    // isn't reliable here either.
-    global.__viewPrsAllowRealSpawn = true;
     writeViewPrsData({ byPrNumber: {}, lastRun: null });
     writeViewPrsUserState();
     fs.writeFileSync(viewPrsSchedulerFile, JSON.stringify({}, null, 2));
@@ -62,12 +65,8 @@ describe("integration behavior", () => {
     request = supertest(server);
   });
   afterAll((done) => {
-    const finish = (...args) => {
-      global.__viewPrsAllowRealSpawn = false;
-      done(...args);
-    };
     if (!server || !server.listening) {
-      finish();
+      done();
       return;
     }
     if (typeof server.closeAllConnections === "function") {
@@ -76,7 +75,7 @@ describe("integration behavior", () => {
     if (typeof server.closeIdleConnections === "function") {
       server.closeIdleConnections();
     }
-    server.close(finish);
+    server.close(done);
   });
 
   test("serves the main UI file when GET / is requested", async () => {
@@ -292,7 +291,20 @@ describe("integration behavior", () => {
       lastRun: null,
     });
 
-    const res = await request.get("/diff").query({ repo, prNumber });
+    // fetchPrDiffText (view-prs-pr-diff-cache.js) shells out to `gh api ...` via
+    // runViewPrsCommand - mock it to reject so this exercises the route's failure
+    // path without a real gh/network call.
+    const originalRunViewPrsCommand = appModule.runViewPrsCommand;
+    appModule.runViewPrsCommand = async () => {
+      throw new Error();
+    };
+
+    let res;
+    try {
+      res = await request.get("/diff").query({ repo, prNumber });
+    } finally {
+      appModule.runViewPrsCommand = originalRunViewPrsCommand;
+    }
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({

@@ -328,6 +328,16 @@ const safeReadJsonFile = (filePath, fallbackValue = null) =>
 const runViewPrsCommand = (command, args, maxBufferBytes, options) =>
   _runViewPrsCommand(command, args, maxBufferBytes, options);
 
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsBashCommand
+// further below - lets tests monkeypatch module.exports.runViewPrsCommand before
+// createViewPrsApp() so fetchPrDiffText (view-prs-pr-diff-cache.js, used by GET
+// /diff and the background diff-refresh queue) can be tested without a real
+// `gh api ...` spawn. Declared here (rather than alongside the other callRunViewPrsX
+// wrappers) because createViewPrsPrDiffCache is wired up immediately below and
+// needs the override-aware version passed in, not the raw function.
+const callRunViewPrsCommand = (...args) =>
+  (module.exports.runViewPrsCommand || runViewPrsCommand)(...args);
+
 const {
   getPrDiffCacheFilePath,
   readPrDiffCache,
@@ -342,7 +352,7 @@ const {
   getPrDiffCommitFingerprint,
   extractRawDiffText,
   buildPrDiffCacheFilePath,
-  runViewPrsCommand,
+  runViewPrsCommand: callRunViewPrsCommand,
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
@@ -802,6 +812,16 @@ const callGetDependencyStatus = () =>
 const runViewPrsShellScript = (scriptName, scriptArgs, maxBufferBytes, options) =>
   _runViewPrsShellScript(scriptName, scriptArgs, maxBufferBytes, options);
 
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsBashCommand
+// above - lets tests monkeypatch module.exports.runViewPrsShellScript before
+// createViewPrsApp() so getViewPrsBackfillPublicState/runViewPrsBackfillAction
+// (GET /backfill, POST /backfill/start,/stop) can be tested without a real
+// shell/backfill-missing-bg.sh call. runViewPrsShellScript had no such hook
+// until now, unlike runViewPrsScript/runViewPrsBashCommand - every backfill
+// route test was silently exercising a real spawn.
+const callRunViewPrsShellScript = (...args) =>
+  (module.exports.runViewPrsShellScript || runViewPrsShellScript)(...args);
+
 const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
   const safeRepo = toTrimmedString(repo);
   const safeLimit = Math.max(
@@ -1096,7 +1116,7 @@ const getBackfillLogTail = ({ maxLines = 80 } = {}) => {
 
 const getViewPrsBackfillPublicState = async () => {
   try {
-    const { stdout, stderr, command } = await runViewPrsShellScript(
+    const { stdout, stderr, command } = await callRunViewPrsShellScript(
       viewPrsBackfillManagerRelativePath,
       ["status"],
       1024 * 1024,
@@ -1132,7 +1152,7 @@ const getViewPrsBackfillPublicState = async () => {
 };
 
 const runViewPrsBackfillAction = async (action) => {
-  const result = await runViewPrsShellScript(
+  const result = await callRunViewPrsShellScript(
     viewPrsBackfillManagerRelativePath,
     [action],
     4 * 1024 * 1024,
@@ -1713,6 +1733,10 @@ const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
       reposFailed,
       newPendingOpenCount,
       newPendingMergedClosedCount,
+      // Consumed by initializeScheduler to skip re-refreshing these same
+      // repos a second time in its own immediately-following full update -
+      // see its own comment for why.
+      reposWithPendingOpen: Array.from(reposWithPendingOpen),
     };
   } catch (error) {
     viewPrsSchedulerState.lastQuickCheckError = error?.message || "Quick check failed";
@@ -1991,13 +2015,24 @@ const initializeScheduler = () => {
   // full every-repo update: run the quick check first, let its own
   // fast-follow targeted refresh for repos with pending open changes
   // actually finish (awaitTargetedRefresh - see runViewPrsQuickCheck's own
-  // comment), and only then fall back to the unscoped full refresh. Not
-  // awaited here - initializeScheduler's own callers (server.js) don't wait
-  // on startup work finishing, and the periodic intervals below are
-  // scheduled immediately regardless.
+  // comment), and only then fall back to a full update - excluding
+  // whichever repos the targeted refresh JUST covered, so a repo with
+  // pending changes doesn't get a full check-open-pr-updates.sh pass
+  // (real GitHub API calls) twice within moments of each other for no
+  // benefit. Not awaited here - initializeScheduler's own callers
+  // (server.js) don't wait on startup work finishing, and the periodic
+  // intervals below are scheduled immediately regardless.
   void (async () => {
-    await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
-    await runViewPrsAutoRefresh();
+    const quickCheckResult = await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
+    const alreadyRefreshedRepos = new Set(quickCheckResult?.reposWithPendingOpen || []);
+    const remainingRepos = getViewPrsAutoRefreshRepos().filter(
+      (repo) => !alreadyRefreshedRepos.has(repo),
+    );
+    if (remainingRepos.length > 0) {
+      await runViewPrsAutoRefresh({ reposOverride: remainingRepos });
+    }
+    // else: every repo the scheduler would otherwise have refreshed was
+    // already just covered by the targeted pass above - nothing left to do.
   })();
   setInterval(runViewPrsQuickCheck, viewPrsQuickCheckIntervalMs);
   setInterval(runViewPrsMergedQueueDrain, viewPrsMergedFullSweepIntervalMs);
@@ -2086,6 +2121,7 @@ module.exports = {
   persistViewPrsSchedulerState,
   setLastManualRunNow,
   formatScriptFailureMessage,
+  runViewPrsCommand,
   runViewPrsScript,
   runViewPrsBashCommand,
   runViewPrsShellScript,
