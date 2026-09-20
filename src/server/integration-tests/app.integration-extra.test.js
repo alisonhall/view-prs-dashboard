@@ -39,6 +39,17 @@ describe("integration behavior", () => {
   jest.setTimeout(60000);
   let server, request;
   beforeAll(() => {
+    // Real supertest requests below trigger real child_process.spawn calls
+    // (e.g. GET /data-family routes' fire-and-forget backfill status
+    // check) via Express's own async request-handling machinery, which
+    // never has this test file's own frame on its call stack -
+    // jest.setup.env.js's spawn guard can't spot these as "from an allowed
+    // file" via a stack trace the way it does for tests that call
+    // spawn-triggering code directly, so this flag is the fallback signal
+    // for exactly that case. See jest.setup.env.js's own comment on
+    // REAL_SPAWN_ALLOWED_FILES for why a testPath/currentTestName check
+    // isn't reliable here either.
+    global.__viewPrsAllowRealSpawn = true;
     writeViewPrsData({ byPrNumber: {}, lastRun: null });
     writeViewPrsUserState();
     fs.writeFileSync(viewPrsSchedulerFile, JSON.stringify({}, null, 2));
@@ -51,8 +62,12 @@ describe("integration behavior", () => {
     request = supertest(server);
   });
   afterAll((done) => {
+    const finish = (...args) => {
+      global.__viewPrsAllowRealSpawn = false;
+      done(...args);
+    };
     if (!server || !server.listening) {
-      done();
+      finish();
       return;
     }
     if (typeof server.closeAllConnections === "function") {
@@ -61,7 +76,7 @@ describe("integration behavior", () => {
     if (typeof server.closeIdleConnections === "function") {
       server.closeIdleConnections();
     }
-    server.close(done);
+    server.close(finish);
   });
 
   test("serves the main UI file when GET / is requested", async () => {

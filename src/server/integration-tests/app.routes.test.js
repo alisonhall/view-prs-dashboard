@@ -82,6 +82,17 @@ describe("route behavior", () => {
   let originalActionLogRaw;
 
   beforeAll(() => {
+    // Real supertest requests below trigger real child_process.spawn calls
+    // (e.g. GET /data-family routes' fire-and-forget backfill status
+    // check, POST /backfill/start,/stop) via Express's own async
+    // request-handling machinery, which never has this test file's own
+    // frame on its call stack - jest.setup.env.js's spawn guard can't spot
+    // these as "from an allowed file" via a stack trace the way it does
+    // for tests that call spawn-triggering code directly, so this flag is
+    // the fallback signal for exactly that case. See jest.setup.env.js's
+    // own comment on REAL_SPAWN_ALLOWED_FILES for why a testPath/
+    // currentTestName check isn't reliable here either.
+    global.__viewPrsAllowRealSpawn = true;
     process.env.BACKFILL_EXTRA_ARGS = "--dry-run --max-prs 1";
     process.env.BACKFILL_DELAY_MS = "0";
     process.env.BACKFILL_MAX_PRS = "1";
@@ -190,6 +201,7 @@ describe("route behavior", () => {
           // Best effort restore only.
         }
 
+        global.__viewPrsAllowRealSpawn = false;
         resolve();
       });
     });
