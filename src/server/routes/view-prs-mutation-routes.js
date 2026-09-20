@@ -117,6 +117,11 @@ const registerViewPrsMutationRoutes = ({
     const timingContext = createTimingContext();
     callRunViewPrsScript(args, 10 * 1024 * 1024, {
       timeoutMs: viewPrsManualScriptTimeoutMs,
+      // Tags this run's active-PR-tracking entries with the repo it
+      // targets (see app.js's buildActivePrKey) - PR numbers are only
+      // unique within a repo, and other repos' PRs may be visible
+      // alongside this run's in the UI.
+      repo: detail.repo,
     })
       .then(({ stdout, stderr }) => {
         setLastManualRunNow();

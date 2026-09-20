@@ -236,8 +236,14 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await expect(pr1Indicator).toHaveJSProperty("hidden", true);
 
   await page.evaluate(() => {
+    // activePrNumbers entries are { repo, prNumber } pairs, not bare
+    // numbers - PR numbers are only unique within a repo, and the
+    // scheduler can have several repos' PRs active at once (see app.js's
+    // buildActivePrKey).
     window.dispatchEvent(
-      new CustomEvent("pr-active-progress-update", { detail: { activePrNumbers: ["1"] } }),
+      new CustomEvent("pr-active-progress-update", {
+        detail: { activePrNumbers: [{ repo: "octocat/hello-world", prNumber: "1" }] },
+      }),
     );
   });
 

@@ -209,12 +209,27 @@ describe("runViewPrsAutoRefresh behavior", () => {
   beforeAll(() => {
     appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
     appModule.runViewPrsScript = async () => ({ stdout: "", stderr: "" });
+    // "owner/repo" is deliberately NOT used here even though it reads like
+    // an obvious placeholder: getViewPrsAutoRefreshRepos (view-prs-
+    // scheduler-helpers.js) treats "owner/repo" as a real sentinel for "no
+    // repo configured yet" and filters it out on purpose. Using it as this
+    // fixture's repo silently made every entry below get ignored, so
+    // getViewPrsAutoRefreshRepos() fell through to defaultViewPrsRepo (the
+    // test env's VIEW_PRS_REPO) instead of this fixture's data - every test
+    // in this block still passed (none of the others assert which repo was
+    // actually used), but "seeds only the latest merged PRs before auto
+    // refresh starts" below silently tested the wrong repo's (empty) seed
+    // list the whole time, inside a callback whose thrown expect() failure
+    // gets caught by runViewPrsAutoRefresh's own try/catch and logged as an
+    // "auto refresh had failures" console.error rather than failing the
+    // test. A real, non-placeholder repo name here is what actually
+    // exercises the fixture data.
     appModule.readViewPrsData = () => ({
       byPrNumber: {
-        1: { repo: "owner/repo", section: "merged", prNumber: "1", data: { mergedAt: "2026-05-29T10:00:00Z" } },
-        2: { repo: "owner/repo", section: "open", prNumber: "2", data: { mergedAt: "" } },
-        3: { repo: "owner/repo", section: "merged", prNumber: "3", data: { mergedAt: "2026-05-29T11:00:00Z" } },
-        4: { repo: "owner/repo", section: "draft", prNumber: "4", data: { mergedAt: "" } },
+        1: { repo: "acme-org/acme-repo", section: "merged", prNumber: "1", data: { mergedAt: "2026-05-29T10:00:00Z" } },
+        2: { repo: "acme-org/acme-repo", section: "open", prNumber: "2", data: { mergedAt: "" } },
+        3: { repo: "acme-org/acme-repo", section: "merged", prNumber: "3", data: { mergedAt: "2026-05-29T11:00:00Z" } },
+        4: { repo: "acme-org/acme-repo", section: "draft", prNumber: "4", data: { mergedAt: "" } },
       },
     });
   });
@@ -323,13 +338,23 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("seeds only the latest merged PRs before auto refresh starts", async () => {
+    let observedActivePrNumbers = null;
     appModule.runViewPrsScript = async () => {
-      expect(viewPrsSchedulerState.activePrNumbers).toEqual(["3", "1"]);
+      // Captured rather than asserted inline: a thrown expect() here would
+      // be swallowed by runViewPrsAutoRefresh's own try/catch (it becomes a
+      // logged "auto refresh had failures" instead of a failed test) - see
+      // the beforeAll fixture's own comment for how that previously masked
+      // this exact test not actually checking anything.
+      observedActivePrNumbers = viewPrsSchedulerState.activePrNumbers;
       return { stdout: "", stderr: "" };
     };
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
+    expect(observedActivePrNumbers).toEqual([
+      { repo: "acme-org/acme-repo", prNumber: "1" },
+      { repo: "acme-org/acme-repo", prNumber: "3" },
+    ]);
     expect(viewPrsSchedulerState.activePrNumbers).toEqual([]);
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
   });

@@ -62,7 +62,7 @@ export function PrTitleCell({ pr, repo, sectionKey, isSmartGroup, lifecycleSecti
         aria-expanded={isExpanded ? 'true' : 'false'}
         data-pr-number={String(pr?.number || '')}
         data-section-key={String(sectionKey || '')}
-        onClick={() => onToggleInsights(pr.number, sectionKey)}
+        onClick={() => onToggleInsights(pr.number, sectionKey, repo)}
       >
         {isExpanded ? 'Hide insights' : 'More insights'}
       </button>

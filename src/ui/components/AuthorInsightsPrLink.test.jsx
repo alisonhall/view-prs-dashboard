@@ -25,12 +25,15 @@ describe('AuthorInsightsPrLink', () => {
     expect(screen.getByRole('link', { name: '#7 Another PR' })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
   });
 
-  test('given "View in table", when clicked, then window.navigateToPrInTableFromAuthorInsights fires with the PR number', () => {
+  test('given "View in table", when clicked, then window.navigateToPrInTableFromAuthorInsights fires with the PR number and repo', () => {
     const navigate = jest.fn();
     window.navigateToPrInTableFromAuthorInsights = navigate;
-    render(<AuthorInsightsPrLink entry={{ prNumber: '9', data: { number: '9', title: 'PR nine' } }} />);
+    render(<AuthorInsightsPrLink entry={{ prNumber: '9', repo: 'owner/repo', data: { number: '9', title: 'PR nine' } }} />);
 
     screen.getByRole('button', { name: 'View in table' }).click();
-    expect(navigate).toHaveBeenCalledWith('9');
+    // repo is passed through (not just the PR number) since PR numbers are
+    // only unique within a repo - other repos' PRs can share the same
+    // number, and the table now renders rows from every repo at once.
+    expect(navigate).toHaveBeenCalledWith('9', 'owner/repo');
   });
 });

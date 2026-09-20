@@ -23,11 +23,18 @@
 
     /**
      * Navigates to a PR row in the main data table.
-     * 
+     *
      * @param {string} prNumber - PR number to navigate to
+     * @param {string} repo - Repo the PR belongs to (PR numbers are only
+     *   unique within a repo - other repos' PRs can render in the same
+     *   table now, see PrTableApp's entriesForRepo, so without this a
+     *   coincidentally-matching number in another repo could be the one
+     *   that actually gets expanded/scrolled to). Optional for backward
+     *   compatibility with callers that don't have it yet (falls back to
+     *   number-only matching, same as before).
      * @param {Object} deps - Navigation dependencies
      */
-    const navigateToPrInTable = (prNumber, { activateDataTab, collectNodesByTag }) => {
+    const navigateToPrInTable = (prNumber, repo, { activateDataTab, collectNodesByTag }) => {
       if (!activateDataTab || !collectNodesByTag) {
         console.warn("Navigation dependencies not provided");
         return;
@@ -45,14 +52,17 @@
         // leave the toggle button claiming "expanded" while the insights
         // content never actually renders.
         window.dispatchEvent(
-          new CustomEvent("pr-navigate-to-insights", { detail: { prNumber } }),
+          new CustomEvent("pr-navigate-to-insights", { detail: { prNumber, repo } }),
         );
       }
 
       setTimeout(() => {
         const prLinks = collectNodesByTag(document.body, "a")
           .filter((link) => link.className === "pr-link")
-          .filter((link) => link.textContent.trim() === `#${prNumber}`);
+          .filter((link) => link.textContent.trim() === `#${prNumber}`)
+          .filter(
+            (link) => !repo || link.closest(".pr-number-cell")?.getAttribute("data-repo") === repo,
+          );
 
         if (prLinks.length > 0) {
           const prLink = prLinks[0];

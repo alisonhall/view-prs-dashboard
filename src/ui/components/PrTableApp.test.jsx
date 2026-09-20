@@ -222,7 +222,7 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps[0].repo).toBe('real-org/real-repo');
   });
 
-  test('given entries for multiple repos, when selectedRepo is passed, then only that repo\'s entries populate the sections', () => {
+  test('given entries for multiple repos, when selectedRepo is passed, then every repo\'s entries still populate the sections (PR data for a non-current repo must still render)', () => {
     const payload = {
       byPrNumber: {
         1: makeEntry({ prNumber: '1', repo: 'owner/repo-a', section: 'open' }),
@@ -231,8 +231,11 @@ describe('PrTableApp', () => {
     };
     renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo-b', onCheckboxChange: () => {}, onAckAction: () => {} });
     const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
-    expect(openSection.section.prs).toHaveLength(1);
-    expect(openSection.section.prs[0].repo).toBe('owner/repo-b');
+    expect(openSection.section.prs).toHaveLength(2);
+    expect(openSection.section.prs.map((entry) => entry.repo).sort()).toEqual([
+      'owner/repo-a',
+      'owner/repo-b',
+    ]);
   });
 
   test('given flaggedByRepo/inReviewByRepo/ackByRepo for the effective repo, when getPrFlags is called, then reflects that repo\'s state', () => {
@@ -541,14 +544,33 @@ describe('PrTableApp', () => {
     const { onToggleInsights } = capturedSectionProps[0];
 
     React.act(() => {
-      onToggleInsights('1', 'open');
+      onToggleInsights('1', 'open', 'owner/repo');
     });
-    expect(capturedSectionProps.at(-1).expandedInsights['open:1']).toBe(true);
+    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBe(true);
 
     React.act(() => {
-      onToggleInsights('1', 'open');
+      onToggleInsights('1', 'open', 'owner/repo');
     });
-    expect(capturedSectionProps.at(-1).expandedInsights['open:1']).toBeFalsy();
+    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
+  });
+
+  test('given two repos with the same PR number in the same section, when one is toggled, then the other repo\'s insights row is unaffected (PR numbers are only unique within a repo)', () => {
+    const payload = {
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'owner/repo-a', section: 'open' }),
+        2: makeEntry({ prNumber: '1', repo: 'owner/repo-b', section: 'open' }),
+      },
+    };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+    const { onToggleInsights } = capturedSectionProps[0];
+
+    React.act(() => {
+      onToggleInsights('1', 'open', 'owner/repo-a');
+    });
+
+    const expandedInsights = capturedSectionProps.at(-1).expandedInsights;
+    expect(expandedInsights['open:owner/repo-a:1']).toBe(true);
+    expect(expandedInsights['open:owner/repo-b:1']).toBeFalsy();
   });
 
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {
@@ -631,13 +653,13 @@ describe('PrTableApp', () => {
       React.act(() => {
         ackPromise = capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
       });
-      expect(capturedSectionProps.at(-1).activePrNumbers).toContain('1');
+      expect(capturedSectionProps.at(-1).activePrNumbers).toContain('owner/repo::1');
 
       await React.act(async () => {
         resolveAck();
         await ackPromise;
       });
-      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('1');
+      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');
     });
 
     test('given an Ack action that rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
@@ -649,7 +671,7 @@ describe('PrTableApp', () => {
         await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).rejects.toThrow('boom');
       });
 
-      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('1');
+      expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');
     });
 
     test('given no onUpdatePr-triggering action, when rendering, then a stable onUpdatePr function is passed to PrSection', () => {

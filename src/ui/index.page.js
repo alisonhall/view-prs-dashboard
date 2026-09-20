@@ -2349,14 +2349,29 @@ const renderSchedulerStatus = (schedulerRaw = {}) => {
   renderRequestActivity();
 };
 
+// The server (app.js's buildActivePrKey) sends activePrNumbers as
+// { repo, prNumber } pairs, not bare numbers - PR numbers are only unique
+// within a repo, and several repos can have PRs actively refreshing at
+// once (see getViewPrsAutoRefreshRepos' multi-repo fan-out). The set this
+// builds is keyed the same "repo::prNumber" way so a lookup needs both,
+// not just the number, to match.
+const ACTIVE_PR_KEY_SEPARATOR = "::";
+
+const buildActivePrKey = (prNumber, repo) =>
+  `${String(repo || "").trim()}${ACTIVE_PR_KEY_SEPARATOR}${prNumber}`;
+
 const normalizeActivePrNumberSet = (activePrNumbersRaw = []) => {
   const activeValues = Array.isArray(activePrNumbersRaw)
     ? activePrNumbersRaw
     : [];
   return new Set(
     activeValues
-      .map((value) => String(value || "").trim())
-      .filter((value) => /^\d+$/.test(value)),
+      .map((entry) => ({
+        repo: String(entry?.repo || "").trim(),
+        prNumber: String(entry?.prNumber || "").trim(),
+      }))
+      .filter((entry) => /^\d+$/.test(entry.prNumber))
+      .map((entry) => buildActivePrKey(entry.prNumber, entry.repo)),
   );
 };
 
@@ -2383,16 +2398,17 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
     return;
   }
 
-  const activePrNumbers = normalizeActivePrNumberSet(activePrNumbersRaw);
+  const activePrKeys = normalizeActivePrNumberSet(activePrNumbersRaw);
   const prNumberCells = collectNodesByClass(sectionsHost, "pr-number-cell");
   prNumberCells.forEach((cell) => {
     const prNumber = readElementAttribute(cell, "data-pr-number").trim();
+    const repo = readElementAttribute(cell, "data-repo").trim();
     const indicator = collectNodesByClass(cell, "pr-progress-indicator")[0];
     if (!indicator) {
       return;
     }
 
-    const isActive = activePrNumbers.has(prNumber);
+    const isActive = activePrKeys.has(buildActivePrKey(prNumber, repo));
     indicator.hidden = !isActive;
   });
 };
@@ -3685,8 +3701,13 @@ if (typeof window !== "undefined") {
   // *unsafe* raw-DOM version instead and was never fixed - ReviewStatsContent
   // (react-app.jsx) uses this bridge instead of that broken vanilla
   // behavior, rather than duplicating either version a third time.
-  window.navigateToPrInTableFromStats = (prNumber) =>
-    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, {
+  // `repo` is optional here - ReviewStatsContent.jsx's stats "source" items
+  // don't currently carry a repo field, so this still falls back to
+  // navigateToPrInTable's number-only matching for now (same as before
+  // this parameter existed) until the stats pipeline threads repo through
+  // too.
+  window.navigateToPrInTableFromStats = (prNumber, repo) =>
+    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
       activateDataTab,
       collectNodesByTag,
     });
@@ -3824,8 +3845,8 @@ if (typeof window !== "undefined") {
   // helpers those sections need, the same "leaf components read window.*
   // for pure data-shaping" pattern StatsVisuals/GraphCard use for Review
   // Stats (Track A).
-  window.navigateToPrInTableFromAuthorInsights = (prNumber) =>
-    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, {
+  window.navigateToPrInTableFromAuthorInsights = (prNumber, repo) =>
+    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
       activateDataTab,
       collectNodesByTag,
     });

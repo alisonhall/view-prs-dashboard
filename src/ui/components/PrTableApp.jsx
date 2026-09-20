@@ -12,6 +12,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
+import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 
 /**
  * Main PR Table Application Component
@@ -41,6 +42,13 @@ export function PrTableApp({
   // State: Expanded insights rows (keyed by composite: 'section:prNumber')
   const [expandedInsights, setExpandedInsights] = useState({});
 
+  // PR numbers are only unique within a repo, and rows from repos other
+  // than the currently-configured one now render alongside it (see
+  // entriesForRepo below) - every "is this PR currently active/busy" set
+  // below is keyed via buildActivePrKey (pr-row-keys.js), not by prNumber
+  // alone, so a coincidentally-matching PR number in a different repo
+  // doesn't show a spinner it has nothing to do with.
+
   // State: PR numbers currently being refreshed by the scheduler (shows the
   // small in-progress spinner in PrNumberCell). Kept separate from `payload`
   // since it's driven by its own poll loop (renderSchedulerStatus in
@@ -48,7 +56,10 @@ export function PrTableApp({
   // 'pr-active-progress-update' listener below. Deliberately NOT a
   // dependency of the `sections` useMemo: it's threaded straight to
   // PrSection/PrTable/PrRow as its own prop so only the specific rows whose
-  // active status actually changes re-render (PrRow is memoized).
+  // active status actually changes re-render (PrRow is memoized). Holds the
+  // raw { repo, prNumber } pairs from the event detail (see app.js's
+  // buildActivePrKey/syncSchedulerActivePrNumbers) - composite-keyed in
+  // combinedActivePrNumbers below, alongside busyPrNumbers.
   const [activePrNumbers, setActivePrNumbers] = useState([]);
 
   useEffect(() => {
@@ -66,17 +77,17 @@ export function PrTableApp({
   // request currently in flight - shares the same PrNumberCell spinner as
   // activePrNumbers (the scheduler's own in-progress set) above, merged
   // together below, so a row shows "busy" whichever reason applies. A Set
-  // so concurrent actions on different rows (or, briefly, the same row)
-  // don't clobber each other's add/remove.
+  // of composite "repo::prNumber" keys so concurrent actions on different
+  // rows (or, briefly, the same row) don't clobber each other's add/remove.
   const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
 
-  const markPrBusy = useCallback((prNumber) => {
-    const key = String(prNumber);
+  const markPrBusy = useCallback((prNumber, repo) => {
+    const key = buildActivePrKey(prNumber, repo);
     setBusyPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   }, []);
 
-  const clearPrBusy = useCallback((prNumber) => {
-    const key = String(prNumber);
+  const clearPrBusy = useCallback((prNumber, repo) => {
+    const key = buildActivePrKey(prNumber, repo);
     setBusyPrNumbers((prev) => {
       if (!prev.has(key)) {
         return prev;
@@ -95,12 +106,12 @@ export function PrTableApp({
   // memoized, so a fresh function identity on every PrTableApp render would
   // defeat that memoization for every row, not just the busy one.
   const withPrBusy = useCallback(
-    (prNumber, action) => async (...args) => {
-      markPrBusy(prNumber);
+    (prNumber, repo, action) => async (...args) => {
+      markPrBusy(prNumber, repo);
       try {
         return await action?.(...args);
       } finally {
-        clearPrBusy(prNumber);
+        clearPrBusy(prNumber, repo);
       }
     },
     [markPrBusy, clearPrBusy],
@@ -108,13 +119,13 @@ export function PrTableApp({
 
   const handleAckActionBusy = useCallback(
     (prNumber, isAcked, repoOverride) =>
-      withPrBusy(prNumber, onAckAction)(prNumber, isAcked, repoOverride),
+      withPrBusy(prNumber, repoOverride, onAckAction)(prNumber, isAcked, repoOverride),
     [withPrBusy, onAckAction],
   );
 
   const handleApplyLabelBusy = useCallback(
     (prNumber, label, repoOverride) =>
-      withPrBusy(prNumber, onApplyLabel)(prNumber, label, repoOverride),
+      withPrBusy(prNumber, repoOverride, onApplyLabel)(prNumber, label, repoOverride),
     [withPrBusy, onApplyLabel],
   );
 
@@ -126,12 +137,21 @@ export function PrTableApp({
   // prop all the way through the mount/callbacks wiring in index.page.js
   // just for this one busy-tracking wrapper.
   const handleUpdatePrBusy = useCallback(
-    (prNumber, entry, pr) => withPrBusy(prNumber, window.runSinglePrUpdate)(entry, pr),
+    (prNumber, entry, pr) =>
+      withPrBusy(prNumber, entry?.repo, window.runSinglePrUpdate)(entry, pr),
     [withPrBusy],
   );
 
   const combinedActivePrNumbers = useMemo(
-    () => Array.from(new Set([...(activePrNumbers || []).map(String), ...busyPrNumbers])),
+    () =>
+      Array.from(
+        new Set([
+          ...(activePrNumbers || []).map((entry) =>
+            buildActivePrKey(entry?.prNumber, entry?.repo),
+          ),
+          ...busyPrNumbers,
+        ]),
+      ),
     [activePrNumbers, busyPrNumbers],
   );
 
@@ -213,10 +233,15 @@ export function PrTableApp({
     [payload, selectedRepo],
   );
 
-  // Helper: Get checkbox state for a PR
+  // Helper: Get checkbox state for a PR. `repo` defaults to effectiveRepo
+  // for backward compatibility, but callers rendering rows from other repos
+  // (see entriesForRepo below, which no longer excludes them) must pass
+  // that row's own `entry.repo` - flaggedByRepo/inReviewByRepo/ackByRepo
+  // are keyed by repo, and PR numbers are only unique within a repo, so
+  // always reading effectiveRepo's maps would show another repo's flags
+  // (or none at all) for a foreign-repo row.
   const getPrFlags = useMemo(() => {
-    return (prNumber) => {
-      const repo = effectiveRepo;
+    return (prNumber, repo = effectiveRepo) => {
       const flaggedSet = payload?.flaggedByRepo?.[repo] || {};
       const inReviewSet = payload?.inReviewByRepo?.[repo] || {};
       const ackSet = payload?.ackByRepo?.[repo] || {};
@@ -325,18 +350,25 @@ export function PrTableApp({
     const repo = effectiveRepo;
     const allEntries = Object.values(payload.byPrNumber);
     // null/undefined visiblePrNumbers means no local filter is active (show
-    // every stored PR for the repo); an array (even empty) means the
-    // vanilla filter pipeline has run and this is exactly what passed it -
-    // without this, "Apply filters (local)" would have no visible effect on
-    // the React-rendered table at all (see index.page.js's React rendering
+    // every stored PR); an array (even empty) means the vanilla filter
+    // pipeline has run and this is exactly what passed it - without this,
+    // "Apply filters (local)" would have no visible effect on the
+    // React-rendered table at all (see index.page.js's React rendering
     // path, which computes visiblePrNumbers from that same pipeline).
+    //
+    // Deliberately NOT also gated on `entry?.repo === repo`: PR data for a
+    // repo other than the currently-configured one should still render as
+    // its own row rather than being silently dropped (the underlying
+    // pipeline - pr-row-sources.helpers.js's rowsForRepo - stopped
+    // repo-filtering for the same reason). `repo`/effectiveRepo is still
+    // used below for repo-scoped concerns (flag lookups now take each
+    // entry's own repo instead, smart-group config, etc.).
     const visiblePrNumberSet = Array.isArray(visiblePrNumbers)
       ? new Set(visiblePrNumbers.map(String))
       : null;
     const entriesForRepo = allEntries.filter(
       (entry) =>
-        entry?.repo === repo &&
-        (!visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? ""))),
+        !visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? "")),
     );
 
     // Group by lifecycle status using the section already computed
@@ -379,10 +411,16 @@ export function PrTableApp({
         },
       });
 
+      // Deliberately not passing `repo` here: isFlagged/isInReview
+      // (pr-smart-groups.helpers.js) fall back to each entry's own
+      // `entry.repo` only when `repo` is falsy - passing effectiveRepo
+      // would make every entry look up effectiveRepo's flagged/in-review
+      // set regardless of which repo it actually belongs to, wrongly
+      // showing/hiding foreign-repo rows in these smart groups (PR numbers
+      // are only unique within a repo).
       const configs = smartGroupHelpers.buildSmartGroupConfigs({
         flaggedByRepo: payload.flaggedByRepo || {},
         inReviewByRepo: payload.inReviewByRepo || {},
-        repo,
       });
 
       smartGroups = smartGroupHelpers.applySmartGroups(allEntriesForSmartGroups, configs);
@@ -451,13 +489,32 @@ export function PrTableApp({
       if (!prNumber) {
         return;
       }
-      const matchingSection = sectionsRef.current.find((section) =>
-        (section.prs || []).some((entry) => String(entry?.data?.number ?? '') === prNumber),
-      );
+      // `repo` disambiguates a PR number that exists in more than one repo
+      // (other repos' PRs render alongside the current one now - see
+      // entriesForRepo) - optional since not every caller (e.g. Review
+      // Stats' "View in table", whose source items don't carry a repo
+      // field yet) has it, in which case this falls back to the first
+      // number match, same as before this parameter existed.
+      const repo = event.detail?.repo ? String(event.detail.repo) : '';
+      let matchingSection = null;
+      let matchingEntry = null;
+      sectionsRef.current.some((section) => {
+        const entry = (section.prs || []).find(
+          (candidate) =>
+            String(candidate?.data?.number ?? '') === prNumber &&
+            (!repo || candidate?.repo === repo),
+        );
+        if (entry) {
+          matchingSection = section;
+          matchingEntry = entry;
+          return true;
+        }
+        return false;
+      });
       if (!matchingSection) {
         return;
       }
-      const compositeKey = `${matchingSection.key}:${prNumber}`;
+      const compositeKey = buildExpandedInsightsKey(matchingSection.key, matchingEntry?.repo, prNumber);
       setExpandedInsights((prev) => ({ ...prev, [compositeKey]: true }));
     };
 
@@ -481,9 +538,12 @@ export function PrTableApp({
     setJsonModalTarget({ entry, pr });
   };
 
-  // Handler: Toggle insights row for a PR
-  const handleToggleInsights = (prNumber, sectionKey) => {
-    const compositeKey = `${sectionKey}:${prNumber}`;
+  // Handler: Toggle insights row for a PR. `repo` disambiguates PR numbers
+  // that collide across repos in the same section (see entriesForRepo -
+  // other repos' PRs render alongside the current one now) - see
+  // buildExpandedInsightsKey's own comment.
+  const handleToggleInsights = (prNumber, sectionKey, repo) => {
+    const compositeKey = buildExpandedInsightsKey(sectionKey, repo, prNumber);
     setExpandedInsights((prev) => ({
       ...prev,
       [compositeKey]: !prev[compositeKey],

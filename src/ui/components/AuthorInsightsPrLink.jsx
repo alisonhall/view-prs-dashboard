@@ -34,7 +34,7 @@ export function AuthorInsightsPrLink({ entry }) {
         type="button"
         className="author-insights-table-link"
         title="Navigate to PR data tab and scroll to this PR"
-        onClick={() => window.navigateToPrInTableFromAuthorInsights?.(prNumber)}
+        onClick={() => window.navigateToPrInTableFromAuthorInsights?.(prNumber, entry?.repo)}
       >
         View in table
       </button>

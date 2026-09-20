@@ -44,13 +44,15 @@ describe('AuthorCreatedPrsSection', () => {
     expect(screen.getByText(/Status: NO_CHANGE/)).toBeInTheDocument();
   });
 
-  test('given "View in table", when clicked, then the navigation bridge fires with the PR number', () => {
+  test('given "View in table", when clicked, then the navigation bridge fires with the PR number and repo', () => {
     const navigate = jest.fn();
     window.navigateToPrInTableFromAuthorInsights = navigate;
     render(<AuthorCreatedPrsSection rows={[buildEntry()]} selectedAuthorLogin="octocat" />);
 
     screen.getByRole('button', { name: 'View in table' }).click();
-    expect(navigate).toHaveBeenCalledWith('1');
+    // repo disambiguates PR numbers that collide across repos - see
+    // AuthorInsightsPrLink/PrTableApp's buildExpandedInsightsKey.
+    expect(navigate).toHaveBeenCalledWith('1', 'owner/repo');
   });
 
   test('given a re-render with a different selectedAuthorLogin, when re-rendering, then the list reflects the new author (no key remount needed)', () => {

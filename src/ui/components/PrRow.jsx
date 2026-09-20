@@ -24,6 +24,7 @@ import { PrCheckCell } from './cells/PrCheckCell';
 import { PrDateCell } from './cells/PrDateCell';
 import { PrActionsCell } from './cells/PrActionsCell';
 import { PrInsightsRow } from './PrInsightsRow';
+import { buildExpandedInsightsKey } from './pr-row-keys';
 
 /**
  * PR Row Component (Memoized)
@@ -64,7 +65,7 @@ export const PrRow = memo(function PrRow({
   onDataRefresh,
   onViewJson,
 }) {
-  const compositeKey = `${sectionKey}:${pr.number}`;
+  const compositeKey = buildExpandedInsightsKey(sectionKey, repo, pr.number);
   const lastCheckedAt = String(entry?.updatedAt || '').trim() || String(pr?.updatedAt || '').trim();
 
   return (

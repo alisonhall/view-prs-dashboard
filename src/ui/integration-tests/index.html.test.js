@@ -2656,7 +2656,7 @@ describe("index page rendering with Testing Library", () => {
       expect(initialIndicator).toBeTruthy();
       expect(initialIndicator?.hidden).toBe(true);
 
-      schedulerActivePrNumbers = ["1"];
+      schedulerActivePrNumbers = [{ repo: "owner/repo", prNumber: "1" }];
       await window.pollSchedulerStatus();
 
       await waitFor(() => {

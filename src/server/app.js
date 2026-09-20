@@ -163,69 +163,97 @@ const {
   writeJsonFileBestEffort: _writeJsonFileBestEffort,
 } = fileIoHelpers;
 
-const syncSchedulerActivePrNumbers = () => {
-  viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()].sort(
-    (left, right) => Number(left) - Number(right),
-  );
+// viewPrsActivePrCounts is keyed by "repo::prNumber", not prNumber alone -
+// PR numbers are only unique within a repo, and the auto-refresh fan-out
+// (getViewPrsAutoRefreshRepos/runRepoRefresh) tracks several repos'
+// in-progress PRs at once, so a bare-number key would let PR #5 in one repo
+// show as "active" for PR #5 in a completely different repo on the client.
+const ACTIVE_PR_KEY_SEPARATOR = "::";
+
+const buildActivePrKey = (prNumber, repo) =>
+  `${String(repo || "").trim()}${ACTIVE_PR_KEY_SEPARATOR}${prNumber}`;
+
+const parseActivePrKey = (key) => {
+  const separatorIndex = key.indexOf(ACTIVE_PR_KEY_SEPARATOR);
+  return {
+    repo: separatorIndex === -1 ? "" : key.slice(0, separatorIndex),
+    prNumber:
+      separatorIndex === -1
+        ? key
+        : key.slice(separatorIndex + ACTIVE_PR_KEY_SEPARATOR.length),
+  };
 };
 
-const incrementActivePrNumber = (prNumber) => {
+const syncSchedulerActivePrNumbers = () => {
+  viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()]
+    .map(parseActivePrKey)
+    .sort((left, right) => {
+      if (left.repo !== right.repo) {
+        return left.repo < right.repo ? -1 : 1;
+      }
+      return Number(left.prNumber) - Number(right.prNumber);
+    });
+};
+
+const incrementActivePrNumber = (prNumber, repo) => {
   const safePrNumber = String(prNumber || "").trim();
   if (!/^\d+$/.test(safePrNumber)) {
     return;
   }
 
-  const currentCount = viewPrsActivePrCounts.get(safePrNumber) || 0;
-  viewPrsActivePrCounts.set(safePrNumber, currentCount + 1);
+  const key = buildActivePrKey(safePrNumber, repo);
+  const currentCount = viewPrsActivePrCounts.get(key) || 0;
+  viewPrsActivePrCounts.set(key, currentCount + 1);
   syncSchedulerActivePrNumbers();
 };
 
-const decrementActivePrNumber = (prNumber) => {
+const decrementActivePrNumber = (prNumber, repo) => {
   const safePrNumber = String(prNumber || "").trim();
   if (!/^\d+$/.test(safePrNumber)) {
     return;
   }
 
-  const currentCount = viewPrsActivePrCounts.get(safePrNumber) || 0;
+  const key = buildActivePrKey(safePrNumber, repo);
+  const currentCount = viewPrsActivePrCounts.get(key) || 0;
   if (currentCount <= 1) {
-    viewPrsActivePrCounts.delete(safePrNumber);
+    viewPrsActivePrCounts.delete(key);
   } else {
-    viewPrsActivePrCounts.set(safePrNumber, currentCount - 1);
+    viewPrsActivePrCounts.set(key, currentCount - 1);
   }
   syncSchedulerActivePrNumbers();
 };
 
 const viewPrsProgressTracker = {
-  onStart: (prNumber) => {
-    incrementActivePrNumber(prNumber);
+  onStart: (prNumber, repo) => {
+    incrementActivePrNumber(prNumber, repo);
   },
-  onEnd: (prNumber) => {
-    decrementActivePrNumber(prNumber);
+  onEnd: (prNumber, repo) => {
+    decrementActivePrNumber(prNumber, repo);
   },
-  onRunDone: (runProgressCounts) => {
+  onRunDone: (runProgressCounts, repo) => {
     if (!(runProgressCounts instanceof Map)) {
       return;
     }
 
     runProgressCounts.forEach((count, prNumber) => {
       for (let index = 0; index < count; index += 1) {
-        decrementActivePrNumber(prNumber);
+        decrementActivePrNumber(prNumber, repo);
       }
     });
   },
 };
 
-const addSchedulerActivePrNumbers = (prNumbers) => {
+const addSchedulerActivePrNumbers = (prNumbers, repo) => {
   const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
   uniqueNumbers.forEach((prNumber) => {
-    incrementActivePrNumber(prNumber);
+    incrementActivePrNumber(prNumber, repo);
   });
 };
 
-const removeSchedulerActivePrNumbers = (prNumbers) => {
+const removeSchedulerActivePrNumbers = (prNumbers, repo) => {
   const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
   uniqueNumbers.forEach((prNumber) => {
-    decrementActivePrNumber(prNumber);
+    decrementActivePrNumber(prNumber, repo);
   });
 };
 
@@ -719,7 +747,17 @@ const {
   toTrimmedString,
   isRepoSlug,
   parseRepoCsv,
-  readViewPrsData: readViewPrsDataRef,
+  // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
+  // below (the only consumer) reads via this as a lazy default parameter
+  // (`data = readViewPrsData()`) - using the plain ref bypassed the
+  // `module.exports.readViewPrsData ||` override every other data-reading
+  // call site in this file already goes through, so a test's
+  // `appModule.readViewPrsData = mockFn` silently had no effect on which
+  // repos an auto-refresh run actually picked (confirmed: it fell through
+  // to the real on-disk/env-var-fallback repo instead of the mock's data,
+  // even though downstream calls like getLatestMergedPrNumbersForRepo -
+  // which does use callReadViewPrsData - correctly saw the mock).
+  readViewPrsData: callReadViewPrsData,
   defaultViewPrsRepo,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
@@ -1375,7 +1413,7 @@ const runViewPrsAutoRefresh = async ({
       let repoFirstPrProgressMs = null;
 
       try {
-        addSchedulerActivePrNumbers(seededPrNumbers);
+        addSchedulerActivePrNumbers(seededPrNumbers, repo);
         await callRunViewPrsScript(
           [
             viewPrsRunScriptRelativePath,
@@ -1389,6 +1427,10 @@ const runViewPrsAutoRefresh = async ({
           10 * 1024 * 1024,
           {
             timeoutMs: viewPrsAutoScriptTimeoutMs,
+            // Tags every active-PR-tracking call this run makes (this
+            // options.repo, read by runViewPrsBashCommand) with the repo
+            // being scanned - see buildActivePrKey's own comment.
+            repo,
             progressTracker: {
               onStart: () => {
                 if (repoFirstPrProgressMs === null) {
@@ -1452,7 +1494,7 @@ const runViewPrsAutoRefresh = async ({
           },
         };
       } finally {
-        removeSchedulerActivePrNumbers(seededPrNumbers);
+        removeSchedulerActivePrNumbers(seededPrNumbers, repo);
       }
     };
 

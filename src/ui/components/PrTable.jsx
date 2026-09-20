@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { PrRow } from './PrRow';
+import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 
 const TABLE_COLUMN_CLASSES = [
   'pr-col-select',
@@ -76,6 +77,10 @@ export function PrTable({
   checkNeedsAttention,
   activePrNumbers,
 }) {
+  // activePrNumbers is already a list of composite "repo::prNumber" keys
+  // (see PrTableApp's combinedActivePrNumbers/buildActivePrKey) - PR
+  // numbers are only unique within a repo, so matching by number alone
+  // would show another repo's in-progress spinner on this row too.
   const activePrNumberSet = new Set((activePrNumbers || []).map(String));
   return (
     <table className="pr-data-table">
@@ -106,22 +111,34 @@ export function PrTable({
       </thead>
       <tbody>
         {prs.map((entry) => {
-          const compositeKey = `${sectionKey}:${entry.data.number}`;
+          const compositeKey = buildExpandedInsightsKey(sectionKey, entry.repo, entry.data.number);
           const isExpanded = expandedInsights[compositeKey] ?? false;
 
           const flags = getPrFlags
-            ? getPrFlags(entry.data.number)
+            ? getPrFlags(entry.data.number, entry.repo)
             : { isFlagged: false, isInReview: false, isAcknowledged: false };
 
           const needsAttention = checkNeedsAttention ? checkNeedsAttention(entry) : false;
-          const isActive = activePrNumberSet.has(String(entry.data.number));
+          const isActive = activePrNumberSet.has(buildActivePrKey(entry.data.number, entry.repo));
 
           return (
             <PrRow
-              key={entry.data.number}
+              // PR numbers are only unique within a repo - now that rows
+              // from other repos render alongside the current one (see
+              // PrTableApp's entriesForRepo), two entries could share the
+              // same key, and React would silently reuse/misreconcile one
+              // row's DOM/state for the other (stale checkbox state,
+              // "two children with the same key" warnings).
+              key={`${entry.repo || ''}:${entry.data.number}`}
               entry={entry}
               pr={entry.data}
-              repo={repo}
+              // Each row's own repo, not the table-level `repo` - rows for
+              // a repo other than the currently-configured one now render
+              // too (see PrTableApp's entriesForRepo), and links/actions
+              // (Ack, Apply Label, checkbox toggle - PrActionsCell,
+              // PrNumberCell) must target that row's actual repo, not
+              // whichever one happens to be selected.
+              repo={entry.repo || repo}
               sectionKey={sectionKey}
               isSmartGroup={isSmartGroup}
               lifecycleSection={entry.section || lifecycleSection}

@@ -12,7 +12,7 @@ export function PrNumberCell({ pr, repo, isActive = false }) {
   const href = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
 
   return (
-    <td className="pr-number-cell" data-pr-number={String(prNumber)}>
+    <td className="pr-number-cell" data-pr-number={String(prNumber)} data-repo={String(repo || '')}>
       <div className="pr-number-cell-content">
         <span className="pr-number-cell-top">
           <a className="pr-link" href={href} target="_blank" rel="noopener noreferrer">

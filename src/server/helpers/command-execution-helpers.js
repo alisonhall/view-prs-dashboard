@@ -275,6 +275,25 @@ function createCommandExecutionHelpers({
         options?.progressTracker && typeof options.progressTracker === "object"
           ? options.progressTracker
           : null;
+      // The repo this specific invocation targets (constant for the whole
+      // run, since one call = one `--repo` shell invocation) - threaded
+      // through so PR numbers, which are only unique within a repo, don't
+      // collide across repos in the scheduler's active-PR tracking (see
+      // app.js's incrementActivePrNumber/decrementActivePrNumber). Omitted
+      // entirely (not even as `undefined`) when no repo is given, so
+      // existing single-arg progressTracker callers/tests are unaffected.
+      const progressTrackerRepo =
+        typeof options?.repo === "string" && options.repo ? options.repo : "";
+      const callProgressTracker = (fn, prNumber) => {
+        if (typeof fn !== "function") {
+          return;
+        }
+        if (progressTrackerRepo) {
+          fn(prNumber, progressTrackerRepo);
+        } else {
+          fn(prNumber);
+        }
+      };
       const child = spawn("bash", bashArgs, {
         cwd: viewPrsDir,
         detached: true,
@@ -306,9 +325,7 @@ function createCommandExecutionHelpers({
         if (action === "START") {
           const currentCount = runProgressCounts.get(prNumber) || 0;
           runProgressCounts.set(prNumber, currentCount + 1);
-          if (typeof progressTracker.onStart === "function") {
-            progressTracker.onStart(prNumber);
-          }
+          callProgressTracker(progressTracker.onStart, prNumber);
           return;
         }
 
@@ -318,9 +335,7 @@ function createCommandExecutionHelpers({
         } else {
           runProgressCounts.delete(prNumber);
         }
-        if (typeof progressTracker.onEnd === "function") {
-          progressTracker.onEnd(prNumber);
-        }
+        callProgressTracker(progressTracker.onEnd, prNumber);
       };
 
       const parseProgressLine = (line) => {
@@ -423,7 +438,7 @@ function createCommandExecutionHelpers({
           progressTracker &&
           typeof progressTracker.onRunDone === "function"
         ) {
-          progressTracker.onRunDone(runProgressCounts);
+          callProgressTracker(progressTracker.onRunDone, runProgressCounts);
         }
         resolve(value);
       };
@@ -445,7 +460,7 @@ function createCommandExecutionHelpers({
           progressTracker &&
           typeof progressTracker.onRunDone === "function"
         ) {
-          progressTracker.onRunDone(runProgressCounts);
+          callProgressTracker(progressTracker.onRunDone, runProgressCounts);
         }
         reject({
           error,
@@ -543,17 +558,22 @@ function createCommandExecutionHelpers({
     const progressTracker =
       userProgressTracker && schedulerProgressTracker
         ? {
-            onStart: (prNumber) => {
-              schedulerProgressTracker.onStart?.(prNumber);
-              userProgressTracker.onStart?.(prNumber);
+            // `repo` is forwarded by runViewPrsBashCommand's own
+            // callProgressTracker only when options.repo was given (see
+            // its own comment) - passed through untouched here, not
+            // defaulted, so a caller that doesn't pass `repo` keeps the
+            // exact same single-arg calling convention downstream.
+            onStart: (prNumber, repo) => {
+              schedulerProgressTracker.onStart?.(prNumber, repo);
+              userProgressTracker.onStart?.(prNumber, repo);
             },
-            onEnd: (prNumber) => {
-              schedulerProgressTracker.onEnd?.(prNumber);
-              userProgressTracker.onEnd?.(prNumber);
+            onEnd: (prNumber, repo) => {
+              schedulerProgressTracker.onEnd?.(prNumber, repo);
+              userProgressTracker.onEnd?.(prNumber, repo);
             },
-            onRunDone: (runProgressCounts) => {
-              schedulerProgressTracker.onRunDone?.(runProgressCounts);
-              userProgressTracker.onRunDone?.(runProgressCounts);
+            onRunDone: (runProgressCounts, repo) => {
+              schedulerProgressTracker.onRunDone?.(runProgressCounts, repo);
+              userProgressTracker.onRunDone?.(runProgressCounts, repo);
             },
           }
         : userProgressTracker || schedulerProgressTracker;

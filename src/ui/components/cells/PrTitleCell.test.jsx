@@ -63,11 +63,13 @@ describe('PrTitleCell', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('given a toggle click, when clicked, then onToggleInsights is called with the PR number and section', () => {
+  test('given a toggle click, when clicked, then onToggleInsights is called with the PR number, section, and repo', () => {
     const onToggleInsights = jest.fn();
-    renderCell({ pr: { number: '101' }, sectionKey: 'open', onToggleInsights });
+    renderCell({ pr: { number: '101' }, sectionKey: 'open', repo: 'owner/repo', onToggleInsights });
     screen.getByRole('button', { name: 'More insights' }).click();
-    expect(onToggleInsights).toHaveBeenCalledWith('101', 'open');
+    // repo disambiguates PR numbers that collide across repos - see
+    // PrTableApp's buildExpandedInsightsKey.
+    expect(onToggleInsights).toHaveBeenCalledWith('101', 'open', 'owner/repo');
   });
 
   test('given pending comments, when rendering, then shows the pending-comments chip', () => {
