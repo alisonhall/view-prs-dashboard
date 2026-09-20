@@ -1619,7 +1619,7 @@ const runViewPrsAutoRefresh = async ({
 // a caller can tell "confirmed nothing changed" apart from "the check
 // didn't actually run" (every repo failing used to look identical to a
 // clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
-const runViewPrsQuickCheck = async () => {
+const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
   if (
     viewPrsSchedulerState.isQuickCheckInProgress ||
     viewPrsSchedulerState.isAutoRunInProgress
@@ -1691,8 +1691,20 @@ const runViewPrsQuickCheck = async () => {
 
     if (reposWithPendingOpen.size > 0) {
       // Fast-follow: don't wait for the next full-sweep timer once an open
-      // PR is known to have actually changed.
-      void runViewPrsAutoRefresh({ reposOverride: Array.from(reposWithPendingOpen) });
+      // PR is known to have actually changed. `awaitTargetedRefresh` lets
+      // the startup sequence (initializeScheduler) wait for this priority
+      // refresh to actually finish before it moves on to the full,
+      // every-repo update - the periodic setInterval caller never passes
+      // it, since blocking the quick-check timer on a potentially slow
+      // refresh would defeat the point of checking quickly.
+      const targetedRefresh = runViewPrsAutoRefresh({
+        reposOverride: Array.from(reposWithPendingOpen),
+      });
+      if (awaitTargetedRefresh) {
+        await targetedRefresh;
+      } else {
+        void targetedRefresh;
+      }
     }
 
     return {
@@ -1975,7 +1987,18 @@ const createViewPrsApp = () => {
 // Scheduler management functions for external use
 const initializeScheduler = () => {
   readViewPrsSchedulerState();
-  runViewPrsAutoRefresh();
+  // On startup, check what's actually changed before spending time on a
+  // full every-repo update: run the quick check first, let its own
+  // fast-follow targeted refresh for repos with pending open changes
+  // actually finish (awaitTargetedRefresh - see runViewPrsQuickCheck's own
+  // comment), and only then fall back to the unscoped full refresh. Not
+  // awaited here - initializeScheduler's own callers (server.js) don't wait
+  // on startup work finishing, and the periodic intervals below are
+  // scheduled immediately regardless.
+  void (async () => {
+    await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
+    await runViewPrsAutoRefresh();
+  })();
   setInterval(runViewPrsQuickCheck, viewPrsQuickCheckIntervalMs);
   setInterval(runViewPrsMergedQueueDrain, viewPrsMergedFullSweepIntervalMs);
   return setInterval(runViewPrsAutoRefresh, viewPrsAutoIntervalMs);

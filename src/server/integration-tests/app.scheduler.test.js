@@ -9,6 +9,7 @@ const {
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
   resetViewPrsAutoRefreshFailureState,
+  initializeScheduler,
   viewPrsSchedulerState,
 } = appModule;
 
@@ -359,6 +360,59 @@ describe("runViewPrsAutoRefresh behavior", () => {
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
   });
 
+  test("on startup, initializeScheduler runs the quick check (and its pending-repo priority refresh) before the full every-repo update", async () => {
+    // initializeScheduler only returns its LAST setInterval (the full
+    // auto-refresh one); it also starts two more (quick check, merged
+    // drain) that would otherwise leak as real, minutes-long timers.
+    // Capture every interval it creates so all three get cleared, not just
+    // the one it hands back.
+    const realSetInterval = global.setInterval;
+    const createdIntervals = [];
+    const setIntervalSpy = jest
+      .spyOn(global, "setInterval")
+      .mockImplementation((...args) => {
+        const realId = realSetInterval(...args);
+        createdIntervals.push(realId);
+        return realId;
+      });
+
+    const calls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const isQuickCheck = commandArgs.includes("--quick-check");
+      calls.push(isQuickCheck ? "quick-check" : "full-refresh");
+      if (isQuickCheck) {
+        // Reports a pending open change so the quick check's own
+        // fast-follow targeted refresh fires too - that should also
+        // complete (a second "full-refresh" entry) before
+        // initializeScheduler's own full update runs.
+        return {
+          stdout: JSON.stringify({ pendingOpen: ["1"], pendingMergedClosed: [] }),
+          stderr: "",
+        };
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    try {
+      initializeScheduler();
+
+      // Everything above is mocked to resolve near-instantly; this just
+      // gives the unawaited startup chain (quick check -> its targeted
+      // fast-follow -> the full update) room to actually run.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // The first call must be the quick check, and it must be followed by
+      // at least one full-refresh call (the fast-follow, then
+      // initializeScheduler's own full update) - never a full-refresh
+      // before any quick check has run at all.
+      expect(calls[0]).toBe("quick-check");
+      expect(calls.filter((call) => call === "full-refresh").length).toBeGreaterThanOrEqual(1);
+    } finally {
+      createdIntervals.forEach((id) => clearInterval(id));
+      setIntervalSpy.mockRestore();
+    }
+  });
+
   test("uses bounded repo concurrency during auto refresh when configured", async () => {
     const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
     const savedAutoRepoConcurrency = process.env.VIEW_PRS_AUTO_REPO_CONCURRENCY;
@@ -643,6 +697,30 @@ describe("runViewPrsQuickCheck behavior", () => {
     // lifetime instead of leaking into the next test / logging after Jest
     // considers the suite done.
     await new Promise((resolve) => setTimeout(resolve, 75));
+  });
+
+  test("given awaitTargetedRefresh, when a repo has pending open PRs, then the fast-follow full refresh actually finishes before returning (startup ordering: quick check's priority refresh completes before initializeScheduler moves on to the full update)", async () => {
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const isQuickCheckCall = commandArgs.includes("--quick-check");
+      if (!isQuickCheckCall) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { stdout: "", stderr: "" };
+      }
+      return {
+        stdout: JSON.stringify({ pendingOpen: ["101"], pendingMergedClosed: [] }),
+        stderr: "",
+      };
+    };
+
+    await withAutoRepos("owner/repo-pending-open-awaited", async () => {
+      await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
+    });
+
+    // The fast-follow full refresh (which takes 50ms, per the mock above)
+    // has already run to completion and cleared this repo's pending flag -
+    // unlike the fire-and-forget version above, no extra wait is needed
+    // after runViewPrsQuickCheck() itself returns.
+    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-pending-open-awaited"]).toBeUndefined();
   });
 
   test("queues pending merged/closed PRs without them counting as pending-open", async () => {
