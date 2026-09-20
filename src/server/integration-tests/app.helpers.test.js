@@ -251,6 +251,127 @@ describe("helper function behavior", () => {
     });
   });
 
+  describe("buildInsightsHookMetadata", () => {
+    test("derives repoOwner/repoName from repo and reads through to entry.data fields", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "acme-org/acme-repo",
+        prNumber: "42",
+        section: "open",
+        data: {
+          number: "42",
+          url: "https://github.com/acme-org/acme-repo/pull/42",
+          sourceBranch: "feature/x",
+          targetBranch: "main",
+          title: "Add feature",
+          authorLogin: "octocat",
+          commits: [
+            { oid: "aaa111", committedAt: "2026-01-01T00:00:00Z" },
+            { oid: "bbb222", committedAt: "2026-01-02T00:00:00Z" },
+          ],
+        },
+      });
+
+      assert.deepStrictEqual(metadata, {
+        repoOwner: "acme-org",
+        repoName: "acme-repo",
+        repo: "acme-org/acme-repo",
+        prId: "42",
+        prUrl: "https://github.com/acme-org/acme-repo/pull/42",
+        sourceBranch: "feature/x",
+        targetBranch: "main",
+        title: "Add feature",
+        description: "",
+        status: "open",
+        author: "octocat",
+        lastCommitDate: "2026-01-02T00:00:00Z",
+        lastCommitId: "bbb222",
+      });
+    });
+
+    test("reports status merged when data.mergedAt is set, regardless of section", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        section: "open",
+        data: { number: "1", mergedAt: "2026-02-01T00:00:00Z" },
+      });
+      assert.strictEqual(metadata.status, "merged");
+    });
+
+    test("reports status draft when section is draft and the PR is not merged", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        section: "draft",
+        data: { number: "1" },
+      });
+      assert.strictEqual(metadata.status, "draft");
+    });
+
+    test("reports status closed when section is closed and the PR is not merged", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        section: "closed",
+        data: { number: "1" },
+      });
+      assert.strictEqual(metadata.status, "closed");
+    });
+
+    test("reports status merged when section is closed but mergedAt is set", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        section: "closed",
+        data: { number: "1", mergedAt: "2026-02-01T00:00:00Z" },
+      });
+      assert.strictEqual(metadata.status, "merged");
+    });
+
+    test("reports status merged when section is merged even if mergedAt itself is missing", () => {
+      // Regression test: section is the fallback signal for a "merged" row
+      // whose mergedAt somehow wasn't captured (legacy row/migration gap) -
+      // not just for distinguishing "closed" from "open".
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        section: "merged",
+        data: { number: "1" },
+      });
+      assert.strictEqual(metadata.status, "merged");
+    });
+
+    test("falls back to empty strings/null commit fields for a PR with no commits recorded", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        data: { number: "1" },
+      });
+      assert.strictEqual(metadata.lastCommitDate, "");
+      assert.strictEqual(metadata.lastCommitId, "");
+    });
+
+    test("truncates an overly long description to stay well under argv/command-line limits", () => {
+      const metadata = app.buildInsightsHookMetadata({
+        repo: "owner/repo",
+        prNumber: "1",
+        data: { number: "1", description: "x".repeat(30000) },
+      });
+      assert.strictEqual(metadata.description.length, 4000);
+    });
+  });
+
+  describe("runInsightsHookScript", () => {
+    test("resolves to a null html/error without attempting a spawn when no hook script is configured", async () => {
+      const result = await app.runInsightsHookScript({
+        repo: "owner/repo",
+        prNumber: "1",
+        data: { number: "1" },
+      });
+      assert.deepStrictEqual(result, { html: null, error: null });
+    });
+  });
+
   describe("getPrDiffCacheFilePath", () => {
     test("returns a string path for valid repo and PR number", () => {
       const result = app.getPrDiffCacheFilePath("owner/repo", 123);

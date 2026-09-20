@@ -107,6 +107,7 @@ const {
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
   viewPrsViewerLoginCacheTtlMs,
+  viewPrsInsightsHookTimeoutMs,
   viewPrsBackupRetention,
 } = config;
 
@@ -131,7 +132,18 @@ const viewPrsSchedulerState = {
   lastAutoCircuitOpenedAt: null,
   isQuickCheckInProgress: false,
   lastQuickCheckAt: null,
+  lastQuickCheckAttemptAt: null,
+  lastQuickCheckSkipReason: null,
   lastQuickCheckError: null,
+  // Set when a quick check is skipped specifically because a full auto
+  // refresh was already running (see runViewPrsQuickCheck's own guard) -
+  // consumed by runViewPrsAutoRefresh's finally block to fire an immediate
+  // catch-up quick check as soon as that blocking refresh finishes, instead
+  // of leaving detection of anything that changed in the meantime (e.g. a
+  // brand-new PR) to wait for the next periodic quick-check tick, which for
+  // a slow multi-repo sweep could be a much longer wait than the quick
+  // check's ~5 minute interval would suggest.
+  quickCheckSkippedWhileAutoRunInProgress: false,
   lastMergedDrainAt: null,
   pendingByRepo: {},
 };
@@ -357,6 +369,128 @@ const {
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
 });
+
+// Custom "More Insights" hook - an optional, user-provided executable
+// (VIEW_PRS_INSIGHTS_HOOK_SCRIPT, unset by default) that receives PR metadata
+// and returns HTML to render in a section of the row's "More Insights" panel.
+// Deliberately not shipped with the repo - what a repo/org wants surfaced here
+// is inherently custom, and the script is invoked directly (not resolved
+// against any repo-relative directory), so it can live anywhere on disk.
+//
+// Kept well under argv/command-line limits (Windows' CreateProcess caps a
+// full command line around 32K chars; the description is the one field here
+// with no natural size bound, so it's the one worth capping defensively) -
+// a hook script only needs enough of the description to summarize it, not
+// the whole thing verbatim.
+const MAX_INSIGHTS_HOOK_DESCRIPTION_LENGTH = 4000;
+
+const buildInsightsHookMetadata = (entry) => {
+  const data = entry?.data || {};
+  const repo = toTrimmedString(entry?.repo);
+  const [repoOwner, repoName] = repo.split("/");
+  const commits = Array.isArray(data.commits) ? data.commits : [];
+  const lastCommit = commits.length > 0 ? commits[commits.length - 1] : null;
+  // section is populated with "merged"/"closed" by upsert_pr_state calls in
+  // check-open-pr-updates.sh - data.mergedAt is checked first since it's the
+  // more authoritative signal, but section is still consulted as a fallback
+  // for a "merged" section whose mergedAt somehow wasn't captured (a legacy
+  // row or migration gap), not just to distinguish "closed" from "open".
+  const status = data.mergedAt
+    ? "merged"
+    : entry?.section === "draft"
+      ? "draft"
+      : entry?.section === "closed"
+        ? "closed"
+        : entry?.section === "merged"
+          ? "merged"
+          : "open";
+
+  return {
+    repoOwner: repoOwner || "",
+    repoName: repoName || "",
+    repo,
+    prId: String(entry?.prNumber || data.number || "").trim(),
+    prUrl: String(data.url || ""),
+    sourceBranch: String(data.sourceBranch || ""),
+    targetBranch: String(data.targetBranch || ""),
+    title: String(data.title || ""),
+    description: String(data.description || "").slice(
+      0,
+      MAX_INSIGHTS_HOOK_DESCRIPTION_LENGTH,
+    ),
+    status,
+    author: String(data.authorLogin || data.author || ""),
+    lastCommitDate: String(lastCommit?.committedAt || ""),
+    lastCommitId: String(lastCommit?.oid || ""),
+  };
+};
+
+// Best-effort by design: an unset script, a timeout, a non-zero exit, or any
+// other spawn failure all resolve to a null html so the client can simply
+// omit the hook section rather than surfacing an internal error for what is,
+// from the end user's perspective, an optional feature. The `error` field is
+// separate from that - it's non-null only when a *configured* hook actually
+// failed (never for the common, expected "not configured" case), and exists
+// purely so the client can log it to the browser console for debugging; nothing
+// reads it to decide whether to render.
+//
+// Invoked via `bash -c 'exec "$0" "$@"' <scriptPath> <jsonArg>` rather than
+// spawning scriptPath directly - matching every other script invocation in
+// this file (runViewPrsBashCommand/runViewPrsScript/runViewPrsShellScript all
+// spawn "bash" explicitly, never the script path as the executable itself).
+// Spawning scriptPath directly relies on the OS recognizing and dispatching
+// its shebang line, which native Windows' CreateProcess does not do - it
+// would silently fail to launch any non-Windows-native (.sh/.py/etc.) hook
+// script on Windows even though the whole app already requires bash (Git
+// Bash) to run at all. Routing through `bash -c 'exec "$0" "$@"'` uses
+// bash's own exec (which Git Bash's MSYS layer emulates, shebang and all) to
+// launch the target file as its own process, while still passing scriptPath
+// and the JSON argument as literal argv entries (via $0/$@, not string
+// interpolation) so neither needs shell-escaping.
+const runInsightsHookScript = async (entry) => {
+  if (!config.viewPrsInsightsHookScript) {
+    return { html: null, error: null };
+  }
+
+  const metadata = buildInsightsHookMetadata(entry);
+
+  try {
+    const { stdout } = await callRunViewPrsBashCommand(
+      [
+        "-c",
+        'exec "$0" "$@"',
+        config.viewPrsInsightsHookScript,
+        JSON.stringify(metadata),
+      ],
+      1024 * 1024,
+      { timeoutMs: viewPrsInsightsHookTimeoutMs },
+    );
+    return {
+      html: typeof stdout === "string" && stdout.trim() ? stdout : null,
+      error: null,
+    };
+  } catch (failure) {
+    const baseMessage = formatScriptFailureMessage(
+      failure,
+      "Insights hook script failed",
+    );
+    const stderrExcerpt = String(failure?.stderr || "").trim().slice(0, 500);
+    const message = stderrExcerpt
+      ? `${baseMessage}: ${stderrExcerpt}`
+      : baseMessage;
+    console.error(
+      `[view-prs] insights hook script failed for ${entry?.repo}#${entry?.prNumber}: ${message}`,
+    );
+    return { html: null, error: message };
+  }
+};
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsShellScript
+// above - lets tests monkeypatch module.exports.runInsightsHookScript before
+// createViewPrsApp() so the GET /insights-hook route can be tested without
+// actually shelling out to a script.
+const callRunInsightsHookScript = (...args) =>
+  (module.exports.runInsightsHookScript || runInsightsHookScript)(...args);
 
 const initUserDefaultsFile = () => {
   if (!fs.existsSync(viewPrsUserDefaultsFile)) {
@@ -1624,8 +1758,25 @@ const runViewPrsAutoRefresh = async ({
     );
   } finally {
     viewPrsSchedulerState.isAutoRunInProgress = false;
+    if (viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress) {
+      // See the flag's own comment (near viewPrsSchedulerState's
+      // definition) - a quick check was starved by this exact refresh being
+      // in progress, so catch up immediately rather than leaving it to the
+      // next periodic tick. Fire-and-forget, same as the interval-driven
+      // caller: this function's own caller (a full sweep's setInterval, or
+      // quick-check's own fast-follow) isn't waiting on this.
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
+      void callRunViewPrsQuickCheck();
+    }
   }
 };
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsQuickCheck
+// - lets tests monkeypatch module.exports.runViewPrsAutoRefresh before
+// createViewPrsApp() so runViewPrsQuickCheck's own fast-follow call (below)
+// can be verified without actually running a full refresh.
+const callRunViewPrsAutoRefresh = (...args) =>
+  (module.exports.runViewPrsAutoRefresh || runViewPrsAutoRefresh)(...args);
 
 // Cheap "did anything change" poll: lists PRs and compares updatedAt against
 // the cache, without fetching details/diffs. Runs far more often than the
@@ -1644,19 +1795,30 @@ const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
     viewPrsSchedulerState.isQuickCheckInProgress ||
     viewPrsSchedulerState.isAutoRunInProgress
   ) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = "already-in-progress";
+    if (viewPrsSchedulerState.isAutoRunInProgress) {
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+    }
     return { skipped: true, skipReason: "already-in-progress" };
   }
 
   const dependencyStatus = callGetDependencyStatus();
   if (!dependencyStatus.ok) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = `missing dependencies: ${dependencyStatus.missing.join(", ")}`;
     return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
   }
 
   if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = "circuit-open";
     return { skipped: true, skipReason: "circuit-open" };
   }
 
   viewPrsSchedulerState.isQuickCheckInProgress = true;
+  viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+  viewPrsSchedulerState.lastQuickCheckSkipReason = null;
 
   try {
     const repos = getViewPrsAutoRefreshRepos();
@@ -1717,7 +1879,7 @@ const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
       // every-repo update - the periodic setInterval caller never passes
       // it, since blocking the quick-check timer on a potentially slow
       // refresh would defeat the point of checking quickly.
-      const targetedRefresh = runViewPrsAutoRefresh({
+      const targetedRefresh = callRunViewPrsAutoRefresh({
         reposOverride: Array.from(reposWithPendingOpen),
       });
       if (awaitTargetedRefresh) {
@@ -1747,6 +1909,13 @@ const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
   }
 };
 
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsShellScript
+// - lets tests monkeypatch module.exports.runViewPrsQuickCheck before
+// createViewPrsApp() so runViewPrsAutoRefresh's own catch-up call (see its
+// finally block) can be verified without actually running a quick check.
+const callRunViewPrsQuickCheck = (...args) =>
+  (module.exports.runViewPrsQuickCheck || runViewPrsQuickCheck)(...args);
+
 // Batches up closed/merged PRs flagged by the quick-check into a full fetch.
 // Runs on a much longer interval than the quick-check itself, and does
 // nothing at all when nothing has actually changed (see viewPrsMergedFullSweepIntervalMs).
@@ -1762,8 +1931,15 @@ const runViewPrsMergedQueueDrain = async () => {
     return;
   }
 
-  await runViewPrsAutoRefresh({ reposOverride: reposToDrain });
+  await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
 };
+
+// Same override-checking pattern as callRunViewPrsAutoRefresh/callRunViewPrsQuickCheck
+// - lets tests monkeypatch module.exports.runViewPrsMergedQueueDrain before
+// createViewPrsApp() so initializeScheduler's setInterval registration
+// (below) can be verified without waiting on a real timer/drain.
+const callRunViewPrsMergedQueueDrain = (...args) =>
+  (module.exports.runViewPrsMergedQueueDrain || runViewPrsMergedQueueDrain)(...args);
 
 // Vite dev middleware (React/JSX transform)
 //
@@ -1970,6 +2146,7 @@ const createViewPrsApp = () => {
     resolveCanonicalActorLogin,
     isRepoSlug,
     syncPrDiffForEntry,
+    runInsightsHookScript: callRunInsightsHookScript,
   });
 
   registerViewPrsDataRoutes({
@@ -2023,20 +2200,26 @@ const initializeScheduler = () => {
   // (server.js) don't wait on startup work finishing, and the periodic
   // intervals below are scheduled immediately regardless.
   void (async () => {
-    const quickCheckResult = await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
+    const quickCheckResult = await callRunViewPrsQuickCheck({ awaitTargetedRefresh: true });
     const alreadyRefreshedRepos = new Set(quickCheckResult?.reposWithPendingOpen || []);
     const remainingRepos = getViewPrsAutoRefreshRepos().filter(
       (repo) => !alreadyRefreshedRepos.has(repo),
     );
     if (remainingRepos.length > 0) {
-      await runViewPrsAutoRefresh({ reposOverride: remainingRepos });
+      await callRunViewPrsAutoRefresh({ reposOverride: remainingRepos });
     }
     // else: every repo the scheduler would otherwise have refreshed was
     // already just covered by the targeted pass above - nothing left to do.
   })();
-  setInterval(runViewPrsQuickCheck, viewPrsQuickCheckIntervalMs);
-  setInterval(runViewPrsMergedQueueDrain, viewPrsMergedFullSweepIntervalMs);
-  return setInterval(runViewPrsAutoRefresh, viewPrsAutoIntervalMs);
+  // Wrapped in arrow functions (rather than passing the bare function
+  // references) so each tick re-checks module.exports.X fresh, same as
+  // every other overridable call site in this file - a bare reference here
+  // would permanently bind to whichever function was in scope when
+  // initializeScheduler ran, making it un-mockable by tests that
+  // monkeypatch module.exports.X afterward.
+  setInterval(() => callRunViewPrsQuickCheck(), viewPrsQuickCheckIntervalMs);
+  setInterval(() => callRunViewPrsMergedQueueDrain(), viewPrsMergedFullSweepIntervalMs);
+  return setInterval(() => callRunViewPrsAutoRefresh(), viewPrsAutoIntervalMs);
 };
 
 module.exports = {
@@ -2125,6 +2308,8 @@ module.exports = {
   runViewPrsScript,
   runViewPrsBashCommand,
   runViewPrsShellScript,
+  runInsightsHookScript,
+  buildInsightsHookMetadata,
   parseBackfillCommandOutput,
   getBackfillLogTail,
   getViewPrsBackfillPublicState,

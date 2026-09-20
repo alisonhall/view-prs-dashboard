@@ -313,6 +313,141 @@ describe("integration behavior", () => {
     });
   });
 
+  test("returns null html when GET /insights-hook is requested and no hook script is configured", async () => {
+    const repo = "owner/repo";
+    const prNumber = "111";
+    writeViewPrsData({
+      byPrNumber: {
+        [prNumber]: { prNumber, repo, data: { number: prNumber } },
+      },
+      lastRun: null,
+    });
+
+    const res = await request.get("/insights-hook").query({ repo, prNumber });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, html: null, error: null });
+  });
+
+  test("returns the hook script's html when GET /insights-hook is requested and the hook succeeds", async () => {
+    const repo = "owner/repo";
+    const prNumber = "222";
+    writeViewPrsData({
+      byPrNumber: {
+        [prNumber]: { prNumber, repo, data: { number: prNumber, title: "Add feature" } },
+      },
+      lastRun: null,
+    });
+
+    let receivedMetadata = null;
+    const originalRunInsightsHookScript = appModule.runInsightsHookScript;
+    appModule.runInsightsHookScript = async (entry) => {
+      receivedMetadata = appModule.buildInsightsHookMetadata(entry);
+      return { html: "<div>hook output</div>", error: null };
+    };
+
+    let res;
+    try {
+      res = await request.get("/insights-hook").query({ repo, prNumber });
+    } finally {
+      appModule.runInsightsHookScript = originalRunInsightsHookScript;
+    }
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, html: "<div>hook output</div>", error: null });
+    expect(receivedMetadata).toMatchObject({
+      repo,
+      repoOwner: "owner",
+      repoName: "repo",
+      prId: prNumber,
+      title: "Add feature",
+      status: "open",
+    });
+  });
+
+  test("returns a debug error alongside null html when GET /insights-hook is requested and a configured hook script fails", async () => {
+    const repo = "owner/repo";
+    const prNumber = "333";
+    writeViewPrsData({
+      byPrNumber: {
+        [prNumber]: { prNumber, repo, data: { number: prNumber } },
+      },
+      lastRun: null,
+    });
+
+    const originalRunInsightsHookScript = appModule.runInsightsHookScript;
+    appModule.runInsightsHookScript = async () => ({
+      html: null,
+      error: "Command exited with code 127",
+    });
+
+    let res;
+    try {
+      res = await request.get("/insights-hook").query({ repo, prNumber });
+    } finally {
+      appModule.runInsightsHookScript = originalRunInsightsHookScript;
+    }
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      html: null,
+      error: "Command exited with code 127",
+    });
+  });
+
+  test("given the insights-hook dependency itself throws, when GET /insights-hook is requested, then status 500 is returned", async () => {
+    const repo = "owner/repo";
+    const prNumber = "444";
+    writeViewPrsData({
+      byPrNumber: {
+        [prNumber]: { prNumber, repo, data: { number: prNumber } },
+      },
+      lastRun: null,
+    });
+
+    const originalRunInsightsHookScript = appModule.runInsightsHookScript;
+    appModule.runInsightsHookScript = async () => {
+      throw new Error("unexpected failure");
+    };
+
+    let res;
+    try {
+      res = await request.get("/insights-hook").query({ repo, prNumber });
+    } finally {
+      appModule.runInsightsHookScript = originalRunInsightsHookScript;
+    }
+
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+  });
+
+  test("given invalid insights-hook query params, when GET /insights-hook is requested, then status 400 and route validation error are returned", async () => {
+    const res = await request
+      .get("/insights-hook")
+      .query({ repo: "owner-only", prNumber: "abc" });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      error: "Invalid repo or prNumber",
+    });
+  });
+
+  test("given no matching stored pr row, when GET /insights-hook is requested, then status 404 and route not-found error are returned", async () => {
+    writeViewPrsData({ byPrNumber: {}, lastRun: null });
+
+    const res = await request
+      .get("/insights-hook")
+      .query({ repo: "owner/repo", prNumber: "999" });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      ok: false,
+      error: "PR #999 not found for repo owner/repo",
+    });
+  });
+
   test("hydrates heavy PR detail arrays from detailRef sidecar when GET /data is requested", async () => {
     const app = require("../app.js");
     const originalEnqueuePrDiffRefreshForData = app.enqueuePrDiffRefreshForData;

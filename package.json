@@ -51,6 +51,7 @@
     "node": ">=22.22.0"
   },
   "dependencies": {
+    "dompurify": "^3.4.15",
     "express": "^4.21.2",
     "marked": "^17.0.5",
     "node-jq": "^6.3.1"

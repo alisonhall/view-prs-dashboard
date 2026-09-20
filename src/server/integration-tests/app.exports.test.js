@@ -98,6 +98,8 @@ describe("exported API surface", () => {
     "syncPrDiffForEntry",
     "enqueuePrDiffRefresh",
     "enqueuePrDiffRefreshForData",
+    "runInsightsHookScript",
+    "buildInsightsHookMetadata",
   ];
 
   for (const key of exportedKeys) {

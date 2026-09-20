@@ -13,6 +13,7 @@ import { ActivityEventsSection } from './insights/ActivityEventsSection';
 import { ReviewThreadsSection } from './insights/ReviewThreadsSection';
 import { ApprovalRiskSection } from './insights/ApprovalRiskSection';
 import { NotesSection } from './insights/NotesSection';
+import { InsightsHookSection } from './insights/InsightsHookSection';
 import { LinesChangedInsight } from './insights/LinesChangedInsight';
 import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 import { CopyIconButton } from './CopyIconButton';
@@ -119,6 +120,7 @@ export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, comp
       <ActivityEventsSection pr={pr} actorsMap={actorsMap} />
       <ReviewThreadsSection pr={pr} actorsMap={actorsMap} />
       <ApprovalRiskSection metrics={metrics} actorsMap={actorsMap} />
+      <InsightsHookSection repo={entry?.repo} prNumber={pr?.number} />
       <NotesSection entry={entry} pr={pr} actorsMap={actorsMap} onDataRefresh={onDataRefresh} />
     </div>
   );

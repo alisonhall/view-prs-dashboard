@@ -392,7 +392,9 @@ Then open:
 
 When localhost is running, the server starts an automatic background refresh for `view-prs` data, split into two tiers so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
-- **Quick check** (every 5 minutes, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. When an **open/draft** PR looks changed, a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it's queued instead.
+- **Quick check** (every 5 minutes, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it's queued instead.
+  - A quick check does nothing if a full auto refresh (the periodic full sweep, or another repo's fast-follow) is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
+  - `Last quick check skip` in the Auto Refresh panel (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
 - **Merged/closed drain** (every 30 minutes, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
 - **Full sweep** (every 15 minutes, unchanged): runs for all configured repos regardless of the quick check, as a safety net.
 - Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
@@ -668,6 +670,46 @@ Insights behavior notes:
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
   - If viewer identity cannot be determined, it safely falls back to total open conversations and omits `with me` wording.
+
+### Custom "More insights" hook
+
+`More insights` can render a `Custom insights` section populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
+
+To enable it:
+
+1. Write an executable script (any language with a shebang, or a compiled binary) that reads a single JSON argument and prints HTML on stdout.
+2. Keep it out of the repo, or under the gitignored `local-hooks/` directory if you'd rather keep it alongside the checkout.
+3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its absolute path before starting the server. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run.
+
+The script receives one JSON-encoded argument shaped like:
+
+```json
+{
+  "repoOwner": "acme-org",
+  "repoName": "acme-repo",
+  "repo": "acme-org/acme-repo",
+  "prId": "123",
+  "prUrl": "https://github.com/acme-org/acme-repo/pull/123",
+  "sourceBranch": "feature/x",
+  "targetBranch": "main",
+  "title": "Add feature",
+  "description": "",
+  "status": "open",
+  "author": "octocat",
+  "lastCommitDate": "2026-01-02T00:00:00Z",
+  "lastCommitId": "abc1234"
+}
+```
+
+Notes and caveats:
+
+- `status` is one of `open`, `draft`, `merged`, or `closed`.
+- `description` is currently always empty - the PR body/description isn't part of the data this dashboard persists, so there's nothing to pass through yet.
+- `description` is truncated to 4000 characters if it's ever populated, to stay well under OS command-line length limits (the whole JSON blob is passed as a single argument).
+- The script is invoked via `bash -c 'exec "$0" "$@"' <scriptPath> <jsonArg>` (not spawned directly), so it's launched through Git Bash the same way every other script in this app is - this matters on Windows, where a script's shebang line is only honored when something (here, bash) actually interprets it; the OS itself won't.
+- Anything other than well-formed HTML on stdout is discarded: an unset/missing/non-executable script, a timeout, a non-zero exit, or empty output all just mean the `Custom insights` section doesn't render. Nothing is shown to the end user for a script that isn't configured or fails.
+- **When a *configured* script does fail**, the browser console logs a `[insights hook] ...` warning with the failure reason (exit code/timeout plus up to 500 characters of the script's own stderr) so you have something to debug from. That same detail is also in the `GET /view-prs/insights-hook` response body. Because this reaches every browser viewing that PR row (not just whoever maintains the script), avoid having the script print anything sensitive (tokens, internal paths, environment dumps) to stderr on failure.
+- The returned HTML is sanitized client-side with DOMPurify (script execution/event handlers stripped, `<style>`/`<link>`/`<base>`/`<meta>`/`<form>` tags forbidden since those can affect the whole page - or, for `<form>`, be used to phish input - rather than just this section, and `target="_blank"` links get `rel="noopener noreferrer"` added automatically) and rendered inside a CSS-contained box (`contain: layout paint style`, scrollable, capped height) so a hook's own layout/positioning can't bleed into or cover the rest of the page. None of that makes the script itself sandboxed, though - it's still something you're trusting to run locally with your server's permissions, the same as any other script you'd add to this repo.
 
 In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:...]` tags.
 

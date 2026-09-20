@@ -205,10 +205,19 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   const viewPrsViewerLoginCacheTtlMs = 5 * 60 * 1000;
 
+  // Optional, absent by default - only present if the user opts in to a
+  // custom "More Insights" hook script (see runInsightsHookScript in app.js).
+  const viewPrsInsightsHookScript = env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "";
+
+  const viewPrsInsightsHookTimeoutMs = Math.max(
+    1000,
+    Number.parseInt(env.VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS || "10000", 10) || 10000,
+  );
+
   // Constants
   const defaultViewPrsRepo = env.VIEW_PRS_REPO;
   const requiredCommands = ["bash", "gh", "jq"];
-  const requiredPackages = ["marked"];
+  const requiredPackages = ["marked", "dompurify"];
 
   // Return configuration object
   return {
@@ -256,8 +265,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsPrDiffTimeoutMs,
     viewPrsPrDiffConcurrency,
     viewPrsViewerLoginCacheTtlMs,
+    viewPrsInsightsHookTimeoutMs,
 
     // Other settings
+    viewPrsInsightsHookScript,
     viewPrsBackupRetention,
 
     // Constants

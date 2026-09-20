@@ -121,6 +121,11 @@ if (!childProcess.__viewPrsRealSpawn) {
     // real stdout) against a real bash one-liner, on purpose - there's
     // nothing to mock here, the marker-parsing logic *is* the subject.
     "app.helpers.test.js",
+    // Exercises runInsightsHookScript's `bash -c 'exec "$0" "$@"'` argv
+    // construction against a real script it writes to a temp dir - the
+    // point of the test is proving that exact invocation still works
+    // end-to-end, so mocking the spawn away would defeat it.
+    "app.insights-hook-script.test.js",
   ];
 
   const isRealSpawnAllowedHere = (stack) =>

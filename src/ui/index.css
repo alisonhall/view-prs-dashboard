@@ -1996,6 +1996,21 @@
             font-weight: 700;
         }
 
+        /* Contains the custom "More insights" hook script's returned HTML
+           (see InsightsHookSection.jsx). Sanitization (DOMPurify) stops
+           script execution, but not layout-breaking inline styles - CSS
+           containment establishes this element as the containing block for
+           any position:fixed/absolute descendant instead of the viewport,
+           so a hook that returns e.g. `<div style="position:fixed;inset:0">`
+           can't cover the rest of the page, and overflow/max-height keeps a
+           runaway amount of content from pushing the rest of the row list
+           down instead of just scrolling within its own box. */
+        .pr-insights-hook-content {
+            contain: layout paint style;
+            overflow: auto;
+            max-height: 480px;
+        }
+
         .insight-list {
             display: grid;
             gap: 6px;

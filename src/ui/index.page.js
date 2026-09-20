@@ -2340,6 +2340,8 @@ const renderSchedulerStatus = (schedulerRaw = {}) => {
     `Last auto skip: ${scheduler.lastAutoSkipReason || "-"}`,
     `Last auto error: ${scheduler.lastAutoError || "-"}`,
     `Last quick check: ${formatIsoDatetime(scheduler.lastQuickCheckAt || "-")}`,
+    `Last quick check attempt: ${formatIsoDatetime(scheduler.lastQuickCheckAttemptAt || "-")}`,
+    `Last quick check skip: ${scheduler.lastQuickCheckSkipReason || "-"}`,
     `Last quick check error: ${scheduler.lastQuickCheckError || "-"}`,
     `Last merged/closed drain: ${formatIsoDatetime(scheduler.lastMergedDrainAt || "-")}`,
   ];

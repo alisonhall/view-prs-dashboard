@@ -155,6 +155,8 @@ const createViewPrsSchedulerHelpers = ({
     lastAutoSkipReason: viewPrsSchedulerState.lastAutoSkipReason,
     lastAutoError: viewPrsSchedulerState.lastAutoError,
     lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt || null,
+    lastQuickCheckAttemptAt: viewPrsSchedulerState.lastQuickCheckAttemptAt || null,
+    lastQuickCheckSkipReason: viewPrsSchedulerState.lastQuickCheckSkipReason || null,
     lastQuickCheckError: viewPrsSchedulerState.lastQuickCheckError || null,
     lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
     ...getPendingCounts(),

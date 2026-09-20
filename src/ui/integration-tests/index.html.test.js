@@ -1783,6 +1783,7 @@ describe("index page rendering with Testing Library", () => {
           isAutoRunInProgress: false,
           lastAutoError:
             "owner/repo: Auto refresh timed out after 900s",
+          lastQuickCheckSkipReason: "already-in-progress",
         },
       }),
     });
@@ -1801,9 +1802,12 @@ describe("index page rendering with Testing Library", () => {
     // "React-owned scheduler status badges..." e2e test for that coverage.
     // `details` stays vanilla-rendered regardless, so it's still asserted
     // on directly here.
-    expect(document.getElementById("scheduler-details")?.textContent || "").toContain(
-      "Last auto error:",
-    );
+    const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
+    expect(schedulerDetailsText).toContain("Last auto error:");
+    // Surfaces why a quick check was skipped (e.g. blocked by an in-progress
+    // full auto refresh) - previously invisible, since runViewPrsQuickCheck's
+    // skip branches didn't persist anything to scheduler state at all.
+    expect(schedulerDetailsText).toContain("Last quick check skip: already-in-progress");
 
     await user.click(screen.getByRole("tab", { name: "Backfill" }));
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
