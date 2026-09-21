@@ -42,10 +42,22 @@ const withTimeout = async (promise, timeoutMs, message) => {
   }
 };
 
-const waitForServer = async ({ url, timeoutMs = 20000 }) => {
+// `child` is optional (some callers, or tests of this helper itself, may not
+// have a process handle) - when given, a crash is detected and thrown
+// immediately instead of retrying blindly for the full timeout budget and
+// surfacing the same generic "Timed out waiting" message a genuine hang
+// would produce. Without this, a real crash and transient slowness under
+// load were indistinguishable failure modes - both burned the full timeout
+// and printed the same unhelpful message.
+const waitForServer = async ({ url, timeoutMs = 20000, child = null }) => {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
+    if (child && child.exitCode !== null) {
+      throw new Error(
+        `Server process exited unexpectedly (code: ${child.exitCode}) while waiting for ${url}`,
+      );
+    }
     try {
       const remainingMs = Math.max(deadline - Date.now(), 1);
       const response = await requestServer(url, Math.min(remainingMs, 500));
@@ -207,6 +219,7 @@ describe("server startup behavior", () => {
 
     await waitForServer({
       url: `http://127.0.0.1:${port}/`,
+      child,
     });
   });
 
@@ -220,14 +233,28 @@ describe("server startup behavior", () => {
     }
   });
 
+  // Uses waitForServer (retries with backoff over a real budget), not a
+  // single-shot requestServer call - the server is already confirmed up by
+  // beforeAll, but a bare 1000ms one-shot request with no retry was a real
+  // source of flakiness under full-suite parallel CPU contention (a
+  // momentarily slow response from a genuinely-healthy server looks
+  // identical to a hung one to a single fixed-timeout request). Every other
+  // real request in this file already goes through waitForServer for the
+  // same reason - these two were the only holdouts.
   test("returns 200 when GET / is requested from the started server", async () => {
-    const response = await requestServer(`http://127.0.0.1:${port}/`);
+    const response = await waitForServer({
+      url: `http://127.0.0.1:${port}/`,
+      child,
+    });
 
     expect(response.status).toBe(200);
   });
 
   test("returns non-empty HTML when GET / is requested from the started server", async () => {
-    const response = await requestServer(`http://127.0.0.1:${port}/`);
+    const response = await waitForServer({
+      url: `http://127.0.0.1:${port}/`,
+      child,
+    });
 
     expect(response.body.length).toBeGreaterThan(0);
   });
@@ -252,6 +279,7 @@ describe("server startup behavior", () => {
       // Verify server is responsive on default port
       const response = await waitForServer({
         url: "http://127.0.0.1:9000/",
+        child,
       });
       expect(response.status).toBe(200);
     } finally {
@@ -277,6 +305,7 @@ describe("server startup behavior", () => {
       // Verify server is running
       const response = await waitForServer({
         url: `http://127.0.0.1:${port}/`,
+        child,
       });
       expect(response.status).toBe(200);
 
@@ -306,6 +335,7 @@ describe("server startup behavior", () => {
       // Verify server is running
       const response = await waitForServer({
         url: `http://127.0.0.1:${port}/`,
+        child,
       });
       expect(response.status).toBe(200);
 
