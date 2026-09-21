@@ -47,7 +47,6 @@ describe("pr render pipeline helpers", () => {
       prSectionOpenState: { opened: true },
       lastSuccessfulRenderedCheckAt: "2026-07-19T00:00:00.000Z",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
 
@@ -82,7 +81,6 @@ describe("pr render pipeline helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
     expect(

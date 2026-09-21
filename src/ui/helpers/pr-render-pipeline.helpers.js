@@ -47,7 +47,6 @@
       prSectionOpenState,
       lastSuccessfulRenderedCheckAt,
       latestSelectedRepo,
-      insightsViewState,
       latestSchedulerState,
       skipTableRender,
     } = {}) => {
@@ -92,7 +91,6 @@
         selectedScope,
         repoFilter,
         latestSelectedRepo,
-        insightsViewState,
         latestSchedulerState,
         skipTableRender,
       });

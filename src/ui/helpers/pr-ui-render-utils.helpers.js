@@ -22,29 +22,9 @@
       }
     };
 
-    const setClassToken = (element, token, enabled) => {
-      if (!element) return;
-      const tokens = String(element.className || "")
-        .split(/\s+/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const hasToken = tokens.includes(token);
-      if (enabled && !hasToken) {
-        tokens.push(token);
-      }
-      if (!enabled && hasToken) {
-        element.className = tokens.filter((value) => value !== token).join(" ");
-        return;
-      }
-      if (enabled) {
-        element.className = tokens.join(" ");
-      }
-    };
-
     return {
       parseMarkerState,
       safeJsonStringify,
-      setClassToken,
     };
   };
 

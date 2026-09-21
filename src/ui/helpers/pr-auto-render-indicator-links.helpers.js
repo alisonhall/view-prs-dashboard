@@ -7,31 +7,17 @@
   root.ViewPrsAutoRenderIndicatorLinksHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrAutoRenderIndicatorLinksHelpers = ({
-    clearElementContents,
-    getAuthorInsightsDisplayName,
-    navigateToPrInTable,
-    navigateToAuthorInsights,
     buildAutoRenderBlockedLinksAriaLabel,
-    documentRef,
   } = {}) => {
-    const clearElementContentsSafe =
-      typeof clearElementContents === "function" ? clearElementContents : () => {};
-    const getAuthorInsightsDisplayNameSafe =
-      typeof getAuthorInsightsDisplayName === "function"
-        ? getAuthorInsightsDisplayName
-        : (authorLogin) => String(authorLogin || "").trim();
-    const navigateToPrInTableSafe =
-      typeof navigateToPrInTable === "function" ? navigateToPrInTable : () => {};
-    const navigateToAuthorInsightsSafe =
-      typeof navigateToAuthorInsights === "function"
-        ? navigateToAuthorInsights
-        : () => {};
     const buildAutoRenderBlockedLinksAriaLabelSafe =
       typeof buildAutoRenderBlockedLinksAriaLabel === "function"
         ? buildAutoRenderBlockedLinksAriaLabel
         : ({ blockingPrLabel = "" }) => String(blockingPrLabel || "");
-    const doc = documentRef || (typeof document !== "undefined" ? document : null);
 
+    // The button list itself is real JSX now (components/AutoRenderBlockedLinks.jsx,
+    // via window.updateReactAutoRenderBlockedLinks) - linksHost is a static
+    // element (a React portal target, not React-owned itself), so its own
+    // hidden/aria-label attributes still have to be toggled here.
     const renderAutoRenderBlockedLinks = ({
       linksHost,
       blockingPrNumbers = [],
@@ -49,34 +35,7 @@
         ? blockingAuthorInsightsLogins
         : [];
 
-      clearElementContentsSafe(linksHost);
       linksHost.hidden = prNumbers.length === 0 && authorLogins.length === 0;
-
-      prNumbers.forEach((prNumber) => {
-        const button = doc.createElement("button");
-        button.type = "button";
-        button.className = "auto-render-blocked-pr-link";
-        button.textContent = `#${prNumber}`;
-        button.title = `Jump to PR #${prNumber} unsaved changes`;
-        button.onclick = () => {
-          navigateToPrInTableSafe(prNumber, { focusUnsaved: true });
-        };
-        linksHost.appendChild(button);
-      });
-
-      authorLogins.forEach((authorLogin) => {
-        const authorDisplayName = getAuthorInsightsDisplayNameSafe(authorLogin);
-        const button = doc.createElement("button");
-        button.type = "button";
-        button.className = "auto-render-blocked-pr-link";
-        button.textContent = `Author: ${authorDisplayName}`;
-        button.title = `Jump to unsaved Author Insights draft for ${authorDisplayName}`;
-        button.onclick = () => {
-          navigateToAuthorInsightsSafe(authorLogin, { focusUnsaved: true });
-        };
-        linksHost.appendChild(button);
-      });
-
       linksHost.setAttribute(
         "aria-label",
         buildAutoRenderBlockedLinksAriaLabelSafe({
@@ -84,6 +43,10 @@
           blockingAuthorInsightsLogins: authorLogins,
         }),
       );
+
+      if (typeof window !== "undefined") {
+        window.updateReactAutoRenderBlockedLinks?.(prNumbers, authorLogins);
+      }
     };
 
     return {

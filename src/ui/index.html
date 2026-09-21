@@ -446,10 +446,10 @@
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <pre id="data-meta" style="white-space: break-spaces;">Loading...</pre>
             <div id="pr-sections"></div>
-            <div id="merged-request-more-action" class="merged-request-more-action" hidden>
-                <button type="button" id="merged-request-more-btn">Request more</button>
-                <span id="merged-request-more-status" class="merged-request-more-status"></span>
-            </div>
+            <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
+                 renders nothing at all (not even this div's own children)
+                 when not visible, so no `hidden` attribute is needed here. -->
+            <div id="merged-request-more-action" class="merged-request-more-action"></div>
         </section>
 
         <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
@@ -536,7 +536,6 @@
     <script src="./helpers/pr-insight-metrics-summary.helpers.js"></script>
     <script src="./helpers/pr-author-cell.helpers.js"></script>
     <script src="./helpers/pr-ui-render-utils.helpers.js"></script>
-    <script src="./helpers/pr-diff-render.helpers.js"></script>
     <script src="./helpers/pr-review-stats-date-bucketing.helpers.js"></script>
     <script src="./helpers/pr-review-stats-aggregation.helpers.js"></script>
     <script src="./helpers/pr-review-stats-timeline.helpers.js"></script>
@@ -548,14 +547,10 @@
     <script src="./helpers/pr-needs-attention.helpers.js"></script>
     <script src="./helpers/pr-ui-option-scroll.helpers.js"></script>
     <script src="./helpers/pr-dom-access.helpers.js"></script>
-    <script src="./helpers/pr-dom-reset.helpers.js"></script>
     <script src="./helpers/pr-dom-traversal.helpers.js"></script>
     <script src="./helpers/pr-section-open-state.helpers.js"></script>
-    <script src="./helpers/pr-insights-state.helpers.js"></script>
-    <script src="./helpers/pr-insights-view-state.helpers.js"></script>
     <script src="./helpers/pr-applied-summary.helpers.js"></script>
     <script src="./helpers/pr-merged-request-more-config.helpers.js"></script>
-    <script src="./helpers/pr-merged-request-more.helpers.js"></script>
     <script src="./helpers/pr-merged-request-more-action.helpers.js"></script>
     <script src="./helpers/pr-section-grouping.helpers.js"></script>
     <script src="./helpers/pr-scope-selection.helpers.js"></script>
@@ -584,7 +579,6 @@
     <script src="./helpers/pr-entry-derived-cache.helpers.js"></script>
     <script src="./helpers/pr-row-filtering.helpers.js"></script>
     <script src="./helpers/pr-smart-groups.helpers.js"></script>
-    <script src="./helpers/pr-smart-group-manipulation.helpers.js"></script>
     <script src="./helpers/pr-section-config.helpers.js"></script>
     <script src="./helpers/react-callbacks.helpers.js"></script>
     <script src="./helpers/pr-dom-visibility.helpers.js"></script>

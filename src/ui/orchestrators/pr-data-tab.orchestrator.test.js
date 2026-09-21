@@ -167,7 +167,6 @@ describe("PR Data Tab Orchestrator", () => {
         sectionsHost: {},
         meta: {},
         prSectionOpenState: {},
-        insightsViewState: {},
       });
 
       mockDeps.deriveRenderPipelineState.mockReturnValue({

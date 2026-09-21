@@ -32,6 +32,8 @@ import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommen
 import { ActionLogSection } from './components/ActionLogSection';
 import { ExportTab } from './components/ExportTab';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
+import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
+import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { ActorNamesTab } from './components/ActorNamesTab';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
@@ -351,6 +353,8 @@ function computeStaticContainers() {
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
     applyLabelSelect: document.getElementById('apply-label-select-root'),
+    autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
+    mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
     reviewStatsControlsInitialState:
       typeof window.getStatsViewState === 'function'
         ? window.getStatsViewState()
@@ -395,6 +399,8 @@ function AppRoot() {
   const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
   const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
+  const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
+  const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -554,6 +560,26 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactApplyLabelOptions;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactAutoRenderBlockedLinks = (prNumbers, authorLogins) => {
+      setAutoRenderBlockedLinks({ prNumbers, authorLogins });
+      return true;
+    };
+    return () => {
+      delete window.updateReactAutoRenderBlockedLinks;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactMergedRequestMoreAction = (isVisible, repo) => {
+      setMergedRequestMoreAction({ isVisible, repo });
+      return true;
+    };
+    return () => {
+      delete window.updateReactMergedRequestMoreAction;
     };
   }, []);
 
@@ -756,6 +782,34 @@ function AppRoot() {
             <ApplyLabelSelect labels={applyLabelOptions.labels} />,
             containers.applyLabelSelect,
             'apply-label-select',
+          )}
+
+        {containers.autoRenderBlockedLinks &&
+          createPortal(
+            <AutoRenderBlockedLinks
+              prNumbers={autoRenderBlockedLinks.prNumbers}
+              authorLogins={autoRenderBlockedLinks.authorLogins}
+            />,
+            containers.autoRenderBlockedLinks,
+            'auto-render-blocked-links',
+          )}
+
+        {containers.mergedRequestMoreAction &&
+          createPortal(
+            // key={repo}: remounts (resetting local pending/status state)
+            // whenever the target repo actually changes - see
+            // MergedRequestMoreAction.jsx's own doc comment for the stale-
+            // state bug this fixes. Not keyed on isVisible too: if a
+            // request is still in flight when this hides and reshows for
+            // the *same* repo, showing whatever it resolved to in the
+            // meantime is correct, not stale.
+            <MergedRequestMoreAction
+              key={mergedRequestMoreAction.repo}
+              isVisible={mergedRequestMoreAction.isVisible}
+              repo={mergedRequestMoreAction.repo}
+            />,
+            containers.mergedRequestMoreAction,
+            'merged-request-more-action',
           )}
       </FilterStateProvider>
       <PrDataPolling />

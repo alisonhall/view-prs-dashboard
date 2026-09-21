@@ -10,9 +10,7 @@
     renderManagementFilterSummary,
     renderAuthorInsights,
     renderStatsView,
-    clearElementContents,
     buildMergedRequestMoreActionOptions,
-    appendMergedRequestMoreAction,
     computePrDataFingerprint,
     computePrDataManifest,
     getOptionalElementById,
@@ -25,16 +23,10 @@
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
     const renderStatsViewSafe =
       typeof renderStatsView === "function" ? renderStatsView : () => {};
-    const clearElementContentsSafe =
-      typeof clearElementContents === "function" ? clearElementContents : () => {};
     const buildMergedRequestMoreActionOptionsSafe =
       typeof buildMergedRequestMoreActionOptions === "function"
         ? buildMergedRequestMoreActionOptions
         : () => ({});
-    const appendMergedRequestMoreActionSafe =
-      typeof appendMergedRequestMoreAction === "function"
-        ? appendMergedRequestMoreAction
-        : () => {};
     const computePrDataFingerprintSafe =
       typeof computePrDataFingerprint === "function"
         ? computePrDataFingerprint
@@ -79,7 +71,6 @@
       payload,
       allStoredRows,
       filteredRows,
-      sectionsHost,
       meta,
       appliedSummaryText,
       filterChips,
@@ -123,24 +114,25 @@
       // React mounts), and shows a minimal error message instead of a
       // vanilla table on a genuine React mount failure.
 
-      // The "Request more" merged-PRs button lives in its own static host
-      // element (a sibling of sectionsHost in index.html), not inside
-      // sectionsHost itself - unlike the table markup that used to live
-      // here, React never owns it, so this always runs.
-      const mergedRequestMoreHost =
-        (typeof sectionsHost?.parentElement?.querySelector === "function" &&
-          sectionsHost.parentElement.querySelector("#merged-request-more-action")) ||
-        null;
-      clearElementContentsSafe(mergedRequestMoreHost);
-      appendMergedRequestMoreActionSafe(
-        mergedRequestMoreHost,
+      // The "Request more" merged-PRs button is real JSX now
+      // (components/MergedRequestMoreAction.jsx, mounted into its own
+      // static #merged-request-more-action host - a sibling of #pr-sections
+      // in index.html, not inside it) - React owns its rendering, but this
+      // pipeline still computes and pushes the isVisible/repo options on
+      // every render, same as it always has.
+      const { isVisible: isMergedRequestMoreVisible, repo: mergedRequestMoreRepo } =
         buildMergedRequestMoreActionOptionsSafe({
           selectedScope,
           repoFilter,
           lastRunRepo: payload?.lastRun?.repo || "",
           latestSelectedRepo,
-        }),
-      );
+        });
+      if (typeof window !== "undefined") {
+        window.updateReactMergedRequestMoreAction?.(
+          isMergedRequestMoreVisible,
+          mergedRequestMoreRepo,
+        );
+      }
 
       return {
         pendingAutoRenderPayload: null,

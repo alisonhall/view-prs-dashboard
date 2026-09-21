@@ -4785,7 +4785,7 @@ describe("index page rendering with Testing Library", () => {
     expect(String(backfillLog?.textContent || "")).toContain("line-1");
   });
 
-  test("shows Request more only for all scope and posts the expected merged request payload", async () => {
+  test("given Request more is triggered, when handled, then it posts the expected merged request payload (button rendering/visibility is React-owned - see MergedRequestMoreAction.test.jsx)", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -4813,14 +4813,16 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
-    const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Request more" })).toBeInTheDocument();
-    });
+    expect(document.getElementById("merged-request-more-action")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Request more" }));
+    // The button/status content is React-owned now (MergedRequestMoreAction.jsx,
+    // portaled into #merged-request-more-action - not mounted in this
+    // jsdom-only suite), but window.handleRequestMoreMerged (the vanilla
+    // orchestration it calls on click) is still real here, so the actual
+    // POST round-trip is still worth exercising directly.
+    await window.handleRequestMoreMerged("owner/repo");
 
     let requestMoreCall;
     await waitFor(() => {
@@ -4839,14 +4841,6 @@ describe("index page rendering with Testing Library", () => {
     expect(requestMorePayload.repo).toBe("owner/repo");
     expect(requestMorePayload.count).toBe(30);
     expect(requestMorePayload.scanLimit).toBe(100);
-
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-    await user.selectOptions(document.getElementById("scope-mode"), "last-run");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Request more" })).not.toBeInTheDocument();
-    });
   });
 
   test("renders row-level in-review control for PRs returned from data fetch", async () => {

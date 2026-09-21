@@ -1,12 +1,19 @@
 /**
  * ActorIdentity - Renders a GitHub login as a styled identity element,
- * matching the vanilla renderer's `createActorIdentityElement` output
- * (see helpers/pr-actor-identity-render.helpers.js) so the same CSS
- * (actor-identity, actor-identity-viewer, actor-identity-pr-author) applies.
+ * using the same CSS (actor-identity, actor-identity-viewer,
+ * actor-identity-pr-author) the vanilla renderer this component replaced
+ * used to build directly via DOM APIs (that vanilla builder,
+ * `createActorIdentityElement`, was deleted once this component fully
+ * superseded it - see REACT_MIGRATION_PLAN.md's 2026-09-20 entry).
  *
- * The identity/style *logic* is reused from the vanilla helpers (exposed on
- * window by index.page.js) rather than re-derived here, so behavior can't
- * drift from the vanilla renderer. Only the DOM/JSX construction is React's.
+ * The viewer-login resolution and class/title *logic* are still reused
+ * from the vanilla helpers (exposed on window by index.page.js) -
+ * `getEffectiveViewerLogin` (helpers/pr-actor-identity-render.helpers.js)
+ * and `buildActorIdentityClassName`/`buildActorIdentityTitle`
+ * (helpers/pr-actor-identity-style.helpers.js) - so behavior can't drift.
+ * The isViewer/isPrAuthor comparison itself is a plain inline equality
+ * check below, matching what the vanilla renderer's own identity-state
+ * step used to compute.
  *
  * @module components/ActorIdentity
  */

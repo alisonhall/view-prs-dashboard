@@ -184,8 +184,11 @@ function parseFileHeader(line) {
   return header.replace(/^diff --git\s*/, '');
 }
 
-// Groups raw diff lines into per-file <details> blocks, exactly as
-// helpers/pr-diff-render.helpers.js's renderDiffText builds them in the DOM.
+// Groups raw diff lines into per-file <details> blocks, matching the shape
+// the vanilla renderer this component replaced used to build in the DOM
+// (that vanilla builder, renderDiffText in helpers/pr-diff-render.helpers.js,
+// was deleted once nothing else called it - see REACT_MIGRATION_PLAN.md's
+// 2026-09-20 entry).
 function buildDiffBlocks(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);
   const blocks = [];

@@ -1351,16 +1351,10 @@ const {
 
 const {
   getEffectiveViewerLogin,
-  createActorIdentityElement,
 } = prActorIdentityRenderHelperFactory.createPrActorIdentityRenderHelpers({
   normalizeActorLogin: (...args) => normalizeActorLogin(...args),
   getCurrentViewerLogin: () => currentViewerLogin,
   inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
-  resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  buildActorIdentityClassName: (...args) => buildActorIdentityClassName(...args),
-  buildActorIdentityTitle: (...args) => buildActorIdentityTitle(...args),
-  formatIsoDatetime: (...args) => formatIsoDatetime(...args),
-  documentRef: typeof document !== "undefined" ? document : null,
 });
 
 const prRequestedReviewersHelperFactory =
@@ -1433,9 +1427,6 @@ const prAuthorCellHelperFactory =
 const { collectPrAuthors } =
   prAuthorCellHelperFactory.createPrAuthorCellHelpers({
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-    createActorIdentityElement: (...args) => createActorIdentityElement(...args),
-    getManualNotesSummary: (...args) => getManualNotesSummary(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
   });
 
 const prUiRenderUtilsHelperFactory =
@@ -1499,14 +1490,6 @@ const { getOptionalElementById, readElementAttribute } =
     documentRef: typeof document !== "undefined" ? document : null,
   });
 
-const prDomResetHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-dom-reset.helpers.js")
-    : globalThis.ViewPrsDomResetHelpers;
-
-const { clearElementContents } =
-  prDomResetHelperFactory.createPrDomResetHelpers();
-
 const prDomTraversalHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-dom-traversal.helpers.js")
@@ -1526,37 +1509,6 @@ const { capturePrSectionOpenState } =
     readElementAttribute: (...args) => readElementAttribute(...args),
   });
 
-const prInsightsStateHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-insights-state.helpers.js")
-    : globalThis.ViewPrsInsightsStateHelpers;
-
-const {
-  captureExpandedInsightsState,
-  captureOpenInnerInsightSectionsState,
-  restoreExpandedInsightsState,
-  restoreOpenInnerInsightSectionsState,
-} = prInsightsStateHelperFactory.createPrInsightsStateHelpers({
-  collectNodesByClass: (...args) => collectNodesByClass(...args),
-  collectNodesByTag: (...args) => collectNodesByTag(...args),
-  readElementAttribute: (...args) => readElementAttribute(...args),
-});
-
-const prInsightsViewStateHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-insights-view-state.helpers.js")
-    : globalThis.ViewPrsInsightsViewStateHelpers;
-
-const { captureInsightsViewState } =
-  prInsightsViewStateHelperFactory.createPrInsightsViewStateHelpers({
-    captureExpandedInsightsState: (...args) => captureExpandedInsightsState(...args),
-    captureOpenInnerInsightSectionsState: (...args) =>
-      captureOpenInnerInsightSectionsState(...args),
-    restoreExpandedInsightsState: (...args) => restoreExpandedInsightsState(...args),
-    restoreOpenInnerInsightSectionsState: (...args) =>
-      restoreOpenInnerInsightSectionsState(...args),
-  });
-
 const prAppliedSummaryHelperFactory =
   typeof module !== "undefined" && module.exports
     ? require("./helpers/pr-applied-summary.helpers.js")
@@ -1572,18 +1524,6 @@ const prMergedRequestMoreConfigHelperFactory =
 
 const { buildMergedRequestMoreActionOptions } =
   prMergedRequestMoreConfigHelperFactory.createPrMergedRequestMoreConfigHelpers();
-
-const prMergedRequestMoreHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-merged-request-more.helpers.js")
-    : globalThis.ViewPrsMergedRequestMoreHelpers;
-
-const { appendMergedRequestMoreAction } =
-  prMergedRequestMoreHelperFactory.createPrMergedRequestMoreHelpers({
-    handleRequestMoreMerged: (...args) => handleRequestMoreMerged(...args),
-    getIsRequestMoreMergedPending: () => isRequestMoreMergedPending,
-    documentRef: typeof document !== "undefined" ? document : null,
-  });
 
 const prSectionGroupingHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -1634,7 +1574,6 @@ const prRenderContextHelperFactory =
 const { captureRenderContext } =
   prRenderContextHelperFactory.createPrRenderContextHelpers({
     getElementById: (...args) => document.getElementById(...args),
-    captureInsightsViewState: (...args) => captureInsightsViewState(...args),
     capturePrSectionOpenState: (...args) => capturePrSectionOpenState(...args),
   });
 
@@ -1713,11 +1652,8 @@ const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisi
       renderManagementFilterSummary(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
     renderStatsView: (...args) => renderStatsView(...args),
-    clearElementContents: (...args) => clearElementContents(...args),
     buildMergedRequestMoreActionOptions: (...args) =>
       buildMergedRequestMoreActionOptions(...args),
-    appendMergedRequestMoreAction: (...args) =>
-      appendMergedRequestMoreAction(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
     getOptionalElementById: (...args) => getOptionalElementById(...args),
@@ -1918,7 +1854,6 @@ const { handleRequestMoreMerged } =
     },
     getLatestSelectedRepo: () => latestSelectedRepo,
     defaultRepo: DEFAULT_REPO,
-    getOptionalElementById: (...args) => getOptionalElementById(...args),
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     postJson: (...args) => postJson(...args),
     setLatestStoredPayload: (value) => {
@@ -1932,6 +1867,15 @@ const { handleRequestMoreMerged } =
     setStatusMessage: (...args) => setStatusMessage(...args),
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
   });
+
+// The "Request more" merged-PRs button is real JSX now
+// (components/MergedRequestMoreAction.jsx) - it calls this directly on
+// click, passing its own local pending/status state setters as the
+// onPendingChange/onStatusChange options handleRequestMoreMerged now
+// expects instead of reaching into #merged-request-more-btn/-status itself.
+if (typeof window !== "undefined") {
+  window.handleRequestMoreMerged = (...args) => handleRequestMoreMerged(...args);
+}
 
 const prApplyFiltersCacheHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -2097,13 +2041,7 @@ const prAutoRenderIndicatorLinksHelperFactory =
 const { renderAutoRenderBlockedLinks } =
   prAutoRenderIndicatorLinksHelperFactory.createPrAutoRenderIndicatorLinksHelpers(
     {
-      clearElementContents: (...args) => clearElementContents(...args),
-      getAuthorInsightsDisplayName: (...args) =>
-        getAuthorInsightsDisplayName(...args),
-      navigateToPrInTable: (...args) => navigateToPrInTable(...args),
-      navigateToAuthorInsights: (...args) => navigateToAuthorInsights(...args),
       buildAutoRenderBlockedLinksAriaLabel,
-      documentRef: typeof document !== "undefined" ? document : null,
     },
   );
 
@@ -5520,6 +5458,11 @@ const initPage = () => {
     normalizeRows,
     sortRowsByPrNumberDesc,
     sortRowsByDateFieldDesc,
+    // ---- Auto-render-blocked indicator links (see
+    // components/AutoRenderBlockedLinks.jsx) ----
+    navigateToPrInTable,
+    navigateToAuthorInsights,
+    getAuthorInsightsDisplayName,
   });
 
   // The initial loadStoredData() fetch below often resolves before the

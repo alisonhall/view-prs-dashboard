@@ -143,7 +143,6 @@
         meta: runContext.meta,
         prSectionOpenState: runContext.prSectionOpenState,
         latestSelectedRepo,
-        insightsViewState: runContext.insightsViewState,
         latestSchedulerState,
         skipTableRender: Boolean(options.skipTableRender),
       });

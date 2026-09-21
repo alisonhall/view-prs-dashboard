@@ -8,15 +8,10 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrRenderContextHelpers = ({
     getElementById,
-    captureInsightsViewState,
     capturePrSectionOpenState,
   } = {}) => {
     const getElementByIdSafe =
       typeof getElementById === "function" ? getElementById : () => null;
-    const captureInsightsViewStateSafe =
-      typeof captureInsightsViewState === "function"
-        ? captureInsightsViewState
-        : () => ({ expanded: new Set(), innerOpen: new Map() });
     const capturePrSectionOpenStateSafe =
       typeof capturePrSectionOpenState === "function"
         ? capturePrSectionOpenState
@@ -24,7 +19,6 @@
 
     const captureRenderContext = (payload) => {
       const sectionsHost = getElementByIdSafe("pr-sections");
-      const insightsViewState = captureInsightsViewStateSafe(sectionsHost);
       const prSectionOpenState = capturePrSectionOpenStateSafe(sectionsHost);
       const meta = getElementByIdSafe("data-meta");
       const scopeSelect = getElementByIdSafe("scope-mode");
@@ -34,7 +28,6 @@
 
       return {
         sectionsHost,
-        insightsViewState,
         prSectionOpenState,
         meta,
         scopeSelect,

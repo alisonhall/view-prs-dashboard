@@ -40,7 +40,6 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
 
@@ -58,7 +57,6 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
     expect(applyRenderResults).toHaveBeenCalledWith({
@@ -75,7 +73,6 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
       marker: "apply-inputs",
     });

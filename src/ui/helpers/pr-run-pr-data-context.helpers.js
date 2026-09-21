@@ -28,7 +28,6 @@
         ? captureRenderContext
         : () => ({
             sectionsHost: null,
-            insightsViewState: { expanded: new Set(), innerOpen: new Map() },
             prSectionOpenState: new Map(),
             meta: null,
             scopeSelect: null,

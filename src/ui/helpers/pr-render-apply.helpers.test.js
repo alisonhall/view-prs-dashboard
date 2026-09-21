@@ -5,36 +5,32 @@ const {
 } = require("./pr-render-apply.helpers.js");
 
 describe("pr render apply helpers", () => {
+  afterEach(() => {
+    delete window.updateReactMergedRequestMoreAction;
+  });
+
   test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
     const renderManagementFilterSummary = jest.fn();
     const renderAuthorInsights = jest.fn();
     const renderStatsView = jest.fn();
-    const clearElementContents = jest.fn();
-    const buildMergedRequestMoreActionOptions = jest.fn(() => ({ enabled: true }));
-    const appendMergedRequestMoreAction = jest.fn();
+    const buildMergedRequestMoreActionOptions = jest.fn(() => ({
+      isVisible: true,
+      repo: "org/repo",
+    }));
     const computePrDataFingerprint = jest.fn(() => "fingerprint-1");
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
+    const updateReactMergedRequestMoreAction = jest.fn();
+    window.updateReactMergedRequestMoreAction = updateReactMergedRequestMoreAction;
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary,
       renderAuthorInsights,
       renderStatsView,
-      clearElementContents,
       buildMergedRequestMoreActionOptions,
-      appendMergedRequestMoreAction,
       computePrDataFingerprint,
       computePrDataManifest,
     });
 
-    const mergedRequestMoreHost = { id: "merged-request-more-action" };
-    const sectionsHost = {
-      id: "sections",
-      parentElement: {
-        querySelector: jest.fn((selector) =>
-          selector === "#merged-request-more-action" ? mergedRequestMoreHost : null,
-        ),
-      },
-    };
     const meta = { textContent: "" };
     const payload = {
       actorsMap: { user1: { displayName: "User One" } },
@@ -46,7 +42,6 @@ describe("pr render apply helpers", () => {
       payload,
       allStoredRows: [{ id: 1 }],
       filteredRows: [{ id: 2 }],
-      sectionsHost,
       meta,
       appliedSummaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],
@@ -68,10 +63,7 @@ describe("pr render apply helpers", () => {
       lastRunRepo: "org/repo",
       latestSelectedRepo: "org/repo",
     });
-    expect(clearElementContents).toHaveBeenCalledWith(mergedRequestMoreHost);
-    expect(appendMergedRequestMoreAction).toHaveBeenCalledWith(mergedRequestMoreHost, {
-      enabled: true,
-    });
+    expect(updateReactMergedRequestMoreAction).toHaveBeenCalledWith(true, "org/repo");
     expect(computePrDataFingerprint).toHaveBeenCalledWith(payload);
     expect(computePrDataManifest).not.toHaveBeenCalled();
     expect(result).toEqual({
@@ -82,15 +74,23 @@ describe("pr render apply helpers", () => {
     });
   });
 
+  test("given no window.updateReactMergedRequestMoreAction bridge is installed, when applying render results, then nothing throws", () => {
+    const { applyRenderResults } = createPrRenderApplyHelpers({
+      buildMergedRequestMoreActionOptions: () => ({ isVisible: true, repo: "org/repo" }),
+    });
+
+    expect(() =>
+      applyRenderResults({ payload: {}, allStoredRows: [], meta: {} }),
+    ).not.toThrow();
+  });
+
   test("given missing payload fields, when applying render results, then fallback values are used", () => {
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary: () => {},
       renderAuthorInsights: () => {},
       renderStatsView: () => {},
-      clearElementContents: () => {},
       buildMergedRequestMoreActionOptions: () => ({}),
-      appendMergedRequestMoreAction: () => {},
       computePrDataFingerprint: () => "",
       computePrDataManifest,
     });
@@ -98,7 +98,6 @@ describe("pr render apply helpers", () => {
     const result = applyRenderResults({
       payload: {},
       allStoredRows: [],
-      sectionsHost: {},
       meta: {},
     });
 
