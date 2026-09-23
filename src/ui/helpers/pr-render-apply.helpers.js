@@ -9,7 +9,6 @@
   const createPrRenderApplyHelpers = ({
     renderManagementFilterSummary,
     renderAuthorInsights,
-    renderStatsView,
     buildMergedRequestMoreActionOptions,
     computePrDataFingerprint,
     computePrDataManifest,
@@ -21,8 +20,6 @@
         : () => {};
     const renderAuthorInsightsSafe =
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
-    const renderStatsViewSafe =
-      typeof renderStatsView === "function" ? renderStatsView : () => {};
     const buildMergedRequestMoreActionOptionsSafe =
       typeof buildMergedRequestMoreActionOptions === "function"
         ? buildMergedRequestMoreActionOptions
@@ -50,20 +47,20 @@
     // The most recent (allStoredRows, actorsMap) applyRenderResults was
     // called with - kept so a tab that was hidden during the last render
     // can catch up with the same data once activated, via
-    // renderAuthorInsightsIfVisible/renderStatsViewIfVisible below, without
-    // needing its own separate "what are the current rows" derivation
-    // (which would risk drifting from what the shared pipeline computed).
+    // renderAuthorInsightsIfVisible below, without needing its own separate
+    // "what are the current rows" derivation (which would risk drifting
+    // from what the shared pipeline computed). Review Stats no longer
+    // needs an equivalent: ReviewStatsContent (react-app.jsx) recomputes
+    // its own stats straight from PrDataContext's payload on every render,
+    // so there's nothing left to "catch up" on tab activation - see Track C
+    // (REACT_MIGRATION_PLAN.md) for why renderStatsView/
+    // renderStatsViewIfVisible were deleted rather than kept for this.
     let latestAllStoredRows = [];
     let latestActorsMap = {};
 
     const renderAuthorInsightsIfVisible = () => {
       if (isTabPanelVisible("tab-panel-author-insights")) {
         renderAuthorInsightsSafe(latestAllStoredRows, latestActorsMap);
-      }
-    };
-    const renderStatsViewIfVisible = () => {
-      if (isTabPanelVisible("tab-panel-review-stats")) {
-        renderStatsViewSafe(latestAllStoredRows, latestActorsMap);
       }
     };
 
@@ -88,19 +85,18 @@
         filterChips,
       });
       // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
-      // these two used to run in full on every single render regardless of
+      // this used to run in full on every single render regardless of
       // which data tab the user is actually looking at - a real,
       // measured cost with no benefit when the tab is hidden. Skipped here
       // when hidden; whichever tab just became visible gets a fresh render
       // triggered directly from its tab-click handler (index.page.js, via
-      // renderAuthorInsightsIfVisible/renderStatsViewIfVisible below), not
-      // tracked as "dirty" here - simpler and correct, since tab clicks
-      // are infrequent and user-initiated, not part of the hot
-      // polling/render path this gate is optimizing.
+      // renderAuthorInsightsIfVisible below), not tracked as "dirty" here -
+      // simpler and correct, since tab clicks are infrequent and
+      // user-initiated, not part of the hot polling/render path this gate
+      // is optimizing.
       latestAllStoredRows = allStoredRows;
       latestActorsMap = actorsMap;
       renderAuthorInsightsIfVisible();
-      renderStatsViewIfVisible();
 
       // Phase 6 (see REACT_MIGRATION_PLAN.md): sectionsHost (#pr-sections)
       // is now exclusively React-owned (smart groups, lifecycle sections,
@@ -147,7 +143,6 @@
     return {
       applyRenderResults,
       renderAuthorInsightsIfVisible,
-      renderStatsViewIfVisible,
     };
   };
 

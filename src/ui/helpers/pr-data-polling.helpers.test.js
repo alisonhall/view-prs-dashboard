@@ -42,6 +42,53 @@ describe("pr data polling helpers", () => {
     );
   });
 
+  test("given a getOrCompute cache, when computePrDataFingerprint runs twice with an unchanged entry reference, then that entry isn't re-stringified", () => {
+    // A minimal real WeakMap-backed getOrCompute (not a bare passthrough),
+    // so this exercises actual cache-hit behavior - only calls `compute()`
+    // on a genuine miss, matching pr-entry-derived-cache.helpers.js's own
+    // contract.
+    const cache = new WeakMap();
+    const getOrCompute = (entry, cacheKey, compute) => {
+      let entryCache = cache.get(entry);
+      if (!entryCache) {
+        entryCache = new Map();
+        cache.set(entry, entryCache);
+      }
+      if (!entryCache.has(cacheKey)) {
+        entryCache.set(cacheKey, compute());
+      }
+      return entryCache.get(cacheKey);
+    };
+    const { computePrDataFingerprint: computeWithCache } = createPrDataPollingHelpers({
+      getOrCompute,
+    });
+
+    const stringifySpy = jest.spyOn(JSON, "stringify");
+    try {
+      const unchangedEntry = { repo: "owner/repo", section: "open", updatedAt: "2026-01-01" };
+      const changedEntry = { repo: "owner/repo", section: "closed", updatedAt: "2026-01-01" };
+      const payload1 = { byPrNumber: { 100: unchangedEntry, 200: changedEntry } };
+
+      computeWithCache(payload1);
+      expect(stringifySpy).toHaveBeenCalledTimes(2);
+
+      stringifySpy.mockClear();
+      const changedEntryV2 = { ...changedEntry, updatedAt: "2026-01-02" };
+      const payload2 = { byPrNumber: { 100: unchangedEntry, 200: changedEntryV2 } };
+
+      const fingerprint2 = computeWithCache(payload2);
+      // Only the new (different-reference) entry triggers a fresh
+      // JSON.stringify - the unchanged entry's cached piece is reused.
+      expect(stringifySpy).toHaveBeenCalledTimes(1);
+
+      stringifySpy.mockClear();
+      expect(fingerprint2).toBe(computeWithCache(payload2));
+      expect(stringifySpy).not.toHaveBeenCalled();
+    } finally {
+      stringifySpy.mockRestore();
+    }
+  });
+
   test("computePrDataManifest and getManifestDelta detect changed and removed rows", () => {
     const first = {
       byPrNumber: {

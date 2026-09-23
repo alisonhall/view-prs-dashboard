@@ -2,19 +2,18 @@
  * AuthorInsightsNotesSection - React-owned "PR-linked custom comments and
  * sentiment" section for the Author Insights tab.
  *
- * Track B (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): real JSX
- * now, replacing the ref+useEffect wrapper around
- * pr-author-insights.component.js's buildPrLinkedNotesSection() (deleted).
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): reads
+ * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
+ * being pushed props via window.updateAuthorInsightsNotes (deleted), and
+ * reconstructs the `{login, name}` selectedAuthor shape itself via
+ * window.resolveActorDisplayName (already exposed, used below) rather than
+ * needing buildAuthorInsightsEntries exposed too.
  *
  * Still reads the pure filtering/sorting/formatting helpers off window
  * (noteAuthorMatchesSelection, sortAuthorInsightsNoteMatchesDesc,
  * resolveActorDisplayName, getAuthorInsightsNoteDisplayTimestamp,
- * getAuthorInsightsSentimentLabel/BadgeClassName) - moving that off window
- * is Track C's concern, not this one.
- *
- * `selectedAuthor` is a freshly-computed object on every render call from
- * renderAuthorInsights, so a plain prop-driven render already reflects
- * every author switch without needing a key remount.
+ * getAuthorInsightsSentimentLabel/BadgeClassName) - moving those off
+ * window is a separate concern.
  *
  * @module components/AuthorInsightsNotesSection
  */
@@ -22,6 +21,7 @@
 import React from 'react';
 import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
 import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
+import { usePrData } from '../state/PrDataContext';
 
 const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
 
@@ -41,7 +41,14 @@ const getSentimentLabel = (value) => (window.getAuthorInsightsSentimentLabel ? w
 const getSentimentBadgeClassName = (value) =>
   window.getAuthorInsightsSentimentBadgeClassName ? window.getAuthorInsightsSentimentBadgeClassName(value) : '';
 
-export function AuthorInsightsNotesSection({ rows, selectedAuthor, actorsMap }) {
+export function AuthorInsightsNotesSection() {
+  const { payload, selectedAuthorLogin } = usePrData();
+  const rows = Object.values(payload?.byPrNumber || {});
+  const actorsMap = payload?.actorsMap || {};
+  const selectedAuthor = selectedAuthorLogin
+    ? { login: selectedAuthorLogin, name: resolveActorDisplayName(selectedAuthorLogin, actorsMap, selectedAuthorLogin) }
+    : null;
+
   const noteMatches = (Array.isArray(rows) ? rows : []).flatMap((entry) =>
     asArray(entry?.notes?.comments)
       .filter((comment) => noteAuthorMatchesSelection(comment?.author, selectedAuthor, actorsMap))

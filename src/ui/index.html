@@ -455,12 +455,11 @@
         <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
             hidden>
             <div id="pr-stats" class="stats-panel">
-                <!-- Rendered by React (mountReviewStatsControls in react-app.jsx) -
-                     Phase 3, see REACT_MIGRATION_PLAN.md. renderStatsView
-                     (index.page.js) never rebuilds this container once React has
-                     mounted into it; only #stats-content-root gets rebuilt on
-                     each stats render. Falls back to vanilla-built controls
-                     inside #stats-content-root if React fails to load/mount. -->
+                <!-- Rendered by React (react-app.jsx) - Phase 3, then Track C
+                     (see REACT_MIGRATION_PLAN.md): ReviewStatsContent now computes
+                     its own stats from PrDataContext's payload instead of being
+                     pushed a pre-built result, so nothing in index.page.js rebuilds
+                     either #stats-controls-root or #stats-content-root anymore. -->
                 <div id="stats-controls-root"></div>
                 <div id="stats-content-root">Loading...</div>
             </div>
@@ -577,6 +576,7 @@
     <script src="./helpers/pr-render-state-commit.helpers.js"></script>
     <script src="./helpers/pr-selected-filters.helpers.js"></script>
     <script src="./helpers/pr-entry-derived-cache.helpers.js"></script>
+    <script src="./helpers/pr-multi-select-render-cache.helpers.js"></script>
     <script src="./helpers/pr-row-filtering.helpers.js"></script>
     <script src="./helpers/pr-smart-groups.helpers.js"></script>
     <script src="./helpers/pr-section-config.helpers.js"></script>

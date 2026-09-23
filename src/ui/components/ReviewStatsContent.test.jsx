@@ -5,6 +5,7 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
+const { PrDataProvider } = require('../state/PrDataProvider');
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -61,6 +62,25 @@ const buildStats = (overrides = {}) => ({
   ...overrides,
 });
 
+// ReviewStatsContent computes `stats` itself via window.buildReviewerStats/
+// window.applyStatsControls (Track C, REACT_MIGRATION_PLAN.md) - these mocks
+// stand in for the real aggregation helpers, matching how index.page.js's
+// own applyStatsControls is DI'd with the live statsViewState by closure
+// (irrelevant here since these are stubbed directly).
+const renderContent = (stats, { hasRows = true } = {}) => {
+  window.buildReviewerStats = () => ({ summary: stats?.summary, reviewerRows: stats?.reviewerRows });
+  window.applyStatsControls = ({ summary, reviewerRows }) => ({
+    summary,
+    reviewerRows,
+    totalBeforeLimit: stats?.totalBeforeLimit,
+  });
+  return render(
+    <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
+      <ReviewStatsContent />
+    </PrDataProvider>,
+  );
+};
+
 describe('ReviewStatsContent', () => {
   beforeEach(() => {
     window.reviewStatsFormatIsoDatetime = (value) => String(value || '-');
@@ -74,17 +94,19 @@ describe('ReviewStatsContent', () => {
     delete window.getNormalizedStatsDateRange;
     delete window.renderActivityTrendNote;
     delete window.navigateToPrInTableFromStats;
+    delete window.buildReviewerStats;
+    delete window.applyStatsControls;
   });
 
-  test('given stats is null, when rendering, then the empty message is shown instead of cards/table', () => {
-    render(<ReviewStatsContent stats={null} rows={[]} actorsMap={{}} />);
+  test('given no local rows, when rendering, then the empty message is shown instead of cards/table', () => {
+    renderContent(null, { hasRows: false });
 
     expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
     expect(document.querySelectorAll('.stat-card')).toHaveLength(0);
   });
 
   test('given reviewer stats, when rendering, then four cards and one table row per reviewer render', () => {
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     expect(document.querySelectorAll('.stat-card')).toHaveLength(4);
     expect(document.querySelectorAll('.stats-table tbody tr')).toHaveLength(4); // 2 reviewers x (row + sources row)
@@ -94,14 +116,14 @@ describe('ReviewStatsContent', () => {
 
   test('given a date range, when rendering, then the summary note includes it', () => {
     window.getNormalizedStatsDateRange = () => ({ startDate: '2026-07-01', endDate: '2026-07-10' });
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     expect(screen.getByText(/Date range: 2026-07-01 to 2026-07-10/)).toBeInTheDocument();
   });
 
   test('given a reviewer with sources, when clicking "Show sources", then the sources row becomes visible', async () => {
     const user = userEvent.setup();
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     const toggleButtons = screen.getAllByRole('button', { name: 'Show sources' });
     // Alex has comment sources; Jamie has none and gets "-" instead of a button.
@@ -117,7 +139,7 @@ describe('ReviewStatsContent', () => {
   });
 
   test('given a reviewer with no sources, when rendering, then its sources cell shows "-" with no button', () => {
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     const rows = document.querySelectorAll('.stats-table tbody tr:not(.stats-sources-row)');
     const jamieRow = Array.from(rows).find((row) => row.textContent.includes('Jamie'));
@@ -126,7 +148,7 @@ describe('ReviewStatsContent', () => {
 
   test('given a card with sources, when opening its "Show sources" details, then clicking "View in table" calls the navigation bridge', async () => {
     const user = userEvent.setup();
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     const filteredRowsCard = screen.getByText('Filtered rows').closest('.stat-card');
     await user.click(filteredRowsCard.querySelector('summary'));
@@ -136,7 +158,7 @@ describe('ReviewStatsContent', () => {
   });
 
   test('given reviewer stats with comments/approvals, when rendering, then the chart visuals (StatsVisuals) actually render', () => {
-    render(<ReviewStatsContent stats={buildStats()} rows={[]} actorsMap={{}} />);
+    renderContent(buildStats());
 
     // Alex has comments/approvals/usefulness signals; Jamie has none - so
     // the "top reviewers by ..." cards render (real integration through to

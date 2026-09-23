@@ -2,23 +2,19 @@
  * AuthorCreatedPrsSection - React-owned "PRs created by this author"
  * section for the Author Insights tab.
  *
- * Track B (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): real JSX
- * now, replacing the ref+useEffect wrapper around
- * pr-author-insights.component.js's buildCreatedPrsSection() (deleted).
- * `selectedAuthorLogin` is now passed as a real prop from
- * renderAuthorInsights (via window.updateAuthorInsightsCreatedPrs) instead
- * of being read from authorInsightsState internally by the wrapped
- * builder - this removes the need for react-app.jsx's previous
- * incrementing-`key` remount hack, since a real prop change is enough to
- * re-derive the filtered/sorted list on every render.
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): reads
+ * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
+ * being pushed props via window.updateAuthorInsightsCreatedPrs (deleted) -
+ * `selectedAuthorLogin` is kept in sync by pr-author-insights.component.js's
+ * renderAuthorInsights, the single place that decides which author is
+ * selected (including its auto-select-first-author fallback).
  *
  * Still reads the pure filtering/sorting helpers off window
  * (getPreferredActorKey, sortAuthorInsightsCreatedPrsDesc,
- * formatIsoDatetime) - moving that off window is Track C's concern.
+ * formatIsoDatetime) - moving those off window is a separate concern.
  *
  * Mounted once into the static #author-insights-created-prs-root
- * container and updated via
- * window.updateAuthorInsightsCreatedPrs(rows, selectedAuthorLogin).
+ * container.
  *
  * @module components/AuthorCreatedPrsSection
  */
@@ -26,6 +22,7 @@
 import React from 'react';
 import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
 import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
+import { usePrData } from '../state/PrDataContext';
 
 const getPreferredActorKey = (login, fallback) =>
   window.getPreferredActorKey ? window.getPreferredActorKey(login, fallback) : String(login || fallback || '').trim();
@@ -34,7 +31,9 @@ const sortCreatedPrsDesc = (rows) => (window.sortAuthorInsightsCreatedPrsDesc ? 
 
 const formatIsoDatetime = (value) => (window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-'));
 
-export function AuthorCreatedPrsSection({ rows, selectedAuthorLogin }) {
+export function AuthorCreatedPrsSection() {
+  const { payload, selectedAuthorLogin } = usePrData();
+  const rows = Object.values(payload?.byPrNumber || {});
   const createdPrs = sortCreatedPrsDesc(
     (Array.isArray(rows) ? rows : []).filter(
       (entry) => getPreferredActorKey(entry?.data?.authorLogin, entry?.data?.author) === selectedAuthorLogin,

@@ -30,16 +30,26 @@ import { PrDataContext } from './PrDataContext';
  * payload from its own direct POST /view-prs/notes response, bypassing the
  * vanilla bridge entirely).
  */
-export function PrDataProvider({ initialPayload, initialSelectedRepo, initialVisiblePrNumbers, children }) {
+export function PrDataProvider({
+  initialPayload,
+  initialSelectedRepo,
+  initialVisiblePrNumbers,
+  initialSelectedAuthorLogin,
+  initialStatsViewState,
+  children,
+}) {
   const [state, setState] = useState({
     payload: initialPayload || {},
     selectedRepo: initialSelectedRepo || '',
     visiblePrNumbers: initialVisiblePrNumbers ?? null,
+    selectedAuthorLogin: initialSelectedAuthorLogin || '',
+    statsViewState: initialStatsViewState || {},
   });
 
   useEffect(() => {
     window.updateReactPrTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
       setState((previous) => ({
+        ...previous,
         payload: newPayload !== undefined ? newPayload : previous.payload,
         selectedRepo: newSelectedRepo || previous.selectedRepo,
         // undefined (param omitted) keeps the previous value; null/[] are
@@ -51,6 +61,42 @@ export function PrDataProvider({ initialPayload, initialSelectedRepo, initialVis
     };
     return () => {
       delete window.updateReactPrTable;
+    };
+  }, []);
+
+  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): the
+  // Author Insights tab's "which author is currently selected" value,
+  // pushed from pr-author-insights.component.js's renderAuthorInsights on
+  // every render (both explicit user picks and its own
+  // auto-select-first-author fallback) - not from the selection handler
+  // alone, since that fallback bypasses it. Read directly by
+  // AuthorInsightsSelector/AuthorInsightsHeader/AuthorCreatedPrsSection/
+  // AuthorInsightsNotesSection/AuthorInsightsCommentsSection.
+  useEffect(() => {
+    window.updateReactSelectedAuthorLogin = (login) => {
+      setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
+    };
+    return () => {
+      delete window.updateReactSelectedAuthorLogin;
+    };
+  }, []);
+
+  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): a
+  // snapshot of the Review Stats tab's sort/filter/topN/minComments/
+  // date-range settings, pushed from index.page.js's
+  // updateStatsViewStateAndRerender whenever ReviewStatsControls commits a
+  // change. ReviewStatsContent doesn't read the individual fields from
+  // here - it recomputes stats via window.buildReviewerStats/
+  // applyStatsControls, which already read the live vanilla statsViewState
+  // object by closure - this field exists purely so a settings change
+  // triggers a Context update (and therefore a re-render), the same way a
+  // payload change does.
+  useEffect(() => {
+    window.updateReactStatsViewState = (nextStatsViewState) => {
+      setState((previous) => ({ ...previous, statsViewState: nextStatsViewState || {} }));
+    };
+    return () => {
+      delete window.updateReactStatsViewState;
     };
   }, []);
 

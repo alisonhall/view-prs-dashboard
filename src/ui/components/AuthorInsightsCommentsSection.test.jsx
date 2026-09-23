@@ -1,16 +1,24 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen, waitFor } = require('@testing-library/react');
+const { render, screen, waitFor, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsCommentsSection } = require('./AuthorInsightsCommentsSection');
+const { PrDataProvider } = require('../state/PrDataProvider');
 
 const SENTIMENT_OPTIONS = [
   { value: 'positive', label: 'Positive' },
   { value: 'negative', label: 'Negative' },
   { value: 'neutral', label: 'Neutral' },
 ];
+
+const renderSection = (selectedAuthorLogin) =>
+  render(
+    <PrDataProvider initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <AuthorInsightsCommentsSection />
+    </PrDataProvider>,
+  );
 
 describe('AuthorInsightsCommentsSection', () => {
   let composerDrafts;
@@ -78,34 +86,35 @@ describe('AuthorInsightsCommentsSection', () => {
     delete window.loadAuthorManualComments;
     delete window.saveAuthorManualComment;
     delete window.updateAuthorManualComment;
+    delete window.resolveActorDisplayName;
   });
 
   test('given no selected author, when rendering, then nothing renders', () => {
-    const { container } = render(<AuthorInsightsCommentsSection selectedAuthor={null} />);
+    const { container } = renderSection('');
     expect(container).toBeEmptyDOMElement();
   });
 
   test('given a selected author with no saved comments, when rendering, then the empty message shows', () => {
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat', name: 'The Octocat' }} />);
+    renderSection('octocat');
     expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Add a manual comment about this author...')).toBeInTheDocument();
   });
 
   test('given loading state, when rendering, then the loading message shows', () => {
     window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: true, error: '' });
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     expect(screen.getByText('Loading author comments...')).toBeInTheDocument();
   });
 
   test('given an error state, when rendering, then the error message shows', () => {
     window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: false, error: 'Failed to load author comments' });
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     expect(screen.getByText('Failed to load author comments')).toBeInTheDocument();
   });
 
   test('given text typed into the composer, when typing, then the draft bridge is updated and dirty-tracking recomputed', async () => {
     const user = userEvent.setup();
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
 
     const textarea = screen.getByPlaceholderText('Add a manual comment about this author...');
     await user.type(textarea, 'Hi');
@@ -116,7 +125,7 @@ describe('AuthorInsightsCommentsSection', () => {
 
   test('given an empty composer note, when Save comment is clicked, then a validation message shows and nothing is saved', async () => {
     const user = userEvent.setup();
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
 
     await user.click(screen.getByRole('button', { name: 'Save comment' }));
     expect(screen.getByText('Comment note is required')).toBeInTheDocument();
@@ -129,7 +138,7 @@ describe('AuthorInsightsCommentsSection', () => {
       result: { ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
     });
 
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     await user.type(screen.getByPlaceholderText('Add a manual comment about this author...'), 'Nice work');
     await user.click(screen.getByRole('button', { name: 'Save comment' }));
 
@@ -143,7 +152,7 @@ describe('AuthorInsightsCommentsSection', () => {
     const user = userEvent.setup();
     window.saveAuthorManualComment = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: false, error: 'Save failed' } });
 
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     await user.type(screen.getByPlaceholderText('Add a manual comment about this author...'), 'Nice work');
     await user.click(screen.getByRole('button', { name: 'Save comment' }));
 
@@ -155,7 +164,7 @@ describe('AuthorInsightsCommentsSection', () => {
     commentsByLogin.octocat = [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
     window.updateAuthorManualComment = jest.fn();
 
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     expect(screen.getByText('Original text')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
@@ -174,7 +183,7 @@ describe('AuthorInsightsCommentsSection', () => {
       result: { ok: true, comments: [{ id: 'c1', note: 'Updated text', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
     });
 
-    render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     await user.click(screen.getByRole('button', { name: 'Edit' }));
 
     const editTextarea = screen.getByDisplayValue('Original text');
@@ -187,14 +196,16 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(commentsByLogin.octocat[0].note).toBe('Updated text');
   });
 
-  test('given a re-render with a different selectedAuthor, when re-rendering, then the composer/list reflect the new author', () => {
+  test('given a change to the selected author in Context, when it updates, then the composer/list reflect the new author', () => {
     commentsByLogin.octocat = [{ id: 'c1', note: 'For octocat', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
     commentsByLogin.other = [{ id: 'c2', note: 'For other', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
 
-    const { rerender } = render(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'octocat' }} />);
+    renderSection('octocat');
     expect(screen.getByText('For octocat')).toBeInTheDocument();
 
-    rerender(<AuthorInsightsCommentsSection selectedAuthor={{ login: 'other' }} />);
+    act(() => {
+      window.updateReactSelectedAuthorLogin('other');
+    });
     expect(screen.getByText('For other')).toBeInTheDocument();
     expect(screen.queryByText('For octocat')).not.toBeInTheDocument();
   });

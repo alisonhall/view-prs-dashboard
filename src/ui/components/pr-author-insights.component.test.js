@@ -125,42 +125,27 @@ describe("pr author insights component (refactored)", () => {
     expect(host?.textContent).toContain("No local rows available for author insights.");
   });
 
-  test("given a valid row fixture, when renderAuthorInsights is called, then the React selector/header bridges are called with the resolved author", () => {
-    const updateReactAuthorInsightsSelector = jest.fn(() => true);
-    const updateReactAuthorInsightsHeader = jest.fn(() => true);
+  test("given a rows update, when renderAuthorInsights re-runs, then the selected-author-login React bridge is called with the resolved login (all 5 sections now read this from PrDataContext directly - Track C, REACT_MIGRATION_PLAN.md)", () => {
+    const updateReactSelectedAuthorLogin = jest.fn(() => true);
     const component = createPrAuthorInsightsComponent(
-      createDependencies({
-        updateReactAuthorInsightsSelector,
-        updateReactAuthorInsightsHeader,
-      }),
-    );
-    const rows = [createPrRowEntry()];
-
-    component.renderAuthorInsights(rows, {
-      "author-login": "Author Name",
-    });
-
-    expect(updateReactAuthorInsightsSelector).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.objectContaining({ name: "Author Name" })]),
-      expect.any(String),
-    );
-    expect(updateReactAuthorInsightsHeader).toHaveBeenCalledWith("Author Name");
-  });
-
-  test("given a rows update, when renderAuthorInsights re-runs, then the manual comments React bridge is called with the resolved author (composer draft persistence is now covered by AuthorInsightsCommentsSection.test.jsx, since the composer moved into that component - Track B batch 2, REACT_MIGRATION_PLAN.md)", () => {
-    const updateReactAuthorInsightsComments = jest.fn(() => true);
-    const component = createPrAuthorInsightsComponent(
-      createDependencies({ updateReactAuthorInsightsComments }),
+      createDependencies({ updateReactSelectedAuthorLogin }),
     );
     const rows = [createPrRowEntry()];
 
     component.renderAuthorInsights(rows, { "author-login": "Author Name" });
 
-    expect(updateReactAuthorInsightsComments).toHaveBeenCalledWith(
-      rows,
-      expect.objectContaining({ name: "Author Name" }),
-      { "author-login": "Author Name" },
+    expect(updateReactSelectedAuthorLogin).toHaveBeenCalledWith("author-login");
+  });
+
+  test("given empty author rows, when renderAuthorInsights is called, then the selected-author-login React bridge is cleared", () => {
+    const updateReactSelectedAuthorLogin = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({ updateReactSelectedAuthorLogin }),
     );
+
+    component.renderAuthorInsights([], {});
+
+    expect(updateReactSelectedAuthorLogin).toHaveBeenCalledWith("");
   });
 
   test("given missing required helpers, when creating component, then error thrown", () => {

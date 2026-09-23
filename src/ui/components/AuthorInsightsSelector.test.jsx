@@ -1,19 +1,35 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsSelector } = require('./AuthorInsightsSelector');
+const { PrDataProvider } = require('../state/PrDataProvider');
 
 const OPTIONS = [
   { login: 'octocat', name: 'The Octocat' },
   { login: 'hubot', name: 'Hubot' },
 ];
 
+const renderSelector = ({ selectedAuthorLogin = '', onChange = () => {}, hasRows = true } = {}) =>
+  render(
+    <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <AuthorInsightsSelector onChange={onChange} />
+    </PrDataProvider>,
+  );
+
 describe('AuthorInsightsSelector', () => {
+  beforeEach(() => {
+    window.buildAuthorInsightsEntries = () => OPTIONS;
+  });
+
+  afterEach(() => {
+    delete window.buildAuthorInsightsEntries;
+  });
+
   test('given options, when rendering, then the select shows each author by display name', () => {
-    render(<AuthorInsightsSelector options={OPTIONS} selectedLogin="octocat" onChange={() => {}} />);
+    renderSelector({ selectedAuthorLogin: 'octocat' });
 
     const select = screen.getByLabelText('Author');
     expect(select).toHaveValue('octocat');
@@ -21,29 +37,35 @@ describe('AuthorInsightsSelector', () => {
     expect(screen.getByRole('option', { name: 'Hubot' })).toBeInTheDocument();
   });
 
-  test('given no options, when rendering, then nothing is rendered', () => {
-    const { container } = render(<AuthorInsightsSelector options={[]} selectedLogin="" onChange={() => {}} />);
+  test('given no local rows, when rendering, then nothing is rendered (even if buildAuthorInsightsEntries would otherwise return options)', () => {
+    const { container } = renderSelector({ hasRows: false });
     expect(container).toBeEmptyDOMElement();
   });
 
-  test('given a user selects a different author, when selecting, then onChange fires with that login', async () => {
-    const onChange = jest.fn();
+  test('given no options from buildAuthorInsightsEntries, when rendering, then nothing is rendered', () => {
+    window.buildAuthorInsightsEntries = () => [];
+    const { container } = renderSelector({});
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test('given a user selects a different author, when selecting, then onChange fires and the Context-driven value updates', async () => {
+    const onChange = jest.fn((login) => window.updateReactSelectedAuthorLogin(login));
     const user = userEvent.setup();
-    render(<AuthorInsightsSelector options={OPTIONS} selectedLogin="octocat" onChange={onChange} />);
+    renderSelector({ selectedAuthorLogin: 'octocat', onChange });
 
     await user.selectOptions(screen.getByLabelText('Author'), 'hubot');
 
-    expect(screen.getByLabelText('Author')).toHaveValue('hubot');
     expect(onChange).toHaveBeenCalledWith('hubot');
+    expect(screen.getByLabelText('Author')).toHaveValue('hubot');
   });
 
-  test('given a re-render with a different key (matching the discard-and-rebuild bridge), when selectedLogin changes, then it reflects the new value', () => {
-    const { rerender } = render(
-      <AuthorInsightsSelector key={1} options={OPTIONS} selectedLogin="octocat" onChange={() => {}} />,
-    );
+  test('given a change to the selected author in Context, when it updates externally, then the select reflects the new value', () => {
+    renderSelector({ selectedAuthorLogin: 'octocat' });
     expect(screen.getByLabelText('Author')).toHaveValue('octocat');
 
-    rerender(<AuthorInsightsSelector key={2} options={OPTIONS} selectedLogin="hubot" onChange={() => {}} />);
+    act(() => {
+      window.updateReactSelectedAuthorLogin('hubot');
+    });
 
     expect(screen.getByLabelText('Author')).toHaveValue('hubot');
   });

@@ -1074,22 +1074,24 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
 });
 
 test("React-owned Author Insights selector renders options, changes the selected author, and survives an unrelated re-render", async ({ page }) => {
-  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Author Insights tab's
-  // "Author" selector converted to React. Unlike Review Stats' controls
-  // (which mount once and never re-render on their own), this selector's
-  // *options* are rebuilt from the PR payload on every author-insights
-  // render (the same shape as Phase 2's MultiSelectCheckboxList) - it's
-  // *supposed* to remount (via an incrementing `key`) on every render,
-  // including ones triggered for unrelated reasons, so a DOM-node-identity
-  // check (like the Review Stats controls test uses) doesn't apply here.
-  // The real regression this guards is structural: renderAuthorInsights
-  // (pr-author-insights.component.js) used to rebuild the selector via the
-  // *same* `host.innerHTML = ""` that rebuilt every other section - if
-  // that still covered #author-insights-selector-root, the static
-  // container React mounted into would be destroyed and recreated on the
-  // next render, leaving react-app.jsx's mount holding a reference to a
-  // detached node - the selector would silently vanish from the page
-  // after any unrelated re-render, not just fail to preserve a value.
+  // Phase 3 (see REACT_MIGRATION_PLAN.md), then Track C: the Author
+  // Insights tab's "Author" selector converted to React, then (Track C)
+  // switched from an incrementing-`key` remount (needed while it held its
+  // own local `useState` seeded from a pushed prop) to a plain
+  // Context-controlled input - `payload`/`selectedAuthorLogin` are read
+  // live from PrDataContext on every render, so there's no local state to
+  // go stale and nothing to force-remount anymore. The DOM node itself is
+  // now expected to be stable across an unrelated re-render (same as the
+  // Review Stats controls test's identity check), unlike when this test
+  // was first written. The real regression this guards is structural:
+  // renderAuthorInsights (pr-author-insights.component.js) used to rebuild
+  // the selector via the *same* `host.innerHTML = ""` that rebuilt every
+  // other section - if that still covered #author-insights-selector-root,
+  // the static container React mounted into would be destroyed and
+  // recreated on the next render, leaving react-app.jsx's mount holding a
+  // reference to a detached node - the selector would silently vanish from
+  // the page after any unrelated re-render, not just fail to preserve a
+  // value.
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();

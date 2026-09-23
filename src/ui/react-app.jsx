@@ -389,12 +389,6 @@ function AppRoot() {
   const [prTable, setPrTable] = useState(null);
   const [multiSelectStates, setMultiSelectStates] = useState({});
   const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
-  const [reviewStatsContent, setReviewStatsContent] = useState({ stats: null, rows: [], actorsMap: {} });
-  const [authorInsightsSelector, setAuthorInsightsSelector] = useState({ options: [], selectedLogin: '', renderKey: 0 });
-  const [authorInsightsCreatedPrs, setAuthorInsightsCreatedPrs] = useState({ rows: [], selectedAuthorLogin: '' });
-  const [authorInsightsHeader, setAuthorInsightsHeader] = useState({ selectedAuthorName: '' });
-  const [authorInsightsNotes, setAuthorInsightsNotes] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
-  const [authorInsightsComments, setAuthorInsightsComments] = useState({ rows: [], selectedAuthor: null, actorsMap: {} });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
   const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
@@ -463,65 +457,6 @@ function AppRoot() {
       delete window.renderReactFilterSummary;
     };
   }, [containers]);
-
-  useEffect(() => {
-    window.updateReviewStatsContent = (stats, rows, actorsMap) => {
-      setReviewStatsContent({ stats, rows, actorsMap });
-    };
-    return () => {
-      delete window.updateReviewStatsContent;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateAuthorInsightsSelector = (options, selectedLogin) => {
-      setAuthorInsightsSelector((previous) => ({ options, selectedLogin, renderKey: previous.renderKey + 1 }));
-      return true;
-    };
-    return () => {
-      delete window.updateAuthorInsightsSelector;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateAuthorInsightsCreatedPrs = (rows, selectedAuthorLogin) => {
-      setAuthorInsightsCreatedPrs({ rows, selectedAuthorLogin });
-      return true;
-    };
-    return () => {
-      delete window.updateAuthorInsightsCreatedPrs;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateAuthorInsightsHeader = (selectedAuthorName) => {
-      setAuthorInsightsHeader({ selectedAuthorName });
-      return true;
-    };
-    return () => {
-      delete window.updateAuthorInsightsHeader;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateAuthorInsightsNotes = (rows, selectedAuthor, actorsMap) => {
-      setAuthorInsightsNotes({ rows, selectedAuthor, actorsMap });
-      return true;
-    };
-    return () => {
-      delete window.updateAuthorInsightsNotes;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateAuthorInsightsComments = (rows, selectedAuthor, actorsMap) => {
-      setAuthorInsightsComments({ rows, selectedAuthor, actorsMap });
-      return true;
-    };
-    return () => {
-      delete window.updateAuthorInsightsComments;
-    };
-  }, []);
 
   useEffect(() => {
     window.updateReactBackfillBadges = (badges) => {
@@ -686,63 +621,35 @@ function AppRoot() {
           )}
 
         {containers.reviewStatsContent &&
-          createPortal(
-            <ReviewStatsContent
-              stats={reviewStatsContent.stats}
-              rows={reviewStatsContent.rows}
-              actorsMap={reviewStatsContent.actorsMap}
-            />,
-            containers.reviewStatsContent,
-            'review-stats-content',
-          )}
+          createPortal(<ReviewStatsContent />, containers.reviewStatsContent, 'review-stats-content')}
 
         {containers.authorInsightsSelector &&
           createPortal(
-            <AuthorInsightsSelector
-              key={authorInsightsSelector.renderKey}
-              options={authorInsightsSelector.options}
-              selectedLogin={authorInsightsSelector.selectedLogin}
-              onChange={(login) => window.selectAuthorInsightsAuthor?.(login)}
-            />,
+            <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />,
             containers.authorInsightsSelector,
             'author-insights-selector',
           )}
 
         {containers.authorInsightsCreatedPrs &&
           createPortal(
-            <AuthorCreatedPrsSection
-              rows={authorInsightsCreatedPrs.rows}
-              selectedAuthorLogin={authorInsightsCreatedPrs.selectedAuthorLogin}
-            />,
+            <AuthorCreatedPrsSection />,
             containers.authorInsightsCreatedPrs,
             'author-insights-created-prs',
           )}
 
         {containers.authorInsightsHeader &&
-          createPortal(
-            <AuthorInsightsHeader selectedAuthorName={authorInsightsHeader.selectedAuthorName} />,
-            containers.authorInsightsHeader,
-            'author-insights-header',
-          )}
+          createPortal(<AuthorInsightsHeader />, containers.authorInsightsHeader, 'author-insights-header')}
 
         {containers.authorInsightsNotes &&
           createPortal(
-            <AuthorInsightsNotesSection
-              rows={authorInsightsNotes.rows}
-              selectedAuthor={authorInsightsNotes.selectedAuthor}
-              actorsMap={authorInsightsNotes.actorsMap}
-            />,
+            <AuthorInsightsNotesSection />,
             containers.authorInsightsNotes,
             'author-insights-notes',
           )}
 
         {containers.authorInsightsComments &&
           createPortal(
-            <AuthorInsightsCommentsSection
-              rows={authorInsightsComments.rows}
-              selectedAuthor={authorInsightsComments.selectedAuthor}
-              actorsMap={authorInsightsComments.actorsMap}
-            />,
+            <AuthorInsightsCommentsSection />,
             containers.authorInsightsComments,
             'author-insights-comments',
           )}

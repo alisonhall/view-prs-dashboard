@@ -26,9 +26,17 @@
  * just now presented as controlled JSX inputs instead of raw DOM.
  *
  * @module components/AuthorInsightsCommentsSection
+ *
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+ * `selectedAuthor` is now derived from PrDataContext's `selectedAuthorLogin`
+ * (kept in sync by pr-author-insights.component.js's renderAuthorInsights)
+ * instead of being pushed as a prop via window.updateAuthorInsightsComments
+ * (deleted) - the rows/actorsMap that bridge used to also push were already
+ * unused here.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { usePrData } from '../state/PrDataContext';
 
 const DEFAULT_SENTIMENT = () => window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT || 'neutral';
 const SENTIMENT_OPTIONS = () =>
@@ -44,6 +52,8 @@ const getSentimentBadgeClassName = (value) =>
   window.getAuthorInsightsSentimentBadgeClassName ? window.getAuthorInsightsSentimentBadgeClassName(value) : '';
 const sortManualCommentsDesc = (comments) =>
   window.sortAuthorInsightsManualCommentsDesc ? window.sortAuthorInsightsManualCommentsDesc(comments) : comments;
+const resolveActorDisplayName = (login, actorsMap, fallback) =>
+  window.resolveActorDisplayName ? window.resolveActorDisplayName(login, actorsMap, fallback) : String(fallback || login || '').trim();
 const recomputeDirty = () => window.recomputeDirtyPrSectionsFields?.();
 
 function SentimentSelect({ value, onChange, disabled }) {
@@ -166,7 +176,12 @@ function ManualCommentItem({ login, comment, editingCommentId, setEditingComment
   );
 }
 
-export function AuthorInsightsCommentsSection({ selectedAuthor }) {
+export function AuthorInsightsCommentsSection() {
+  const { payload, selectedAuthorLogin } = usePrData();
+  const actorsMap = payload?.actorsMap || {};
+  const selectedAuthor = selectedAuthorLogin
+    ? { login: selectedAuthorLogin, name: resolveActorDisplayName(selectedAuthorLogin, actorsMap, selectedAuthorLogin) }
+    : null;
   const login = selectedAuthor?.login || '';
 
   const [composerDraft, setComposerDraft] = useState({ note: '', sentiment: DEFAULT_SENTIMENT() });

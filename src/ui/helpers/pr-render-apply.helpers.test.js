@@ -12,7 +12,6 @@ describe("pr render apply helpers", () => {
   test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
     const renderManagementFilterSummary = jest.fn();
     const renderAuthorInsights = jest.fn();
-    const renderStatsView = jest.fn();
     const buildMergedRequestMoreActionOptions = jest.fn(() => ({
       isVisible: true,
       repo: "org/repo",
@@ -25,7 +24,6 @@ describe("pr render apply helpers", () => {
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary,
       renderAuthorInsights,
-      renderStatsView,
       buildMergedRequestMoreActionOptions,
       computePrDataFingerprint,
       computePrDataManifest,
@@ -56,7 +54,6 @@ describe("pr render apply helpers", () => {
       filterChips: ["repo=org/repo"],
     });
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
-    expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(buildMergedRequestMoreActionOptions).toHaveBeenCalledWith({
       selectedScope: "all",
       repoFilter: "org/repo",
@@ -89,7 +86,6 @@ describe("pr render apply helpers", () => {
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary: () => {},
       renderAuthorInsights: () => {},
-      renderStatsView: () => {},
       buildMergedRequestMoreActionOptions: () => ({}),
       computePrDataFingerprint: () => "",
       computePrDataManifest,
@@ -105,18 +101,15 @@ describe("pr render apply helpers", () => {
     expect(result.latestPrManifest).toEqual({ fallback: true });
   });
 
-  test("given the author insights and stats tab panels are both hidden, when applying render results, then their renders are skipped", () => {
+  test("given the author insights tab panel is hidden, when applying render results, then its render is skipped", () => {
     const renderAuthorInsights = jest.fn();
-    const renderStatsView = jest.fn();
     const panelsById = {
       "tab-panel-author-insights": { hidden: true },
-      "tab-panel-review-stats": { hidden: true },
     };
     const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderAuthorInsights,
-      renderStatsView,
       getOptionalElementById,
     });
 
@@ -128,22 +121,18 @@ describe("pr render apply helpers", () => {
     });
 
     expect(renderAuthorInsights).not.toHaveBeenCalled();
-    expect(renderStatsView).not.toHaveBeenCalled();
   });
 
-  test("given a hidden tab panel becomes visible, when its catch-up render is triggered, then it renders with the most recently applied rows", () => {
+  test("given a hidden author insights tab panel becomes visible, when its catch-up render is triggered, then it renders with the most recently applied rows", () => {
     const renderAuthorInsights = jest.fn();
-    const renderStatsView = jest.fn();
     const panelsById = {
       "tab-panel-author-insights": { hidden: true },
-      "tab-panel-review-stats": { hidden: true },
     };
     const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
 
-    const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisible } =
+    const { applyRenderResults, renderAuthorInsightsIfVisible } =
       createPrRenderApplyHelpers({
         renderAuthorInsights,
-        renderStatsView,
         getOptionalElementById,
       });
 
@@ -155,16 +144,10 @@ describe("pr render apply helpers", () => {
       meta: {},
     });
     expect(renderAuthorInsights).not.toHaveBeenCalled();
-    expect(renderStatsView).not.toHaveBeenCalled();
 
     panelsById["tab-panel-author-insights"].hidden = false;
     renderAuthorInsightsIfVisible();
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
-    expect(renderStatsView).not.toHaveBeenCalled();
-
-    panelsById["tab-panel-review-stats"].hidden = false;
-    renderStatsViewIfVisible();
-    expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
   });
 
   test("given missing dependencies, when applying render results, then safe defaults are returned without throwing", () => {

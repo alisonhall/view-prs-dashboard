@@ -1,9 +1,10 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsNotesSection } = require('./AuthorInsightsNotesSection');
+const { PrDataProvider } = require('../state/PrDataProvider');
 
 const buildEntry = (overrides = {}) => ({
   prNumber: '1',
@@ -12,6 +13,18 @@ const buildEntry = (overrides = {}) => ({
   notes: { comments: [] },
   ...overrides,
 });
+
+const renderSection = (rows, selectedAuthorLogin, actorsMap = {}) => {
+  const byPrNumber = {};
+  rows.forEach((entry) => {
+    byPrNumber[entry.prNumber] = entry;
+  });
+  return render(
+    <PrDataProvider initialPayload={{ byPrNumber, actorsMap }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <AuthorInsightsNotesSection />
+    </PrDataProvider>,
+  );
+};
 
 describe('AuthorInsightsNotesSection', () => {
   afterEach(() => {
@@ -24,7 +37,7 @@ describe('AuthorInsightsNotesSection', () => {
   });
 
   test('given no matching notes, when rendering, then the empty message is shown', () => {
-    render(<AuthorInsightsNotesSection rows={[buildEntry()]} selectedAuthor={{ login: 'octocat', name: 'The Octocat' }} actorsMap={{}} />);
+    renderSection([buildEntry()], 'octocat');
     expect(screen.getByText('No saved custom comments or sentiment for this author.')).toBeInTheDocument();
   });
 
@@ -34,7 +47,7 @@ describe('AuthorInsightsNotesSection', () => {
     const entry = buildEntry({
       notes: { comments: [{ id: 'c1', author: 'octocat', tone: 'positive', note: 'Nice work' }] },
     });
-    render(<AuthorInsightsNotesSection rows={[entry]} selectedAuthor={{ login: 'octocat', name: 'The Octocat' }} actorsMap={{}} />);
+    renderSection([entry], 'octocat');
 
     expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();
     expect(screen.getByText('Author: octocat')).toBeInTheDocument();
@@ -42,7 +55,7 @@ describe('AuthorInsightsNotesSection', () => {
     expect(screen.getByText(/Sentiment: Neutral|Sentiment: Positive/)).toBeInTheDocument();
   });
 
-  test('given a re-render with a different selectedAuthor, when re-rendering, then the notes shown update (no key remount needed)', () => {
+  test('given a change to the selected author in Context, when it updates, then the notes shown update (no key remount needed)', () => {
     window.noteAuthorMatchesSelection = (author, selectedAuthor) => author === selectedAuthor.login;
 
     const entry = buildEntry({
@@ -53,11 +66,13 @@ describe('AuthorInsightsNotesSection', () => {
         ],
       },
     });
-    const { rerender } = render(<AuthorInsightsNotesSection rows={[entry]} selectedAuthor={{ login: 'octocat' }} actorsMap={{}} />);
+    renderSection([entry], 'octocat');
     expect(screen.getByText('For octocat')).toBeInTheDocument();
     expect(screen.queryByText('For other')).not.toBeInTheDocument();
 
-    rerender(<AuthorInsightsNotesSection rows={[entry]} selectedAuthor={{ login: 'other' }} actorsMap={{}} />);
+    act(() => {
+      window.updateReactSelectedAuthorLogin('other');
+    });
     expect(screen.queryByText('For octocat')).not.toBeInTheDocument();
     expect(screen.getByText('For other')).toBeInTheDocument();
   });

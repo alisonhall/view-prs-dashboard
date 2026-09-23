@@ -1646,12 +1646,11 @@ const prRenderApplyHelperFactory =
     ? require("./helpers/pr-render-apply.helpers.js")
     : globalThis.ViewPrsRenderApplyHelpers;
 
-const { applyRenderResults, renderAuthorInsightsIfVisible, renderStatsViewIfVisible } =
+const { applyRenderResults, renderAuthorInsightsIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
-    renderStatsView: (...args) => renderStatsView(...args),
     buildMergedRequestMoreActionOptions: (...args) =>
       buildMergedRequestMoreActionOptions(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
@@ -1933,6 +1932,32 @@ const prEntryDerivedCacheHelperFactory =
 // one render to the next).
 const { getOrCompute: getOrComputeEntryDerivedValue } =
   prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
+
+// Phase 5 residual (see REACT_MIGRATION_PLAN.md): the 9 filter-dropdown
+// populate functions (5 in pr-filter-panel.helpers.js, 2 shared-shape ones
+// below covering 4 more) already read cheap, cached per-entry values (see
+// getOrComputeEntryDerivedValue above), but every one of them still
+// unconditionally called window.renderReactMultiSelectList on every render
+// - which react-app.jsx answers by bumping an incrementing `key`, forcing
+// MultiSelectCheckboxList to fully remount even when the resulting option
+// list is identical to last time. Wrapped once here (not in each populate
+// function) so every call site benefits without individual changes - see
+// pr-multi-select-render-cache.helpers.js's own comment for why `checked`
+// has to be part of the skip signature, not just `value`/`label`.
+const prMultiSelectRenderCacheHelperFactory =
+  typeof module !== "undefined" && module.exports
+    ? require("./helpers/pr-multi-select-render-cache.helpers.js")
+    : globalThis.ViewPrsMultiSelectRenderCacheHelpers;
+
+const renderMultiSelectListSkipUnchanged =
+  prMultiSelectRenderCacheHelperFactory
+    .createMultiSelectRenderCache()
+    .wrapRenderMultiSelectList((listId, items) =>
+      typeof window !== "undefined" &&
+      typeof window.renderReactMultiSelectList === "function"
+        ? window.renderReactMultiSelectList(listId, items)
+        : false,
+    );
 
 const prRowFilteringHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -2559,11 +2584,10 @@ const {
   // to react-app.jsx's bridge when it has mounted a given list id; a no-op
   // (React hasn't finished loading/mounting yet) when this returns false -
   // pr-filter-panel.helpers.js no longer has any DOM-building of its own to
-  // fall back to.
-  renderMultiSelectList: (listId, items) =>
-    typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function"
-      ? window.renderReactMultiSelectList(listId, items)
-      : false,
+  // fall back to. Phase 5 residual: routed through
+  // renderMultiSelectListSkipUnchanged so an unchanged list doesn't force a
+  // remount.
+  renderMultiSelectList: (listId, items) => renderMultiSelectListSkipUnchanged(listId, items),
   // Delegates the "Applied filters: ..." summary/chips to react-app.jsx's
   // bridge (AppliedFilterSummary.jsx) - same handled/fallback-to-no-op
   // shape as renderMultiSelectList above.
@@ -2639,17 +2663,17 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
     // fallback path) the pr-filter-panel/pr-json-modal cleanup slice
     // already relied on to delete that file's 5 equivalent fallback
     // blocks. This one (and renderChangeFilterActorList's identical twin
-    // below) were missed in that slice; removed here the same way.
-    if (typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function") {
-      window.renderReactMultiSelectList(
-        listId,
-        actorEntries.map(({ login, displayName }) => ({
-          value: login,
-          label: displayName,
-          checked: selectedSet.has(login),
-        })),
-      );
-    }
+    // below) were missed in that slice; removed here the same way. Phase 5
+    // residual: routed through renderMultiSelectListSkipUnchanged (see its
+    // own comment above) so an unchanged list doesn't force a remount.
+    renderMultiSelectListSkipUnchanged(
+      listId,
+      actorEntries.map(({ login, displayName }) => ({
+        value: login,
+        label: displayName,
+        checked: selectedSet.has(login),
+      })),
+    );
 
     if (Array.isArray(pendingSelections)) {
       const appliedCount = actorEntries.filter(({ login }) =>
@@ -2736,17 +2760,16 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
     // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
     // fallback here any more - see renderActorOptionsList's identical twin
     // above for why (this one was missed in the pr-filter-panel/
-    // pr-json-modal cleanup slice; removed here the same way).
-    if (typeof window !== "undefined" && typeof window.renderReactMultiSelectList === "function") {
-      window.renderReactMultiSelectList(
-        listId,
-        actorEntries.map(({ login, displayName }) => ({
-          value: login,
-          label: displayName,
-          checked: selectedSet.has(login),
-        })),
-      );
-    }
+    // pr-json-modal cleanup slice; removed here the same way). Phase 5
+    // residual: routed through renderMultiSelectListSkipUnchanged too.
+    renderMultiSelectListSkipUnchanged(
+      listId,
+      actorEntries.map(({ login, displayName }) => ({
+        value: login,
+        label: displayName,
+        checked: selectedSet.has(login),
+      })),
+    );
 
     if (Array.isArray(pendingSelections)) {
       const appliedCount = actorEntries.filter(({ login }) =>
@@ -3243,7 +3266,9 @@ const {
   mergeDataDeltaPayload,
   getPendingAutoRenderAction,
   getDataPollRenderAction,
-} = prDataPollingHelperFactory.createPrDataPollingHelpers();
+} = prDataPollingHelperFactory.createPrDataPollingHelpers({
+  getOrCompute: getOrComputeEntryDerivedValue,
+});
 
 const prHttpHelperFactory =
   typeof module !== "undefined" && module.exports
@@ -3293,7 +3318,6 @@ const { activateDataTab, initDataTabs } =
     getOptionalElementById,
     onTabActivated: () => {
       renderAuthorInsightsIfVisible();
-      renderStatsViewIfVisible();
     },
   });
 
@@ -3616,7 +3640,20 @@ if (typeof window !== "undefined") {
   window.updateStatsViewStateAndRerender = (patch) => {
     Object.assign(statsViewState, patch);
     applyFiltersFromCache();
+    // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+    // ReviewStatsContent now recomputes its own stats from PrDataContext
+    // instead of being pushed a pre-built result - this push just triggers
+    // that recompute (a fresh snapshot object, so PrDataProvider's state
+    // actually changes and consumers re-render).
+    window.updateReactStatsViewState?.({ ...statsViewState });
   };
+  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+  // ReviewStatsContent reads these directly instead of receiving a
+  // pre-built `stats` object via window.updateReviewStatsContent (deleted,
+  // along with renderStatsView/renderStatsViewIfVisible - see that
+  // deletion's own comment for why no replacement bridge is needed).
+  window.buildReviewerStats = (...args) => buildReviewerStats(...args);
+  window.applyStatsControls = (...args) => applyStatsControls(...args);
   // Named distinctly from PrDateCell.jsx's own `window.formatIsoDatetime`
   // (which falls back to a much cruder default when unset) - deliberately
   // not reusing that name here, to avoid changing Phase 1's already-shipped
@@ -3652,24 +3689,6 @@ if (typeof window !== "undefined") {
       collectNodesByTag,
     });
 }
-
-const renderStatsView = (rows, actorsMap = {}) => {
-  const host = document.getElementById("pr-stats");
-  if (!host) return;
-
-  // Both the controls (#stats-controls-root) and the content
-  // (#stats-content-root) live in their own static sibling containers
-  // (see index.html), mounted once by react-app.jsx and owned by React
-  // from then on - this function must never rebuild either.
-  if (!rows.length) {
-    window.updateReviewStatsContent?.(null, rows, actorsMap);
-    return;
-  }
-
-  const { summary, reviewerRows } = buildReviewerStats(rows, actorsMap);
-  const stats = applyStatsControls({ summary, reviewerRows });
-  window.updateReviewStatsContent?.(stats, rows, actorsMap);
-};
 
 // Author Insights helper modules (refactored dependency injection)
 const prAuthorInsightsPrLinkHelperFactory =
@@ -3737,29 +3756,13 @@ const {
     authorInsightsState,
     recomputeDirtyPrSectionsFields: (...args) =>
       recomputeDirtyPrSectionsFields(...args),
-    // Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): delegate
-    // to react-app.jsx's bridges when they've mounted; pr-author-insights
-    // .component.js falls back to its own vanilla DOM-building when either
-    // returns false (React hasn't loaded/mounted yet).
-    updateReactAuthorInsightsSelector: (options, selectedLogin) =>
-      typeof window !== "undefined" && typeof window.updateAuthorInsightsSelector === "function"
-        ? window.updateAuthorInsightsSelector(options, selectedLogin)
-        : false,
-    updateReactAuthorInsightsCreatedPrs: (rows, selectedAuthorLogin) =>
-      typeof window !== "undefined" && typeof window.updateAuthorInsightsCreatedPrs === "function"
-        ? window.updateAuthorInsightsCreatedPrs(rows, selectedAuthorLogin)
-        : false,
-    updateReactAuthorInsightsHeader: (selectedAuthorName) =>
-      typeof window !== "undefined" && typeof window.updateAuthorInsightsHeader === "function"
-        ? window.updateAuthorInsightsHeader(selectedAuthorName)
-        : false,
-    updateReactAuthorInsightsNotes: (rows, selectedAuthor, actorsMap) =>
-      typeof window !== "undefined" && typeof window.updateAuthorInsightsNotes === "function"
-        ? window.updateAuthorInsightsNotes(rows, selectedAuthor, actorsMap)
-        : false,
-    updateReactAuthorInsightsComments: (rows, selectedAuthor, actorsMap) =>
-      typeof window !== "undefined" && typeof window.updateAuthorInsightsComments === "function"
-        ? window.updateAuthorInsightsComments(rows, selectedAuthor, actorsMap)
+    // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): pushes
+    // the current selection into PrDataProvider's Context state, read
+    // directly by AuthorCreatedPrsSection/AuthorInsightsNotesSection/
+    // AuthorInsightsCommentsSection - see PrDataProvider.jsx.
+    updateReactSelectedAuthorLogin: (login) =>
+      typeof window !== "undefined" && typeof window.updateReactSelectedAuthorLogin === "function"
+        ? window.updateReactSelectedAuthorLogin(login)
         : false,
   });
 
@@ -3807,6 +3810,12 @@ if (typeof window !== "undefined") {
     prAuthorInsightsDisplayHelpers.sortAuthorInsightsNoteMatchesDesc(...args);
   window.getAuthorInsightsNoteDisplayTimestamp = (...args) =>
     prAuthorInsightsDisplayHelpers.getAuthorInsightsNoteDisplayTimestamp(...args);
+  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
+  // AuthorInsightsSelector reads this directly to build its own option
+  // list from PrDataContext's payload, instead of being pushed a
+  // pre-built list via window.updateAuthorInsightsSelector.
+  window.buildAuthorInsightsEntries = (...args) =>
+    prAuthorInsightsDisplayHelpers.buildAuthorInsightsEntries(...args);
   // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
   // composer/editor is now real JSX too (AuthorInsightsCommentsSection.jsx)
   // instead of wrapping buildManualCommentsSection via a ref - that builder

@@ -3,14 +3,26 @@
  * table, and trend note for the "Review Stats" tab, replacing
  * pr-review-stats-summary.component.js's renderStatsSummaryAndTable().
  *
- * Phase 3 (see REACT_MIGRATION_PLAN.md). Mounted once into the static
- * #stats-content-root container (sibling of #stats-controls-root, see
- * ReviewStatsControls.jsx's own comment for why that split exists) and
- * updated via window.updateReviewStatsContent(stats, rows, actorsMap) -
- * the same mount-once/update-via-bridge shape as Phase 1's
- * mountReactPrTable/updateReactPrTable, not the restore-race pattern most
- * of Phase 2 used, since this is pure derived display data with no
- * persisted override.
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): computes
+ * its own `stats` from PrDataContext's `payload` instead of being pushed a
+ * pre-built result via window.updateReviewStatsContent (deleted, along
+ * with renderStatsView/renderStatsViewIfVisible in index.page.js/
+ * pr-render-apply.helpers.js - nothing else needed them once this
+ * component stopped needing to be pushed data). `window.buildReviewerStats`/
+ * `window.applyStatsControls` are the same pure aggregation functions
+ * index.page.js used internally - `applyStatsControls` reads the live
+ * vanilla `statsViewState` object by closure, so it's always current
+ * regardless of when it's called; `statsViewState` is read from Context
+ * here purely to know *when* settings changed (ReviewStatsControls pushes
+ * a fresh snapshot on every commit via
+ * window.updateReactStatsViewState) - its field values aren't used
+ * directly. The computation is `useMemo`-gated on `[payload,
+ * statsViewState]` so unrelated Context changes (e.g. selecting a
+ * different Author Insights author) don't re-trigger it - unlike the 5
+ * Author Insights sections, this one recomputes even while its own tab is
+ * hidden (no visibility gate anymore, since there's no longer a
+ * push-based mechanism to gate) - a deliberate, disclosed trade-off, not
+ * an oversight.
  *
  * The chart visuals (formerly createStatsVisuals in
  * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
@@ -30,13 +42,19 @@
  * @module components/ReviewStatsContent
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StatsVisuals } from './StatsVisuals';
+import { usePrData } from '../state/PrDataContext';
 
 const formatIsoDatetime = (value) =>
   window.reviewStatsFormatIsoDatetime ? window.reviewStatsFormatIsoDatetime(value) : String(value || '-');
 
 const navigateToPrInTable = (prNumber) => window.navigateToPrInTableFromStats?.(prNumber);
+
+const buildReviewerStats = (rows, actorsMap) =>
+  window.buildReviewerStats ? window.buildReviewerStats(rows, actorsMap) : { summary: null, reviewerRows: [] };
+
+const applyStatsControls = (input) => (window.applyStatsControls ? window.applyStatsControls(input) : null);
 
 function SourceItemRow({ item, detailText }) {
   const prNumber = String(item?.prNumber || '').trim();
@@ -184,7 +202,26 @@ function ReviewerRow({ reviewer }) {
   );
 }
 
-export function ReviewStatsContent({ stats, rows, actorsMap }) {
+export function ReviewStatsContent() {
+  const { payload, statsViewState } = usePrData();
+  const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
+  const actorsMap = payload?.actorsMap || {};
+
+  // Memoized on [payload, statsViewState] specifically, not [rows,
+  // actorsMap] (which would be new references on every render) - both
+  // rows/actorsMap are themselves fully determined by payload, so this
+  // still only recomputes when the underlying data or Review Stats
+  // settings actually change.
+  const stats = useMemo(() => {
+    const currentRows = Object.values(payload?.byPrNumber || {});
+    if (!currentRows.length) {
+      return null;
+    }
+    const currentActorsMap = payload?.actorsMap || {};
+    const { summary, reviewerRows } = buildReviewerStats(currentRows, currentActorsMap);
+    return applyStatsControls({ summary, reviewerRows });
+  }, [payload, statsViewState]);
+
   if (!stats) {
     return <p className="stats-empty">No filtered rows available for review statistics.</p>;
   }

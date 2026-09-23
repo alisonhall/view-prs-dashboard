@@ -6,23 +6,6 @@
 
   root.ViewPrsPrDataPollingHelpers = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const computePrDataFingerprint = (payload) => {
-    const byPrNumber = payload?.byPrNumber || {};
-    return Object.keys(byPrNumber)
-      .sort()
-      .map((prNumber) => {
-        const entry = byPrNumber[prNumber] || {};
-        return JSON.stringify({
-          prNumber,
-          repo: entry?.repo || "",
-          section: entry?.section || "",
-          updatedAt: entry?.updatedAt || "",
-          notes: entry?.notes || null,
-          data: entry?.data || null,
-        });
-      })
-      .join("|");
-  };
 
   // Deliberately separate from computePrDataFingerprint, which is keyed
   // only by PR content and used to decide whether the table itself needs
@@ -199,16 +182,61 @@
     };
   };
 
-  const createPrDataPollingHelpers = () => ({
-    computePrDataFingerprint,
-    computePrDataMetaFingerprint,
-    computePrDataManifest,
-    getManifestDelta,
-    mergeDataDeltaPayload,
-    getPendingAutoRenderAction,
-    getDataPollRenderAction,
-    isTextEntryElement,
-  });
+  const createPrDataPollingHelpers = ({
+    // Phase 5 residual (see REACT_MIGRATION_PLAN.md): optional shared
+    // per-entry derived-value cache (see pr-entry-derived-cache.helpers.js),
+    // the same instance pr-filter-panel.helpers.js already uses for
+    // label/assignee/approver extraction - defaults to an uncached
+    // passthrough so every existing call site/unit test keeps working
+    // unmodified. When provided, an unchanged entry's own JSON-stringified
+    // fingerprint piece is reused instead of being recomputed.
+    getOrCompute,
+  } = {}) => {
+    const getOrComputeSafe =
+      typeof getOrCompute === "function" ? getOrCompute : (_entry, _key, compute) => compute();
+
+    // computePrDataFingerprint used to JSON.stringify every stored entry's
+    // full data/notes on every call (called twice per render - once to
+    // decide whether to skip rendering, once again afterward to refresh
+    // lastRenderedPrFingerprint), regardless of how many entries actually
+    // changed. Caches each entry's own stringified piece by entry
+    // reference - safe for the same reason pr-entry-derived-cache.helpers.js's
+    // other consumers are: mergeDataDeltaPayload's shallow merge keeps an
+    // unchanged entry's object identity stable across polls, so a real
+    // change is simply a different/absent cache key, never a stale hit.
+    // Cache key "fingerprint" is distinct from pr-filter-panel.helpers.js's
+    // "labels"/"assignedUsers"/"approvers" keys on the same shared cache.
+    const computePrDataFingerprint = (payload) => {
+      const byPrNumber = payload?.byPrNumber || {};
+      return Object.keys(byPrNumber)
+        .sort()
+        .map((prNumber) => {
+          const entry = byPrNumber[prNumber] || {};
+          return getOrComputeSafe(entry, "fingerprint", () =>
+            JSON.stringify({
+              prNumber,
+              repo: entry?.repo || "",
+              section: entry?.section || "",
+              updatedAt: entry?.updatedAt || "",
+              notes: entry?.notes || null,
+              data: entry?.data || null,
+            }),
+          );
+        })
+        .join("|");
+    };
+
+    return {
+      computePrDataFingerprint,
+      computePrDataMetaFingerprint,
+      computePrDataManifest,
+      getManifestDelta,
+      mergeDataDeltaPayload,
+      getPendingAutoRenderAction,
+      getDataPollRenderAction,
+      isTextEntryElement,
+    };
+  };
 
   return {
     createPrDataPollingHelpers,

@@ -1,34 +1,46 @@
 /**
  * AuthorInsightsSelector - React-owned "Author" dropdown for the Author
  * Insights tab, replacing pr-author-insights.component.js's
- * renderAuthorSelector().
+ * renderAuthorSelector() (deleted).
  *
- * Phase 3 (see REACT_MIGRATION_PLAN.md). Unlike Review Stats' controls
- * (ReviewStatsControls.jsx), this selector's *options* are rebuilt from
- * the PR payload on every author-insights render, not seeded once at
- * mount - the same shape as Phase 2's MultiSelectCheckboxList. Mounted
- * once into the static #author-insights-selector-root container and
- * updated via window.updateAuthorInsightsSelector(options, selectedLogin),
- * which re-renders with an incrementing `key` each call so this
- * component's internal state always re-initializes fresh from the
- * caller-computed props, matching the old vanilla behavior of discarding
- * and rebuilding the <select> from scratch on every render (see
- * MultiSelectCheckboxList.jsx's own comment for the same reasoning).
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): reads
+ * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
+ * being pushed a pre-built option list + selected login via
+ * window.updateAuthorInsightsSelector (deleted) - options are rebuilt from
+ * the raw payload via window.buildAuthorInsightsEntries (already used
+ * internally by renderAuthorInsights for its own auto-select-first-author
+ * validation, now also exposed for this component). Options are
+ * deliberately empty when there are no local rows at all, even if
+ * actorsMap has entries on its own - matching renderAuthorInsights' own
+ * "No local rows"/"No authors found" empty-state guards, which this
+ * replaces.
  *
- * Selecting a different author calls back into vanilla via onChange,
- * which mutates authorInsightsState.selectedAuthorLogin and re-runs
- * renderAuthorInsights (through the same window.selectAuthorInsightsAuthor
- * bridge index.page.js exposes) - vanilla remains the source of truth for
- * *when* a re-render happens and what the other sections show, same as
- * every other Phase 1-3 bridge.
+ * Since `selectedAuthorLogin` is now a real reactive Context value (kept
+ * in sync by renderAuthorInsights, including its auto-select-first-author
+ * fallback), the <select> can be a plain controlled input - no more local
+ * useState/incrementing-`key` remount hack needed to catch external
+ * selection changes.
+ *
+ * Selecting a different author still calls back into vanilla via
+ * onChange, which mutates authorInsightsState.selectedAuthorLogin and
+ * re-runs renderAuthorInsights (through window.selectAuthorInsightsAuthor)
+ * - vanilla remains the source of truth for validating the selection and
+ * driving the other sections' re-render.
  *
  * @module components/AuthorInsightsSelector
  */
 
-import React, { useState } from 'react';
+import React from 'react';
+import { usePrData } from '../state/PrDataContext';
 
-export function AuthorInsightsSelector({ options, selectedLogin, onChange }) {
-  const [value, setValue] = useState(selectedLogin || '');
+const buildAuthorInsightsEntries = (rows, actorsMap) =>
+  window.buildAuthorInsightsEntries ? window.buildAuthorInsightsEntries(rows, actorsMap) : [];
+
+export function AuthorInsightsSelector({ onChange }) {
+  const { payload, selectedAuthorLogin } = usePrData();
+  const rows = Object.values(payload?.byPrNumber || {});
+  const actorsMap = payload?.actorsMap || {};
+  const options = rows.length ? buildAuthorInsightsEntries(rows, actorsMap) : [];
 
   if (!options.length) {
     return null;
@@ -41,15 +53,12 @@ export function AuthorInsightsSelector({ options, selectedLogin, onChange }) {
         <select
           id="author-insights-select"
           className="author-insights-select"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            onChange?.(e.target.value);
-          }}
+          value={selectedAuthorLogin || ''}
+          onChange={(e) => onChange?.(e.target.value)}
         >
           {options.map((author) => (
             <option key={author.login} value={author.login}>
-              {author.name}
+              {author.name || author.login}
             </option>
           ))}
         </select>
