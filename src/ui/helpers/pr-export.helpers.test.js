@@ -30,22 +30,26 @@ const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
 });
 
 describe("pr export helpers", () => {
-  test("collectLeafPaths tracks nested object fields and treats arrays as leaf fields", () => {
+  test("getFieldCatalog tracks nested object fields and treats arrays as leaf fields", () => {
     const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
-    const paths = Array.from(
-      helpers.collectLeafPaths({
-        prNumber: "123",
-        data: {
-          title: "Feature",
-          labels: ["bug"],
-          metrics: {
-            approvals: 2,
+    const payload = {
+      byPrNumber: {
+        "123": {
+          prNumber: "123",
+          data: {
+            title: "Feature",
+            labels: ["bug"],
+            metrics: {
+              approvals: 2,
+            },
           },
         },
-      }),
-    ).sort();
+      },
+    };
 
-    expect(paths).toEqual([
+    const catalog = helpers.getFieldCatalog(payload);
+
+    expect(catalog.dataPaths).toEqual([
       "data.labels",
       "data.metrics.approvals",
       "data.title",

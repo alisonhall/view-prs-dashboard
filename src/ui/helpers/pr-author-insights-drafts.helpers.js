@@ -209,13 +209,11 @@
     return {
       DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
       normalizeAuthorInsightsSentiment,
-      createAuthorInsightsComposerDraft,
       getAuthorInsightsComposerDraft,
       updateAuthorInsightsComposerDraft,
       resetAuthorInsightsComposerDraft,
       isAuthorInsightsComposerDraftDirty,
       getAuthorInsightsEditDraftMap,
-      createAuthorInsightsEditDraft,
       getAuthorInsightsEditDraft,
       updateAuthorInsightsEditDraft,
       resetAuthorInsightsEditDraft,

@@ -177,7 +177,6 @@
     };
 
     return {
-      normalizeResolvedPersonName,
       normalizeActorLoginAliases,
       normalizeActorLogin,
       getPreferredActorKey,

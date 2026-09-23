@@ -225,8 +225,6 @@
       getFieldCatalog,
       getVisiblePrNumbersFromSectionsHost,
       buildExportPayload,
-      pickByPaths,
-      collectLeafPaths,
     };
   };
 

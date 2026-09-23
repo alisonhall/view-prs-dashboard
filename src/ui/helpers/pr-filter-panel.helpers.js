@@ -535,7 +535,6 @@
     };
 
     return {
-      getSelectedMultiSelectValues,
       getSelectedAuthorLogins,
       getSelectedAssignedLogins,
       getSelectedApproverLogins,
@@ -548,7 +547,6 @@
       getRallyLinksFilter,
       getAnalysisOfPrFilter,
       updateMultiSelectSummary,
-      collectSortedLabelOptions,
       populateIncludeLabelOptions,
       populateExcludeLabelOptions,
       populateAuthorOptions,

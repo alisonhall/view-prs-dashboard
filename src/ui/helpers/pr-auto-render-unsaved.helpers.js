@@ -146,7 +146,6 @@
       getDirtyTrackedFields,
       getUnsavedNotesSections,
       normalizePrNumber,
-      getBlockingPrNumberForElement,
       getBlockingPrNumbers,
       getFirstUnsavedElementForPrNumber,
     };
