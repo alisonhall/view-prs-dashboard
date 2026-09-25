@@ -3,6 +3,8 @@
  * https://jestjs.io/docs/configuration
  */
 
+const path = require("path");
+
 /** @type {import('jest').Config} */
 const config = {
   displayName: "view-prs",
@@ -140,7 +142,7 @@ const config = {
   setupFiles: ["./jest.setup.env.js"],
 
   // A list of paths to modules that run some code to configure or set up the testing framework before each test
-  setupFilesAfterEnv: ["<rootDir>/src/ui/tests/jest.setup.testing-library.js"],
+  setupFilesAfterEnv: ["<rootDir>/src/ui/integration-tests/jest.setup.testing-library.js"],
 
   // The number of seconds after which a test is considered as slow and reported as such in the results.
   // slowTestThreshold: 5,
@@ -163,10 +165,9 @@ const config = {
   //   "**/?(*.)+(spec|test).?([mc])[jt]s?(x)"
   // ],
 
-  // An array of regexp pattern strings that are matched against all test paths, matched tests are skipped
-  // testPathIgnorePatterns: [
-  //   "/node_modules/"
-  // ],
+  // e2e/ holds Playwright specs (@playwright/test's own test()/expect()),
+  // not Jest ones - excluded so Jest doesn't try to run them as its own.
+  testPathIgnorePatterns: ["/node_modules/", "<rootDir>/e2e/"],
 
   // The regexp pattern or array of patterns that Jest uses to detect test files
   // testRegex: [],
@@ -177,8 +178,14 @@ const config = {
   // This option allows use of a custom test runner
   // testRunner: "jest-circus/runner",
 
-  // A map from regular expressions to paths to transformers
-  // transform: undefined,
+  // A map from regular expressions to paths to transformers.
+  // Only React component tests (.jsx, or .test.js files that import JSX)
+  // need this — plain vanilla helper/component tests are untouched CommonJS
+  // and pass through unaffected. This babel config is Jest-only; Vite has
+  // its own separate JSX pipeline via @vitejs/plugin-react.
+  transform: {
+    "^.+\\.[jt]sx?$": ["babel-jest", { configFile: path.join(__dirname, "babel.config.jest.js") }],
+  },
 
   // An array of regexp pattern strings that are matched against all source file paths, matched files will skip transformation
   // transformIgnorePatterns: [

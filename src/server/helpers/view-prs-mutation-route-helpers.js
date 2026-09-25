@@ -186,6 +186,100 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     },
   });
 
+  // Unlike /run-auto (fire-and-forget, 202 - a full refresh can take
+  // minutes), the quick check is the cheap listing-only pass by design, so
+  // this route awaits runViewPrsQuickCheck() directly and reports its
+  // actual per-run result object (see that function's own comment) instead
+  // of re-deriving skip/success state independently, so the two can't drift.
+  const buildQuickCheckAlreadyInProgressResult = () => ({
+    responseStatusCode: 409,
+    responsePayload: {
+      ok: false,
+      error: "Quick check or auto refresh already in progress",
+    },
+  });
+
+  const buildQuickCheckMissingDependenciesResult = (missing) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: buildMissingDependenciesMessage(missing),
+    },
+  });
+
+  const buildQuickCheckCircuitOpenResult = () => ({
+    responseStatusCode: 503,
+    responsePayload: {
+      ok: false,
+      error:
+        "Auto refresh circuit breaker is open after repeated failures - try again later.",
+    },
+  });
+
+  const buildQuickCheckFatalFailureResult = (errorMessage) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: errorMessage || "Quick check failed",
+    },
+  });
+
+  // ok is false only when every checked repo failed (or none were checked
+  // but some were attempted) - a partial failure (some repos succeeded,
+  // others didn't) still reports ok:true so a working subset isn't treated
+  // as a total failure, but reposFailed/error are always populated so the
+  // caller can't mistake a partial failure for a clean, all-quiet run.
+  const buildQuickCheckSuccessResult = ({
+    lastQuickCheckAt,
+    reposChecked = [],
+    reposFailed = [],
+    newPendingOpenCount = 0,
+    newPendingMergedClosedCount = 0,
+  }) => {
+    const ok = reposFailed.length === 0 || reposChecked.length > 0;
+    return {
+      responseStatusCode: 200,
+      responsePayload: {
+        ok,
+        ...(reposFailed.length > 0
+          ? {
+              error: `Quick check failed for ${reposFailed.length} of ${
+                reposChecked.length + reposFailed.length
+              } repo(s): ${reposFailed.map((failure) => failure.repo).join(", ")}`,
+            }
+          : {}),
+        lastQuickCheckAt,
+        reposChecked,
+        reposFailed,
+        newPendingOpenCount,
+        newPendingMergedClosedCount,
+      },
+    };
+  };
+
+  const buildQuickCheckSuccessActionLogEntry = ({ timingContext, result }) => ({
+    action: "post/quick-check",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: result.responsePayload.ok,
+    detail: {
+      mode: "manual-trigger",
+      reposChecked: result.responsePayload.reposChecked,
+      reposFailed: result.responsePayload.reposFailed,
+      newPendingOpenCount: result.responsePayload.newPendingOpenCount,
+      newPendingMergedClosedCount: result.responsePayload.newPendingMergedClosedCount,
+    },
+    ...(result.responsePayload.error ? { error: result.responsePayload.error } : {}),
+  });
+
+  const buildQuickCheckFailureActionLogEntry = ({ timingContext, error }) => ({
+    action: "post/quick-check",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: false,
+    error,
+  });
+
 
   const parseNumberCsv = (raw) =>
     String(raw || "")
@@ -306,6 +400,36 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
       refreshedPrs,
       refreshErrors,
       prData,
+    },
+  });
+
+  /**
+   * Build minimal success result for checkbox-only operations (flagged/inReview).
+   * Returns only the changed flag data instead of the entire PR dataset.
+   * This reduces response payload from ~100-500KB to ~1-5KB.
+   *
+   * @param {Object} params - Parameters
+   * @param {string} params.displayCommand - Command that was executed
+   * @param {string} params.stdout - Script stdout
+   * @param {string} params.stderr - Script stderr
+   * @param {Object} params.prData - Full PR data (only flaggedByRepo/inReviewByRepo used)
+   * @returns {Object} Minimal response result
+   */
+  const buildAckMinimalSuccessResult = ({
+    displayCommand,
+    stdout,
+    stderr,
+    prData,
+  }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      command: displayCommand,
+      output: stdout,
+      stderr,
+      // Only return the flag data, not the entire PR dataset
+      flaggedByRepo: prData?.flaggedByRepo || {},
+      inReviewByRepo: prData?.inReviewByRepo || {},
     },
   });
 
@@ -538,6 +662,123 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     };
   };
 
+  const buildListRepoLabelsRequest = ({ query = {}, defaultViewPrsRepo }) => ({
+    repo: toTrimmedString(query.repo) || defaultViewPrsRepo,
+  });
+
+  const buildListRepoLabelsInvalidRepoResult = (repo) => ({
+    responseStatusCode: 400,
+    responsePayload: {
+      ok: false,
+      error: `Invalid repo: ${repo}`,
+    },
+  });
+
+  const buildListRepoLabelsSuccessResult = ({ repo, labels }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      repo,
+      labels,
+    },
+  });
+
+  const buildListRepoLabelsFailureResult = (error) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: error?.message || "Failed to list labels",
+    },
+  });
+
+  const buildApplyLabelRequest = ({ body = {}, defaultViewPrsRepo }) => ({
+    repo: toTrimmedString(body.repo) || defaultViewPrsRepo,
+    label: toTrimmedString(body.label),
+    prNumbers: parseNumberCsv(body.prNumbers),
+  });
+
+  const buildApplyLabelBadRequestResult = (errorMessage) => ({
+    responseStatusCode: 400,
+    responsePayload: {
+      ok: false,
+      error: errorMessage,
+    },
+  });
+
+  const buildApplyLabelMissingDependenciesResult = (missing) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: buildMissingDependenciesMessage(missing),
+    },
+  });
+
+  const buildApplyLabelSuccessActionLogEntry = ({
+    timingContext,
+    repo,
+    label,
+    appliedPrs,
+    applyErrors,
+    refreshedPrs,
+    refreshErrors,
+  }) => ({
+    action: "post/labels/apply",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: applyErrors.length === 0,
+    detail: {
+      repo,
+      label,
+      appliedPrs,
+      applyErrorCount: applyErrors.length,
+      refreshedPrs,
+      refreshErrorCount: refreshErrors.length,
+    },
+  });
+
+  const buildApplyLabelFailureActionLogEntry = ({ timingContext, repo, label, error }) => ({
+    action: "post/labels/apply",
+    triggeredAt: timingContext.triggeredAt,
+    durationMs: Date.now() - timingContext.startedAtMs,
+    ok: false,
+    error,
+    detail: { repo, label },
+  });
+
+  const buildApplyLabelSummary = ({ label, appliedCount }) =>
+    appliedCount > 0
+      ? `Applied "${label}" to ${appliedCount} PR${appliedCount === 1 ? "" : "s"}.`
+      : `No PRs were labeled with "${label}".`;
+
+  const buildApplyLabelSuccessResult = ({
+    repo,
+    label,
+    appliedPrs,
+    applyErrors,
+    refreshErrors,
+    prData,
+  }) => ({
+    responseStatusCode: 200,
+    responsePayload: {
+      ok: true,
+      repo,
+      label,
+      appliedPrs,
+      applyErrors,
+      refreshErrors,
+      summary: buildApplyLabelSummary({ label, appliedCount: appliedPrs.length }),
+      prData,
+    },
+  });
+
+  const buildApplyLabelFailureResult = (error) => ({
+    responseStatusCode: 500,
+    responsePayload: {
+      ok: false,
+      error: error?.message || "Failed to apply label",
+    },
+  });
+
   return {
     createTimingContext,
     buildBadRequestResult,
@@ -555,6 +796,13 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildRunAutoSuccessResult,
     buildRunAutoFailureActionLogEntry,
     buildRunAutoSuccessActionLogEntry,
+    buildQuickCheckAlreadyInProgressResult,
+    buildQuickCheckMissingDependenciesResult,
+    buildQuickCheckCircuitOpenResult,
+    buildQuickCheckFatalFailureResult,
+    buildQuickCheckSuccessResult,
+    buildQuickCheckSuccessActionLogEntry,
+    buildQuickCheckFailureActionLogEntry,
     parseNumberCsv,
     buildAckRequest,
     createAckScriptRunner,
@@ -562,6 +810,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildAckSuccessActionLogEntry,
     buildAckFailureActionLogEntry,
     buildAckSuccessResult,
+    buildAckMinimalSuccessResult,
     buildAckFailureResult,
     runAckRefreshes,
     buildRequestMoreRequest,
@@ -575,6 +824,17 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildRequestMoreFailureActionLogEntry,
     buildRequestMoreSuccessResult,
     buildRequestMoreFailureResult,
+    buildListRepoLabelsRequest,
+    buildListRepoLabelsInvalidRepoResult,
+    buildListRepoLabelsSuccessResult,
+    buildListRepoLabelsFailureResult,
+    buildApplyLabelRequest,
+    buildApplyLabelBadRequestResult,
+    buildApplyLabelMissingDependenciesResult,
+    buildApplyLabelSuccessActionLogEntry,
+    buildApplyLabelFailureActionLogEntry,
+    buildApplyLabelSuccessResult,
+    buildApplyLabelFailureResult,
   };
 };
 

@@ -1,0 +1,24 @@
+{
+  "notesByPrNumber": {
+    "1": {
+      "comments": [],
+      "otherNotes": "",
+      "prDifficulty": "3",
+      "rallyStories": "",
+      "rallyLinks": "",
+      "analysisOfPr": ""
+    }
+  },
+  "ackByRepo": {},
+  "reverifyByRepo": {},
+  "flaggedByRepo": {
+    "octocat/hello-world": {
+      "2": true
+    }
+  },
+  "inReviewByRepo": {
+    "octocat/hello-world": {
+      "1": true
+    }
+  }
+}

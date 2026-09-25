@@ -29,6 +29,7 @@ describe("pr render finalize helpers", () => {
     const result = deriveRenderFinalizedState({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -39,13 +40,13 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
 
     expect(deriveRenderApplyInputs).toHaveBeenCalledWith({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -56,12 +57,12 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
     expect(applyRenderResults).toHaveBeenCalledWith({
       payload: { lastRun: { repo: "org/repo" } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -72,7 +73,6 @@ describe("pr render finalize helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
       marker: "apply-inputs",
     });

@@ -1,28 +1,26 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsPrDataPollingHelpers fallback.
+export const { createPrDataPollingHelpers } = (() => {
 
-  root.ViewPrsPrDataPollingHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const computePrDataFingerprint = (payload) => {
-    const byPrNumber = payload?.byPrNumber || {};
-    return Object.keys(byPrNumber)
-      .sort()
-      .map((prNumber) => {
-        const entry = byPrNumber[prNumber] || {};
-        return JSON.stringify({
-          prNumber,
-          repo: entry?.repo || "",
-          section: entry?.section || "",
-          updatedAt: entry?.updatedAt || "",
-          notes: entry?.notes || null,
-          data: entry?.data || null,
-        });
-      })
-      .join("|");
-  };
+  // Deliberately separate from computePrDataFingerprint, which is keyed
+  // only by PR content and used to decide whether the table itself needs
+  // rebuilding. lastRun/dataMeta/scheduler drive the "Last Updated"/
+  // "Last Checked" display and the data-meta summary line, and can change
+  // (e.g. the backend script ran again and found nothing new) with zero
+  // byPrNumber change - getDataPollRenderAction needs both fingerprints to
+  // decide whether ANYTHING visible needs a refresh, or the poll can
+  // silently update `latestStoredPayload` in memory while the on-screen
+  // "Last Updated: Xh ago" stays stuck until some unrelated re-render
+  // happens to pick it up.
+  const computePrDataMetaFingerprint = (payload) =>
+    JSON.stringify({
+      lastRun: payload?.lastRun || null,
+      dataMeta: payload?.dataMeta || null,
+      scheduler: payload?.scheduler || null,
+    });
 
   const computePrDataManifest = (payload) => {
     const byPrNumber = payload?.byPrNumber || {};
@@ -143,12 +141,25 @@
   const getDataPollRenderAction = ({
     newFingerprint,
     lastRenderedPrFingerprint,
+    newMetaFingerprint,
+    lastRenderedMetaFingerprint,
     focusedElement,
     hasDirtyPrSectionsFields,
     hasPendingAutoRender,
     result,
   }) => {
-    if (newFingerprint === lastRenderedPrFingerprint) {
+    // Regression guard: skip-render used to depend only on the PR-content
+    // fingerprint, so a poll where only lastRun/dataMeta/scheduler changed
+    // (the backend script ran again, nothing new happened) was silently
+    // dropped - `latestStoredPayload` got the fresher metadata in memory,
+    // but nothing on screen (the "Last Updated: Xh ago" indicator, the
+    // data-meta summary) ever reflected it until some unrelated render
+    // happened to pick it up (e.g. toggling a checkbox). Both fingerprints
+    // (newMetaFingerprint/lastRenderedMetaFingerprint) must be omitted by
+    // a caller for this to fall back to the old PR-only behavior.
+    const prUnchanged = newFingerprint === lastRenderedPrFingerprint;
+    const metaUnchanged = newMetaFingerprint === lastRenderedMetaFingerprint;
+    if (prUnchanged && metaUnchanged) {
       return { type: "skip-render" };
     }
     if (hasDirtyPrSectionsFields) {
@@ -169,17 +180,63 @@
     };
   };
 
-  const createPrDataPollingHelpers = () => ({
-    computePrDataFingerprint,
-    computePrDataManifest,
-    getManifestDelta,
-    mergeDataDeltaPayload,
-    getPendingAutoRenderAction,
-    getDataPollRenderAction,
-    isTextEntryElement,
-  });
+  const createPrDataPollingHelpers = ({
+    // Phase 5 residual (see REACT_MIGRATION_PLAN.md): optional shared
+    // per-entry derived-value cache (see pr-entry-derived-cache.helpers.js),
+    // the same instance pr-filter-panel.helpers.js already uses for
+    // label/assignee/approver extraction - defaults to an uncached
+    // passthrough so every existing call site/unit test keeps working
+    // unmodified. When provided, an unchanged entry's own JSON-stringified
+    // fingerprint piece is reused instead of being recomputed.
+    getOrCompute,
+  } = {}) => {
+    const getOrComputeSafe =
+      typeof getOrCompute === "function" ? getOrCompute : (_entry, _key, compute) => compute();
+
+    // computePrDataFingerprint used to JSON.stringify every stored entry's
+    // full data/notes on every call (called twice per render - once to
+    // decide whether to skip rendering, once again afterward to refresh
+    // lastRenderedPrFingerprint), regardless of how many entries actually
+    // changed. Caches each entry's own stringified piece by entry
+    // reference - safe for the same reason pr-entry-derived-cache.helpers.js's
+    // other consumers are: mergeDataDeltaPayload's shallow merge keeps an
+    // unchanged entry's object identity stable across polls, so a real
+    // change is simply a different/absent cache key, never a stale hit.
+    // Cache key "fingerprint" is distinct from pr-filter-panel.helpers.js's
+    // "labels"/"assignedUsers"/"approvers" keys on the same shared cache.
+    const computePrDataFingerprint = (payload) => {
+      const byPrNumber = payload?.byPrNumber || {};
+      return Object.keys(byPrNumber)
+        .sort()
+        .map((prNumber) => {
+          const entry = byPrNumber[prNumber] || {};
+          return getOrComputeSafe(entry, "fingerprint", () =>
+            JSON.stringify({
+              prNumber,
+              repo: entry?.repo || "",
+              section: entry?.section || "",
+              updatedAt: entry?.updatedAt || "",
+              notes: entry?.notes || null,
+              data: entry?.data || null,
+            }),
+          );
+        })
+        .join("|");
+    };
+
+    return {
+      computePrDataFingerprint,
+      computePrDataMetaFingerprint,
+      computePrDataManifest,
+      getManifestDelta,
+      mergeDataDeltaPayload,
+      getPendingAutoRenderAction,
+      getDataPollRenderAction,
+      isTextEntryElement,
+    };
+  };
 
   return {
     createPrDataPollingHelpers,
   };
-});
+})();

@@ -4,6 +4,34 @@
 
 Utilities for checking open and recently merged pull requests in a GitHub repository.
 
+## Quick Start
+
+> **Windows:** this project needs a real `bash` (for `check-open-pr-updates.sh` and friends). Install [Git for Windows](https://git-scm.com/download/win) and run every command below from its **Git Bash** terminal (or WSL) - plain `cmd.exe`/PowerShell won't have `bash` on `PATH`. `npm install`/`npm run setup` will also tell you this if `bash` is missing.
+
+```bash
+npm run setup   # npm install, then checks deps (jq is auto-provided; bash/gh you provide) and prints next steps
+```
+
+Then, to point this at your own repo:
+
+```bash
+export VIEW_PRS_REPO='owner/repo'   # or pass --repo owner/repo directly to the CLI script
+```
+
+(PowerShell: `$env:VIEW_PRS_REPO = 'owner/repo'`. cmd.exe: `set VIEW_PRS_REPO=owner/repo`. Either way, run the actual commands from Git Bash/WSL as noted above - only the env var needs to be set in your native shell if you're setting it outside Git Bash.)
+
+Authenticate the GitHub CLI once, if you haven't already (`gh auth login`), then start the server:
+
+```bash
+npm start
+```
+
+- UI (with React HMR): `http://localhost:3456`
+- Backend only, no HMR: `http://localhost:9000/view-prs/index.html` (via `npm run start:server-only`)
+- Dependency health, once running: `curl -s http://localhost:9000/health/deps`
+
+See `## Requirements` below for what `npm run setup`/`npm run deps:check` actually verify, and the full CLI/script reference further down for every other option.
+
 ## Project Layout
 
 Canonical runtime and scripts now live under `src/`:
@@ -12,21 +40,23 @@ Canonical runtime and scripts now live under `src/`:
   - Routes: `src/server/routes/`
   - Shared helpers: `src/server/helpers/`
   - State storage internals: `src/server/storage/`
-  - Tests: `src/server/tests/`
+  - Tests: `src/server/integration-tests/`
 - UI assets and page controller: `src/ui/`
   - UI helpers: `src/ui/helpers/`
-- UI tests: `src/ui/tests/`
+- UI tests: `src/ui/integration-tests/`
 - CLI/update scripts: `src/script/`
-  - Script tests: `src/script/tests/`
+  - Script tests: `src/script/integration-tests/`
 - Backfill tools: `src/backfill/`
 - Schema and validation: `src/schema/`
+- End-to-end (real browser) tests: `e2e/`
 
 Compatibility note: migration shims were removed in Phase 3. Use canonical `src/` paths and npm scripts only.
 
 ## Architecture Snapshot
 
 - Planning and phased modernization checklist: `AI_MODERNIZATION_PLAN.md`
-- Current baseline inventory and hotspot evidence: `PHASE0_BASELINE.md`
+- Vanilla-to-React UI migration (complete): `REACT_MIGRATION_PLAN.md`
+- Server-side helper extraction/integration status: `PHASE_8_STATUS.md`
 
 High-level layering intent:
 
@@ -63,7 +93,7 @@ Contribution guidance:
 - New UI behavior should default to component + helper extraction, not direct growth of `src/ui/index.page.js`.
 - New server behavior should keep routes thin and place reusable logic in helper/service modules.
 - New unit tests should be co-located with source files (`src/ui/components/*.test.js`, `src/ui/helpers/*.test.js`).
-- Integration/wiring tests should remain in `src/ui/tests/` and server integration test folders.
+- Integration/wiring tests should remain in `src/ui/integration-tests/` and server integration test folders.
 - Reusable test data builders should be added under `src/ui/test-fixtures/` and validated with fixture contract tests.
 
 ## Test Ownership
@@ -86,15 +116,17 @@ npm run check:all
 
 Script guide:
 
-- `npm run test:app`: server route/integration/scheduler suites (`src/server/tests/`)
+- `npm run test:app`: server route/integration/scheduler suites (`src/server/integration-tests/`)
 - `npm run test:ui`: UI suites (`src/ui/**/*.test.js`)
-- `npm run test:script`: shell script Jest harness (`src/script/tests/*.test.js`)
-- `npm run test:schema`: schema-focused Jest suites (`src/schema/tests/`)
-- `npm run test:deps`: dependency guard/unit suites (`src/dependencies/tests/`)
-- `npm run test:backfill`: backfill-focused suites (`src/backfill/tests/`)
+- `npm run test:script`: shell script Jest harness (`src/script/integration-tests/*.test.js`)
+- `npm run test:schema`: schema-focused Jest suites (`src/schema/integration-tests/`)
+- `npm run test:deps`: dependency guard/unit suites (`src/dependencies/integration-tests/`)
+- `npm run test:backfill`: backfill-focused suites (`src/backfill/integration-tests/`)
 - `npm run test:all`: guard + full Jest run (no coverage output)
 - `npm run test:coverage` / `npm run test:ci`: guard + full Jest run with coverage output (`coverage/lcov-report`)
 - `npm run check:all`: dependency check + lint + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
+- `npm run test:e2e`: real-browser Playwright suite (`e2e/*.spec.js`) against a live server; not run as part of `test:all`/`check:all`
+- `npm run stability:heap-check`: standalone long-session heap-growth diagnostic (`e2e/stability/long-session-heap-check.js`), run on demand, not part of any `test:*`/`check:*` script
 
 UI test placement conventions:
 
@@ -102,18 +134,20 @@ UI test placement conventions:
   - `src/ui/components/*.test.js`
   - `src/ui/helpers/*.test.js`
 - Shared fixture/factory modules should live under `src/ui/test-fixtures/` and expose reusable builders.
-- Integration/wiring tests should remain centralized under `src/ui/tests/`:
+- Integration/wiring tests should remain centralized under `src/ui/integration-tests/`:
   - `index.html.test.js`
+  - `index.page.memory-leak-prevention.test.js`
   - `index.page.notifications.test.js`
   - `index.page.trends.test.js`
 - `npm run test:ui` discovers all UI tests via `src/ui/**/*.test.js`.
+- Real-browser regressions that jsdom can't see (asset 404s, event-delegation races between vanilla and React, charset handling) belong in `e2e/smoke.spec.js` instead.
 
-Recommended default before opening a PR: `npm run check:all`.
+Recommended default before opening a PR: `npm run check:all`. Run `npm run test:e2e` too if you touched UI rendering/event wiring — it isn't part of `check:all`.
 
 Test decision flow:
 
 - Fast local iteration: run the smallest relevant `npm run test:*` subset.
-- Before PR/merge: run `npm run check:all`.
+- Before PR/merge: run `npm run check:all` (and `npm run test:e2e` for UI changes).
 
 Run from repository root:
 
@@ -121,12 +155,72 @@ Run from repository root:
 npm run test:view-prs
 ```
 
+## React Development Scripts
+
+The following scripts support the React migration and development workflow:
+
+```bash
+npm start                    # Start both Node.js backend (9000) + Vite dev server (3456)
+npm run dev                  # Alias for npm start
+npm run start:server-only    # Start Node.js backend only (no Vite)
+npm run dev:server           # Alias for start:server-only
+npm run dev:ui               # Start Vite dev server only (requires backend running)
+npm run build:ui             # Build production React bundle to dist/ui/
+npm run preview              # Preview production build locally
+npm run verify:react-setup   # Verify React development environment setup
+```
+
+Script guide:
+
+- **`npm start`** (recommended): Starts both servers for full React development with Hot Module Replacement (HMR)
+  - Node.js backend on `http://localhost:9000` (API server)
+  - Vite dev server on `http://localhost:3456` (frontend with HMR)
+  - Access UI at: `http://localhost:3456`
+  - Use this for React/UI development work
+
+- **`npm run start:server-only`**: Backend-only mode for API development
+  - Starts only Node.js server on `http://localhost:9000`
+  - Serves static files but no HMR
+  - Use when working on backend logic without UI changes
+
+- **`npm run dev:ui`**: Frontend-only Vite server
+  - Requires backend to be running separately
+  - Proxies `/view-prs/*` API calls to backend on port 9000
+  - Use for frontend-focused work with backend already running
+
+- **`npm run build:ui`**: Production build
+  - Compiles React app to optimized static files
+  - Output: `dist/ui/` directory
+  - Run before deploying or testing production builds
+
+- **`npm run preview`**: Test production build locally
+  - Serves built files from `dist/ui/`
+  - Simulates production environment
+  - Run after `build:ui` to verify production bundle
+
+- **`npm run verify:react-setup`**: Development environment check
+  - Verifies all React dependencies installed
+  - Checks configuration files exist
+  - Validates project structure
+  - Run after cloning repo or updating dependencies
+
+Recommended React development workflow:
+
+1. **First time setup:** `npm run verify:react-setup`
+2. **Development:** `npm start` (opens both servers)
+3. **Access UI:** `http://localhost:3456`
+4. **Before deployment:** `npm run build:ui`
+5. **Test build:** `npm run preview`
+
+See [Development Servers](#development-servers) section for more details.
+
 ## Key Files
 
 - Script: `src/script/check-open-pr-updates.sh`
 - Local launcher (recommended): `./run-prs`
 - CLI script mode: `npm run cli-view -- <args>`
-- Standalone server: `npm run start`
+- Development server: `npm start` (runs Node.js backend + Vite dev server with React HMR)
+- Backend only: `npm run start:server-only` (Node.js server without Vite)
 - Interactive page: `src/ui/index.html`
 - Actor login aliases: `data/actor-login-aliases.json`
 - JSON Schema: `src/schema/check-open-pr-updates.data.schema.json`
@@ -138,8 +232,11 @@ npm run test:view-prs
 ## Requirements
 
 - `gh` (GitHub CLI), authenticated (`gh auth login`)
-- `jq`
-- Bash shell
+- Bash shell (on Windows: [Git for Windows](https://git-scm.com/download/win)'s Git Bash, or WSL - there's no bash on `PATH` in a native `cmd.exe`/PowerShell terminal)
+
+`jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
+
+Run `npm run deps:check` any time to verify all of the above (plus a few coreutils the script also needs) are actually present - it also runs automatically before `npm test` and (as a non-blocking warning) after `npm install`. Once the server is running, `curl -s http://localhost:9000/health/deps` reports the same thing live, plus a `ghAuthenticated` field (`true`/`false`/`null` if `gh` isn't installed at all) - `gh` being installed but not logged in (`gh auth login`) is treated as unhealthy (`ok: false`, `503`) since that's the one dependency issue `deps:check`/`postinstall` can't catch on their own without an extra network call.
 
 Optional for date formatting fallback:
 
@@ -166,6 +263,51 @@ cd view-prs
 VIEW_PRS_SKIP_UNCHANGED=1 ./run-prs --open none
 ```
 
+## Development Servers
+
+**React Development Mode (Recommended):**
+
+```bash
+cd view-prs
+npm start
+```
+
+This starts TWO servers:
+- **Node.js backend** on `http://localhost:9000` (API server)
+- **Vite dev server** on `http://localhost:3456` (frontend with Hot Module Replacement)
+
+**Access the UI at:** `http://localhost:3456`
+
+**Benefits:**
+- ✅ Hot Module Replacement (HMR) - changes appear instantly without page reload
+- ✅ Fast builds with Vite (10-100x faster than Webpack)
+- ✅ React DevTools support
+- ✅ Modern ESM development
+
+**Backend Only Mode:**
+
+If you only need the Node.js server without React HMR:
+
+```bash
+cd view-prs
+npm run start:server-only
+```
+
+**Access the UI at:** `http://localhost:9000`
+
+Note: This mode serves static files but does not provide Hot Module Replacement.
+
+**Production Build:**
+
+To build the React app for production:
+
+```bash
+cd view-prs
+npm run build:ui
+```
+
+Built files are output to `dist/ui/` and can be served by the Node.js server.
+
 ## Usage
 
 ### Recommended (local launcher)
@@ -184,7 +326,8 @@ cd view-prs
 npm run cli-view -- --help
 npm run cli-view -- --open changed
 npm run cli-view -- --ack 912,921
-npm run start
+npm start  # Starts Node.js backend (9000) + Vite dev server (3456) with React HMR
+npm run start:server-only  # Node.js backend only (no Vite)
 npm run backfill:missing:dry -- --max-prs 20
 npm run backfill:missing -- --max-prs 50 --delay-ms 3000
 npm run backfill:missing:bg
@@ -247,14 +390,20 @@ Then open:
 - `http://localhost:9000/view-prs/index.html`
 - `http://localhost:9000/health/deps` (dependency health)
 
-When localhost is running, the server starts an automatic 15-minute background refresh for `view-prs` data.
+When localhost is running, the server starts an automatic background refresh for `view-prs` data, split into two tiers so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
-- Auto refresh runs every 15 minutes.
-- It skips if a manual `Run script` action completed in the previous 15 minutes.
-- On successful auto refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
+- **Quick check** (every 5 minutes, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it's queued instead.
+  - A quick check does nothing if a full auto refresh (the periodic full sweep, or another repo's fast-follow) is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
+  - `Last quick check skip` in the Auto Refresh panel (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
+- **Merged/closed drain** (every 30 minutes, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
+- **Full sweep** (every 15 minutes, unchanged): runs for all configured repos regardless of the quick check, as a safety net.
+- Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
+- On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
 - While a run is in progress, PR rows currently being refreshed show a small spinner below the PR number link and above the relative "updated ... ago" text without forcing a full table rerender.
+- A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
+- A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
 
 Use the form to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
@@ -275,17 +424,113 @@ UI filter behavior:
 - When `Filter by PR number(s)` is set, it matches against all stored rows and ignores the selected `View scope` value and `Exclude by label name(s)` values.
 - Changing filter fields updates the HTML tables and local terminal preview from existing JSON without making new GitHub CLI requests.
 
+Custom Metadata Filters:
+
+The `Visibility Filters` panel includes filters for custom metadata fields (manual notes data):
+
+- **Custom comments**: Filter by presence/absence of custom review comments
+  - `Any (with or without)`: Show all PRs regardless of custom comments
+  - `With custom comments`: Show only PRs that have at least one custom comment
+  - `Without custom comments`: Show only PRs with no custom comments
+- **Other notes**: Filter by presence/absence of "Other notes" text field
+  - `Any (with or without)`: Show all PRs regardless of other notes
+  - `With other notes`: Show only PRs that have other notes text entered
+  - `Without other notes`: Show only PRs with no other notes text
+- **PR difficulty**: Filter by difficulty rating (1-5 scale) or unset
+  - `Any (set or not set)`: Show all PRs regardless of difficulty setting
+  - `1` through `5`: Show only PRs with that specific difficulty rating
+  - `Not set`: Show only PRs where difficulty has not been assigned
+- **Rally stories**: Filter by presence/absence of Rally story references
+  - `Any (with or without)`: Show all PRs regardless of Rally stories
+  - `With Rally stories`: Show only PRs that have Rally story references entered
+  - `Without Rally stories`: Show only PRs with no Rally story references
+- **Rally links**: Filter by presence/absence of Rally links
+  - `Any (with or without)`: Show all PRs regardless of Rally links
+  - `With Rally links`: Show only PRs that have Rally links entered
+  - `Without Rally links`: Show only PRs with no Rally links
+- **Analysis of PR**: Filter by presence/absence of PR analysis text
+  - `Any (with or without)`: Show all PRs regardless of analysis
+  - `With analysis`: Show only PRs that have analysis text entered
+  - `Without analysis`: Show only PRs with no analysis text
+
+These filters are applied locally and work in combination with other visibility filters (labels, authors, approvers, etc.). All custom metadata filters default to "Any" (no filtering).
+
 On page load, the UI automatically reads stored data and renders sections without requiring a new run.
 
 Date columns in the web table (`YOUR LAST ACTIVITY` and `MERGED AT`) use the same display format as the CLI output (`Mon D, YYYY H:MM AM/PM`, local time).
 
 Stored PR table rows now include a `LABELS` column and each row persists the PR label names in JSON.
 
-The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available.
+The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (commits whose `messageHeadline` starts with "Merge" are excluded, matching the "ignore merge-only commits" attention rule's definition), deduped so a commit author who is also the PR author only appears once.
 
 Open and draft PR sections are sorted by PR number descending (highest first). Closed PRs sort by close date descending. Merged PRs sort by merge date descending.
 
 The PR section headings are expandable/collapsible in the UI: `Open PRs`, `Draft PRs`, and `Latest Merged PRs` are expanded by default, while `Closed PRs` is collapsed by default. Each heading also shows total PR count and a `Needs attention` count for that section.
+
+Smart Accordion Groups:
+
+The UI features **smart accordion groups** that appear above lifecycle sections (Open, Draft, Closed, Merged). Smart groups provide workflow-based organization where PRs can appear in multiple sections simultaneously:
+
+- **🚩 Flagged**: PRs marked with the flagged flag (collapsed by default)
+  - Purpose: User-flagged PRs for quick reference
+  - Example use: Star important PRs that need close monitoring
+- **👁️ In Review**: PRs marked with the in-review flag (expanded by default)
+  - Purpose: Active code review workflow tracking
+  - Example use: PRs currently undergoing review cycles
+- **⚠️ Needs Attention**: PRs requiring action based on your "Needs Attention rules" settings (expanded by default)
+  - Purpose: High-priority PRs needing immediate attention
+  - Shows: Open, Draft, and Merged PRs (excludes Closed PRs)
+  - Uses the SAME logic as the existing needs attention flag/icon shown in PR rows
+  - Respects your custom "Needs Attention" configuration (CHANGED status, pending comments, no activity, etc.)
+  - Independent of the `In Review` flag/checkbox - marking a PR in-review does not, by itself, make it need attention or affect its `STATUS`; it only controls membership in the `In Review` smart group above and the row's `In Review` checkbox state
+  - Configuration controlled via `user-defaults.json` (see "Needs Attention Configuration" section below)
+  - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
+- **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
+  - Purpose: Personal reference for active PRs you're engaged with
+  - Only shows OPEN or DRAFT PRs (excludes merged/closed to keep section actionable)
+  - Shows PRs where you are:
+    - The author
+    - A commenter (have left comments)
+    - A reviewer (have submitted reviews)
+    - A requested reviewer
+    - An assignee
+  - Example use: Track all active PRs requiring your attention or where you've contributed
+
+Smart group features:
+
+- **Non-exclusive membership**: A single PR can appear in multiple smart groups AND its lifecycle section
+- **Two-tier hierarchy**: Smart groups (Tier 1) display above lifecycle sections (Tier 2)
+- **Lifecycle badges**: When a PR appears in a smart group, a small pill-shaped badge indicates its lifecycle state:
+  - 🟢 **OPEN** (green pill) - Active open PR
+  - ⚪ **DRAFT** (gray pill) - Draft PR
+  - 🔵 **MERGED** (purple pill) - Merged PR
+  - 🔴 **CLOSED** (red pill) - Closed PR (only in Flagged/In Review groups)
+  - Badges only appear in smart groups (not in lifecycle sections where they would be redundant)
+- **Color-coded sections**: Each smart group has unique visual styling (colored border and gradient background)
+- **State persistence**:
+  - Section open/closed state persists across page refreshes and auto-refresh cycles
+  - "More Insights" expand/collapse state persists independently per section
+  - When a PR appears in multiple sections, each section maintains its own "More Insights" state
+  - Example: PR #123 can have "More Insights" expanded in "Needs Attention" but collapsed in "Open PRs"
+- **Smart defaults**:
+  - Smart groups: Actionable groups (In Review, Needs Attention) expand by default; reference groups (Flagged, Open PRs I'm Involved In) collapse by default
+  - Lifecycle sections: All sections (Open PRs, Draft PRs, Closed PRs, Latest Merged PRs) collapse by default to reduce clutter
+
+Visual layout example:
+
+```text
+┌─ SMART GROUPS ─────────────────────────┐
+│ ▼ 🚩 Flagged (3)                       │ ← Red border, pink gradient
+│ ▼ 👁️ In Review (5)                     │ ← Blue border, blue gradient
+│ ▼ ⚠️ Needs Attention (2)               │ ← Orange border, yellow gradient
+│ ▼ 💬 Open PRs I'm Involved In (8)      │ ← Purple border, purple gradient
+├─ LIFECYCLE SECTIONS ───────────────────┤
+│ ▼ Open PRs (12)                        │
+│ ▼ Draft PRs (3)                        │
+│ ▶ Closed PRs (5)                       │
+│ ▼ Latest Merged PRs (20)               │
+└──────────────────────────────────────────┘
+```
 
 Each stored row also persists branch metadata used by expandable row insights:
 
@@ -297,8 +542,10 @@ The table also includes:
 - a leading attention-icon column (blank header)
 - a dedicated `CHK` column
 - expandable per-row insights in `TITLE` showing source branch, merge target branch, CHK state, mergeability state, source updated timestamp, and baseline timestamp
+  - The source branch value has a small copy-icon button beside it to copy the branch name to the clipboard (e.g. for `git checkout`).
 - expandable per-row insights in `TITLE` also show approver names + approval timestamps and open (unresolved) conversation count
 - expandable per-row insights in `TITLE` also show requested reviewers and assigned users
+- The `TITLE` cell itself also has a copy-icon button beside the PR title that copies `<title> #<number>` to the clipboard - when pasted into a rich-text target (Slack, docs, email) the `#<number>` portion is a link to the PR on GitHub; plain-text targets get `<title> #<number>` with no markup.
 - expandable per-row insights in `TITLE` also show GitHub viewed-files progress (`viewed/changed`, like `29/37 viewed`)
 - expandable per-row insights in `TITLE` also show GitHub-style line-change totals when available (`<files> changed, +<additions>, -<deletions>, <total> lines changed`)
 - expandable insights include a compact colored badge strip for `STATUS`, `CHK`, and `MRG`
@@ -337,14 +584,20 @@ Change Detection Filters:
   - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
   - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
-- Built-in filters (always active):
-  - Approved reviews are always ignored
-  - Merge commits from main are always ignored (pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`)
+- Built-in filters:
+  - **Approved reviews are always ignored** (cannot be disabled)
+  - **Built-in merge commit filter** (configurable):
+    - Pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`
+    - Enabled by default via "Use built-in merge commit filter" checkbox
+    - Can be disabled to define custom merge patterns or allow all merge commits to trigger CHANGED status
+    - Useful for repos with different merge workflows (e.g., develop → main, custom branch names)
+    - When disabled, only user-defined commit patterns apply
 - Regex patterns for commits:
   - Patterns use PCRE-compatible syntax (jq's `test()` function)
   - Patterns are tested against commit message headline (first line only)
   - Multiple patterns are combined with OR logic
-  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits)
+  - Patterns work in addition to built-in merge filter (when enabled) or as standalone filters (when built-in is disabled)
+  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits), `^Merge branch 'develop'` (custom merge pattern)
 
 Comments vs Reviews vs Commits:
 
@@ -352,7 +605,9 @@ Comments vs Reviews vs Commits:
 - **Reviews** (✅) are formal code review submissions with states (APPROVED, CHANGES_REQUESTED, COMMENTED) created via the "Review changes" button. They affect PR merge status and appear with special badges.
 - **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is pattern-based, not author-based.
 
-Example configuration in `user-defaults.json`:
+Example configurations in `user-defaults.json`:
+
+**Default configuration (built-in merge filter enabled):**
 
 ```json
 {
@@ -369,6 +624,27 @@ Example configuration in `user-defaults.json`:
   }
 }
 ```
+
+Note: `useBuiltinMergePattern` defaults to `true` if omitted.
+
+**Custom merge pattern configuration (built-in disabled):**
+
+```json
+{
+  "repo": "owner/repo",
+  "changeFilters": {
+    "useBuiltinMergePattern": false,
+    "ignoreCommitPatterns": [
+      "^Merge branch '(develop|staging)'",
+      "^Merge pull request #",
+      "^docs:",
+      "^test:"
+    ]
+  }
+}
+```
+
+This configuration disables the built-in merge filter and defines custom merge patterns for repos that merge from develop/staging branches.
 
 Scope mode behavior:
 
@@ -395,6 +671,46 @@ Insights behavior notes:
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
   - If viewer identity cannot be determined, it safely falls back to total open conversations and omits `with me` wording.
 
+### Custom "More insights" hook
+
+`More insights` can render a `Custom insights` section populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
+
+To enable it:
+
+1. Write an executable script (any language with a shebang, or a compiled binary) that reads a single JSON argument and prints HTML on stdout.
+2. Keep it out of the repo, or under the gitignored `local-hooks/` directory if you'd rather keep it alongside the checkout.
+3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its absolute path before starting the server. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run.
+
+The script receives one JSON-encoded argument shaped like:
+
+```json
+{
+  "repoOwner": "acme-org",
+  "repoName": "acme-repo",
+  "repo": "acme-org/acme-repo",
+  "prId": "123",
+  "prUrl": "https://github.com/acme-org/acme-repo/pull/123",
+  "sourceBranch": "feature/x",
+  "targetBranch": "main",
+  "title": "Add feature",
+  "description": "",
+  "status": "open",
+  "author": "octocat",
+  "lastCommitDate": "2026-01-02T00:00:00Z",
+  "lastCommitId": "abc1234"
+}
+```
+
+Notes and caveats:
+
+- `status` is one of `open`, `draft`, `merged`, or `closed`.
+- `description` is currently always empty - the PR body/description isn't part of the data this dashboard persists, so there's nothing to pass through yet.
+- `description` is truncated to 4000 characters if it's ever populated, to stay well under OS command-line length limits (the whole JSON blob is passed as a single argument).
+- The script is invoked via `bash -c 'exec "$0" "$@"' <scriptPath> <jsonArg>` (not spawned directly), so it's launched through Git Bash the same way every other script in this app is - this matters on Windows, where a script's shebang line is only honored when something (here, bash) actually interprets it; the OS itself won't.
+- Anything other than well-formed HTML on stdout is discarded: an unset/missing/non-executable script, a timeout, a non-zero exit, or empty output all just mean the `Custom insights` section doesn't render. Nothing is shown to the end user for a script that isn't configured or fails.
+- **When a *configured* script does fail**, the browser console logs a `[insights hook] ...` warning with the failure reason (exit code/timeout plus up to 500 characters of the script's own stderr) so you have something to debug from. That same detail is also in the `GET /view-prs/insights-hook` response body. Because this reaches every browser viewing that PR row (not just whoever maintains the script), avoid having the script print anything sensitive (tokens, internal paths, environment dumps) to stderr on failure.
+- The returned HTML is sanitized client-side with DOMPurify (script execution/event handlers stripped, `<style>`/`<link>`/`<base>`/`<meta>`/`<form>` tags forbidden since those can affect the whole page - or, for `<form>`, be used to phish input - rather than just this section, and `target="_blank"` links get `rel="noopener noreferrer"` added automatically) and rendered inside a CSS-contained box (`contain: layout paint style`, scrollable, capped height) so a hook's own layout/positioning can't bleed into or cover the rest of the page. None of that makes the script itself sandboxed, though - it's still something you're trusting to run locally with your server's permissions, the same as any other script you'd add to this repo.
+
 In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:...]` tags.
 
 The UI includes:
@@ -404,6 +720,10 @@ The UI includes:
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
 - `Apply ack only` (ack updates only)
 - `Apply clear only` (clear updates only)
+- `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
+  - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
+  - `↻ Labels` reloads the dropdown for the current repo
+- per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
 - `Export` management tab to build and export JSON from currently visible PR rows
 - `Actor Names` management tab to view and edit both display-name mappings and canonical login aliases
@@ -482,11 +802,13 @@ The page calls:
 
 - `POST /view-prs/run`
 - `POST /view-prs/ack` (acknowledgment-only updates; no full PR refresh)
+- `GET /view-prs/labels?repo=<owner/name>` (list a repo's existing GitHub labels, for the label picker)
+- `POST /view-prs/labels/apply` (apply an existing GitHub label to one or more PR numbers)
 - `POST /view-prs/notes` (persist notes for a specific PR)
 - `GET /view-prs/author-comments?authorLogin=<login>` (fetch manual comments for selected author)
 - `POST /view-prs/author-comments` (create a manual author comment)
 - `PUT /view-prs/author-comments` (edit an existing manual author comment)
-- `GET /view-prs/diff?repo=<owner/name>&prNumber=<number>` (read cached PR diff; refreshes when commit fingerprint changed)
+- `GET /view-prs/diff?repo=<owner/name>&prNumber=<number>` (read cached PR diff; refreshes when the commit fingerprint changes - for a merged PR that fingerprint depends only on the commit set, so it never changes again once merged)
 - `GET /view-prs/user-defaults` (read persisted default filter/visibility/attention overrides)
 - `PUT /view-prs/user-defaults` (save persisted default filter/visibility/attention overrides)
 - `GET /view-prs/data` (load persisted data for display)
@@ -494,6 +816,8 @@ The page calls:
 - `GET /view-prs/data-manifest` (per-PR row-version manifest for selective polling)
 - `POST /view-prs/data-delta` (retrieve only changed PR rows by PR number)
 - `GET /view-prs/scheduler` (scheduler state, including `activePrNumbers` for per-PR in-progress indicators)
+  - The same per-row spinner also lights up while a user-initiated Ack, Clear, `↻ Update`, or `+ Label` request is in flight for that PR (independent of the scheduler's own `activePrNumbers`), and clears once that request settles (success, failure, or error) - so a row stays visibly busy for exactly as long as its own request takes.
+  - Also includes `quickCheckIntervalMinutes`, `mergedFullSweepIntervalMinutes`, `lastQuickCheckAt`, `lastQuickCheckError`, `lastMergedDrainAt`, `pendingOpenCount`, and `pendingMergedClosedCount` for the two-tier scheduler described above.
 
 Selective polling behavior:
 
@@ -577,6 +901,28 @@ Example missing dependency response:
 }
 ```
 
+## Date Columns
+
+### Last Activity Column
+
+The "LAST ACTIVITY" column displays two lines of information:
+
+- **Line 1 (bold)**: PR's last activity date
+  - Shows `mergedAt` if the PR is merged
+  - Shows `closedAt` if the PR is closed (but not merged)
+  - Otherwise shows `sourceUpdatedAt` or `updatedAt` (last commit timestamp)
+  - Tooltip: "Merged at", "Closed at", or "Last commit"
+- **Line 2 (muted)**: Your last activity on the PR
+  - Format: "You: `[datetime]`"
+  - Shows the `baseline` field (your last interaction with the PR)
+  - Tooltip: "Your last activity on this PR"
+
+**Data sources:**
+- PR activity (Line 1): `mergedAt` (highest priority) → `closedAt` → `sourceUpdatedAt` → `updatedAt`
+- Viewer activity (Line 2): `baseline` field (always shows YOUR last interaction, never the merge/close date)
+
+This two-line format helps you quickly see both when the PR was last updated and when you last interacted with it.
+
 ## Troubleshooting
 
 - `gh: command not found`
@@ -588,10 +934,10 @@ Example missing dependency response:
 - `Permission denied` when running scripts
   - Run `chmod +x run-prs src/script/check-open-pr-updates.sh` from `view-prs`.
 - `npm start --help` shows npm help instead of script help
-  - Use `./run-prs --help` or `npm run start -- --help`.
+  - `npm start` launches the React dev servers, not the CLI script - use `./run-prs --help` or `npm run cli-view -- --help` instead.
 - Web UI run fails with endpoint/network errors
   - Start server from repo root with `npm start` and use `http://localhost:9000/view-prs/index.html`.
-- Ack/Clear buttons fail in UI
+- Ack toggle button fails in UI
   - Verify the server has restarted after updates and `POST /view-prs/ack` is available.
 - Page stays on "Not run" and "Loading..."
   - Hard refresh the browser and ensure the server is restarted so latest `view-prs/src/ui/index.html` is served.
@@ -707,6 +1053,13 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
+Below the summary, assigned users and requested reviewers show as small initials badges:
+
+- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the `More insights` reviewers list.
+- The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
+- A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
+- A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
+
 ## Check indicators in UI vs script
 
 - Script output/title metadata includes `CHK:<state>` where `<state>` is one of `PASS`, `FAIL`, `RUN`, `SKIP`, `NA`.
@@ -727,18 +1080,30 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - Store location: `view-prs/data/check-open-pr-updates.user-state.json` under `ackByRepo`
 - Locking is used to avoid concurrent write corruption.
 - Acks are namespaced per repo.
+- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack". This does not set the same `reverifyByRepo` flag the manual `--ack-clear`/"Ack'd" button click does, since the row is already `CHANGED` for a real reason.
 
 ### Ack commands
 
 - `--ack <numbers>`: mark one or more PRs as acknowledged
   - supports comma-separated (`--ack 912,921`) or repeated flags (`--ack 912 --ack 921`)
 - `--ack-clear <numbers>`: clear ack for one or more PRs
-- `--in-review <numbers>`: mark one or more PRs as in-review
+- `--in-review <numbers>`: mark one or more PRs as in-review (a manual, UI-only flag - it controls the `In Review` smart group and row checkbox state, and does not change `STATUS` or the Needs Attention icon)
 - `--in-review-clear <numbers>`: clear in-review toggle for one or more PRs
 - `--flagged <numbers>`: mark one or more PRs as flagged
 - `--flagged-clear <numbers>`: clear flagged toggle for one or more PRs
 - `--ack-changed`: during this run, auto-ack all `CHANGED` open non-draft PRs
 - `--ack-only`: apply ack/clear/in-review/flagged options only, skip PR retrieval
+
+## Label management
+
+Applies an existing GitHub label (never a newly typed one) to one or more PRs directly via `gh pr edit --add-label`.
+
+- `GET /view-prs/labels?repo=<owner/name>` lists every label currently defined in the repo's GitHub Labels settings (via `gh label list`), including labels not yet applied to any PR.
+- `POST /view-prs/labels/apply` with `{ repo, label, prNumbers }` (`prNumbers` is a comma-separated string, same shape as the Ack endpoints) applies the label to each PR number, then fetches just that PR's current label set (`gh pr view --json labels`) and patches it directly into the stored `data.labels` field for that entry.
+  - Deliberately does NOT reuse `/view-prs/ack`'s targeted-refresh pattern (re-running `check-open-pr-updates.sh --pr <n>`), since a full refresh also re-fetches comments, reviews, file diffs, and review threads - for a PR with a lot of history (especially merged PRs) that can take minutes, leaving the just-applied label invisible until it finishes or the next scheduled auto-refresh catches up. The direct label-only patch stays fast regardless of a PR's size.
+  - The patch acquires the same lock directory (`check-open-pr-updates.data.lock`) the shell script's `acquire_pr_state_lock`/`release_pr_state_lock` use for `check-open-pr-updates.data.json`, so it can't interleave its read-modify-write with a concurrent script run.
+- Per-PR failures (invalid PR number, `gh` error, no matching stored entry) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
+- Both the per-row `+ Label` dropdown and the "Run & Filter" tab's `Apply label` control call this same endpoint.
 
 ## Local PR state file
 
@@ -754,8 +1119,7 @@ Behavior:
 - Each run updates (upserts) entries for PRs processed in that run.
 - PR IDs not processed in a run are **not removed** from the file.
 - Display filters do not trim what is stored in this file.
-- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current.
-- If needed for performance experiments, cache reuse can be re-enabled by setting `VIEW_PRS_ALLOW_CACHE_REUSE=1`.
+- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current. See [Performance Toggle](#performance-toggle) (`VIEW_PRS_SKIP_UNCHANGED`) to re-enable per-row cache reuse within a full run - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
 
 Top-level structure:
 
@@ -771,7 +1135,7 @@ Additional notes:
 - Existing inline-heavy rows can be migrated once with `npm run migrate:pr-detail:v1` from `view-prs/`.
 - `activityTimeline` now collapses only consecutive runs of the same actor and activity type, so interruptions by another person or another type of event are preserved.
 - `reviewThreads`, `commentEvents`, and `activityEvents` keep the richer raw history needed for later analytics and reviewer-behavior views.
-- **Activity Timeline filtering**: The Activity timeline in PR insights displays all dates with activity, shows weekday dates (Mon-Fri) without activity as a dash ("-"), and omits weekend dates (Sat-Sun) without activity. This reduces visual clutter while maintaining visibility of business-week activity patterns.
+- **Activity Timeline filtering**: The Activity timeline in PR insights displays all dates with activity, and omits weekend dates (Sat-Sun) without activity. A run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row (with the date range) instead of a dash row per day; an isolated single no-activity weekday still shows its own dash ("-") row. This reduces visual clutter while maintaining visibility of business-week activity patterns.
 - The page now includes a `Review Statistics` tab with dedicated controls (`Sort by`, `Filter`, `Min comments`, `Top reviewers`) to rank and focus reviewer activity. Reviewer names are resolved using `actorsMap` display names. The statistics view features prominent graph cards:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
@@ -783,7 +1147,7 @@ Additional notes:
 ## Modifier options
 
 ```text
--r, --repo <owner/name>      Repository to scan (default: optum-rx-clinicalproducts/orx-cpp-mp-uis)
+-r, --repo <owner/name>      Repository to scan
 -p, --pr <number>            Inspect a single PR number only
     --label <name(s)>        Include only PRs that have these label(s), comma-separated
     --exclude-label <name(s)> Exclude PRs that have these label(s), comma-separated
@@ -793,7 +1157,7 @@ Additional notes:
     --jobs <number>          Parallel workers for API prefetch (default: 6)
     --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
     --ack-clear <numbers>    Clear acknowledgment for PR number(s)
-  --in-review <numbers>    Mark PR number(s) as in-review (forces NO_CHANGE -> CHANGED)
+  --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
   --in-review-clear <numbers> Clear in-review toggle for PR number(s)
   --flagged <numbers>      Mark PR number(s) as flagged
   --flagged-clear <numbers> Clear flagged toggle for PR number(s)
@@ -805,6 +1169,8 @@ Additional notes:
     --hide-reason            Hide inline changed reason in STATUS
     --quiet                  Hide run metadata header
     --open <mode>            Browser behavior: all | changed | none (default: all)
+    --quick-check            List PRs and report which changed (by updatedAt) without
+                              fetching full details/diffs; prints JSON to stdout and exits
 -h, --help                   Show this help
 ```
 
@@ -850,7 +1216,7 @@ Additional notes:
 # Lightweight clear-only update (no PR fetch)
 ./run-prs --ack-clear 912 --ack-only
 
-# Mark a PR in-review (forces NO_CHANGE -> CHANGED)
+# Mark a PR in-review (UI-only flag; does not change STATUS)
 ./run-prs --in-review 923 --ack-only
 
 # Clear in-review for a PR

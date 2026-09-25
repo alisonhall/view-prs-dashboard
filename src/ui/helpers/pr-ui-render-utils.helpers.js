@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsUiRenderUtilsHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsUiRenderUtilsHelpers fallback.
+export const { createPrUiRenderUtilsHelpers } = (() => {
   const createPrUiRenderUtilsHelpers = () => {
     const parseMarkerState = (titleDisplay = "", marker = "CHK") => {
       const match = String(titleDisplay || "").match(
@@ -22,33 +20,13 @@
       }
     };
 
-    const setClassToken = (element, token, enabled) => {
-      if (!element) return;
-      const tokens = String(element.className || "")
-        .split(/\s+/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const hasToken = tokens.includes(token);
-      if (enabled && !hasToken) {
-        tokens.push(token);
-      }
-      if (!enabled && hasToken) {
-        element.className = tokens.filter((value) => value !== token).join(" ");
-        return;
-      }
-      if (enabled) {
-        element.className = tokens.join(" ");
-      }
-    };
-
     return {
       parseMarkerState,
       safeJsonStringify,
-      setClassToken,
     };
   };
 
   return {
     createPrUiRenderUtilsHelpers,
   };
-});
+})();

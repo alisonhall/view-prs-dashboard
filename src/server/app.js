@@ -49,200 +49,71 @@ const {
 } = require("./helpers/view-prs-data-helpers");
 const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
 const {
+  runMigration: runPrDetailMigration,
+} = require("../script/migrate-pr-detail-sidecar-v1");
+const {
   createViewPrsActorHelpers,
 } = require("./helpers/view-prs-actor-helpers");
+const { createAppConfig } = require("./config/app-config");
+const { createFileIoHelpers } = require("./helpers/file-io-helpers");
+const { createCommandExecutionHelpers } = require("./helpers/command-execution-helpers");
+const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 
 // Configuration and constants
-const defaultViewPrsRepo = "optum-rx-clinicalproducts/orx-cpp-mp-uis";
-const requiredCommands = ["bash", "gh", "jq"];
-const requiredPackages = ["marked"];
-
-// Setup paths relative to view-prs directory
+// Initialize configuration from config module
 const viewPrsDir = path.resolve(__dirname, "../..");
-const viewPrsUiDir = path.join(viewPrsDir, "src/ui");
-const viewPrsUiIndexFile = path.join(viewPrsDir, "src/ui/index.html");
-const viewPrsRunScriptRelativePath = "src/script/check-open-pr-updates.sh";
-const viewPrsBackfillManagerRelativePath =
-  "src/backfill/backfill-missing-bg.sh";
-const _defaultSchedulerFile = path.join(
+const config = createAppConfig({
   viewPrsDir,
-  "data/check-open-pr-updates.scheduler.json",
-);
-const viewPrsSchedulerFile =
-  process.env.VIEW_PRS_SCHEDULER_FILE || _defaultSchedulerFile;
-const viewPrsLegacySchedulerFile = path.join(
-  viewPrsDir,
-  "check-open-pr-updates.scheduler.json",
-);
-const _defaultDataFile = path.join(
-  viewPrsDir,
-  "data/check-open-pr-updates.data.json",
-);
-const viewPrsDataFile = process.env.VIEW_PRS_DATA_FILE || _defaultDataFile;
-const _defaultPrDetailDir = path.join(path.dirname(viewPrsDataFile), "pr-details");
-const viewPrsPrDetailDir =
-  process.env.VIEW_PRS_PR_DETAIL_DIR || _defaultPrDetailDir;
-const _defaultUserStateFile = path.join(
-  viewPrsDir,
-  "data/check-open-pr-updates.user-state.json",
-);
-const viewPrsUserStateFile =
-  process.env.VIEW_PRS_USER_STATE_FILE || _defaultUserStateFile;
-const _defaultAuthorCommentsFile = path.join(
-  path.dirname(viewPrsUserStateFile),
-  "check-open-pr-updates.author-comments.json",
-);
-const viewPrsAuthorCommentsFile =
-  process.env.VIEW_PRS_AUTHOR_COMMENTS_FILE || _defaultAuthorCommentsFile;
-const _defaultBackupDir = path.join(viewPrsDir, "data/backups");
-const viewPrsBackupDir = process.env.VIEW_PRS_BACKUP_DIR || _defaultBackupDir;
-const _defaultPrDiffDir = path.join(viewPrsDir, "data/pr-diffs");
-const viewPrsPrDiffDir = process.env.VIEW_PRS_PR_DIFF_DIR || _defaultPrDiffDir;
+  env: process.env,
+  isTestEnv: process.env.NODE_ENV === "test",
+});
 
-// Hard enforcement: tests MUST redirect state writes to temp paths.
-if (process.env.NODE_ENV === "test") {
-  if (
-    viewPrsDataFile === _defaultDataFile ||
-    viewPrsUserStateFile === _defaultUserStateFile
-  ) {
-    throw new Error(
-      "[view-prs] NODE_ENV=test but real production state file paths are in use. " +
-      "Set VIEW_PRS_DATA_FILE and VIEW_PRS_USER_STATE_FILE env vars to temp paths.",
-    );
-  }
-}
-const viewPrsBackupRetention = Math.max(
-  1,
-  Number.parseInt(process.env.VIEW_PRS_BACKUP_RETENTION || "50", 10) || 50,
-);
-const _defaultActorNameCacheFile = path.join(
-  viewPrsDir,
-  "data/actor-name-cache.json",
-);
-const viewPrsActorNameCacheFile =
-  process.env.VIEW_PRS_ACTOR_NAME_CACHE_FILE || _defaultActorNameCacheFile;
-const _defaultActorLoginAliasesFile = path.join(
-  viewPrsDir,
-  "data/actor-login-aliases.json",
-);
-const viewPrsActorLoginAliasesFile =
-  process.env.VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE ||
-  _defaultActorLoginAliasesFile;
-const viewPrsBackfillManagerScript = path.join(
-  viewPrsDir,
+// Extract commonly used config values for compatibility
+const {
+  defaultViewPrsRepo,
+  viewPrsUiDir,
+  viewPrsUiIndexFile,
+  viewPrsDataFile,
+  viewPrsUserStateFile,
+  viewPrsAuthorCommentsFile,
+  viewPrsSchedulerFile,
+  viewPrsLegacySchedulerFile,
+  viewPrsPrDetailDir,
+  viewPrsBackupDir,
+  viewPrsPrDiffDir,
+  viewPrsRunScriptRelativePath,
   viewPrsBackfillManagerRelativePath,
-);
-const _defaultActionLogFile = path.join(viewPrsDir, "data/action-log.json");
-const viewPrsActionLogFile =
-  process.env.VIEW_PRS_ACTION_LOG_FILE || _defaultActionLogFile;
+  viewPrsBackfillManagerScript,
+  viewPrsBackfillPidFile,
+  viewPrsBackfillLogFile,
+  viewPrsUserDefaultsFile,
+  viewPrsActorNameCacheFile,
+  viewPrsActorLoginAliasesFile,
+  viewPrsActionLogFile,
+  viewPrsAutoIntervalMs,
+  viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
+  viewPrsAutoCircuitFailureThreshold,
+  viewPrsAutoCircuitCooldownMs,
+  viewPrsAutoScriptTimeoutMs,
+  viewPrsManualScriptTimeoutMs,
+  viewPrsQuickCheckScriptTimeoutMs,
+  viewPrsAckScriptTimeoutMs,
+  viewPrsAckRefreshScriptTimeoutMs,
+  viewPrsAckTotalRefreshTimeoutMs,
+  viewPrsBackfillStatusTimeoutMs,
+  viewPrsBackfillActionTimeoutMs,
+  viewPrsPrDiffTimeoutMs,
+  viewPrsPrDiffConcurrency,
+  viewPrsViewerLoginCacheTtlMs,
+  viewPrsInsightsHookTimeoutMs,
+  viewPrsBackupRetention,
+} = config;
 
-if (process.env.NODE_ENV === "test") {
-  if (
-    viewPrsActorNameCacheFile === _defaultActorNameCacheFile ||
-    viewPrsActorLoginAliasesFile === _defaultActorLoginAliasesFile
-  ) {
-    throw new Error(
-      "[view-prs] NODE_ENV=test but real actor cache file paths are in use. " +
-      "Set VIEW_PRS_ACTOR_NAME_CACHE_FILE and VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE env vars to temp paths.",
-    );
-  }
-}
-const viewPrsBackfillPidFile = path.join(
-  viewPrsDir,
-  "data/backfill-missing.pid",
-);
-const viewPrsBackfillLogFile = path.join(
-  viewPrsDir,
-  "data/backfill-missing.log",
-);
-const viewPrsUserDefaultsFile = path.join(
-  viewPrsDir,
-  "data/user-defaults.json",
-);
-const viewPrsAutoIntervalMs = 15 * 60 * 1000;
-const viewPrsManualCooldownMs = 15 * 60 * 1000;
-const viewPrsAutoCircuitFailureThreshold = Math.max(
-  1,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_CIRCUIT_FAILURE_THRESHOLD || "3",
-    10,
-  ) || 3,
-);
-const viewPrsAutoCircuitCooldownMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_CIRCUIT_COOLDOWN_MS || "1800000",
-    10,
-  ) || 1800000,
-);
-const viewPrsAutoScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_AUTO_SCRIPT_TIMEOUT_MS || "900000",
-    10,
-  ) || 900000,
-);
-const getViewPrsAutoRepoConcurrency = () =>
-  Math.max(
-    1,
-    Number.parseInt(
-      process.env.VIEW_PRS_AUTO_REPO_CONCURRENCY || "2",
-      10,
-    ) || 2,
-  );
-const viewPrsManualScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_MANUAL_SCRIPT_TIMEOUT_MS || "1200000",
-    10,
-  ) || 1200000,
-);
-const viewPrsAckScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(process.env.VIEW_PRS_ACK_SCRIPT_TIMEOUT_MS || "600000", 10) ||
-  600000,
-);
-const viewPrsAckRefreshScriptTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_ACK_REFRESH_TIMEOUT_MS || "300000",
-    10,
-  ) || 300000,
-);
-const viewPrsAckTotalRefreshTimeoutMs = Math.max(
-  60 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_ACK_TOTAL_REFRESH_TIMEOUT_MS || "480000",
-    10,
-  ) || 480000,
-);
-const viewPrsBackfillStatusTimeoutMs = Math.max(
-  10 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_BACKFILL_STATUS_TIMEOUT_MS || "20000",
-    10,
-  ) || 20000,
-);
-const viewPrsBackfillActionTimeoutMs = Math.max(
-  10 * 1000,
-  Number.parseInt(
-    process.env.VIEW_PRS_BACKFILL_ACTION_TIMEOUT_MS || "120000",
-    10,
-  ) || 120000,
-);
-const viewPrsPrDiffTimeoutMs = Math.max(
-  30 * 1000,
-  Number.parseInt(process.env.VIEW_PRS_PR_DIFF_TIMEOUT_MS || "120000", 10) ||
-    120000,
-);
-const viewPrsPrDiffConcurrency = Math.max(
-  0,
-  Math.min(
-    4,
-    Number.parseInt(process.env.VIEW_PRS_PR_DIFF_CONCURRENCY || "2", 10) || 2,
-  ),
-);
-const viewPrsViewerLoginCacheTtlMs = 5 * 60 * 1000;
+// Note: getViewPrsAutoRepoConcurrency is now a constant, not a function
+// For compatibility, wrap it
+const getViewPrsAutoRepoConcurrency = () => config.viewPrsPrDiffConcurrency;
 
 let cachedViewPrsViewerLogin = "";
 let cachedViewPrsViewerLoginAt = 0;
@@ -259,76 +130,168 @@ const viewPrsSchedulerState = {
   consecutiveAutoFailures: 0,
   autoCircuitOpenUntil: null,
   lastAutoCircuitOpenedAt: null,
+  isQuickCheckInProgress: false,
+  lastQuickCheckAt: null,
+  lastQuickCheckAttemptAt: null,
+  lastQuickCheckSkipReason: null,
+  lastQuickCheckError: null,
+  // Set when a quick check is skipped specifically because a full auto
+  // refresh was already running (see runViewPrsQuickCheck's own guard) -
+  // consumed by runViewPrsAutoRefresh's finally block to fire an immediate
+  // catch-up quick check as soon as that blocking refresh finishes, instead
+  // of leaving detection of anything that changed in the meantime (e.g. a
+  // brand-new PR) to wait for the next periodic quick-check tick, which for
+  // a slow multi-repo sweep could be a much longer wait than the quick
+  // check's ~5 minute interval would suggest.
+  quickCheckSkippedWhileAutoRunInProgress: false,
+  lastMergedDrainAt: null,
+  pendingByRepo: {},
 };
 
-const VIEW_PRS_PROGRESS_PREFIX = "__VIEW_PRS_PROGRESS__:";
 const viewPrsActivePrCounts = new Map();
 
-const syncSchedulerActivePrNumbers = () => {
-  viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()].sort(
-    (left, right) => Number(left) - Number(right),
-  );
+// Initialize scheduler helpers (uses only fs, path, config - no circular deps)
+const schedulerHelpers = createSchedulerHelpers({
+  fs,
+  path,
+  viewPrsActionLogFile: config.viewPrsActionLogFile,
+});
+
+// Extract scheduler helper functions
+const {
+  appendActionLogEntry: _appendActionLogEntry,
+  readActionLog: _readActionLog,
+} = schedulerHelpers;
+
+// Initialize file I/O helpers (uses only fs, path - no circular deps)
+const fileIoHelpers = createFileIoHelpers({ fs, path });
+
+// Extract file I/O helper functions
+const {
+  readJsonFileIfExists: _readJsonFileIfExists,
+  readJsonFileIfExistsDetailed: _readJsonFileIfExistsDetailed,
+  safeReadJsonFile: _safeReadJsonFile,
+  writeJsonFile: _writeJsonFile,
+  writeJsonFileBestEffort: _writeJsonFileBestEffort,
+} = fileIoHelpers;
+
+// viewPrsActivePrCounts is keyed by "repo::prNumber", not prNumber alone -
+// PR numbers are only unique within a repo, and the auto-refresh fan-out
+// (getViewPrsAutoRefreshRepos/runRepoRefresh) tracks several repos'
+// in-progress PRs at once, so a bare-number key would let PR #5 in one repo
+// show as "active" for PR #5 in a completely different repo on the client.
+const ACTIVE_PR_KEY_SEPARATOR = "::";
+
+const buildActivePrKey = (prNumber, repo) =>
+  `${String(repo || "").trim()}${ACTIVE_PR_KEY_SEPARATOR}${prNumber}`;
+
+const parseActivePrKey = (key) => {
+  const separatorIndex = key.indexOf(ACTIVE_PR_KEY_SEPARATOR);
+  return {
+    repo: separatorIndex === -1 ? "" : key.slice(0, separatorIndex),
+    prNumber:
+      separatorIndex === -1
+        ? key
+        : key.slice(separatorIndex + ACTIVE_PR_KEY_SEPARATOR.length),
+  };
 };
 
-const incrementActivePrNumber = (prNumber) => {
+const syncSchedulerActivePrNumbers = () => {
+  viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()]
+    .map(parseActivePrKey)
+    .sort((left, right) => {
+      if (left.repo !== right.repo) {
+        return left.repo < right.repo ? -1 : 1;
+      }
+      return Number(left.prNumber) - Number(right.prNumber);
+    });
+};
+
+const incrementActivePrNumber = (prNumber, repo) => {
   const safePrNumber = String(prNumber || "").trim();
   if (!/^\d+$/.test(safePrNumber)) {
     return;
   }
 
-  const currentCount = viewPrsActivePrCounts.get(safePrNumber) || 0;
-  viewPrsActivePrCounts.set(safePrNumber, currentCount + 1);
+  const key = buildActivePrKey(safePrNumber, repo);
+  const currentCount = viewPrsActivePrCounts.get(key) || 0;
+  viewPrsActivePrCounts.set(key, currentCount + 1);
   syncSchedulerActivePrNumbers();
 };
 
-const decrementActivePrNumber = (prNumber) => {
+const decrementActivePrNumber = (prNumber, repo) => {
   const safePrNumber = String(prNumber || "").trim();
   if (!/^\d+$/.test(safePrNumber)) {
     return;
   }
 
-  const currentCount = viewPrsActivePrCounts.get(safePrNumber) || 0;
+  const key = buildActivePrKey(safePrNumber, repo);
+  const currentCount = viewPrsActivePrCounts.get(key) || 0;
   if (currentCount <= 1) {
-    viewPrsActivePrCounts.delete(safePrNumber);
+    viewPrsActivePrCounts.delete(key);
   } else {
-    viewPrsActivePrCounts.set(safePrNumber, currentCount - 1);
+    viewPrsActivePrCounts.set(key, currentCount - 1);
   }
   syncSchedulerActivePrNumbers();
 };
 
 const viewPrsProgressTracker = {
-  onStart: (prNumber) => {
-    incrementActivePrNumber(prNumber);
+  onStart: (prNumber, repo) => {
+    incrementActivePrNumber(prNumber, repo);
   },
-  onEnd: (prNumber) => {
-    decrementActivePrNumber(prNumber);
+  onEnd: (prNumber, repo) => {
+    decrementActivePrNumber(prNumber, repo);
   },
-  onRunDone: (runProgressCounts) => {
+  onRunDone: (runProgressCounts, repo) => {
     if (!(runProgressCounts instanceof Map)) {
       return;
     }
 
     runProgressCounts.forEach((count, prNumber) => {
       for (let index = 0; index < count; index += 1) {
-        decrementActivePrNumber(prNumber);
+        decrementActivePrNumber(prNumber, repo);
       }
     });
   },
 };
 
-const addSchedulerActivePrNumbers = (prNumbers) => {
+const addSchedulerActivePrNumbers = (prNumbers, repo) => {
   const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
   uniqueNumbers.forEach((prNumber) => {
-    incrementActivePrNumber(prNumber);
+    incrementActivePrNumber(prNumber, repo);
   });
 };
 
-const removeSchedulerActivePrNumbers = (prNumbers) => {
+const removeSchedulerActivePrNumbers = (prNumbers, repo) => {
   const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
   uniqueNumbers.forEach((prNumber) => {
-    decrementActivePrNumber(prNumber);
+    decrementActivePrNumber(prNumber, repo);
   });
 };
+
+// Initialize command execution helpers
+const commandHelpers = createCommandExecutionHelpers({
+  spawn,
+  spawnSync,
+  process,
+  viewPrsDir: config.viewPrsDir,
+  viewPrsScriptsDir: path.join(config.viewPrsDir, 'scripts'),
+  requiredCommands: config.requiredCommands,
+  requiredPackages: config.requiredPackages,
+  viewPrsProgressTracker,
+});
+
+// Extract command helper functions
+const {
+  runViewPrsCommand: _runViewPrsCommand,
+  runViewPrsBashCommand: _runViewPrsBashCommand,
+  runViewPrsScript: _runViewPrsScript,
+  runViewPrsShellScript: _runViewPrsShellScript,
+  formatScriptFailureMessage: _formatScriptFailureMessage,
+  isCommandAvailable: _isCommandAvailable,
+  getDependencyStatus: _getDependencyStatus,
+  isGhAuthenticated: _isGhAuthenticated,
+} = commandHelpers;
 
 const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
   const safeRepo = toTrimmedString(repo);
@@ -351,256 +314,41 @@ const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
     .filter((prNumber) => /^\d+$/.test(prNumber));
 };
 
-let viewPrsWatchdogForceStopCount = 0;
+// Use scheduler helpers for action log management
+const appendActionLogEntry = (entry) => _appendActionLogEntry(entry);
+const readActionLog = () => _readActionLog();
 
-const ACTION_LOG_MAX_ENTRIES = 500;
+// Use file I/O helpers for JSON file operations
+const readJsonFileIfExists = (filePath, fallbackValue) => 
+  _readJsonFileIfExists(filePath, fallbackValue);
 
-const appendActionLogEntry = (entry) => {
-  try {
-    fs.mkdirSync(path.dirname(viewPrsActionLogFile), { recursive: true });
-    let entries = [];
-    if (fs.existsSync(viewPrsActionLogFile)) {
-      try {
-        entries = JSON.parse(fs.readFileSync(viewPrsActionLogFile, "utf8"));
-        if (!Array.isArray(entries)) entries = [];
-      } catch (_parseError) {
-        entries = [];
-      }
-    }
-    entries.unshift(entry);
-    if (entries.length > ACTION_LOG_MAX_ENTRIES) {
-      entries = entries.slice(0, ACTION_LOG_MAX_ENTRIES);
-    }
-    fs.writeFileSync(
-      viewPrsActionLogFile,
-      JSON.stringify(entries, null, 2),
-      "utf8",
-    );
-  } catch (_writeError) {
-    // best-effort; never throw from a logging helper
-  }
-};
+const readJsonFileIfExistsDetailed = (filePath) => 
+  _readJsonFileIfExistsDetailed(filePath);
 
-const readActionLog = () => {
-  if (!fs.existsSync(viewPrsActionLogFile)) return [];
-  try {
-    const raw = JSON.parse(fs.readFileSync(viewPrsActionLogFile, "utf8"));
-    return Array.isArray(raw) ? raw : [];
-  } catch (_error) {
-    return [];
-  }
-};
-
-// Helper functions
-const readJsonFileIfExists = (filePath, fallbackValue) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return fallbackValue;
-    }
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (_error) {
-    return fallbackValue;
-  }
-};
-
-const readJsonFileIfExistsDetailed = (filePath) => {
-  if (!fs.existsSync(filePath)) {
-    return {
-      exists: false,
-      value: null,
-      parseError: null,
-    };
-  }
-
-  try {
-    return {
-      exists: true,
-      value: JSON.parse(fs.readFileSync(filePath, "utf8")),
-      parseError: null,
-    };
-  } catch (error) {
-    return {
-      exists: true,
-      value: null,
-      parseError: error,
-    };
-  }
-};
-
-const readUserDefaults = () => {
-  if (!fs.existsSync(viewPrsUserDefaultsFile)) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(fs.readFileSync(viewPrsUserDefaultsFile, "utf8"));
-    return isObject(parsed) ? parsed : {};
-  } catch (_error) {
-    return {};
-  }
-};
+const readUserDefaults = () => 
+  _safeReadJsonFile(config.viewPrsUserDefaultsFile, {});
 
 const writeUserDefaults = (overrides) => {
   const data = isObject(overrides) ? overrides : {};
-  fs.mkdirSync(path.dirname(viewPrsUserDefaultsFile), { recursive: true });
-  fs.writeFileSync(viewPrsUserDefaultsFile, JSON.stringify(data, null, 2), "utf8");
+  _writeJsonFile(config.viewPrsUserDefaultsFile, data);
 };
 
-const safeReadJsonFile = (filePath, fallbackValue = null) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return fallbackValue;
-    }
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (_error) {
-    return fallbackValue;
-  }
-};
+const safeReadJsonFile = (filePath, fallbackValue = null) => 
+  _safeReadJsonFile(filePath, fallbackValue);
 
-const runViewPrsCommand = (
-  command,
-  args,
-  maxBufferBytes = 10 * 1024 * 1024,
-  options = {},
-) =>
-  new Promise((resolve, reject) => {
-    const timeoutMs =
-      Number.isFinite(Number(options?.timeoutMs)) &&
-        Number(options?.timeoutMs) > 0
-        ? Number(options.timeoutMs)
-        : 0;
+// Use command execution helper
+const runViewPrsCommand = (command, args, maxBufferBytes, options) =>
+  _runViewPrsCommand(command, args, maxBufferBytes, options);
 
-    const maxBuffer =
-      Number.isFinite(Number(maxBufferBytes)) && Number(maxBufferBytes) > 0
-        ? Number(maxBufferBytes)
-        : 10 * 1024 * 1024;
-
-    const child = spawn(command, Array.isArray(args) ? args : [], {
-      cwd: viewPrsDir,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        GH_PAGER: "cat",
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let didTimeout = false;
-    let settled = false;
-    let timeoutHandle = null;
-    let forceKillTimeoutHandle = null;
-
-    const forceStopProcessTree = () => {
-      terminateProcessTree(child.pid, "SIGTERM");
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      forceKillTimeoutHandle = setTimeout(
-        () => terminateProcessTree(child.pid, "SIGKILL"),
-        1000,
-      );
-    };
-
-    const finishResolve = (value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      resolve(value);
-    };
-
-    const finishReject = (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      reject({
-        error,
-        stdout,
-        stderr,
-        command: `${command} ${Array.isArray(args) ? args.join(" ") : ""}`,
-        didTimeout,
-        timeoutMs,
-      });
-    };
-
-    const appendChunk = (chunk, target) => {
-      const chunkText = chunk.toString();
-      const chunkBytes = Buffer.byteLength(chunkText);
-      if (target === "stdout") {
-        stdout += chunkText;
-        stdoutBytes += chunkBytes;
-        if (stdoutBytes > maxBuffer) {
-          forceStopProcessTree();
-          finishReject(new Error("stdout maxBuffer exceeded"));
-        }
-        return;
-      }
-
-      stderr += chunkText;
-      stderrBytes += chunkBytes;
-      if (stderrBytes > maxBuffer) {
-        forceStopProcessTree();
-        finishReject(new Error("stderr maxBuffer exceeded"));
-      }
-    };
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        didTimeout = true;
-        forceStopProcessTree();
-      }, timeoutMs);
-    }
-
-    child.stdout.on("data", (chunk) => appendChunk(chunk, "stdout"));
-    child.stderr.on("data", (chunk) => appendChunk(chunk, "stderr"));
-
-    child.on("error", (error) => {
-      finishReject(error);
-    });
-
-    child.on("close", (code, signal) => {
-      if (didTimeout) {
-        const timeoutSeconds = Math.round(timeoutMs / 1000);
-        finishReject(
-          new Error(
-            timeoutSeconds > 0
-              ? `Command timed out after ${timeoutSeconds}s`
-              : "Command timed out",
-          ),
-        );
-        return;
-      }
-
-      if (code !== 0) {
-        finishReject(
-          new Error(
-            signal
-              ? `Command terminated by ${signal}`
-              : `Command exited with code ${code}`,
-          ),
-        );
-        return;
-      }
-
-      finishResolve({ stdout, stderr });
-    });
-  });
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsBashCommand
+// further below - lets tests monkeypatch module.exports.runViewPrsCommand before
+// createViewPrsApp() so fetchPrDiffText (view-prs-pr-diff-cache.js, used by GET
+// /diff and the background diff-refresh queue) can be tested without a real
+// `gh api ...` spawn. Declared here (rather than alongside the other callRunViewPrsX
+// wrappers) because createViewPrsPrDiffCache is wired up immediately below and
+// needs the override-aware version passed in, not the raw function.
+const callRunViewPrsCommand = (...args) =>
+  (module.exports.runViewPrsCommand || runViewPrsCommand)(...args);
 
 const {
   getPrDiffCacheFilePath,
@@ -616,11 +364,133 @@ const {
   getPrDiffCommitFingerprint,
   extractRawDiffText,
   buildPrDiffCacheFilePath,
-  runViewPrsCommand,
+  runViewPrsCommand: callRunViewPrsCommand,
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
 });
+
+// Custom "More Insights" hook - an optional, user-provided executable
+// (VIEW_PRS_INSIGHTS_HOOK_SCRIPT, unset by default) that receives PR metadata
+// and returns HTML to render in a section of the row's "More Insights" panel.
+// Deliberately not shipped with the repo - what a repo/org wants surfaced here
+// is inherently custom, and the script is invoked directly (not resolved
+// against any repo-relative directory), so it can live anywhere on disk.
+//
+// Kept well under argv/command-line limits (Windows' CreateProcess caps a
+// full command line around 32K chars; the description is the one field here
+// with no natural size bound, so it's the one worth capping defensively) -
+// a hook script only needs enough of the description to summarize it, not
+// the whole thing verbatim.
+const MAX_INSIGHTS_HOOK_DESCRIPTION_LENGTH = 4000;
+
+const buildInsightsHookMetadata = (entry) => {
+  const data = entry?.data || {};
+  const repo = toTrimmedString(entry?.repo);
+  const [repoOwner, repoName] = repo.split("/");
+  const commits = Array.isArray(data.commits) ? data.commits : [];
+  const lastCommit = commits.length > 0 ? commits[commits.length - 1] : null;
+  // section is populated with "merged"/"closed" by upsert_pr_state calls in
+  // check-open-pr-updates.sh - data.mergedAt is checked first since it's the
+  // more authoritative signal, but section is still consulted as a fallback
+  // for a "merged" section whose mergedAt somehow wasn't captured (a legacy
+  // row or migration gap), not just to distinguish "closed" from "open".
+  const status = data.mergedAt
+    ? "merged"
+    : entry?.section === "draft"
+      ? "draft"
+      : entry?.section === "closed"
+        ? "closed"
+        : entry?.section === "merged"
+          ? "merged"
+          : "open";
+
+  return {
+    repoOwner: repoOwner || "",
+    repoName: repoName || "",
+    repo,
+    prId: String(entry?.prNumber || data.number || "").trim(),
+    prUrl: String(data.url || ""),
+    sourceBranch: String(data.sourceBranch || ""),
+    targetBranch: String(data.targetBranch || ""),
+    title: String(data.title || ""),
+    description: String(data.description || "").slice(
+      0,
+      MAX_INSIGHTS_HOOK_DESCRIPTION_LENGTH,
+    ),
+    status,
+    author: String(data.authorLogin || data.author || ""),
+    lastCommitDate: String(lastCommit?.committedAt || ""),
+    lastCommitId: String(lastCommit?.oid || ""),
+  };
+};
+
+// Best-effort by design: an unset script, a timeout, a non-zero exit, or any
+// other spawn failure all resolve to a null html so the client can simply
+// omit the hook section rather than surfacing an internal error for what is,
+// from the end user's perspective, an optional feature. The `error` field is
+// separate from that - it's non-null only when a *configured* hook actually
+// failed (never for the common, expected "not configured" case), and exists
+// purely so the client can log it to the browser console for debugging; nothing
+// reads it to decide whether to render.
+//
+// Invoked via `bash -c 'exec "$0" "$@"' <scriptPath> <jsonArg>` rather than
+// spawning scriptPath directly - matching every other script invocation in
+// this file (runViewPrsBashCommand/runViewPrsScript/runViewPrsShellScript all
+// spawn "bash" explicitly, never the script path as the executable itself).
+// Spawning scriptPath directly relies on the OS recognizing and dispatching
+// its shebang line, which native Windows' CreateProcess does not do - it
+// would silently fail to launch any non-Windows-native (.sh/.py/etc.) hook
+// script on Windows even though the whole app already requires bash (Git
+// Bash) to run at all. Routing through `bash -c 'exec "$0" "$@"'` uses
+// bash's own exec (which Git Bash's MSYS layer emulates, shebang and all) to
+// launch the target file as its own process, while still passing scriptPath
+// and the JSON argument as literal argv entries (via $0/$@, not string
+// interpolation) so neither needs shell-escaping.
+const runInsightsHookScript = async (entry) => {
+  if (!config.viewPrsInsightsHookScript) {
+    return { html: null, error: null };
+  }
+
+  const metadata = buildInsightsHookMetadata(entry);
+
+  try {
+    const { stdout } = await callRunViewPrsBashCommand(
+      [
+        "-c",
+        'exec "$0" "$@"',
+        config.viewPrsInsightsHookScript,
+        JSON.stringify(metadata),
+      ],
+      1024 * 1024,
+      { timeoutMs: viewPrsInsightsHookTimeoutMs },
+    );
+    return {
+      html: typeof stdout === "string" && stdout.trim() ? stdout : null,
+      error: null,
+    };
+  } catch (failure) {
+    const baseMessage = formatScriptFailureMessage(
+      failure,
+      "Insights hook script failed",
+    );
+    const stderrExcerpt = String(failure?.stderr || "").trim().slice(0, 500);
+    const message = stderrExcerpt
+      ? `${baseMessage}: ${stderrExcerpt}`
+      : baseMessage;
+    console.error(
+      `[view-prs] insights hook script failed for ${entry?.repo}#${entry?.prNumber}: ${message}`,
+    );
+    return { html: null, error: message };
+  }
+};
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsShellScript
+// above - lets tests monkeypatch module.exports.runInsightsHookScript before
+// createViewPrsApp() so the GET /insights-hook route can be tested without
+// actually shelling out to a script.
+const callRunInsightsHookScript = (...args) =>
+  (module.exports.runInsightsHookScript || runInsightsHookScript)(...args);
 
 const initUserDefaultsFile = () => {
   if (!fs.existsSync(viewPrsUserDefaultsFile)) {
@@ -1009,6 +879,11 @@ const {
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
   getViewPrsAutoRefreshRepos,
+  setPendingForRepo,
+  clearPendingForRepo,
+  getReposWithPendingOpen,
+  getReposWithPendingMergedClosed,
+  getPendingUpdatePrNumberKeys,
 } = createViewPrsSchedulerHelpers({
   fs,
   console,
@@ -1016,10 +891,22 @@ const {
   toTrimmedString,
   isRepoSlug,
   parseRepoCsv,
-  readViewPrsData: readViewPrsDataRef,
+  // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
+  // below (the only consumer) reads via this as a lazy default parameter
+  // (`data = readViewPrsData()`) - using the plain ref bypassed the
+  // `module.exports.readViewPrsData ||` override every other data-reading
+  // call site in this file already goes through, so a test's
+  // `appModule.readViewPrsData = mockFn` silently had no effect on which
+  // repos an auto-refresh run actually picked (confirmed: it fell through
+  // to the real on-disk/env-var-fallback repo instead of the mock's data,
+  // even though downstream calls like getLatestMergedPrNumbersForRepo -
+  // which does use callReadViewPrsData - correctly saw the mock).
+  readViewPrsData: callReadViewPrsData,
   defaultViewPrsRepo,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -1028,357 +915,46 @@ const {
   viewPrsLegacySchedulerFile,
 });
 
-const formatScriptFailureMessage = (
-  failure,
-  fallbackMessage = "Script failed",
-) => {
-  if (failure?.didTimeout === true) {
-    const timeoutMs = Number(failure?.timeoutMs || 0);
-    const timeoutSeconds = timeoutMs > 0 ? Math.round(timeoutMs / 1000) : null;
-    return timeoutSeconds
-      ? `Script timed out after ${timeoutSeconds}s`
-      : "Script timed out";
-  }
-  return failure?.error?.message || fallbackMessage;
-};
+// Use command execution helpers
+const formatScriptFailureMessage = (failure, fallbackMessage) =>
+  _formatScriptFailureMessage(failure, fallbackMessage);
 
-const terminateProcessTree = (pid, signal) => {
-  if (!Number.isFinite(Number(pid)) || Number(pid) <= 0) {
-    return;
-  }
+// Use command execution helper
+const runViewPrsBashCommand = (bashArgs, maxBufferBytes, options) =>
+  _runViewPrsBashCommand(bashArgs, maxBufferBytes, options);
 
-  try {
-    // Child processes run in their own process group, so kill the whole group.
-    process.kill(-Number(pid), signal);
-  } catch (_error) {
-    try {
-      process.kill(Number(pid), signal);
-    } catch (_ignore) {
-      // Best effort cleanup.
-    }
-  }
-};
 
-const runViewPrsBashCommand = (
-  bashArgs,
-  maxBufferBytes = 10 * 1024 * 1024,
-  options = {},
-) =>
-  new Promise((resolve, reject) => {
-    const timeoutMs =
-      Number.isFinite(Number(options?.timeoutMs)) &&
-        Number(options?.timeoutMs) > 0
-        ? Number(options.timeoutMs)
-        : 0;
-
-    const maxBuffer =
-      Number.isFinite(Number(maxBufferBytes)) && Number(maxBufferBytes) > 0
-        ? Number(maxBufferBytes)
-        : 10 * 1024 * 1024;
-
-    const command = `bash ${bashArgs.join(" ")}`;
-    const progressTracker =
-      options?.progressTracker && typeof options.progressTracker === "object"
-        ? options.progressTracker
-        : null;
-    const child = spawn("bash", bashArgs, {
-      cwd: viewPrsDir,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...(options?.env || {}),
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let didTimeout = false;
-    let settled = false;
-    let timeoutHandle = null;
-    let forceKillTimeoutHandle = null;
-    let forceStopLogged = false;
-    let stdoutProgressRemainder = "";
-    let stderrProgressRemainder = "";
-    const runProgressCounts = new Map();
-
-    const trackRunProgress = (action, prNumber) => {
-      if (!progressTracker) {
-        return;
-      }
-
-      if (action === "START") {
-        const currentCount = runProgressCounts.get(prNumber) || 0;
-        runProgressCounts.set(prNumber, currentCount + 1);
-        if (typeof progressTracker.onStart === "function") {
-          progressTracker.onStart(prNumber);
-        }
-        return;
-      }
-
-      const currentCount = runProgressCounts.get(prNumber) || 0;
-      if (currentCount > 1) {
-        runProgressCounts.set(prNumber, currentCount - 1);
-      } else {
-        runProgressCounts.delete(prNumber);
-      }
-      if (typeof progressTracker.onEnd === "function") {
-        progressTracker.onEnd(prNumber);
-      }
-    };
-
-    const parseProgressLine = (line) => {
-      const safeLine = String(line || "").trim();
-      if (!safeLine.startsWith(VIEW_PRS_PROGRESS_PREFIX)) {
-        return false;
-      }
-
-      const progressParts = safeLine.slice(VIEW_PRS_PROGRESS_PREFIX.length).split(":");
-      const action = String(progressParts[0] || "").trim();
-      const prNumber = String(progressParts[1] || "").trim();
-      if (!["START", "END"].includes(action) || !/^\d+$/.test(prNumber)) {
-        return false;
-      }
-
-      trackRunProgress(action, prNumber);
-      return true;
-    };
-
-    const sanitizeProgressChunk = (chunkText, streamName) => {
-      const isStdout = streamName === "stdout";
-      const remainder = isStdout ? stdoutProgressRemainder : stderrProgressRemainder;
-      const combined = `${remainder}${chunkText}`;
-      const lines = combined.split(/\r?\n/);
-      const nextRemainder = lines.pop() || "";
-      if (isStdout) {
-        stdoutProgressRemainder = nextRemainder;
-      } else {
-        stderrProgressRemainder = nextRemainder;
-      }
-
-      let sanitized = "";
-      lines.forEach((line) => {
-        if (parseProgressLine(line)) {
-          return;
-        }
-        sanitized += `${line}\n`;
-      });
-      return sanitized;
-    };
-
-    const flushProgressRemainder = (streamName) => {
-      const isStdout = streamName === "stdout";
-      const remainder = isStdout ? stdoutProgressRemainder : stderrProgressRemainder;
-      if (isStdout) {
-        stdoutProgressRemainder = "";
-      } else {
-        stderrProgressRemainder = "";
-      }
-      if (!remainder) {
-        return;
-      }
-
-      if (!parseProgressLine(remainder)) {
-        if (isStdout) {
-          stdout += remainder;
-          stdoutBytes += Buffer.byteLength(remainder);
-        } else {
-          stderr += remainder;
-          stderrBytes += Buffer.byteLength(remainder);
-        }
-      }
-    };
-
-    const forceStopProcessTree = (reason) => {
-      if (!forceStopLogged) {
-        forceStopLogged = true;
-        viewPrsWatchdogForceStopCount += 1;
-        const nowIso = new Date().toISOString();
-        const timeoutSec = timeoutMs > 0 ? Math.round(timeoutMs / 1000) : 0;
-        console.warn(
-          `[view-prs][watchdog] force-stop #${viewPrsWatchdogForceStopCount} at ${nowIso} reason=${reason} timeoutSec=${timeoutSec} pid=${child.pid} command="${command}"`,
-        );
-      }
-
-      terminateProcessTree(child.pid, "SIGTERM");
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      forceKillTimeoutHandle = setTimeout(
-        () => terminateProcessTree(child.pid, "SIGKILL"),
-        1000,
-      );
-    };
-
-    const finishResolve = (value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      flushProgressRemainder("stdout");
-      flushProgressRemainder("stderr");
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      if (
-        progressTracker &&
-        typeof progressTracker.onRunDone === "function"
-      ) {
-        progressTracker.onRunDone(runProgressCounts);
-      }
-      resolve(value);
-    };
-
-    const finishReject = (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      flushProgressRemainder("stdout");
-      flushProgressRemainder("stderr");
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      if (forceKillTimeoutHandle) {
-        clearTimeout(forceKillTimeoutHandle);
-      }
-      if (
-        progressTracker &&
-        typeof progressTracker.onRunDone === "function"
-      ) {
-        progressTracker.onRunDone(runProgressCounts);
-      }
-      reject({
-        error,
-        stdout,
-        stderr,
-        command,
-        didTimeout,
-        timeoutMs,
-      });
-    };
-
-    const appendChunk = (chunk, target) => {
-      const chunkText = chunk.toString();
-      if (target === "stdout") {
-        const sanitizedChunk = sanitizeProgressChunk(chunkText, target);
-        stdout += sanitizedChunk;
-        stdoutBytes += Buffer.byteLength(sanitizedChunk);
-        if (stdoutBytes > maxBuffer) {
-          forceStopProcessTree("stdout-maxBuffer");
-          finishReject(new Error("stdout maxBuffer exceeded"));
-        }
-        return;
-      }
-
-      const sanitizedChunk = sanitizeProgressChunk(chunkText, target);
-      stderr += sanitizedChunk;
-      stderrBytes += Buffer.byteLength(sanitizedChunk);
-      if (stderrBytes > maxBuffer) {
-        forceStopProcessTree("stderr-maxBuffer");
-        finishReject(new Error("stderr maxBuffer exceeded"));
-      }
-    };
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        didTimeout = true;
-        forceStopProcessTree("timeout");
-      }, timeoutMs);
-    }
-
-    child.stdout.on("data", (chunk) => appendChunk(chunk, "stdout"));
-    child.stderr.on("data", (chunk) => appendChunk(chunk, "stderr"));
-
-    child.on("error", (error) => {
-      finishReject(error);
-    });
-
-    child.on("close", (code, signal) => {
-      if (didTimeout) {
-        const timeoutSeconds = Math.round(timeoutMs / 1000);
-        finishReject(
-          new Error(
-            timeoutSeconds > 0
-              ? `Command timed out after ${timeoutSeconds}s`
-              : "Command timed out",
-          ),
-        );
-        return;
-      }
-
-      if (code !== 0) {
-        finishReject(
-          new Error(
-            signal
-              ? `Command terminated by ${signal}`
-              : `Command exited with code ${code}`,
-          ),
-        );
-        return;
-      }
-
-      finishResolve({ stdout, stderr, command });
-    });
-  });
-
-const runViewPrsScript = (
-  scriptArgs,
-  maxBufferBytes = 10 * 1024 * 1024,
-  options = {},
-) => {
-  const trackSchedulerPrProgress =
-    options?.trackSchedulerPrProgress !== false;
-  const userProgressTracker = options?.progressTracker || null;
-  const schedulerProgressTracker = trackSchedulerPrProgress
-    ? viewPrsProgressTracker
-    : null;
-  const progressTracker =
-    userProgressTracker && schedulerProgressTracker
-      ? {
-          onStart: (prNumber) => {
-            schedulerProgressTracker.onStart?.(prNumber);
-            userProgressTracker.onStart?.(prNumber);
-          },
-          onEnd: (prNumber) => {
-            schedulerProgressTracker.onEnd?.(prNumber);
-            userProgressTracker.onEnd?.(prNumber);
-          },
-          onRunDone: (runProgressCounts) => {
-            schedulerProgressTracker.onRunDone?.(runProgressCounts);
-            userProgressTracker.onRunDone?.(runProgressCounts);
-          },
-        }
-      : userProgressTracker || schedulerProgressTracker;
-
-  return runViewPrsBashCommand(scriptArgs, maxBufferBytes, {
-    ...options,
-    env: {
-      ...(options?.env || {}),
-      VIEW_PRS_PROGRESS_MARKERS: trackSchedulerPrProgress ? "1" : "0",
-    },
-    progressTracker,
-  });
-};
+// Use command execution helper
+const runViewPrsScript = (scriptArgs, maxBufferBytes, options) =>
+  _runViewPrsScript(scriptArgs, maxBufferBytes, options);
 
 const callRunViewPrsScript = (...args) =>
   (module.exports.runViewPrsScript || runViewPrsScript)(...args);
 
+// Same override-checking pattern as callRunViewPrsScript/callGetDependencyStatus
+// above - lets tests monkeypatch module.exports.runViewPrsBashCommand before
+// createViewPrsApp() so listMergedPrCandidates/listRepoLabels/applyLabelToPr/
+// fetchGithubPrLabels below (all of which shell out to `gh` via this) can be
+// tested without a real shell/gh/network call.
+const callRunViewPrsBashCommand = (...args) =>
+  (module.exports.runViewPrsBashCommand || runViewPrsBashCommand)(...args);
+
 const callGetDependencyStatus = () =>
   (module.exports.getDependencyStatus || getDependencyStatus)();
 
-const runViewPrsShellScript = (
-  scriptName,
-  scriptArgs = [],
-  maxBufferBytes = 1024 * 1024,
-  options = {},
-) =>
-  runViewPrsBashCommand([scriptName, ...scriptArgs], maxBufferBytes, options);
+// Use command execution helper
+const runViewPrsShellScript = (scriptName, scriptArgs, maxBufferBytes, options) =>
+  _runViewPrsShellScript(scriptName, scriptArgs, maxBufferBytes, options);
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsBashCommand
+// above - lets tests monkeypatch module.exports.runViewPrsShellScript before
+// createViewPrsApp() so getViewPrsBackfillPublicState/runViewPrsBackfillAction
+// (GET /backfill, POST /backfill/start,/stop) can be tested without a real
+// shell/backfill-missing-bg.sh call. runViewPrsShellScript had no such hook
+// until now, unlike runViewPrsScript/runViewPrsBashCommand - every backfill
+// route test was silently exercising a real spawn.
+const callRunViewPrsShellScript = (...args) =>
+  (module.exports.runViewPrsShellScript || runViewPrsShellScript)(...args);
 
 const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
   const safeRepo = toTrimmedString(repo);
@@ -1391,7 +967,7 @@ const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
     throw new Error(`Invalid repo: ${safeRepo}`);
   }
 
-  const result = await runViewPrsBashCommand(
+  const result = await callRunViewPrsBashCommand(
     [
       "-lc",
       `GH_PAGER=cat gh pr list -R ${safeRepo} --state merged --limit ${safeLimit} --json number,mergedAt --jq '.'`,
@@ -1421,6 +997,186 @@ const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
         return bTime - aTime;
       })
     : [];
+};
+
+// Single-quotes a value for safe interpolation into a `bash -lc "..."`
+// command string (closes the quote, appends an escaped literal quote,
+// reopens it - the standard POSIX-shell single-quote escaping trick).
+const shellQuoteSingle = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+
+const isValidGithubLabelName = (value) => {
+  const trimmed = toTrimmedString(value);
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 50 &&
+    !/[\x00-\x1f\x7f]/.test(trimmed) // eslint-disable-line no-control-regex
+  );
+};
+
+const listRepoLabels = async ({ repo }) => {
+  const safeRepo = toTrimmedString(repo);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+
+  const result = await callRunViewPrsBashCommand(
+    [
+      "-lc",
+      `GH_PAGER=cat gh label list -R ${shellQuoteSingle(safeRepo)} --limit 200 --json name,color --jq '.'`,
+    ],
+    1 * 1024 * 1024,
+    { timeoutMs: 30000 },
+  );
+
+  // A login shell (`bash -lc`) can echo unrelated startup noise (e.g. a
+  // user's .bash_profile printing "Loaded .bash_profile") ahead of the
+  // command's real output, so parse from the first JSON delimiter rather
+  // than the whole stdout blob.
+  const parsed = (() => {
+    const stdout = String(result?.stdout || "[]");
+    const jsonStart = stdout.search(/[[{]/);
+    if (jsonStart === -1) {
+      return [];
+    }
+    try {
+      return JSON.parse(stdout.slice(jsonStart));
+    } catch (_error) {
+      return [];
+    }
+  })();
+
+  return Array.isArray(parsed)
+    ? parsed
+      .map((item) => ({
+        name: String(item?.name || "").trim(),
+        color: String(item?.color || "").trim(),
+      }))
+      .filter((item) => item.name)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+};
+
+const applyLabelToPr = async ({ repo, prNumber, label }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+  const safeLabel = toTrimmedString(label);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+  if (!/^\d+$/.test(safePrNumber)) {
+    throw new Error(`Invalid PR number: ${safePrNumber}`);
+  }
+  if (!isValidGithubLabelName(safeLabel)) {
+    throw new Error(`Invalid label: ${safeLabel}`);
+  }
+
+  await callRunViewPrsBashCommand(
+    [
+      "-lc",
+      `gh pr edit ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --add-label ${shellQuoteSingle(safeLabel)}`,
+    ],
+    1 * 1024 * 1024,
+    { timeoutMs: 30000 },
+  );
+};
+
+// Fetches just the authoritative current label set for one PR - unlike a
+// full `check-open-pr-updates.sh --pr <n>` refresh (which also re-fetches
+// comments, reviews, file diffs, review threads, etc. and can take minutes
+// for a PR with a lot of history, especially merged ones), this is a single
+// small `gh` call so the UI can reflect a just-applied label immediately
+// instead of waiting on the next scheduled full refresh.
+const fetchGithubPrLabels = async ({ repo, prNumber }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+
+  if (!isRepoSlug(safeRepo)) {
+    throw new Error(`Invalid repo: ${safeRepo}`);
+  }
+  if (!/^\d+$/.test(safePrNumber)) {
+    throw new Error(`Invalid PR number: ${safePrNumber}`);
+  }
+
+  const result = await callRunViewPrsBashCommand(
+    [
+      "-lc",
+      `gh pr view ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --json labels --jq '.labels | map(.name)'`,
+    ],
+    64 * 1024,
+    { timeoutMs: 20000 },
+  );
+
+  const stdout = String(result?.stdout || "[]");
+  const jsonStart = stdout.search(/[[{]/);
+  if (jsonStart === -1) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(stdout.slice(jsonStart));
+    return Array.isArray(parsed) ? parsed.map((name) => String(name || "").trim()).filter(Boolean) : [];
+  } catch (_error) {
+    return [];
+  }
+};
+
+// Same lock directory the shell script's acquire_pr_state_lock()/
+// release_pr_state_lock() use for viewPrsDataFile (PR_STATE_FILE), so a
+// concurrent script run (a scheduled auto-refresh, a manual run, another
+// ack) and this direct patch never interleave their read-modify-write.
+const viewPrsDataFileLockDir = viewPrsDataFile.replace(/\.json$/, ".lock");
+
+const acquirePrStateLockForPatch = async ({ maxWaitMs = 5000 } = {}) => {
+  const deadlineMs = Date.now() + maxWaitMs;
+  for (;;) {
+    try {
+      fs.mkdirSync(viewPrsDataFileLockDir);
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadlineMs) {
+        throw new Error("Unable to acquire PR state lock for label patch", {
+          cause: error,
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+};
+
+const releasePrStateLockForPatch = () => {
+  try {
+    fs.rmdirSync(viewPrsDataFileLockDir);
+  } catch (_error) {
+    // Best effort.
+  }
+};
+
+// Patches just `data.labels` for one stored PR entry directly into
+// PR_STATE_FILE, instead of relying on a full script-driven refresh - see
+// fetchGithubPrLabels for why. Returns true if a matching entry was found
+// and patched.
+const patchStoredPrLabels = async ({ repo, prNumber, labels }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safePrNumber = toTrimmedString(prNumber);
+
+  await acquirePrStateLockForPatch();
+  try {
+    const current = readJsonFileIfExists(viewPrsDataFile, {});
+    const entry = current?.byPrNumber?.[safePrNumber];
+    if (!isObject(entry) || entry.repo !== safeRepo || !isObject(entry.data)) {
+      return false;
+    }
+
+    entry.data.labels = Array.isArray(labels) ? labels : [];
+    writeJsonFileWithBackup(viewPrsDataFile, current, "labels-patch");
+    return true;
+  } finally {
+    releasePrStateLockForPatch();
+  }
 };
 
 const parseBackfillCommandOutput = (stdout, stderr) => {
@@ -1494,7 +1250,7 @@ const getBackfillLogTail = ({ maxLines = 80 } = {}) => {
 
 const getViewPrsBackfillPublicState = async () => {
   try {
-    const { stdout, stderr, command } = await runViewPrsShellScript(
+    const { stdout, stderr, command } = await callRunViewPrsShellScript(
       viewPrsBackfillManagerRelativePath,
       ["status"],
       1024 * 1024,
@@ -1530,7 +1286,7 @@ const getViewPrsBackfillPublicState = async () => {
 };
 
 const runViewPrsBackfillAction = async (action) => {
-  const result = await runViewPrsShellScript(
+  const result = await callRunViewPrsShellScript(
     viewPrsBackfillManagerRelativePath,
     [action],
     4 * 1024 * 1024,
@@ -1551,51 +1307,10 @@ const runViewPrsBackfillAction = async (action) => {
   };
 };
 
-const isCommandAvailable = (cmd) => {
-  const check = spawnSync("bash", ["-lc", `command -v ${cmd}`], {
-    stdio: "ignore",
-  });
-  return check.status === 0;
-};
-
-const getDependencyStatus = () => {
-  const commands = {};
-  for (const cmd of requiredCommands) {
-    commands[cmd] = isCommandAvailable(cmd);
-  }
-
-  const packages = {};
-  for (const pkg of requiredPackages) {
-    try {
-      require.resolve(pkg);
-      packages[pkg] = true;
-    } catch (_error) {
-      packages[pkg] = false;
-    }
-  }
-
-  const missingCommands = Object.entries(commands)
-    .filter(([, available]) => !available)
-    .map(([name]) => name);
-
-  const missingPackages = Object.entries(packages)
-    .filter(([, available]) => !available)
-    .map(([name]) => name);
-
-  const missing = [
-    ...missingCommands,
-    ...missingPackages.map((pkg) => `npm:${pkg}`),
-  ];
-
-  return {
-    ok: missingCommands.length === 0 && missingPackages.length === 0,
-    commands,
-    packages,
-    missingCommands,
-    missingPackages,
-    missing,
-  };
-};
+// Use command execution helpers
+const isCommandAvailable = (cmd) => _isCommandAvailable(cmd);
+const getDependencyStatus = () => _getDependencyStatus();
+const isGhAuthenticated = () => _isGhAuthenticated();
 
 const getViewPrsViewerLogin = () => {
   const now = Date.now();
@@ -1661,6 +1376,7 @@ const readViewPrsData = () => {
       byPrNumberRaw,
       parsed.lastRun,
     );
+    const pendingUpdateKeys = getPendingUpdatePrNumberKeys();
     const byPrNumber = Object.fromEntries(
       Object.entries(byPrNumberRaw)
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
@@ -1670,10 +1386,20 @@ const readViewPrsData = () => {
           }
           const hydratedEntry = hydrateViewPrsEntryWithDetail(entry);
           const notes = mergedUserState.notesByPrNumber[prNumber];
-          if (!notes) {
-            return [prNumber, hydratedEntry];
+          const withNotes = notes ? { ...hydratedEntry, notes } : hydratedEntry;
+          const isUpdatePending = pendingUpdateKeys.has(
+            `${toTrimmedString(withNotes?.repo)}#${prNumber}`,
+          );
+          if (!isUpdatePending) {
+            return [prNumber, withNotes];
           }
-          return [prNumber, { ...hydratedEntry, notes }];
+          return [
+            prNumber,
+            {
+              ...withNotes,
+              data: { ...(withNotes.data || {}), updatePending: true },
+            },
+          ];
         }),
     );
     collectMissingPrsFromDiffCache(byPrNumber, fallbackRepo).forEach(
@@ -1769,7 +1495,10 @@ const getViewPrsDataManifest = (dataOverride = null) => {
 };
 
 // Auto-refresh logic
-const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
+const runViewPrsAutoRefresh = async ({
+  skipCooldownChecks = false,
+  reposOverride = null,
+} = {}) => {
   if (viewPrsSchedulerState.isAutoRunInProgress) {
     return;
   }
@@ -1818,7 +1547,10 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
   const autoTriggerMs = Date.now();
 
   try {
-    const reposToRefresh = getViewPrsAutoRefreshRepos();
+    const reposToRefresh =
+      Array.isArray(reposOverride) && reposOverride.length > 0
+        ? reposOverride
+        : getViewPrsAutoRefreshRepos();
     console.log(
       `[view-prs] auto refresh repos (${reposToRefresh.length}): ${reposToRefresh.join(", ") || "(none)"}`,
     );
@@ -1835,7 +1567,7 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
       let repoFirstPrProgressMs = null;
 
       try {
-        addSchedulerActivePrNumbers(seededPrNumbers);
+        addSchedulerActivePrNumbers(seededPrNumbers, repo);
         await callRunViewPrsScript(
           [
             viewPrsRunScriptRelativePath,
@@ -1849,6 +1581,10 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
           10 * 1024 * 1024,
           {
             timeoutMs: viewPrsAutoScriptTimeoutMs,
+            // Tags every active-PR-tracking call this run makes (this
+            // options.repo, read by runViewPrsBashCommand) with the repo
+            // being scanned - see buildActivePrKey's own comment.
+            repo,
             progressTracker: {
               onStart: () => {
                 if (repoFirstPrProgressMs === null) {
@@ -1859,6 +1595,9 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
           },
         );
         const repoFinishedMs = Date.now();
+        // A full run refreshes both sections, so anything queued by the
+        // quick-check for this repo has now been addressed.
+        clearPendingForRepo(repo);
         return {
           ok: true,
           repo,
@@ -1909,7 +1648,7 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
           },
         };
       } finally {
-        removeSchedulerActivePrNumbers(seededPrNumbers);
+        removeSchedulerActivePrNumbers(seededPrNumbers, repo);
       }
     };
 
@@ -1955,6 +1694,15 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
       console.log(
         `[view-prs] auto refresh complete for ${successCount} repo(s) at ${viewPrsSchedulerState.lastAutoRunAt}`,
       );
+
+      // Automatically split heavy PR detail arrays into separate files
+      try {
+        runPrDetailMigration({ silent: true });
+      } catch (migrationError) {
+        console.error(
+          `[view-prs] warning: PR detail split failed: ${migrationError.message || migrationError}`,
+        );
+      }
     }
 
     if (failures.length === 0 && successCount > 0) {
@@ -2010,7 +1758,234 @@ const runViewPrsAutoRefresh = async ({ skipCooldownChecks = false } = {}) => {
     );
   } finally {
     viewPrsSchedulerState.isAutoRunInProgress = false;
+    if (viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress) {
+      // See the flag's own comment (near viewPrsSchedulerState's
+      // definition) - a quick check was starved by this exact refresh being
+      // in progress, so catch up immediately rather than leaving it to the
+      // next periodic tick. Fire-and-forget, same as the interval-driven
+      // caller: this function's own caller (a full sweep's setInterval, or
+      // quick-check's own fast-follow) isn't waiting on this.
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
+      void callRunViewPrsQuickCheck();
+    }
   }
+};
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsQuickCheck
+// - lets tests monkeypatch module.exports.runViewPrsAutoRefresh before
+// createViewPrsApp() so runViewPrsQuickCheck's own fast-follow call (below)
+// can be verified without actually running a full refresh.
+const callRunViewPrsAutoRefresh = (...args) =>
+  (module.exports.runViewPrsAutoRefresh || runViewPrsAutoRefresh)(...args);
+
+// Cheap "did anything change" poll: lists PRs and compares updatedAt against
+// the cache, without fetching details/diffs. Runs far more often than the
+// full fetch above. Open/draft changes trigger an immediate targeted full
+// refresh; closed/merged changes are queued and drained on a longer timer
+// by runViewPrsMergedQueueDrain, since they're lower priority.
+// Return value is consumed by the manual POST /quick-check route (see
+// registerViewPrsMutationRoutes) to report an honest, per-run result -
+// the background setInterval caller ignores it, so this is a safe,
+// additive contract change. `skipped`/`reposFailed` specifically exist so
+// a caller can tell "confirmed nothing changed" apart from "the check
+// didn't actually run" (every repo failing used to look identical to a
+// clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
+const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
+  if (
+    viewPrsSchedulerState.isQuickCheckInProgress ||
+    viewPrsSchedulerState.isAutoRunInProgress
+  ) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = "already-in-progress";
+    if (viewPrsSchedulerState.isAutoRunInProgress) {
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+    }
+    return { skipped: true, skipReason: "already-in-progress" };
+  }
+
+  const dependencyStatus = callGetDependencyStatus();
+  if (!dependencyStatus.ok) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = `missing dependencies: ${dependencyStatus.missing.join(", ")}`;
+    return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
+  }
+
+  if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
+    viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckSkipReason = "circuit-open";
+    return { skipped: true, skipReason: "circuit-open" };
+  }
+
+  viewPrsSchedulerState.isQuickCheckInProgress = true;
+  viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
+  viewPrsSchedulerState.lastQuickCheckSkipReason = null;
+
+  try {
+    const repos = getViewPrsAutoRefreshRepos();
+    const reposWithPendingOpen = new Set();
+    const reposChecked = [];
+    const reposFailed = [];
+    let newPendingOpenCount = 0;
+    let newPendingMergedClosedCount = 0;
+
+    await Promise.all(
+      repos.map(async (repo) => {
+        try {
+          const result = await callRunViewPrsScript(
+            [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo],
+            1024 * 1024,
+            { timeoutMs: viewPrsQuickCheckScriptTimeoutMs, trackSchedulerPrProgress: false },
+          );
+          const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
+          const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
+          const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
+            ? parsed.pendingMergedClosed
+            : [];
+
+          reposChecked.push(repo);
+          newPendingOpenCount += pendingOpen.length;
+          newPendingMergedClosedCount += pendingMergedClosed.length;
+
+          if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
+            // Clear any stale pending flag this repo left behind from an
+            // earlier quick check - previously this returned early here
+            // without clearing, so a since-resolved repo could keep
+            // reporting an old pending count indefinitely.
+            clearPendingForRepo(repo);
+            return;
+          }
+
+          setPendingForRepo(repo, { open: pendingOpen, mergedClosed: pendingMergedClosed });
+          if (pendingOpen.length > 0) {
+            reposWithPendingOpen.add(repo);
+          }
+        } catch (repoError) {
+          const message = repoError?.message || String(repoError);
+          reposFailed.push({ repo, error: message });
+          console.warn(`[view-prs] quick-check failed for ${repo}: ${message}`);
+        }
+      }),
+    );
+
+    viewPrsSchedulerState.lastQuickCheckAt = new Date().toISOString();
+    viewPrsSchedulerState.lastQuickCheckError = null;
+    persistViewPrsSchedulerState();
+
+    if (reposWithPendingOpen.size > 0) {
+      // Fast-follow: don't wait for the next full-sweep timer once an open
+      // PR is known to have actually changed. `awaitTargetedRefresh` lets
+      // the startup sequence (initializeScheduler) wait for this priority
+      // refresh to actually finish before it moves on to the full,
+      // every-repo update - the periodic setInterval caller never passes
+      // it, since blocking the quick-check timer on a potentially slow
+      // refresh would defeat the point of checking quickly.
+      const targetedRefresh = callRunViewPrsAutoRefresh({
+        reposOverride: Array.from(reposWithPendingOpen),
+      });
+      if (awaitTargetedRefresh) {
+        await targetedRefresh;
+      } else {
+        void targetedRefresh;
+      }
+    }
+
+    return {
+      skipped: false,
+      reposChecked,
+      reposFailed,
+      newPendingOpenCount,
+      newPendingMergedClosedCount,
+      // Consumed by initializeScheduler to skip re-refreshing these same
+      // repos a second time in its own immediately-following full update -
+      // see its own comment for why.
+      reposWithPendingOpen: Array.from(reposWithPendingOpen),
+    };
+  } catch (error) {
+    viewPrsSchedulerState.lastQuickCheckError = error?.message || "Quick check failed";
+    console.error(`[view-prs] quick check failed: ${viewPrsSchedulerState.lastQuickCheckError}`);
+    return { skipped: false, fatalError: viewPrsSchedulerState.lastQuickCheckError };
+  } finally {
+    viewPrsSchedulerState.isQuickCheckInProgress = false;
+  }
+};
+
+// Same override-checking pattern as callRunViewPrsScript/callRunViewPrsShellScript
+// - lets tests monkeypatch module.exports.runViewPrsQuickCheck before
+// createViewPrsApp() so runViewPrsAutoRefresh's own catch-up call (see its
+// finally block) can be verified without actually running a quick check.
+const callRunViewPrsQuickCheck = (...args) =>
+  (module.exports.runViewPrsQuickCheck || runViewPrsQuickCheck)(...args);
+
+// Batches up closed/merged PRs flagged by the quick-check into a full fetch.
+// Runs on a much longer interval than the quick-check itself, and does
+// nothing at all when nothing has actually changed (see viewPrsMergedFullSweepIntervalMs).
+const runViewPrsMergedQueueDrain = async () => {
+  const reposToDrain = getReposWithPendingMergedClosed().filter(
+    (repo) => !getReposWithPendingOpen().includes(repo),
+  );
+
+  viewPrsSchedulerState.lastMergedDrainAt = new Date().toISOString();
+  persistViewPrsSchedulerState();
+
+  if (reposToDrain.length === 0) {
+    return;
+  }
+
+  await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+};
+
+// Same override-checking pattern as callRunViewPrsAutoRefresh/callRunViewPrsQuickCheck
+// - lets tests monkeypatch module.exports.runViewPrsMergedQueueDrain before
+// createViewPrsApp() so initializeScheduler's setInterval registration
+// (below) can be verified without waiting on a real timer/drain.
+const callRunViewPrsMergedQueueDrain = (...args) =>
+  (module.exports.runViewPrsMergedQueueDrain || runViewPrsMergedQueueDrain)(...args);
+
+// Vite dev middleware (React/JSX transform)
+//
+// index.html loads react-app.jsx as an ES module. Express can't transpile
+// JSX or resolve bare module specifiers on its own, so outside of a
+// production build we embed Vite's dev server in middleware mode and let it
+// handle those requests before falling back to static files / API routes.
+const isProductionEnv = process.env.NODE_ENV === "production";
+// This app is mounted at /view-prs by the root server (index.js), but Vite
+// needs to know that prefix too: it uses `base` to emit browser-facing URLs
+// for its client script, HMR, and resolved imports (/@vite/client, /@fs/...,
+// /components/PrTableApp.jsx, etc). Without it those come back rooted at
+// "/" and 404 once the browser requests them.
+const VIEW_PRS_MOUNT_PATH = "/view-prs";
+let viteDevServerPromise = null;
+
+const getViteDevServer = () => {
+  if (!viteDevServerPromise) {
+    viteDevServerPromise = (async () => {
+      const { createServer: createViteDevServer } = require("vite");
+      const react = require("@vitejs/plugin-react");
+      return createViteDevServer({
+        // Deliberately skip vite.config.js: it configures the *standalone*
+        // dev server (port 3456) with a proxy that forwards /view-prs
+        // requests to this very server on :9000. Merging that in here would
+        // make this embedded instance proxy every request back to itself.
+        configFile: false,
+        root: viewPrsUiDir,
+        base: `${VIEW_PRS_MOUNT_PATH}/`,
+        appType: "custom",
+        plugins: [react()],
+        resolve: {
+          alias: {
+            "@": viewPrsUiDir,
+            "@helpers": path.join(viewPrsUiDir, "helpers"),
+            "@components": path.join(viewPrsUiDir, "components"),
+          },
+        },
+        server: { middlewareMode: true },
+      });
+    })().catch((error) => {
+      viteDevServerPromise = null;
+      throw error;
+    });
+  }
+  return viteDevServerPromise;
 };
 
 // Create and configure the Express app
@@ -2019,7 +1994,35 @@ const createViewPrsApp = () => {
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use(express.static(viewPrsUiDir));
+
+  if (!isProductionEnv) {
+    app.use((req, res, next) => {
+      getViteDevServer()
+        .then((vite) => {
+          // Express strips the /view-prs mount prefix from req.url before
+          // handing control to this sub-app's middleware, but Vite (configured
+          // with base "/view-prs/" above) expects to see that prefix so it can
+          // recognize and match its own special paths. Restore it just for
+          // Vite's turn, then put back the stripped url for downstream routes
+          // (the data/mutation API routes registered below all expect it).
+          const strippedUrl = req.url;
+          req.url = VIEW_PRS_MOUNT_PATH + strippedUrl;
+          vite.middlewares(req, res, (err) => {
+            req.url = strippedUrl;
+            next(err);
+          });
+        })
+        .catch((error) => {
+          console.error(
+            "[view-prs] Vite dev middleware unavailable, falling back to static files:",
+            error,
+          );
+          next();
+        });
+    });
+  }
+
+  app.use(express.static(viewPrsUiDir, { index: false }));
 
   // Initialize user-defaults file on startup if it doesn't exist
   initUserDefaultsFile();
@@ -2040,9 +2043,57 @@ const createViewPrsApp = () => {
     });
   });
 
+  // Dependency health route - README's own "Troubleshooting" section
+  // already documents `curl -s http://localhost:9000/health/deps` as the
+  // way to check this, but the route itself was never implemented; wires
+  // it up now, reusing the same getDependencyStatus() the scheduler
+  // already calls internally before attempting an auto-refresh.
+  app.get("/health/deps", (_req, res) => {
+    // Matches the override-checking pattern every other internal call site
+    // for this function already uses (see runViewPrsScript/getDependencyStatus
+    // usage above) - lets tests monkeypatch module.exports.getDependencyStatus
+    // before createViewPrsApp() without needing a real shell/PATH.
+    const status = (module.exports.getDependencyStatus || getDependencyStatus)();
+    // ghAuthenticated is intentionally NOT part of getDependencyStatus()
+    // itself (see isGhAuthenticated's own comment) - it's a real GitHub API
+    // call, only worth making for this on-demand route, not the
+    // scheduler's per-attempt pre-flight check. null means "gh isn't
+    // installed, so there's nothing to check" - distinct from `false`
+    // (installed but not logged in).
+    const ghAuthenticated = (module.exports.isGhAuthenticated || isGhAuthenticated)();
+    const fullStatus = {
+      ...status,
+      ghAuthenticated,
+      ok: status.ok && ghAuthenticated !== false,
+    };
+    if (ghAuthenticated === false && !fullStatus.missing.includes("gh:auth")) {
+      fullStatus.missing = [...fullStatus.missing, "gh:auth"];
+    }
+    res.status(fullStatus.ok ? 200 : 503).json(fullStatus);
+  });
+
   // Legacy compatibility route for UI files
-  app.get(["/", "/index.html"], (_req, res) => {
-    res.sendFile(viewPrsUiIndexFile);
+  app.get(["/", "/index.html"], async (req, res) => {
+    if (isProductionEnv) {
+      res.sendFile(viewPrsUiIndexFile);
+      return;
+    }
+
+    try {
+      const vite = await getViteDevServer();
+      const rawHtml = fs.readFileSync(viewPrsUiIndexFile, "utf-8");
+      const transformedHtml = await vite.transformIndexHtml(
+        req.originalUrl,
+        rawHtml,
+      );
+      res.status(200).set({ "Content-Type": "text/html" }).end(transformedHtml);
+    } catch (error) {
+      console.error(
+        "[view-prs] Vite HTML transform failed, serving raw index.html:",
+        error,
+      );
+      res.sendFile(viewPrsUiIndexFile);
+    }
   });
 
   registerViewPrsMutationRoutes({
@@ -2056,6 +2107,7 @@ const createViewPrsApp = () => {
     viewPrsAckTotalRefreshTimeoutMs,
     defaultViewPrsRepo,
     setLastManualRunNow,
+    clearPendingForRepo,
     appendActionLogEntry,
     readViewPrsData,
     enqueuePrDiffRefreshForData,
@@ -2063,9 +2115,14 @@ const createViewPrsApp = () => {
     viewPrsSchedulerState,
     resetViewPrsAutoRefreshFailureState,
     runViewPrsAutoRefresh,
+    runViewPrsQuickCheck,
     buildAckRefreshBudgetSkipErrors,
     isRepoSlug,
     listMergedPrCandidates,
+    listRepoLabels,
+    applyLabelToPr,
+    fetchGithubPrLabels,
+    patchStoredPrLabels,
   });
 
   registerViewPrsPrRoutes({
@@ -2089,6 +2146,7 @@ const createViewPrsApp = () => {
     resolveCanonicalActorLogin,
     isRepoSlug,
     syncPrDiffForEntry,
+    runInsightsHookScript: callRunInsightsHookScript,
   });
 
   registerViewPrsDataRoutes({
@@ -2130,8 +2188,38 @@ const createViewPrsApp = () => {
 // Scheduler management functions for external use
 const initializeScheduler = () => {
   readViewPrsSchedulerState();
-  runViewPrsAutoRefresh();
-  return setInterval(runViewPrsAutoRefresh, viewPrsAutoIntervalMs);
+  // On startup, check what's actually changed before spending time on a
+  // full every-repo update: run the quick check first, let its own
+  // fast-follow targeted refresh for repos with pending open changes
+  // actually finish (awaitTargetedRefresh - see runViewPrsQuickCheck's own
+  // comment), and only then fall back to a full update - excluding
+  // whichever repos the targeted refresh JUST covered, so a repo with
+  // pending changes doesn't get a full check-open-pr-updates.sh pass
+  // (real GitHub API calls) twice within moments of each other for no
+  // benefit. Not awaited here - initializeScheduler's own callers
+  // (server.js) don't wait on startup work finishing, and the periodic
+  // intervals below are scheduled immediately regardless.
+  void (async () => {
+    const quickCheckResult = await callRunViewPrsQuickCheck({ awaitTargetedRefresh: true });
+    const alreadyRefreshedRepos = new Set(quickCheckResult?.reposWithPendingOpen || []);
+    const remainingRepos = getViewPrsAutoRefreshRepos().filter(
+      (repo) => !alreadyRefreshedRepos.has(repo),
+    );
+    if (remainingRepos.length > 0) {
+      await callRunViewPrsAutoRefresh({ reposOverride: remainingRepos });
+    }
+    // else: every repo the scheduler would otherwise have refreshed was
+    // already just covered by the targeted pass above - nothing left to do.
+  })();
+  // Wrapped in arrow functions (rather than passing the bare function
+  // references) so each tick re-checks module.exports.X fresh, same as
+  // every other overridable call site in this file - a bare reference here
+  // would permanently bind to whichever function was in scope when
+  // initializeScheduler ran, making it un-mockable by tests that
+  // monkeypatch module.exports.X afterward.
+  setInterval(() => callRunViewPrsQuickCheck(), viewPrsQuickCheckIntervalMs);
+  setInterval(() => callRunViewPrsMergedQueueDrain(), viewPrsMergedFullSweepIntervalMs);
+  return setInterval(() => callRunViewPrsAutoRefresh(), viewPrsAutoIntervalMs);
 };
 
 module.exports = {
@@ -2139,6 +2227,8 @@ module.exports = {
   createViewPrsApp,
   initializeScheduler,
   runViewPrsAutoRefresh,
+  runViewPrsQuickCheck,
+  runViewPrsMergedQueueDrain,
   // Core config/constants
   viewPrsDir,
   viewPrsUiIndexFile,
@@ -2164,10 +2254,13 @@ module.exports = {
   readActionLog,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
+  viewPrsQuickCheckIntervalMs,
+  viewPrsMergedFullSweepIntervalMs,
   viewPrsAutoCircuitFailureThreshold,
   viewPrsAutoCircuitCooldownMs,
   viewPrsAutoScriptTimeoutMs,
   viewPrsManualScriptTimeoutMs,
+  viewPrsQuickCheckScriptTimeoutMs,
   viewPrsAckScriptTimeoutMs,
   viewPrsAckRefreshScriptTimeoutMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -2211,14 +2304,19 @@ module.exports = {
   persistViewPrsSchedulerState,
   setLastManualRunNow,
   formatScriptFailureMessage,
+  runViewPrsCommand,
   runViewPrsScript,
+  runViewPrsBashCommand,
   runViewPrsShellScript,
+  runInsightsHookScript,
+  buildInsightsHookMetadata,
   parseBackfillCommandOutput,
   getBackfillLogTail,
   getViewPrsBackfillPublicState,
   runViewPrsBackfillAction,
   isCommandAvailable,
   getDependencyStatus,
+  isGhAuthenticated,
   getViewPrsViewerLogin,
   resolveViewPrsDetailFilePath,
   readViewPrsDetailPayload,
@@ -2232,6 +2330,11 @@ module.exports = {
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
   getViewPrsAutoRefreshRepos,
+  setPendingForRepo,
+  clearPendingForRepo,
+  getReposWithPendingOpen,
+  getReposWithPendingMergedClosed,
+  getPendingUpdatePrNumberKeys,
   getPrDiffCacheFilePath,
   getPrDiffCommitFingerprint,
   readPrDiffCache,

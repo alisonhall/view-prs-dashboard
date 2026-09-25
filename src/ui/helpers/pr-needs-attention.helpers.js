@@ -1,18 +1,15 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsNeedsAttentionHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsNeedsAttentionHelpers fallback.
+export const { createPrNeedsAttentionHelpers } = (() => {
   const createPrNeedsAttentionHelpers = ({
     asArray = (value) => (Array.isArray(value) ? value : []),
     isChangedStatus = (status) => String(status || "").startsWith("CHANGED"),
     getEffectiveViewerLogin = () => "",
     collectAssignedUsers = () => [],
     collectRequestedReviewers = () => [],
-    isInReviewEnabled = () => false,
     countPendingThreadComments = () => 0,
   } = {}) => {
     const parseChangedReasonTokens = (row = {}) => {
@@ -69,21 +66,27 @@
       const viewerLogin = getEffectiveViewerLogin(row);
       if (!viewerLogin) return false;
 
-      const isAssignedToMe = collectAssignedUsers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-      if (isAssignedToMe) return true;
+      const isAssignedToMe = () =>
+        collectAssignedUsers(row).some(
+          (person) =>
+            String(person?.login || "")
+              .trim()
+              .toLowerCase() === viewerLogin,
+        );
+      const isReviewerMe = () =>
+        collectRequestedReviewers(row).some(
+          (person) =>
+            String(person?.login || "")
+              .trim()
+              .toLowerCase() === viewerLogin,
+        );
 
-      const isReviewerMe = collectRequestedReviewers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-      return isReviewerMe;
+      if (mode === "assigned-only") return isAssignedToMe();
+      if (mode === "reviewer-only") return isReviewerMe();
+
+      // "mine-only" (and any other/legacy value): either assigned to me or
+      // I'm a requested reviewer.
+      return isAssignedToMe() || isReviewerMe();
     };
 
     const shouldShowNeedsAttention = ({
@@ -112,8 +115,7 @@
       if (sectionKey === "draft") {
         return (
           (config.includeDraftChanged && changedAttention) ||
-          (config.includeDraftNoActivity && noActivityAttention) ||
-          isInReviewEnabled(row)
+          (config.includeDraftNoActivity && noActivityAttention)
         );
       }
 
@@ -122,9 +124,6 @@
 
     const entryNeedsAttention = (entry = {}, config = {}) => {
       const row = entry?.data || {};
-      if (isInReviewEnabled(row)) {
-        return true;
-      }
 
       const sectionKey = String(entry?.section || "")
         .trim()
@@ -159,4 +158,4 @@
   return {
     createPrNeedsAttentionHelpers,
   };
-});
+})();

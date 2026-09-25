@@ -90,7 +90,10 @@ const formatBytes = (bytes) => {
   return `${size.toFixed(2)} ${units[idx]}`;
 };
 
-const runMigration = () => {
+const runMigration = (options = {}) => {
+  const { silent = false } = options;
+  const log = silent ? () => {} : console.log;
+
   if (!fs.existsSync(dataFile)) {
     throw new Error(`Data file not found: ${dataFile}`);
   }
@@ -163,10 +166,10 @@ const runMigration = () => {
   });
 
   if (migrated === 0) {
-    console.log("[migrate:pr-detail] No inline-heavy rows needed migration.");
-    console.log(`[migrate:pr-detail] skipped=${skipped}`);
+    log("[migrate:pr-detail] No inline-heavy rows needed migration.");
+    log(`[migrate:pr-detail] skipped=${skipped}`);
     if (protectedSkips > 0) {
-      console.log(`[migrate:pr-detail] protectedSkips=${protectedSkips}`);
+      log(`[migrate:pr-detail] protectedSkips=${protectedSkips}`);
     }
     return;
   }
@@ -177,12 +180,12 @@ const runMigration = () => {
   const afterStats = fs.statSync(dataFile);
   const delta = beforeStats.size - afterStats.size;
 
-  console.log(`[migrate:pr-detail] backup: ${backupPath}`);
-  console.log(`[migrate:pr-detail] migrated=${migrated} rows, skipped=${skipped}`);
+  log(`[migrate:pr-detail] backup: ${backupPath}`);
+  log(`[migrate:pr-detail] migrated=${migrated} rows, skipped=${skipped}`);
   if (protectedSkips > 0) {
-    console.log(`[migrate:pr-detail] protectedSkips=${protectedSkips}`);
+    log(`[migrate:pr-detail] protectedSkips=${protectedSkips}`);
   }
-  console.log(
+  log(
     `[migrate:pr-detail] size: ${beforeStats.size} -> ${afterStats.size} bytes (${formatBytes(beforeStats.size)} -> ${formatBytes(afterStats.size)}, saved ${delta} bytes)`,
   );
 };

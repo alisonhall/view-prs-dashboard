@@ -7,15 +7,6 @@ const {
 describe("auto render indicator links helpers", () => {
   const createHelpers = (overrides = {}) =>
     createPrAutoRenderIndicatorLinksHelpers({
-      clearElementContents: (element) => {
-        element.innerHTML = "";
-      },
-      getAuthorInsightsDisplayName: (authorLogin) =>
-        ({ alice: "Alice A", bob: "Bob B" }[
-          String(authorLogin || "").trim().toLowerCase()
-        ] || String(authorLogin || "")),
-      navigateToPrInTable: () => {},
-      navigateToAuthorInsights: () => {},
       buildAutoRenderBlockedLinksAriaLabel: ({
         blockingPrLabel,
         blockingAuthorInsightsLogins,
@@ -25,9 +16,17 @@ describe("auto render indicator links helpers", () => {
         blockingAuthorInsightsLogins.length > 0
           ? `Blocking author drafts: ${blockingAuthorInsightsLogins.join(", ")}`
           : ""),
-      documentRef: document,
       ...overrides,
     });
+
+  afterEach(() => {
+    delete window.updateReactAutoRenderBlockedLinks;
+  });
+
+  test("given no linksHost, when rendering blocked links, then nothing throws", () => {
+    const { renderAutoRenderBlockedLinks } = createHelpers();
+    expect(() => renderAutoRenderBlockedLinks({ linksHost: null })).not.toThrow();
+  });
 
   test("given no blocking items, when rendering blocked links, then host is hidden and aria label is empty", () => {
     document.body.innerHTML = '<div id="links"></div>';
@@ -42,22 +41,15 @@ describe("auto render indicator links helpers", () => {
     });
 
     expect(linksHost.hidden).toBe(true);
-    expect(linksHost.children).toHaveLength(0);
     expect(linksHost.getAttribute("aria-label")).toBe("");
   });
 
-  test("given blocking PR and author items, when rendering blocked links, then buttons and click handlers are wired", () => {
+  test("given blocking PR and author items, when rendering blocked links, then the host is shown and the React bridge is called with the raw lists", () => {
     document.body.innerHTML = '<div id="links"></div>';
     const linksHost = document.getElementById("links");
-    const prCalls = [];
-    const authorCalls = [];
+    const bridgeCalls = [];
+    window.updateReactAutoRenderBlockedLinks = (...args) => bridgeCalls.push(args);
     const { renderAutoRenderBlockedLinks } = createHelpers({
-      navigateToPrInTable: (...args) => {
-        prCalls.push(args);
-      },
-      navigateToAuthorInsights: (...args) => {
-        authorCalls.push(args);
-      },
       buildAutoRenderBlockedLinksAriaLabel: () => "Blocking PRs: #15",
     });
 
@@ -69,15 +61,31 @@ describe("auto render indicator links helpers", () => {
     });
 
     expect(linksHost.hidden).toBe(false);
-    expect(linksHost.children).toHaveLength(2);
-    expect(linksHost.children[0].textContent).toBe("#15");
-    expect(linksHost.children[1].textContent).toBe("Author: Alice A");
+    expect(linksHost.getAttribute("aria-label")).toBe("Blocking PRs: #15");
+    expect(bridgeCalls).toEqual([[["15"], ["alice"]]]);
+  });
 
-    linksHost.children[0].click();
-    linksHost.children[1].click();
+  test("given the React bridge is not installed, when rendering blocked links, then nothing throws", () => {
+    document.body.innerHTML = '<div id="links"></div>';
+    const linksHost = document.getElementById("links");
+    const { renderAutoRenderBlockedLinks } = createHelpers();
 
-    expect(prCalls).toEqual([["15", { focusUnsaved: true }]]);
-    expect(authorCalls).toEqual([["alice", { focusUnsaved: true }]]);
+    expect(() =>
+      renderAutoRenderBlockedLinks({
+        linksHost,
+        blockingPrNumbers: ["15"],
+        blockingAuthorInsightsLogins: [],
+      }),
+    ).not.toThrow();
+  });
+
+  test("given no buildAutoRenderBlockedLinksAriaLabel dependency is injected, when rendering blocked links, then a safe empty aria label fallback is used", () => {
+    document.body.innerHTML = '<div id="links"></div>';
+    const linksHost = document.getElementById("links");
+    const { renderAutoRenderBlockedLinks } = createPrAutoRenderIndicatorLinksHelpers();
+
+    renderAutoRenderBlockedLinks({ linksHost, blockingPrLabel: "Blocking PRs: #15" });
+
     expect(linksHost.getAttribute("aria-label")).toBe("Blocking PRs: #15");
   });
 });

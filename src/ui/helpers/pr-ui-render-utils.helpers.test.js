@@ -1,5 +1,3 @@
-/** @jest-environment jsdom */
-
 const {
   createPrUiRenderUtilsHelpers,
 } = require("./pr-ui-render-utils.helpers.js");
@@ -22,18 +20,5 @@ describe("pr ui render utils helpers", () => {
 
     expect(typeof result).toBe("string");
     expect(result).toContain("[object Object]");
-  });
-
-  test("given class token toggles, when enabling and disabling tokens, then class names are updated without duplication", () => {
-    const helpers = createPrUiRenderUtilsHelpers();
-    const element = document.createElement("div");
-    element.className = "alpha";
-
-    helpers.setClassToken(element, "beta", true);
-    helpers.setClassToken(element, "beta", true);
-    expect(element.className).toBe("alpha beta");
-
-    helpers.setClassToken(element, "beta", false);
-    expect(element.className).toBe("alpha");
   });
 });
