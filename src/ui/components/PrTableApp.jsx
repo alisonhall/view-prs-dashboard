@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
@@ -375,7 +375,6 @@ export function PrTableApp({
     // Get PR entries from payload.byPrNumber (the real stored-data shape),
     // each entry already has the { prNumber, repo, section, data } shape
     // the vanilla renderer expects.
-    const repo = effectiveRepo;
     const allEntries = Object.values(payload.byPrNumber);
     // null/undefined visiblePrNumbers means no local filter is active (show
     // every stored PR); an array (even empty) means the vanilla filter
@@ -384,13 +383,18 @@ export function PrTableApp({
     // React-rendered table at all (see index.page.js's React rendering
     // path, which computes visiblePrNumbers from that same pipeline).
     //
-    // Deliberately NOT also gated on `entry?.repo === repo`: PR data for a
-    // repo other than the currently-configured one should still render as
-    // its own row rather than being silently dropped (the underlying
-    // pipeline - pr-row-sources.helpers.js's rowsForRepo - stopped
-    // repo-filtering for the same reason). `repo`/effectiveRepo is still
-    // used below for repo-scoped concerns (flag lookups now take each
-    // entry's own repo instead, smart-group config, etc.).
+    // Deliberately NOT also gated on `entry?.repo === effectiveRepo`: PR
+    // data for a repo other than the currently-configured one should still
+    // render as its own row rather than being silently dropped (the
+    // underlying pipeline - pr-row-sources.helpers.js's rowsForRepo -
+    // stopped repo-filtering for the same reason). Repo-scoped concerns
+    // below (flag lookups, smart-group config, etc.) use each entry's own
+    // `entry.repo` instead, not a single local alias for effectiveRepo -
+    // found via eslint-plugin-react-hooks/`no-unused-vars` (see
+    // REACT_MIGRATION_PLAN.md's full eslint-jsx-coverage note) that a
+    // `const repo = effectiveRepo;` alias here had become dead after an
+    // earlier refactor moved every real use over to `entry.repo` directly;
+    // removed along with this now-stale comment describing it as in use.
     const visiblePrNumberSet = Array.isArray(visiblePrNumbers)
       ? new Set(visiblePrNumbers.map(String))
       : null;
@@ -491,6 +495,14 @@ export function PrTableApp({
           : false;
       }).length,
     }));
+    // attentionConfigVersion is a deliberate invalidation trigger (see its
+    // own declaration/comment above) - its value is never read inside this
+    // callback, only bumped to force a recompute when the Needs Attention
+    // rule config changes outside React's own state. exhaustive-deps can't
+    // distinguish "read for its value" from "listed purely to invalidate
+    // memoization," so it flags this as unnecessary - removing it would
+    // silently break that reactivity instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, effectiveRepo, visiblePrNumbers, openSections, checkNeedsAttention, checkUserInteraction, attentionConfigVersion]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener

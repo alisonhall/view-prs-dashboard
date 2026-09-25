@@ -18,7 +18,6 @@
  * index.page.js's source.
  */
 
-const React = require('react');
 const { render } = require('@testing-library/react');
 const { PrDataPolling } = require('../components/PrDataPolling');
 

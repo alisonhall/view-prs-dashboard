@@ -9,7 +9,6 @@
  * @module components/AppliedFilterSummary
  */
 
-import React from 'react';
 
 export function AppliedFilterSummary({ summaryText, filterChips }) {
   const chips = (Array.isArray(filterChips) ? filterChips : []).filter(Boolean);

@@ -7,6 +7,7 @@ const {
 describe("pr render apply helpers", () => {
   afterEach(() => {
     delete window.updateReactMergedRequestMoreAction;
+    delete window.updateReactDataMetaText;
   });
 
   test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
@@ -20,6 +21,8 @@ describe("pr render apply helpers", () => {
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
     const updateReactMergedRequestMoreAction = jest.fn();
     window.updateReactMergedRequestMoreAction = updateReactMergedRequestMoreAction;
+    const updateReactDataMetaText = jest.fn();
+    window.updateReactDataMetaText = updateReactDataMetaText;
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary,
@@ -48,7 +51,12 @@ describe("pr render apply helpers", () => {
       latestSelectedRepo: "org/repo",
     });
 
-    expect(meta.textContent).toBe("Applied filters: repo=org/repo");
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now - `meta`
+    // (the DOM element) is still threaded through as a param but no
+    // longer written to directly.
+    expect(meta.textContent).toBe("");
+    expect(updateReactDataMetaText).toHaveBeenCalledWith("Applied filters: repo=org/repo");
     expect(renderManagementFilterSummary).toHaveBeenCalledWith({
       summaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],

@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Renders the Run & Filter tab's "Apply existing GitHub label" dropdown

@@ -4,6 +4,7 @@ import json from "@eslint/json";
 import markdown from "@eslint/markdown";
 import { defineConfig } from "eslint/config";
 import globals from "globals";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default defineConfig([
   {
@@ -17,6 +18,7 @@ export default defineConfig([
     ignores: [
       "**/package-lock.json",
       "coverage/**",
+      "dist/**",
       "test-results/**",
       "playwright-report/**",
       "PHASE_*.md",
@@ -32,7 +34,7 @@ export default defineConfig([
     ],
   },
   {
-    files: ["**/*.{js,mjs,cjs}"],
+    files: ["**/*.{js,mjs,cjs,jsx}"],
     plugins: { js },
     extends: ["js/recommended"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
@@ -40,6 +42,37 @@ export default defineConfig([
   {
     files: ["**/*.js"],
     languageOptions: { sourceType: "commonjs", globals: { ...globals.jest } },
+  },
+  {
+    // Previously entirely unmatched by any `files` pattern in this config -
+    // ESLint's flat config only lints a file if some block's `files`
+    // pattern names it, so every *.jsx file (81 components, all real ES
+    // modules with JSX syntax - see REACT_MIGRATION_PLAN.md) was silently
+    // skipped ("File ignored because no matching configuration was
+    // supplied") rather than actually linted. Real ES modules, unlike the
+    // plain **/*.js block above's default `sourceType: "commonjs"` - and
+    // needs the parser told to accept JSX syntax explicitly.
+    files: ["**/*.jsx"],
+    plugins: { "react-hooks": reactHooks },
+    languageOptions: {
+      sourceType: "module",
+      parserOptions: { ecmaFeatures: { jsx: true } },
+      globals: { ...globals.jest },
+    },
+    rules: {
+      // Deliberately not eslint-plugin-react-hooks's full "recommended"
+      // preset (v7 folds in ~15 additional React Compiler-oriented rules -
+      // purity/immutability/set-state-in-effect/etc. - tuned for compiler
+      // memoization safety, which this codebase doesn't use and whose
+      // assumptions don't always fit patterns already deliberately used
+      // and documented here, e.g. flushSync, window.* bridge reads inside
+      // effects). These two are the long-established, uncontroversial
+      // ones: rules-of-hooks catches genuine hook-ordering bugs
+      // (conditional/looped hook calls), exhaustive-deps catches stale-
+      // closure bugs from missing effect dependencies.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
   },
   {
     // vite.config.js is loaded by Vite as a real ES module regardless of
@@ -178,7 +211,7 @@ export default defineConfig([
     extends: ["css/recommended"],
   },
   {
-    files: ["**/*.{js,mjs,cjs}"],
+    files: ["**/*.{js,mjs,cjs,jsx}"],
     rules: {
       "no-unused-vars": [
         "error",
@@ -195,7 +228,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["src/ui/**/*.{js,mjs,cjs}"],
+    files: ["src/ui/**/*.{js,mjs,cjs,jsx}"],
     rules: {
       "no-restricted-imports": [
         "error",

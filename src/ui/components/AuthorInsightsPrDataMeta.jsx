@@ -19,7 +19,6 @@
  * @module components/AuthorInsightsPrDataMeta
  */
 
-import React from 'react';
 
 const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
 const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);

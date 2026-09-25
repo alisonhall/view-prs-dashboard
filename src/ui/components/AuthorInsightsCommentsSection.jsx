@@ -35,7 +35,7 @@
  * unused here.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
 
 const DEFAULT_SENTIMENT = () => window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT || 'neutral';

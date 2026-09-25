@@ -29,7 +29,7 @@
  * once on mount (below) is the correct fix rather than a workaround.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MappingRowsEditor, entriesToRows } from './MappingRowsEditor';
 
 export function ActorNamesTab() {

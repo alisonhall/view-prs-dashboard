@@ -18,7 +18,6 @@
  * @module components/FilterOptionSelect
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function FilterOptionSelect({ id, name, options, filterStateKey }) {

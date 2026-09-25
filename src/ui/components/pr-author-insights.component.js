@@ -99,21 +99,24 @@ export const { createPrAuthorInsightsComponent } = (() => {
       // covered every section alike), or it would silently tear the
       // mounted React roots' DOM out from under them on every
       // author-insights render, exactly the class of bug Phase 1's
-      // #pr-sections handling guards against. The empty-state message
-      // below is appended directly into `host` instead, since it's no
-      // longer a generic "whatever's currently showing" scratch container.
+      // #pr-sections handling guards against. `host` itself is now only
+      // used as an existence guard (below) - nothing is appended into it
+      // directly anymore (see the empty-state comment further down).
 
-      // Empty rows guard
+      // Empty rows guard. The user-visible "No local rows.../No authors
+      // found..." message itself is now rendered by AuthorInsightsSelector.jsx
+      // (deferred-items follow-up, full vanilla-to-React sweep - see
+      // REACT_MIGRATION_PLAN.md), which already computes these same
+      // rows/authorOptions from Context and returns null vs. a real
+      // component depending on which is empty - this function still owns
+      // clearing selectedAuthorLogin, the one piece of state management
+      // (not rendering) every React-owned section depends on.
       if (!rows.length) {
         // Every React-owned section reads selectedAuthorLogin/payload from
         // PrDataContext directly (Track C) and clears/hides itself once
         // that Context value (or the payload backing it) goes empty - this
         // is the one write site responsible for clearing it.
         updateReactSelectedAuthorLoginSafe("");
-        const empty = documentRef.createElement("p");
-        empty.className = "stats-empty";
-        empty.textContent = "No local rows available for author insights.";
-        host.appendChild(empty);
         recomputeDirtyPrSectionsFields?.();
         return;
       }
@@ -122,10 +125,6 @@ export const { createPrAuthorInsightsComponent } = (() => {
       const authorOptions = buildAuthorInsightsEntries(rows, actorsMap);
       if (!authorOptions.length) {
         updateReactSelectedAuthorLoginSafe("");
-        const empty = documentRef.createElement("p");
-        empty.className = "stats-empty";
-        empty.textContent = "No authors found in the current local data scope.";
-        host.appendChild(empty);
         recomputeDirtyPrSectionsFields?.();
         return;
       }

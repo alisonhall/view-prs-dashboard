@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):

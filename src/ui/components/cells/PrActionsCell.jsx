@@ -11,7 +11,6 @@
  * @module components/cells/PrActionsCell
  */
 
-import React from 'react';
 
 export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };

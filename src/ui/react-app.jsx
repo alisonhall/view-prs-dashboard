@@ -7,7 +7,7 @@
  * - Provides bridge between vanilla JS and React
  */
 
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { flushSync, createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
@@ -27,6 +27,9 @@ import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
+import { Snackbar } from './components/Snackbar';
+import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
+import { QuickCheckButton } from './components/QuickCheckButton';
 import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
@@ -362,13 +365,25 @@ const MULTI_SELECT_LIST_ID_PREFIXES = {
  */
 function computeStaticContainers() {
   const multiSelect = {};
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): each list's sibling <summary
+  // class="multi-select-summary"> - MultiSelectCheckboxList.jsx now owns
+  // rendering its own "(N selected)" count text into this element and
+  // toggling the list container's own "empty" class, replacing
+  // pr-filter-panel.helpers.js's updateMultiSelectSummary (deleted) and
+  // index.page.js's per-list classList.add/remove("empty") calls (also
+  // deleted, both covered every one of these same 9 lists).
+  const multiSelectSummary = {};
   Object.keys(MULTI_SELECT_LIST_ID_PREFIXES).forEach((listId) => {
-    multiSelect[listId] = document.getElementById(listId);
+    const listContainer = document.getElementById(listId);
+    multiSelect[listId] = listContainer;
+    multiSelectSummary[listId] = listContainer?.closest('details')?.querySelector('.multi-select-summary') || null;
   });
 
   return {
     filterFields: buildFilterStateFieldPortals(),
     multiSelect,
+    multiSelectSummary,
     reviewStatsControls: document.getElementById('stats-controls-root'),
     reviewStatsContent: document.getElementById('stats-content-root'),
     authorInsightsSelector: document.getElementById('author-insights-selector-root'),
@@ -379,7 +394,17 @@ function computeStaticContainers() {
     backfillBadges: document.getElementById('backfill-badges'),
     schedulerBadges: document.getElementById('scheduler-badges'),
     requestActivityBadges: document.getElementById('request-activity-badges'),
+    statusText: document.getElementById('status'),
+    requestActivityDetails: document.getElementById('request-activity-details'),
+    schedulerDetails: document.getElementById('scheduler-details'),
+    outputText: document.getElementById('output'),
+    backfillDetails: document.getElementById('backfill-details'),
+    backfillLog: document.getElementById('backfill-log'),
+    dataMeta: document.getElementById('data-meta'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
+    errorSnackbar: document.getElementById('error-snackbar-root'),
+    triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
+    quickCheckBtn: document.getElementById('quick-check-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
@@ -434,6 +459,22 @@ function AppRoot() {
   const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
   const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
+
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): the 7 remaining vanilla `.textContent =`
+  // status/log panels, converted following the exact same shape as the
+  // badge rows above (a bridge registered via useEffect, a plain-string
+  // portal into the existing static `<pre>` - no dedicated component
+  // needed since none of these render anything but text). Initial values
+  // match each `<pre>`'s original static index.html text, so there's no
+  // flash of empty content before the first bridge call.
+  const [statusText, setStatusText] = useState('Not run');
+  const [requestActivityDetailsText, setRequestActivityDetailsText] = useState('Monitoring request activity...');
+  const [schedulerDetailsText, setSchedulerDetailsText] = useState('Loading scheduler status...');
+  const [outputText, setOutputText] = useState('Run the script to see output');
+  const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
+  const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
+  const [dataMetaText, setDataMetaText] = useState('Loading...');
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -557,6 +598,76 @@ function AppRoot() {
     };
   }, []);
 
+  useEffect(() => {
+    window.updateReactStatusText = (text) => {
+      setStatusText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactStatusText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactRequestActivityDetailsText = (text) => {
+      setRequestActivityDetailsText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactRequestActivityDetailsText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactSchedulerDetailsText = (text) => {
+      setSchedulerDetailsText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactSchedulerDetailsText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactOutputText = (text) => {
+      setOutputText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactOutputText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactBackfillDetailsText = (text) => {
+      setBackfillDetailsText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactBackfillDetailsText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactBackfillLogText = (text) => {
+      setBackfillLogText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactBackfillLogText;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactDataMetaText = (text) => {
+      setDataMetaText(text);
+      return true;
+    };
+    return () => {
+      delete window.updateReactDataMetaText;
+    };
+  }, []);
+
   // Announce readiness only once every window.* bridge above has actually
   // been assigned. React runs useEffects in declaration order after commit,
   // so this must be the LAST effect in the component - dispatching from
@@ -633,6 +744,8 @@ function AppRoot() {
               key={`${listId}-${state?.renderKey ?? 0}`}
               options={state?.options || []}
               idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
+              emptyClassContainer={container}
+              summaryContainer={containers.multiSelectSummary[listId]}
             />,
             container,
             listId,
@@ -647,6 +760,22 @@ function AppRoot() {
             />,
             containers.appliedFilterSummary,
             'applied-filter-summary',
+          )}
+
+        {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
+
+        {containers.triggerAutoRunBtn &&
+          createPortal(
+            <TriggerAutoRunButton onTrigger={() => window.handleTriggerAutoRun?.()} />,
+            containers.triggerAutoRunBtn,
+            'trigger-auto-run-btn',
+          )}
+
+        {containers.quickCheckBtn &&
+          createPortal(
+            <QuickCheckButton onCheck={() => window.handleQuickCheck?.()} />,
+            containers.quickCheckBtn,
+            'quick-check-btn',
           )}
 
         {hasReviewStatsBeenVisible && containers.reviewStatsControls &&
@@ -735,6 +864,24 @@ function AppRoot() {
             containers.requestActivityBadges,
             'request-activity-badges',
           )}
+
+        {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
+
+        {containers.requestActivityDetails &&
+          createPortal(requestActivityDetailsText, containers.requestActivityDetails, 'request-activity-details')}
+
+        {containers.schedulerDetails &&
+          createPortal(schedulerDetailsText, containers.schedulerDetails, 'scheduler-details')}
+
+        {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
+
+        {containers.backfillDetails &&
+          createPortal(backfillDetailsText, containers.backfillDetails, 'backfill-details')}
+
+        {containers.backfillLog &&
+          createPortal(backfillLogText, containers.backfillLog, 'backfill-log')}
+
+        {containers.dataMeta && createPortal(dataMetaText, containers.dataMeta, 'data-meta')}
 
         {hasActionLogBeenVisible && containers.actionLog &&
           createPortal(

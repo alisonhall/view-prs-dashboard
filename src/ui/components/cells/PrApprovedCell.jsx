@@ -6,7 +6,6 @@
  * @module components/cells/PrApprovedCell
  */
 
-import React from 'react';
 
 export function PrApprovedCell({ pr, actorsMap = {} }) {
   const approvedClass = window.approvedClass || (() => '');

@@ -14,7 +14,6 @@
  * @module components/PrNumberFilterInput
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function PrNumberFilterInput() {

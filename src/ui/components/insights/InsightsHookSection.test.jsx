@@ -13,7 +13,6 @@ window.DOMPurify = {
   sanitize: sanitizeMock,
 };
 
-const React = require('react');
 const { render, screen, waitFor } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { InsightsHookSection } = require('./InsightsHookSection');

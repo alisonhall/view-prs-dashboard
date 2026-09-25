@@ -62,11 +62,19 @@ export const { createPrRenderApplyHelpers } = (() => {
       }
     };
 
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now
+    // (window.updateReactDataMetaText) - the caller-supplied `meta` (the
+    // DOM element itself, threaded through from pr-render-context.
+    // helpers.js's getElementByIdSafe("data-meta")) is deliberately not
+    // destructured/used here anymore; deriveRenderApplyInputs/
+    // deriveRenderFinalizedState/the orchestrator still compute and pass
+    // it through unchanged - not worth a wider refactor just to drop it
+    // from that whole chain.
     const applyRenderResults = ({
       payload,
       allStoredRows,
       filteredRows,
-      meta,
       appliedSummaryText,
       filterChips,
       selectedScope,
@@ -74,9 +82,7 @@ export const { createPrRenderApplyHelpers } = (() => {
       latestSelectedRepo,
     } = {}) => {
       const actorsMap = payload?.actorsMap || {};
-      if (meta && typeof meta === "object") {
-        meta.textContent = appliedSummaryText || "";
-      }
+      window.updateReactDataMetaText?.(appliedSummaryText || "");
 
       renderManagementFilterSummarySafe({
         summaryText: appliedSummaryText,

@@ -1,7 +1,6 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
-const { render, screen, waitFor, act } = require('@testing-library/react');
+const { render, screen, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 

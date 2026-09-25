@@ -197,13 +197,31 @@ const {
   toCount,
 } = prFormattingHelperFactory.createPrFormattingHelpers();
 
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): #status's text is React-owned now
+// (window.updateReactStatusText), so renderRequestActivity (below) can no
+// longer read document.getElementById("status").textContent to embed the
+// current status in its own "Current status: ..." line - React's state
+// commit is asynchronous, so that DOM read would be stale right after this
+// same function calls window.updateReactStatusText and then immediately
+// calls renderRequestActivity(). Tracked here instead, matching this
+// codebase's established "vanilla variable is the source of truth"
+// pattern (e.g. latestStoredPayload) rather than relying on DOM commit
+// timing.
+let latestStatusText = "Not run";
+
+const setStatusTextOnly = (message) => {
+  latestStatusText = message;
+  window.updateReactStatusText?.(message);
+};
+
 const setStatusMessage = (message) => {
-  document.getElementById("status").textContent = message;
+  setStatusTextOnly(message);
   renderRequestActivity();
 };
 
 const setOutputMessage = (message) => {
-  document.getElementById("output").textContent = message;
+  window.updateReactOutputText?.(message);
 };
 
 const setRequestActivityCounter = (key, delta = 0) => {
@@ -307,11 +325,6 @@ const getActiveRequestActivityEntries = () => {
 };
 
 const renderRequestActivity = () => {
-  const details = getOptionalElementById("request-activity-details");
-  if (!details) {
-    return;
-  }
-
   const activeEntries = getActiveRequestActivityEntries();
   const isAutoRunInProgress = Boolean(
     latestSchedulerState?.isAutoRunInProgress,
@@ -332,26 +345,26 @@ const renderRequestActivity = () => {
     getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
   );
 
-  const statusLine = String(
-    getOptionalElementById("status")?.textContent || "-",
+  const statusLine = String(latestStatusText || "-");
+  window.updateReactRequestActivityDetailsText?.(
+    [
+      `Current status: ${statusLine}`,
+      `Active requests: ${
+        totalActive > 0
+          ? [
+              isAutoRunInProgress
+                ? withElapsedSuffix("Auto run", autoRunElapsedMs)
+                : "",
+              ...activeEntries.map((entry) =>
+                withElapsedSuffix(entry.label, entry.elapsedMs),
+              ),
+            ]
+              .filter(Boolean)
+              .join(" | ")
+          : "none"
+      }`,
+    ].join("\n"),
   );
-  details.textContent = [
-    `Current status: ${statusLine}`,
-    `Active requests: ${
-      totalActive > 0
-        ? [
-            isAutoRunInProgress
-              ? withElapsedSuffix("Auto run", autoRunElapsedMs)
-              : "",
-            ...activeEntries.map((entry) =>
-              withElapsedSuffix(entry.label, entry.elapsedMs),
-            ),
-          ]
-            .filter(Boolean)
-            .join(" | ")
-        : "none"
-    }`,
-  ].join("\n");
 };
 
 const beginRequestActivity = (key) => {
@@ -368,67 +381,20 @@ const beginRequestActivity = (key) => {
   };
 };
 
-const setSnackbarVariant = (snackbar, variant = "error") => {
-  if (!snackbar) return;
-  snackbar.className =
-    variant === "warning"
-      ? "error-snackbar error-snackbar-warning"
-      : "error-snackbar";
-};
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): the snackbar itself is fully React-owned now
+// (components/Snackbar.jsx, mounted into an empty #error-snackbar-root) -
+// these 3 are thin delegating wrappers around the window.* bridges that
+// component registers, kept under their original names so the ~15+
+// existing call sites (notifyFailureSnackbar, markPollSuccess, etc.) don't
+// need to change.
+const showErrorNotification = (title, message, autoDismissMs = 8000) =>
+  window.showErrorNotification?.(title, message, autoDismissMs);
 
-const showErrorNotification = (title, message, autoDismissMs = 8000) => {
-  const snackbar = document.getElementById("error-snackbar");
-  const messageEl = document.getElementById("error-snackbar-message");
+const showWarningNotification = (title, message, autoDismissMs = 12000) =>
+  window.showWarningNotification?.(title, message, autoDismissMs);
 
-  if (!snackbar || !messageEl) return;
-
-  setSnackbarVariant(snackbar, "error");
-
-  // Build full message
-  const fullMessage = message ? `${title}\n\n${message}` : title;
-  messageEl.textContent = fullMessage;
-  messageEl.className = "error-snackbar-message";
-
-  snackbar.removeAttribute("hidden");
-
-  // Auto-dismiss behavior
-  if (autoDismissMs > 0) {
-    clearTimeout(snackbar.__dismissTimeout);
-    snackbar.__dismissTimeout = setTimeout(() => {
-      snackbar.setAttribute("hidden", "");
-    }, autoDismissMs);
-  }
-};
-
-const showWarningNotification = (title, message, autoDismissMs = 12000) => {
-  const snackbar = document.getElementById("error-snackbar");
-  const messageEl = document.getElementById("error-snackbar-message");
-
-  if (!snackbar || !messageEl) return;
-
-  setSnackbarVariant(snackbar, "warning");
-
-  const fullMessage = message ? `${title}\n\n${message}` : title;
-  messageEl.textContent = fullMessage;
-  messageEl.className = "error-snackbar-message";
-
-  snackbar.removeAttribute("hidden");
-
-  if (autoDismissMs > 0) {
-    clearTimeout(snackbar.__dismissTimeout);
-    snackbar.__dismissTimeout = setTimeout(() => {
-      snackbar.setAttribute("hidden", "");
-    }, autoDismissMs);
-  }
-};
-
-const hideErrorNotification = () => {
-  const snackbar = document.getElementById("error-snackbar");
-  if (snackbar) {
-    clearTimeout(snackbar.__dismissTimeout);
-    snackbar.setAttribute("hidden", "");
-  }
-};
+const hideErrorNotification = () => window.hideErrorNotification?.();
 
 const isTimeoutFailureMessage = (value) =>
   /\b(timed?\s*out|timeout|deadline exceeded)\b/i.test(String(value || ""));
@@ -553,6 +519,16 @@ const summarizeAckRefreshWarnings = (
   };
 };
 
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): deliberately still reads the DOM directly
+// (unlike renderRequestActivity above), not latestOutputText/
+// latestStatusText - this is a decoupled, best-effort fallback (only used
+// when currentViewerLogin/row.viewerLogin are both unavailable), called
+// from a different context entirely, not synchronously right after a
+// status/output update the way renderRequestActivity's read was - so the
+// same React-commit-timing hazard doesn't actually apply here in
+// practice. By the time this runs, React will have long since committed
+// whatever #status/#output currently show.
 const inferViewerLoginFromPage = () => {
   const candidates = [
     getOptionalElementById("output")?.textContent,
@@ -624,11 +600,19 @@ const isIgnoredCredentialFieldError = (value) => {
   );
 };
 
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): tracked so 'viewprs:react-ready' can re-invoke
+// this once window.updateReactBackfillLogText actually exists - unlike
+// #status/#output/#scheduler-details/#request-activity-details (all
+// called repeatedly during normal operation, so they self-heal from the
+// same bridge-not-ready-yet race documented for backfill badges above),
+// this only populates on Backfill-tab-visit/refresh-click, so a lost race
+// on the very first load would otherwise never self-correct.
+let latestBackfillLogMessage = null;
+
 const setBackfillLogMessage = (message) => {
-  const node = getOptionalElementById("backfill-log");
-  if (node) {
-    node.textContent = message;
-  }
+  latestBackfillLogMessage = message;
+  window.updateReactBackfillLogText?.(message);
 };
 
 const getUiOptionDefaults = () => ({
@@ -1917,6 +1901,13 @@ const {
   renderAuthorInsights: (...args) => renderAuthorInsights(...args),
   documentRef: typeof document !== "undefined" ? document : null,
   setTimeoutFn: (...args) => setTimeout(...args),
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): same guard pr-author-insights-pr-link.
+  // helpers.js's own navigateToPrInTable already has, at its own call
+  // site below (isReactTableMounted defined further down in this file,
+  // line ~4092 - safe to reference here since this closure is only
+  // ever called later, never during module initialization).
+  isReactTableMounted: () => isReactTableMounted(),
 });
 
 const renderAutoRenderBlockedIndicator = () => {
@@ -2096,7 +2087,6 @@ const renderMarkdownAsHtml = (markdownText) => {
 const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
   latestSchedulerState = scheduler;
-  const details = document.getElementById("scheduler-details");
 
   // Renders the badge list into #scheduler-badges via React (see
   // mountSchedulerBadges in react-app.jsx) - same shape renderBackfillStatus
@@ -2116,7 +2106,7 @@ const renderSchedulerStatus = (schedulerRaw = {}) => {
     `Last merged/closed drain: ${formatIsoDatetime(scheduler.lastMergedDrainAt || "-")}`,
   ];
 
-  details.textContent = lines.join("\n");
+  window.updateReactSchedulerDetailsText?.(lines.join("\n"));
   applyActivePrProgressIndicators(scheduler.activePrNumbers || []);
   renderRequestActivity();
 };
@@ -2185,12 +2175,13 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
   });
 };
 
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// (components/TriggerAutoRunButton.jsx), which manages disabled/label
+// state around this call as its injected onTrigger callback - this
+// function no longer touches the DOM at all, only the fetch/branching
+// business logic remains here.
 const handleTriggerAutoRun = async () => {
-  const btn = getOptionalElementById("trigger-auto-run-btn");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Triggering...";
-  }
   try {
     const { response, result } = await postJson("/view-prs/run-auto", {});
     if (response.status === 409) {
@@ -2212,11 +2203,6 @@ const handleTriggerAutoRun = async () => {
       error,
       "Unable to reach the server",
     );
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Trigger auto run";
-    }
   }
 };
 
@@ -2227,20 +2213,14 @@ const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 // single listing-only `gh` call per repo, no comments/reviews/diffs, so it's
 // fast enough to await directly and report the result inline instead of
 // firing-and-forgetting like "Trigger auto run" does for the full refresh.
+//
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// (components/QuickCheckButton.jsx). Unlike handleTriggerAutoRun above,
+// this one's final label depends on the outcome, so rather than touching
+// the DOM directly, this returns a `{ label, resetAfterMs? }` descriptor
+// for that component's own onCheck callback to apply.
 const handleQuickCheck = async () => {
-  const btn = getOptionalElementById("quick-check-btn");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Checking...";
-  }
-
-  const resetLabelSoon = () => {
-    if (!btn) return;
-    setTimeout(() => {
-      btn.textContent = QUICK_CHECK_BUTTON_LABEL;
-    }, 2500);
-  };
-
   try {
     const { response, result } = await postJson("/view-prs/quick-check", {});
     if (response.status === 409) {
@@ -2250,8 +2230,7 @@ const handleQuickCheck = async () => {
           "A quick check or auto refresh is already running. Try again shortly.",
         6000,
       );
-      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
-      return;
+      return { label: QUICK_CHECK_BUTTON_LABEL };
     }
     if (response.status === 503) {
       showWarningNotification(
@@ -2260,8 +2239,7 @@ const handleQuickCheck = async () => {
           "Auto refresh circuit breaker is open after repeated failures. Try again later.",
         8000,
       );
-      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
-      return;
+      return { label: QUICK_CHECK_BUTTON_LABEL };
     }
     if (!response.ok || result.ok === false) {
       notifyFailureSnackbar(
@@ -2269,8 +2247,7 @@ const handleQuickCheck = async () => {
         result,
         result?.error || "Unexpected error running quick check",
       );
-      if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
-      return;
+      return { label: QUICK_CHECK_BUTTON_LABEL };
     }
 
     // Counts reflect only what THIS run found (server-side newPendingOpenCount/
@@ -2280,14 +2257,6 @@ const handleQuickCheck = async () => {
     const pendingTotal =
       (result.newPendingOpenCount || 0) + (result.newPendingMergedClosedCount || 0);
     const failedCount = Array.isArray(result.reposFailed) ? result.reposFailed.length : 0;
-
-    if (btn) {
-      btn.textContent =
-        pendingTotal > 0
-          ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
-          : "No changes found";
-    }
-    resetLabelSoon();
 
     // A repo failing to check (e.g. expired gh auth) still returns ok:true
     // when other repos succeeded - surface it anyway so "No changes found"
@@ -2304,19 +2273,31 @@ const handleQuickCheck = async () => {
     // Reflects the fresh pending counts in the Auto Refresh panel right
     // away instead of waiting for its own independent poll interval.
     void loadSchedulerStatus();
+
+    return {
+      label:
+        pendingTotal > 0
+          ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
+          : "No changes found",
+      resetAfterMs: 2500,
+    };
   } catch (error) {
     notifyFailureSnackbar(
       "Quick check failed",
       error,
       "Unable to reach the server",
     );
-    if (btn) btn.textContent = QUICK_CHECK_BUTTON_LABEL;
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-    }
+    return { label: QUICK_CHECK_BUTTON_LABEL };
   }
 };
+
+// TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
+// their onTrigger/onCheck props - same exposure shape as
+// window.handleRequestMoreMerged above.
+if (typeof window !== "undefined") {
+  window.handleTriggerAutoRun = (...args) => handleTriggerAutoRun(...args);
+  window.handleQuickCheck = (...args) => handleQuickCheck(...args);
+}
 
 const {
   getSelectedAuthorLogins,
@@ -2330,7 +2311,6 @@ const {
   getRallyStoriesFilter,
   getRallyLinksFilter,
   getAnalysisOfPrFilter,
-  updateMultiSelectSummary,
   populateIncludeLabelOptions,
   populateExcludeLabelOptions,
   populateAuthorOptions,
@@ -2453,12 +2433,6 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
           : [];
     const selectedSet = new Set(seedSelections);
 
-    if (actorEntries.length === 0) {
-      listNode.classList.add("empty");
-    } else {
-      listNode.classList.remove("empty");
-    }
-
     // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
     // fallback here any more - same always-available assumption (and same
     // typeof guard, only for the brief pre-mount race, never a real
@@ -2468,6 +2442,11 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
     // below) were missed in that slice; removed here the same way. Phase 5
     // residual: routed through renderMultiSelectListSkipUnchanged (see its
     // own comment above) so an unchanged list doesn't force a remount.
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): this used to also toggle
+    // listNode.classList "empty" and call updateMultiSelectSummary(listId)
+    // (both deleted) - MultiSelectCheckboxList.jsx now owns both directly
+    // from the `options` it's given below.
     renderMultiSelectListSkipUnchanged(
       listId,
       actorEntries.map(({ login, displayName }) => ({
@@ -2485,8 +2464,6 @@ const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
         setPendingSelections(null);
       }
     }
-
-    updateMultiSelectSummary(listId);
   };
 
   renderActorOptionsList({
@@ -2553,17 +2530,15 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
           : [];
     const selectedSet = new Set(seedSelections);
 
-    if (actorEntries.length === 0) {
-      listNode.classList.add("empty");
-    } else {
-      listNode.classList.remove("empty");
-    }
-
     // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
     // fallback here any more - see renderActorOptionsList's identical twin
     // above for why (this one was missed in the pr-filter-panel/
     // pr-json-modal cleanup slice; removed here the same way). Phase 5
     // residual: routed through renderMultiSelectListSkipUnchanged too.
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): this used to also toggle listNode.classList
+    // "empty" and call updateMultiSelectSummary(listId) (both deleted) -
+    // MultiSelectCheckboxList.jsx now owns both directly.
     renderMultiSelectListSkipUnchanged(
       listId,
       actorEntries.map(({ login, displayName }) => ({
@@ -2581,8 +2556,6 @@ const populateChangeFilterActorOptions = (actorsMap = {}) => {
         setPendingSelections(null);
       }
     }
-
-    updateMultiSelectSummary(listId);
   };
 
   renderChangeFilterActorList({
@@ -2638,7 +2611,7 @@ const renderBackfillStatus = (backfillRaw = {}) => {
   // mountBackfillBadges in react-app.jsx).
   window.updateReactBackfillBadges?.(viewModel.badges);
 
-  details.textContent = viewModel.detailsText;
+  window.updateReactBackfillDetailsText?.(viewModel.detailsText);
   isBackfillRunning = viewModel.isBackfillRunning;
 
   if (startButton) {
@@ -2887,13 +2860,11 @@ const isFlaggedEnabled = (entry, row) => {
 };
 
 const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
-  const statusElement = document.getElementById("status");
   const prNumber = String(row.number || entry.prNumber || "").trim();
 
   if (!prNumber) {
     checkbox.checked = !nextValue;
-    statusElement.textContent =
-      "Unable to update in-review state: missing PR number";
+    setStatusTextOnly("Unable to update in-review state: missing PR number");
     notifyFailureSnackbar(
       "In-review update failed",
       "Missing PR number",
@@ -2903,7 +2874,7 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
   }
 
   checkbox.disabled = true;
-  statusElement.textContent = `${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`;
+  setStatusTextOnly(`${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`);
 
   try {
     const payload = {
@@ -2919,7 +2890,7 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
 
     if (!response.ok || result.ok === false) {
       checkbox.checked = !nextValue;
-      statusElement.textContent = `Failed to update in-review for #${prNumber}`;
+      setStatusTextOnly(`Failed to update in-review for #${prNumber}`);
       notifyFailureSnackbar(
         `In-review update failed for #${prNumber}`,
         result,
@@ -2928,7 +2899,7 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
       return;
     }
 
-    statusElement.textContent = `${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`;
+    setStatusTextOnly(`${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`);
     
     // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
     // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
@@ -2956,7 +2927,7 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
     }
   } catch (_error) {
     checkbox.checked = !nextValue;
-    statusElement.textContent = `Failed to update in-review for #${prNumber}`;
+    setStatusTextOnly(`Failed to update in-review for #${prNumber}`);
     notifyFailureSnackbar(
       `In-review update failed for #${prNumber}`,
       _error,
@@ -2968,13 +2939,11 @@ const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
 };
 
 const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
-  const statusElement = document.getElementById("status");
   const prNumber = String(row.number || entry.prNumber || "").trim();
 
   if (!prNumber) {
     checkbox.checked = !nextValue;
-    statusElement.textContent =
-      "Unable to update flagged state: missing PR number";
+    setStatusTextOnly("Unable to update flagged state: missing PR number");
     notifyFailureSnackbar(
       "Flagged update failed",
       "Missing PR number",
@@ -2984,7 +2953,7 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
   }
 
   checkbox.disabled = true;
-  statusElement.textContent = `${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`;
+  setStatusTextOnly(`${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`);
 
   try {
     const payload = {
@@ -3000,7 +2969,7 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
 
     if (!response.ok || result.ok === false) {
       checkbox.checked = !nextValue;
-      statusElement.textContent = `Failed to update flagged state for #${prNumber}`;
+      setStatusTextOnly(`Failed to update flagged state for #${prNumber}`);
       notifyFailureSnackbar(
         `Flagged update failed for #${prNumber}`,
         result,
@@ -3009,7 +2978,7 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
       return;
     }
 
-    statusElement.textContent = `${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`;
+    setStatusTextOnly(`${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`);
     
     // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
     // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
@@ -3037,7 +3006,7 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
     }
   } catch (_error) {
     checkbox.checked = !nextValue;
-    statusElement.textContent = `Failed to update flagged state for #${prNumber}`;
+    setStatusTextOnly(`Failed to update flagged state for #${prNumber}`);
     notifyFailureSnackbar(
       `Flagged update failed for #${prNumber}`,
       _error,
@@ -3860,32 +3829,14 @@ const handlePrNumbersInputChange = () => {
   if (!String(prNumbersInput?.value || "").trim()) {
     prNumbersInput.value = "";
   }
-
-  syncSelectionCheckboxesWithInput();
 };
 
-const syncSelectionCheckboxesWithInput = () => {
-  const selectedPrNumbers = new Set(getSelectedPrNumbers());
-  const sectionsHost = document.getElementById("pr-sections");
-
-  const visit = (node) => {
-    if (!node || typeof node !== "object") return;
-
-    const className = String(node.className || "");
-    if (className.includes("row-select-checkbox")) {
-      const prNumber = String(
-        node.getAttribute?.("data-pr-number") || "",
-      ).trim();
-      node.checked = selectedPrNumbers.has(prNumber);
-    }
-
-    const children = node.children ? Array.from(node.children) : [];
-    children.forEach(visit);
-  };
-
-  visit(sectionsHost);
-};
-
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): this used to also call
+// syncSelectionCheckboxesWithInput() (deleted) - a tree-walk over
+// #pr-sections toggling `.checked` on any `.row-select-checkbox` node.
+// That class doesn't exist anywhere in the current React-rendered table
+// or any component, so it was inert dead code, not a live sync.
 const updateSelectedPrNumbers = (prNumber, shouldSelect) => {
   const current = getSelectedPrNumbers();
   const normalizedPrNumber = String(prNumber || "").trim();
@@ -3900,7 +3851,6 @@ const updateSelectedPrNumbers = (prNumber, shouldSelect) => {
     : current.filter((value) => value !== normalizedPrNumber);
 
   setSelectedPrNumbers(next);
-  syncSelectionCheckboxesWithInput();
 };
 
 const normalizeFilterToken = (value) =>
@@ -5046,6 +4996,20 @@ const initPage = () => {
     },
     { once: true },
   );
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): same bridge-not-ready-yet race as backfill
+  // badges/details above, for #backfill-log specifically (see
+  // latestBackfillLogMessage's own comment for why this one needs it and
+  // the others above don't).
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => {
+      if (latestBackfillLogMessage !== null) {
+        window.updateReactBackfillLogText?.(latestBackfillLogMessage);
+      }
+    },
+    { once: true },
+  );
   registerUiOptionPersistenceHandlers();
   initManagementTabs();
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
@@ -5228,7 +5192,7 @@ const initPage = () => {
 
   loadStoredData("").catch((error) => {
     setStatusMessage("Failed to load stored data");
-    document.getElementById("data-meta").textContent = "Failed to load.";
+    window.updateReactDataMetaText?.("Failed to load.");
     setOutputMessage(String(error));
     notifyFailureSnackbar(
       "Failed to load stored data",
@@ -5347,7 +5311,12 @@ const initPage = () => {
     if (listElement) {
       listElement.addEventListener("change", (event) => {
         if (event.target.type === "checkbox") {
-          updateMultiSelectSummary(listId);
+          // Deferred-items follow-up (full vanilla-to-React sweep, see
+          // REACT_MIGRATION_PLAN.md): used to call
+          // updateMultiSelectSummary(listId) here (deleted) - now
+          // redundant, since MultiSelectCheckboxList.jsx's own React
+          // state already reacts to this same checkbox's onChange and
+          // re-renders the summary text as part of its own render cycle.
           if (
             listId === "attention-author-thread-resolution-allow-list" ||
             listId === "attention-author-thread-resolution-deny-list" ||
@@ -5375,22 +5344,16 @@ const initPage = () => {
     void persistRunScriptOptionOverrides();
     void handleRunScript();
   });
-  const quickCheckBtn = getOptionalElementById("quick-check-btn");
-  if (quickCheckBtn) {
-    quickCheckBtn.addEventListener("click", () => {
-      void handleQuickCheck();
-    });
-  }
-  const triggerAutoRunBtn = getOptionalElementById("trigger-auto-run-btn");
-  if (triggerAutoRunBtn) {
-    triggerAutoRunBtn.addEventListener("click", () => {
-      void handleTriggerAutoRun();
-    });
-  }
-  const closeBtn = getOptionalElementById("error-snackbar-close");
-  if (closeBtn) {
-    closeBtn.addEventListener("click", hideErrorNotification);
-  }
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): #quick-check-btn/#trigger-auto-run-btn are
+  // React-owned now (components/QuickCheckButton.jsx/
+  // TriggerAutoRunButton.jsx), with their own onClick handlers calling
+  // handleQuickCheck/handleTriggerAutoRun as injected callbacks - no
+  // vanilla wiring needed here anymore.
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): #error-snackbar-close is React-owned now
+  // (components/Snackbar.jsx), with its own onClick handler - no vanilla
+  // wiring needed here anymore.
   document.getElementById("ack-only-btn").addEventListener("click", () => {
     void handleAckOnly();
   });

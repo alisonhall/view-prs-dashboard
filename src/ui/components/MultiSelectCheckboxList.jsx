@@ -28,10 +28,29 @@
  * always on the stable container rather than on individual checkboxes)
  * all keep working completely unmodified.
  *
+ * Deferred-items follow-up (full vanilla-to-React sweep, see
+ * REACT_MIGRATION_PLAN.md): also owns the "(N selected)" summary count text
+ * and the "empty" class on its own portal target now, replacing
+ * pr-filter-panel.helpers.js's updateMultiSelectSummary (deleted, along
+ * with the classList.add/remove("empty") calls every populateXOptions
+ * function and index.page.js's renderActorOptionsList/
+ * renderChangeFilterActorList used to make) - both covered every one of
+ * the 9 multi-select lists uniformly, so moving the logic in here covers
+ * all 9 the same way. Can't just render these as ordinary JSX children:
+ * `emptyClassContainer` (the list's own portal target - toggling its class
+ * from inside its own JSX isn't possible, a portal only owns a target's
+ * children, not the target itself) and `summaryContainer` (a *sibling*
+ * <summary class="multi-select-summary"> element, not a descendant of this
+ * component's own tree at all) both need a second, explicit mechanism - a
+ * ref-driven effect for the former, a second createPortal for the latter.
+ * `summaryContainer`'s `data-base-label` attribute (index.html) replaces
+ * the old runtime `summary.textContent.split("(")[0].trim()` parsing.
+ *
  * @module components/MultiSelectCheckboxList
  */
 
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const getCheckboxId = (idPrefix, value, index) => {
   const normalized = String(value || '')
@@ -42,10 +61,14 @@ const getCheckboxId = (idPrefix, value, index) => {
   return `${idPrefix}-${normalized || 'item'}-${index}`;
 };
 
-export function MultiSelectCheckboxList({ options = [], idPrefix }) {
+export function MultiSelectCheckboxList({ options = [], idPrefix, emptyClassContainer, summaryContainer }) {
   const [checkedValues, setCheckedValues] = useState(
     () => new Set(options.filter((option) => option.checked).map((option) => option.value)),
   );
+
+  useEffect(() => {
+    emptyClassContainer?.classList.toggle('empty', options.length === 0);
+  }, [emptyClassContainer, options.length]);
 
   const toggle = (value) => {
     setCheckedValues((previous) => {
@@ -58,6 +81,10 @@ export function MultiSelectCheckboxList({ options = [], idPrefix }) {
       return next;
     });
   };
+
+  const checkedCount = checkedValues.size;
+  const baseLabel = summaryContainer?.dataset.baseLabel || '';
+  const summaryText = checkedCount > 0 ? `${baseLabel} (${checkedCount} selected)` : baseLabel;
 
   return (
     <>
@@ -76,6 +103,7 @@ export function MultiSelectCheckboxList({ options = [], idPrefix }) {
           </div>
         );
       })}
+      {summaryContainer && createPortal(summaryText, summaryContainer)}
     </>
   );
 }

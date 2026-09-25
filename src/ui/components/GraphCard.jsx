@@ -9,7 +9,6 @@
  * @module components/GraphCard
  */
 
-import React from 'react';
 
 const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
 

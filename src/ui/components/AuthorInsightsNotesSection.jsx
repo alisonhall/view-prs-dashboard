@@ -18,7 +18,6 @@
  * @module components/AuthorInsightsNotesSection
  */
 
-import React from 'react';
 import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
 import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
 import { usePrData } from '../state/PrDataContext';

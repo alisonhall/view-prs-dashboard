@@ -20,7 +20,6 @@
  * @module components/ContextFilterCheckbox
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function ContextFilterCheckbox({ id, name, filterStateKey }) {

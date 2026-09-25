@@ -75,7 +75,6 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
 
   const displayTimeline = useMemo(
     () => (hasData ? bucketTimelineChartDataSafe(chartData) : { buckets: [], series: [] }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [chartData, hasData],
   );
   const displayBuckets = displayTimeline.buckets;

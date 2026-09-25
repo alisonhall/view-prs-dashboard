@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render, screen, waitFor, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
@@ -63,7 +62,7 @@ describe('AuthorInsightsCommentsSection', () => {
       commentsByLogin[login] = Array.isArray(comments) ? comments : [];
     };
     window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: false, error: '' });
-    window.loadAuthorManualComments = (login, onComplete) => onComplete();
+    window.loadAuthorManualComments = (_login, onComplete) => onComplete();
   });
 
   afterEach(() => {

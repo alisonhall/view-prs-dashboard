@@ -8,7 +8,6 @@
  * @module components/PrInsightsRow
  */
 
-import React from 'react';
 import { ActivityEventsSection } from './insights/ActivityEventsSection';
 import { ReviewThreadsSection } from './insights/ReviewThreadsSection';
 import { ApprovalRiskSection } from './insights/ApprovalRiskSection';

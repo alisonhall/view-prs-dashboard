@@ -5,7 +5,6 @@
  * @module components/cells/PrDateCell
  */
 
-import React from 'react';
 
 function FieldIndicator({ hasData, title, text = '', extraClass = '' }) {
   const className = [

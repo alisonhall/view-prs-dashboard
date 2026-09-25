@@ -10,7 +10,7 @@
  * @module components/PrJsonModal
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function summarizeDiffText(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);
@@ -75,7 +75,7 @@ function buildPrJsonModalPayload({ entry, pr, payload, defaultRepo, getPerPrUser
   };
 }
 
-function formatDiffSummaryLine(diffData, safeJsonStringify) {
+function formatDiffSummaryLine(diffData) {
   if (!diffData || diffData.ok === false) {
     return String(diffData?.error || 'Diff data is unavailable');
   }
@@ -325,7 +325,7 @@ export function PrJsonModal({ target, payload, onClose }) {
   if (!isOpen) return null;
 
   const diffBlocks = buildDiffBlocks(diffData?.ok === false ? '' : diffData?.diffText || '');
-  const diffMeta = loading ? 'Loading diff details...' : formatDiffSummaryLine(diffData, safeJsonStringify);
+  const diffMeta = loading ? 'Loading diff details...' : formatDiffSummaryLine(diffData);
   const diffErrorText =
     diffData?.ok === false ? `Unable to load diff\n${String(diffData.error || 'Unknown error')}` : '';
   const copyAllText = detailsPayload

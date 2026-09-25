@@ -67,6 +67,68 @@ describe("auto render navigation helpers", () => {
     expect(target.className).toContain("author-insights-comment-textarea");
   });
 
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): navigateToPrInTable used to unconditionally
+  // mutate the insights row's `.hidden`/toggle-button text directly, with
+  // no isReactTableMounted guard (unlike its sibling,
+  // pr-author-insights-pr-link.helpers.js) - once React owns #pr-sections,
+  // that direct mutation would desync from React's own expandedInsights
+  // state (the toggle button claiming "expanded" while the insights
+  // content never actually renders). Mirrors the sibling's own fix.
+  describe("navigateToPrInTable's React-mounted guard", () => {
+    const renderPrLinkRow = () => {
+      document.body.innerHTML = `
+        <table>
+          <tbody>
+            <tr>
+              <td class="pr-number-cell"><a class="pr-link">#123</a></td>
+              <td><button class="row-insights-toggle" aria-expanded="false">Show insights</button></td>
+            </tr>
+            <tr hidden>
+              <td class="insights-row-cell"></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+      const prLink = document.querySelector(".pr-link");
+      prLink.scrollIntoView = jest.fn();
+      prLink.focus = jest.fn();
+      return prLink;
+    };
+
+    test("given React owns the table, when navigating to a PR, then it dispatches pr-navigate-to-insights instead of mutating the row directly", () => {
+      renderPrLinkRow();
+      const dispatched = [];
+      window.addEventListener("pr-navigate-to-insights", (event) => dispatched.push(event.detail));
+
+      const { navigateToPrInTable } = createHelpers({ isReactTableMounted: () => true });
+      navigateToPrInTable("123");
+
+      expect(dispatched).toEqual([{ prNumber: "123" }]);
+      const nextRow = document.querySelectorAll("tr")[1];
+      const toggleButton = document.querySelector(".row-insights-toggle");
+      expect(nextRow.hidden).toBe(true); // untouched - React's own listener would handle expansion
+      expect(toggleButton.textContent).toBe("Show insights");
+      expect(toggleButton.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    test("given React does not own the table, when navigating to a PR, then it mutates the insights row directly (legacy behavior)", () => {
+      renderPrLinkRow();
+      const dispatched = [];
+      window.addEventListener("pr-navigate-to-insights", (event) => dispatched.push(event.detail));
+
+      const { navigateToPrInTable } = createHelpers({ isReactTableMounted: () => false });
+      navigateToPrInTable("123");
+
+      expect(dispatched).toEqual([]);
+      const nextRow = document.querySelectorAll("tr")[1];
+      const toggleButton = document.querySelector(".row-insights-toggle");
+      expect(nextRow.hidden).toBe(false);
+      expect(toggleButton.textContent).toBe("Hide insights");
+      expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
+    });
+  });
+
   test("given valid author login, when navigating to author insights, then selected login is updated and navigation succeeds", () => {
     document.body.innerHTML = `
       <section id="author-insights">

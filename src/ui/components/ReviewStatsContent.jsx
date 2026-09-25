@@ -235,6 +235,14 @@ export function ReviewStatsContent() {
     const computed = applyStatsControls({ summary, reviewerRows });
     lastStatsRef.current = computed;
     return computed;
+    // statsViewState is a deliberate invalidation trigger, not read inside
+    // this callback (see the module comment above - applyStatsControls
+    // reads the live vanilla statsViewState object by closure instead) -
+    // exhaustive-deps can't tell "read for its value" apart from "listed
+    // purely to know when settings changed," so it flags this as
+    // unnecessary; removing it would stop settings changes from
+    // triggering a recompute at all.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, statsViewState, isVisible]);
 
   if (!stats) {

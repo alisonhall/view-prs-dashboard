@@ -6,7 +6,6 @@
  * @module components/insights/ActivityEventsSection
  */
 
-import React from 'react';
 import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
 
@@ -112,7 +111,6 @@ export function ActivityEventsSection({ pr, actorsMap }) {
           const linkUrl = directUrl ? (directIsPrRoot && isReviewEvent ? '' : directUrl) : isReviewEvent ? '' : fallbackUrl;
 
           return (
-            // eslint-disable-next-line react/no-array-index-key
             <div key={index} className={`insight-list-item insight-event-kind-${getEventKind(event)}`}>
               <div className="insight-event-header">
                 <span>

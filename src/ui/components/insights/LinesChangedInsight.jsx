@@ -6,7 +6,6 @@
  * @module components/insights/LinesChangedInsight
  */
 
-import React from 'react';
 
 export function LinesChangedInsight({ pr }) {
   const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);

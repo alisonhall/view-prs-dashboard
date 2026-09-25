@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Renders a `{text, className}[]` badge list as `<span class="scheduler-badge ...">`

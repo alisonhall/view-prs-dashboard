@@ -25,6 +25,9 @@ const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataProvider } = require("../state/PrDataProvider");
 const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
+const { Snackbar } = require("../components/Snackbar");
+const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
+const { QuickCheckButton } = require("../components/QuickCheckButton");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
@@ -386,10 +389,17 @@ const installReactFilterPanelMountBridges = () => {
     // own comment for why a plain rerender() would be wrong here.
     const entry = multiSelectEntries[listId] || { rerender: null, renderCount: 0 };
     entry.renderCount += 1;
+    // emptyClassContainer/summaryContainer (deferred-items follow-up, full
+    // vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md): same
+    // resolution react-app.jsx's own computeStaticContainers does, so
+    // MultiSelectCheckboxList's "empty" class toggle and summary count
+    // text work the same way in this test harness as in the real app.
     const element = React.createElement(MultiSelectCheckboxList, {
       key: entry.renderCount,
       options,
       idPrefix,
+      emptyClassContainer: container,
+      summaryContainer: container.closest("details")?.querySelector(".multi-select-summary") || null,
     });
     // flushSync, matching react-app.jsx's real renderReactMultiSelectList:
     // a same-tick DOM read right after this call (getSelectedMultiSelectValues,
@@ -426,6 +436,75 @@ const installReactFilterPanelMountBridges = () => {
   };
 };
 
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): the 7 status/log panels (#status, #output,
+// #scheduler-details, #request-activity-details, #backfill-details,
+// #backfill-log, #data-meta) are now React-portaled plain text
+// (react-app.jsx's AppRoot), not written directly by index.page.js. Since
+// this test file exercises index.page.js without react-app.jsx's real
+// <AppRoot/> ever mounting, these bridges are otherwise never assigned -
+// a plain textContent write is a faithful simulation here since the real
+// bridges do nothing more than that (createPortal(text, container, key)),
+// unlike the multi-select/filter-summary bridges above which mount real
+// components.
+const installReactStatusTextMountBridges = () => {
+  const wireTextBridge = (bridgeName, containerId) => {
+    window[bridgeName] = (text) => {
+      const container = document.getElementById(containerId);
+      if (!container) return false;
+      container.textContent = text;
+      return true;
+    };
+  };
+  wireTextBridge("updateReactStatusText", "status");
+  wireTextBridge("updateReactOutputText", "output");
+  wireTextBridge("updateReactSchedulerDetailsText", "scheduler-details");
+  wireTextBridge("updateReactRequestActivityDetailsText", "request-activity-details");
+  wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
+  wireTextBridge("updateReactBackfillLogText", "backfill-log");
+  wireTextBridge("updateReactDataMetaText", "data-meta");
+};
+
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): #error-snackbar is now fully React-owned
+// (components/Snackbar.jsx, mounted into #error-snackbar-root) - unlike
+// the plain-text panels above, this has real stateful behavior (variant
+// class, hidden toggle, auto-dismiss timer) that many tests assert on
+// precisely, so this mounts the REAL component via RTL (matching the
+// multi-select/filter-summary bridges' approach), not a plain-write
+// simulation - Snackbar.jsx registers window.showErrorNotification/
+// window.showWarningNotification/window.hideErrorNotification itself via
+// its own useEffect, exactly like the real app.
+const installReactSnackbarMountBridge = () => {
+  const container = document.getElementById("error-snackbar-root");
+  if (!container) return;
+  rtlRender(React.createElement(Snackbar), { container });
+};
+
+// Deferred-items follow-up (full vanilla-to-React sweep, see
+// REACT_MIGRATION_PLAN.md): #trigger-auto-run-btn/#quick-check-btn are now
+// fully React-owned (components/TriggerAutoRunButton.jsx/
+// QuickCheckButton.jsx), each calling window.handleTriggerAutoRun/
+// window.handleQuickCheck (index.page.js) as their onTrigger/onCheck prop
+// - same real-RTL-mount reasoning as the snackbar above, since several
+// tests click these and assert on the resulting disabled/label state.
+const installReactActionButtonMountBridges = () => {
+  const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
+  if (triggerAutoRunContainer) {
+    rtlRender(
+      React.createElement(TriggerAutoRunButton, { onTrigger: () => window.handleTriggerAutoRun?.() }),
+      { container: triggerAutoRunContainer },
+    );
+  }
+  const quickCheckContainer = document.getElementById("quick-check-btn-root");
+  if (quickCheckContainer) {
+    rtlRender(
+      React.createElement(QuickCheckButton, { onCheck: () => window.handleQuickCheck?.() }),
+      { container: quickCheckContainer },
+    );
+  }
+};
+
 // Track C, slices C2b/C2c (post-Phase-6 follow-up, see
 // REACT_MIGRATION_PLAN.md): index.page.js no longer calls
 // window.ReactMountBridge (that module was deleted - it was just a thin
@@ -445,6 +524,9 @@ const installReactTableMountBridge = () => {
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
   installReactFilterPanelMountBridges();
+  installReactStatusTextMountBridges();
+  installReactSnackbarMountBridge();
+  installReactActionButtonMountBridges();
 
   window.mountReactPrTable = (containerElement, props) => {
     if (!containerElement) return null;

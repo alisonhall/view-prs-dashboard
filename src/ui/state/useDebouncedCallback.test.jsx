@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render, act } = require('@testing-library/react');
 const { useDebouncedEffect } = require('./useDebouncedCallback');
 

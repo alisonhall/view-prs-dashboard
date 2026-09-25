@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render, screen, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AutoRenderBlockedLinks } = require('./AutoRenderBlockedLinks');

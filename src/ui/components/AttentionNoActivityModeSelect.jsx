@@ -11,7 +11,6 @@
  * @module components/AttentionNoActivityModeSelect
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function AttentionNoActivityModeSelect() {

@@ -11,7 +11,7 @@
  * @module components/PrRow
  */
 
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { PrSelectionCell } from './cells/PrSelectionCell';
 import { PrAttentionCell } from './cells/PrAttentionCell';
 import { PrNumberCell } from './cells/PrNumberCell';

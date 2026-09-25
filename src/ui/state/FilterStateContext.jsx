@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 
 /**
  * Phase 6 (see REACT_MIGRATION_PLAN.md): shared filter-field state for the

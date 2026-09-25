@@ -15,7 +15,6 @@
  * @module components/ContextRunScriptTextInput
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey }) {

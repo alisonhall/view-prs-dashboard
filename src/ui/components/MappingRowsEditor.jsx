@@ -13,7 +13,7 @@
  * @module components/MappingRowsEditor
  */
 
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 let rowIdCounter = 0;
 const nextRowId = () => `mapping-row-${++rowIdCounter}`;

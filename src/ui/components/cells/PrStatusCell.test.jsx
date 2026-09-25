@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrStatusCell } = require('./PrStatusCell');

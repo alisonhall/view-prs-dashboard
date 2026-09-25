@@ -5,7 +5,6 @@
  * @module components/cells/PrNumberCell
  */
 
-import React from 'react';
 
 export function PrNumberCell({ pr, repo, isActive = false }) {
   const prNumber = pr?.number || '';

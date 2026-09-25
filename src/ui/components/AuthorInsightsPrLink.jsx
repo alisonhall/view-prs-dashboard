@@ -16,7 +16,6 @@
  * @module components/AuthorInsightsPrLink
  */
 
-import React from 'react';
 
 export function AuthorInsightsPrLink({ entry }) {
   const row = entry?.data || {};

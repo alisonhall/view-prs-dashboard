@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render, screen, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
@@ -37,15 +36,17 @@ describe('AuthorInsightsSelector', () => {
     expect(screen.getByRole('option', { name: 'Hubot' })).toBeInTheDocument();
   });
 
-  test('given no local rows, when rendering, then nothing is rendered (even if buildAuthorInsightsEntries would otherwise return options)', () => {
-    const { container } = renderSelector({ hasRows: false });
-    expect(container).toBeEmptyDOMElement();
+  test('given no local rows, when rendering, then the "No local rows" empty-state message is shown instead of the select (even if buildAuthorInsightsEntries would otherwise return options)', () => {
+    renderSelector({ hasRows: false });
+    expect(screen.getByText('No local rows available for author insights.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Author')).not.toBeInTheDocument();
   });
 
-  test('given no options from buildAuthorInsightsEntries, when rendering, then nothing is rendered', () => {
+  test('given no options from buildAuthorInsightsEntries, when rendering, then the "No authors found" empty-state message is shown instead of the select', () => {
     window.buildAuthorInsightsEntries = () => [];
-    const { container } = renderSelector({});
-    expect(container).toBeEmptyDOMElement();
+    renderSelector({});
+    expect(screen.getByText('No authors found in the current local data scope.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Author')).not.toBeInTheDocument();
   });
 
   test('given a user selects a different author, when selecting, then onChange fires and the Context-driven value updates', async () => {

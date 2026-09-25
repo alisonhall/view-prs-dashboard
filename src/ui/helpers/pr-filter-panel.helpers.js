@@ -194,23 +194,15 @@ export const { createPrFilterPanelHelpers } = (() => {
     const getAnalysisOfPrFilter = () =>
       readFilterStateOrDomValue("filterAnalysisOfPr", "filter-analysis-of-pr");
 
-    const updateMultiSelectSummary = (listId) => {
-      const list = getListElement(listId);
-      if (!list) return;
-
-      const detailsElement = list.closest("details");
-      if (!detailsElement || typeof detailsElement.querySelector !== "function") {
-        return;
-      }
-
-      const checkedCount = list.querySelectorAll("input[type='checkbox']:checked").length;
-      const summary = detailsElement.querySelector(".multi-select-summary");
-      if (!summary) return;
-
-      const baseText = String(summary.textContent || "").split("(")[0].trim();
-      summary.textContent =
-        checkedCount > 0 ? `${baseText} (${checkedCount} selected)` : baseText;
-    };
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): updateMultiSelectSummary (which used to
+    // live here) and each populateXOptions function's own
+    // classList.add/remove("empty") call below were both deleted -
+    // MultiSelectCheckboxList.jsx now owns the "(N selected)" summary text
+    // and the empty-state class itself, covering every one of the 9
+    // multi-select lists (5 built by this file's populateXOptions
+    // functions, 4 more built directly in index.page.js's
+    // renderActorOptionsList/renderChangeFilterActorList) the same way.
 
     const collectSortedLabelOptions = (entries, repoFilter = "") => {
       const labelsByToken = new Map();
@@ -251,12 +243,6 @@ export const { createPrFilterPanelHelpers } = (() => {
 
       const sortedLabels = collectSortedLabelOptions(entries, repoFilter);
 
-      if (sortedLabels.length === 0) {
-        labelList.classList.add("empty");
-      } else {
-        labelList.classList.remove("empty");
-      }
-
       renderMultiSelectListSafe(
         "label-list",
         sortedLabels.map(({ normalizedToken, labelName }) => ({
@@ -274,8 +260,6 @@ export const { createPrFilterPanelHelpers } = (() => {
           setPendingLabelFilterSelectionsSafe(null);
         }
       }
-
-      updateMultiSelectSummary("label-list");
     };
 
     const populateExcludeLabelOptions = (entries, repoFilter = "") => {
@@ -296,12 +280,6 @@ export const { createPrFilterPanelHelpers } = (() => {
 
       const sortedLabels = collectSortedLabelOptions(entries, repoFilter);
 
-      if (sortedLabels.length === 0) {
-        excludeLabelList.classList.add("empty");
-      } else {
-        excludeLabelList.classList.remove("empty");
-      }
-
       renderMultiSelectListSafe(
         "exclude-label-list",
         sortedLabels.map(({ normalizedToken, labelName }) => ({
@@ -319,8 +297,6 @@ export const { createPrFilterPanelHelpers } = (() => {
           setPendingExcludeLabelFilterSelectionsSafe(null);
         }
       }
-
-      updateMultiSelectSummary("exclude-label-list");
     };
 
     const populateAuthorOptions = (entries, repoFilter = "", actorsMap = {}) => {
@@ -356,12 +332,6 @@ export const { createPrFilterPanelHelpers } = (() => {
         return textA.localeCompare(textB);
       });
 
-      if (sortedAuthors.length === 0) {
-        authorList.classList.add("empty");
-      } else {
-        authorList.classList.remove("empty");
-      }
-
       renderMultiSelectListSafe(
         "author-list",
         sortedAuthors.map(([login, displayName]) => ({
@@ -379,8 +349,6 @@ export const { createPrFilterPanelHelpers } = (() => {
           setPendingAuthorFilterSelectionsSafe(null);
         }
       }
-
-      updateMultiSelectSummary("author-list");
     };
 
     const populateAssignedOptions = (entries, repoFilter = "", actorsMap = {}) => {
@@ -420,12 +388,6 @@ export const { createPrFilterPanelHelpers } = (() => {
         return textA.localeCompare(textB);
       });
 
-      if (sortedAssignees.length === 0) {
-        assignedList.classList.add("empty");
-      } else {
-        assignedList.classList.remove("empty");
-      }
-
       renderMultiSelectListSafe(
         "assigned-list",
         sortedAssignees.map(([login, displayName]) => ({
@@ -443,8 +405,6 @@ export const { createPrFilterPanelHelpers } = (() => {
           setPendingAssignedFilterSelectionsSafe(null);
         }
       }
-
-      updateMultiSelectSummary("assigned-list");
     };
 
     const populateApproverOptions = (entries, repoFilter = "", actorsMap = {}) => {
@@ -483,12 +443,6 @@ export const { createPrFilterPanelHelpers } = (() => {
         return textA.localeCompare(textB);
       });
 
-      if (sortedApprovers.length === 0) {
-        approverList.classList.add("empty");
-      } else {
-        approverList.classList.remove("empty");
-      }
-
       renderMultiSelectListSafe(
         "approver-list",
         sortedApprovers.map(([login, displayName]) => ({
@@ -506,8 +460,6 @@ export const { createPrFilterPanelHelpers } = (() => {
           setPendingApproverFilterSelectionsSafe(null);
         }
       }
-
-      updateMultiSelectSummary("approver-list");
     };
 
     const renderManagementFilterSummary = ({
@@ -544,7 +496,6 @@ export const { createPrFilterPanelHelpers } = (() => {
       getRallyStoriesFilter,
       getRallyLinksFilter,
       getAnalysisOfPrFilter,
-      updateMultiSelectSummary,
       populateIncludeLabelOptions,
       populateExcludeLabelOptions,
       populateAuthorOptions,

@@ -14,7 +14,6 @@
  * @module components/AuthorInsightsHeader
  */
 
-import React from 'react';
 import { usePrData } from '../state/PrDataContext';
 
 const resolveActorDisplayName = (login, actorsMap, fallback) =>

@@ -13,7 +13,6 @@
  * @module components/StatsVisuals
  */
 
-import React from 'react';
 import { GraphCard } from './GraphCard';
 import { ReviewerActivityChart } from './ReviewerActivityChart';
 

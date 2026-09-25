@@ -5,7 +5,6 @@
  * @module components/cells/PrStatusCell
  */
 
-import React from 'react';
 
 export function PrStatusCell({ pr, lastCheckedAt, sectionKey }) {
   const isChangedStatus = window.isChangedStatus || (() => false);

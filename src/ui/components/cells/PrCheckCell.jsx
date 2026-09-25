@@ -5,7 +5,6 @@
  * @module components/cells/PrCheckCell
  */
 
-import React from 'react';
 
 export function PrCheckCell({ pr }) {
   const formatChkDisplay = window.formatChkDisplay || ((value) => String(value || '-'));

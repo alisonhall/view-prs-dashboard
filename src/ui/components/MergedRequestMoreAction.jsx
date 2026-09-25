@@ -34,7 +34,7 @@
  * @module components/MergedRequestMoreAction
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export function MergedRequestMoreAction({ isVisible, repo }) {
   const [isPending, setIsPending] = useState(false);

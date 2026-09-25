@@ -36,7 +36,7 @@
  * @module components/ExportTab
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';

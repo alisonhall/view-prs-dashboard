@@ -6,7 +6,6 @@
  * @module components/insights/ApprovalRiskSection
  */
 
-import React from 'react';
 import { InsightSection } from './InsightSection';
 
 export function ApprovalRiskSection({ metrics, actorsMap }) {
@@ -27,7 +26,6 @@ export function ApprovalRiskSection({ metrics, actorsMap }) {
           const riskText = approval.riskyApproval ? 'risk flagged' : 'no later issue signal';
           const displayName = resolveActorDisplayName(approval.login, actorsMap, approval.name);
           return (
-            // eslint-disable-next-line react/no-array-index-key
             <div key={index} className="insight-list-item">
               <div>
                 <strong>{displayName}</strong>

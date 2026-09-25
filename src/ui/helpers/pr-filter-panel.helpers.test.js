@@ -126,28 +126,11 @@ describe("pr filter panel helpers", () => {
     expect(document.getElementById("label-list")?.children).toHaveLength(0);
   });
 
-  test("given a list with checked checkboxes, when updating its multi-select summary, then the details summary shows the checked count", () => {
-    document.getElementById("label-list").innerHTML =
-      '<input type="checkbox" value="a" checked><input type="checkbox" value="b" checked><input type="checkbox" value="c">';
-    const component = createPrFilterPanelHelpers({ documentRef: document });
-
-    component.updateMultiSelectSummary("label-list");
-
-    expect(document.querySelector("summary.multi-select-summary")?.textContent).toBe(
-      "Labels (2 selected)",
-    );
-  });
-
-  test("given a list with no checked checkboxes, when updating its multi-select summary, then the details summary shows just the base text", () => {
-    document.getElementById("label-list").innerHTML = '<input type="checkbox" value="a">';
-    const component = createPrFilterPanelHelpers({ documentRef: document });
-    const summary = document.querySelector("summary.multi-select-summary");
-    summary.textContent = "Labels (3 selected)";
-
-    component.updateMultiSelectSummary("label-list");
-
-    expect(summary.textContent).toBe("Labels");
-  });
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): updateMultiSelectSummary was deleted from
+  // this factory - MultiSelectCheckboxList.jsx now owns the summary count
+  // text directly (see its own test file's "empty-state class and summary
+  // count" describe block for the equivalent coverage).
 
   test("given a getOrCompute cache, when populating include labels twice for the same entries, then label extraction is only computed once per entry", () => {
     const extractRowLabelNames = jest.fn((row) => row.labels || []);

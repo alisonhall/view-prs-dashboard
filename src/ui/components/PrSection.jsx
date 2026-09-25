@@ -8,7 +8,6 @@
  * @module components/PrSection
  */
 
-import React from 'react';
 import { PrTable } from './PrTable';
 
 /**

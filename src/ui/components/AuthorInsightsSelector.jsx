@@ -13,7 +13,13 @@
  * deliberately empty when there are no local rows at all, even if
  * actorsMap has entries on its own - matching renderAuthorInsights' own
  * "No local rows"/"No authors found" empty-state guards, which this
- * replaces.
+ * replaces - and (deferred-items follow-up, full vanilla-to-React sweep,
+ * see REACT_MIGRATION_PLAN.md) this component now also renders those two
+ * empty-state messages itself ("No local rows available for author
+ * insights." / "No authors found in the current local data scope."),
+ * which renderAuthorInsights used to build directly via
+ * document.createElement - it still clears selectedAuthorLogin in both
+ * cases (state management, not rendering), but no longer builds any DOM.
  *
  * Since `selectedAuthorLogin` is now a real reactive Context value (kept
  * in sync by renderAuthorInsights, including its auto-select-first-author
@@ -30,7 +36,6 @@
  * @module components/AuthorInsightsSelector
  */
 
-import React from 'react';
 import { usePrData } from '../state/PrDataContext';
 
 const buildAuthorInsightsEntries = (rows, actorsMap) =>
@@ -42,8 +47,11 @@ export function AuthorInsightsSelector({ onChange }) {
   const actorsMap = payload?.actorsMap || {};
   const options = rows.length ? buildAuthorInsightsEntries(rows, actorsMap) : [];
 
+  if (!rows.length) {
+    return <p className="stats-empty">No local rows available for author insights.</p>;
+  }
   if (!options.length) {
-    return null;
+    return <p className="stats-empty">No authors found in the current local data scope.</p>;
   }
 
   return (

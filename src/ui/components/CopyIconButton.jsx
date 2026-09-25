@@ -16,7 +16,7 @@
  * @module components/CopyIconButton
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export function CopyIconButton({ text, html, label = 'Copy', disabled = false, className = '' }) {
   const [copyState, setCopyState] = useState('idle');

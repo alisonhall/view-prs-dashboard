@@ -5,7 +5,6 @@
  * @module components/cells/PrSelectionCell
  */
 
-import React from 'react';
 
 export function PrSelectionCell({ pr }) {
   const getSelectedPrNumbers = window.getSelectedPrNumbers || (() => []);

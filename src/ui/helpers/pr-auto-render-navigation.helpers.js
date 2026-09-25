@@ -22,6 +22,7 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
     renderAuthorInsights,
     documentRef,
     setTimeoutFn,
+    isReactTableMounted,
   } = {}) => {
     const normalizePrNumberSafe =
       typeof normalizePrNumber === "function"
@@ -91,6 +92,8 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
       typeof setTimeoutFn === "function"
         ? setTimeoutFn
         : (fn, ms) => setTimeout(fn, ms);
+    const isReactTableMountedSafe =
+      typeof isReactTableMounted === "function" ? isReactTableMounted : () => false;
 
     const navigateToPrInTable = (prNumber, { focusUnsaved = false } = {}) => {
       const normalizedPrNumber = normalizePrNumberSafe(prNumber);
@@ -109,15 +112,31 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
         }
 
         const prLink = prLinks[0];
-        const prRow = prLink.closest("tr");
-        if (prRow) {
-          const nextRow = prRow.nextElementSibling;
-          if (nextRow && nextRow.querySelector(".insights-row-cell")) {
-            nextRow.hidden = false;
-            const toggleButton = prRow.querySelector(".row-insights-toggle");
-            if (toggleButton) {
-              toggleButton.textContent = "Hide insights";
-              toggleButton.setAttribute("aria-expanded", "true");
+        if (isReactTableMountedSafe()) {
+          // React owns the insights row's expand/collapse state
+          // (PrTableApp's expandedInsights) - dispatch and let its own
+          // listener update that state, matching
+          // pr-author-insights-pr-link.helpers.js's navigateToPrInTable.
+          // Directly mutating `.hidden`/textContent on a React-rendered
+          // node, like the branch below does, would leave the toggle
+          // button claiming "expanded" while the insights content never
+          // actually renders.
+          if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+            window.dispatchEvent(
+              new CustomEvent("pr-navigate-to-insights", { detail: { prNumber: normalizedPrNumber } }),
+            );
+          }
+        } else {
+          const prRow = prLink.closest("tr");
+          if (prRow) {
+            const nextRow = prRow.nextElementSibling;
+            if (nextRow && nextRow.querySelector(".insights-row-cell")) {
+              nextRow.hidden = false;
+              const toggleButton = prRow.querySelector(".row-insights-toggle");
+              if (toggleButton) {
+                toggleButton.textContent = "Hide insights";
+                toggleButton.setAttribute("aria-expanded", "true");
+              }
             }
           }
         }

@@ -21,7 +21,6 @@
  * @module components/ScopeFilterSelect
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function ScopeFilterSelect() {

@@ -6,7 +6,7 @@
  * @module components/insights/NotesSection
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
 
 const TONE_OPTIONS = [

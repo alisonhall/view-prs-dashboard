@@ -1,13 +1,12 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
-const { render, screen, waitFor, fireEvent, act } = require('@testing-library/react');
+const { render, screen, waitFor, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrJsonModal } = require('./PrJsonModal');
 
 function installDefaultHelpers() {
   window.safeJsonStringify = (value) => JSON.stringify(value ?? null, null, 2);
-  window.getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
+  window.getPerPrUserStateFromPayload = (_payload, _entry, _prNumber, _repo) => ({
     notesByPrNumber: null,
     ackByRepo: null,
     reverifyByRepo: null,

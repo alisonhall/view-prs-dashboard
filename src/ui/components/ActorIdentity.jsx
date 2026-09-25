@@ -18,7 +18,6 @@
  * @module components/ActorIdentity
  */
 
-import React from 'react';
 
 export function ActorIdentity({ row, login, actorsMap = {}, fallbackName = '', className = '', as: Tag = 'span' }) {
   const normalizeActorLogin = window.normalizeActorLogin || ((value) => String(value || '').trim());

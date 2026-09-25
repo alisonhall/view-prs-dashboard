@@ -8,7 +8,6 @@
  * @module components/cells/PrAuthorCell
  */
 
-import React from 'react';
 import { ActorIdentity } from '../ActorIdentity';
 
 export function PrAuthorCell({ entry, pr, actorsMap = {} }) {

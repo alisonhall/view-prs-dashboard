@@ -7,7 +7,6 @@
  * @module components/insights/InsightSection
  */
 
-import React from 'react';
 
 export function InsightSection({ summaryText, summaryContent, sectionKey, className = '', children }) {
   const key = String(sectionKey || summaryText || '').trim().toLowerCase();

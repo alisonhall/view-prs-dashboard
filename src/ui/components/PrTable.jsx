@@ -8,7 +8,6 @@
  * @module components/PrTable
  */
 
-import React from 'react';
 import { PrRow } from './PrRow';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 

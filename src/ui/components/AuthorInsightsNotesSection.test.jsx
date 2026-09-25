@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 
-const React = require('react');
 const { render, screen, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsNotesSection } = require('./AuthorInsightsNotesSection');

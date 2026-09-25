@@ -18,7 +18,6 @@
  * @module components/AlwaysShowInReviewCheckbox
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function AlwaysShowInReviewCheckbox() {

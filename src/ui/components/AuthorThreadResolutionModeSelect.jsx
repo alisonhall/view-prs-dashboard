@@ -19,7 +19,6 @@
  * @module components/AuthorThreadResolutionModeSelect
  */
 
-import React from 'react';
 import { useFilterState } from '../state/FilterStateContext';
 
 export function AuthorThreadResolutionModeSelect() {

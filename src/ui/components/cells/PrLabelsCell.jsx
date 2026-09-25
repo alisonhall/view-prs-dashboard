@@ -6,7 +6,6 @@
  * @module components/cells/PrLabelsCell
  */
 
-import React from 'react';
 
 export function PrLabelsCell({ pr }) {
   const getLabelName = window.getLabelName || ((label) => String(label?.name || label || '').trim());

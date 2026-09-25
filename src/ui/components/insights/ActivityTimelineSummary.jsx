@@ -141,7 +141,6 @@ function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
 function TimelineItems({ items, pr, actorsMap }) {
   if (!items.length) return '-';
   return items.map((item, index) => (
-    // eslint-disable-next-line react/no-array-index-key
     <React.Fragment key={index}>
       {index > 0 && '; '}
       <ActorIdentity row={pr} login={item.actor} actorsMap={actorsMap} fallbackName={item.fallbackName} />

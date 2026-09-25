@@ -6,7 +6,6 @@
  * @module components/insights/ActivityEventDescription
  */
 
-import React from 'react';
 import { ActorIdentity } from '../ActorIdentity';
 
 const SUFFIX_BY_TYPE = {

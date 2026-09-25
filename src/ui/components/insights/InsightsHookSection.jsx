@@ -14,7 +14,7 @@
  * @module components/insights/InsightsHookSection
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { InsightSection } from './InsightSection';
 
 // Registered once, at module load (before this component's first render -
@@ -107,7 +107,6 @@ export function InsightsHookSection({ repo, prNumber }) {
 
   return (
     <InsightSection summaryText="Custom insights" sectionKey="custom-insights">
-      {/* eslint-disable-next-line react/no-danger */}
       <div className="pr-insights-hook-content" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
     </InsightSection>
   );

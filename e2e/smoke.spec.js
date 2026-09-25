@@ -847,33 +847,46 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // happens to load next against this suite's one shared webServer. Order
   // matters here: the mode select auto-persists on every "change" (see
   // the special-case branch for its id in index.page.js's delegated
-  // listener) as a fire-and-forget PUT, so each selectOption call above
-  // already queued its own persist of whatever mode was selected at the
-  // time - reset the mode *last* and explicitly wait for that PUT to land
-  // (clickApplyFiltersAndWaitForPersist's same reasoning), or an earlier
-  // in-flight persist could resolve after this block's own PUT and
-  // silently leave a non-default mode persisted for the next test.
-  await page.evaluate(async () => {
-    const current = await (await fetch("/view-prs/user-defaults")).json();
-    const overrides = { ...(current?.overrides || {}) };
-    delete overrides["attention-author-thread-resolution-allow"];
-    delete overrides["attention-author-thread-resolution-deny"];
-    if (overrides.changeFilters) {
-      delete overrides.changeFilters.ignoreCommentsFromAuthors;
-      delete overrides.changeFilters.ignoreReviewsFromAuthors;
-    }
-    await fetch("/view-prs/user-defaults", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(overrides),
-    });
-  });
+  // listener) as a fire-and-forget PUT - and that auto-persist re-reads
+  // ALL fields' LIVE DOM state (persistViewFilterOptionOverrides ->
+  // getSelectedAuthorThreadResolutionAllowLogins, a real checkbox query),
+  // not just the mode itself. Found via a later regression test
+  // (e2e/smoke.spec.js's "no React-portaled status/log panel..." test)
+  // catching this exact leftover: the explicit delete-PUT used to run
+  // *before* selectOption(..., "allow-all") - but "octocat"'s checkbox was
+  // still checked live in the DOM (only the manual delete-PUT had cleared
+  // the *server* record), so that selectOption's own auto-persist
+  // immediately clobbered the deletion right back to
+  // `["octocat"]`/`["hubot"]`, leaking into whatever test loaded next.
+  // Fixed by making the explicit delete-PUT the truly last step, waiting
+  // for the mode-select's own auto-persist to land first.
   await Promise.all([
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
     ),
     page.selectOption("#attention-author-thread-resolution-mode", "allow-all"),
   ]);
+  const [finalCleanupResponse] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
+    ),
+    page.evaluate(async () => {
+      const current = await (await fetch("/view-prs/user-defaults")).json();
+      const overrides = { ...(current?.overrides || {}) };
+      delete overrides["attention-author-thread-resolution-allow"];
+      delete overrides["attention-author-thread-resolution-deny"];
+      if (overrides.changeFilters) {
+        delete overrides.changeFilters.ignoreCommentsFromAuthors;
+        delete overrides.changeFilters.ignoreReviewsFromAuthors;
+      }
+      await fetch("/view-prs/user-defaults", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(overrides),
+      });
+    }),
+  ]);
+  expect(finalCleanupResponse.ok()).toBe(true);
 });
 
 test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually filter the table", async ({ page }) => {
@@ -1406,6 +1419,73 @@ test("Action Log tab loads its entries on its very first visit, not just on a se
   expect(response.ok()).toBe(true);
 });
 
+test("no React-portaled status/log panel shows its old static placeholder text stuck onto the real content", async ({ page }) => {
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): found via manual verification while
+  // converting the 7 vanilla `.textContent =` status/log panels -
+  // `createPortal(children, container)` does NOT clear a target's
+  // pre-existing content the way the old `.textContent =` write did, so
+  // every one of these (plus 2 already-converted containers from an
+  // earlier migration phase, #stats-content-root and
+  // #author-insights-content-root, found to have the identical bug) used
+  // to render as e.g. "Loading...Applied filters: ..." - the real content
+  // stuck directly onto the end of the stale static placeholder text
+  // index.html never cleared before React mounted. Fixed by emptying each
+  // container's static markup. The existing "page loads..." test's
+  // `not.toHaveText("Loading...")` check (line ~98) would NOT have caught
+  // this specific bug - an exact-string mismatch check still passes
+  // against "Loading...Applied filters: ..." since that isn't equal to
+  // the literal string "Loading..." either.
+  //
+  // Checking a plain "doesn't start with the placeholder" would be wrong
+  // here: for panels like #status/#output, the placeholder text ("Not
+  // run"/"Run the script to see output") is the CORRECT, unchanged value
+  // on a fresh page load where no action has run yet - that's not the bug,
+  // it's this container simply not having anything new to show. The actual
+  // bug signature is the placeholder text appearing as a PREFIX of a
+  // LONGER string (real content stuck onto its end) - so this only flags
+  // a placeholder that's present but the text isn't *exactly* that
+  // placeholder (i.e. something got appended after it).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const assertNoStalePrefix = async (locator, placeholder) => {
+    const text = await locator.textContent();
+    const hasStuckPlaceholder = text !== placeholder && Boolean(text?.startsWith(placeholder));
+    expect(hasStuckPlaceholder).toBe(false);
+  };
+
+  await assertNoStalePrefix(page.locator("#data-meta"), "Loading...");
+  await assertNoStalePrefix(page.locator("#status"), "Not run");
+  await assertNoStalePrefix(page.locator("#output"), "Run the script to see output");
+  await assertNoStalePrefix(page.locator("#scheduler-details"), "Loading scheduler status...");
+  await assertNoStalePrefix(page.locator("#request-activity-details"), "Monitoring request activity...");
+
+  await page.getByRole("tab", { name: "Backfill" }).click();
+  await assertNoStalePrefix(page.locator("#backfill-details"), "Loading backfill status...");
+  await assertNoStalePrefix(page.locator("#backfill-log"), "Loading backfill log...");
+
+  await page.getByRole("tab", { name: "Review statistics" }).click();
+  await assertNoStalePrefix(page.locator("#stats-content-root"), "Loading...");
+
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await assertNoStalePrefix(page.locator("#author-insights-content-root"), "Loading...");
+
+  // Deferred-items follow-up item 7 (multi-select summary counts/empty
+  // class) hit the identical bug: the <summary class="multi-select-summary">
+  // elements' own static base-label text wasn't cleared before
+  // MultiSelectCheckboxList.jsx started portaling its own copy in.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await assertNoStalePrefix(
+    page.locator("#label-list").locator("xpath=ancestor::details[1]/summary"),
+    "Filter by label name(s)",
+  );
+  await assertNoStalePrefix(
+    page.locator("#attention-author-thread-resolution-allow-list").locator("xpath=ancestor::details[1]/summary"),
+    "Allow PR authors to resolve threads started by (Actor Names)",
+  );
+});
+
 test("Actor Names tab loads its mappings on its very first visit, not just on a second one", async ({ page }) => {
   // Same class of bug, and same reasoning for asserting on the network
   // request rather than rendered text, as the Action Log test above - for
@@ -1423,4 +1503,55 @@ test("Actor Names tab loads its mappings on its very first visit, not just on a 
   ]);
   expect(cacheResponse.ok()).toBe(true);
   expect(aliasResponse.ok()).toBe(true);
+});
+
+test("Snackbar (error/warning notifications) shows, has the right variant class, closes, and auto-dismisses", async ({ page }) => {
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): the snackbar is now fully React-owned
+  // (Snackbar.jsx), replacing index.page.js's own
+  // showErrorNotification/showWarningNotification/hideErrorNotification -
+  // no e2e coverage existed for it before this conversion at all.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await expect(page.locator("#error-snackbar")).toBeHidden();
+
+  await page.evaluate(() => window.showErrorNotification("Test error title", "Test error detail", 0));
+  await expect(page.locator("#error-snackbar")).toBeVisible();
+  await expect(page.locator("#error-snackbar")).not.toHaveClass(/error-snackbar-warning/);
+  await expect(page.locator("#error-snackbar-message")).toContainText("Test error title");
+  await expect(page.locator("#error-snackbar-message")).toContainText("Test error detail");
+
+  await page.locator("#error-snackbar-close").click();
+  await expect(page.locator("#error-snackbar")).toBeHidden();
+
+  await page.evaluate(() => window.showWarningNotification("Test warning title", "", 0));
+  await expect(page.locator("#error-snackbar")).toBeVisible();
+  await expect(page.locator("#error-snackbar")).toHaveClass(/error-snackbar-warning/);
+
+  await page.evaluate(() => window.showErrorNotification("Auto dismiss test", "", 300));
+  await expect(page.locator("#error-snackbar")).toBeVisible();
+  await expect(page.locator("#error-snackbar")).toBeHidden({ timeout: 2000 });
+});
+
+test("Trigger auto run and Quick check buttons click, show a transient state, and settle back to enabled", async ({ page }) => {
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): both buttons are now React-owned
+  // (TriggerAutoRunButton.jsx/QuickCheckButton.jsx), replacing
+  // index.page.js's own direct `btn.disabled`/`.textContent` mutation - no
+  // e2e coverage existed for either button before this conversion.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const triggerBtn = page.locator("#trigger-auto-run-btn");
+  await expect(triggerBtn).toHaveText("Trigger auto run");
+  await triggerBtn.click();
+  await expect(triggerBtn).toHaveText("Trigger auto run", { timeout: 5000 });
+  await expect(triggerBtn).toBeEnabled();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  const quickCheckBtn = page.locator("#quick-check-btn");
+  await expect(quickCheckBtn).toHaveText("Quick check");
+  await quickCheckBtn.click();
+  await expect(quickCheckBtn).toBeEnabled({ timeout: 5000 });
 });

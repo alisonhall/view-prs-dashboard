@@ -7,13 +7,13 @@
 </head>
 
 <body>
-    <div id="error-snackbar" class="error-snackbar" role="alert" aria-live="polite" aria-atomic="true" hidden>
-        <div class="error-snackbar-content">
-            <span id="error-snackbar-message"></span>
-            <button type="button" id="error-snackbar-close" aria-label="Close notification"
-                class="error-snackbar-close">✕</button>
-        </div>
-    </div>
+    <!-- Rendered by React (Snackbar.jsx, mounted in react-app.jsx) - a full
+         subtree, not just children: the outer #error-snackbar element's own
+         `hidden`/variant class need toggling, which only works if React owns
+         that element itself, not just what's inside it (a portal only owns
+         its target's children) - see REACT_MIGRATION_PLAN.md's full
+         vanilla-to-React sweep. -->
+    <div id="error-snackbar-root"></div>
     <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-live="polite"
         aria-atomic="true" hidden>
         <div class="auto-render-blocked-title">Auto update paused</div>
@@ -67,21 +67,33 @@
                 <section class="section-card management-priority-card">
                     <h3>Request Activity</h3>
                     <div id="request-activity-badges" class="scheduler-badges"></div>
-                    <pre id="request-activity-details" class="scheduler-details">Monitoring request activity...</pre>
+                    <!-- Rendered by React (react-app.jsx, plain-string portal - see
+                         REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep) -
+                         starts empty; React's own initial state supplies the
+                         placeholder text, since createPortal doesn't clear
+                         pre-existing static content in its target. -->
+                    <pre id="request-activity-details" class="scheduler-details"></pre>
                 </section>
 
                 <section class="section-card">
                     <h3>Latest Status</h3>
-                    <pre id="status" style="white-space: break-spaces;">Not run</pre>
+                    <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                         starts empty, see #request-activity-details above. -->
+                    <pre id="status" style="white-space: break-spaces;"></pre>
                 </section>
             </div>
 
             <h3>Auto Refresh Scheduler</h3>
             <div id="scheduler-card" class="scheduler-card">
                 <div id="scheduler-badges" class="scheduler-badges"></div>
-                <pre id="scheduler-details" class="scheduler-details">Loading scheduler status...</pre>
+                <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                     starts empty, see #request-activity-details above. -->
+                <pre id="scheduler-details" class="scheduler-details"></pre>
                 <div class="form-actions">
-                    <button type="button" id="trigger-auto-run-btn">Trigger auto run</button>
+                    <!-- Rendered by React (TriggerAutoRunButton.jsx, mounted in
+                         react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
+                         vanilla-to-React sweep. -->
+                    <span id="trigger-auto-run-btn-root"></span>
                 </div>
             </div>
         </section>
@@ -97,7 +109,10 @@
                         </div>
                         <div class="form-actions primary-actions">
                             <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
-                            <button type="button" id="quick-check-btn" title="Cheap listing-only pass: checks whether anything changed without fetching full PR details">Quick check</button>
+                            <!-- Rendered by React (QuickCheckButton.jsx, mounted in
+                                 react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
+                                 vanilla-to-React sweep. -->
+                            <span id="quick-check-btn-root"></span>
                             <button type="button" id="ack-only-btn">Apply ack only</button>
                             <button type="button" id="clear-only-btn">Apply clear only</button>
                         </div>
@@ -133,28 +148,43 @@
                                  an <input id="filter-pr-numbers">, same id/name/placeholder as before. -->
                             <span id="filter-pr-numbers-root"></span>
 
+                            <!-- data-base-label (deferred-items follow-up, full
+                                 vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md):
+                                 MultiSelectCheckboxList.jsx now owns both the "(N
+                                 selected)" summary count text and the empty-state
+                                 class on the list container - it reads this
+                                 attribute once instead of the old vanilla
+                                 summary.textContent.split("(")[0] runtime parsing.
+                                 The <summary> itself starts empty (found and fixed
+                                 alongside the rest of this sweep): createPortal
+                                 doesn't clear a target's pre-existing content, so
+                                 leaving the old static text here would render it
+                                 duplicated, stuck onto React's own text - same class
+                                 of bug as the 7 status/log panels and
+                                 #stats-content-root/#author-insights-content-root
+                                 found earlier in this same sweep. -->
                             <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary">Filter by label name(s)</summary>
+                                <summary class="multi-select-summary" data-base-label="Filter by label name(s)"></summary>
                                 <div id="label-list" class="multi-select-list"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary">Exclude by label name(s)</summary>
+                                <summary class="multi-select-summary" data-base-label="Exclude by label name(s)"></summary>
                                 <div id="exclude-label-list" class="multi-select-list"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary">Filter by PR author(s)</summary>
+                                <summary class="multi-select-summary" data-base-label="Filter by PR author(s)"></summary>
                                 <div id="author-list" class="multi-select-list"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary">Filter by Assigned user(s)</summary>
+                                <summary class="multi-select-summary" data-base-label="Filter by Assigned user(s)"></summary>
                                 <div id="assigned-list" class="multi-select-list"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary">Filter by PR approver(s)</summary>
+                                <summary class="multi-select-summary" data-base-label="Filter by PR approver(s)"></summary>
                                 <div id="approver-list" class="multi-select-list"></div>
                             </details>
 
@@ -240,16 +270,14 @@
 
                                     <details id="attention-author-thread-resolution-allow-options"
                                         class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary">Allow PR authors to resolve threads
-                                            started by (Actor Names)</summary>
+                                        <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-allow-list"
                                             class="multi-select-list"></div>
                                     </details>
 
                                     <details id="attention-author-thread-resolution-deny-options"
                                         class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary">Do not allow PR authors to resolve threads
-                                            started by (Actor Names)</summary>
+                                        <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-deny-list"
                                             class="multi-select-list"></div>
                                     </details>
@@ -261,8 +289,7 @@
                                         Use this to filter out automated notifications or non-blocking feedback.</p>
 
                                     <details class="multi-select-dropdown">
-                                        <summary class="multi-select-summary">Ignore comments from these authors (GitHub
-                                            logins)</summary>
+                                        <summary class="multi-select-summary" data-base-label="Ignore comments from these authors (GitHub logins)"></summary>
                                         <div id="change-filter-ignore-comment-authors-list" class="multi-select-list">
                                         </div>
                                     </details>
@@ -274,8 +301,7 @@
                                     </p>
 
                                     <details class="multi-select-dropdown">
-                                        <summary class="multi-select-summary">Ignore reviews from these authors (GitHub
-                                            logins)</summary>
+                                        <summary class="multi-select-summary" data-base-label="Ignore reviews from these authors (GitHub logins)"></summary>
                                         <div id="change-filter-ignore-review-authors-list" class="multi-select-list">
                                         </div>
                                     </details>
@@ -364,7 +390,9 @@
 
             <details class="advanced-options section-card low-emphasis-card">
                 <summary>Latest request output</summary>
-                <pre id="output">Run the script to see output</pre>
+                <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                     starts empty, see #request-activity-details above. -->
+                <pre id="output"></pre>
             </details>
         </section>
 
@@ -382,7 +410,9 @@
                     <button type="button" id="backfill-stop-btn">Stop backfill</button>
                     <button type="button" id="backfill-refresh-btn">Refresh status</button>
                 </div>
-                <pre id="backfill-details" class="scheduler-details">Loading backfill status...</pre>
+                <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                     starts empty, see #request-activity-details above. -->
+                <pre id="backfill-details" class="scheduler-details"></pre>
                 <details class="advanced-options">
                     <summary>Log details</summary>
                     <div class="backfill-log-options">
@@ -392,7 +422,9 @@
                         </label>
                         <button type="button" id="backfill-log-refresh-btn">Refresh log</button>
                     </div>
-                    <pre id="backfill-log" class="backfill-log">Loading backfill log...</pre>
+                    <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                         starts empty, see #request-activity-details above. -->
+                    <pre id="backfill-log" class="backfill-log"></pre>
                 </details>
             </div>
         </section>
@@ -444,7 +476,9 @@
         </div>
 
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
-            <pre id="data-meta" style="white-space: break-spaces;">Loading...</pre>
+            <!-- Rendered by React (react-app.jsx, plain-string portal) -
+                 starts empty, see #request-activity-details above. -->
+            <pre id="data-meta" style="white-space: break-spaces;"></pre>
             <div id="pr-sections"></div>
             <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
                  renders nothing at all (not even this div's own children)
@@ -459,9 +493,15 @@
                      (see REACT_MIGRATION_PLAN.md): ReviewStatsContent now computes
                      its own stats from PrDataContext's payload instead of being
                      pushed a pre-built result, so nothing in index.page.js rebuilds
-                     either #stats-controls-root or #stats-content-root anymore. -->
+                     either #stats-controls-root or #stats-content-root anymore.
+                     Starts empty (found and fixed alongside the full
+                     vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the old
+                     static "Loading..." text was never cleared before React
+                     mounted here - createPortal doesn't clear a target's
+                     pre-existing content, so the real stats content used to
+                     render stuck directly onto the end of "Loading...". -->
                 <div id="stats-controls-root"></div>
-                <div id="stats-content-root">Loading...</div>
+                <div id="stats-content-root"></div>
             </div>
         </section>
 
@@ -483,11 +523,21 @@
                      load/mount. -->
                 <div id="author-insights-selector-root"></div>
                 <div id="author-insights-header-root"></div>
-                <!-- Manual comments composer/list (mountAuthorInsightsCommentsSection) -
-                     wraps the legacy vanilla builder via a ref; its mutable
-                     draft state and save/edit POST side effects live entirely
-                     inside that builder, not in React. -->
-                <div id="author-insights-content-root">Loading...</div>
+                <!-- Manual comments composer/list - real JSX
+                     (AuthorInsightsCommentsSection.jsx). Its mutable draft
+                     state and save/edit POST side effects go through the
+                     vanilla authorInsightsState bridges
+                     (getAuthorInsightsComposerDraft/etc.) so the
+                     auto-render-blocking feature can still see unsaved
+                     edits, but rendering itself is fully React-owned. Starts
+                     empty (found and fixed alongside the full
+                     vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the
+                     old static "Loading..." text was never cleared before
+                     React mounted here - createPortal doesn't clear a
+                     target's pre-existing content, so the real composer/list
+                     content used to render stuck directly onto the end of
+                     "Loading...". -->
+                <div id="author-insights-content-root"></div>
                 <div id="author-insights-notes-root"></div>
                 <div id="author-insights-created-prs-root"></div>
             </div>

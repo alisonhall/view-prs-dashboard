@@ -14,7 +14,6 @@
  * @module components/AutoRenderBlockedLinks
  */
 
-import React from 'react';
 
 export function AutoRenderBlockedLinks({ prNumbers = [], authorLogins = [] }) {
   const getAuthorInsightsDisplayName =

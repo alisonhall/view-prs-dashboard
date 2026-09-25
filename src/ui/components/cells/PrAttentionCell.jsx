@@ -5,7 +5,6 @@
  * @module components/cells/PrAttentionCell
  */
 
-import React from 'react';
 
 export function PrAttentionCell({ pr, needsAttention, isFlagged }) {
   const hasPendingComments =

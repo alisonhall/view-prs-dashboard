@@ -71,7 +71,6 @@ function buildActorBodyMinuteSignature(actor, occurredAt, body) {
 
 function CommentBody({ text, helpers }) {
   const bodyText = String(text || '').trim() || '(no comment body)';
-  // eslint-disable-next-line react/no-danger
   return <div className="insight-thread-body" dangerouslySetInnerHTML={{ __html: helpers.renderMarkdownAsHtml(bodyText) }} />;
 }
 
@@ -166,7 +165,6 @@ function ReviewThreadCard({ thread, index, pr, actorsMap, prAuthorLogin, policy,
       <div className={titleClassName}>
         <span>
           {segments.map((segment, i) => (
-            // eslint-disable-next-line react/no-array-index-key
             <React.Fragment key={i}>
               {i > 0 && ' | '}
               {segment}
@@ -183,7 +181,6 @@ function ReviewThreadCard({ thread, index, pr, actorsMap, prAuthorLogin, policy,
         {threadComments.map((comment, i) => {
           const isPending = String(comment?.state || '').toUpperCase() === 'PENDING';
           return (
-            // eslint-disable-next-line react/no-array-index-key
             <div key={comment?.id || i} className={['insight-thread-comment', isPending ? 'insight-thread-comment-pending' : 'insight-thread-comment-submitted'].join(' ')}>
               <CommentMeta
                 pr={pr}
@@ -434,7 +431,6 @@ export function ReviewThreadsSection({ pr, actorsMap }) {
                 </div>
                 <div className="insight-thread-comments">
                   {topLevelComments.map((comment, i) => (
-                    // eslint-disable-next-line react/no-array-index-key
                     <div key={comment.id || i} className="insight-thread-comment insight-thread-comment-submitted">
                       <CommentMeta pr={pr} actorsMap={actorsMap} timestamp={comment.createdAt} login={comment.authorLogin} fallbackName={comment.authorName} helpers={helpers} />
                       <CommentBody text={comment.body} helpers={helpers} />
@@ -456,7 +452,6 @@ export function ReviewThreadsSection({ pr, actorsMap }) {
                 </div>
                 <div className="insight-thread-comments">
                   {reviewSummaries.map((review, i) => (
-                    // eslint-disable-next-line react/no-array-index-key
                     <div key={review.id || i} className="insight-thread-comment insight-thread-comment-submitted">
                       <CommentMeta
                         pr={pr}
@@ -488,7 +483,6 @@ export function ReviewThreadsSection({ pr, actorsMap }) {
               </div>
             ) : (
               visibleThreads.map((thread, index) => (
-                // eslint-disable-next-line react/no-array-index-key
                 <ReviewThreadCard key={index} thread={thread} index={index} pr={pr} actorsMap={actorsMap} prAuthorLogin={prAuthorLogin} policy={policy} helpers={helpers} />
               ))
             )}

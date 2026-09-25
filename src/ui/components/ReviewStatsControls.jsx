@@ -24,7 +24,7 @@
  * @module components/ReviewStatsControls
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 const SORT_OPTIONS = [
   ['riskyApprovals', 'Risky approvals'],

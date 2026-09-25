@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { FilterStateContext } from './FilterStateContext';
 import { useDebouncedEffect } from './useDebouncedCallback';

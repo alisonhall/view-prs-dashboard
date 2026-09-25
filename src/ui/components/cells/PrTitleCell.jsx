@@ -6,7 +6,6 @@
  * @module components/cells/PrTitleCell
  */
 
-import React from 'react';
 import { CopyIconButton } from '../CopyIconButton';
 
 const LIFECYCLE_BADGES = {

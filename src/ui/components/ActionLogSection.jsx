@@ -28,7 +28,7 @@
  * only runs once, on mount).
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const formatIsoDatetime = (value) =>
   window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-');

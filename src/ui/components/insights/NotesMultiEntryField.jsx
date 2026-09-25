@@ -8,7 +8,6 @@
  * @module components/insights/NotesMultiEntryField
  */
 
-import React from 'react';
 
 export function NotesMultiEntryField({ title, placeholder, values, inputClassName, onChange }) {
   const safeValues = values.length ? values : [''];
@@ -41,7 +40,6 @@ export function NotesMultiEntryField({ title, placeholder, values, inputClassNam
       </div>
       <div className="pr-notes-multi-list">
         {safeValues.map((value, index) => (
-          // eslint-disable-next-line react/no-array-index-key
           <div key={index} className="pr-notes-multi-row">
             <input
               type="text"
