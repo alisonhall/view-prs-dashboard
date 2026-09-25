@@ -7,7 +7,7 @@
  * - Provides bridge between vanilla JS and React
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { flushSync, createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
@@ -22,24 +22,55 @@ import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
-import { ReviewStatsControls } from './components/ReviewStatsControls';
-import { ReviewStatsContent } from './components/ReviewStatsContent';
-import { AuthorInsightsSelector } from './components/AuthorInsightsSelector';
-import { AuthorCreatedPrsSection } from './components/AuthorCreatedPrsSection';
-import { AuthorInsightsHeader } from './components/AuthorInsightsHeader';
-import { AuthorInsightsNotesSection } from './components/AuthorInsightsNotesSection';
-import { AuthorInsightsCommentsSection } from './components/AuthorInsightsCommentsSection';
-import { ActionLogSection } from './components/ActionLogSection';
-import { ExportTab } from './components/ExportTab';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
 import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
-import { ActorNamesTab } from './components/ActorNamesTab';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
+import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
+
+/**
+ * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
+ * code-splitting for the 3 tabs that are never visible on initial load
+ * (Review Stats, Author Insights, and 3 of the management tabs - Action
+ * Log, Actor Names, Export - all `hidden` by default in index.html, see
+ * <AppRoot /> below). `React.lazy()` needs a default export; each of these
+ * modules only has a named one, so the loader adapts it inline. Gated on
+ * useHasTabPanelBeenVisible (sticky, not plain useIsTabPanelVisible) so
+ * once a tab's chunk has loaded and mounted, switching away and back
+ * doesn't unmount/remount it - see that hook's own doc comment for why
+ * (several of these hold local-only UI state a remount would silently
+ * reset).
+ */
+const ReviewStatsControls = lazy(() =>
+  import('./components/ReviewStatsControls').then((m) => ({ default: m.ReviewStatsControls })),
+);
+const ReviewStatsContent = lazy(() =>
+  import('./components/ReviewStatsContent').then((m) => ({ default: m.ReviewStatsContent })),
+);
+const AuthorInsightsSelector = lazy(() =>
+  import('./components/AuthorInsightsSelector').then((m) => ({ default: m.AuthorInsightsSelector })),
+);
+const AuthorCreatedPrsSection = lazy(() =>
+  import('./components/AuthorCreatedPrsSection').then((m) => ({ default: m.AuthorCreatedPrsSection })),
+);
+const AuthorInsightsHeader = lazy(() =>
+  import('./components/AuthorInsightsHeader').then((m) => ({ default: m.AuthorInsightsHeader })),
+);
+const AuthorInsightsNotesSection = lazy(() =>
+  import('./components/AuthorInsightsNotesSection').then((m) => ({ default: m.AuthorInsightsNotesSection })),
+);
+const AuthorInsightsCommentsSection = lazy(() =>
+  import('./components/AuthorInsightsCommentsSection').then((m) => ({ default: m.AuthorInsightsCommentsSection })),
+);
+const ActionLogSection = lazy(() =>
+  import('./components/ActionLogSection').then((m) => ({ default: m.ActionLogSection })),
+);
+const ExportTab = lazy(() => import('./components/ExportTab').then((m) => ({ default: m.ExportTab })));
+const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) => ({ default: m.ActorNamesTab })));
 
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -386,6 +417,14 @@ function computeStaticContainers() {
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
+  // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): drives
+  // which lazy-loaded tab chunks below have been requested yet.
+  const hasReviewStatsBeenVisible = useHasTabPanelBeenVisible('tab-panel-review-stats');
+  const hasAuthorInsightsBeenVisible = useHasTabPanelBeenVisible('tab-panel-author-insights');
+  const hasActionLogBeenVisible = useHasTabPanelBeenVisible('tab-panel-action-log');
+  const hasExportBeenVisible = useHasTabPanelBeenVisible('tab-panel-export');
+  const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
+
   const [prTable, setPrTable] = useState(null);
   const [multiSelectStates, setMultiSelectStates] = useState({});
   const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
@@ -610,46 +649,68 @@ function AppRoot() {
             'applied-filter-summary',
           )}
 
-        {containers.reviewStatsControls &&
+        {hasReviewStatsBeenVisible && containers.reviewStatsControls &&
           createPortal(
-            <ReviewStatsControls
-              initialState={containers.reviewStatsControlsInitialState}
-              onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
-            />,
+            <Suspense fallback={null}>
+              <ReviewStatsControls
+                initialState={containers.reviewStatsControlsInitialState}
+                onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
+              />
+            </Suspense>,
             containers.reviewStatsControls,
             'review-stats-controls',
           )}
 
-        {containers.reviewStatsContent &&
-          createPortal(<ReviewStatsContent />, containers.reviewStatsContent, 'review-stats-content')}
-
-        {containers.authorInsightsSelector &&
+        {hasReviewStatsBeenVisible && containers.reviewStatsContent &&
           createPortal(
-            <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />,
+            <Suspense fallback={null}>
+              <ReviewStatsContent />
+            </Suspense>,
+            containers.reviewStatsContent,
+            'review-stats-content',
+          )}
+
+        {hasAuthorInsightsBeenVisible && containers.authorInsightsSelector &&
+          createPortal(
+            <Suspense fallback={null}>
+              <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />
+            </Suspense>,
             containers.authorInsightsSelector,
             'author-insights-selector',
           )}
 
-        {containers.authorInsightsCreatedPrs &&
+        {hasAuthorInsightsBeenVisible && containers.authorInsightsCreatedPrs &&
           createPortal(
-            <AuthorCreatedPrsSection />,
+            <Suspense fallback={null}>
+              <AuthorCreatedPrsSection />
+            </Suspense>,
             containers.authorInsightsCreatedPrs,
             'author-insights-created-prs',
           )}
 
-        {containers.authorInsightsHeader &&
-          createPortal(<AuthorInsightsHeader />, containers.authorInsightsHeader, 'author-insights-header')}
-
-        {containers.authorInsightsNotes &&
+        {hasAuthorInsightsBeenVisible && containers.authorInsightsHeader &&
           createPortal(
-            <AuthorInsightsNotesSection />,
+            <Suspense fallback={null}>
+              <AuthorInsightsHeader />
+            </Suspense>,
+            containers.authorInsightsHeader,
+            'author-insights-header',
+          )}
+
+        {hasAuthorInsightsBeenVisible && containers.authorInsightsNotes &&
+          createPortal(
+            <Suspense fallback={null}>
+              <AuthorInsightsNotesSection />
+            </Suspense>,
             containers.authorInsightsNotes,
             'author-insights-notes',
           )}
 
-        {containers.authorInsightsComments &&
+        {hasAuthorInsightsBeenVisible && containers.authorInsightsComments &&
           createPortal(
-            <AuthorInsightsCommentsSection />,
+            <Suspense fallback={null}>
+              <AuthorInsightsCommentsSection />
+            </Suspense>,
             containers.authorInsightsComments,
             'author-insights-comments',
           )}
@@ -675,14 +736,32 @@ function AppRoot() {
             'request-activity-badges',
           )}
 
-        {containers.actionLog &&
-          createPortal(<ActionLogSection />, containers.actionLog, 'action-log')}
+        {hasActionLogBeenVisible && containers.actionLog &&
+          createPortal(
+            <Suspense fallback={null}>
+              <ActionLogSection />
+            </Suspense>,
+            containers.actionLog,
+            'action-log',
+          )}
 
-        {containers.actorNames &&
-          createPortal(<ActorNamesTab />, containers.actorNames, 'actor-names')}
+        {hasActorNamesBeenVisible && containers.actorNames &&
+          createPortal(
+            <Suspense fallback={null}>
+              <ActorNamesTab />
+            </Suspense>,
+            containers.actorNames,
+            'actor-names',
+          )}
 
-        {containers.export &&
-          createPortal(<ExportTab />, containers.export, 'export')}
+        {hasExportBeenVisible && containers.export &&
+          createPortal(
+            <Suspense fallback={null}>
+              <ExportTab />
+            </Suspense>,
+            containers.export,
+            'export',
+          )}
 
         {containers.applyLabelSelect &&
           createPortal(

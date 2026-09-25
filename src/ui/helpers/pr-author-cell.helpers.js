@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsAuthorCellHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsAuthorCellHelpers fallback.
+export const { createPrAuthorCellHelpers } = (() => {
   // A commit whose headline starts with "Merge" (merging a branch/PR into
   // another) - same definition pr-needs-attention.helpers.js's
   // isMergeCommitHeadline uses for "ignore merge-only commits", duplicated
@@ -62,4 +60,4 @@
   return {
     createPrAuthorCellHelpers,
   };
-});
+})();

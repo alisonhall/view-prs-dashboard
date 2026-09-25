@@ -13,6 +13,19 @@
  * codebase - only the *tab-switching* stays vanilla, not the data/render).
  *
  * @module components/ActionLogSection
+ *
+ * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
+ * component is now lazy-loaded (react-app.jsx), mounting only once the
+ * Action Log tab is first activated - before that, pr-management-tabs.
+ * helpers.js's activateTab("action-log") calls loadActionLog() (->
+ * window.triggerActionLogLoad?.()) SYNCHRONOUSLY on click, before this
+ * component's lazy chunk has even started fetching, so that call always
+ * no-ops on first visit. Loading once on mount (below) closes that gap -
+ * confirmed no double-fetch results: the vanilla click handler's own
+ * trigger call is a no-op until this effect has run (mount always wins the
+ * race), and once mounted, that same click handler correctly re-triggers
+ * `load` on every later re-activation (this effect's `[]` deps mean it
+ * only runs once, on mount).
  */
 
 import React, { useEffect, useState } from 'react';
@@ -63,6 +76,7 @@ export function ActionLogSection() {
     };
 
     window.triggerActionLogLoad = load;
+    load();
     return () => {
       delete window.triggerActionLogLoad;
     };

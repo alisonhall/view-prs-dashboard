@@ -23,8 +23,23 @@ jest.mock('./PrSection', () => {
   };
 });
 
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.js/
+// pr-smart-groups.helpers.js are real ES modules now, imported directly by
+// PrTableApp.jsx instead of read off window.ViewPrsSectionConfigHelpers/
+// window.ViewPrsSmartGroupsHelpers - these tests used to swap window
+// globals per-test to control their behavior; jest.mock + mockImplementation
+// is the equivalent for a real import.
+jest.mock('../helpers/pr-section-config.helpers.js', () => ({
+  createPrSectionConfigHelpers: jest.fn(),
+}));
+jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
+  createPrSmartGroupsHelpers: jest.fn(),
+}));
+
 const { PrTableApp } = require('./PrTableApp');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
+const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
 // Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // PrTableApp reads payload/selectedRepo/visiblePrNumbers from
@@ -48,12 +63,12 @@ function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
   // grouped.<key> array, in a fixed order, mirroring the shape
   // pr-section-config.helpers.js actually returns.
-  window.ViewPrsSectionConfigHelpers = {
+  createPrSectionConfigHelpers.mockImplementation(
     // Mirrors pr-section-config.helpers.js's real safe-default behavior: if
     // the caller doesn't override resolvePrSectionOpenState, each section
     // falls back to its own configured default (false for lifecycle
     // sections, whatever the smart group specifies for its own).
-    createPrSectionConfigHelpers: ({ resolvePrSectionOpenState } = {}) => {
+    ({ resolvePrSectionOpenState } = {}) => {
       const resolve =
         typeof resolvePrSectionOpenState === 'function'
           ? resolvePrSectionOpenState
@@ -82,23 +97,21 @@ function installSectionHelpers() {
         },
       };
     },
-  };
+  );
 }
 
 function installSmartGroupHelpers() {
-  window.ViewPrsSmartGroupsHelpers = {
-    createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
-      buildSmartGroupConfigs: () => ({ flagged: { title: 'Flagged', defaultOpen: false } }),
-      applySmartGroups: (allEntries) => ({
-        flagged: { title: 'Flagged', rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)) },
-      }),
+  createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
+    buildSmartGroupConfigs: () => ({ flagged: { title: 'Flagged', defaultOpen: false } }),
+    applySmartGroups: (allEntries) => ({
+      flagged: { title: 'Flagged', rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)) },
     }),
-  };
+  }));
 }
 
 function clearWindowHelpers() {
-  delete window.ViewPrsSectionConfigHelpers;
-  delete window.ViewPrsSmartGroupsHelpers;
+  createPrSectionConfigHelpers.mockReset();
+  createPrSmartGroupsHelpers.mockReset();
   delete window.entryNeedsAttention;
   delete window.getNeedsAttentionConfig;
   delete window.isInReviewEnabled;
@@ -146,6 +159,19 @@ describe('PrTableApp', () => {
   beforeEach(() => {
     capturedSectionProps.length = 0;
     installSectionHelpers();
+    // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.jsx's
+    // `if (prSmartGroupsHelperFactory)` guard is always true now (a real
+    // import, unlike the old `if (window.ViewPrsSmartGroupsHelpers)` check
+    // most tests here relied on being falsy by default to skip smart
+    // groups entirely) - this default mock produces the same *observable*
+    // result buildPrSectionConfigs saw before (`smartGroups` empty/absent),
+    // without changing PrTableApp.jsx's own structure. Tests that actually
+    // exercise smart groups override this via installSmartGroupHelpers()
+    // or a one-off mockImplementation.
+    createPrSmartGroupsHelpers.mockImplementation(() => ({
+      buildSmartGroupConfigs: () => ({}),
+      applySmartGroups: () => ({}),
+    }));
   });
   afterEach(clearWindowHelpers);
 
@@ -155,12 +181,13 @@ describe('PrTableApp', () => {
     expect(screen.queryByTestId('section')).not.toBeInTheDocument();
   });
 
-  test('given a payload but no window.ViewPrsSectionConfigHelpers, when rendering, then still shows the loading state', () => {
-    clearWindowHelpers(); // no section helpers installed for this test
-    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'o/r', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: 'o/r', onCheckboxChange: () => {}, onAckAction: () => {} });
-    expect(screen.getByText('Loading Pull Requests...')).toBeInTheDocument();
-  });
+  // ES module cleanup (see REACT_MIGRATION_PLAN.md): the "helpers module
+  // entirely missing" scenario this used to cover (window.ViewPrsX never
+  // set) is structurally impossible now that PrTableApp.jsx imports
+  // pr-section-config.helpers.js directly - a real ES import always
+  // resolves before this component's own code runs, so `helpers` can never
+  // be falsy via this path. Removed rather than kept as dead coverage for
+  // something that can no longer happen.
 
   test('given entries for one repo, when no selectedRepo is passed, then effectiveRepo falls back to that repo', () => {
     const payload = {
@@ -321,16 +348,14 @@ describe('PrTableApp', () => {
     // load/refresh regardless of its own configured default. It should now
     // let each section fall through to its own default (lifecycle sections
     // closed; "In Review"/"Needs Attention" smart groups open).
-    window.ViewPrsSmartGroupsHelpers = {
-      createPrSmartGroupsHelpers: () => ({
-        buildSmartGroupConfigs: () => ({
-          needsAttention: { title: 'Needs Attention', defaultOpen: true },
-        }),
-        applySmartGroups: () => ({
-          needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: [] },
-        }),
+    createPrSmartGroupsHelpers.mockImplementation(() => ({
+      buildSmartGroupConfigs: () => ({
+        needsAttention: { title: 'Needs Attention', defaultOpen: true },
       }),
-    };
+      applySmartGroups: () => ({
+        needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: [] },
+      }),
+    }));
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -354,18 +379,16 @@ describe('PrTableApp', () => {
     window.entryNeedsAttention = () => false;
     window.getNeedsAttentionConfig = () => ({});
     window.isInReviewEnabled = (data) => data?.number === '1';
-    window.ViewPrsSmartGroupsHelpers = {
-      createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
-        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-        applySmartGroups: (allEntries) => ({
-          needsAttention: {
-            title: 'Needs Attention',
-            defaultOpen: true,
-            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
-          },
-        }),
+    createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
+      buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+      applySmartGroups: (allEntries) => ({
+        needsAttention: {
+          title: 'Needs Attention',
+          defaultOpen: true,
+          rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+        },
       }),
-    };
+    }));
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -379,18 +402,16 @@ describe('PrTableApp', () => {
     window.entryNeedsAttention = () => true;
     window.getNeedsAttentionConfig = () => ({});
     window.isInReviewEnabled = () => false;
-    window.ViewPrsSmartGroupsHelpers = {
-      createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
-        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-        applySmartGroups: (allEntries) => ({
-          needsAttention: {
-            title: 'Needs Attention',
-            defaultOpen: true,
-            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
-          },
-        }),
+    createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
+      buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+      applySmartGroups: (allEntries) => ({
+        needsAttention: {
+          title: 'Needs Attention',
+          defaultOpen: true,
+          rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+        },
       }),
-    };
+    }));
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -410,18 +431,16 @@ describe('PrTableApp', () => {
       let attentionFlag = false;
       window.entryNeedsAttention = () => attentionFlag;
       window.getNeedsAttentionConfig = () => ({});
-      window.ViewPrsSmartGroupsHelpers = {
-        createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
-          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-          applySmartGroups: (allEntries) => ({
-            needsAttention: {
-              title: 'Needs Attention',
-              defaultOpen: true,
-              rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
-            },
-          }),
+      createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: (allEntries) => ({
+          needsAttention: {
+            title: 'Needs Attention',
+            defaultOpen: true,
+            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+          },
         }),
-      };
+      }));
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -447,18 +466,16 @@ describe('PrTableApp', () => {
       let attentionFlag = false;
       window.entryNeedsAttention = () => attentionFlag;
       window.getNeedsAttentionConfig = () => ({});
-      window.ViewPrsSmartGroupsHelpers = {
-        createPrSmartGroupsHelpers: ({ hasNeedsAttentionFlag }) => ({
-          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-          applySmartGroups: (allEntries) => ({
-            needsAttention: {
-              title: 'Needs Attention',
-              defaultOpen: true,
-              rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
-            },
-          }),
+      createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: (allEntries) => ({
+          needsAttention: {
+            title: 'Needs Attention',
+            defaultOpen: true,
+            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
+          },
         }),
-      };
+      }));
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -512,14 +529,12 @@ describe('PrTableApp', () => {
     });
 
     test('given rows spanning multiple lifecycle sections with different rowOrder values, when building a smart group, then its rows follow rowOrder ascending (vanilla\'s cross-section ordering) rather than lifecycle-then-PR-number order', () => {
-      window.ViewPrsSmartGroupsHelpers = {
-        createPrSmartGroupsHelpers: () => ({
-          buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-          applySmartGroups: (allEntries) => ({
-            needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: allEntries },
-          }),
+      createPrSmartGroupsHelpers.mockImplementation(() => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: (allEntries) => ({
+          needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: allEntries },
         }),
-      };
+      }));
 
       const payload = {
         byPrNumber: {
@@ -535,6 +550,42 @@ describe('PrTableApp', () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
       const needsAttentionSection = capturedSectionProps.find((p) => p.section.key === 'needsAttention');
       expect(needsAttentionSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '1']);
+    });
+
+    test('given an unrelated re-render (toggling a section), when sections are rebuilt, then the shared grouping helper reuses its cache instead of re-sorting', () => {
+      // Item 2 of the deferred-items follow-up (see REACT_MIGRATION_PLAN.md):
+      // PrTableApp now calls the real, shared buildGroupedPrSections instead
+      // of duplicating its filter/sort logic inline - this is the one
+      // behavior that's actually new as a result (the shared helper's own
+      // reference-equality cache, added in the Phase 5 residual slice, now
+      // has a real consumer here). Toggling a section changes `openSections`
+      // (a `sections` useMemo dependency) without changing `payload`, so
+      // `entriesForRepo`'s entry objects are the exact same references -
+      // the cache should hit and skip re-sorting entirely.
+      // installSortHelpers() installs plain (non-spy) functions; wrap with
+      // jest.fn() here, preserving the real sorting behavior, so this test
+      // alone can count calls without affecting the other tests in this
+      // describe block.
+      window.sortRowsByPrNumberDesc = jest.fn(window.sortRowsByPrNumberDesc);
+
+      const payload = {
+        byPrNumber: {
+          10: makeEntry({ prNumber: '10', repo: 'owner/repo', section: 'open' }),
+          20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
+
+      const openSectionBefore = capturedSectionProps.find((p) => p.section.key === 'open');
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        openSectionBefore.onToggleSection('open');
+      });
+
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs.map((e) => e.prNumber)).toEqual(['20', '10']);
+      // Not called again - the cache returned the previous result untouched.
+      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -743,9 +794,14 @@ describe('PrTableApp', () => {
     // installSectionHelpers() above is a simplified test double that never
     // exercised the real pr-section-config.helpers.js/PrTableApp
     // interaction, which is exactly why this regressed unnoticed - these
-    // tests install the real helper module instead.
+    // tests install the real helper module instead (jest.requireActual
+    // bypasses the jest.mock() at the top of this file, which every other
+    // describe block relies on).
     beforeEach(() => {
-      window.ViewPrsSectionConfigHelpers = require('../helpers/pr-section-config.helpers.js');
+      const { createPrSectionConfigHelpers: realCreatePrSectionConfigHelpers } = jest.requireActual(
+        '../helpers/pr-section-config.helpers.js',
+      );
+      createPrSectionConfigHelpers.mockImplementation(realCreatePrSectionConfigHelpers);
       window.entryNeedsAttention = () => false;
       window.getNeedsAttentionConfig = () => ({});
       window.isInReviewEnabled = () => false;

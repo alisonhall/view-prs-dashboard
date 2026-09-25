@@ -1,4 +1,91 @@
-﻿// Deliberately empty - not a real repo any other user of this tool would
+﻿// ES module cleanup (see REACT_MIGRATION_PLAN.md): real imports for
+// helper files that have been converted off the UMD wrapper, kept as one
+// block at the top per normal `import` placement conventions - every
+// not-yet-converted dependency below still uses the original
+// `require(...) : globalThis.ViewPrsXHelpers` fallback, which continues
+// to work unmodified (this file's own <script> tag is now type="module",
+// see index.html) until it's converted too.
+import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
+import * as reactCallbackHelperFactory from "./helpers/react-callbacks.helpers.js";
+import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
+import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.orchestrator.js";
+import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
+import * as prMultiSelectRenderCacheHelperFactory from "./helpers/pr-multi-select-render-cache.helpers.js";
+import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
+import * as prReviewStatsDateBucketingHelperFactory from "./helpers/pr-review-stats-date-bucketing.helpers.js";
+import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
+import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity-render.helpers.js";
+import * as prActorIdentityStyleHelperFactory from "./helpers/pr-actor-identity-style.helpers.js";
+import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
+import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
+import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
+import * as prInsightBadgeClassHelperFactory from "./helpers/pr-insight-badge-class.helpers.js";
+import * as prInsightMetricsSummaryHelperFactory from "./helpers/pr-insight-metrics-summary.helpers.js";
+import * as prAuthorCellHelperFactory from "./helpers/pr-author-cell.helpers.js";
+import * as prUiRenderUtilsHelperFactory from "./helpers/pr-ui-render-utils.helpers.js";
+import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
+import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
+import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
+import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
+import * as prSectionOpenStateHelperFactory from "./helpers/pr-section-open-state.helpers.js";
+import * as prAppliedSummaryHelperFactory from "./helpers/pr-applied-summary.helpers.js";
+import * as prMergedRequestMoreConfigHelperFactory from "./helpers/pr-merged-request-more-config.helpers.js";
+import * as prScopeSelectionHelperFactory from "./helpers/pr-scope-selection.helpers.js";
+import * as prScopeSettingsHelperFactory from "./helpers/pr-scope-settings.helpers.js";
+import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
+import * as prRenderContextHelperFactory from "./helpers/pr-render-context.helpers.js";
+import * as prRowSourcesHelperFactory from "./helpers/pr-row-sources.helpers.js";
+import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
+import * as prFilterOptionsHelperFactory from "./helpers/pr-filter-options.helpers.js";
+import * as prScopedRowsHelperFactory from "./helpers/pr-scoped-rows.helpers.js";
+import * as prRenderSummaryHelperFactory from "./helpers/pr-render-summary.helpers.js";
+import * as prRenderApplyHelperFactory from "./helpers/pr-render-apply.helpers.js";
+import * as prFilterPipelineHelperFactory from "./helpers/pr-filter-pipeline.helpers.js";
+import * as prFilterSelectionInputsHelperFactory from "./helpers/pr-filter-selection-inputs.helpers.js";
+import * as prRenderSummaryInputsHelperFactory from "./helpers/pr-render-summary-inputs.helpers.js";
+import * as prRenderFilterSummaryHelperFactory from "./helpers/pr-render-filter-summary.helpers.js";
+import * as prRenderApplyInputsHelperFactory from "./helpers/pr-render-apply-inputs.helpers.js";
+import * as prRenderFinalizeHelperFactory from "./helpers/pr-render-finalize.helpers.js";
+import * as prRenderPipelineHelperFactory from "./helpers/pr-render-pipeline.helpers.js";
+import * as prRenderStateCommitHelperFactory from "./helpers/pr-render-state-commit.helpers.js";
+import * as prRunPrDataContextHelperFactory from "./helpers/pr-run-pr-data-context.helpers.js";
+import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
+import * as prSinglePrUpdateHelperFactory from "./helpers/pr-single-pr-update.helpers.js";
+import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
+import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-cache.helpers.js";
+import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
+import * as prSelectedFiltersHelperFactory from "./helpers/pr-selected-filters.helpers.js";
+import * as prRowFilteringHelperFactory from "./helpers/pr-row-filtering.helpers.js";
+import * as prDomVisibilityHelperFactory from "./helpers/pr-dom-visibility.helpers.js";
+import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
+import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
+import * as prAuthorInsightsDraftsHelperFactory from "./helpers/pr-author-insights-drafts.helpers.js";
+import * as prAutoRenderBlockingHelperFactory from "./helpers/pr-auto-render-blocking.helpers.js";
+import * as prAutoRenderIndicatorHelperFactory from "./helpers/pr-auto-render-indicator.helpers.js";
+import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-render-indicator-links.helpers.js";
+import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
+import * as prAutoRenderNavigationHelperFactory from "./helpers/pr-auto-render-navigation.helpers.js";
+import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
+import * as prNotesHelperFactory from "./helpers/pr-notes.helpers.js";
+import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.js";
+import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
+import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
+import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
+import * as prDataTabsHelperFactory from "./helpers/pr-data-tabs.helpers.js";
+import * as prActivityBadgesHelperFactory from "./helpers/pr-activity-badges.helpers.js";
+import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
+import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
+import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
+import * as prExportHelperFactory from "./helpers/pr-export.helpers.js";
+import * as prReviewStatsAggregationHelperFactory from "./helpers/pr-review-stats-aggregation.helpers.js";
+import * as prReviewStatsTimelineHelperFactory from "./helpers/pr-review-stats-timeline.helpers.js";
+import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
+import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
+import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
+import * as prAuthorInsightsComponentFactory from "./components/pr-author-insights.component.js";
+import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
+
+// Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
 // defaultViewPrsRepo, which dropped the same hardcoded value for the same
 // reason). Every consumer below already treats a missing repo as "nothing
@@ -22,11 +109,6 @@ const getDefaultStatsStartDate = () => {
   );
   return formatDateInputValue(shifted);
 };
-
-const prReviewStatsDateBucketingHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-review-stats-date-bucketing.helpers.js")
-    : globalThis.ViewPrsReviewStatsDateBucketingHelpers;
 
 const { getTimelineDateKeys, bucketTimelineChartData } =
   prReviewStatsDateBucketingHelperFactory.createPrReviewStatsDateBucketingHelpers({
@@ -104,23 +186,9 @@ const authorInsightsState = {
   latestActorsMap: null,
 };
 const reviewConversationsUiStateByKey = new Map();
-const formParsingHelpersSource =
-  globalThis.ViewPrsFormParsingHelpers ||
-  (typeof module !== "undefined" && module.exports && typeof require === "function"
-    ? require("./helpers/form-parsing.helpers")
-    : null);
-const formParsingHelpersFactory =
-  formParsingHelpersSource?.createFormParsingHelpers;
-const formParsingHelpers =
-  typeof formParsingHelpersFactory === "function"
-    ? formParsingHelpersFactory()
-    : null;
+const formParsingHelpers = formParsingHelpersModule;
 const toBoolean =
   formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
-const prFormattingHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-formatting.helpers.js")
-    : globalThis.ViewPrsFormattingHelpers;
 
 const {
   escapeHtml,
@@ -1334,16 +1402,6 @@ const getAuthorThreadResolutionPolicy = () => {
   };
 };
 
-const prActorIdentityRenderHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-actor-identity-render.helpers.js")
-    : globalThis.ViewPrsActorIdentityRenderHelpers;
-
-const prActorIdentityStyleHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-actor-identity-style.helpers.js")
-    : globalThis.ViewPrsActorIdentityStyleHelpers;
-
 const {
   buildActorIdentityClassName,
   buildActorIdentityTitle,
@@ -1357,21 +1415,11 @@ const {
   inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
 });
 
-const prRequestedReviewersHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-requested-reviewers.helpers.js")
-    : globalThis.ViewPrsRequestedReviewersHelpers;
-
 const { collectRequestedReviewers, formatRequestedReviewersDisplay } =
   prRequestedReviewersHelperFactory.createPrRequestedReviewersHelpers({
     asArray: (...args) => asArray(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
-
-const prAssignedUsersHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-assigned-users.helpers.js")
-    : globalThis.ViewPrsAssignedUsersHelpers;
 
 const { collectAssignedUsers, formatAssignedUsersDisplay } =
   prAssignedUsersHelperFactory.createPrAssignedUsersHelpers({
@@ -1379,11 +1427,6 @@ const { collectAssignedUsers, formatAssignedUsersDisplay } =
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
-
-const prApproversHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-approvers.helpers.js")
-    : globalThis.ViewPrsApproversHelpers;
 
 const { collectApproversFromRow, formatApproversDisplay } =
   prApproversHelperFactory.createPrApproversHelpers({
@@ -1393,11 +1436,6 @@ const { collectApproversFromRow, formatApproversDisplay } =
     formatIsoDatetime: (...args) => formatIsoDatetime(...args),
   });
 
-const prInsightBadgeClassHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-insight-badge-class.helpers.js")
-    : globalThis.ViewPrsInsightBadgeClassHelpers;
-
 const {
   getBadgeClassForStatus,
   getBadgeClassForCheck,
@@ -1405,11 +1443,6 @@ const {
 } = prInsightBadgeClassHelperFactory.createPrInsightBadgeClassHelpers({
   isChangedStatus: (...args) => isChangedStatus(...args),
 });
-
-const prInsightMetricsSummaryHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-insight-metrics-summary.helpers.js")
-    : globalThis.ViewPrsInsightMetricsSummaryHelpers;
 
 const {
   formatReviewFootprint,
@@ -1419,28 +1452,13 @@ const {
 } =
   prInsightMetricsSummaryHelperFactory.createPrInsightMetricsSummaryHelpers();
 
-const prAuthorCellHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-cell.helpers.js")
-    : globalThis.ViewPrsAuthorCellHelpers;
-
 const { collectPrAuthors } =
   prAuthorCellHelperFactory.createPrAuthorCellHelpers({
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
   });
 
-const prUiRenderUtilsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-ui-render-utils.helpers.js")
-    : globalThis.ViewPrsUiRenderUtilsHelpers;
-
 const { parseMarkerState, safeJsonStringify } =
   prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
-
-const prNeedsAttentionHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-needs-attention.helpers.js")
-    : globalThis.ViewPrsNeedsAttentionHelpers;
 
 const {
   shouldShowNeedsAttention,
@@ -1463,11 +1481,6 @@ if (typeof window !== "undefined") {
   window.getNeedsAttentionConfig = getNeedsAttentionConfig;
 }
 
-const prUiOptionScrollHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-ui-option-scroll.helpers.js")
-    : globalThis.ViewPrsUiOptionScrollHelpers;
-
 const {
   registerUiOptionPersistenceHandlers,
   autoScrollBackfillLogToBottom,
@@ -1480,28 +1493,13 @@ const {
   getIsBackfillRunning: () => isBackfillRunning,
 });
 
-const prDomAccessHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-dom-access.helpers.js")
-    : globalThis.ViewPrsDomAccessHelpers;
-
 const { getOptionalElementById, readElementAttribute } =
   prDomAccessHelperFactory.createPrDomAccessHelpers({
     documentRef: typeof document !== "undefined" ? document : null,
   });
 
-const prDomTraversalHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-dom-traversal.helpers.js")
-    : globalThis.ViewPrsDomTraversalHelpers;
-
 const { collectNodesByClass, collectNodesByTag } =
   prDomTraversalHelperFactory.createPrDomTraversalHelpers();
-
-const prSectionOpenStateHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-section-open-state.helpers.js")
-    : globalThis.ViewPrsSectionOpenStateHelpers;
 
 const { capturePrSectionOpenState } =
   prSectionOpenStateHelperFactory.createPrSectionOpenStateHelpers({
@@ -1509,26 +1507,11 @@ const { capturePrSectionOpenState } =
     readElementAttribute: (...args) => readElementAttribute(...args),
   });
 
-const prAppliedSummaryHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-applied-summary.helpers.js")
-    : globalThis.ViewPrsAppliedSummaryHelpers;
-
 const { buildAppliedSummaryViewModel } =
   prAppliedSummaryHelperFactory.createPrAppliedSummaryHelpers();
 
-const prMergedRequestMoreConfigHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-merged-request-more-config.helpers.js")
-    : globalThis.ViewPrsMergedRequestMoreConfigHelpers;
-
 const { buildMergedRequestMoreActionOptions } =
   prMergedRequestMoreConfigHelperFactory.createPrMergedRequestMoreConfigHelpers();
-
-const prSectionGroupingHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-section-grouping.helpers.js")
-    : globalThis.ViewPrsSectionGroupingHelpers;
 
 const { buildGroupedPrSections } =
   prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
@@ -1536,21 +1519,11 @@ const { buildGroupedPrSections } =
     sortRowsByDateFieldDesc: (...args) => sortRowsByDateFieldDesc(...args),
   });
 
-const prScopeSelectionHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-scope-selection.helpers.js")
-    : globalThis.ViewPrsScopeSelectionHelpers;
-
 const { normalizeSelectedScope, resolveScopedRows } =
   prScopeSelectionHelperFactory.createPrScopeSelectionHelpers({
     entryNeedsAttention: (...args) => entryNeedsAttention(...args),
     entryHasYourLastActivity: (...args) => entryHasYourLastActivity(...args),
   });
-
-const prScopeSettingsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-scope-settings.helpers.js")
-    : globalThis.ViewPrsScopeSettingsHelpers;
 
 const { deriveScopeSettings } =
   prScopeSettingsHelperFactory.createPrScopeSettingsHelpers({
@@ -1558,18 +1531,8 @@ const { deriveScopeSettings } =
     normalizeSelectedScope: (...args) => normalizeSelectedScope(...args),
   });
 
-const prRepoRunContextHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-repo-run-context.helpers.js")
-    : globalThis.ViewPrsRepoRunContextHelpers;
-
 const { deriveRepoRunContext } =
   prRepoRunContextHelperFactory.createPrRepoRunContextHelpers();
-
-const prRenderContextHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-context.helpers.js")
-    : globalThis.ViewPrsRenderContextHelpers;
 
 const { captureRenderContext } =
   prRenderContextHelperFactory.createPrRenderContextHelpers({
@@ -1577,20 +1540,10 @@ const { captureRenderContext } =
     capturePrSectionOpenState: (...args) => capturePrSectionOpenState(...args),
   });
 
-const prRowSourcesHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-row-sources.helpers.js")
-    : globalThis.ViewPrsRowSourcesHelpers;
-
 const { deriveRowSources } =
   prRowSourcesHelperFactory.createPrRowSourcesHelpers({
     normalizeRows: (...args) => normalizeRows(...args),
   });
-
-const prViewerContextHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-viewer-context.helpers.js")
-    : globalThis.ViewPrsViewerContextHelpers;
 
 const { deriveViewerContext } =
   prViewerContextHelperFactory.createPrViewerContextHelpers({
@@ -1598,11 +1551,6 @@ const { deriveViewerContext } =
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
   });
-
-const prFilterOptionsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-filter-options.helpers.js")
-    : globalThis.ViewPrsFilterOptionsHelpers;
 
 const { populateFilterOptions } =
   prFilterOptionsHelperFactory.createPrFilterOptionsHelpers({
@@ -1617,21 +1565,11 @@ const { populateFilterOptions } =
       populateChangeFilterActorOptions(...args),
   });
 
-const prScopedRowsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-scoped-rows.helpers.js")
-    : globalThis.ViewPrsScopedRowsHelpers;
-
 const { deriveScopedRows } =
   prScopedRowsHelperFactory.createPrScopedRowsHelpers({
     resolveScopedRows: (...args) => resolveScopedRows(...args),
     normalizeRows: (...args) => normalizeRows(...args),
   });
-
-const prRenderSummaryHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-summary.helpers.js")
-    : globalThis.ViewPrsRenderSummaryHelpers;
 
 const { deriveRenderSummary } =
   prRenderSummaryHelperFactory.createPrRenderSummaryHelpers({
@@ -1640,11 +1578,6 @@ const { deriveRenderSummary } =
       buildAppliedSummaryViewModel(...args),
     renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
   });
-
-const prRenderApplyHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-apply.helpers.js")
-    : globalThis.ViewPrsRenderApplyHelpers;
 
 const { applyRenderResults, renderAuthorInsightsIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
@@ -1658,11 +1591,6 @@ const { applyRenderResults, renderAuthorInsightsIfVisible } =
     getOptionalElementById: (...args) => getOptionalElementById(...args),
   });
 
-const prFilterPipelineHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-filter-pipeline.helpers.js")
-    : globalThis.ViewPrsFilterPipelineHelpers;
-
 const { deriveFilterPipelineState } =
   prFilterPipelineHelperFactory.createPrFilterPipelineHelpers({
     buildSelectedFiltersViewModel: (...args) =>
@@ -1670,11 +1598,6 @@ const { deriveFilterPipelineState } =
     buildRowFilterCriteria: (...args) => buildRowFilterCriteria(...args),
     applyRowUiFilters: (...args) => applyRowUiFilters(...args),
   });
-
-const prFilterSelectionInputsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-filter-selection-inputs.helpers.js")
-    : globalThis.ViewPrsFilterSelectionInputsHelpers;
 
 const { deriveFilterSelectionInputs } =
   prFilterSelectionInputsHelperFactory.createPrFilterSelectionInputsHelpers({
@@ -1702,18 +1625,8 @@ const { deriveFilterSelectionInputs } =
     getAnalysisOfPrFilter: (...args) => getAnalysisOfPrFilter(...args),
   });
 
-const prRenderSummaryInputsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-summary-inputs.helpers.js")
-    : globalThis.ViewPrsRenderSummaryInputsHelpers;
-
 const { deriveRenderSummaryInputs } =
   prRenderSummaryInputsHelperFactory.createPrRenderSummaryInputsHelpers();
-
-const prRenderFilterSummaryHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-filter-summary.helpers.js")
-    : globalThis.ViewPrsRenderFilterSummaryHelpers;
 
 const { deriveRenderFilterSummaryState } =
   prRenderFilterSummaryHelperFactory.createPrRenderFilterSummaryHelpers({
@@ -1724,18 +1637,8 @@ const { deriveRenderFilterSummaryState } =
     deriveRenderSummary: (...args) => deriveRenderSummary(...args),
   });
 
-const prRenderApplyInputsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-apply-inputs.helpers.js")
-    : globalThis.ViewPrsRenderApplyInputsHelpers;
-
 const { deriveRenderApplyInputs } =
   prRenderApplyInputsHelperFactory.createPrRenderApplyInputsHelpers();
-
-const prRenderFinalizeHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-finalize.helpers.js")
-    : globalThis.ViewPrsRenderFinalizeHelpers;
 
 const { deriveRenderFinalizedState } =
   prRenderFinalizeHelperFactory.createPrRenderFinalizeHelpers({
@@ -1743,11 +1646,6 @@ const { deriveRenderFinalizedState } =
     applyRenderResults: (...args) => applyRenderResults(...args),
     deriveCommittedRenderState: (...args) => deriveCommittedRenderState(...args),
   });
-
-const prRenderPipelineHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-pipeline.helpers.js")
-    : globalThis.ViewPrsRenderPipelineHelpers;
 
 const { deriveRenderPipelineState } =
   prRenderPipelineHelperFactory.createPrRenderPipelineHelpers({
@@ -1757,18 +1655,8 @@ const { deriveRenderPipelineState } =
     deriveRenderFinalizedState: (...args) => deriveRenderFinalizedState(...args),
   });
 
-const prRenderStateCommitHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-state-commit.helpers.js")
-    : globalThis.ViewPrsRenderStateCommitHelpers;
-
 const { deriveCommittedRenderState } =
   prRenderStateCommitHelperFactory.createPrRenderStateCommitHelpers();
-
-const prRunPrDataContextHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-run-pr-data-context.helpers.js")
-    : globalThis.ViewPrsRunPrDataContextHelpers;
 
 const { deriveRunPrDataContext } =
   prRunPrDataContextHelperFactory.createPrRunPrDataContextHelpers({
@@ -1782,11 +1670,6 @@ const { deriveRunPrDataContext } =
         ? window.getFilterStateValues()[name]
         : undefined,
   });
-
-const prStoredDataLoadHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-stored-data-load.helpers.js")
-    : globalThis.ViewPrsStoredDataLoadHelpers;
 
 const { loadStoredData } =
   prStoredDataLoadHelperFactory.createPrStoredDataLoadHelpers({
@@ -1813,11 +1696,6 @@ const { loadStoredData } =
     renderPrData: (...args) => renderPrData(...args),
   });
 
-const prSinglePrUpdateHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-single-pr-update.helpers.js")
-    : globalThis.ViewPrsSinglePrUpdateHelpers;
-
 const { runSinglePrUpdate } =
   prSinglePrUpdateHelperFactory.createPrSinglePrUpdateHelpers({
     postJson: (...args) => postJson(...args),
@@ -1839,11 +1717,6 @@ const { runSinglePrUpdate } =
     loadStoredData: (...args) => loadStoredData(...args),
     defaultRepo: DEFAULT_REPO,
   });
-
-const prMergedRequestMoreActionHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-merged-request-more-action.helpers.js")
-    : globalThis.ViewPrsMergedRequestMoreActionHelpers;
 
 const { handleRequestMoreMerged } =
   prMergedRequestMoreActionHelperFactory.createPrMergedRequestMoreActionHelpers({
@@ -1876,24 +1749,23 @@ if (typeof window !== "undefined") {
   window.handleRequestMoreMerged = (...args) => handleRequestMoreMerged(...args);
 }
 
-const prApplyFiltersCacheHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-apply-filters-cache.helpers.js")
-    : globalThis.ViewPrsApplyFiltersCacheHelpers;
-
 const { applyFiltersFromCache } =
   prApplyFiltersCacheHelperFactory.createPrApplyFiltersCacheHelpers({
-    getLatestStoredPayload: () => latestStoredPayload,
+    // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md):
+    // prefers the same payload the visible React table is currently
+    // showing (via PrDataProvider's window.getReactPrTablePayload read
+    // bridge) over the raw, always-freshest latestStoredPayload - correct
+    // for this consumer specifically, since a filter re-application should
+    // respect the same "don't disturb an in-progress edit" deferral
+    // pollForDataChanges already gives the visible table, not silently
+    // filter data the user can't see yet. Falls back to the vanilla
+    // variable before React has mounted.
+    getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
     getLatestSelectedRepo: () => latestSelectedRepo,
     renderPrData: (...args) => renderPrData(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
     logError: (...args) => console.error(...args),
   });
-
-const prRenderViewerFilterSetupHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-render-viewer-filter-setup.helpers.js")
-    : globalThis.ViewPrsRenderViewerFilterSetupHelpers;
 
 const { deriveViewerFilterSetup } =
   prRenderViewerFilterSetupHelperFactory.createPrRenderViewerFilterSetupHelpers({
@@ -1912,18 +1784,8 @@ const { deriveViewerFilterSetup } =
     populateFilterOptions: (...args) => populateFilterOptions(...args),
   });
 
-const prSelectedFiltersHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-selected-filters.helpers.js")
-    : globalThis.ViewPrsSelectedFiltersHelpers;
-
 const { buildSelectedFiltersViewModel } =
   prSelectedFiltersHelperFactory.createPrSelectedFiltersHelpers();
-
-const prEntryDerivedCacheHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-entry-derived-cache.helpers.js")
-    : globalThis.ViewPrsEntryDerivedCacheHelpers;
 
 // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): one
 // shared cache instance for the page's whole lifetime, not recreated per
@@ -1944,11 +1806,6 @@ const { getOrCompute: getOrComputeEntryDerivedValue } =
 // function) so every call site benefits without individual changes - see
 // pr-multi-select-render-cache.helpers.js's own comment for why `checked`
 // has to be part of the skip signature, not just `value`/`label`.
-const prMultiSelectRenderCacheHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-multi-select-render-cache.helpers.js")
-    : globalThis.ViewPrsMultiSelectRenderCacheHelpers;
-
 const renderMultiSelectListSkipUnchanged =
   prMultiSelectRenderCacheHelperFactory
     .createMultiSelectRenderCache()
@@ -1959,31 +1816,16 @@ const renderMultiSelectListSkipUnchanged =
         : false,
     );
 
-const prRowFilteringHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-row-filtering.helpers.js")
-    : globalThis.ViewPrsRowFilteringHelpers;
-
 const { buildRowFilterCriteria, applyRowUiFilters } =
   prRowFilteringHelperFactory.createPrRowFilteringHelpers({
     rowMatchesUiFilters: (...args) => rowMatchesUiFilters(...args),
     getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
   });
 
-const prDomVisibilityHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-dom-visibility.helpers.js")
-    : globalThis.ViewPrsDomVisibilityHelpers;
-
 const { expandAncestorDetailsElements, ensureInsightsRowVisibleForElement } =
   prDomVisibilityHelperFactory.createPrDomVisibilityHelpers({
     readElementAttribute: (...args) => readElementAttribute(...args),
   });
-
-const prAutoRenderUnsavedHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-unsaved.helpers.js")
-    : globalThis.ViewPrsAutoRenderUnsavedHelpers;
 
 const {
   getDirtyTrackedFields,
@@ -1996,22 +1838,12 @@ const {
   readElementAttribute: (...args) => readElementAttribute(...args),
 });
 
-const prAuthorInsightsIdentityHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-insights-identity.helpers.js")
-    : globalThis.ViewPrsAuthorInsightsIdentityHelpers;
-
 const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } =
   prAuthorInsightsIdentityHelperFactory.createPrAuthorInsightsIdentityHelpers({
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
     getLatestActorsMap: () => authorInsightsState.latestActorsMap || {},
   });
-
-const prAuthorInsightsDraftsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-insights-drafts.helpers.js")
-    : globalThis.ViewPrsAuthorInsightsDraftsHelpers;
 
 const {
   DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
@@ -2031,11 +1863,6 @@ const {
   normalizeActorLogin: (...args) => normalizeActorLogin(...args),
 });
 
-const prAutoRenderBlockingHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-blocking.helpers.js")
-    : globalThis.ViewPrsAutoRenderBlockingHelpers;
-
 const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
   prAutoRenderBlockingHelperFactory.createPrAutoRenderBlockingHelpers({
     normalizePrNumber,
@@ -2046,11 +1873,6 @@ const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
     getAuthorInsightsDisplayName: (...args) => getAuthorInsightsDisplayName(...args),
   });
 
-const prAutoRenderIndicatorHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-indicator.helpers.js")
-    : globalThis.ViewPrsAutoRenderIndicatorHelpers;
-
 const {
   buildAutoRenderBlockedStatusText,
   buildAutoRenderBlockedLinksAriaLabel,
@@ -2058,22 +1880,12 @@ const {
   getAuthorInsightsDisplayName: (...args) => getAuthorInsightsDisplayName(...args),
 });
 
-const prAutoRenderIndicatorLinksHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-indicator-links.helpers.js")
-    : globalThis.ViewPrsAutoRenderIndicatorLinksHelpers;
-
 const { renderAutoRenderBlockedLinks } =
   prAutoRenderIndicatorLinksHelperFactory.createPrAutoRenderIndicatorLinksHelpers(
     {
       buildAutoRenderBlockedLinksAriaLabel,
     },
   );
-
-const prAutoRenderStateHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-state.helpers.js")
-    : globalThis.ViewPrsAutoRenderStateHelpers;
 
 const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
   prAutoRenderStateHelperFactory.createPrAutoRenderStateHelpers({
@@ -2083,11 +1895,6 @@ const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
     getBlockingAuthorInsightsLogins,
     formatBlockingPrNumbersLabel,
   });
-
-const prAutoRenderNavigationHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-auto-render-navigation.helpers.js")
-    : globalThis.ViewPrsAutoRenderNavigationHelpers;
 
 const {
   navigateToPrInTable,
@@ -2510,11 +2317,6 @@ const handleQuickCheck = async () => {
     }
   }
 };
-
-const prFilterPanelHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-filter-panel.helpers.js")
-    : globalThis.ViewPrsFilterPanelHelpers;
 
 const {
   getSelectedAuthorLogins,
@@ -3246,17 +3048,7 @@ const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
   }
 };
 
-const prNotesHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-notes.helpers.js")
-    : globalThis.ViewPrsPrNotesHelpers;
-
 const { normalizeNotesListForUi } = prNotesHelperFactory.createPrNotesHelpers();
-
-const prDataPollingHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-data-polling.helpers.js")
-    : globalThis.ViewPrsPrDataPollingHelpers;
 
 const {
   computePrDataFingerprint,
@@ -3270,19 +3062,9 @@ const {
   getOrCompute: getOrComputeEntryDerivedValue,
 });
 
-const prHttpHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-http.helpers.js")
-    : globalThis.ViewPrsPrHttpHelpers;
-
 const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
   fetch: (...args) => fetch(...args),
 });
-
-const prStatusDisplayHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-status-display.helpers.js")
-    : globalThis.ViewPrsPrStatusDisplayHelpers;
 
 const {
   isChangedStatus,
@@ -3295,11 +3077,6 @@ const {
 
 void statusIcon;
 
-const prCommandOutputHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-command-output.helpers.js")
-    : globalThis.ViewPrsPrCommandOutputHelpers;
-
 const {
   formatCommandOutput,
   getGithubAuthFailureHint,
@@ -3307,11 +3084,6 @@ const {
 } = prCommandOutputHelperFactory.createPrCommandOutputHelpers({
   stripAnsi,
 });
-
-const prDataTabsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-data-tabs.helpers.js")
-    : globalThis.ViewPrsPrDataTabsHelpers;
 
 const { activateDataTab, initDataTabs } =
   prDataTabsHelperFactory.createPrDataTabsHelpers({
@@ -3322,11 +3094,6 @@ const { activateDataTab, initDataTabs } =
   });
 
 // PR Data Tab Orchestrator
-const prDataTabOrchestratorFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./orchestrators/pr-data-tab.orchestrator.js")
-    : globalThis.ViewPrsPrDataTabOrchestrator;
-
 const prDataTabOrchestrator =
   prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
     // Helper functions
@@ -3339,7 +3106,10 @@ const prDataTabOrchestrator =
     getOptionalElementById,
     // State management via dependency injection
     stateGetters: {
-      getLatestStoredPayload: () => latestStoredPayload,
+      // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md and
+      // applyFiltersFromCache's own DI wiring above for the full reasoning)
+      // - same read-bridge-with-fallback pattern.
+      getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
       getLatestSelectedRepo: () => latestSelectedRepo,
       getLastSuccessfulRenderedCheckAt: () => lastSuccessfulRenderedCheckAt,
       getLatestSchedulerState: () => latestSchedulerState,
@@ -3374,21 +3144,11 @@ const prDataTabOrchestrator =
     },
   });
 
-const prActivityBadgesHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-activity-badges.helpers.js")
-    : globalThis.ViewPrsActivityBadgesHelpers;
-
 const { getRequestActivityBadges, getSchedulerBadges } =
   prActivityBadgesHelperFactory.createPrActivityBadgesHelpers({
     withElapsedSuffix,
     getRequestActivitySeverityClass,
   });
-
-const prBackfillHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-backfill.helpers.js")
-    : globalThis.ViewPrsPrBackfillHelpers;
 
 const {
   shouldAutoScrollBackfillLog: shouldAutoScrollBackfillLogByState,
@@ -3397,11 +3157,6 @@ const {
   getBackfillStateKey,
   formatBackfillLogMessage,
 } = prBackfillHelperFactory.createPrBackfillHelpers();
-
-const prBackfillActionHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-backfill-actions.helpers.js")
-    : globalThis.ViewPrsPrBackfillActionHelpers;
 
 const {
   loadBackfillStatus,
@@ -3433,11 +3188,6 @@ const {
 });
 
 // Backfill Tab Orchestrator
-const backfillTabOrchestratorFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./orchestrators/backfill-tab.orchestrator.js")
-    : globalThis.ViewPrsBackfillTabOrchestrator;
-
 const backfillTabOrchestrator =
   backfillTabOrchestratorFactory.createBackfillTabOrchestrator({
     // Helper functions
@@ -3474,11 +3224,6 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 // can keep calling `loadActorNameCache()` unchanged on tab activation.
 const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
 
-const prManagementTabsHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-management-tabs.helpers.js")
-    : globalThis.ViewPrsPrManagementTabsHelpers;
-
 const { initManagementTabs } =
   prManagementTabsHelperFactory.createPrManagementTabsHelpers({
     getOptionalElementById,
@@ -3509,11 +3254,6 @@ const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => {
     inReviewByRepo: readRepoPrValue(payload?.inReviewByRepo),
   };
 };
-
-const prExportHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-export.helpers.js")
-    : globalThis.ViewPrsPrExportHelpers;
 
 const {
   getFieldCatalog: getExportFieldCatalog,
@@ -3578,11 +3318,6 @@ const isWithinStatsDateRange = (
   return true;
 };
 
-const prReviewStatsAggregationHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-review-stats-aggregation.helpers.js")
-    : globalThis.ViewPrsReviewStatsAggregationHelpers;
-
 const { normalizeRowMetrics, buildReviewerStats, applyStatsControls } =
   prReviewStatsAggregationHelperFactory.createPrReviewStatsAggregationHelpers({
     toCount,
@@ -3595,11 +3330,6 @@ const { normalizeRowMetrics, buildReviewerStats, applyStatsControls } =
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
     statsViewState,
   });
-
-const prReviewStatsTimelineHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-review-stats-timeline.helpers.js")
-    : globalThis.ViewPrsReviewStatsTimelineHelpers;
 
 const {
   aggregateReviewerActivityTimeline,
@@ -3691,20 +3421,11 @@ if (typeof window !== "undefined") {
 }
 
 // Author Insights helper modules (refactored dependency injection)
-const prAuthorInsightsPrLinkHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-insights-pr-link.helpers.js")
-    : globalThis.ViewPrsAuthorInsightsPrLinkHelpers;
 
 const prAuthorInsightsPrLinkHelpers =
   prAuthorInsightsPrLinkHelperFactory.createPrAuthorInsightsPrLinkHelpers({
     isReactTableMounted: () => isReactTableMounted(),
   });
-
-const prAuthorInsightsDisplayHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-insights-display.helpers.js")
-    : globalThis.ViewPrsAuthorInsightsDisplayHelpers;
 
 const prAuthorInsightsDisplayHelpers =
   prAuthorInsightsDisplayHelperFactory.createPrAuthorInsightsDisplayHelpers({
@@ -3718,11 +3439,6 @@ const prAuthorInsightsDisplayHelpers =
     parseSortableTime: (...args) => parseSortableTime(...args),
     formatIsoDatetime: (...args) => formatIsoDatetime(...args),
   });
-
-const prAuthorInsightsDataHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-author-insights-data.helpers.js")
-    : globalThis.ViewPrsAuthorInsightsDataHelpers;
 
 const prAuthorInsightsDataHelpers =
   prAuthorInsightsDataHelperFactory.createPrAuthorInsightsDataHelpers({
@@ -3739,11 +3455,6 @@ const prAuthorInsightsDraftsHelpers = {
   resetAuthorInsightsEditDraft,
   getAuthorInsightsEditDraft,
 };
-
-const prAuthorInsightsComponentFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./components/pr-author-insights.component.js")
-    : globalThis.ViewPrsAuthorInsightsComponent;
 
 const {
   renderAuthorInsights,
@@ -3864,11 +3575,6 @@ if (typeof window !== "undefined") {
   window.sortAuthorInsightsManualCommentsDesc = (...args) =>
     prAuthorInsightsDisplayHelpers.sortAuthorInsightsManualCommentsDesc(...args);
 }
-
-const prActorIdentityHelperFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./helpers/pr-actor-identity.helpers.js")
-    : globalThis.ViewPrsPrActorIdentityHelpers;
 
 const {
   normalizeActorLoginAliases,
@@ -5187,12 +4893,12 @@ function createReactCallbacks() {
   }
 
   // Check if React callbacks helper is available
-  if (!window.ViewPrsReactCallbacksHelpers) {
+  if (!reactCallbackHelperFactory) {
     console.warn('[ReactIntegration] React callbacks helper not available');
     return null;
   }
 
-  const helpers = window.ViewPrsReactCallbacksHelpers.createReactCallbackHelpers({
+  const helpers = reactCallbackHelperFactory.createReactCallbackHelpers({
     // Pass vanilla JS functions
     toggleInReviewForRow: toggleInReviewForRow,
     toggleFlaggedForRow: toggleFlaggedForRow,
@@ -5207,6 +4913,21 @@ function createReactCallbacks() {
 
     // State getters
     stateGetters: {
+      // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md):
+      // deliberately NOT switched to the window.getReactPrTablePayload
+      // read bridge, unlike the other two DI wirings above/nearby - this
+      // one is different in a way the original design missed.
+      // handleCheckboxChange/handleAckAction/handleApplyLabel (below) all
+      // mutate latestStoredPayload as a synchronous side effect (via
+      // toggleFlaggedForRow/toggleInReviewForRow/runAckOnlyWorkflow/etc.)
+      // and then immediately read it back via this getter, in the SAME
+      // call, specifically to push the just-mutated value into React. The
+      // Context bridge can't satisfy that: Context's payload only updates
+      // *after* this getter's return value reaches updateReactTableSafe,
+      // so reading it here would hand back the pre-mutation payload and
+      // silently undo the very change this handler just made (confirmed
+      // via a real Playwright regression - the checkbox-toggle smoke test
+      // failed with the checked state reverting right after the click).
       getLatestStoredPayload: () => latestStoredPayload,
       getLatestSelectedRepo: () => latestSelectedRepo,
     },

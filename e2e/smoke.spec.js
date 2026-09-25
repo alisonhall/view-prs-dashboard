@@ -1377,3 +1377,50 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await expect(badges.first()).toBeVisible();
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
+
+test("Action Log tab loads its entries on its very first visit, not just on a second one", async ({ page }) => {
+  // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
+  // ActionLogSection is now lazy-loaded, mounting only once this tab is
+  // first activated - pr-management-tabs.helpers.js's tab-click handler
+  // calls window.triggerActionLogLoad?.() synchronously on click, which
+  // used to work because the component (and its bridge) was always
+  // eagerly mounted well before any click. Lazily mounting it broke that:
+  // the click's trigger call fired before the async chunk/component had
+  // mounted to register the bridge, so it silently no-op'd - the fetch
+  // this test waits for simply never happened, forever, on a real first
+  // visit. (Asserting the *rendered text* instead would not have caught
+  // this: "No actions logged yet." is shown both when the log is
+  // genuinely empty and when it was never fetched at all - the same text
+  // either way.) No jsdom unit test could catch this - it's a real
+  // mount-timing race, not logic - which is exactly why this suite exists.
+  // Fixed by having the component load itself on mount instead of relying
+  // solely on the external trigger; this guards against a regression.
+  await page.goto("/");
+
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/action-log") && res.request().method() === "GET",
+    ),
+    page.getByRole("tab", { name: "Action Log" }).click(),
+  ]);
+  expect(response.ok()).toBe(true);
+});
+
+test("Actor Names tab loads its mappings on its very first visit, not just on a second one", async ({ page }) => {
+  // Same class of bug, and same reasoning for asserting on the network
+  // request rather than rendered text, as the Action Log test above - for
+  // ActorNamesTab's window.triggerActorNameCacheLoad bridge.
+  await page.goto("/");
+
+  const [cacheResponse, aliasResponse] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/actor-name-cache") && res.request().method() === "GET",
+    ),
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/actor-login-aliases") && res.request().method() === "GET",
+    ),
+    page.getByRole("tab", { name: "Actor Names" }).click(),
+  ]);
+  expect(cacheResponse.ok()).toBe(true);
+  expect(aliasResponse.ok()).toBe(true);
+});

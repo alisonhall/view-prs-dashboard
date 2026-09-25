@@ -17,12 +17,14 @@
  * a fresh snapshot on every commit via
  * window.updateReactStatsViewState) - its field values aren't used
  * directly. The computation is `useMemo`-gated on `[payload,
- * statsViewState]` so unrelated Context changes (e.g. selecting a
- * different Author Insights author) don't re-trigger it - unlike the 5
- * Author Insights sections, this one recomputes even while its own tab is
- * hidden (no visibility gate anymore, since there's no longer a
- * push-based mechanism to gate) - a deliberate, disclosed trade-off, not
- * an oversight.
+ * statsViewState, isVisible]` so unrelated Context changes (e.g. selecting
+ * a different Author Insights author) don't re-trigger it, and (deferred-
+ * items follow-up, item 3 - see REACT_MIGRATION_PLAN.md) skips the
+ * expensive recompute entirely while its own tab is hidden, via
+ * ../state/useIsTabPanelVisible.jsx (promoted out of this file for item 5,
+ * once a second consumer needed it) - matching the 5 Author Insights
+ * sections' existing behavior, and restoring what the vanilla predecessor
+ * did before this component existed.
  *
  * The chart visuals (formerly createStatsVisuals in
  * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
@@ -42,9 +44,10 @@
  * @module components/ReviewStatsContent
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 const formatIsoDatetime = (value) =>
   window.reviewStatsFormatIsoDatetime ? window.reviewStatsFormatIsoDatetime(value) : String(value || '-');
@@ -206,21 +209,33 @@ export function ReviewStatsContent() {
   const { payload, statsViewState } = usePrData();
   const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
   const actorsMap = payload?.actorsMap || {};
+  const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
+  const lastStatsRef = useRef(null);
 
-  // Memoized on [payload, statsViewState] specifically, not [rows,
-  // actorsMap] (which would be new references on every render) - both
-  // rows/actorsMap are themselves fully determined by payload, so this
-  // still only recomputes when the underlying data or Review Stats
-  // settings actually change.
+  // Memoized on [payload, statsViewState, isVisible] specifically, not
+  // [rows, actorsMap] (which would be new references on every render) -
+  // both rows/actorsMap are themselves fully determined by payload, so
+  // this still only recomputes when the underlying data or Review Stats
+  // settings actually change. While hidden, skips straight to the last
+  // computed value instead of re-running buildReviewerStats/
+  // applyStatsControls - isVisible flipping back to true re-triggers this
+  // useMemo, so the very next payload/settings change while visible again
+  // catches up immediately (see useIsTabPanelVisible above).
   const stats = useMemo(() => {
+    if (!isVisible) {
+      return lastStatsRef.current;
+    }
     const currentRows = Object.values(payload?.byPrNumber || {});
     if (!currentRows.length) {
+      lastStatsRef.current = null;
       return null;
     }
     const currentActorsMap = payload?.actorsMap || {};
     const { summary, reviewerRows } = buildReviewerStats(currentRows, currentActorsMap);
-    return applyStatsControls({ summary, reviewerRows });
-  }, [payload, statsViewState]);
+    const computed = applyStatsControls({ summary, reviewerRows });
+    lastStatsRef.current = computed;
+    return computed;
+  }, [payload, statsViewState, isVisible]);
 
   if (!stats) {
     return <p className="stats-empty">No filtered rows available for review statistics.</p>;

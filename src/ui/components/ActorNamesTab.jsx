@@ -19,6 +19,14 @@
  * that same function.
  *
  * @module components/ActorNamesTab
+ *
+ * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
+ * component is now lazy-loaded (react-app.jsx), mounting only once the
+ * Actor Names tab is first activated - see ActionLogSection.jsx's own
+ * comment for the exact race this created (activateTab("actor-name-cache")
+ * calls loadActorNameCache() synchronously on click, always before this
+ * component's lazy chunk has mounted on a first visit) and why loading
+ * once on mount (below) is the correct fix rather than a workaround.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -64,6 +72,7 @@ export function ActorNamesTab() {
     };
 
     window.triggerActorNameCacheLoad = load;
+    load();
     return () => {
       delete window.triggerActorNameCacheLoad;
     };

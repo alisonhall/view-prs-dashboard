@@ -514,88 +514,34 @@
          is treated as untrusted. Re-copy purify.min.js and purify.min.js.map
          together when bumping the "dompurify" dependency version. -->
     <script src="./vendor/purify.min.js"></script>
-    <script src="./helpers/pr-notes.helpers.js"></script>
-    <script src="./helpers/pr-data-polling.helpers.js"></script>
-    <script src="./helpers/pr-http.helpers.js"></script>
-    <script src="./helpers/pr-status-display.helpers.js"></script>
-    <script src="./helpers/pr-command-output.helpers.js"></script>
-    <script src="./helpers/pr-data-tabs.helpers.js"></script>
-    <script src="./helpers/pr-activity-badges.helpers.js"></script>
-    <script src="./helpers/pr-backfill.helpers.js"></script>
-    <script src="./helpers/pr-backfill-actions.helpers.js"></script>
-    <script src="./helpers/pr-management-tabs.helpers.js"></script>
-    <script src="./helpers/pr-formatting.helpers.js"></script>
-    <script src="./helpers/pr-actor-identity.helpers.js"></script>
-    <script src="./helpers/pr-actor-identity-style.helpers.js"></script>
-    <script src="./helpers/pr-actor-identity-render.helpers.js"></script>
-    <script src="./helpers/pr-requested-reviewers.helpers.js"></script>
-    <script src="./helpers/pr-assigned-users.helpers.js"></script>
-    <script src="./helpers/pr-approvers.helpers.js"></script>
-    <script src="./helpers/pr-insight-badge-class.helpers.js"></script>
-    <script src="./helpers/pr-insight-metrics-summary.helpers.js"></script>
-    <script src="./helpers/pr-author-cell.helpers.js"></script>
-    <script src="./helpers/pr-ui-render-utils.helpers.js"></script>
-    <script src="./helpers/pr-review-stats-date-bucketing.helpers.js"></script>
-    <script src="./helpers/pr-review-stats-aggregation.helpers.js"></script>
-    <script src="./helpers/pr-review-stats-timeline.helpers.js"></script>
-    <script src="./helpers/pr-author-insights-drafts.helpers.js"></script>
-    <script src="./helpers/pr-author-insights-identity.helpers.js"></script>
-    <script src="./helpers/pr-author-insights-pr-link.helpers.js"></script>
-    <script src="./helpers/pr-author-insights-display.helpers.js"></script>
-    <script src="./helpers/pr-author-insights-data.helpers.js"></script>
-    <script src="./helpers/pr-needs-attention.helpers.js"></script>
-    <script src="./helpers/pr-ui-option-scroll.helpers.js"></script>
-    <script src="./helpers/pr-dom-access.helpers.js"></script>
-    <script src="./helpers/pr-dom-traversal.helpers.js"></script>
-    <script src="./helpers/pr-section-open-state.helpers.js"></script>
-    <script src="./helpers/pr-applied-summary.helpers.js"></script>
-    <script src="./helpers/pr-merged-request-more-config.helpers.js"></script>
-    <script src="./helpers/pr-merged-request-more-action.helpers.js"></script>
-    <script src="./helpers/pr-section-grouping.helpers.js"></script>
-    <script src="./helpers/pr-scope-selection.helpers.js"></script>
-    <script src="./helpers/pr-scope-settings.helpers.js"></script>
-    <script src="./helpers/pr-repo-run-context.helpers.js"></script>
-    <script src="./helpers/pr-render-context.helpers.js"></script>
-    <script src="./helpers/pr-row-sources.helpers.js"></script>
-    <script src="./helpers/pr-run-pr-data-context.helpers.js"></script>
-    <script src="./helpers/pr-stored-data-load.helpers.js"></script>
-    <script src="./helpers/pr-single-pr-update.helpers.js"></script>
-    <script src="./helpers/pr-render-viewer-filter-setup.helpers.js"></script>
-    <script src="./helpers/pr-viewer-context.helpers.js"></script>
-    <script src="./helpers/pr-filter-options.helpers.js"></script>
-    <script src="./helpers/pr-scoped-rows.helpers.js"></script>
-    <script src="./helpers/pr-render-summary.helpers.js"></script>
-    <script src="./helpers/pr-render-apply.helpers.js"></script>
-    <script src="./helpers/pr-filter-pipeline.helpers.js"></script>
-    <script src="./helpers/pr-filter-selection-inputs.helpers.js"></script>
-    <script src="./helpers/pr-render-summary-inputs.helpers.js"></script>
-    <script src="./helpers/pr-render-filter-summary.helpers.js"></script>
-    <script src="./helpers/pr-render-apply-inputs.helpers.js"></script>
-    <script src="./helpers/pr-render-finalize.helpers.js"></script>
-    <script src="./helpers/pr-render-pipeline.helpers.js"></script>
-    <script src="./helpers/pr-render-state-commit.helpers.js"></script>
-    <script src="./helpers/pr-selected-filters.helpers.js"></script>
-    <script src="./helpers/pr-entry-derived-cache.helpers.js"></script>
-    <script src="./helpers/pr-multi-select-render-cache.helpers.js"></script>
-    <script src="./helpers/pr-row-filtering.helpers.js"></script>
-    <script src="./helpers/pr-smart-groups.helpers.js"></script>
-    <script src="./helpers/pr-section-config.helpers.js"></script>
-    <script src="./helpers/react-callbacks.helpers.js"></script>
-    <script src="./helpers/pr-dom-visibility.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-blocking.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-unsaved.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-navigation.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-indicator.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-indicator-links.helpers.js"></script>
-    <script src="./helpers/pr-auto-render-state.helpers.js"></script>
-    <script src="./helpers/pr-apply-filters-cache.helpers.js"></script>
-    <script src="./helpers/pr-export.helpers.js"></script>
-    <script src="./helpers/form-parsing.helpers.js"></script>
-    <script src="./components/pr-author-insights.component.js"></script>
-    <script src="./helpers/pr-filter-panel.helpers.js"></script>
-    <script src="./orchestrators/pr-data-tab.orchestrator.js"></script>
-    <script src="./orchestrators/backfill-tab.orchestrator.js"></script>
-    <script src="./index.page.js"></script>
+    <!-- pr-section-grouping.helpers.js: converted to a real ES module
+         (see REACT_MIGRATION_PLAN.md) - imported directly by index.page.js
+         instead of loaded as its own script tag. -->
+    <!-- pr-entry-derived-cache.helpers.js/pr-multi-select-render-cache.helpers.js:
+         converted to real ES modules (see REACT_MIGRATION_PLAN.md) -
+         imported directly by index.page.js instead of loaded as their own
+         script tags. -->
+    <!-- pr-smart-groups.helpers.js/pr-section-config.helpers.js: converted
+         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
+         directly by PrTableApp.jsx (not index.page.js, which never
+         referenced either) instead of loaded as their own script tags. -->
+    <!-- react-callbacks.helpers.js/form-parsing.helpers.js/
+         pr-data-tab.orchestrator.js/backfill-tab.orchestrator.js: converted
+         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
+         directly by index.page.js instead of loaded as their own script
+         tags. -->
+
+    <!-- ES module cleanup (see REACT_MIGRATION_PLAN.md): type="module" so
+         index.page.js can start using real `import` for its ~81 helper/
+         component/orchestrator dependencies (converted incrementally, one
+         file at a time) instead of the require()/globalThis.ViewPrsX
+         fallback every one of them still uses today. Deferred execution
+         (the default for type="module") is safe here: every still-classic
+         dependency above finishes running - and sets its window.ViewPrsX
+         global - before this deferred script runs, and relative to
+         react-app.jsx (also deferred, positioned after this tag) document
+         order is preserved, so this still runs first. -->
+    <script type="module" src="./index.page.js"></script>
 
     <!-- React App Entry Point (Phase 1: Hybrid Migration) -->
     <script type="module" src="./react-app.jsx"></script>

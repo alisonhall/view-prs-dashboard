@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsEntryDerivedCacheHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsEntryDerivedCacheHelpers fallback.
+export const { createEntryDerivedCache } = (() => {
   /**
    * Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): the
    * shared render pipeline re-derives several fairly expensive per-entry
@@ -53,4 +51,4 @@
   return {
     createEntryDerivedCache,
   };
-});
+})();

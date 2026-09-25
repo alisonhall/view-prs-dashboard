@@ -166,4 +166,70 @@ describe('ReviewStatsContent', () => {
     expect(screen.getByText('Top reviewers by comments')).toBeInTheDocument();
     expect(screen.getByText('Top reviewers by approvals')).toBeInTheDocument();
   });
+
+  describe('tab-visibility gating (deferred-items follow-up, item 3 - see REACT_MIGRATION_PLAN.md)', () => {
+    let panel;
+
+    beforeEach(() => {
+      panel = document.createElement('div');
+      panel.id = 'tab-panel-review-stats';
+      panel.hidden = true;
+      document.body.appendChild(panel);
+    });
+
+    afterEach(() => {
+      document.body.removeChild(panel);
+    });
+
+    test('given a hidden review-stats panel, when the payload changes, then the expensive stats recompute is skipped', () => {
+      const stats = buildStats();
+      const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
+      window.buildReviewerStats = buildReviewerStatsSpy;
+      window.applyStatsControls = ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit });
+
+      render(
+        <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+          <ReviewStatsContent />
+        </PrDataProvider>,
+      );
+
+      // Never visible, so never computed even once - the empty message
+      // shows rather than stale/real data.
+      expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
+      expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
+
+      React.act(() => {
+        window.updateReactPrTable({ byPrNumber: { 1: {}, 2: {} } });
+      });
+
+      expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
+      expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
+    });
+
+    test('given a review-stats panel that becomes visible, when its hidden attribute flips off, then the stats recompute immediately from the latest payload', async () => {
+      const stats = buildStats();
+      const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
+      window.buildReviewerStats = buildReviewerStatsSpy;
+      window.applyStatsControls = ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit });
+
+      render(
+        <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+          <ReviewStatsContent />
+        </PrDataProvider>,
+      );
+      expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
+
+      // Simulate activateDataTab('review-stats') flipping the panel's
+      // `hidden` attribute directly (pr-data-tabs.helpers.js's real
+      // mechanism) - the MutationObserver picks this up asynchronously,
+      // so wait for its effect rather than asserting synchronously.
+      await React.act(async () => {
+        panel.hidden = false;
+        await Promise.resolve();
+      });
+
+      expect(buildReviewerStatsSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/Showing 2 of 2 reviewers/)).toBeInTheDocument();
+    });
+  });
 });

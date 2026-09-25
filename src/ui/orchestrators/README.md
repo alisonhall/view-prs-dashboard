@@ -34,20 +34,17 @@ function createFeatureOrchestrator({ dependencies }) {
 }
 ```
 
-### 2. UMD Module Format
-All orchestrators use UMD pattern for browser + Jest compatibility:
+### 2. ES Module Format
+All orchestrators are real ES modules (see REACT_MIGRATION_PLAN.md's "ES
+module cleanup" entries) - the factory body is wrapped in an IIFE purely so
+its internals stay private, with only the named factory function exported:
 
 ```javascript
-(function (global, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-  } else {
-    global.ViewPrsFeatureOrchestrator = factory();
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+export const { createFeatureOrchestrator } = (function () {
+  "use strict";
   // Factory implementation
   return { createFeatureOrchestrator };
-});
+})();
 ```
 
 ### 3. Dependency Injection
@@ -77,9 +74,8 @@ src/ui/orchestrators/
   ├── README.md (this file)
   ├── pr-data-tab.orchestrator.js
   ├── pr-data-tab.orchestrator.test.js (co-located)
-  ├── author-insights-tab.orchestrator.js
-  ├── author-insights-tab.orchestrator.test.js
-  └── ... (other orchestrators)
+  ├── backfill-tab.orchestrator.js
+  └── backfill-tab.orchestrator.test.js (co-located)
 ```
 
 ## Testing Strategy
@@ -103,7 +99,7 @@ See `pr-data-tab.orchestrator.js` for reference implementation.
 
 1. **Analyze** - Identify feature/tab code in index.page.js
 2. **Design API** - Define public methods and dependencies
-3. **Create skeleton** - UMD module with factory pattern
+3. **Create skeleton** - ES module with factory pattern
 4. **Extract logic** - Move coordination code from index.page.js
 5. **Compose helpers** - Use existing helper modules
 6. **Add tests** - Co-located unit tests
@@ -115,11 +111,10 @@ See `pr-data-tab.orchestrator.js` for reference implementation.
 ```javascript
 // In index.page.js
 
-// 1. Import orchestrator factory
-const prDataTabOrchestratorFactory =
-  typeof module !== "undefined" && module.exports
-    ? require("./orchestrators/pr-data-tab.orchestrator.js")
-    : globalThis.ViewPrsPrDataTabOrchestrator;
+// 1. Import orchestrator factory (index.page.js's own <script> tag is
+// type="module" - see index.html - so every dependency it needs, this
+// included, is a real top-level `import`)
+import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
 
 // 2. Create instance with dependencies
 const prDataTab = prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
@@ -152,8 +147,12 @@ function handleDataRefresh(data) {
 
 See the files in this directory:
 - `pr-data-tab.orchestrator.js` - PR Data tab coordination
-- `author-insights-tab.orchestrator.js` - Author Insights tab coordination
 - `backfill-tab.orchestrator.js` - Backfill tab coordination
-- `review-stats-tab.orchestrator.js` - Review Stats tab coordination
 
-Each orchestrator has co-located tests following the same pattern.
+`author-insights-tab.orchestrator.js`/`review-stats-tab.orchestrator.js`
+were deleted (2026-09-16, see REACT_MIGRATION_PLAN.md) - both had become
+fully dead code once Author Insights/Review Stats' real data path moved to
+`pr-render-apply.helpers.js`'s `applyRenderResults`, with nothing left
+calling either orchestrator's methods beyond a no-op `.initialize()`.
+
+Each remaining orchestrator has co-located tests following the same pattern.

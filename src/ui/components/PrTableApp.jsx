@@ -13,6 +13,9 @@ import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
+import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
+import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
+import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
 
 /**
  * Main PR Table Application Component
@@ -322,14 +325,39 @@ export function PrTableApp({
     };
   }, []);
 
+  // Item 2 of the deferred-items follow-up (see REACT_MIGRATION_PLAN.md):
+  // pr-section-grouping.helpers.js's createPrSectionGroupingHelpers() must
+  // be instantiated once, not on every render, or its internal
+  // reference-equality cache (Phase 5 residual slice) never gets a chance
+  // to hit - a lazily-initialized ref keeps exactly one instance for the
+  // component's lifetime, mirroring how index.page.js's own module-level
+  // instantiation works.
+  const sectionGroupingHelpersRef = useRef(null);
+  if (!sectionGroupingHelpersRef.current) {
+    // Matches the inline code this replaces: fall back to an identity
+    // function (rows unchanged) when window.sortRowsByX isn't available
+    // yet (e.g. bare-fixture unit tests), not an empty array - reading
+    // window.* fresh on each call (not captured once here) so tests that
+    // install these globals *after* this component first mounts still
+    // take effect, matching every other window.* consumer in this file.
+    sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
+      sortRowsByPrNumberDesc: (...args) => (window.sortRowsByPrNumberDesc || ((rows) => rows))(...args),
+      sortRowsByDateFieldDesc: (...args) => (window.sortRowsByDateFieldDesc || ((rows) => rows))(...args),
+    });
+  }
+
   // Build sections from payload using existing vanilla JS helpers
   const sections = useMemo(() => {
     if (!payload || !payload.byPrNumber) {
       return [];
     }
 
-    // Access existing helpers from global scope (vanilla JS)
-    const helpers = window.ViewPrsSectionConfigHelpers;
+    // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.js
+    // is a real ES module now, imported directly above instead of read off
+    // window - the `if (!helpers)` guard below is effectively dead now
+    // (a real import always resolves before this component's own code
+    // runs), kept as-is rather than removed to minimize the diff.
+    const helpers = prSectionConfigHelperFactory;
     if (!helpers) {
       console.warn('[PrTableApp] Section config helpers not available');
       return [];
@@ -371,22 +399,21 @@ export function PrTableApp({
         !visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? "")),
     );
 
-    // Group by lifecycle status using the section already computed
-    // server-side, then sort exactly as vanilla's buildGroupedPrSections
-    // does: open/draft newest-PR-number-first, closed/merged
-    // newest-closed/merged-date-first.
-    const sortRowsByPrNumberDesc = window.sortRowsByPrNumberDesc || ((rows) => rows);
-    const sortRowsByDateFieldDesc = window.sortRowsByDateFieldDesc || ((rows) => rows);
-    const grouped = {
-      open: sortRowsByPrNumberDesc(entriesForRepo.filter((entry) => entry.section === 'open')),
-      draft: sortRowsByPrNumberDesc(entriesForRepo.filter((entry) => entry.section === 'draft')),
-      merged: sortRowsByDateFieldDesc(entriesForRepo.filter((entry) => entry.section === 'merged'), 'mergedAt'),
-      closed: sortRowsByDateFieldDesc(entriesForRepo.filter((entry) => entry.section === 'closed'), 'closedAt'),
-    };
+    // Group by lifecycle status and sort - now the *actual* shared
+    // pr-section-grouping.helpers.js helper (see REACT_MIGRATION_PLAN.md,
+    // deferred item 2) instead of a hand-duplicated inline copy of its
+    // logic, so this also benefits from that helper's reference-equality
+    // cache (skips re-filtering/re-sorting when `entriesForRepo` is
+    // unchanged position-by-position from the last call).
+    const { buildGroupedPrSections } = sectionGroupingHelpersRef.current;
+    const grouped = buildGroupedPrSections(entriesForRepo);
 
-    // Build smart groups (if helpers available)
+    // Build smart groups (pr-smart-groups.helpers.js is a real ES module
+    // now, imported directly above instead of read off window - see
+    // pr-section-config.helpers.js's own note above on the now-dead guard
+    // kept as-is to minimize the diff).
     let smartGroups = null;
-    if (window.ViewPrsSmartGroupsHelpers) {
+    if (prSmartGroupsHelperFactory) {
       // Smart groups mix rows from every lifecycle section, so they use
       // vanilla's own cross-section ordering (normalizeRows: rowOrder
       // ascending, tie-broken by PR number descending) rather than any
@@ -395,7 +422,7 @@ export function PrTableApp({
       const normalizeRows = window.normalizeRows || ((rows) => rows);
       const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
 
-      const smartGroupHelpers = window.ViewPrsSmartGroupsHelpers.createPrSmartGroupsHelpers({
+      const smartGroupHelpers = prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({
         hasNeedsAttentionFlag: (entry) => {
           // Use actual needs attention logic
           // Exclude closed PRs from "Needs Attention" smart group

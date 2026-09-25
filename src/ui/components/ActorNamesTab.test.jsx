@@ -7,11 +7,15 @@ require('@testing-library/jest-dom');
 
 const { ActorNamesTab } = require('./ActorNamesTab');
 
-// ActorNamesTab does NOT auto-fetch on mount - it only registers `load` as
-// window.triggerActorNameCacheLoad (see the component's own doc comment),
-// to be invoked by the vanilla tab-switch chrome (pr-management-tabs.helpers.js)
-// when the Actor Names tab is activated. Tests must trigger that bridge
-// explicitly, the same way that real caller does.
+// Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
+// component is now lazy-loaded, so it can no longer rely on being eagerly
+// mounted (and its window.triggerActorNameCacheLoad bridge already
+// registered) before pr-management-tabs.helpers.js's tab-click handler
+// fires its own trigger call on first activation - it loads itself on
+// mount now, same as the manual bridge trigger does on every later
+// re-activation/Refresh click. Most tests below rely on that mount-time
+// load rather than calling the bridge explicitly; findByText/waitFor
+// already tolerate its async timing.
 const triggerLoad = () => act(() => window.triggerActorNameCacheLoad());
 
 describe('ActorNamesTab', () => {
@@ -19,6 +23,23 @@ describe('ActorNamesTab', () => {
     delete global.fetch;
     delete window.triggerActorNameCacheLoad;
     jest.restoreAllMocks();
+  });
+
+  test('given it mounts, when mounted, then it automatically loads both endpoints without needing an external trigger', async () => {
+    global.fetch = jest.fn((url) => {
+      if (url === '/view-prs/actor-name-cache') {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: { octocat: 'The Octocat' } }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) });
+    });
+
+    await act(async () => {
+      render(<ActorNamesTab />);
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith('/view-prs/actor-name-cache');
+    expect(global.fetch).toHaveBeenCalledWith('/view-prs/actor-login-aliases');
+    expect(await screen.findByText('Loaded 1 mapping.')).toBeInTheDocument();
   });
 
   test('given the tab is activated, when both endpoints succeed, then it loads and renders both mapping editors', async () => {
@@ -40,7 +61,6 @@ describe('ActorNamesTab', () => {
 
     render(<ActorNamesTab />);
     expect(typeof window.triggerActorNameCacheLoad).toBe('function');
-    await triggerLoad();
 
     expect(await screen.findByText('Loaded 1 mapping.')).toBeInTheDocument();
     expect(await screen.findByText('Loaded 1 alias mapping.')).toBeInTheDocument();
@@ -53,7 +73,7 @@ describe('ActorNamesTab', () => {
     expect(screen.getByDisplayValue('old_login')).toBeInTheDocument();
   });
 
-  test('given the name-cache endpoint fails, when the tab is activated, then only that editor shows an error status', async () => {
+  test('given the name-cache endpoint fails, when it loads, then only that editor shows an error status', async () => {
     global.fetch = jest.fn((url) => {
       if (url === '/view-prs/actor-name-cache') {
         return Promise.resolve({ ok: false, json: async () => ({ error: 'boom' }) });
@@ -62,13 +82,12 @@ describe('ActorNamesTab', () => {
     });
 
     render(<ActorNamesTab />);
-    await triggerLoad();
 
     expect(await screen.findByText('Failed to load cache: boom')).toBeInTheDocument();
     expect(await screen.findByText('Loaded 0 alias mappings.')).toBeInTheDocument();
   });
 
-  test('given the alias endpoint rejects, when the tab is activated, then the alias editor shows the thrown error text', async () => {
+  test('given the alias endpoint rejects, when it loads, then the alias editor shows the thrown error text', async () => {
     global.fetch = jest.fn((url) => {
       if (url === '/view-prs/actor-name-cache') {
         return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) });
@@ -77,7 +96,6 @@ describe('ActorNamesTab', () => {
     });
 
     render(<ActorNamesTab />);
-    await triggerLoad();
 
     expect(await screen.findByText('Failed to load aliases: network down')).toBeInTheDocument();
   });
@@ -96,9 +114,8 @@ describe('ActorNamesTab', () => {
 
     const user = userEvent.setup();
     render(<ActorNamesTab />);
-    await triggerLoad();
 
-    await screen.findByText('Loaded 0 mappings.');
+    await screen.findByText('Loaded 0 mappings.'); // mount's own auto-load
     expect(nameCacheCalls).toBe(1);
     expect(aliasCalls).toBe(1);
 
@@ -112,8 +129,31 @@ describe('ActorNamesTab', () => {
     expect(aliasCalls).toBe(2);
   });
 
-  test('when unmounted, then it removes the window.triggerActorNameCacheLoad bridge', () => {
-    const { unmount } = render(<ActorNamesTab />);
+  test('given the bridge is triggered manually, when re-loading, then both endpoints are fetched again', async () => {
+    let nameCacheCalls = 0;
+    global.fetch = jest.fn((url) => {
+      if (url === '/view-prs/actor-name-cache') {
+        nameCacheCalls += 1;
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) });
+    });
+
+    render(<ActorNamesTab />);
+    await screen.findByText('Loaded 0 mappings.'); // mount's own auto-load
+    expect(nameCacheCalls).toBe(1);
+
+    await triggerLoad();
+
+    expect(nameCacheCalls).toBe(2);
+  });
+
+  test('when unmounted, then it removes the window.triggerActorNameCacheLoad bridge', async () => {
+    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) }));
+
+    let unmount;
+    await act(async () => {
+      ({ unmount } = render(<ActorNamesTab />));
+    });
     expect(typeof window.triggerActorNameCacheLoad).toBe('function');
 
     unmount();

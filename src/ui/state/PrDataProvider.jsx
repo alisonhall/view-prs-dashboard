@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PrDataContext } from './PrDataContext';
 
 /**
@@ -45,6 +45,27 @@ export function PrDataProvider({
     selectedAuthorLogin: initialSelectedAuthorLogin || '',
     statsViewState: initialStatsViewState || {},
   });
+
+  // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md): a read
+  // bridge mirroring window.updateReactPrTable's write side, letting a
+  // handful of index.page.js DI wirings prefer the same payload the visible
+  // UI is currently showing over the raw, always-freshest vanilla
+  // `latestStoredPayload` (see that item's own writeup for why this is the
+  // more-correct choice for those specific consumers - it respects
+  // pollForDataChanges' deliberate "don't disturb an in-progress edit"
+  // deferral, which the raw vanilla variable doesn't). A ref, not `state`
+  // captured directly, so the closure below (assigned once, via the `[]`
+  // effect) always reads the latest payload rather than whatever `state`
+  // was at mount time.
+  const payloadRef = useRef(state.payload);
+  payloadRef.current = state.payload;
+
+  useEffect(() => {
+    window.getReactPrTablePayload = () => payloadRef.current;
+    return () => {
+      delete window.getReactPrTablePayload;
+    };
+  }, []);
 
   useEffect(() => {
     window.updateReactPrTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {

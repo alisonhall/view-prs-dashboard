@@ -4,6 +4,9 @@ const React = require('react');
 const { render, screen, waitFor, act } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
 
+const mockEmptyFetchOnce = () =>
+  global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entries: [] }) });
+
 describe('ActionLogSection', () => {
   beforeEach(() => {
     delete window.triggerActionLogLoad;
@@ -11,32 +14,41 @@ describe('ActionLogSection', () => {
     global.fetch = jest.fn();
   });
 
-  test('given no load has been triggered yet, when rendered, then it shows the empty-state message', () => {
-    render(React.createElement(ActionLogSection));
-    expect(screen.getByText('No actions logged yet.')).toBeInTheDocument();
-  });
-
-  test('given it mounts, when mounted, then it registers window.triggerActionLogLoad and cleans it up on unmount', () => {
-    const { unmount } = render(React.createElement(ActionLogSection));
-    expect(typeof window.triggerActionLogLoad).toBe('function');
-    unmount();
-    expect(window.triggerActionLogLoad).toBeUndefined();
-  });
-
-  test('given the bridge is triggered, when the fetch resolves with no entries, then it shows the empty-state message', async () => {
-    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entries: [] }) });
-    render(React.createElement(ActionLogSection));
+  // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
+  // component is now lazy-loaded, so it can no longer rely on being
+  // eagerly mounted (and its window.triggerActionLogLoad bridge already
+  // registered) before pr-management-tabs.helpers.js's tab-click handler
+  // fires its own trigger call - it must load itself on mount instead.
+  test('given it mounts, when mounted, then it automatically loads without needing an external trigger', async () => {
+    mockEmptyFetchOnce();
 
     await act(async () => {
-      await window.triggerActionLogLoad();
+      render(React.createElement(ActionLogSection));
     });
 
     expect(global.fetch).toHaveBeenCalledWith('/view-prs/action-log');
     expect(screen.getByText('No actions logged yet.')).toBeInTheDocument();
   });
 
-  test('given the bridge is triggered, when the fetch resolves with entries, then it renders a table row per entry with formatted duration/status/detail', async () => {
+  test('given it mounts, when mounted, then it registers window.triggerActionLogLoad and cleans it up on unmount', async () => {
+    mockEmptyFetchOnce();
+    let unmount;
+    await act(async () => {
+      ({ unmount } = render(React.createElement(ActionLogSection)));
+    });
+
+    expect(typeof window.triggerActionLogLoad).toBe('function');
+    unmount();
+    expect(window.triggerActionLogLoad).toBeUndefined();
+  });
+
+  test('given the bridge is triggered again (e.g. Refresh, or re-activating the tab), when the fetch resolves with entries, then it renders a table row per entry with formatted duration/status/detail', async () => {
     window.formatIsoDatetime = (value) => `fmt:${value}`;
+    mockEmptyFetchOnce(); // the mount-triggered load
+    await act(async () => {
+      render(React.createElement(ActionLogSection));
+    });
+
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -61,7 +73,6 @@ describe('ActionLogSection', () => {
       }),
     });
 
-    render(React.createElement(ActionLogSection));
     await act(async () => {
       await window.triggerActionLogLoad();
     });
@@ -74,12 +85,11 @@ describe('ActionLogSection', () => {
     expect(screen.getByText('reason: <failed> · error: boom')).toBeInTheDocument();
   });
 
-  test('given the fetch response is not ok, when the bridge is triggered, then it shows the server-provided error message', async () => {
+  test('given the fetch response is not ok, when it loads (on mount), then it shows the server-provided error message', async () => {
     global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ ok: false, error: 'unavailable' }) });
-    render(React.createElement(ActionLogSection));
 
     await act(async () => {
-      await window.triggerActionLogLoad();
+      render(React.createElement(ActionLogSection));
     });
 
     await waitFor(() => {
@@ -87,18 +97,22 @@ describe('ActionLogSection', () => {
     });
   });
 
-  test('given fetch itself rejects, when the bridge is triggered, then it shows the thrown error message', async () => {
+  test('given fetch itself rejects, when it loads (on mount), then it shows the thrown error message', async () => {
     global.fetch.mockRejectedValueOnce(new Error('network down'));
-    render(React.createElement(ActionLogSection));
 
     await act(async () => {
-      await window.triggerActionLogLoad();
+      render(React.createElement(ActionLogSection));
     });
 
     expect(screen.getByText('Failed to load action log: network down')).toBeInTheDocument();
   });
 
   test('given the bridge is triggered again, when re-loading, then it shows the loading message before entries resolve', async () => {
+    mockEmptyFetchOnce(); // the mount-triggered load
+    await act(async () => {
+      render(React.createElement(ActionLogSection));
+    });
+
     let resolveFetch;
     global.fetch.mockImplementationOnce(
       () =>
@@ -106,7 +120,6 @@ describe('ActionLogSection', () => {
           resolveFetch = resolve;
         }),
     );
-    render(React.createElement(ActionLogSection));
 
     let loadPromise;
     act(() => {

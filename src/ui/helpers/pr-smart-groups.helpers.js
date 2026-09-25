@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsSmartGroupsHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsSmartGroupsHelpers fallback.
+export const { createPrSmartGroupsHelpers } = (() => {
   /**
    * Factory for creating smart group helpers.
    * Smart groups allow PRs to appear in multiple accordion sections based on
@@ -176,4 +174,4 @@
   return {
     createPrSmartGroupsHelpers,
   };
-});
+})();

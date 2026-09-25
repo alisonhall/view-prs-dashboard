@@ -1,10 +1,9 @@
-(function (global, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-  } else {
-    global.ViewPrsBackfillTabOrchestrator = factory();
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui orchestrator/helper file still uses - the
+// factory body below is unchanged, only the export mechanism differs.
+// index.page.js imports this directly instead of using the
+// require()/globalThis.ViewPrsBackfillTabOrchestrator fallback.
+export const { createBackfillTabOrchestrator } = (function () {
   "use strict";
 
   /**
@@ -186,4 +185,4 @@
   return {
     createBackfillTabOrchestrator,
   };
-});
+})();
