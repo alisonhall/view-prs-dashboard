@@ -6,7 +6,6 @@ const { PrDateCell } = require('./PrDateCell');
 
 describe('PrDateCell', () => {
   afterEach(() => {
-    delete window.formatIsoDatetime;
     delete window.getManualNotesFieldSummary;
   });
 
@@ -21,7 +20,6 @@ describe('PrDateCell', () => {
   });
 
   test('given mergedAt, when rendering, then it wins over closedAt/sourceUpdatedAt as the PR activity line', () => {
-    window.formatIsoDatetime = (value) => `fmt(${value})`;
     window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
@@ -33,12 +31,11 @@ describe('PrDateCell', () => {
       </table>,
     );
     const activity = document.querySelector('.date-cell-pr-activity');
-    expect(activity).toHaveTextContent('fmt(M)');
+    expect(activity).toHaveTextContent('M');
     expect(activity).toHaveAttribute('title', 'Merged at');
   });
 
   test('given no mergedAt, when closedAt is set, then falls back to closedAt with a "Closed at" title', () => {
-    window.formatIsoDatetime = (value) => `fmt(${value})`;
     window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
@@ -50,12 +47,11 @@ describe('PrDateCell', () => {
       </table>,
     );
     const activity = document.querySelector('.date-cell-pr-activity');
-    expect(activity).toHaveTextContent('fmt(C)');
+    expect(activity).toHaveTextContent('C');
     expect(activity).toHaveAttribute('title', 'Closed at');
   });
 
   test('given a baseline, when rendering, then shows the viewer activity line prefixed with "You: "', () => {
-    window.formatIsoDatetime = (value) => `fmt(${value})`;
     window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
@@ -66,11 +62,10 @@ describe('PrDateCell', () => {
         </tbody>
       </table>,
     );
-    expect(document.querySelector('.date-cell-viewer-activity')).toHaveTextContent('You: fmt(B)');
+    expect(document.querySelector('.date-cell-viewer-activity')).toHaveTextContent('You: B');
   });
 
   test('given manual-notes field summary flags, when rendering, then marks each indicator filled or empty', () => {
-    window.formatIsoDatetime = (value) => String(value || '-');
     window.getManualNotesFieldSummary = () => ({
       hasCustomComments: true,
       hasOtherNotes: false,

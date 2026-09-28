@@ -5,6 +5,9 @@
  * @module components/cells/PrDateCell
  */
 
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 function FieldIndicator({ hasData, title, text = '', extraClass = '' }) {
   const className = [
@@ -22,7 +25,6 @@ function FieldIndicator({ hasData, title, text = '', extraClass = '' }) {
 }
 
 export function PrDateCell({ entry, pr }) {
-  const formatIsoDatetime = window.formatIsoDatetime || ((value) => String(value || '-'));
   const getManualNotesFieldSummary =
     window.getManualNotesFieldSummary ||
     (() => ({

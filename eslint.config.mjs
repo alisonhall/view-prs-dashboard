@@ -82,12 +82,18 @@ export default defineConfig([
     languageOptions: { sourceType: "module" },
   },
   {
-    // pr-row-keys.js is a plain ES module (import/export), not the UMD
+    // These are plain ES modules (import/export), not the UMD
     // (CommonJS + browser-global) wrapper every other src/ui/helpers/*.js
-    // file uses - it's imported directly by .jsx components via Vite's
-    // ESM bundling only, never require()'d, so UMD's dual-environment
-    // support buys it nothing. Same reasoning as vite.config.js above.
-    files: ["src/ui/components/pr-row-keys.js"],
+    // file uses - they're imported directly by both index.page.js and
+    // .jsx components via Vite's ESM bundling only, never require()'d, so
+    // UMD's dual-environment support buys them nothing. Same reasoning as
+    // vite.config.js above.
+    files: [
+      "src/ui/components/pr-row-keys.js",
+      "src/ui/helpers/pr-viewer-login-inference.helpers.js",
+      "src/ui/helpers/pr-thread-comments.helpers.js",
+      "src/ui/helpers/pr-sortable-time.helpers.js",
+    ],
     languageOptions: { sourceType: "module" },
   },
   {

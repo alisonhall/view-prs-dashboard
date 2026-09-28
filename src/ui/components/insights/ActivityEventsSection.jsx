@@ -8,6 +8,9 @@
 
 import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 const BODY_TRUNCATE = 280;
 
@@ -89,7 +92,6 @@ function buildActivityEvents(pr) {
 }
 
 export function ActivityEventsSection({ pr, actorsMap }) {
-  const formatIsoDatetime = window.formatIsoDatetime || ((value) => String(value || '-'));
   const normalizePrRootUrl = window.normalizePrRootUrl || ((url) => String(url || ''));
 
   const activityEvents = buildActivityEvents(pr);

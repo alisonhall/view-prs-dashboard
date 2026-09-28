@@ -10,10 +10,16 @@
  * only the imperative DOM mutation (closure variables, .style/.textContent
  * writes, manual event handlers) is replaced with React state.
  *
+ * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): bucketTimelineChartData
+ * comes from useReviewStats() (state/ReviewStatsContext.jsx) instead of
+ * window - its default (unwrapped) context value already provides a real
+ * bucketing function, so this no longer needs its own crude fallback.
+ *
  * @module components/ReviewerActivityChart
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useReviewStats } from '../state/ReviewStatsContext';
 
 const REVIEWER_COLORS = [
   '#1f77b4',
@@ -40,32 +46,8 @@ const PAD_RIGHT = 8;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 34;
 
-const defaultBucketTimelineChartData = (chartData) => ({
-  buckets: Array.isArray(chartData?.dates)
-    ? chartData.dates.map((date) => ({
-        key: String(date || ''),
-        startDate: String(date || ''),
-        endDate: String(date || ''),
-        dates: [String(date || '')],
-        dayCount: 1,
-        heatmapTopLabel: '',
-        heatmapBottomLabel: '',
-        title: String(date || ''),
-        axisLabel: String(date || ''),
-        axisLabelWithTextMonth: String(date || ''),
-      }))
-    : [],
-  series: Array.isArray(chartData?.series) ? chartData.series : [],
-});
-
-const bucketTimelineChartDataSafe = (chartData) => {
-  const fn = typeof window !== 'undefined' && typeof window.bucketTimelineChartData === 'function'
-    ? window.bucketTimelineChartData
-    : defaultBucketTimelineChartData;
-  return fn(chartData);
-};
-
 export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleOverride = '' }) {
+  const { bucketTimelineChartData } = useReviewStats();
   const hasData = Boolean(chartData?.series && chartData.series.length > 0);
 
   const [selectedSeriesKey, setSelectedSeriesKey] = useState('');
@@ -74,8 +56,8 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
   const [lineWidth, setLineWidth] = useState(0);
 
   const displayTimeline = useMemo(
-    () => (hasData ? bucketTimelineChartDataSafe(chartData) : { buckets: [], series: [] }),
-    [chartData, hasData],
+    () => (hasData ? bucketTimelineChartData(chartData) : { buckets: [], series: [] }),
+    [chartData, hasData, bucketTimelineChartData],
   );
   const displayBuckets = displayTimeline.buckets;
   const displaySeries = displayTimeline.series;

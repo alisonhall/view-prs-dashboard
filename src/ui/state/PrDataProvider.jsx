@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PrDataContext } from './PrDataContext';
+import { ActorIdentityContext } from './ActorIdentityContext';
+import { createPrActorIdentityHelpers } from '../helpers/pr-actor-identity.helpers.js';
+import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.js';
+import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.js';
+import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpers.js';
+import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -102,30 +108,58 @@ export function PrDataProvider({
     };
   }, []);
 
-  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): a
-  // snapshot of the Review Stats tab's sort/filter/topN/minComments/
-  // date-range settings, pushed from index.page.js's
-  // updateStatsViewStateAndRerender whenever ReviewStatsControls commits a
-  // change. ReviewStatsContent doesn't read the individual fields from
-  // here - it recomputes stats via window.buildReviewerStats/
-  // applyStatsControls, which already read the live vanilla statsViewState
-  // object by closure - this field exists purely so a settings change
-  // triggers a Context update (and therefore a re-render), the same way a
-  // payload change does.
-  useEffect(() => {
-    window.updateReactStatsViewState = (nextStatsViewState) => {
-      setState((previous) => ({ ...previous, statsViewState: nextStatsViewState || {} }));
-    };
-    return () => {
-      delete window.updateReactStatsViewState;
-    };
-  }, []);
-
   const setPayload = useCallback((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));
   }, []);
 
-  const value = { ...state, setPayload };
+  // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
+  // tab's sort/filter/topN/minComments/date-range settings - real state
+  // now, written directly by ReviewStatsControls/StatsVisuals (see
+  // components/ReviewStatsProvider.jsx), replacing
+  // window.updateStatsViewStateAndRerender's mutate-vanilla-then-rerender
+  // round trip (which also had the unrelated side effect of re-running the
+  // PR table's whole local-filter pipeline on every stats-control change).
+  const setStatsViewState = useCallback((patch) => {
+    setState((previous) => ({ ...previous, statsViewState: { ...previous.statsViewState, ...patch } }));
+  }, []);
 
-  return <PrDataContext.Provider value={value}>{children}</PrDataContext.Provider>;
+  const value = { ...state, setPayload, setStatsViewState };
+
+  // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): derives the same
+  // { currentActorLoginAliases, currentViewerLogin } index.page.js's own
+  // deriveViewerFilterSetup computes, straight from the payload this
+  // Provider already holds - no window.* bridge needed, since both sides
+  // derive independently from the same source of truth instead of one
+  // pushing a computed value to the other.
+  const viewerContext = useMemo(() => {
+    const { normalizeActorLoginAliases, normalizeActorLogin } = createPrActorIdentityHelpers();
+    const { deriveViewerContext } = createPrViewerContextHelpers({
+      normalizeActorLoginAliases,
+      normalizeActorLogin,
+      inferViewerLoginFromPage,
+    });
+    const allEntries = Object.values(state.payload?.byPrNumber || {});
+    return deriveViewerContext({ payload: state.payload, allEntries });
+  }, [state.payload]);
+
+  const actorIdentity = useMemo(() => {
+    const identityHelpers = createPrActorIdentityHelpers({
+      getActorLoginAliases: () => viewerContext.currentActorLoginAliases,
+    });
+    const { getEffectiveViewerLogin } = createPrActorIdentityRenderHelpers({
+      normalizeActorLogin: identityHelpers.normalizeActorLogin,
+      getCurrentViewerLogin: () => viewerContext.currentViewerLogin,
+    });
+    return {
+      ...identityHelpers,
+      getEffectiveViewerLogin,
+      ...createPrActorIdentityStyleHelpers(),
+    };
+  }, [viewerContext]);
+
+  return (
+    <PrDataContext.Provider value={value}>
+      <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
+    </PrDataContext.Provider>
+  );
 }

@@ -5,10 +5,14 @@
  * @module components/cells/PrStatusCell
  */
 
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+
+// Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): a genuinely
+// zero-dependency pure-function factory - no viewer/payload state involved,
+// so this is a direct import rather than a window.* bridge or Context.
+const { isChangedStatus, statusClass } = createPrStatusDisplayHelpers();
 
 export function PrStatusCell({ pr, lastCheckedAt, sectionKey }) {
-  const isChangedStatus = window.isChangedStatus || (() => false);
-  const statusClass = window.statusClass || (() => '');
   const getViewedFilesState =
     window.getViewedFilesState ||
     (() => ({ viewedFilesCount: 0, changedFilesCount: 0, isComplete: false, hasUnviewedFiles: false }));

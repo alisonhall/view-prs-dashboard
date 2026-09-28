@@ -6,8 +6,6 @@ const { PrStatusCell } = require('./PrStatusCell');
 
 describe('PrStatusCell', () => {
   afterEach(() => {
-    delete window.isChangedStatus;
-    delete window.statusClass;
     delete window.getViewedFilesState;
     delete window.buildPrLastCheckedIndicator;
   });
@@ -24,15 +22,13 @@ describe('PrStatusCell', () => {
     );
 
   test('given a plain status, when rendering, then shows the status text and statusClass', () => {
-    window.statusClass = (status) => `status-${String(status).toLowerCase()}`;
     renderCell({ status: 'NO_CHANGE' });
     const td = document.querySelector('td');
-    expect(td).toHaveClass('status-cell', 'status-no_change');
+    expect(td).toHaveClass('status-cell', 'status-no-change');
     expect(td.querySelector('.status-cell-content > div').textContent).toBe('NO_CHANGE');
   });
 
   test('given a changed status with a reason, when isChangedStatus is true, then appends the reason', () => {
-    window.isChangedStatus = (status) => status === 'CHANGED';
     renderCell({ status: 'CHANGED', reason: 'new-commits' });
     expect(document.querySelector('.status-cell-content > div').textContent).toBe('CHANGED(new-commits)');
   });

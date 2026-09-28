@@ -7,6 +7,12 @@
  */
 
 import { CopyIconButton } from '../CopyIconButton';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.js';
+
+const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
+const { escapeHtml } = createPrFormattingHelpers();
 
 const LIFECYCLE_BADGES = {
   open: { text: 'Open', className: 'lifecycle-badge-open' },
@@ -16,10 +22,6 @@ const LIFECYCLE_BADGES = {
 };
 
 export function PrTitleCell({ pr, repo, sectionKey, isSmartGroup, lifecycleSection, isExpanded, onToggleInsights }) {
-  const formatTitleWithIcons = window.formatTitleWithIcons || ((_titleDisplay, title) => String(title || ''));
-  const countPendingThreadComments = window.countPendingThreadComments || (() => 0);
-  const escapeHtml = window.escapeHtml || ((value) => String(value ?? ''));
-
   const badgeConfig = isSmartGroup ? LIFECYCLE_BADGES[String(lifecycleSection || '').toLowerCase()] : null;
   const targetBranch = String(pr?.targetBranch || '').trim();
   const pendingCommentCount = countPendingThreadComments(pr);

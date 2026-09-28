@@ -12,7 +12,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
+import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
+import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
@@ -38,6 +40,7 @@ export function PrTableApp({
   // which also owns window.updateReactPrTable itself. Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
   const { payload, selectedRepo, visiblePrNumbers, setPayload } = usePrData();
+  const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
   const [openSections, setOpenSections] = useState({});
@@ -158,36 +161,6 @@ export function PrTableApp({
     [activePrNumbers, busyPrNumbers],
   );
 
-  // The "Needs Attention rules" controls (NO_ACTIVITY handling mode, pending
-  // comments, merge-only commits, etc.) live in vanilla DOM elements, not
-  // React state/props. `checkNeedsAttention` reads window.getNeedsAttentionConfig()
-  // fresh on every call, so per-row cells (which call it directly during
-  // render) already reflect a changed dropdown immediately — but the
-  // `sections` useMemo below has no dependency that changes when these
-  // controls change, so smart-group membership (which is only recomputed
-  // when the memo re-runs) stays stale until something else invalidates it
-  // (e.g. toggling a section, which changes `openSections`). Bumping this
-  // counter on every relevant control's change event gives the memo a
-  // dependency to react to.
-  const [attentionConfigVersion, setAttentionConfigVersion] = useState(0);
-  useEffect(() => {
-    const attentionControlIds = new Set([
-      'attention-no-activity-mode',
-      'attention-include-pending-comments',
-      'attention-ignore-merge-only-commits',
-      'attention-include-closed-merged',
-      'attention-include-draft-changed',
-      'attention-include-draft-no-activity',
-    ]);
-    const handleChange = (event) => {
-      if (attentionControlIds.has(event.target?.id)) {
-        setAttentionConfigVersion((version) => version + 1);
-      }
-    };
-    document.addEventListener('change', handleChange);
-    return () => document.removeEventListener('change', handleChange);
-  }, []);
-
   // State: PR JSON details modal target ({ entry, pr } | null)
   const [jsonModalTarget, setJsonModalTarget] = useState(null);
 
@@ -264,23 +237,14 @@ export function PrTableApp({
       // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
       // NOT feed into needs-attention - it's independent of whether the PR
       // actually has unreviewed activity per shouldShowNeedsAttention below.
-      if (typeof window.entryNeedsAttention !== 'function') {
-        return false;
-      }
-
-      // Get attention config from vanilla JS
-      const attentionConfig = typeof window.getNeedsAttentionConfig === 'function'
-        ? window.getNeedsAttentionConfig()
-        : {};
-
       try {
-        return window.entryNeedsAttention(entry, attentionConfig);
+        return entryNeedsAttention(entry, attentionConfig);
       } catch (e) {
         console.warn('[PrTableApp] Error checking needs attention:', e);
         return false;
       }
     };
-  }, []);
+  }, [entryNeedsAttention, attentionConfig]);
 
   // Helper: Check if viewer has interacted with PR
   const checkUserInteraction = useMemo(() => {
@@ -488,22 +452,11 @@ export function PrTableApp({
       // however many rows in this section actually show the attention icon.
       attentionCount: (config.rows || []).filter((entry) => {
         const row = entry?.data || {};
-        const hasPendingComments = (window.countPendingThreadComments?.(row) || 0) > 0;
-        const attentionConfig = window.getNeedsAttentionConfig ? window.getNeedsAttentionConfig() : {};
-        return window.shouldShowNeedsAttention
-          ? window.shouldShowNeedsAttention({ row, sectionKey: config.sectionKey, hasPendingComments, config: attentionConfig })
-          : false;
+        const hasPendingComments = countPendingThreadComments(row) > 0;
+        return shouldShowNeedsAttention({ row, sectionKey: config.sectionKey, hasPendingComments, config: attentionConfig });
       }).length,
     }));
-    // attentionConfigVersion is a deliberate invalidation trigger (see its
-    // own declaration/comment above) - its value is never read inside this
-    // callback, only bumped to force a recompute when the Needs Attention
-    // rule config changes outside React's own state. exhaustive-deps can't
-    // distinguish "read for its value" from "listed purely to invalidate
-    // memoization," so it flags this as unnecessary - removing it would
-    // silently break that reactivity instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, effectiveRepo, visiblePrNumbers, openSections, checkNeedsAttention, checkUserInteraction, attentionConfigVersion]);
+  }, [payload, visiblePrNumbers, openSections, checkNeedsAttention, checkUserInteraction, shouldShowNeedsAttention, attentionConfig]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead

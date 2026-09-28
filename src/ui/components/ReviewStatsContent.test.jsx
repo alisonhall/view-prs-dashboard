@@ -6,6 +6,7 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -62,40 +63,41 @@ const buildStats = (overrides = {}) => ({
   ...overrides,
 });
 
-// ReviewStatsContent computes `stats` itself via window.buildReviewerStats/
-// window.applyStatsControls (Track C, REACT_MIGRATION_PLAN.md) - these mocks
-// stand in for the real aggregation helpers, matching how index.page.js's
-// own applyStatsControls is DI'd with the live statsViewState by closure
-// (irrelevant here since these are stubbed directly).
-const renderContent = (stats, { hasRows = true } = {}) => {
-  window.buildReviewerStats = () => ({ summary: stats?.summary, reviewerRows: stats?.reviewerRows });
-  window.applyStatsControls = ({ summary, reviewerRows }) => ({
+// ReviewStatsContent computes `stats` itself via useReviewStats()'s
+// buildReviewerStats/applyStatsControls (Phase 7, sub-phase 7.0 - see
+// REACT_MIGRATION_PLAN.md) - these mocks stand in for the real aggregation
+// helpers via a static Context value, matching how the real
+// ReviewStatsProvider DI's them with the live statsViewState (irrelevant
+// here since these are stubbed directly).
+const buildReviewStatsOverrides = (stats) => ({
+  buildReviewerStats: () => ({ summary: stats?.summary, reviewerRows: stats?.reviewerRows }),
+  applyStatsControls: ({ summary, reviewerRows }) => ({
     summary,
     reviewerRows,
     totalBeforeLimit: stats?.totalBeforeLimit,
-  });
-  return render(
+  }),
+  getNormalizedStatsDateRange: () => ({ startDate: '', endDate: '' }),
+  renderActivityTrendNote: () => 'Total reviewer activity: 5 events across 3 days.',
+});
+
+const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
+  render(
     <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
-      <ReviewStatsContent />
+      <ReviewStatsContext.Provider
+        value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats), ...reviewStatsOverrides }}
+      >
+        <ReviewStatsContent />
+      </ReviewStatsContext.Provider>
     </PrDataProvider>,
   );
-};
 
 describe('ReviewStatsContent', () => {
   beforeEach(() => {
-    window.reviewStatsFormatIsoDatetime = (value) => String(value || '-');
-    window.getNormalizedStatsDateRange = () => ({ startDate: '', endDate: '' });
-    window.renderActivityTrendNote = () => 'Total reviewer activity: 5 events across 3 days.';
     window.navigateToPrInTableFromStats = jest.fn();
   });
 
   afterEach(() => {
-    delete window.reviewStatsFormatIsoDatetime;
-    delete window.getNormalizedStatsDateRange;
-    delete window.renderActivityTrendNote;
     delete window.navigateToPrInTableFromStats;
-    delete window.buildReviewerStats;
-    delete window.applyStatsControls;
   });
 
   test('given no local rows, when rendering, then the empty message is shown instead of cards/table', () => {
@@ -115,8 +117,11 @@ describe('ReviewStatsContent', () => {
   });
 
   test('given a date range, when rendering, then the summary note includes it', () => {
-    window.getNormalizedStatsDateRange = () => ({ startDate: '2026-07-01', endDate: '2026-07-10' });
-    renderContent(buildStats());
+    renderContent(buildStats(), {
+      reviewStatsOverrides: {
+        getNormalizedStatsDateRange: () => ({ startDate: '2026-07-01', endDate: '2026-07-10' }),
+      },
+    });
 
     expect(screen.getByText(/Date range: 2026-07-01 to 2026-07-10/)).toBeInTheDocument();
   });
@@ -184,12 +189,18 @@ describe('ReviewStatsContent', () => {
     test('given a hidden review-stats panel, when the payload changes, then the expensive stats recompute is skipped', () => {
       const stats = buildStats();
       const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
-      window.buildReviewerStats = buildReviewerStatsSpy;
-      window.applyStatsControls = ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit });
 
       render(
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
-          <ReviewStatsContent />
+          <ReviewStatsContext.Provider
+            value={{
+              ...defaultReviewStats,
+              buildReviewerStats: buildReviewerStatsSpy,
+              applyStatsControls: ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit }),
+            }}
+          >
+            <ReviewStatsContent />
+          </ReviewStatsContext.Provider>
         </PrDataProvider>,
       );
 
@@ -209,12 +220,18 @@ describe('ReviewStatsContent', () => {
     test('given a review-stats panel that becomes visible, when its hidden attribute flips off, then the stats recompute immediately from the latest payload', async () => {
       const stats = buildStats();
       const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
-      window.buildReviewerStats = buildReviewerStatsSpy;
-      window.applyStatsControls = ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit });
 
       render(
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
-          <ReviewStatsContent />
+          <ReviewStatsContext.Provider
+            value={{
+              ...defaultReviewStats,
+              buildReviewerStats: buildReviewerStatsSpy,
+              applyStatsControls: ({ summary, reviewerRows }) => ({ summary, reviewerRows, totalBeforeLimit: stats.totalBeforeLimit }),
+            }}
+          >
+            <ReviewStatsContent />
+          </ReviewStatsContext.Provider>
         </PrDataProvider>,
       );
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();

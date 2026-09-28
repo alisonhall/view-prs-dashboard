@@ -6,15 +6,13 @@ const { NotesSection } = require('./NotesSection');
 
 function installDefaultHelpers() {
   window.asArray = (v) => (Array.isArray(v) ? v : []);
-  window.resolveActorDisplayName = (login, _map, fallback) => fallback || login;
   window.buildPrPeopleOptions = () => [{ login: 'alice', name: 'Alice' }];
-  window.noteAuthorMatchesSelection = (author, option) => String(author || '') === option.login;
   window.normalizeNotesListForUi = (value) => (Array.isArray(value) && value.length ? value : ['']);
   window.recomputeDirtyPrSectionsFields = () => {};
 }
 
 function clearHelpers() {
-  ['asArray', 'resolveActorDisplayName', 'buildPrPeopleOptions', 'noteAuthorMatchesSelection', 'normalizeNotesListForUi', 'postJson', 'recomputeDirtyPrSectionsFields'].forEach(
+  ['asArray', 'buildPrPeopleOptions', 'normalizeNotesListForUi', 'postJson', 'recomputeDirtyPrSectionsFields'].forEach(
     (key) => delete window[key],
   );
 }

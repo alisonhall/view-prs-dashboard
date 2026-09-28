@@ -10,21 +10,19 @@
  * with the current statsViewState as its initial value and owns it from
  * then on, with no restore-race handling needed.
  *
- * renderStatsView (index.page.js) used to rebuild this same markup from
- * scratch via `host.innerHTML = ""` on every stats render (identical
- * discard-and-rebuild shape to the old vanilla multi-select lists before
- * Phase 2 converted those) - so, mirroring Phase 1's #pr-sections
- * approach, renderStatsView no longer touches this component's container
- * (#stats-controls-root) at all; it only rebuilds the sibling
- * #stats-content-root. Every change here calls back into vanilla via the
- * onChange prop, which mutates the real statsViewState object and calls
- * applyFiltersFromCache() - vanilla remains the source of truth for
- * *when* a re-render happens, same as every other Phase 1/2 bridge.
+ * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): reads/writes
+ * statsViewState via useReviewStats() (state/ReviewStatsContext.jsx)
+ * directly now, instead of receiving initialState/onChange props that
+ * bridged into index.page.js's window.updateStatsViewStateAndRerender -
+ * that bridge also had the unrelated side effect of re-running the PR
+ * table's whole local-filter pipeline on every stats-control change, which
+ * writing straight to Context drops for free.
  *
  * @module components/ReviewStatsControls
  */
 
 import { useState } from 'react';
+import { useReviewStats } from '../state/ReviewStatsContext';
 
 const SORT_OPTIONS = [
   ['riskyApprovals', 'Risky approvals'],
@@ -55,16 +53,16 @@ const NON_CREDENTIAL_DATE_ATTRS = {
   'data-form-type': 'other',
 };
 
-export function ReviewStatsControls({ initialState, onChange }) {
-  const [state, setState] = useState(initialState);
+export function ReviewStatsControls() {
+  const { statsViewState, setStatsViewState } = useReviewStats();
+  const [state, setState] = useState(statsViewState);
 
-  // Commits a change to vanilla (statsViewState + applyFiltersFromCache,
-  // via the onChange bridge prop) and re-renders the whole stats view -
-  // expensive enough that it must only happen once per real change, not
-  // once per keystroke.
+  // Commits a change to Context (setStatsViewState) - expensive enough
+  // (triggers a full stats recompute) that it must only happen once per
+  // real change, not once per keystroke.
   const commit = (patch) => {
     setState((previous) => ({ ...previous, ...patch }));
-    onChange?.(patch);
+    setStatsViewState(patch);
   };
 
   // For number inputs specifically: only updates the displayed value as

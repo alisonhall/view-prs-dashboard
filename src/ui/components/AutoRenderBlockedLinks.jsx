@@ -11,13 +11,16 @@
  * the content" shape every other container-split conversion in this
  * migration has used.
  *
+ * getAuthorInsightsDisplayName comes from useAuthorInsights() (Phase 7,
+ * sub-phase 7.0 - see REACT_MIGRATION_PLAN.md).
+ *
  * @module components/AutoRenderBlockedLinks
  */
 
+import { useAuthorInsights } from '../state/AuthorInsightsContext';
 
 export function AutoRenderBlockedLinks({ prNumbers = [], authorLogins = [] }) {
-  const getAuthorInsightsDisplayName =
-    window.getAuthorInsightsDisplayName || ((authorLogin) => String(authorLogin || '').trim());
+  const { getAuthorInsightsDisplayName } = useAuthorInsights();
   const navigateToPrInTable = window.navigateToPrInTable || (() => {});
   const navigateToAuthorInsights = window.navigateToAuthorInsights || (() => {});
 

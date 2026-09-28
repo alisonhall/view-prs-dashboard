@@ -16,6 +16,10 @@ import { InsightsHookSection } from './insights/InsightsHookSection';
 import { LinesChangedInsight } from './insights/LinesChangedInsight';
 import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 import { CopyIconButton } from './CopyIconButton';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+
+const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
 function InsightRow({ label, labelTitle, children, endAdornment }) {
   return (
@@ -32,15 +36,13 @@ function InsightRow({ label, labelTitle, children, endAdornment }) {
 }
 
 export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, compositeKey, onDataRefresh }) {
+  const { buildRowActorsMap } = useActorIdentity();
   const parseMarkerState = window.parseMarkerState || (() => '-');
-  const formatIsoDatetime = window.formatIsoDatetime || ((value) => String(value || '-'));
-  const buildRowActorsMap = window.buildRowActorsMap || ((_row, actorsMap) => actorsMap || {});
   const formatApproversDisplay = window.formatApproversDisplay || (() => '-');
   const formatRequestedReviewersDisplay = window.formatRequestedReviewersDisplay || (() => '-');
   const formatAssignedUsersDisplay = window.formatAssignedUsersDisplay || (() => '-');
   const normalizeRowMetrics = window.normalizeRowMetrics || (() => ({}));
   const getOpenConversationCountWithMe = window.getOpenConversationCountWithMe || (() => ({ count: 0, isViewerSpecific: false }));
-  const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);
   const getViewedFilesSummary =
     window.getViewedFilesSummary || ((row) => `${toCount(row?.viewedFilesCount)}/${toCount(row?.changedFilesCount)} viewed`);
   const getBadgeClassForStatus = window.getBadgeClassForStatus || (() => '');

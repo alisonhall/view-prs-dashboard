@@ -6,11 +6,7 @@ const { ReviewThreadsSection } = require('./ReviewThreadsSection');
 
 function installDefaultHelpers() {
   window.asArray = (value) => (Array.isArray(value) ? value : []);
-  window.getPreferredActorKey = (login, name) => String(login || name || '').trim();
-  window.resolveActorDisplayName = (login, _actorsMap, fallback) => fallback || login || '';
   window.getAuthorThreadResolutionPolicy = () => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() });
-  window.parseSortableTime = (value) => Date.parse(String(value || '')) || 0;
-  window.formatIsoDatetime = (value) => String(value || '-');
   window.renderMarkdownAsHtml = (text) => `<p>${text}</p>`;
   window.readReviewConversationsUiState = () => ({ stateKey: 'k', conversationFilterMode: 'unresolved', showSummaryCards: true });
   window.writeReviewConversationsUiState = () => {};
@@ -19,11 +15,7 @@ function installDefaultHelpers() {
 function clearHelpers() {
   [
     'asArray',
-    'getPreferredActorKey',
-    'resolveActorDisplayName',
     'getAuthorThreadResolutionPolicy',
-    'parseSortableTime',
-    'formatIsoDatetime',
     'renderMarkdownAsHtml',
     'readReviewConversationsUiState',
     'writeReviewConversationsUiState',

@@ -38,6 +38,7 @@ jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
 
 const { PrTableApp } = require('./PrTableApp');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
@@ -48,14 +49,23 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // initial render go through window.updateReactPrTable (the Provider's own
 // bridge), not a `rerender` with new props - see the "delivers a fresh
 // payload" test below for the real post-mount update path.
-const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, ...tableProps } = {}) =>
+//
+// Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `needsAttention`
+// merges onto defaultNeedsAttention (state/NeedsAttentionContext.jsx) and is
+// provided via Context - the real app's <NeedsAttentionProvider /> derives
+// this from FilterStateProvider/ActorIdentityContext, but tests here want
+// direct per-test control instead, the same way renderCell's
+// actorIdentityOverrides works in PrApprovedCell.test.jsx.
+const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, needsAttention, ...tableProps } = {}) =>
   render(
     <PrDataProvider
       initialPayload={initialPayload}
       initialSelectedRepo={selectedRepo}
       initialVisiblePrNumbers={visiblePrNumbers}
     >
-      <PrTableApp {...tableProps} />
+      <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
+        <PrTableApp {...tableProps} />
+      </NeedsAttentionContext.Provider>
     </PrDataProvider>,
   );
 
@@ -112,11 +122,7 @@ function installSmartGroupHelpers() {
 function clearWindowHelpers() {
   createPrSectionConfigHelpers.mockReset();
   createPrSmartGroupsHelpers.mockReset();
-  delete window.entryNeedsAttention;
-  delete window.getNeedsAttentionConfig;
   delete window.isInReviewEnabled;
-  delete window.countPendingThreadComments;
-  delete window.shouldShowNeedsAttention;
   delete window.updateReactPrTable;
   delete window.sortRowsByPrNumberDesc;
   delete window.sortRowsByDateFieldDesc;
@@ -367,7 +373,7 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(true);
   });
 
-  test('given window.isInReviewEnabled(entry.data) is true but window.entryNeedsAttention is false, when smart groups are built, then the entry does NOT count as needing attention', () => {
+  test('given window.isInReviewEnabled(entry.data) is true but entryNeedsAttention is false, when smart groups are built, then the entry does NOT count as needing attention', () => {
     // Regression test: checkNeedsAttention previously OR'd in
     // window.isInReviewEnabled(entry?.data), so manually checking the "In
     // Review" checkbox on a PR made it show the Needs Attention icon and
@@ -375,9 +381,7 @@ describe('PrTableApp', () => {
     // activity (entryNeedsAttention false). "In Review" is a separate,
     // manually-set flag (see isInReviewEnabled/AlwaysShowInReviewCheckbox)
     // and must stay independent of needs-attention - checkNeedsAttention
-    // should delegate to window.entryNeedsAttention only.
-    window.entryNeedsAttention = () => false;
-    window.getNeedsAttentionConfig = () => ({});
+    // should delegate to entryNeedsAttention only.
     window.isInReviewEnabled = (data) => data?.number === '1';
     createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
       buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
@@ -391,16 +395,20 @@ describe('PrTableApp', () => {
     }));
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      onCheckboxChange: () => {},
+      onAckAction: () => {},
+      needsAttention: { entryNeedsAttention: () => false },
+    });
 
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
   });
 
-  test('given window.isInReviewEnabled(entry.data) is false but window.entryNeedsAttention is true, when smart groups are built, then the entry still counts as needing attention', () => {
+  test('given window.isInReviewEnabled(entry.data) is false but entryNeedsAttention is true, when smart groups are built, then the entry still counts as needing attention', () => {
     // Positive control for the regression test above: removing the
     // isInReviewEnabled OR must not also break the real attention signal.
-    window.entryNeedsAttention = () => true;
-    window.getNeedsAttentionConfig = () => ({});
     window.isInReviewEnabled = () => false;
     createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
       buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
@@ -414,23 +422,25 @@ describe('PrTableApp', () => {
     }));
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      onCheckboxChange: () => {},
+      onAckAction: () => {},
+      needsAttention: { entryNeedsAttention: () => true },
+    });
 
     expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(1);
   });
 
   describe('attention config live-update', () => {
-    test('given the NO_ACTIVITY handling select (or any other "Needs Attention rules" control) changes, when no section is toggled, then the Needs Attention smart group\'s membership updates immediately', () => {
-      // Regression test: these controls live in vanilla DOM, not React
-      // state, so the `sections` useMemo previously had no dependency that
-      // changed when they did — smart-group membership only refreshed once
-      // something else (e.g. toggling a section, which changes
-      // `openSections`) happened to invalidate the memo, even though each
-      // row's own attention-cell icon (computed fresh on every PrTable
-      // render, not memoized) already reflected the change immediately.
-      let attentionFlag = false;
-      window.entryNeedsAttention = () => attentionFlag;
-      window.getNeedsAttentionConfig = () => ({});
+    test('given the "Needs Attention rules" config changes, when no section is toggled, then the Needs Attention smart group\'s membership updates immediately', () => {
+      // Regression test: attentionConfig/entryNeedsAttention come from
+      // NeedsAttentionContext, a real Context value the `sections` useMemo
+      // depends on directly (see PrTableApp.jsx) - a change to either must
+      // recompute smart-group membership on its own, without needing an
+      // unrelated re-render (e.g. toggling a section) to happen to
+      // invalidate the memo first.
       createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
         buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
         applySmartGroups: (allEntries) => ({
@@ -443,59 +453,21 @@ describe('PrTableApp', () => {
       }));
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+      const buildTree = (attentionFlag) => (
+        <PrDataProvider initialPayload={payload} initialSelectedRepo="">
+          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
+            <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
+          </NeedsAttentionContext.Provider>
+        </PrDataProvider>
+      );
 
+      const { rerender } = render(buildTree(false));
       expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(0);
 
-      const select = document.createElement('select');
-      select.id = 'attention-no-activity-mode';
-      document.body.appendChild(select);
-
-      attentionFlag = true;
       capturedSectionProps.length = 0;
-      React.act(() => {
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-      });
+      rerender(buildTree(true));
 
       expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').section.prs).toHaveLength(1);
-
-      document.body.removeChild(select);
-    });
-
-    test('given a change event on an unrelated control, when no section is toggled, then the Needs Attention smart group does not needlessly recompute', () => {
-      let attentionFlag = false;
-      window.entryNeedsAttention = () => attentionFlag;
-      window.getNeedsAttentionConfig = () => ({});
-      createPrSmartGroupsHelpers.mockImplementation(({ hasNeedsAttentionFlag }) => ({
-        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
-        applySmartGroups: (allEntries) => ({
-          needsAttention: {
-            title: 'Needs Attention',
-            defaultOpen: true,
-            rows: allEntries.filter((entry) => hasNeedsAttentionFlag(entry)),
-          },
-        }),
-      }));
-
-      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
-
-      const unrelated = document.createElement('input');
-      unrelated.id = 'some-unrelated-control';
-      document.body.appendChild(unrelated);
-
-      attentionFlag = true;
-      capturedSectionProps.length = 0;
-      React.act(() => {
-        unrelated.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-
-      // No re-render was triggered by this unrelated control, so nothing was
-      // re-captured — the memoized section list (built while attentionFlag
-      // was still false) is unaffected.
-      expect(capturedSectionProps).toHaveLength(0);
-
-      document.body.removeChild(unrelated);
     });
   });
 
@@ -626,31 +598,38 @@ describe('PrTableApp', () => {
 
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {
     installSmartGroupHelpers();
-    window.entryNeedsAttention = (entry) => entry.prNumber === '1';
-    window.getNeedsAttentionConfig = () => ({});
     const payload = {
       byPrNumber: {
         1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
       },
     };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      onCheckboxChange: () => {},
+      onAckAction: () => {},
+      needsAttention: { entryNeedsAttention: (entry) => entry.prNumber === '1' },
+    });
     const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
     expect(flaggedSection).toBeDefined();
     expect(flaggedSection.section.prs.map((e) => e.prNumber)).toEqual(['1']);
   });
 
   test('given the narrower shouldShowNeedsAttention helper, when a row matches, then the section attentionCount reflects it', () => {
-    window.shouldShowNeedsAttention = ({ row }) => row.number === '1';
-    window.getNeedsAttentionConfig = () => ({});
-    window.countPendingThreadComments = () => 0;
     const payload = {
       byPrNumber: {
         1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
         2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
       },
     };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      onCheckboxChange: () => {},
+      onAckAction: () => {},
+      needsAttention: { shouldShowNeedsAttention: ({ row }) => row.number === '1' },
+    });
     const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
     expect(openSection.section.attentionCount).toBe(1);
   });
@@ -802,29 +781,28 @@ describe('PrTableApp', () => {
         '../helpers/pr-section-config.helpers.js',
       );
       createPrSectionConfigHelpers.mockImplementation(realCreatePrSectionConfigHelpers);
-      window.entryNeedsAttention = () => false;
-      window.getNeedsAttentionConfig = () => ({});
       window.isInReviewEnabled = () => false;
-      window.countPendingThreadComments = () => 0;
-      window.shouldShowNeedsAttention = () => false;
     });
 
     test('given a PR that also belongs to a smart group, when computing the open section, then it still renders there (both totalCount and prs include it)', () => {
       installSmartGroupHelpers();
       installSortHelpers();
       // installSmartGroupHelpers' mock "Flagged" group is driven by
-      // hasNeedsAttentionFlag, which PrTableApp wires to
-      // window.entryNeedsAttention - use that as the smart-group membership
-      // hook for this test.
-      window.entryNeedsAttention = (entry) => String(entry?.prNumber) === '1';
-
+      // hasNeedsAttentionFlag, which PrTableApp wires to entryNeedsAttention -
+      // use that as the smart-group membership hook for this test.
       const payload = {
         byPrNumber: {
           1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
           2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
         },
       };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {} });
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+        needsAttention: { entryNeedsAttention: (entry) => String(entry?.prNumber) === '1' },
+      });
 
       const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
@@ -841,7 +819,13 @@ describe('PrTableApp', () => {
           2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
         },
       };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {} });
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+        needsAttention: { entryNeedsAttention: () => false },
+      });
 
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
       expect(openSection.section.totalCount).toBe(2);

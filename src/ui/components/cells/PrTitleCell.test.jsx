@@ -5,12 +5,6 @@ require('@testing-library/jest-dom');
 const { PrTitleCell } = require('./PrTitleCell');
 
 describe('PrTitleCell', () => {
-  afterEach(() => {
-    delete window.formatTitleWithIcons;
-    delete window.countPendingThreadComments;
-    delete window.escapeHtml;
-  });
-
   const renderCell = (props) =>
     render(
       <table>
@@ -23,9 +17,13 @@ describe('PrTitleCell', () => {
     );
 
   test('given a title, when rendering, then shows the formatted title text', () => {
-    window.formatTitleWithIcons = (_titleDisplay, title) => `✅ ${title}`;
     renderCell({ pr: { number: '101', title: 'Fix bug' } });
-    expect(document.querySelector('.title-text')).toHaveTextContent('✅ Fix bug');
+    expect(document.querySelector('.title-text')).toHaveTextContent('Fix bug');
+  });
+
+  test('given a titleDisplay with CHK/MRG markers, when rendering, then strips the markers from the visible title', () => {
+    renderCell({ pr: { number: '101', title: 'Fix bug', titleDisplay: 'Fix bug [CHK:PASS] [MRG:CLEAN]' } });
+    expect(document.querySelector('.title-text')).toHaveTextContent('Fix bug');
   });
 
   test('given a smart group with a lifecycle section, when rendering, then shows the matching lifecycle badge', () => {
@@ -72,9 +70,20 @@ describe('PrTitleCell', () => {
   });
 
   test('given pending comments, when rendering, then shows the pending-comments chip', () => {
-    window.countPendingThreadComments = () => 3;
+    renderCell({
+      pr: {
+        number: '101',
+        reviewThreads: [
+          { comments: [{ state: 'PENDING' }, { state: 'PENDING' }, { state: 'SUBMITTED' }] },
+        ],
+      },
+    });
+    expect(screen.getByText('Pending comments: 2')).toHaveClass('row-pending-comments-chip');
+  });
+
+  test('given no pending comments, when rendering, then omits the pending-comments chip', () => {
     renderCell({});
-    expect(screen.getByText('Pending comments: 3')).toHaveClass('row-pending-comments-chip');
+    expect(screen.queryByText(/Pending comments:/)).not.toBeInTheDocument();
   });
 
   describe('copy title button', () => {
@@ -143,8 +152,6 @@ describe('PrTitleCell', () => {
     });
 
     test('given a title containing HTML-sensitive characters, when copied, then the html payload is escaped', async () => {
-      window.escapeHtml = (value) =>
-        String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       renderCell({
         pr: { number: 9, title: 'Fix <bug> & stuff', url: 'https://github.com/org/repo/pull/9' },
         repo: 'org/repo',

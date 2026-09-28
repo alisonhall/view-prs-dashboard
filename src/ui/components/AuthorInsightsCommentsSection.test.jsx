@@ -4,7 +4,9 @@ const { render, screen, waitFor, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsCommentsSection } = require('./AuthorInsightsCommentsSection');
+const { AuthorInsightsProvider } = require('./AuthorInsightsProvider');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
 const SENTIMENT_OPTIONS = [
   { value: 'positive', label: 'Positive' },
@@ -12,10 +14,20 @@ const SENTIMENT_OPTIONS = [
   { value: 'neutral', label: 'Neutral' },
 ];
 
+const authorInsightsOverrides = {
+  AUTHOR_COMMENT_SENTIMENT_OPTIONS: SENTIMENT_OPTIONS,
+  DEFAULT_AUTHOR_INSIGHTS_SENTIMENT: 'neutral',
+  getAuthorInsightsSentimentLabel: (value) => (value === 'positive' ? 'Positive' : value === 'negative' ? 'Negative' : 'Neutral'),
+  getAuthorInsightsSentimentBadgeClassName: () => 'author-insights-badge-sentiment',
+  sortAuthorInsightsManualCommentsDesc: (comments) => comments,
+};
+
 const renderSection = (selectedAuthorLogin) =>
   render(
     <PrDataProvider initialSelectedAuthorLogin={selectedAuthorLogin}>
-      <AuthorInsightsCommentsSection />
+      <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
+        <AuthorInsightsCommentsSection />
+      </AuthorInsightsContext.Provider>
     </PrDataProvider>,
   );
 
@@ -29,12 +41,6 @@ describe('AuthorInsightsCommentsSection', () => {
     editDrafts = {};
     commentsByLogin = {};
 
-    window.AUTHOR_COMMENT_SENTIMENT_OPTIONS = SENTIMENT_OPTIONS;
-    window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = 'neutral';
-    window.formatIsoDatetime = (value) => String(value || '-');
-    window.getAuthorInsightsSentimentLabel = (value) => (value === 'positive' ? 'Positive' : value === 'negative' ? 'Negative' : 'Neutral');
-    window.getAuthorInsightsSentimentBadgeClassName = () => 'author-insights-badge-sentiment';
-    window.sortAuthorInsightsManualCommentsDesc = (comments) => comments;
     window.recomputeDirtyPrSectionsFields = jest.fn();
 
     window.getAuthorInsightsComposerDraft = (login) => composerDrafts[login] || { note: '', sentiment: 'neutral' };
@@ -66,12 +72,6 @@ describe('AuthorInsightsCommentsSection', () => {
   });
 
   afterEach(() => {
-    delete window.AUTHOR_COMMENT_SENTIMENT_OPTIONS;
-    delete window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
-    delete window.formatIsoDatetime;
-    delete window.getAuthorInsightsSentimentLabel;
-    delete window.getAuthorInsightsSentimentBadgeClassName;
-    delete window.sortAuthorInsightsManualCommentsDesc;
     delete window.recomputeDirtyPrSectionsFields;
     delete window.getAuthorInsightsComposerDraft;
     delete window.updateAuthorInsightsComposerDraft;
@@ -85,7 +85,6 @@ describe('AuthorInsightsCommentsSection', () => {
     delete window.loadAuthorManualComments;
     delete window.saveAuthorManualComment;
     delete window.updateAuthorManualComment;
-    delete window.resolveActorDisplayName;
   });
 
   test('given no selected author, when rendering, then nothing renders', () => {
@@ -193,6 +192,31 @@ describe('AuthorInsightsCommentsSection', () => {
     await waitFor(() => expect(screen.getByText('Updated text')).toBeInTheDocument());
     expect(window.updateAuthorManualComment).toHaveBeenCalledWith({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' });
     expect(commentsByLogin.octocat[0].note).toBe('Updated text');
+  });
+
+  test('given a comment is being edited, when an unrelated payload update lands, then the edit form stays open (regression: AuthorInsightsProvider must not hand out a new sortAuthorInsightsManualCommentsDesc reference just because payload changed)', async () => {
+    const user = userEvent.setup();
+    commentsByLogin.octocat = [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
+
+    // Uses the real AuthorInsightsProvider (not the static override above)
+    // since the bug only manifests when the Context value's functions are
+    // rebuilt on a payload change - a static mock value can't reproduce it.
+    render(
+      <PrDataProvider initialSelectedAuthorLogin="octocat" initialPayload={{ byPrNumber: {} }}>
+        <AuthorInsightsProvider>
+          <AuthorInsightsCommentsSection />
+        </AuthorInsightsProvider>
+      </PrDataProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
+
+    act(() => {
+      window.updateReactPrTable({ byPrNumber: { 1: {} } });
+    });
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
   });
 
   test('given a change to the selected author in Context, when it updates, then the composer/list reflect the new author', () => {

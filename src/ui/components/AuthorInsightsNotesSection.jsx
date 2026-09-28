@@ -6,14 +6,14 @@
  * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
  * being pushed props via window.updateAuthorInsightsNotes (deleted), and
  * reconstructs the `{login, name}` selectedAuthor shape itself via
- * window.resolveActorDisplayName (already exposed, used below) rather than
- * needing buildAuthorInsightsEntries exposed too.
+ * useActorIdentity()'s resolveActorDisplayName rather than needing
+ * buildAuthorInsightsEntries exposed too.
  *
- * Still reads the pure filtering/sorting/formatting helpers off window
- * (noteAuthorMatchesSelection, sortAuthorInsightsNoteMatchesDesc,
- * resolveActorDisplayName, getAuthorInsightsNoteDisplayTimestamp,
- * getAuthorInsightsSentimentLabel/BadgeClassName) - moving those off
- * window is a separate concern.
+ * noteAuthorMatchesSelection, sortAuthorInsightsNoteMatchesDesc,
+ * getAuthorInsightsNoteDisplayTimestamp, and
+ * getAuthorInsightsSentimentLabel/BadgeClassName all come from
+ * useAuthorInsights() (Phase 7, sub-phase 7.0 - see
+ * REACT_MIGRATION_PLAN.md).
  *
  * @module components/AuthorInsightsNotesSection
  */
@@ -21,27 +21,21 @@
 import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
 import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
 import { usePrData } from '../state/PrDataContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useAuthorInsights } from '../state/AuthorInsightsContext';
 
 const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
 
-const noteAuthorMatchesSelection = (author, selectedAuthor, actorsMap) =>
-  window.noteAuthorMatchesSelection ? window.noteAuthorMatchesSelection(author, selectedAuthor, actorsMap) : false;
-
-const sortNoteMatchesDesc = (matches) => (window.sortAuthorInsightsNoteMatchesDesc ? window.sortAuthorInsightsNoteMatchesDesc(matches) : matches);
-
-const resolveActorDisplayName = (login, actorsMap, fallback) =>
-  window.resolveActorDisplayName ? window.resolveActorDisplayName(login, actorsMap, fallback) : String(fallback || login || '').trim();
-
-const getNoteDisplayTimestamp = (comment, entry) =>
-  window.getAuthorInsightsNoteDisplayTimestamp ? window.getAuthorInsightsNoteDisplayTimestamp(comment, entry) : '-';
-
-const getSentimentLabel = (value) => (window.getAuthorInsightsSentimentLabel ? window.getAuthorInsightsSentimentLabel(value) : 'Neutral');
-
-const getSentimentBadgeClassName = (value) =>
-  window.getAuthorInsightsSentimentBadgeClassName ? window.getAuthorInsightsSentimentBadgeClassName(value) : '';
-
 export function AuthorInsightsNotesSection() {
   const { payload, selectedAuthorLogin } = usePrData();
+  const { resolveActorDisplayName } = useActorIdentity();
+  const {
+    noteAuthorMatchesSelection,
+    sortAuthorInsightsNoteMatchesDesc,
+    getAuthorInsightsNoteDisplayTimestamp,
+    getAuthorInsightsSentimentLabel,
+    getAuthorInsightsSentimentBadgeClassName,
+  } = useAuthorInsights();
   const rows = Object.values(payload?.byPrNumber || {});
   const actorsMap = payload?.actorsMap || {};
   const selectedAuthor = selectedAuthorLogin
@@ -53,7 +47,7 @@ export function AuthorInsightsNotesSection() {
       .filter((comment) => noteAuthorMatchesSelection(comment?.author, selectedAuthor, actorsMap))
       .map((comment) => ({ entry, comment })),
   );
-  const sortedNoteMatches = sortNoteMatchesDesc(noteMatches);
+  const sortedNoteMatches = sortAuthorInsightsNoteMatchesDesc(noteMatches);
 
   return (
     <section className="author-insights-section">
@@ -70,9 +64,9 @@ export function AuthorInsightsNotesSection() {
                 <AuthorInsightsPrDataMeta entry={entry} />
                 <div className="author-insights-meta">
                   <span className="author-insights-meta-detail">{`Author: ${noteAuthorLabel}`}</span>
-                  <span className="author-insights-meta-detail">{`Added: ${getNoteDisplayTimestamp(comment, entry)}`}</span>
-                  <span className={`author-insights-badge ${getSentimentBadgeClassName(comment?.tone)}`.trim()}>
-                    {`Sentiment: ${getSentimentLabel(comment?.tone)}`}
+                  <span className="author-insights-meta-detail">{`Added: ${getAuthorInsightsNoteDisplayTimestamp(comment, entry)}`}</span>
+                  <span className={`author-insights-badge ${getAuthorInsightsSentimentBadgeClassName(comment?.tone)}`.trim()}>
+                    {`Sentiment: ${getAuthorInsightsSentimentLabel(comment?.tone)}`}
                   </span>
                 </div>
                 <div className="author-insights-body">{String(comment?.note || '').trim() || '(No custom comment text)'}</div>

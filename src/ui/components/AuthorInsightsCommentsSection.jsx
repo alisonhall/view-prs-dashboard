@@ -37,29 +37,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
-const DEFAULT_SENTIMENT = () => window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT || 'neutral';
-const SENTIMENT_OPTIONS = () =>
-  window.AUTHOR_COMMENT_SENTIMENT_OPTIONS || [
-    { value: 'positive', label: 'Positive' },
-    { value: 'negative', label: 'Negative' },
-    { value: 'neutral', label: 'Neutral' },
-  ];
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
-const formatIsoDatetime = (value) => (window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-'));
-const getSentimentLabel = (value) => (window.getAuthorInsightsSentimentLabel ? window.getAuthorInsightsSentimentLabel(value) : 'Neutral');
-const getSentimentBadgeClassName = (value) =>
-  window.getAuthorInsightsSentimentBadgeClassName ? window.getAuthorInsightsSentimentBadgeClassName(value) : '';
-const sortManualCommentsDesc = (comments) =>
-  window.sortAuthorInsightsManualCommentsDesc ? window.sortAuthorInsightsManualCommentsDesc(comments) : comments;
-const resolveActorDisplayName = (login, actorsMap, fallback) =>
-  window.resolveActorDisplayName ? window.resolveActorDisplayName(login, actorsMap, fallback) : String(fallback || login || '').trim();
 const recomputeDirty = () => window.recomputeDirtyPrSectionsFields?.();
 
 function SentimentSelect({ value, onChange, disabled }) {
+  const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = useAuthorInsights();
   return (
     <select className="author-insights-comment-sentiment" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-      {SENTIMENT_OPTIONS().map(({ value: optionValue, label }) => (
+      {AUTHOR_COMMENT_SENTIMENT_OPTIONS.map(({ value: optionValue, label }) => (
         <option key={optionValue} value={optionValue}>
           {label}
         </option>
@@ -69,7 +59,8 @@ function SentimentSelect({ value, onChange, disabled }) {
 }
 
 function EditForm({ login, comment, onDone }) {
-  const initialDraft = window.getAuthorInsightsEditDraft?.(login, comment) || { note: comment?.note || '', sentiment: DEFAULT_SENTIMENT() };
+  const { DEFAULT_AUTHOR_INSIGHTS_SENTIMENT } = useAuthorInsights();
+  const initialDraft = window.getAuthorInsightsEditDraft?.(login, comment) || { note: comment?.note || '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT };
   const [draft, setDraft] = useState(initialDraft);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
@@ -139,14 +130,15 @@ function EditForm({ login, comment, onDone }) {
 }
 
 function ManualCommentItem({ login, comment, editingCommentId, setEditingCommentId, onEditSaved }) {
+  const { getAuthorInsightsSentimentLabel, getAuthorInsightsSentimentBadgeClassName } = useAuthorInsights();
   const commentId = String(comment?.id || '');
   const isEditing = editingCommentId === commentId;
 
   return (
     <div className="author-insights-item">
       <div className="author-insights-meta">
-        <span className={`author-insights-badge ${getSentimentBadgeClassName(comment?.sentiment)}`.trim()}>
-          {`Sentiment: ${getSentimentLabel(comment?.sentiment)}`}
+        <span className={`author-insights-badge ${getAuthorInsightsSentimentBadgeClassName(comment?.sentiment)}`.trim()}>
+          {`Sentiment: ${getAuthorInsightsSentimentLabel(comment?.sentiment)}`}
         </span>
         <span className="author-insights-meta-detail">{`Added: ${formatIsoDatetime(comment?.createdAt || '-')}`}</span>
       </div>
@@ -178,13 +170,15 @@ function ManualCommentItem({ login, comment, editingCommentId, setEditingComment
 
 export function AuthorInsightsCommentsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
+  const { resolveActorDisplayName } = useActorIdentity();
+  const { DEFAULT_AUTHOR_INSIGHTS_SENTIMENT, sortAuthorInsightsManualCommentsDesc } = useAuthorInsights();
   const actorsMap = payload?.actorsMap || {};
   const selectedAuthor = selectedAuthorLogin
     ? { login: selectedAuthorLogin, name: resolveActorDisplayName(selectedAuthorLogin, actorsMap, selectedAuthorLogin) }
     : null;
   const login = selectedAuthor?.login || '';
 
-  const [composerDraft, setComposerDraft] = useState({ note: '', sentiment: DEFAULT_SENTIMENT() });
+  const [composerDraft, setComposerDraft] = useState({ note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
   const [composerSaving, setComposerSaving] = useState(false);
   const [composerStatus, setComposerStatus] = useState('');
   const [comments, setComments] = useState([]);
@@ -197,12 +191,12 @@ export function AuthorInsightsCommentsSection() {
       return undefined;
     }
 
-    setComposerDraft(window.getAuthorInsightsComposerDraft?.(login) || { note: '', sentiment: DEFAULT_SENTIMENT() });
+    setComposerDraft(window.getAuthorInsightsComposerDraft?.(login) || { note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
     setComposerStatus('');
     setEditingCommentId(null);
 
     const refreshComments = () => {
-      setComments(sortManualCommentsDesc(window.getAuthorManualCommentsForLogin?.(login) || []));
+      setComments(sortAuthorInsightsManualCommentsDesc(window.getAuthorManualCommentsForLogin?.(login) || []));
       setLoadState(window.getAuthorInsightsManualCommentsLoadState?.(login) || { loading: false, error: '' });
     };
 
@@ -214,7 +208,7 @@ export function AuthorInsightsCommentsSection() {
         clearTimeout(savedStatusTimeoutRef.current);
       }
     };
-  }, [login]);
+  }, [login, DEFAULT_AUTHOR_INSIGHTS_SENTIMENT, sortAuthorInsightsManualCommentsDesc]);
 
   if (!selectedAuthor) {
     return null;
@@ -249,8 +243,8 @@ export function AuthorInsightsCommentsSection() {
 
       window.setAuthorInsightsManualComments?.(login, result.comments);
       window.resetAuthorInsightsComposerDraft?.(login);
-      setComposerDraft({ note: '', sentiment: DEFAULT_SENTIMENT() });
-      setComments(sortManualCommentsDesc(Array.isArray(result.comments) ? result.comments : []));
+      setComposerDraft({ note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
+      setComments(sortAuthorInsightsManualCommentsDesc(Array.isArray(result.comments) ? result.comments : []));
       setComposerStatus('Saved.');
       recomputeDirty();
       savedStatusTimeoutRef.current = setTimeout(() => setComposerStatus(''), 2500);
@@ -297,7 +291,7 @@ export function AuthorInsightsCommentsSection() {
               comment={comment}
               editingCommentId={editingCommentId}
               setEditingCommentId={setEditingCommentId}
-              onEditSaved={(updatedComments) => setComments(sortManualCommentsDesc(updatedComments))}
+              onEditSaved={(updatedComments) => setComments(sortAuthorInsightsManualCommentsDesc(updatedComments))}
             />
           ))
         )}

@@ -12,10 +12,8 @@ import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.or
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
 import * as prMultiSelectRenderCacheHelperFactory from "./helpers/pr-multi-select-render-cache.helpers.js";
 import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
-import * as prReviewStatsDateBucketingHelperFactory from "./helpers/pr-review-stats-date-bucketing.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
 import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity-render.helpers.js";
-import * as prActorIdentityStyleHelperFactory from "./helpers/pr-actor-identity-style.helpers.js";
 import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
 import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
 import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
@@ -78,12 +76,14 @@ import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.he
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
 import * as prExportHelperFactory from "./helpers/pr-export.helpers.js";
 import * as prReviewStatsAggregationHelperFactory from "./helpers/pr-review-stats-aggregation.helpers.js";
-import * as prReviewStatsTimelineHelperFactory from "./helpers/pr-review-stats-timeline.helpers.js";
 import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
 import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
 import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
 import * as prAuthorInsightsComponentFactory from "./components/pr-author-insights.component.js";
 import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
+import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
+import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
+import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 
 // Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
@@ -94,29 +94,6 @@ const DEFAULT_REPO = "";
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
-
-const formatDateInputValue = (date) => {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const getDefaultStatsStartDate = () => {
-  const now = new Date();
-  const shifted = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, now.getUTCDate()),
-  );
-  return formatDateInputValue(shifted);
-};
-
-const { getTimelineDateKeys, bucketTimelineChartData } =
-  prReviewStatsDateBucketingHelperFactory.createPrReviewStatsDateBucketingHelpers({
-    formatDateInputValue,
-    asArray: (...args) => asArray(...args),
-    toCount: (...args) => toCount(...args),
-    getNormalizedStatsDateRange: (...args) => getNormalizedStatsDateRange(...args),
-  });
 
 let lastRenderedRunStamp = "";
 let lastSeenDataVersion = "";
@@ -167,14 +144,6 @@ const requestActivityStartedAtMs = {
 };
 const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
 const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
-const statsViewState = {
-  sortBy: "riskyApprovals",
-  filterMode: "all",
-  topN: 12,
-  minComments: 0,
-  startDate: getDefaultStatsStartDate(),
-  endDate: "",
-};
 const authorInsightsState = {
   selectedAuthorLogin: "",
   manualCommentsByAuthorLogin: {},
@@ -191,7 +160,6 @@ const toBoolean =
   formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
 
 const {
-  escapeHtml,
   stripAnsi,
   formatIsoDatetime,
   toCount,
@@ -517,33 +485,6 @@ const summarizeAckRefreshWarnings = (
       summaryParts.join(", ") || `${normalizedErrors.length} issue(s)`,
     sample,
   };
-};
-
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): deliberately still reads the DOM directly
-// (unlike renderRequestActivity above), not latestOutputText/
-// latestStatusText - this is a decoupled, best-effort fallback (only used
-// when currentViewerLogin/row.viewerLogin are both unavailable), called
-// from a different context entirely, not synchronously right after a
-// status/output update the way renderRequestActivity's read was - so the
-// same React-commit-timing hazard doesn't actually apply here in
-// practice. By the time this runs, React will have long since committed
-// whatever #status/#output currently show.
-const inferViewerLoginFromPage = () => {
-  const candidates = [
-    getOptionalElementById("output")?.textContent,
-    getOptionalElementById("status")?.textContent,
-  ];
-
-  for (const candidate of candidates) {
-    const text = String(candidate || "");
-    const match = text.match(/Viewer\s*:\s*([^\s|]+)/i);
-    if (match && match[1]) {
-      return String(match[1]).trim();
-    }
-  }
-
-  return "";
 };
 
 const markInputAsNonCredentialField = (
@@ -1387,11 +1328,6 @@ const getAuthorThreadResolutionPolicy = () => {
 };
 
 const {
-  buildActorIdentityClassName,
-  buildActorIdentityTitle,
-} = prActorIdentityStyleHelperFactory.createPrActorIdentityStyleHelpers();
-
-const {
   getEffectiveViewerLogin,
 } = prActorIdentityRenderHelperFactory.createPrActorIdentityRenderHelpers({
   normalizeActorLogin: (...args) => normalizeActorLogin(...args),
@@ -1445,7 +1381,6 @@ const { parseMarkerState, safeJsonStringify } =
   prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
 
 const {
-  shouldShowNeedsAttention,
   entryNeedsAttention,
   entryHasYourLastActivity,
 } = prNeedsAttentionHelperFactory.createPrNeedsAttentionHelpers({
@@ -1456,14 +1391,6 @@ const {
   collectRequestedReviewers: (...args) => collectRequestedReviewers(...args),
   countPendingThreadComments: (...args) => countPendingThreadComments(...args),
 });
-
-// Expose for the React hybrid table bridge (see components/PrTableApp.jsx),
-// which reads these off `window` since it can't import top-level `const`
-// bindings from this non-module script.
-if (typeof window !== "undefined") {
-  window.entryNeedsAttention = entryNeedsAttention;
-  window.getNeedsAttentionConfig = getNeedsAttentionConfig;
-}
 
 const {
   registerUiOptionPersistenceHandlers,
@@ -1830,7 +1757,6 @@ const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } =
   });
 
 const {
-  DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
   normalizeAuthorInsightsSentiment,
   getAuthorInsightsComposerDraft,
   updateAuthorInsightsComposerDraft,
@@ -1876,7 +1802,18 @@ const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
     getDirtyTrackedFields,
     getUnsavedNotesSections,
     getBlockingPrNumbers,
-    getBlockingAuthorInsightsLogins,
+    // Bug fix (found while auditing this cluster for Phase 7, sub-phase
+    // 7.0 - see REACT_MIGRATION_PLAN.md): getAutoRenderBlockingState calls
+    // this with no arguments, but getBlockingAuthorInsightsLogins takes
+    // authorInsightsState as its own parameter - passed through bare
+    // (shorthand property) rather than wrapped in a closure, it silently
+    // defaulted to `{}` on every call, so a poll was never actually
+    // deferred for an unsaved author-insights comment draft (only for
+    // unsaved PR-notes fields, an unrelated dirty-tracking path). No
+    // integration test exercised this specific case end-to-end - only
+    // pr-auto-render-blocking.helpers.test.js's isolated unit tests, which
+    // pass a real authorInsightsState explicitly and so never caught it.
+    getBlockingAuthorInsightsLogins: () => getBlockingAuthorInsightsLogins(authorInsightsState),
     formatBlockingPrNumbersLabel,
   });
 
@@ -3037,10 +2974,7 @@ const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
 
 const {
   isChangedStatus,
-  statusClass,
-  approvedClass,
   statusIcon,
-  formatTitleWithIcons,
   formatChkDisplay,
 } = prStatusDisplayHelperFactory.createPrStatusDisplayHelpers();
 
@@ -3244,130 +3178,26 @@ const formatDurationMinutes = (value) => {
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 
-const getNormalizedStatsDateRange = () => {
-  const rawStart = String(statsViewState.startDate || "").trim();
-  const rawEnd = String(statsViewState.endDate || "").trim();
-  const start = rawStart ? `${rawStart}T00:00:00Z` : "";
-  const end = rawEnd ? `${rawEnd}T23:59:59Z` : "";
-
-  if (start && end && start > end) {
-    return {
-      start: `${rawEnd}T00:00:00Z`,
-      end: `${rawStart}T23:59:59Z`,
-      startDate: rawEnd,
-      endDate: rawStart,
-    };
-  }
-
-  return {
-    start,
-    end,
-    startDate: rawStart,
-    endDate: rawEnd,
-  };
-};
-
-const isWithinStatsDateRange = (
-  isoValue,
-  range = getNormalizedStatsDateRange(),
-) => {
-  const value = String(isoValue || "").trim();
-  if (!range.start && !range.end) {
-    return true;
-  }
-  if (!value) {
-    return false;
-  }
-  if (range.start && value < range.start) {
-    return false;
-  }
-  if (range.end && value > range.end) {
-    return false;
-  }
-  return true;
-};
-
-const { normalizeRowMetrics, buildReviewerStats, applyStatsControls } =
+// Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
+// tab's whole aggregation cluster (statsViewState, getNormalizedStatsDateRange,
+// isWithinStatsDateRange, buildReviewerStats, applyStatsControls,
+// renderActivityTrendNote, the timeline aggregation functions, and every
+// window.* bridge that used to expose them) moved to React - see
+// state/ReviewStatsContext.jsx and components/ReviewStatsProvider.jsx,
+// which derive all of it fresh from PrDataContext's statsViewState (now
+// real state, owned by ReviewStatsControls) instead of a vanilla-closure
+// snapshot. normalizeRowMetrics is the one export from this factory still
+// needed here - getOpenConversationCount (below) uses it for the "More
+// insights" panel, unrelated to review stats - so the factory call stays,
+// just without any of the review-stats-specific DI params (none of which
+// normalizeRowMetrics itself reads).
+const { normalizeRowMetrics } =
   prReviewStatsAggregationHelperFactory.createPrReviewStatsAggregationHelpers({
     toCount,
     asArray,
-    getNormalizedStatsDateRange: (...args) => getNormalizedStatsDateRange(...args),
-    normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-    formatTitleWithIcons: (...args) => formatTitleWithIcons(...args),
-    isWithinStatsDateRange: (...args) => isWithinStatsDateRange(...args),
-    resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-    statsViewState,
   });
 
-const {
-  aggregateReviewerActivityTimeline,
-  aggregateReviewerCommentsTimeline,
-  aggregateReviewerApprovalsTimeline,
-} = prReviewStatsTimelineHelperFactory.createPrReviewStatsTimelineHelpers({
-  asArray,
-  getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-  isWithinStatsDateRange: (...args) => isWithinStatsDateRange(...args),
-  resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  getTimelineDateKeys,
-});
-
-const renderActivityTrendNote = (rows, actorsMap = {}) => {
-  const range = getNormalizedStatsDateRange();
-  const chartData = aggregateReviewerActivityTimeline(rows, actorsMap, range);
-  if (!chartData?.series || chartData.series.length === 0) {
-    return "No reviewer activity data available to render trends.";
-  }
-  const totalActivity = chartData.series.reduce(
-    (sum, s) => sum + s.points.reduce((ps, p) => ps + p.value, 0),
-    0,
-  );
-  const avgDaily =
-    chartData.dates.length > 0
-      ? Math.round(totalActivity / chartData.dates.length)
-      : 0;
-  return `Total reviewer activity: ${totalActivity} events across ${chartData.dates.length} days (~${avgDaily}/day). Showing top ${chartData.series.length} reviewers. Activity includes comments and submitted reviews on PRs authored by others, excluding Copilot actors.`;
-};
-
-// Phase 3 React migration hooks (see REACT_MIGRATION_PLAN.md): expose
-// statsViewState plus everything ReviewStatsControls/ReviewStatsContent
-// (react-app.jsx) need to render and interact without index.page.js
-// needing to know React mounted them.
 if (typeof window !== "undefined") {
-  window.getStatsViewState = () => ({ ...statsViewState });
-  window.updateStatsViewStateAndRerender = (patch) => {
-    Object.assign(statsViewState, patch);
-    applyFiltersFromCache();
-    // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-    // ReviewStatsContent now recomputes its own stats from PrDataContext
-    // instead of being pushed a pre-built result - this push just triggers
-    // that recompute (a fresh snapshot object, so PrDataProvider's state
-    // actually changes and consumers re-render).
-    window.updateReactStatsViewState?.({ ...statsViewState });
-  };
-  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-  // ReviewStatsContent reads these directly instead of receiving a
-  // pre-built `stats` object via window.updateReviewStatsContent (deleted,
-  // along with renderStatsView/renderStatsViewIfVisible - see that
-  // deletion's own comment for why no replacement bridge is needed).
-  window.buildReviewerStats = (...args) => buildReviewerStats(...args);
-  window.applyStatsControls = (...args) => applyStatsControls(...args);
-  // Named distinctly from PrDateCell.jsx's own `window.formatIsoDatetime`
-  // (which falls back to a much cruder default when unset) - deliberately
-  // not reusing that name here, to avoid changing Phase 1's already-shipped
-  // PrTableApp date formatting as a side effect of this Phase 3 work.
-  window.reviewStatsFormatIsoDatetime = (...args) => formatIsoDatetime(...args);
-  window.getNormalizedStatsDateRange = (...args) => getNormalizedStatsDateRange(...args);
-  window.renderActivityTrendNote = (...args) => renderActivityTrendNote(...args);
-  // Pure data-shaping helpers (no DOM) consumed directly by StatsVisuals.jsx/
-  // ReviewerActivityChart.jsx now that the chart visuals are real JSX
-  // (Track A, REACT_MIGRATION_PLAN.md) - not part of the mount-bridge
-  // surface, just formatting/business logic exposed the same way every
-  // other leaf component already reads window.toCount/window.asArray etc.
-  window.bucketTimelineChartData = (...args) => bucketTimelineChartData(...args);
-  window.aggregateReviewerCommentsTimeline = (...args) => aggregateReviewerCommentsTimeline(...args);
-  window.aggregateReviewerApprovalsTimeline = (...args) => aggregateReviewerApprovalsTimeline(...args);
   // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
   // already provides for Author Insights' own "View in table" button
   // (dispatches 'pr-navigate-to-insights' when React owns the PR table,
@@ -3473,29 +3303,6 @@ if (typeof window !== "undefined") {
       activateDataTab,
       collectNodesByTag,
     });
-  window.getOpenConversationCount = (...args) => getOpenConversationCount(...args);
-  window.normalizeAuthorInsightsSentiment = (...args) => normalizeAuthorInsightsSentiment(...args);
-  window.parseSortableTime = (...args) => parseSortableTime(...args);
-  window.getAuthorInsightsSentimentLabel = (...args) =>
-    prAuthorInsightsDisplayHelpers.getAuthorInsightsSentimentLabel(...args);
-  window.getAuthorInsightsSentimentBadgeClassName = (...args) =>
-    prAuthorInsightsDisplayHelpers.getAuthorInsightsSentimentBadgeClassName(...args);
-  window.getAuthorInsightsStatusBadgeClassName = (...args) =>
-    prAuthorInsightsDisplayHelpers.getAuthorInsightsStatusBadgeClassName(...args);
-  window.getAuthorInsightsCreatedPrStatus = (...args) =>
-    prAuthorInsightsDisplayHelpers.getAuthorInsightsCreatedPrStatus(...args);
-  window.sortAuthorInsightsCreatedPrsDesc = (...args) =>
-    prAuthorInsightsDisplayHelpers.sortAuthorInsightsCreatedPrsDesc(...args);
-  window.sortAuthorInsightsNoteMatchesDesc = (...args) =>
-    prAuthorInsightsDisplayHelpers.sortAuthorInsightsNoteMatchesDesc(...args);
-  window.getAuthorInsightsNoteDisplayTimestamp = (...args) =>
-    prAuthorInsightsDisplayHelpers.getAuthorInsightsNoteDisplayTimestamp(...args);
-  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-  // AuthorInsightsSelector reads this directly to build its own option
-  // list from PrDataContext's payload, instead of being pushed a
-  // pre-built list via window.updateAuthorInsightsSelector.
-  window.buildAuthorInsightsEntries = (...args) =>
-    prAuthorInsightsDisplayHelpers.buildAuthorInsightsEntries(...args);
   // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
   // composer/editor is now real JSX too (AuthorInsightsCommentsSection.jsx)
   // instead of wrapping buildManualCommentsSection via a ref - that builder
@@ -3539,10 +3346,6 @@ if (typeof window !== "undefined") {
     });
   window.updateAuthorManualComment = (args) =>
     prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
-  window.AUTHOR_COMMENT_SENTIMENT_OPTIONS = prAuthorInsightsDataHelpers.AUTHOR_COMMENT_SENTIMENT_OPTIONS;
-  window.DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
-  window.sortAuthorInsightsManualCommentsDesc = (...args) =>
-    prAuthorInsightsDisplayHelpers.sortAuthorInsightsManualCommentsDesc(...args);
 }
 
 const {
@@ -3550,7 +3353,6 @@ const {
   normalizeActorLogin,
   getPreferredActorKey,
   resolveActorDisplayName,
-  buildRowActorsMap,
 } = prActorIdentityHelperFactory.createPrActorIdentityHelpers({
   asArray,
   getActorLoginAliases: () => currentActorLoginAliases,
@@ -3672,16 +3474,6 @@ const buildFallbackActivityEvents = (row = {}) => {
   return fallback.filter((event) => String(event?.occurredAt || "").trim());
 };
 
-const countPendingThreadComments = (row) =>
-  asArray(row?.reviewThreads).reduce(
-    (total, thread) =>
-      total +
-      asArray(thread?.comments).filter(
-        (comment) => String(comment?.state || "").toUpperCase() === "PENDING",
-      ).length,
-    0,
-  );
-
 const getReviewConversationsStateKey = (row) => {
   const urlKey = String(row?.url || "").trim();
   if (urlKey) {
@@ -3768,11 +3560,6 @@ const normalizeRows = (rows) =>
     if (orderA !== orderB) return orderA - orderB;
     return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
   });
-
-const parseSortableTime = (value) => {
-  const parsed = Date.parse(String(value || ""));
-  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
-};
 
 const sortRowsByDateFieldDesc = (rows, fieldName) =>
   rows.sort((a, b) => {
@@ -5074,29 +4861,40 @@ const initPage = () => {
   // vanilla row/cell output exactly instead of guessing at field names and
   // formatting rules. These are plain functions with no DOM dependency;
   // React builds its own JSX elements and only borrows the *values*.
+  // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): actor-identity
+  // resolution (normalizeActorLogin, resolveActorDisplayName,
+  // getPreferredActorKey, buildRowActorsMap, getEffectiveViewerLogin,
+  // buildActorIdentityClassName, buildActorIdentityTitle) moved off this
+  // bridge - React now derives it independently via useActorIdentity()
+  // (state/ActorIdentityContext.jsx), computed straight from the payload
+  // PrDataProvider already holds instead of reading index.page.js's copy.
+  // Also moved off: isChangedStatus/statusClass/approvedClass/
+  // formatTitleWithIcons (createPrStatusDisplayHelpers(), zero-arg pure -
+  // consuming components now import it directly), escapeHtml/
+  // formatIsoDatetime (createPrFormattingHelpers(), same reasoning), and
+  // countPendingThreadComments (extracted from an inline index.page.js
+  // function into helpers/pr-thread-comments.helpers.js). formatChkDisplay
+  // and toCount stay - AuthorInsightsPrDataMeta.jsx still reads them off
+  // window (see that file's own comment for why it's deliberately deferred
+  // as one atomic unit, not cherry-picked here). shouldShowNeedsAttention/
+  // entryNeedsAttention/getNeedsAttentionConfig also moved off (both the
+  // separate window.entryNeedsAttention/window.getNeedsAttentionConfig
+  // assignment above and shouldShowNeedsAttention here) - PrTableApp.jsx
+  // now derives all three via useNeedsAttention()
+  // (state/NeedsAttentionContext.jsx, components/NeedsAttentionProvider.jsx),
+  // since the "Needs Attention rules" config fields are all already
+  // Context-native (Phase 6, FilterStateProvider) and the classification
+  // helpers only need actor-identity, itself already Context-native.
   Object.assign(window, {
-    isChangedStatus,
-    statusClass,
-    approvedClass,
-    formatTitleWithIcons,
     formatChkDisplay,
-    getPreferredActorKey,
     collectPrAuthors,
-    resolveActorDisplayName,
-    buildRowActorsMap,
-    normalizeActorLogin,
     collectAssignedUsers,
     collectRequestedReviewers,
-    buildActorIdentityClassName,
-    buildActorIdentityTitle,
-    getEffectiveViewerLogin,
     getUserInitials,
     getOpenConversationCountWithMe,
     getManualNotesSummary,
     getManualNotesFieldSummary,
     buildPrLastCheckedIndicator,
-    countPendingThreadComments,
-    escapeHtml,
     getViewedFilesState,
     getViewedFilesSummary,
     getSelectedPrNumbers,
@@ -5105,9 +4903,7 @@ const initPage = () => {
     getAvailableRepoLabels,
     isInReviewEnabled,
     isFlaggedEnabled,
-    shouldShowNeedsAttention,
     toCount,
-    formatIsoDatetime,
     runSinglePrUpdate,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
@@ -5480,7 +5276,6 @@ if (typeof module !== "undefined" && module.exports) {
     __testables: {
       isTimeoutFailureMessage,
       summarizeAckRefreshWarnings,
-      aggregateReviewerActivityTimeline,
       formatBlockingPrNumbersLabel,
       normalizeAuthorInsightsSentiment,
       isAuthorInsightsComposerDraftDirty,

@@ -7,13 +7,14 @@
  */
 
 import { InsightSection } from './InsightSection';
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+
+const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
 export function ApprovalRiskSection({ metrics, actorsMap }) {
+  const { resolveActorDisplayName } = useActorIdentity();
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const resolveActorDisplayName =
-    window.resolveActorDisplayName || ((login, _actorsMap, fallback) => String(fallback || login || '').trim());
-  const formatIsoDatetime = window.formatIsoDatetime || ((value) => String(value || '-'));
-  const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);
   const formatDurationMinutes = window.formatDurationMinutes || ((value) => String(value ?? '-'));
 
   const approvals = asArray(metrics?.approvals);

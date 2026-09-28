@@ -8,23 +8,32 @@
  * and the summary toggle are read-only display state (no server calls) —
  * this is a straight port, not a simplification.
  *
+ * parseSortableTime is imported directly from pr-sortable-time.helpers.js
+ * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md) - it's a
+ * genuinely pure, zero-dependency function, so no Context is needed here.
+ *
  * @module components/insights/ReviewThreadsSection
  */
 
 import React, { useMemo, useState } from 'react';
 import { InsightSection } from './InsightSection';
 import { ActorIdentity } from '../ActorIdentity';
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 function useHelpers() {
+  const { getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
   return {
     asArray: window.asArray || ((value) => (Array.isArray(value) ? value : [])),
-    getPreferredActorKey: window.getPreferredActorKey || ((login, name) => String(login || name || '').trim()),
-    resolveActorDisplayName:
-      window.resolveActorDisplayName || ((login, _actorsMap, fallback) => String(fallback || login || '').trim()),
+    getPreferredActorKey,
+    resolveActorDisplayName,
     getAuthorThreadResolutionPolicy:
       window.getAuthorThreadResolutionPolicy || (() => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() })),
-    parseSortableTime: window.parseSortableTime || ((value) => Date.parse(String(value || '')) || 0),
-    formatIsoDatetime: window.formatIsoDatetime || ((value) => String(value || '-')),
+    parseSortableTime,
+    formatIsoDatetime,
     renderMarkdownAsHtml: window.renderMarkdownAsHtml || ((text) => String(text || '')),
     readReviewConversationsUiState:
       window.readReviewConversationsUiState || (() => ({ stateKey: '', conversationFilterMode: 'unresolved', showSummaryCards: true })),

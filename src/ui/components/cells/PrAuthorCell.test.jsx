@@ -6,17 +6,11 @@ const { PrAuthorCell } = require('./PrAuthorCell');
 
 describe('PrAuthorCell', () => {
   afterEach(() => {
-    delete window.getPreferredActorKey;
     delete window.collectPrAuthors;
     delete window.getManualNotesSummary;
-    delete window.normalizeActorLogin;
-    delete window.getEffectiveViewerLogin;
-    delete window.resolveActorDisplayName;
   });
 
   test('given an author login, when rendering, then shows the resolved identity name', () => {
-    window.getPreferredActorKey = (login) => login;
-    window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback || 'Octocat';
     window.getManualNotesSummary = () => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false });
     render(
       <table>
@@ -31,7 +25,6 @@ describe('PrAuthorCell', () => {
   });
 
   test('given no author login, when rendering, then shows a dash', () => {
-    window.getPreferredActorKey = () => '';
     window.getManualNotesSummary = () => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false });
     render(
       <table>
@@ -50,7 +43,6 @@ describe('PrAuthorCell', () => {
       { key: 'pr-author', name: 'PR Author', isPrimary: true },
       { key: 'collab-1', name: 'Collaborator One', isPrimary: false },
     ];
-    window.resolveActorDisplayName = (_login, _actorsMap, fallback) => fallback;
     window.getManualNotesSummary = () => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false });
     render(
       <table>
@@ -84,7 +76,6 @@ describe('PrAuthorCell', () => {
   });
 
   test('given manual notes present, when rendering, then shows the filled notes indicator with a count title', () => {
-    window.getPreferredActorKey = () => '';
     window.getManualNotesSummary = () => ({ hasNotes: true, commentsCount: 2, hasOtherNotes: true });
     render(
       <table>
@@ -101,7 +92,6 @@ describe('PrAuthorCell', () => {
   });
 
   test('given no manual notes, when rendering, then shows the empty notes indicator', () => {
-    window.getPreferredActorKey = () => '';
     window.getManualNotesSummary = () => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false });
     render(
       <table>

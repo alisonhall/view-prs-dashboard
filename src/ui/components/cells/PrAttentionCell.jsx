@@ -5,10 +5,10 @@
  * @module components/cells/PrAttentionCell
  */
 
+import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.js';
 
 export function PrAttentionCell({ pr, needsAttention, isFlagged }) {
-  const hasPendingComments =
-    (window.countPendingThreadComments ? window.countPendingThreadComments(pr) : 0) > 0;
+  const hasPendingComments = countPendingThreadComments(pr) > 0;
 
   if (!needsAttention && !isFlagged) {
     return <td className="attention-cell" />;

@@ -15,12 +15,11 @@
  */
 
 import { usePrData } from '../state/PrDataContext';
-
-const resolveActorDisplayName = (login, actorsMap, fallback) =>
-  window.resolveActorDisplayName ? window.resolveActorDisplayName(login, actorsMap, fallback) : String(fallback || login || '').trim();
+import { useActorIdentity } from '../state/ActorIdentityContext';
 
 export function AuthorInsightsHeader() {
   const { payload, selectedAuthorLogin } = usePrData();
+  const { resolveActorDisplayName } = useActorIdentity();
 
   if (!selectedAuthorLogin) {
     return null;

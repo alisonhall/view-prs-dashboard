@@ -4,6 +4,7 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsControls } = require('./ReviewStatsControls');
+const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 
 const DEFAULT_STATE = {
   sortBy: 'riskyApprovals',
@@ -14,9 +15,16 @@ const DEFAULT_STATE = {
   endDate: '',
 };
 
+const renderControls = (statsViewState = DEFAULT_STATE, setStatsViewState = () => {}) =>
+  render(
+    <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState, setStatsViewState }}>
+      <ReviewStatsControls />
+    </ReviewStatsContext.Provider>,
+  );
+
 describe('ReviewStatsControls', () => {
-  test('given initialState, when rendering, then all six controls reflect it', () => {
-    render(<ReviewStatsControls initialState={DEFAULT_STATE} onChange={() => {}} />);
+  test('given statsViewState, when rendering, then all six controls reflect it', () => {
+    renderControls();
 
     expect(screen.getByLabelText('Sort by')).toHaveValue('riskyApprovals');
     expect(screen.getByLabelText('Filter')).toHaveValue('all');
@@ -26,54 +34,53 @@ describe('ReviewStatsControls', () => {
     expect(screen.getByLabelText('End date')).toHaveValue('');
   });
 
-  test('given a user selects a different sort option, when selecting, then onChange fires immediately with just that patch', async () => {
-    const onChange = jest.fn();
+  test('given a user selects a different sort option, when selecting, then setStatsViewState fires immediately with just that patch', async () => {
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
-    render(<ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />);
+    renderControls(DEFAULT_STATE, setStatsViewState);
 
     await user.selectOptions(screen.getByLabelText('Sort by'), 'reviews');
 
     expect(screen.getByLabelText('Sort by')).toHaveValue('reviews');
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith({ sortBy: 'reviews' });
+    expect(setStatsViewState).toHaveBeenCalledTimes(1);
+    expect(setStatsViewState).toHaveBeenCalledWith({ sortBy: 'reviews' });
   });
 
-  test('given a user selects a different filter mode, when selecting, then onChange fires with that patch', async () => {
-    const onChange = jest.fn();
+  test('given a user selects a different filter mode, when selecting, then setStatsViewState fires with that patch', async () => {
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
-    render(<ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />);
+    renderControls(DEFAULT_STATE, setStatsViewState);
 
     await user.selectOptions(screen.getByLabelText('Filter'), 'risky-only');
 
-    expect(onChange).toHaveBeenCalledWith({ filterMode: 'risky-only' });
+    expect(setStatsViewState).toHaveBeenCalledWith({ filterMode: 'risky-only' });
   });
 
-  // Regression coverage: minComments/topN must only commit (call onChange,
-  // which triggers vanilla's expensive applyFiltersFromCache re-render) on
-  // blur, matching the original vanilla control's native "change" handler
-  // - not on every keystroke, which React's onChange alone would do and
-  // which would re-trigger a full stats recompute mid-edit.
-  test('given a user types into Min comments, when typing (not yet blurred), then onChange has not fired', async () => {
-    const onChange = jest.fn();
+  // Regression coverage: minComments/topN must only commit (call
+  // setStatsViewState, which triggers a full stats recompute) on blur,
+  // matching the original vanilla control's native "change" handler - not
+  // on every keystroke, which React's onChange alone would do.
+  test('given a user types into Min comments, when typing (not yet blurred), then setStatsViewState has not fired', async () => {
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
-    render(<ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />);
+    renderControls(DEFAULT_STATE, setStatsViewState);
 
     const input = screen.getByLabelText('Min comments');
     await user.clear(input);
     await user.type(input, '5');
 
     expect(input).toHaveValue(5);
-    expect(onChange).not.toHaveBeenCalled();
+    expect(setStatsViewState).not.toHaveBeenCalled();
   });
 
-  test('given a user types into Min comments and then blurs, then onChange fires once with the clamped numeric value', async () => {
-    const onChange = jest.fn();
+  test('given a user types into Min comments and then blurs, then setStatsViewState fires once with the clamped numeric value', async () => {
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <>
-        <ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />
+      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
+        <ReviewStatsControls />
         <button type="button">elsewhere</button>
-      </>,
+      </ReviewStatsContext.Provider>,
     );
 
     const input = screen.getByLabelText('Min comments');
@@ -81,47 +88,47 @@ describe('ReviewStatsControls', () => {
     await user.type(input, '5');
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
 
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith({ minComments: 5 });
+    expect(setStatsViewState).toHaveBeenCalledTimes(1);
+    expect(setStatsViewState).toHaveBeenCalledWith({ minComments: 5 });
   });
 
   test('given Min comments is blurred empty, then it clamps to 0, not NaN', async () => {
-    const onChange = jest.fn();
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <>
-        <ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />
+      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
+        <ReviewStatsControls />
         <button type="button">elsewhere</button>
-      </>,
+      </ReviewStatsContext.Provider>,
     );
 
     const input = screen.getByLabelText('Min comments');
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
 
-    expect(onChange).toHaveBeenCalledWith({ minComments: 0 });
+    expect(setStatsViewState).toHaveBeenCalledWith({ minComments: 0 });
   });
 
   test('given Top reviewers is blurred empty, then it clamps to 12 (the original default), not NaN', async () => {
-    const onChange = jest.fn();
+    const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <>
-        <ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />
+      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
+        <ReviewStatsControls />
         <button type="button">elsewhere</button>
-      </>,
+      </ReviewStatsContext.Provider>,
     );
 
     const input = screen.getByLabelText('Top reviewers');
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
 
-    expect(onChange).toHaveBeenCalledWith({ topN: 12 });
+    expect(setStatsViewState).toHaveBeenCalledWith({ topN: 12 });
   });
 
-  test('given a user changes the start date, when changing, then onChange fires with the trimmed date patch', () => {
-    const onChange = jest.fn();
-    render(<ReviewStatsControls initialState={DEFAULT_STATE} onChange={onChange} />);
+  test('given a user changes the start date, when changing, then setStatsViewState fires with the trimmed date patch', () => {
+    const setStatsViewState = jest.fn();
+    renderControls(DEFAULT_STATE, setStatsViewState);
 
     const input = screen.getByLabelText('Start date');
     const nativeSetter = Object.getOwnPropertyDescriptor(
@@ -132,6 +139,6 @@ describe('ReviewStatsControls', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
 
-    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-02-15' });
+    expect(setStatsViewState).toHaveBeenCalledWith({ startDate: '2026-02-15' });
   });
 });

@@ -3,25 +3,9 @@
 const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ActivityEventDescription } = require('./ActivityEventDescription');
-
-function installDefaultHelpers() {
-  window.normalizeActorLogin = (v) => String(v || '').trim();
-  window.getEffectiveViewerLogin = () => '';
-  window.resolveActorDisplayName = (login, _map, fallback) => fallback || login || '';
-  window.buildActorIdentityClassName = () => 'actor-identity';
-  window.buildActorIdentityTitle = () => '';
-}
-
-function clearHelpers() {
-  ['normalizeActorLogin', 'getEffectiveViewerLogin', 'resolveActorDisplayName', 'buildActorIdentityClassName', 'buildActorIdentityTitle'].forEach(
-    (key) => delete window[key],
-  );
-}
+const { ActorIdentityContext, defaultActorIdentity } = require('../../state/ActorIdentityContext');
 
 describe('ActivityEventDescription', () => {
-  beforeEach(installDefaultHelpers);
-  afterEach(clearHelpers);
-
   test.each([
     ['approval', {}, 'approved'],
     ['review', { state: 'CHANGES_REQUESTED' }, 'review (CHANGES_REQUESTED)'],
@@ -38,8 +22,13 @@ describe('ActivityEventDescription', () => {
   });
 
   test('given an actor login, when rendering, then renders it via ActorIdentity', () => {
-    window.resolveActorDisplayName = (login) => `Display(${login})`;
-    render(<ActivityEventDescription event={{ type: 'approval', actor: 'octocat' }} row={{}} actorsMap={{}} />);
+    render(
+      <ActorIdentityContext.Provider
+        value={{ ...defaultActorIdentity, resolveActorDisplayName: (login) => `Display(${login})` }}
+      >
+        <ActivityEventDescription event={{ type: 'approval', actor: 'octocat' }} row={{}} actorsMap={{}} />
+      </ActorIdentityContext.Provider>,
+    );
     expect(screen.getByText('Display(octocat)')).toBeInTheDocument();
   });
 });

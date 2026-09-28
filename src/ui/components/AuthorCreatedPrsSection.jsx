@@ -9,9 +9,10 @@
  * renderAuthorInsights, the single place that decides which author is
  * selected (including its auto-select-first-author fallback).
  *
- * Still reads the pure filtering/sorting helpers off window
- * (getPreferredActorKey, sortAuthorInsightsCreatedPrsDesc,
- * formatIsoDatetime) - moving those off window is a separate concern.
+ * getPreferredActorKey comes from useActorIdentity() (see
+ * state/ActorIdentityContext.jsx); sortAuthorInsightsCreatedPrsDesc comes
+ * from useAuthorInsights() (Phase 7, sub-phase 7.0 - see
+ * REACT_MIGRATION_PLAN.md).
  *
  * Mounted once into the static #author-insights-created-prs-root
  * container.
@@ -22,18 +23,18 @@
 import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
 import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
 import { usePrData } from '../state/PrDataContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
-const getPreferredActorKey = (login, fallback) =>
-  window.getPreferredActorKey ? window.getPreferredActorKey(login, fallback) : String(login || fallback || '').trim();
-
-const sortCreatedPrsDesc = (rows) => (window.sortAuthorInsightsCreatedPrsDesc ? window.sortAuthorInsightsCreatedPrsDesc(rows) : rows);
-
-const formatIsoDatetime = (value) => (window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-'));
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 export function AuthorCreatedPrsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
+  const { getPreferredActorKey } = useActorIdentity();
+  const { sortAuthorInsightsCreatedPrsDesc } = useAuthorInsights();
   const rows = Object.values(payload?.byPrNumber || {});
-  const createdPrs = sortCreatedPrsDesc(
+  const createdPrs = sortAuthorInsightsCreatedPrsDesc(
     (Array.isArray(rows) ? rows : []).filter(
       (entry) => getPreferredActorKey(entry?.data?.authorLogin, entry?.data?.author) === selectedAuthorLogin,
     ),

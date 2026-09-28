@@ -5,28 +5,23 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsSelector } = require('./AuthorInsightsSelector');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
 const OPTIONS = [
   { login: 'octocat', name: 'The Octocat' },
   { login: 'hubot', name: 'Hubot' },
 ];
 
-const renderSelector = ({ selectedAuthorLogin = '', onChange = () => {}, hasRows = true } = {}) =>
+const renderSelector = ({ selectedAuthorLogin = '', onChange = () => {}, hasRows = true, buildAuthorInsightsEntries = () => OPTIONS } = {}) =>
   render(
     <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }} initialSelectedAuthorLogin={selectedAuthorLogin}>
-      <AuthorInsightsSelector onChange={onChange} />
+      <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, buildAuthorInsightsEntries }}>
+        <AuthorInsightsSelector onChange={onChange} />
+      </AuthorInsightsContext.Provider>
     </PrDataProvider>,
   );
 
 describe('AuthorInsightsSelector', () => {
-  beforeEach(() => {
-    window.buildAuthorInsightsEntries = () => OPTIONS;
-  });
-
-  afterEach(() => {
-    delete window.buildAuthorInsightsEntries;
-  });
-
   test('given options, when rendering, then the select shows each author by display name', () => {
     renderSelector({ selectedAuthorLogin: 'octocat' });
 
@@ -43,8 +38,7 @@ describe('AuthorInsightsSelector', () => {
   });
 
   test('given no options from buildAuthorInsightsEntries, when rendering, then the "No authors found" empty-state message is shown instead of the select', () => {
-    window.buildAuthorInsightsEntries = () => [];
-    renderSelector({});
+    renderSelector({ buildAuthorInsightsEntries: () => [] });
     expect(screen.getByText('No authors found in the current local data scope.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Author')).not.toBeInTheDocument();
   });

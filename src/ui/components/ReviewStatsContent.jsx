@@ -8,23 +8,15 @@
  * pre-built result via window.updateReviewStatsContent (deleted, along
  * with renderStatsView/renderStatsViewIfVisible in index.page.js/
  * pr-render-apply.helpers.js - nothing else needed them once this
- * component stopped needing to be pushed data). `window.buildReviewerStats`/
- * `window.applyStatsControls` are the same pure aggregation functions
- * index.page.js used internally - `applyStatsControls` reads the live
- * vanilla `statsViewState` object by closure, so it's always current
- * regardless of when it's called; `statsViewState` is read from Context
- * here purely to know *when* settings changed (ReviewStatsControls pushes
- * a fresh snapshot on every commit via
- * window.updateReactStatsViewState) - its field values aren't used
- * directly. The computation is `useMemo`-gated on `[payload,
- * statsViewState, isVisible]` so unrelated Context changes (e.g. selecting
- * a different Author Insights author) don't re-trigger it, and (deferred-
- * items follow-up, item 3 - see REACT_MIGRATION_PLAN.md) skips the
- * expensive recompute entirely while its own tab is hidden, via
- * ../state/useIsTabPanelVisible.jsx (promoted out of this file for item 5,
- * once a second consumer needed it) - matching the 5 Author Insights
- * sections' existing behavior, and restoring what the vanilla predecessor
- * did before this component existed.
+ * component stopped needing to be pushed data).
+ *
+ * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `buildReviewerStats`/
+ * `applyStatsControls` now come from useReviewStats()
+ * (state/ReviewStatsContext.jsx, components/ReviewStatsProvider.jsx),
+ * which derives them from PrDataContext's `statsViewState` - now real
+ * state (owned by ReviewStatsControls), not just an invalidation-trigger
+ * snapshot, so the `stats` useMemo below can depend on it directly with no
+ * exhaustive-deps suppression needed.
  *
  * The chart visuals (formerly createStatsVisuals in
  * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
@@ -39,7 +31,9 @@
  * navigateToPrInTable (dispatches 'pr-navigate-to-insights' when React
  * owns the PR table) - not the raw-DOM-mutation version this component's
  * vanilla predecessor built inline, which was never updated for a
- * React-owned PR table and would silently do nothing under it.
+ * React-owned PR table and would silently do nothing under it. This one
+ * bridge is deliberately left as-is - it's pure navigation, unrelated to
+ * the statsViewState/aggregation cluster this sub-phase moved.
  *
  * @module components/ReviewStatsContent
  */
@@ -47,17 +41,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
+import { useReviewStats } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
-const formatIsoDatetime = (value) =>
-  window.reviewStatsFormatIsoDatetime ? window.reviewStatsFormatIsoDatetime(value) : String(value || '-');
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 const navigateToPrInTable = (prNumber) => window.navigateToPrInTableFromStats?.(prNumber);
-
-const buildReviewerStats = (rows, actorsMap) =>
-  window.buildReviewerStats ? window.buildReviewerStats(rows, actorsMap) : { summary: null, reviewerRows: [] };
-
-const applyStatsControls = (input) => (window.applyStatsControls ? window.applyStatsControls(input) : null);
 
 function SourceItemRow({ item, detailText }) {
   const prNumber = String(item?.prNumber || '').trim();
@@ -206,21 +196,25 @@ function ReviewerRow({ reviewer }) {
 }
 
 export function ReviewStatsContent() {
-  const { payload, statsViewState } = usePrData();
+  const { payload } = usePrData();
+  const { buildReviewerStats, applyStatsControls, getNormalizedStatsDateRange, renderActivityTrendNote } =
+    useReviewStats();
   const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
   const actorsMap = payload?.actorsMap || {};
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
   const lastStatsRef = useRef(null);
 
-  // Memoized on [payload, statsViewState, isVisible] specifically, not
-  // [rows, actorsMap] (which would be new references on every render) -
-  // both rows/actorsMap are themselves fully determined by payload, so
-  // this still only recomputes when the underlying data or Review Stats
-  // settings actually change. While hidden, skips straight to the last
-  // computed value instead of re-running buildReviewerStats/
-  // applyStatsControls - isVisible flipping back to true re-triggers this
-  // useMemo, so the very next payload/settings change while visible again
-  // catches up immediately (see useIsTabPanelVisible above).
+  // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
+  // specifically, not [rows, actorsMap] (which would be new references on
+  // every render) - both rows/actorsMap are themselves fully determined by
+  // payload, so this still only recomputes when the underlying data or
+  // Review Stats settings actually change (buildReviewerStats/
+  // applyStatsControls get a new reference from useReviewStats() whenever
+  // statsViewState does - see ReviewStatsProvider.jsx). While hidden, skips
+  // straight to the last computed value instead of re-running them -
+  // isVisible flipping back to true re-triggers this useMemo, so the very
+  // next payload/settings change while visible again catches up
+  // immediately (see useIsTabPanelVisible above).
   const stats = useMemo(() => {
     if (!isVisible) {
       return lastStatsRef.current;
@@ -235,28 +229,18 @@ export function ReviewStatsContent() {
     const computed = applyStatsControls({ summary, reviewerRows });
     lastStatsRef.current = computed;
     return computed;
-    // statsViewState is a deliberate invalidation trigger, not read inside
-    // this callback (see the module comment above - applyStatsControls
-    // reads the live vanilla statsViewState object by closure instead) -
-    // exhaustive-deps can't tell "read for its value" apart from "listed
-    // purely to know when settings changed," so it flags this as
-    // unnecessary; removing it would stop settings changes from
-    // triggering a recompute at all.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, statsViewState, isVisible]);
+  }, [payload, buildReviewerStats, applyStatsControls, isVisible]);
 
   if (!stats) {
     return <p className="stats-empty">No filtered rows available for review statistics.</p>;
   }
 
-  const dateRange = window.getNormalizedStatsDateRange ? window.getNormalizedStatsDateRange() : {};
+  const dateRange = getNormalizedStatsDateRange();
   const dateText =
     dateRange.startDate || dateRange.endDate
       ? ` Date range: ${dateRange.startDate || 'start'} to ${dateRange.endDate || 'end'}.`
       : '';
-  const trendNoteText = window.renderActivityTrendNote
-    ? window.renderActivityTrendNote(rows, actorsMap) || ''
-    : '';
+  const trendNoteText = renderActivityTrendNote(rows, actorsMap) || '';
 
   return (
     <>

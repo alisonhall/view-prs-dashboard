@@ -13,14 +13,6 @@ const renderHeader = (selectedAuthorLogin, actorsMap = {}) =>
   );
 
 describe('AuthorInsightsHeader', () => {
-  beforeEach(() => {
-    window.resolveActorDisplayName = (login, actorsMap, fallback) => actorsMap?.[login] || fallback || login;
-  });
-
-  afterEach(() => {
-    delete window.resolveActorDisplayName;
-  });
-
   test('given a selected author name, when rendering, then it shows the "Showing insights for" text', () => {
     const { container } = renderHeader('octocat', { octocat: 'The Octocat' });
     expect(container.querySelector('.author-insights-selected')?.textContent).toBe(

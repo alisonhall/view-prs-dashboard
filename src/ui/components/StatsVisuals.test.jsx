@@ -3,6 +3,7 @@
 const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { StatsVisuals } = require('./StatsVisuals');
+const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 
 const buildReviewerRows = () => [
   {
@@ -21,21 +22,21 @@ const buildReviewerRows = () => [
   },
 ];
 
-describe('StatsVisuals', () => {
-  afterEach(() => {
-    delete window.getNormalizedStatsDateRange;
-    delete window.aggregateReviewerCommentsTimeline;
-    delete window.aggregateReviewerApprovalsTimeline;
-    delete window.updateStatsViewStateAndRerender;
-  });
+const renderVisuals = (props, reviewStatsOverrides = {}) =>
+  render(
+    <ReviewStatsContext.Provider value={{ ...defaultReviewStats, ...reviewStatsOverrides }}>
+      <StatsVisuals {...props} />
+    </ReviewStatsContext.Provider>,
+  );
 
+describe('StatsVisuals', () => {
   test('given no reviewer rows, when rendering, then nothing is rendered', () => {
-    const { container } = render(<StatsVisuals stats={{ reviewerRows: [] }} />);
+    const { container } = renderVisuals({ stats: { reviewerRows: [] } });
     expect(container).toBeEmptyDOMElement();
   });
 
   test('given reviewer rows, when rendering, then the metric-total and top-reviewer graph cards render', () => {
-    render(<StatsVisuals stats={{ reviewerRows: buildReviewerRows() }} rows={[]} actorsMap={{}} />);
+    renderVisuals({ stats: { reviewerRows: buildReviewerRows() }, rows: [], actorsMap: {} });
 
     expect(screen.getByText('Visible metric totals')).toBeInTheDocument();
     expect(screen.getByText('Top reviewers by comments')).toBeInTheDocument();
@@ -44,24 +45,29 @@ describe('StatsVisuals', () => {
     expect(document.querySelectorAll('.stats-graph-card')).toHaveLength(4);
   });
 
-  test('given window.aggregateReviewerCommentsTimeline returns series, when rendering, then the activity chart renders', () => {
-    window.aggregateReviewerCommentsTimeline = () => ({
-      dates: ['2026-07-01'],
-      series: [{ login: 'alex', actor: 'Alex', points: [{ label: 'Jul 1', value: 3 }] }],
-    });
-
-    render(<StatsVisuals stats={{ reviewerRows: buildReviewerRows() }} rows={[]} actorsMap={{}} />);
+  test('given aggregateReviewerCommentsTimeline returns series, when rendering, then the activity chart renders', () => {
+    renderVisuals(
+      { stats: { reviewerRows: buildReviewerRows() }, rows: [], actorsMap: {} },
+      {
+        aggregateReviewerCommentsTimeline: () => ({
+          dates: ['2026-07-01'],
+          series: [{ login: 'alex', actor: 'Alex', points: [{ label: 'Jul 1', value: 3 }] }],
+        }),
+      },
+    );
 
     expect(screen.getByText('Comments and reviews over time per author')).toBeInTheDocument();
   });
 
-  test('given a graph card header click, when clicked, then window.updateStatsViewStateAndRerender fires with the matching sortBy', () => {
-    const updateStatsViewStateAndRerender = jest.fn();
-    window.updateStatsViewStateAndRerender = updateStatsViewStateAndRerender;
+  test('given a graph card header click, when clicked, then setStatsViewState fires with the matching sortBy', () => {
+    const setStatsViewState = jest.fn();
 
-    render(<StatsVisuals stats={{ reviewerRows: buildReviewerRows() }} rows={[]} actorsMap={{}} />);
+    renderVisuals(
+      { stats: { reviewerRows: buildReviewerRows() }, rows: [], actorsMap: {} },
+      { setStatsViewState },
+    );
 
     screen.getByText('Top reviewers by approvals').click();
-    expect(updateStatsViewStateAndRerender).toHaveBeenCalledWith({ sortBy: 'approvals' });
+    expect(setStatsViewState).toHaveBeenCalledWith({ sortBy: 'approvals' });
   });
 });

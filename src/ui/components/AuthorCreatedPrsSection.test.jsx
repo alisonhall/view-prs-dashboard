@@ -36,11 +36,7 @@ const renderSection = (rows, selectedAuthorLogin) => {
 
 describe('AuthorCreatedPrsSection', () => {
   afterEach(() => {
-    delete window.getPreferredActorKey;
-    delete window.sortAuthorInsightsCreatedPrsDesc;
-    delete window.formatIsoDatetime;
     delete window.navigateToPrInTableFromAuthorInsights;
-    delete window.getAuthorInsightsCreatedPrStatus;
   });
 
   test('given no PRs by the selected author, when rendering, then the empty message is shown', () => {
@@ -49,7 +45,6 @@ describe('AuthorCreatedPrsSection', () => {
   });
 
   test('given PRs by the selected author, when rendering, then the PR link and meta render', () => {
-    window.getAuthorInsightsCreatedPrStatus = () => 'NO_CHANGE';
     renderSection([buildEntry()], 'octocat');
 
     expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();

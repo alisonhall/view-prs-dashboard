@@ -9,8 +9,9 @@
  * @module components/GraphCard
  */
 
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
-const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
+const { toCount } = createPrFormattingHelpers();
 
 export function GraphCard({ title, subtitle, items, onHeaderClick }) {
   if (!Array.isArray(items) || items.length === 0) {

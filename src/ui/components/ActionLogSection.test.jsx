@@ -3,6 +3,9 @@
 const React = require('react');
 const { render, screen, waitFor, act } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
+const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.js');
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 const mockEmptyFetchOnce = () =>
   global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entries: [] }) });
@@ -10,7 +13,6 @@ const mockEmptyFetchOnce = () =>
 describe('ActionLogSection', () => {
   beforeEach(() => {
     delete window.triggerActionLogLoad;
-    delete window.formatIsoDatetime;
     global.fetch = jest.fn();
   });
 
@@ -43,7 +45,6 @@ describe('ActionLogSection', () => {
   });
 
   test('given the bridge is triggered again (e.g. Refresh, or re-activating the tab), when the fetch resolves with entries, then it renders a table row per entry with formatted duration/status/detail', async () => {
-    window.formatIsoDatetime = (value) => `fmt:${value}`;
     mockEmptyFetchOnce(); // the mount-triggered load
     await act(async () => {
       render(React.createElement(ActionLogSection));
@@ -77,7 +78,7 @@ describe('ActionLogSection', () => {
       await window.triggerActionLogLoad();
     });
 
-    expect(screen.getByText('fmt:2026-05-01T10:00:00Z')).toBeInTheDocument();
+    expect(screen.getByText(formatIsoDatetime('2026-05-01T10:00:00Z'))).toBeInTheDocument();
     expect(screen.getByText('250ms')).toBeInTheDocument();
     expect(screen.getByText('1.5s')).toBeInTheDocument();
     expect(screen.getByText('manual-stop')).toBeInTheDocument();

@@ -4,6 +4,7 @@ const { render, screen, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsNotesSection } = require('./AuthorInsightsNotesSection');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
 const buildEntry = (overrides = {}) => ({
   prNumber: '1',
@@ -13,36 +14,27 @@ const buildEntry = (overrides = {}) => ({
   ...overrides,
 });
 
-const renderSection = (rows, selectedAuthorLogin, actorsMap = {}) => {
+const renderSection = (rows, selectedAuthorLogin, actorsMap = {}, authorInsightsOverrides = {}) => {
   const byPrNumber = {};
   rows.forEach((entry) => {
     byPrNumber[entry.prNumber] = entry;
   });
   return render(
     <PrDataProvider initialPayload={{ byPrNumber, actorsMap }} initialSelectedAuthorLogin={selectedAuthorLogin}>
-      <AuthorInsightsNotesSection />
+      <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
+        <AuthorInsightsNotesSection />
+      </AuthorInsightsContext.Provider>
     </PrDataProvider>,
   );
 };
 
 describe('AuthorInsightsNotesSection', () => {
-  afterEach(() => {
-    delete window.noteAuthorMatchesSelection;
-    delete window.sortAuthorInsightsNoteMatchesDesc;
-    delete window.resolveActorDisplayName;
-    delete window.getAuthorInsightsNoteDisplayTimestamp;
-    delete window.getAuthorInsightsSentimentLabel;
-    delete window.getAuthorInsightsSentimentBadgeClassName;
-  });
-
   test('given no matching notes, when rendering, then the empty message is shown', () => {
     renderSection([buildEntry()], 'octocat');
     expect(screen.getByText('No saved custom comments or sentiment for this author.')).toBeInTheDocument();
   });
 
   test('given a matching note, when rendering, then the PR link, author, sentiment, and body render (real JSX)', () => {
-    window.noteAuthorMatchesSelection = (author, selectedAuthor) => author === selectedAuthor.login;
-
     const entry = buildEntry({
       notes: { comments: [{ id: 'c1', author: 'octocat', tone: 'positive', note: 'Nice work' }] },
     });
@@ -55,8 +47,6 @@ describe('AuthorInsightsNotesSection', () => {
   });
 
   test('given a change to the selected author in Context, when it updates, then the notes shown update (no key remount needed)', () => {
-    window.noteAuthorMatchesSelection = (author, selectedAuthor) => author === selectedAuthor.login;
-
     const entry = buildEntry({
       notes: {
         comments: [

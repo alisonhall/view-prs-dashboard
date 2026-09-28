@@ -23,6 +23,7 @@ const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataProvider } = require("../state/PrDataProvider");
+const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
@@ -538,11 +539,15 @@ const installReactTableMountBridge = () => {
           initialSelectedRepo: props?.selectedRepo,
           initialVisiblePrNumbers: props?.visiblePrNumbers,
         },
-        React.createElement(PrTableApp, {
-          onCheckboxChange: props?.onCheckboxChange,
-          onAckAction: props?.onAckAction,
-          onApplyLabel: props?.onApplyLabel,
-        }),
+        React.createElement(
+          NeedsAttentionProvider,
+          null,
+          React.createElement(PrTableApp, {
+            onCheckboxChange: props?.onCheckboxChange,
+            onAckAction: props?.onAckAction,
+            onApplyLabel: props?.onApplyLabel,
+          }),
+        ),
       ),
       { container: containerElement },
     );

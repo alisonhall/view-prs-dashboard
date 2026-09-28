@@ -6,17 +6,19 @@
  * @module components/cells/PrApprovedCell
  */
 
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+
+const { approvedClass } = createPrStatusDisplayHelpers();
+const { toCount } = createPrFormattingHelpers();
 
 export function PrApprovedCell({ pr, actorsMap = {} }) {
-  const approvedClass = window.approvedClass || (() => '');
+  const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
   const collectAssignedUsers = window.collectAssignedUsers || (() => []);
   const collectRequestedReviewers = window.collectRequestedReviewers || (() => []);
-  const getEffectiveViewerLogin = window.getEffectiveViewerLogin || (() => '');
-  const resolveActorDisplayName =
-    window.resolveActorDisplayName || ((login, _actorsMap, fallback) => String(fallback || login || '').trim());
   const getUserInitials = window.getUserInitials || ((name, login) => String(name || login || '').slice(0, 2));
   const getOpenConversationCountWithMe = window.getOpenConversationCountWithMe || (() => ({ count: 0, isViewerSpecific: false }));
-  const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);
 
   const assignees = collectAssignedUsers(pr);
   const reviewers = collectRequestedReviewers(pr);

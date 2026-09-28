@@ -8,28 +8,13 @@ function installDefaultHelpers() {
   window.asArray = (v) => (Array.isArray(v) ? v : []);
   window.buildFallbackActivityEvents = () => [];
   window.buildActivityEventKey = (e) => `${e?.sourceId || ''}|${e?.occurredAt || ''}`;
-  window.formatIsoDatetime = (v) => String(v || '-');
   window.normalizePrRootUrl = (url) => String(url || '');
-  window.getEffectiveViewerLogin = () => '';
-  window.normalizeActorLogin = (v) => String(v || '').trim();
-  window.resolveActorDisplayName = (login, _map, fallback) => fallback || login;
-  window.buildActorIdentityClassName = () => 'actor-identity';
-  window.buildActorIdentityTitle = () => '';
 }
 
 function clearHelpers() {
-  [
-    'asArray',
-    'buildFallbackActivityEvents',
-    'buildActivityEventKey',
-    'formatIsoDatetime',
-    'normalizePrRootUrl',
-    'getEffectiveViewerLogin',
-    'normalizeActorLogin',
-    'resolveActorDisplayName',
-    'buildActorIdentityClassName',
-    'buildActorIdentityTitle',
-  ].forEach((key) => delete window[key]);
+  ['asArray', 'buildFallbackActivityEvents', 'buildActivityEventKey', 'normalizePrRootUrl'].forEach(
+    (key) => delete window[key],
+  );
 }
 
 describe('ActivityEventsSection', () => {

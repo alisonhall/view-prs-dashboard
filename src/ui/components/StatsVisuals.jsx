@@ -5,25 +5,28 @@
  * REACT_MIGRATION_PLAN.md Track A.
  *
  * Rendered directly by ReviewStatsContent (no more ref+useEffect wrapper
- * around a vanilla DOM builder). Still reads the underlying reviewer-
- * activity timeline aggregation and date-range helpers off window, since
- * those are pure data-shaping functions with no DOM involvement and moving
- * them off window is Track C's (orchestration) concern, not this one.
+ * around a vanilla DOM builder). Phase 7, sub-phase 7.0 (see
+ * REACT_MIGRATION_PLAN.md): the reviewer-activity timeline
+ * aggregation/date-range helpers, and the sort-by write path, now come
+ * from useReviewStats() (state/ReviewStatsContext.jsx) instead of window.
  *
  * @module components/StatsVisuals
  */
 
 import { GraphCard } from './GraphCard';
 import { ReviewerActivityChart } from './ReviewerActivityChart';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { useReviewStats } from '../state/ReviewStatsContext';
 
+const { toCount } = createPrFormattingHelpers();
 const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
-const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
 
 const sumReviewerMetric = (reviewerRows, key) => asArray(reviewerRows).reduce((total, reviewer) => total + toCount(reviewer?.[key]), 0);
 
-const setSortBy = (sortBy) => window.updateStatsViewStateAndRerender?.({ sortBy });
-
 export function StatsVisuals({ stats, rows = [], actorsMap = {} }) {
+  const { getNormalizedStatsDateRange, aggregateReviewerCommentsTimeline, aggregateReviewerApprovalsTimeline, setStatsViewState } =
+    useReviewStats();
+  const setSortBy = (sortBy) => setStatsViewState({ sortBy });
   const reviewerRows = asArray(stats?.reviewerRows);
   if (!reviewerRows.length) {
     return null;
@@ -78,10 +81,8 @@ export function StatsVisuals({ stats, rows = [], actorsMap = {} }) {
       detail: `${reviewer.commentsFollowedByAuthorCommit} comments followed by author commits`,
     }));
 
-  const range = window.getNormalizedStatsDateRange ? window.getNormalizedStatsDateRange() : {};
-  const reviewerCommentsData = window.aggregateReviewerCommentsTimeline
-    ? window.aggregateReviewerCommentsTimeline(rows, actorsMap, range)
-    : { dates: [], series: [] };
+  const range = getNormalizedStatsDateRange();
+  const reviewerCommentsData = aggregateReviewerCommentsTimeline(rows, actorsMap, range);
   const reviewerCommentsDataSorted = {
     ...reviewerCommentsData,
     series: [...asArray(reviewerCommentsData?.series)].sort((a, b) => {
@@ -91,9 +92,7 @@ export function StatsVisuals({ stats, rows = [], actorsMap = {} }) {
       return String(a?.actor || '').localeCompare(String(b?.actor || ''));
     }),
   };
-  const reviewerApprovalsData = window.aggregateReviewerApprovalsTimeline
-    ? window.aggregateReviewerApprovalsTimeline(rows, actorsMap, range)
-    : { dates: [], series: [] };
+  const reviewerApprovalsData = aggregateReviewerApprovalsTimeline(rows, actorsMap, range);
 
   const hasAnyContent =
     visibleTotals.length > 0 ||

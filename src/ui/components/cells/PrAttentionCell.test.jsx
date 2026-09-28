@@ -5,10 +5,6 @@ require('@testing-library/jest-dom');
 const { PrAttentionCell } = require('./PrAttentionCell');
 
 describe('PrAttentionCell', () => {
-  afterEach(() => {
-    delete window.countPendingThreadComments;
-  });
-
   test('given neither attention nor flagged, when rendering, then the cell is empty', () => {
     render(
       <table>
@@ -23,7 +19,6 @@ describe('PrAttentionCell', () => {
   });
 
   test('given needsAttention, when rendering, then shows the attention icon with the default title', () => {
-    window.countPendingThreadComments = () => 0;
     render(
       <table>
         <tbody>
@@ -37,12 +32,12 @@ describe('PrAttentionCell', () => {
   });
 
   test('given needsAttention with pending comments, when rendering, then uses the pending-comments title', () => {
-    window.countPendingThreadComments = () => 2;
+    const pr = { reviewThreads: [{ comments: [{ state: 'PENDING' }, { state: 'PENDING' }] }] };
     render(
       <table>
         <tbody>
           <tr>
-            <PrAttentionCell pr={{}} needsAttention isFlagged={false} />
+            <PrAttentionCell pr={pr} needsAttention isFlagged={false} />
           </tr>
         </tbody>
       </table>,

@@ -6,14 +6,11 @@ const { PrInsightsRow } = require('./PrInsightsRow');
 
 function installDefaultHelpers() {
   window.parseMarkerState = () => '-';
-  window.formatIsoDatetime = (v) => String(v || '-');
-  window.buildRowActorsMap = (_row, actorsMap) => actorsMap || {};
   window.formatApproversDisplay = () => '-';
   window.formatRequestedReviewersDisplay = () => '-';
   window.formatAssignedUsersDisplay = () => '-';
   window.normalizeRowMetrics = () => ({});
   window.getOpenConversationCountWithMe = () => ({ count: 0, isViewerSpecific: false });
-  window.toCount = (v) => Number(v) || 0;
   window.getViewedFilesSummary = () => '0/0 viewed';
   window.getBadgeClassForStatus = (status) => `status-${String(status).toLowerCase()}`;
   window.getBadgeClassForCheck = (state) => `check-${String(state).toLowerCase()}`;
@@ -30,7 +27,7 @@ function installDefaultHelpers() {
 
 function clearHelpers() {
   Object.keys(window)
-    .filter((key) => /^(parseMarkerState|formatIsoDatetime|buildRowActorsMap|format(Approvers|RequestedReviewers|AssignedUsers)Display|normalizeRowMetrics|getOpenConversationCountWithMe|toCount|getViewedFilesSummary|getBadgeClassFor|formatReviewFootprint|formatConversationStatus|formatApprovalRisk|formatCommentUsefulness|asArray|buildFallbackActivityEvents|buildPrPeopleOptions|normalizeNotesListForUi)/.test(key))
+    .filter((key) => /^(parseMarkerState|format(Approvers|RequestedReviewers|AssignedUsers)Display|normalizeRowMetrics|getOpenConversationCountWithMe|getViewedFilesSummary|getBadgeClassFor|formatReviewFootprint|formatConversationStatus|formatApprovalRisk|formatCommentUsefulness|asArray|buildFallbackActivityEvents|buildPrPeopleOptions|normalizeNotesListForUi)/.test(key))
     .forEach((key) => delete window[key]);
 }
 

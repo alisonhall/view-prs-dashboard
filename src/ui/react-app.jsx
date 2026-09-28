@@ -33,6 +33,9 @@ import { QuickCheckButton } from './components/QuickCheckButton';
 import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
+import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
+import { ReviewStatsProvider } from './components/ReviewStatsProvider';
+import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -411,10 +414,6 @@ function computeStaticContainers() {
     applyLabelSelect: document.getElementById('apply-label-select-root'),
     autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
-    reviewStatsControlsInitialState:
-      typeof window.getStatsViewState === 'function'
-        ? window.getStatsViewState()
-        : { sortBy: 'riskyApprovals', filterMode: 'all', topN: 12, minComments: 0, startDate: '', endDate: '' },
   };
 }
 
@@ -439,6 +438,28 @@ function computeStaticContainers() {
  * first loads) - `prTable` state starts null and the portal only renders
  * once that bridge call has actually happened.
  */
+
+// Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): same default as
+// index.page.js's own former getDefaultStatsStartDate() - 3 months back
+// from today, formatted as a <input type="date"> value - now computed here
+// since PrDataProvider's statsViewState is the sole source of truth.
+const getDefaultStatsStartDate = () => {
+  const now = new Date();
+  const shifted = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, now.getUTCDate()));
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const DEFAULT_STATS_VIEW_STATE = {
+  sortBy: 'riskyApprovals',
+  filterMode: 'all',
+  topN: 12,
+  minComments: 0,
+  startDate: getDefaultStatsStartDate(),
+  endDate: '',
+};
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
@@ -703,17 +724,24 @@ function AppRoot() {
   }, []);
 
   return (
-    <PrDataProvider initialPayload={{}} initialSelectedRepo="" initialVisiblePrNumbers={null}>
+    <PrDataProvider
+      initialPayload={{}}
+      initialSelectedRepo=""
+      initialVisiblePrNumbers={null}
+      initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+    >
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
         {containers.filterFields.portals}
 
         {prTable &&
           createPortal(
-            <PrTableApp
-              onCheckboxChange={prTable.onCheckboxChange}
-              onAckAction={prTable.onAckAction}
-              onApplyLabel={prTable.onApplyLabel}
-            />,
+            <NeedsAttentionProvider>
+              <PrTableApp
+                onCheckboxChange={prTable.onCheckboxChange}
+                onAckAction={prTable.onAckAction}
+                onApplyLabel={prTable.onApplyLabel}
+              />
+            </NeedsAttentionProvider>,
             prTable.container,
             'pr-table',
           )}
@@ -780,66 +808,77 @@ function AppRoot() {
 
         {hasReviewStatsBeenVisible && containers.reviewStatsControls &&
           createPortal(
-            <Suspense fallback={null}>
-              <ReviewStatsControls
-                initialState={containers.reviewStatsControlsInitialState}
-                onChange={(patch) => window.updateStatsViewStateAndRerender?.(patch)}
-              />
-            </Suspense>,
+            <ReviewStatsProvider>
+              <Suspense fallback={null}>
+                <ReviewStatsControls />
+              </Suspense>
+            </ReviewStatsProvider>,
             containers.reviewStatsControls,
             'review-stats-controls',
           )}
 
         {hasReviewStatsBeenVisible && containers.reviewStatsContent &&
           createPortal(
-            <Suspense fallback={null}>
-              <ReviewStatsContent />
-            </Suspense>,
+            <ReviewStatsProvider>
+              <Suspense fallback={null}>
+                <ReviewStatsContent />
+              </Suspense>
+            </ReviewStatsProvider>,
             containers.reviewStatsContent,
             'review-stats-content',
           )}
 
         {hasAuthorInsightsBeenVisible && containers.authorInsightsSelector &&
           createPortal(
-            <Suspense fallback={null}>
-              <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />
-            </Suspense>,
+            <AuthorInsightsProvider>
+              <Suspense fallback={null}>
+                <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />
+              </Suspense>
+            </AuthorInsightsProvider>,
             containers.authorInsightsSelector,
             'author-insights-selector',
           )}
 
         {hasAuthorInsightsBeenVisible && containers.authorInsightsCreatedPrs &&
           createPortal(
-            <Suspense fallback={null}>
-              <AuthorCreatedPrsSection />
-            </Suspense>,
+            <AuthorInsightsProvider>
+              <Suspense fallback={null}>
+                <AuthorCreatedPrsSection />
+              </Suspense>
+            </AuthorInsightsProvider>,
             containers.authorInsightsCreatedPrs,
             'author-insights-created-prs',
           )}
 
         {hasAuthorInsightsBeenVisible && containers.authorInsightsHeader &&
           createPortal(
-            <Suspense fallback={null}>
-              <AuthorInsightsHeader />
-            </Suspense>,
+            <AuthorInsightsProvider>
+              <Suspense fallback={null}>
+                <AuthorInsightsHeader />
+              </Suspense>
+            </AuthorInsightsProvider>,
             containers.authorInsightsHeader,
             'author-insights-header',
           )}
 
         {hasAuthorInsightsBeenVisible && containers.authorInsightsNotes &&
           createPortal(
-            <Suspense fallback={null}>
-              <AuthorInsightsNotesSection />
-            </Suspense>,
+            <AuthorInsightsProvider>
+              <Suspense fallback={null}>
+                <AuthorInsightsNotesSection />
+              </Suspense>
+            </AuthorInsightsProvider>,
             containers.authorInsightsNotes,
             'author-insights-notes',
           )}
 
         {hasAuthorInsightsBeenVisible && containers.authorInsightsComments &&
           createPortal(
-            <Suspense fallback={null}>
-              <AuthorInsightsCommentsSection />
-            </Suspense>,
+            <AuthorInsightsProvider>
+              <Suspense fallback={null}>
+                <AuthorInsightsCommentsSection />
+              </Suspense>
+            </AuthorInsightsProvider>,
             containers.authorInsightsComments,
             'author-insights-comments',
           )}
@@ -919,10 +958,12 @@ function AppRoot() {
 
         {containers.autoRenderBlockedLinks &&
           createPortal(
-            <AutoRenderBlockedLinks
-              prNumbers={autoRenderBlockedLinks.prNumbers}
-              authorLogins={autoRenderBlockedLinks.authorLogins}
-            />,
+            <AuthorInsightsProvider>
+              <AutoRenderBlockedLinks
+                prNumbers={autoRenderBlockedLinks.prNumbers}
+                authorLogins={autoRenderBlockedLinks.authorLogins}
+              />
+            </AuthorInsightsProvider>,
             containers.autoRenderBlockedLinks,
             'auto-render-blocked-links',
           )}

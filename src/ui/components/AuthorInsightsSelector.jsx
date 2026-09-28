@@ -7,7 +7,8 @@
  * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
  * being pushed a pre-built option list + selected login via
  * window.updateAuthorInsightsSelector (deleted) - options are rebuilt from
- * the raw payload via window.buildAuthorInsightsEntries (already used
+ * the raw payload via useAuthorInsights()'s buildAuthorInsightsEntries
+ * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md; already used
  * internally by renderAuthorInsights for its own auto-select-first-author
  * validation, now also exposed for this component). Options are
  * deliberately empty when there are no local rows at all, even if
@@ -37,12 +38,11 @@
  */
 
 import { usePrData } from '../state/PrDataContext';
-
-const buildAuthorInsightsEntries = (rows, actorsMap) =>
-  window.buildAuthorInsightsEntries ? window.buildAuthorInsightsEntries(rows, actorsMap) : [];
+import { useAuthorInsights } from '../state/AuthorInsightsContext';
 
 export function AuthorInsightsSelector({ onChange }) {
   const { payload, selectedAuthorLogin } = usePrData();
+  const { buildAuthorInsightsEntries } = useAuthorInsights();
   const rows = Object.values(payload?.byPrNumber || {});
   const actorsMap = payload?.actorsMap || {};
   const options = rows.length ? buildAuthorInsightsEntries(rows, actorsMap) : [];

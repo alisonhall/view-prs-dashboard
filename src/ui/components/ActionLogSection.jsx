@@ -29,9 +29,9 @@
  */
 
 import { useEffect, useState } from 'react';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
-const formatIsoDatetime = (value) =>
-  window.formatIsoDatetime ? window.formatIsoDatetime(value) : String(value || '-');
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 const formatDuration = (ms) => {
   if (typeof ms !== 'number') return '-';

@@ -5,8 +5,10 @@
  * @module components/cells/PrCheckCell
  */
 
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+
+const { formatChkDisplay } = createPrStatusDisplayHelpers();
 
 export function PrCheckCell({ pr }) {
-  const formatChkDisplay = window.formatChkDisplay || ((value) => String(value || '-'));
   return <td className="check-cell">{formatChkDisplay(pr?.titleDisplay)}</td>;
 }

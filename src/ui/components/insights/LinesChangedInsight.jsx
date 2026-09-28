@@ -6,10 +6,11 @@
  * @module components/insights/LinesChangedInsight
  */
 
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+
+const { toCount } = createPrFormattingHelpers();
 
 export function LinesChangedInsight({ pr }) {
-  const toCount = window.toCount || ((value) => Number.parseInt(value, 10) || 0);
-
   const rawAdditions = String(pr?.additions ?? '').trim();
   const rawDeletions = String(pr?.deletions ?? '').trim();
   if (rawAdditions === '' || rawDeletions === '') {

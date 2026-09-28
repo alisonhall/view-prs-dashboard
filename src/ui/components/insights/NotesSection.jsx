@@ -3,11 +3,21 @@
  * notes, PR difficulty, Rally stories/links, analysis) that persist to
  * POST /view-prs/notes. Matches vanilla's createNotesSection (index.page.js).
  *
+ * noteAuthorMatchesSelection is built directly from
+ * pr-author-insights-identity.helpers.js (Phase 7, sub-phase 7.0 - see
+ * REACT_MIGRATION_PLAN.md) - it's a genuinely pure function, but its
+ * normalizeActorLogin/resolveActorDisplayName deps are threaded through
+ * from useActorIdentity() so it resolves aliases the same way the rest of
+ * the app does, rather than falling back to the factory's viewer-unaware
+ * defaults.
+ *
  * @module components/insights/NotesSection
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },
@@ -68,11 +78,13 @@ function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStorie
 }
 
 export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
+  const { normalizeActorLogin, resolveActorDisplayName } = useActorIdentity();
+  const { noteAuthorMatchesSelection } = useMemo(
+    () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
+    [normalizeActorLogin, resolveActorDisplayName],
+  );
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const resolveActorDisplayName =
-    window.resolveActorDisplayName || ((login, _actorsMap, fallback) => String(fallback || login || '').trim());
   const buildPrPeopleOptions = window.buildPrPeopleOptions || (() => []);
-  const noteAuthorMatchesSelection = window.noteAuthorMatchesSelection || (() => false);
   const normalizeNotesListForUi = window.normalizeNotesListForUi || ((value) => (Array.isArray(value) && value.length ? value : ['']));
   const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
   const recomputeDirtyPrSectionsFields = window.recomputeDirtyPrSectionsFields || (() => {});

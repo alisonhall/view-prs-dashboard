@@ -7,11 +7,6 @@ const { ActivityTimelineSummary } = require('./ActivityTimelineSummary');
 describe('ActivityTimelineSummary', () => {
   afterEach(() => {
     delete window.asArray;
-    delete window.getEffectiveViewerLogin;
-    delete window.normalizeActorLogin;
-    delete window.resolveActorDisplayName;
-    delete window.buildActorIdentityClassName;
-    delete window.buildActorIdentityTitle;
   });
 
   test('given no timeline data, when rendering, then falls back to the summary string', () => {
@@ -26,7 +21,6 @@ describe('ActivityTimelineSummary', () => {
 
   test('given timeline entries, when rendering, then renders a table with one row per date', () => {
     window.asArray = (v) => (Array.isArray(v) ? v : []);
-    window.normalizeActorLogin = (v) => String(v || '').trim();
 
     const activityTimelineRaw = [
       { date: '2026-01-05', actor: 'alice', type: 'comment', count: 2 },
@@ -44,7 +38,6 @@ describe('ActivityTimelineSummary', () => {
   describe('consolidating no-activity weekday runs', () => {
     beforeEach(() => {
       window.asArray = (v) => (Array.isArray(v) ? v : []);
-      window.normalizeActorLogin = (v) => String(v || '').trim();
     });
 
     // 2026-01-05/06 are a Monday/Tuesday; 2026-01-12 is the following
