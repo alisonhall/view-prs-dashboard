@@ -84,6 +84,9 @@ import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpe
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
+import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
+import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
+import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
 
 // Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
@@ -108,6 +111,28 @@ let pendingAutoRenderPayload = null;
 let hasDirtyPrSectionsFields = false;
 let latestStoredPayload = null;
 let latestSelectedRepo = "";
+
+// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md):
+// centralizes every write to the latestStoredPayload/latestSelectedRepo
+// pair, which used to be assigned independently at 8+ call sites with no
+// coordination between them (the original migration audit's flagged
+// highest-risk gap - "no request-generation guard beyond content
+// fingerprinting"). Passing `undefined` for either field leaves it
+// unchanged, matching each call site's own existing behavior exactly (e.g.
+// applyResolvedRepo only ever updated the repo, never the payload). This is
+// a pure call-site consolidation, not a behavior change - every caller
+// still computes its own next value (including any `x || previousValue`
+// fallback) the same way it did before, just passes the result in here
+// instead of assigning the module `let`s directly.
+const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
+  if (payload !== undefined) {
+    latestStoredPayload = payload;
+  }
+  if (selectedRepo !== undefined) {
+    latestSelectedRepo = selectedRepo;
+  }
+};
+
 let pendingAuthorFilterSelections = null;
 let pendingAssignedFilterSelections = null;
 let pendingApproverFilterSelections = null;
@@ -1595,13 +1620,9 @@ const { loadStoredData } =
     setLastSuccessfulRenderedCheckAt: (value) => {
       lastSuccessfulRenderedCheckAt = value;
     },
-    setLatestStoredPayload: (value) => {
-      latestStoredPayload = value;
-    },
+    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
     getLatestSelectedRepo: () => latestSelectedRepo,
-    setLatestSelectedRepo: (value) => {
-      latestSelectedRepo = value;
-    },
+    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
     updateBackfillStatusFromPayload: (...args) =>
       updateBackfillStatusFromPayload(...args),
     renderPrData: (...args) => renderPrData(...args),
@@ -1618,12 +1639,8 @@ const { runSinglePrUpdate } =
       formatCommandOutputWithAuthHint(...args),
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
     stripAnsi: (...args) => stripAnsi(...args),
-    setLatestStoredPayload: (value) => {
-      latestStoredPayload = value;
-    },
-    setLatestSelectedRepo: (value) => {
-      latestSelectedRepo = value;
-    },
+    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
+    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
     renderPrData: (...args) => renderPrData(...args),
     loadStoredData: (...args) => loadStoredData(...args),
     defaultRepo: DEFAULT_REPO,
@@ -1639,12 +1656,8 @@ const { handleRequestMoreMerged } =
     defaultRepo: DEFAULT_REPO,
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     postJson: (...args) => postJson(...args),
-    setLatestStoredPayload: (value) => {
-      latestStoredPayload = value;
-    },
-    setLatestSelectedRepo: (value) => {
-      latestSelectedRepo = value;
-    },
+    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
+    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
     renderPrData: (...args) => renderPrData(...args),
     loadStoredData: (...args) => loadStoredData(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
@@ -2796,163 +2809,20 @@ const isFlaggedEnabled = (entry, row) => {
   return value === true || String(value || "").toLowerCase() === "true";
 };
 
-const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
-  const prNumber = String(row.number || entry.prNumber || "").trim();
-
-  if (!prNumber) {
-    checkbox.checked = !nextValue;
-    setStatusTextOnly("Unable to update in-review state: missing PR number");
-    notifyFailureSnackbar(
-      "In-review update failed",
-      "Missing PR number",
-      "Unable to update in-review state",
-    );
-    return;
-  }
-
-  checkbox.disabled = true;
-  setStatusTextOnly(`${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`);
-
-  try {
-    const payload = {
-      repo: entry.repo || latestSelectedRepo || "",
-      ...(nextValue ? { inReview: prNumber } : { inReviewClear: prNumber }),
-    };
-    const response = await fetch("/view-prs/ack", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: { "Content-Type": "application/json" },
-    });
-    const result = await response.json();
-
-    if (!response.ok || result.ok === false) {
-      checkbox.checked = !nextValue;
-      setStatusTextOnly(`Failed to update in-review for #${prNumber}`);
-      notifyFailureSnackbar(
-        `In-review update failed for #${prNumber}`,
-        result,
-        `Failed to update in-review for #${prNumber}`,
-      );
-      return;
-    }
-
-    setStatusTextOnly(`${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`);
-    
-    // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
-    // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
-    if (result.flaggedByRepo && result.inReviewByRepo) {
-      // Minimal response: only update flag data. Reassign (don't mutate)
-      // latestStoredPayload so React's reference-equality checks (useState
-      // bail-out, useEffect deps) actually detect the change and re-render.
-      if (latestStoredPayload) {
-        latestStoredPayload = {
-          ...latestStoredPayload,
-          flaggedByRepo: result.flaggedByRepo,
-          inReviewByRepo: result.inReviewByRepo,
-        };
-      }
-      latestSelectedRepo = payload.repo || latestSelectedRepo;
-      // Don't call renderPrData() - checkbox already updated, UI is correct
-      // Smart groups will update on next full refresh
-    } else if (result.prData) {
-      // Full response (backward compatibility)
-      latestStoredPayload = result.prData;
-      latestSelectedRepo = payload.repo || latestSelectedRepo;
-    } else {
-      // Fallback to full reload only if no data returned
-      await loadStoredData(payload.repo || latestSelectedRepo || "");
-    }
-  } catch (_error) {
-    checkbox.checked = !nextValue;
-    setStatusTextOnly(`Failed to update in-review for #${prNumber}`);
-    notifyFailureSnackbar(
-      `In-review update failed for #${prNumber}`,
-      _error,
-      `Failed to update in-review for #${prNumber}`,
-    );
-  } finally {
-    checkbox.disabled = false;
-  }
-};
-
-const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
-  const prNumber = String(row.number || entry.prNumber || "").trim();
-
-  if (!prNumber) {
-    checkbox.checked = !nextValue;
-    setStatusTextOnly("Unable to update flagged state: missing PR number");
-    notifyFailureSnackbar(
-      "Flagged update failed",
-      "Missing PR number",
-      "Unable to update flagged state",
-    );
-    return;
-  }
-
-  checkbox.disabled = true;
-  setStatusTextOnly(`${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`);
-
-  try {
-    const payload = {
-      repo: entry.repo || latestSelectedRepo || "",
-      ...(nextValue ? { flagged: prNumber } : { flaggedClear: prNumber }),
-    };
-    const response = await fetch("/view-prs/ack", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: { "Content-Type": "application/json" },
-    });
-    const result = await response.json();
-
-    if (!response.ok || result.ok === false) {
-      checkbox.checked = !nextValue;
-      setStatusTextOnly(`Failed to update flagged state for #${prNumber}`);
-      notifyFailureSnackbar(
-        `Flagged update failed for #${prNumber}`,
-        result,
-        `Failed to update flagged state for #${prNumber}`,
-      );
-      return;
-    }
-
-    setStatusTextOnly(`${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`);
-    
-    // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
-    // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
-    if (result.flaggedByRepo && result.inReviewByRepo) {
-      // Minimal response: only update flag data. Reassign (don't mutate)
-      // latestStoredPayload so React's reference-equality checks (useState
-      // bail-out, useEffect deps) actually detect the change and re-render.
-      if (latestStoredPayload) {
-        latestStoredPayload = {
-          ...latestStoredPayload,
-          flaggedByRepo: result.flaggedByRepo,
-          inReviewByRepo: result.inReviewByRepo,
-        };
-      }
-      latestSelectedRepo = payload.repo || latestSelectedRepo;
-      // Don't call renderPrData() - checkbox already updated, UI is correct
-      // Smart groups will update on next full refresh
-    } else if (result.prData) {
-      // Full response (backward compatibility)
-      latestStoredPayload = result.prData;
-      latestSelectedRepo = payload.repo || latestSelectedRepo;
-    } else {
-      // Fallback to full reload only if no data returned
-      await loadStoredData(payload.repo || latestSelectedRepo || "");
-    }
-  } catch (_error) {
-    checkbox.checked = !nextValue;
-    setStatusTextOnly(`Failed to update flagged state for #${prNumber}`);
-    notifyFailureSnackbar(
-      `Flagged update failed for #${prNumber}`,
-      _error,
-      `Failed to update flagged state for #${prNumber}`,
-    );
-  } finally {
-    checkbox.disabled = false;
-  }
-};
+// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
+// wire-ups around pr-row-checkbox-actions.helpers.js's extracted factory -
+// same names, same window.*/DI call sites elsewhere in this file (notably
+// react-callbacks.helpers.js's createReactCallbacks() wiring), unchanged.
+const { toggleInReviewForRow, toggleFlaggedForRow } =
+  prRowCheckboxActionsHelperFactory.createPrRowCheckboxActionsHelpers({
+    fetchFn: (...args) => fetch(...args),
+    setStatusTextOnly: (...args) => setStatusTextOnly(...args),
+    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
+    getLatestStoredPayload: () => latestStoredPayload,
+    getLatestSelectedRepo: () => latestSelectedRepo,
+    applyLatestPrData: (...args) => applyLatestPrData(...args),
+    loadStoredData: (...args) => loadStoredData(...args),
+  });
 
 const { normalizeNotesListForUi } = prNotesHelperFactory.createPrNotesHelpers();
 
@@ -3018,9 +2888,7 @@ const prDataTabOrchestrator =
       getLatestSchedulerState: () => latestSchedulerState,
     },
     stateSetters: {
-      setLatestStoredPayload: (value) => {
-        latestStoredPayload = value;
-      },
+      setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
       setLastSuccessfulRenderedCheckAt: (value) => {
         lastSuccessfulRenderedCheckAt = value;
       },
@@ -3863,7 +3731,7 @@ const applyResolvedRepo = (resolvedRepo) => {
   if (!resolvedRepo) {
     return;
   }
-  latestSelectedRepo = resolvedRepo;
+  applyLatestPrData({ selectedRepo: resolvedRepo });
   if (shouldRefetchLabelsForRepo({ repo: resolvedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
     labelsFetchedForRepo = resolvedRepo;
     void refreshAvailableRepoLabels(resolvedRepo);
@@ -3873,7 +3741,7 @@ const applyResolvedRepo = (resolvedRepo) => {
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // Update global state
   if (payload) {
-    latestStoredPayload = payload;
+    applyLatestPrData({ payload });
   }
 
   // Get container element
@@ -4039,171 +3907,68 @@ const flushPendingAutoRender = () => {
   }, 0);
 };
 
-const pollForDataChanges = async () => {
-  const pollAttemptedAt = new Date().toISOString();
-  try {
-    let latestVersion = "";
-    let shouldTryManifestDelta = false;
-    let dataResult = null;
-
-    if (supportsDataMetaPolling) {
-      const metaResponse = await fetch("/view-prs/data-meta");
-      if (metaResponse.status === 404) {
-        supportsDataMetaPolling = false;
-      } else {
-        const metaResult = await metaResponse.json();
-        if (!metaResponse.ok || metaResult.ok === false) {
-          throw new Error(
-            metaResult?.error ||
-              `Polling metadata request failed (HTTP ${metaResponse.status || "unknown"})`,
-          );
-        }
-
-        latestVersion = String(metaResult?.dataVersion || "").trim();
-        if (!latestVersion || latestVersion === lastSeenDataVersion) {
-          markPollSuccess(pollAttemptedAt);
-          return;
-        }
-
-        if (
-          metaResult?.supportsDataManifest === true &&
-          supportsDataManifestPolling &&
-          latestStoredPayload
-        ) {
-          shouldTryManifestDelta = true;
-        }
-      }
-    }
-
-    if (shouldTryManifestDelta) {
-      const manifestResponse = await fetch("/view-prs/data-manifest");
-      if (manifestResponse.status === 404) {
-        supportsDataManifestPolling = false;
-      } else {
-        const manifestResult = await manifestResponse.json();
-        if (manifestResponse.ok && manifestResult?.ok !== false) {
-          const nextManifest = manifestResult?.manifest || {};
-          const previousManifest =
-            latestPrManifest && Object.keys(latestPrManifest).length > 0
-              ? latestPrManifest
-              : computePrDataManifest(latestStoredPayload);
-          const manifestDelta = getManifestDelta({
-            previousManifest,
-            nextManifest,
-          });
-
-          if (!manifestDelta.hasChanges) {
-            latestPrManifest = nextManifest;
-            const manifestVersion = String(
-              manifestResult?.dataMeta?.dataVersion || latestVersion,
-            ).trim();
-            if (manifestVersion) {
-              lastSeenDataVersion = manifestVersion;
-            }
-            markPollSuccess(pollAttemptedAt);
-            return;
-          }
-
-          const deltaResponse = await fetch("/view-prs/data-delta", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
-          });
-          const deltaResult = await deltaResponse.json();
-          if (deltaResponse.ok && deltaResult?.ok !== false) {
-            dataResult = mergeDataDeltaPayload({
-              basePayload: latestStoredPayload,
-              deltaByPrNumber: deltaResult?.byPrNumber || {},
-              removedPrNumbers: manifestDelta.removedPrNumbers,
-              nextDataMeta: manifestResult?.dataMeta || null,
-              nextScheduler: deltaResult?.scheduler || null,
-              nextLastRun: deltaResult?.lastRun || null,
-              nextManifest,
-            });
-            latestPrManifest = nextManifest;
-          }
-        }
-      }
-    }
-
-    if (!dataResult) {
-      const response = await fetch("/view-prs/data");
-      const result = await response.json();
-      if (!response.ok || result.ok === false) {
-        throw new Error(
-          result?.error ||
-            `Polling data request failed (HTTP ${response.status || "unknown"})`,
-        );
-      }
-      dataResult = result;
-    }
-
-    const fullDataVersion = String(
-      dataResult?.dataMeta?.dataVersion || latestVersion,
-    ).trim();
-    if (fullDataVersion && fullDataVersion === lastSeenDataVersion) {
-      markPollSuccess(pollAttemptedAt);
-      return;
-    }
-    if (fullDataVersion) {
-      lastSeenDataVersion = fullDataVersion;
-    }
-
-    const latestStamp = String(dataResult?.lastRun?.updatedAt || "").trim();
-    latestStoredPayload = dataResult;
-    latestPrManifest =
-      dataResult?.dataManifest || computePrDataManifest(dataResult);
-
-    const newFingerprint = computePrDataFingerprint(dataResult);
-    const newMetaFingerprint = computePrDataMetaFingerprint(dataResult);
-    const renderAction = getDataPollRenderAction({
-      newFingerprint,
-      lastRenderedPrFingerprint,
-      newMetaFingerprint,
-      lastRenderedMetaFingerprint,
-      focusedElement: document.activeElement,
-      hasDirtyPrSectionsFields,
-      hasPendingAutoRender: pendingAutoRenderPayload != null,
-      result: dataResult,
-    });
-    if (renderAction.type === "skip-render") {
-      return;
-    }
-
-    if (
-      renderAction.type === "queue-render" ||
-      renderAction.type === "queue-render-and-listen"
-    ) {
-      pendingAutoRenderPayload = renderAction.payload;
-      renderAutoRenderBlockedIndicator();
-      if (renderAction.type === "queue-render-and-listen") {
-        document.activeElement?.addEventListener?.("blur", flushPendingAutoRender, {
-          once: true,
-        });
-      }
-      markPollSuccess(pollAttemptedAt);
-      return;
-    }
-
-    lastRenderedPrFingerprint = newFingerprint;
-    lastRenderedMetaFingerprint = newMetaFingerprint;
-    renderPrData(renderAction.payload);
-    markPollSuccess(pollAttemptedAt);
-
-    if (latestStamp && latestStamp !== lastRenderedRunStamp) {
-      lastRenderedRunStamp = latestStamp;
-      setStatusMessage(`Auto-updated from latest run at ${latestStamp}`);
-      return;
-    }
-
-    setStatusMessage("Auto-updated from latest stored data changes");
-  } catch (error) {
-    showPollFailureWarning({
-      errorSource: error,
-      attemptedAt: pollAttemptedAt,
-    });
-  }
-};
+// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md): a
+// thin wire-up around pr-data-polling-orchestration.helpers.js's extracted
+// factory - the actual fetch-cascade/fingerprint-diff/render-decision logic
+// lives there now (pure, DI-tested, zero window/DOM dependency of its own).
+// This function's own identity (a plain top-level function assigned to
+// window.pollForDataChanges the same way as before) is preserved
+// deliberately: index.html.test.js calls window.pollForDataChanges()
+// directly at 17 call sites and never mounts <PrDataPolling>, so removing
+// this wrapper (not just its body) would break that suite.
+const { pollForDataChanges } =
+  prDataPollingOrchestrationHelperFactory.createPrDataPollingOrchestrationHelpers({
+    fetchFn: (...args) => fetch(...args),
+    documentRef: typeof document !== "undefined" ? document : null,
+    computePrDataManifest: (...args) => computePrDataManifest(...args),
+    getManifestDelta: (...args) => getManifestDelta(...args),
+    mergeDataDeltaPayload: (...args) => mergeDataDeltaPayload(...args),
+    computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
+    computePrDataMetaFingerprint: (...args) => computePrDataMetaFingerprint(...args),
+    getDataPollRenderAction: (...args) => getDataPollRenderAction(...args),
+    getSupportsDataMetaPolling: () => supportsDataMetaPolling,
+    setSupportsDataMetaPolling: (value) => {
+      supportsDataMetaPolling = value;
+    },
+    getSupportsDataManifestPolling: () => supportsDataManifestPolling,
+    setSupportsDataManifestPolling: (value) => {
+      supportsDataManifestPolling = value;
+    },
+    getLastSeenDataVersion: () => lastSeenDataVersion,
+    setLastSeenDataVersion: (value) => {
+      lastSeenDataVersion = value;
+    },
+    getLatestPrManifest: () => latestPrManifest,
+    setLatestPrManifest: (value) => {
+      latestPrManifest = value;
+    },
+    getLatestStoredPayload: () => latestStoredPayload,
+    applyLatestPrData: (...args) => applyLatestPrData(...args),
+    getLastRenderedPrFingerprint: () => lastRenderedPrFingerprint,
+    setLastRenderedPrFingerprint: (value) => {
+      lastRenderedPrFingerprint = value;
+    },
+    getLastRenderedMetaFingerprint: () => lastRenderedMetaFingerprint,
+    setLastRenderedMetaFingerprint: (value) => {
+      lastRenderedMetaFingerprint = value;
+    },
+    getLastRenderedRunStamp: () => lastRenderedRunStamp,
+    setLastRenderedRunStamp: (value) => {
+      lastRenderedRunStamp = value;
+    },
+    getHasDirtyPrSectionsFields: () => hasDirtyPrSectionsFields,
+    getPendingAutoRenderPayload: () => pendingAutoRenderPayload,
+    setPendingAutoRenderPayload: (value) => {
+      pendingAutoRenderPayload = value;
+    },
+    renderPrData: (...args) => renderPrData(...args),
+    renderAutoRenderBlockedIndicator: (...args) =>
+      renderAutoRenderBlockedIndicator(...args),
+    flushPendingAutoRender: (...args) => flushPendingAutoRender(...args),
+    markPollSuccess: (...args) => markPollSuccess(...args),
+    showPollFailureWarning: (...args) => showPollFailureWarning(...args),
+    setStatusMessage: (...args) => setStatusMessage(...args),
+  });
 
 const pollBackfillStatus = async () => {
   if (!isBackfillRunning || isBackfillActionPending) {
@@ -4327,8 +4092,7 @@ const handleRunScript = async () => {
 
       const latestData = result.prData || null;
       if (latestData) {
-        latestStoredPayload = latestData;
-        latestSelectedRepo = effectiveRepo;
+        applyLatestPrData({ payload: latestData, selectedRepo: effectiveRepo });
         renderPrData(latestData, effectiveRepo);
       }
     }
@@ -4377,89 +4141,34 @@ const handleRunScript = async () => {
   }
 };
 
-const runAckAction = async (payload, actionLabel) => {
-  setStatusMessage(`${actionLabel}...`);
-  setOutputMessage("");
-  const finishActivity = beginRequestActivity("ackClear");
-
-  try {
-    const { response, result } = await postJson("/view-prs/ack", payload);
-
-    if (!response.ok || result.ok === false) {
-      const authHint = getGithubAuthFailureHint(result);
-      setStatusMessage(
-        authHint
-          ? `Failed (${response.status}) - GitHub auth required`
-          : `Failed (${response.status})`,
-      );
-      setOutputMessage(formatCommandOutputWithAuthHint(result));
-      showErrorNotification(
-        `${actionLabel} failed`,
-        authHint
-          ? "GitHub authentication or SSO required. Check the output below for authorization link."
-          : `HTTP ${response.status}: Check the output below for details.`,
-        0,
-      );
-      return;
-    }
-
-    setStatusMessage(`${actionLabel} completed`);
-    setOutputMessage(
-      formatCommandOutput(result, { includeError: false }) ||
-        `${actionLabel} completed.`,
-    );
-
-    const warningSummary = summarizeAckRefreshWarnings(result?.refreshErrors);
-    if (warningSummary) {
-      showWarningNotification(
-        `${actionLabel} completed with warnings (${warningSummary.summaryText})`,
-        warningSummary.sample,
-      );
-    }
-
-    if (result.prData) {
-      renderPrData(result.prData, payload.repo || DEFAULT_REPO);
-    } else {
-      await loadStoredData(payload.repo || DEFAULT_REPO);
-    }
-  } catch (error) {
-    setStatusMessage("Failed (network/error)");
-    setOutputMessage(String(error));
-    showErrorNotification(
-      `${actionLabel} failed`,
-      String(error || "An unknown error occurred"),
-      0,
-    );
-  } finally {
-    finishActivity();
-  }
-};
-
-const runAckOnlyWorkflow = async (ackValue = "", repoOverride = "") => {
-  const body = getFormBody();
-
-  const ack = String(ackValue || body.prNumbers || "").trim();
-  if (!ack) {
-    setStatusMessage('Ack only requires numeric value(s) in "PR number(s)"');
-    return;
-  }
-
-  const repo = String(repoOverride || body.repo || "").trim();
-  await runAckAction({ repo, ack }, "Ack only");
-};
-
-const runClearOnlyWorkflow = async (ackClearValue = "", repoOverride = "") => {
-  const body = getFormBody();
-
-  const ackClear = String(ackClearValue || body.prNumbers || "").trim();
-  if (!ackClear) {
-    setStatusMessage('Clear only requires numeric value(s) in "PR number(s)"');
-    return;
-  }
-
-  const repo = String(repoOverride || body.repo || "").trim();
-  await runAckAction({ repo, ackClear }, "Clear only");
-};
+// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
+// wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same
+// names, same call sites elsewhere in this file (handleAckOnly/
+// handleClearOnly below, react-callbacks.helpers.js's createReactCallbacks()
+// wiring), unchanged. runAckAction/runApplyLabelAction are only ever called
+// internally by runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow
+// now that all five live inside the same factory instance, so they're not
+// destructured here - index.page.js has no other caller for them.
+const {
+  runAckOnlyWorkflow,
+  runClearOnlyWorkflow,
+  runApplyLabelWorkflow,
+} = prAckLabelActionsHelperFactory.createPrAckLabelActionsHelpers({
+  postJson: (...args) => postJson(...args),
+  setStatusMessage: (...args) => setStatusMessage(...args),
+  setOutputMessage: (...args) => setOutputMessage(...args),
+  beginRequestActivity: (...args) => beginRequestActivity(...args),
+  getGithubAuthFailureHint: (...args) => getGithubAuthFailureHint(...args),
+  formatCommandOutput: (...args) => formatCommandOutput(...args),
+  formatCommandOutputWithAuthHint: (...args) => formatCommandOutputWithAuthHint(...args),
+  showErrorNotification: (...args) => showErrorNotification(...args),
+  showWarningNotification: (...args) => showWarningNotification(...args),
+  summarizeAckRefreshWarnings: (...args) => summarizeAckRefreshWarnings(...args),
+  renderPrData: (...args) => renderPrData(...args),
+  loadStoredData: (...args) => loadStoredData(...args),
+  getFormBody: (...args) => getFormBody(...args),
+  defaultRepo: DEFAULT_REPO,
+});
 
 const handleAckOnly = async () => {
   await runAckOnlyWorkflow();
@@ -4529,88 +4238,6 @@ const refreshAvailableRepoLabels = async (repoOverride) => {
   } finally {
     isFetchingRepoLabels = false;
   }
-};
-
-const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
-  setStatusMessage(`${actionLabel}...`);
-  setOutputMessage("");
-  const finishActivity = beginRequestActivity("labelApply");
-
-  try {
-    const { response, result } = await postJson("/view-prs/labels/apply", {
-      repo,
-      label,
-      prNumbers,
-    });
-
-    if (!response.ok || result.ok === false) {
-      const authHint = getGithubAuthFailureHint(result);
-      setStatusMessage(
-        authHint
-          ? `Failed (${response.status}) - GitHub auth required`
-          : `Failed (${response.status})`,
-      );
-      setOutputMessage(formatCommandOutputWithAuthHint(result));
-      showErrorNotification(
-        `${actionLabel} failed`,
-        authHint
-          ? "GitHub authentication or SSO required. Check the output below for authorization link."
-          : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
-        0,
-      );
-      return;
-    }
-
-    setStatusMessage(result.summary || `${actionLabel} completed`);
-
-    const combinedErrors = [
-      ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
-      ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
-    ];
-    if (combinedErrors.length) {
-      showWarningNotification(
-        `${actionLabel} completed with ${combinedErrors.length} error(s)`,
-        combinedErrors
-          .map((entry) => `#${entry.prNumber}: ${entry.error}`)
-          .join("\n"),
-      );
-    }
-
-    if (result.prData) {
-      renderPrData(result.prData, repo || DEFAULT_REPO);
-    } else {
-      await loadStoredData(repo || DEFAULT_REPO);
-    }
-  } catch (error) {
-    setStatusMessage("Failed (network/error)");
-    setOutputMessage(String(error));
-    showErrorNotification(
-      `${actionLabel} failed`,
-      String(error || "An unknown error occurred"),
-      0,
-    );
-  } finally {
-    finishActivity();
-  }
-};
-
-const runApplyLabelWorkflow = async (prNumbersValue = "", labelValue = "", repoOverride = "") => {
-  const body = getFormBody();
-
-  const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
-  if (!prNumbers) {
-    setStatusMessage('Apply label requires numeric value(s) in "PR number(s)"');
-    return;
-  }
-
-  const label = String(labelValue || "").trim();
-  if (!label) {
-    setStatusMessage("Choose a label to apply");
-    return;
-  }
-
-  const repo = String(repoOverride || body.repo || "").trim();
-  await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
 };
 
 const handleApplyLabelClick = async () => {
