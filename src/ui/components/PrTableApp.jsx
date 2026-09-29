@@ -104,6 +104,66 @@ export function PrTableApp({
     });
   }, []);
 
+  // Bulk counterpart to markPrBusy/clearPrBusy above, for vanilla code
+  // (index.page.js's ack/apply-label workflows, via
+  // pr-ack-label-actions.helpers.js) to mark every PR number in a
+  // multi-PR batch request busy at once - the per-row withPrBusy wrapper
+  // below only ever covers the single row a user directly clicked, so a
+  // bulk Ack/Clear/Apply-label submitted from the "Run & Filter" tab (which
+  // never goes through a row's own onClick) previously showed no progress
+  // indicator at all for any of the PRs it affected.
+  useEffect(() => {
+    window.markPrsBusy = (prNumbers, repo) => {
+      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo));
+    };
+    window.clearPrsBusy = (prNumbers, repo) => {
+      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrBusy(prNumber, repo));
+    };
+    return () => {
+      delete window.markPrsBusy;
+      delete window.clearPrsBusy;
+    };
+  }, [markPrBusy, clearPrBusy]);
+
+  // State: PR numbers queued for a chunked bulk Ack/Clear/Apply-label
+  // request (pr-ack-label-actions.helpers.js) that hasn't reached the
+  // network yet, distinct from busyPrNumbers above ("actively in flight
+  // right now"). A batch larger than one chunk is marked queued in full up
+  // front, then each chunk's PR numbers move queued -> busy right before
+  // that chunk's own request actually fires - see PrNumberCell's own
+  // comment for how the two states render differently.
+  const [queuedPrNumbers, setQueuedPrNumbers] = useState(() => new Set());
+
+  const markPrQueued = useCallback((prNumber, repo) => {
+    const key = buildActivePrKey(prNumber, repo);
+    setQueuedPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, []);
+
+  const clearPrQueued = useCallback((prNumber, repo) => {
+    const key = buildActivePrKey(prNumber, repo);
+    setQueuedPrNumbers((prev) => {
+      if (!prev.has(key)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.markPrsQueued = (prNumbers, repo) => {
+      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrQueued(prNumber, repo));
+    };
+    window.clearPrsQueued = (prNumbers, repo) => {
+      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrQueued(prNumber, repo));
+    };
+    return () => {
+      delete window.markPrsQueued;
+      delete window.clearPrsQueued;
+    };
+  }, [markPrQueued, clearPrQueued]);
+
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
   // outcome (success, failure, or thrown error). useCallback keeps these
@@ -160,6 +220,14 @@ export function PrTableApp({
       ),
     [activePrNumbers, busyPrNumbers],
   );
+
+  // Excludes anything already in combinedActivePrNumbers - "actively
+  // running" always visually wins over "queued" for a given row, in the
+  // (normally brief) moment a key could be in both sets.
+  const combinedQueuedPrNumbers = useMemo(() => {
+    const activeKeySet = new Set(combinedActivePrNumbers);
+    return Array.from(queuedPrNumbers).filter((key) => !activeKeySet.has(key));
+  }, [queuedPrNumbers, combinedActivePrNumbers]);
 
   // State: PR JSON details modal target ({ entry, pr } | null)
   const [jsonModalTarget, setJsonModalTarget] = useState(null);
@@ -590,6 +658,7 @@ export function PrTableApp({
           getPrFlags={getPrFlags}
           checkNeedsAttention={checkNeedsAttention}
           activePrNumbers={combinedActivePrNumbers}
+          queuedPrNumbers={combinedQueuedPrNumbers}
         />
       ))}
       <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />

@@ -50,6 +50,7 @@ export function PrSection({
   getPrFlags,
   checkNeedsAttention,
   activePrNumbers,
+  queuedPrNumbers,
 }) {
   const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, dateHeader, attentionCount } = section;
   // `totalCount` (the full, undeduplicated row count) is what the "Total
@@ -105,6 +106,7 @@ export function PrSection({
             getPrFlags={getPrFlags}
             checkNeedsAttention={checkNeedsAttention}
             activePrNumbers={activePrNumbers}
+            queuedPrNumbers={queuedPrNumbers}
           />
         ) : (
           <pre>(none)</pre>

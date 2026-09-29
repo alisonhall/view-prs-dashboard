@@ -6,9 +6,16 @@
  */
 
 
-export function PrNumberCell({ pr, repo, isActive = false }) {
+export function PrNumberCell({ pr, repo, isActive = false, isQueued = false }) {
   const prNumber = pr?.number || '';
   const href = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
+  // "Active" (a request for this PR is actually in flight) always wins
+  // visually over "queued" (part of a chunked bulk request that hasn't
+  // reached the network yet) - see PrTableApp.jsx's combinedQueuedPrNumbers,
+  // which already excludes anything in combinedActivePrNumbers, but this
+  // guards the render itself too in case a caller ever passes both.
+  const showActive = isActive;
+  const showQueued = !isActive && isQueued;
 
   return (
     <td className="pr-number-cell" data-pr-number={String(prNumber)} data-repo={String(repo || '')}>
@@ -21,8 +28,14 @@ export function PrNumberCell({ pr, repo, isActive = false }) {
         <span className="pr-number-cell-progress">
           <span
             className="pr-progress-indicator"
-            hidden={!isActive}
+            hidden={!showActive}
             title={`PR #${prNumber} update in progress`}
+            aria-hidden="true"
+          />
+          <span
+            className="pr-progress-indicator pr-progress-indicator--queued"
+            hidden={!showQueued}
+            title={`PR #${prNumber} queued for update`}
             aria-hidden="true"
           />
         </span>

@@ -1872,6 +1872,17 @@
             display: none;
         }
 
+        /* Distinct "queued, not yet started" state (a chunked bulk Ack/
+           Clear/Apply-label request's PR numbers before their own chunk's
+           request has actually fired) - a static muted dot, not the
+           spinning ring above, so it reads as "waiting" rather than
+           "in progress" at a glance. */
+        .pr-progress-indicator--queued {
+            border-color: #9aa0a6;
+            background: #9aa0a6;
+            animation: none;
+        }
+
         @keyframes pr-progress-spin {
             from {
                 transform: rotate(0deg);

@@ -87,6 +87,7 @@ import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
+import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
 
 // Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
@@ -4141,6 +4142,8 @@ const handleRunScript = async () => {
   }
 };
 
+const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
+
 // Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
 // wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same
 // names, same call sites elsewhere in this file (handleAckOnly/
@@ -4168,6 +4171,16 @@ const {
   loadStoredData: (...args) => loadStoredData(...args),
   getFormBody: (...args) => getFormBody(...args),
   defaultRepo: DEFAULT_REPO,
+  parseCsvTokens: (...args) => parseCsvTokens(...args),
+  // Bridges into PrTableApp.jsx's per-row busy/queued indicators - see
+  // that component's own comments. No-op (via
+  // createPrAckLabelActionsHelpers' own safe fallback) when React hasn't
+  // mounted the table yet.
+  markPrsBusy: (...args) => window.markPrsBusy?.(...args),
+  clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
+  markPrsQueued: (...args) => window.markPrsQueued?.(...args),
+  clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
+  runWithConcurrencyLimit: (...args) => runWithConcurrencyLimit(...args),
 });
 
 const handleAckOnly = async () => {

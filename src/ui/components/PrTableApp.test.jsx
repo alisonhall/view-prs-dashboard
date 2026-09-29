@@ -709,6 +709,141 @@ describe('PrTableApp', () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
       expect(typeof capturedSectionProps[0].onUpdatePr).toBe('function');
     });
+
+    // Bulk counterpart to the single-row wrappers above - covers vanilla code
+    // (pr-ack-label-actions.helpers.js's runAckAction/runApplyLabelAction)
+    // marking every PR number in a multi-PR batch request busy via
+    // window.markPrsBusy/window.clearPrsBusy, not just the row a user
+    // directly clicked.
+    describe('window.markPrsBusy/window.clearPrsBusy (bulk Ack/Apply-Label from the Run & Filter tab)', () => {
+      afterEach(() => {
+        delete window.markPrsBusy;
+        delete window.clearPrsBusy;
+      });
+
+      test('given the component is mounted, when calling window.markPrsBusy with several PR numbers, then all of them show up in activePrNumbers', () => {
+        const payload = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+            2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+          },
+        };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        expect(typeof window.markPrsBusy).toBe('function');
+
+        React.act(() => {
+          window.markPrsBusy(['1', '2'], 'owner/repo');
+        });
+
+        expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(
+          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
+        );
+      });
+
+      test('given several PR numbers already marked busy, when calling window.clearPrsBusy with them, then all of them are removed from activePrNumbers', () => {
+        const payload = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+            2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+          },
+        };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        React.act(() => {
+          window.markPrsBusy(['1', '2'], 'owner/repo');
+        });
+        expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(
+          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
+        );
+
+        React.act(() => {
+          window.clearPrsBusy(['1', '2'], 'owner/repo');
+        });
+        expect(capturedSectionProps.at(-1).activePrNumbers).not.toEqual(
+          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
+        );
+      });
+
+      test('given the component unmounts, when checking the bridges, then they are removed from window', () => {
+        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+        const { unmount } = renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        expect(typeof window.markPrsBusy).toBe('function');
+        unmount();
+        expect(window.markPrsBusy).toBeUndefined();
+        expect(window.clearPrsBusy).toBeUndefined();
+      });
+    });
+
+    // Bulk counterpart's "queued, not yet started" phase - distinct from
+    // the busy bridge above, for a chunked bulk request's PR numbers before
+    // their own chunk's request has actually reached the network (see
+    // pr-ack-label-actions.helpers.js's own comment).
+    describe('window.markPrsQueued/window.clearPrsQueued (chunked bulk Ack/Apply-Label)', () => {
+      afterEach(() => {
+        delete window.markPrsQueued;
+        delete window.clearPrsQueued;
+      });
+
+      test('given the component is mounted, when calling window.markPrsQueued with several PR numbers, then all of them show up in queuedPrNumbers', () => {
+        const payload = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+            2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+          },
+        };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        expect(typeof window.markPrsQueued).toBe('function');
+
+        React.act(() => {
+          window.markPrsQueued(['1', '2'], 'owner/repo');
+        });
+
+        expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(
+          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
+        );
+      });
+
+      test('given several PR numbers already marked queued, when calling window.clearPrsQueued with them, then all of them are removed from queuedPrNumbers', () => {
+        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        React.act(() => {
+          window.markPrsQueued(['1'], 'owner/repo');
+        });
+        expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::1']);
+
+        React.act(() => {
+          window.clearPrsQueued(['1'], 'owner/repo');
+        });
+        expect(capturedSectionProps.at(-1).queuedPrNumbers).not.toContain('owner/repo::1');
+      });
+
+      test('given a PR is both queued and busy, when checking queuedPrNumbers, then it is excluded (active wins over queued)', () => {
+        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        React.act(() => {
+          window.markPrsQueued(['1'], 'owner/repo');
+          window.markPrsBusy(['1'], 'owner/repo');
+        });
+
+        expect(capturedSectionProps.at(-1).activePrNumbers).toContain('owner/repo::1');
+        expect(capturedSectionProps.at(-1).queuedPrNumbers).not.toContain('owner/repo::1');
+      });
+
+      test('given the component unmounts, when checking the bridges, then they are removed from window', () => {
+        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+        const { unmount } = renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        expect(typeof window.markPrsQueued).toBe('function');
+        unmount();
+        expect(window.markPrsQueued).toBeUndefined();
+        expect(window.clearPrsQueued).toBeUndefined();
+      });
+    });
   });
 
   describe('PR JSON modal', () => {

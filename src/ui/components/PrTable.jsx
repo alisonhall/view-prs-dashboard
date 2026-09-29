@@ -75,12 +75,15 @@ export function PrTable({
   getPrFlags,
   checkNeedsAttention,
   activePrNumbers,
+  queuedPrNumbers,
 }) {
-  // activePrNumbers is already a list of composite "repo::prNumber" keys
-  // (see PrTableApp's combinedActivePrNumbers/buildActivePrKey) - PR
-  // numbers are only unique within a repo, so matching by number alone
-  // would show another repo's in-progress spinner on this row too.
+  // activePrNumbers/queuedPrNumbers are already lists of composite
+  // "repo::prNumber" keys (see PrTableApp's combinedActivePrNumbers/
+  // combinedQueuedPrNumbers/buildActivePrKey) - PR numbers are only unique
+  // within a repo, so matching by number alone would show another repo's
+  // in-progress/queued spinner on this row too.
   const activePrNumberSet = new Set((activePrNumbers || []).map(String));
+  const queuedPrNumberSet = new Set((queuedPrNumbers || []).map(String));
   return (
     <table className="pr-data-table">
       <colgroup>
@@ -119,6 +122,7 @@ export function PrTable({
 
           const needsAttention = checkNeedsAttention ? checkNeedsAttention(entry) : false;
           const isActive = activePrNumberSet.has(buildActivePrKey(entry.data.number, entry.repo));
+          const isQueued = queuedPrNumberSet.has(buildActivePrKey(entry.data.number, entry.repo));
 
           return (
             <PrRow
@@ -148,6 +152,7 @@ export function PrTable({
               isAcknowledged={flags.isAcknowledged}
               needsAttention={needsAttention}
               isActive={isActive}
+              isQueued={isQueued}
               onToggleInsights={onToggleInsights}
               onCheckboxChange={onCheckboxChange}
               onAckAction={onAckAction}

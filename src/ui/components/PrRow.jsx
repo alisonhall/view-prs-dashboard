@@ -57,6 +57,7 @@ export const PrRow = memo(function PrRow({
   isAcknowledged,
   needsAttention,
   isActive,
+  isQueued,
   onToggleInsights,
   onCheckboxChange,
   onAckAction,
@@ -73,7 +74,7 @@ export const PrRow = memo(function PrRow({
       <tr className="pr-row" data-pr-number={pr.number} data-section-key={sectionKey}>
         <PrSelectionCell pr={pr} />
         <PrAttentionCell pr={pr} needsAttention={needsAttention} isFlagged={isFlagged} />
-        <PrNumberCell pr={pr} repo={repo} isActive={isActive} />
+        <PrNumberCell pr={pr} repo={repo} isActive={isActive} isQueued={isQueued} />
         <PrStatusCell pr={pr} lastCheckedAt={lastCheckedAt} sectionKey={sectionKey} />
         <PrApprovedCell pr={pr} actorsMap={actorsMap} />
         <PrTitleCell

@@ -250,6 +250,76 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
 });
 
+test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
+  // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
+  // runAckAction/runApplyLabelAction (bulk operations submitted via the
+  // "Run & Filter" tab's PR-number-list field, as opposed to a single row's
+  // own Ack/Apply-label button) previously gave no visible per-row feedback
+  // at all while a multi-PR request was in flight - only the single-row
+  // withPrBusy wrapper in PrTableApp.jsx lit up a row's spinner. Verifies
+  // the window.markPrsBusy/window.clearPrsBusy bridge those functions now
+  // call reaches the same .pr-progress-indicator spinners for every PR
+  // number in the batch, not just one.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const pr1Indicator = page.locator('[data-pr-number="1"] .pr-progress-indicator').first();
+  const pr2Indicator = page.locator('[data-pr-number="2"] .pr-progress-indicator').first();
+  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
+  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+
+  await page.evaluate(() => {
+    window.markPrsBusy(["1", "2"], "octocat/hello-world");
+  });
+  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
+  await expect(pr2Indicator).toHaveJSProperty("hidden", false);
+
+  await page.evaluate(() => {
+    window.clearPrsBusy(["1", "2"], "octocat/hello-world");
+  });
+  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
+  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+});
+
+test("a chunked bulk operation's queued PRs show a distinct static indicator, separate from the active spinner", async ({ page }) => {
+  // Regression test for the "queued, not yet started" state
+  // (PrTableApp.jsx's markPrsQueued/clearPrsQueued, PrNumberCell.jsx's
+  // .pr-progress-indicator--queued) - a chunked bulk request marks its
+  // whole batch queued up front, then moves each chunk's PR numbers
+  // queued -> active right before that chunk's own request fires. Verifies
+  // both dot variants render distinctly in a real browser, and that
+  // marking a PR both queued and active shows only the active (spinning)
+  // dot, not both.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const pr1Active = page.locator('[data-pr-number="1"] .pr-progress-indicator:not(.pr-progress-indicator--queued)');
+  const pr1Queued = page.locator('[data-pr-number="1"] .pr-progress-indicator--queued');
+  await expect(pr1Active).toHaveJSProperty("hidden", true);
+  await expect(pr1Queued).toHaveJSProperty("hidden", true);
+
+  await page.evaluate(() => {
+    window.markPrsQueued(["1"], "octocat/hello-world");
+  });
+  await expect(pr1Active).toHaveJSProperty("hidden", true);
+  await expect(pr1Queued).toHaveJSProperty("hidden", false);
+
+  // Moving to "active" (as a chunk's own request actually fires) hides the
+  // queued dot and shows the spinning one instead - never both at once.
+  await page.evaluate(() => {
+    window.markPrsBusy(["1"], "octocat/hello-world");
+  });
+  await expect(pr1Active).toHaveJSProperty("hidden", false);
+  await expect(pr1Queued).toHaveJSProperty("hidden", true);
+
+  await page.evaluate(() => {
+    window.clearPrsBusy(["1"], "octocat/hello-world");
+    window.clearPrsQueued(["1"], "octocat/hello-world");
+  });
+  await expect(pr1Active).toHaveJSProperty("hidden", true);
+  await expect(pr1Queued).toHaveJSProperty("hidden", true);
+});
+
 test("'View in table' from Author Insights actually expands the insights row content", async ({ page }) => {
   // Regression test: vanilla's navigateToPrInTable finds the PR's row and
   // directly flips `.hidden`/textContent on the insights <tr> and toggle
