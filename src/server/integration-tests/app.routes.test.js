@@ -1506,6 +1506,103 @@ describe("route behavior", () => {
     }
   });
 
+  test("checks every repo grouped in the body when POST /quick-check-all succeeds", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      scriptCalls.push(commandArgs);
+      return {
+        stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+        stderr: "",
+      };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check-all", {
+        repos: [
+          { repo: "owner/repo-all-a", prNumbers: "501,502" },
+          { repo: "owner/repo-all-b", prNumbers: "601" },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.reposChecked).toEqual(["owner/repo-all-a", "owner/repo-all-b"]);
+      expect(payload.newPendingMergedClosedCount).toBe(2);
+      expect(scriptCalls).toHaveLength(2);
+      expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--quick-check-numbers", "501,502"]));
+      expect(scriptCalls[1]).toEqual(expect.arrayContaining(["--quick-check-numbers", "601"]));
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-a"];
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-b"];
+    }
+  });
+
+  test("reports ok:true with reposFailed populated when one repo fails in POST /quick-check-all", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+      const repo = repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "";
+      if (repo === "owner/repo-all-broken") {
+        throw new Error("gh auth expired");
+      }
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check-all", {
+        repos: [
+          { repo: "owner/repo-all-broken", prNumbers: "1" },
+          { repo: "owner/repo-all-ok", prNumbers: "2" },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.reposChecked).toEqual(["owner/repo-all-ok"]);
+      expect(payload.reposFailed).toEqual([
+        expect.objectContaining({ repo: "owner/repo-all-broken" }),
+      ]);
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-ok"];
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-broken"];
+    }
+  });
+
+  test("returns a clean success with nothing checked when POST /quick-check-all is sent an empty repos array", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      scriptCalls.push(commandArgs);
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check-all", { repos: [] });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.reposChecked).toEqual([]);
+      expect(scriptCalls).toHaveLength(0);
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+    }
+  });
+
+  test("returns 409 when POST /quick-check-all is requested while a quick check is already in progress", async () => {
+    appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+    try {
+      const { response, payload } = await postJson(server, "/quick-check-all", {
+        repos: [{ repo: "owner/repo-all-conflict", prNumbers: "1" }],
+      });
+
+      expect(response.status).toBe(409);
+      expect(payload.ok).toBe(false);
+      expect(String(payload.error || "")).toMatch(/already in progress/i);
+    } finally {
+      appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+    }
+  });
+
   test("returns 503 when POST /quick-check is requested while the auto-refresh circuit is open", async () => {
     appModule.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
       Date.now() + 60 * 60 * 1000,

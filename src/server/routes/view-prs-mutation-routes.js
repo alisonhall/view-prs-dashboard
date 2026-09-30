@@ -56,6 +56,7 @@ const registerViewPrsMutationRoutes = ({
     buildQuickCheckSuccessActionLogEntry,
     buildQuickCheckFailureActionLogEntry,
     buildQuickCheckNumbersRequest,
+    buildQuickCheckAllRequest,
     buildAckRequest,
     createAckScriptRunner,
     buildAckRefreshList,
@@ -209,21 +210,12 @@ const registerViewPrsMutationRoutes = ({
   // Branches entirely on runViewPrsQuickCheck's own returned result rather
   // than re-checking scheduler state independently beforehand, so the
   // route can't drift from what the function actually decided.
-  app.post(["/quick-check", "/view-prs/quick-check"], async (req, res) => {
-    const timingContext = createTimingContext();
-
-    // Populated only when the Run & Filter tab's PR-number field had numbers
-    // entered - scopes this check to exactly those PRs in one repo, bypassing
-    // check-open-pr-updates.sh's day-window entirely (see --quick-check-numbers).
-    // undefined here preserves today's default: every configured repo, listed
-    // and day-windowed as usual.
-    const numbersRequest = buildQuickCheckNumbersRequest({
-      body: req.body || {},
-      defaultViewPrsRepo,
-    });
-
-    const checkResult = await runViewPrsQuickCheck(numbersRequest);
-
+  //
+  // Shared by /quick-check and /quick-check-all below - both branch on
+  // runViewPrsQuickCheck's returned result the same way, only the request
+  // that produced checkResult differs (single/default repo vs a whole
+  // repoRequests sweep).
+  const sendQuickCheckResult = ({ res, timingContext, checkResult }) => {
     if (checkResult.skipped) {
       const skipResult =
         checkResult.skipReason === "missing-dependencies"
@@ -264,6 +256,54 @@ const registerViewPrsMutationRoutes = ({
       buildQuickCheckSuccessActionLogEntry({ timingContext, result: successResult }),
     );
     sendRouteResult({ res, result: successResult });
+  };
+
+  app.post(["/quick-check", "/view-prs/quick-check"], async (req, res) => {
+    const timingContext = createTimingContext();
+
+    // Populated only when the Run & Filter tab's PR-number field had numbers
+    // entered - scopes this check to exactly those PRs in one repo, bypassing
+    // check-open-pr-updates.sh's day-window entirely (see --quick-check-numbers).
+    // undefined here preserves today's default: every configured repo, listed
+    // and day-windowed as usual.
+    const numbersRequest = buildQuickCheckNumbersRequest({
+      body: req.body || {},
+      defaultViewPrsRepo,
+    });
+
+    const checkResult = await runViewPrsQuickCheck(numbersRequest);
+    sendQuickCheckResult({ res, timingContext, checkResult });
+  });
+
+  // "Quick check all existing PRs" - checks every PR number already loaded
+  // in the app, grouped by its own repo (the loaded table isn't scoped to
+  // one repo - see PrTableApp.jsx), one gh pr view call per PR number rather
+  // than the default's single cheap listing call per repo. Reuses the same
+  // runViewPrsQuickCheck/isQuickCheckInProgress lock as /quick-check (one
+  // lock acquisition for the whole sweep) rather than firing one request per
+  // repo from the client, which would just race against itself for that lock.
+  app.post(["/quick-check-all", "/view-prs/quick-check-all"], async (req, res) => {
+    const timingContext = createTimingContext();
+
+    const repoRequests = buildQuickCheckAllRequest({ body: req.body || {} });
+
+    if (repoRequests.length === 0) {
+      sendQuickCheckResult({
+        res,
+        timingContext,
+        checkResult: {
+          skipped: false,
+          reposChecked: [],
+          reposFailed: [],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 0,
+        },
+      });
+      return;
+    }
+
+    const checkResult = await runViewPrsQuickCheck({ repoRequests });
+    sendQuickCheckResult({ res, timingContext, checkResult });
   });
 
   app.post(["/ack", "/view-prs/ack"], (req, res) => {

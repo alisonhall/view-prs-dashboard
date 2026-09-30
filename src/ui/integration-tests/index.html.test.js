@@ -29,6 +29,7 @@ const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
+const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
@@ -502,6 +503,13 @@ const installReactActionButtonMountBridges = () => {
     rtlRender(
       React.createElement(QuickCheckButton, { onCheck: () => window.handleQuickCheck?.() }),
       { container: quickCheckContainer },
+    );
+  }
+  const quickCheckAllContainer = document.getElementById("quick-check-all-btn-root");
+  if (quickCheckAllContainer) {
+    rtlRender(
+      React.createElement(QuickCheckAllButton, { onCheck: () => window.handleQuickCheckAll?.() }),
+      { container: quickCheckAllContainer },
     );
   }
 };
@@ -2392,6 +2400,86 @@ describe("index page rendering with Testing Library", () => {
       "Quick check already in progress",
     );
     expect(quickCheckBtn.textContent).toBe("Quick check");
+  });
+
+  test("given nothing loaded when Quick check all is clicked then it reports nothing to check without firing a request", async () => {
+    const quickCheckAllCalls = [];
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+      if (normalizedUrl === "/view-prs/quick-check-all" && method === "POST") {
+        quickCheckAllCalls.push(init);
+      }
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
+    await user.click(quickCheckAllBtn);
+
+    await waitFor(() => {
+      expect(quickCheckAllBtn.textContent).toBe("Nothing to check");
+    });
+    expect(quickCheckAllCalls).toHaveLength(0);
+  });
+
+  test("given PRs loaded across multiple repos when Quick check all is clicked then the POST body groups PR numbers by their own repo", async () => {
+    initTestPage({
+      dataPayload: createMultiPrPayload({
+        prs: [
+          { prNumber: 11, overrides: { repo: "owner/repo-a" } },
+          { prNumber: 12, overrides: { repo: "owner/repo-a" } },
+          { prNumber: 21, overrides: { repo: "owner/repo-b" } },
+        ],
+      }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check-all" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo-a", "owner/repo-b"],
+          reposFailed: [],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 2,
+        });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
+    await user.click(quickCheckAllBtn);
+
+    await waitFor(() => {
+      expect(quickCheckAllBtn.textContent).toBe("2 updates found across 2 repos");
+    });
+
+    const quickCheckAllCall = fetchMock.mock.calls.find((call) => {
+      const [url, callInit] = call;
+      return (
+        String(url || "") === "/view-prs/quick-check-all" &&
+        String(callInit?.method || "GET").toUpperCase() === "POST"
+      );
+    });
+    const body = JSON.parse(String(quickCheckAllCall?.[1]?.body || "{}"));
+    expect(body.repos).toEqual(
+      expect.arrayContaining([
+        { repo: "owner/repo-a", prNumbers: "11,12" },
+        { repo: "owner/repo-b", prNumbers: "21" },
+      ]),
+    );
+    expect(body.repos).toHaveLength(2);
   });
 
   test("given label dropdown selections when Run script posts payload then label and excludeLabel map from selected label checkboxes", async () => {

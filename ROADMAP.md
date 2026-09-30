@@ -43,6 +43,7 @@
 - [ ] Add a small copy button beside the source branch name
 - [ ] Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields
 - [ ] Update Notes' Story and Link fields to have the read view of the story name have a small open link icon button beside it to open the link URL
+- [ ] Make the per-row busy indicator (`markPrsBusy`/`clearPrsBusy`, `PrTableApp.jsx`) reference-counted instead of a plain Set. "Quick check all" marks every loaded PR busy up front and only clears them after its whole multi-repo sweep finishes (it can take minutes); if an unrelated action (e.g. Ack) on one of those PRs finishes first, its own `clearPrsBusy` call removes that PR from the shared Set early, so the row's spinner disappears before "Quick check all" is actually done with it. Cosmetic only (no duplicate requests/data issues), found during the "Quick check all" feature review (2026-09-30).
 
 ### Styling
 

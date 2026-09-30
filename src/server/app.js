@@ -99,6 +99,8 @@ const {
   viewPrsAutoScriptTimeoutMs,
   viewPrsManualScriptTimeoutMs,
   viewPrsQuickCheckScriptTimeoutMs,
+  viewPrsQuickCheckAllScriptTimeoutMs,
+  viewPrsQuickCheckAllJobs,
   viewPrsAckScriptTimeoutMs,
   viewPrsAckRefreshScriptTimeoutMs,
   viewPrsAckTotalRefreshTimeoutMs,
@@ -1794,6 +1796,7 @@ const runViewPrsQuickCheck = async ({
   awaitTargetedRefresh = false,
   repo: targetRepo,
   prNumbers,
+  repoRequests,
 } = {}) => {
   if (
     viewPrsSchedulerState.isQuickCheckInProgress ||
@@ -1835,12 +1838,16 @@ const runViewPrsQuickCheck = async ({
     // per-repo body with `--quick-check-numbers` appended, bypassing the
     // script's own day-window entirely for those specific numbers - see
     // check-open-pr-updates.sh's --quick-check-numbers flag.
-    const runQuickCheckForRepo = async (repo, extraArgs = []) => {
+    const runQuickCheckForRepo = async (
+      repo,
+      extraArgs = [],
+      scriptTimeoutMs = viewPrsQuickCheckScriptTimeoutMs,
+    ) => {
       try {
         const result = await callRunViewPrsScript(
           [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo, ...extraArgs],
           1024 * 1024,
-          { timeoutMs: viewPrsQuickCheckScriptTimeoutMs, trackSchedulerPrProgress: false },
+          { timeoutMs: scriptTimeoutMs, trackSchedulerPrProgress: false },
         );
         const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
         const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
@@ -1874,6 +1881,19 @@ const runViewPrsQuickCheck = async ({
 
     if (prNumbers) {
       await runQuickCheckForRepo(targetRepo, ["--quick-check-numbers", prNumbers]);
+    } else if (Array.isArray(repoRequests) && repoRequests.length > 0) {
+      // Sequential, not Promise.all: each repo's own script call already
+      // runs up to --jobs `gh pr view` processes concurrently, so checking
+      // every repo at once here would multiply that with no cap (e.g. 5
+      // repos x 12 jobs = 60 concurrent gh processes). One repo at a time
+      // keeps total concurrent load bounded to a single repo's worth.
+      for (const { repo, prNumbers: repoPrNumbers } of repoRequests) {
+        const extraArgs = ["--jobs", String(viewPrsQuickCheckAllJobs)];
+        if (repoPrNumbers) {
+          extraArgs.push("--quick-check-numbers", repoPrNumbers);
+        }
+        await runQuickCheckForRepo(repo, extraArgs, viewPrsQuickCheckAllScriptTimeoutMs);
+      }
     } else {
       const repos = getViewPrsAutoRefreshRepos();
       await Promise.all(repos.map((repo) => runQuickCheckForRepo(repo)));
@@ -2273,6 +2293,8 @@ module.exports = {
   viewPrsAutoScriptTimeoutMs,
   viewPrsManualScriptTimeoutMs,
   viewPrsQuickCheckScriptTimeoutMs,
+  viewPrsQuickCheckAllScriptTimeoutMs,
+  viewPrsQuickCheckAllJobs,
   viewPrsAckScriptTimeoutMs,
   viewPrsAckRefreshScriptTimeoutMs,
   viewPrsAckTotalRefreshTimeoutMs,

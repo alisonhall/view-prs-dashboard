@@ -168,6 +168,25 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_QUICK_CHECK_SCRIPT_TIMEOUT_MS || "60000", 10) || 60000,
   );
 
+  // "Quick check all existing PRs" scopes a quick check to every PR number
+  // already loaded, across every repo represented in the loaded data - one
+  // gh pr view call per PR number (not one cheap listing call per repo like
+  // the default/single-repo quick check paths above), so it needs a much
+  // bigger per-repo budget. Repos are checked sequentially server-side, so
+  // this is a PER-REPO ceiling, not a total-sweep one.
+  const viewPrsQuickCheckAllScriptTimeoutMs = Math.max(
+    60 * 1000,
+    Number.parseInt(env.VIEW_PRS_QUICK_CHECK_ALL_SCRIPT_TIMEOUT_MS || "300000", 10) || 300000,
+  );
+
+  // Bumped from the script's own JOBS=6 default - safe to increase here
+  // since repos are processed one at a time for this action, so this bounds
+  // the total number of concurrent `gh pr view` processes, not a multiple of it.
+  const viewPrsQuickCheckAllJobs = Math.max(
+    1,
+    Number.parseInt(env.VIEW_PRS_QUICK_CHECK_ALL_JOBS || "12", 10) || 12,
+  );
+
   const viewPrsAckScriptTimeoutMs = Math.max(
     60 * 1000,
     Number.parseInt(env.VIEW_PRS_ACK_SCRIPT_TIMEOUT_MS || "600000", 10) || 600000,
@@ -257,6 +276,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAutoScriptTimeoutMs,
     viewPrsManualScriptTimeoutMs,
     viewPrsQuickCheckScriptTimeoutMs,
+    viewPrsQuickCheckAllScriptTimeoutMs,
+    viewPrsQuickCheckAllJobs,
     viewPrsAckScriptTimeoutMs,
     viewPrsAckRefreshScriptTimeoutMs,
     viewPrsAckTotalRefreshTimeoutMs,

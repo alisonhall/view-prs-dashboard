@@ -750,6 +750,30 @@ describe("view-prs mutation route helpers", () => {
     ).toEqual({ repo: "default/repo", label: "", prNumbers: [] });
   });
 
+  test("given a repos array, when building the quick-check-all request, then each entry is trimmed/parsed and malformed entries are dropped", () => {
+    const helpers = createHelpers();
+
+    expect(
+      helpers.buildQuickCheckAllRequest({
+        body: {
+          repos: [
+            { repo: " owner/repo-a ", prNumbers: "12, abc,34" },
+            { repo: "owner/repo-b", prNumbers: "56" },
+            { repo: "", prNumbers: "78" },
+            { repo: "owner/repo-no-numbers", prNumbers: "abc" },
+            { repo: "owner/repo-c" },
+          ],
+        },
+      }),
+    ).toEqual([
+      { repo: "owner/repo-a", prNumbers: "12,34" },
+      { repo: "owner/repo-b", prNumbers: "56" },
+    ]);
+
+    expect(helpers.buildQuickCheckAllRequest({ body: {} })).toEqual([]);
+    expect(helpers.buildQuickCheckAllRequest({ body: { repos: "not-an-array" } })).toEqual([]);
+  });
+
   test("given apply-label success/failure inputs, when building action log entries and results, then route contracts and summary text are preserved", () => {
     const helpers = createHelpers();
     const timingContext = { triggeredAt: "2024-01-01T00:00:00.000Z", startedAtMs: Date.now() };

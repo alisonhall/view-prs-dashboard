@@ -30,6 +30,7 @@ import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
+import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
@@ -408,6 +409,7 @@ function computeStaticContainers() {
     errorSnackbar: document.getElementById('error-snackbar-root'),
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
     quickCheckBtn: document.getElementById('quick-check-btn-root'),
+    quickCheckAllBtn: document.getElementById('quick-check-all-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
@@ -804,6 +806,13 @@ function AppRoot() {
             <QuickCheckButton onCheck={() => window.handleQuickCheck?.()} />,
             containers.quickCheckBtn,
             'quick-check-btn',
+          )}
+
+        {containers.quickCheckAllBtn &&
+          createPortal(
+            <QuickCheckAllButton onCheck={() => window.handleQuickCheckAll?.()} />,
+            containers.quickCheckAllBtn,
+            'quick-check-all-btn',
           )}
 
         {hasReviewStatsBeenVisible && containers.reviewStatsControls &&

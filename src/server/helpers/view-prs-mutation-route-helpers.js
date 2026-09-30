@@ -304,6 +304,23 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     };
   };
 
+  // Parses "Quick check all existing PRs"' `{repos: [{repo, prNumbers}, ...]}`
+  // body (already grouped by repo client-side, since the loaded table isn't
+  // scoped to one repo) into the exact repoRequests shape
+  // runViewPrsQuickCheck expects. Entries missing a repo or with no valid PR
+  // numbers are dropped rather than erroring - a malformed single entry
+  // shouldn't abort an otherwise-valid multi-repo sweep. Returns an array
+  // (possibly empty; the route treats an empty array as "nothing to check").
+  const buildQuickCheckAllRequest = ({ body = {} }) => {
+    const repos = Array.isArray(body.repos) ? body.repos : [];
+    return repos
+      .map((entry) => ({
+        repo: toTrimmedString(entry?.repo),
+        prNumbers: parseNumberCsv(entry?.prNumbers).join(","),
+      }))
+      .filter((entry) => entry.repo && entry.prNumbers);
+  };
+
   const buildAckRequest = ({ body = {}, viewPrsRunScriptRelativePath }) => {
     const args = [viewPrsRunScriptRelativePath, "--ack-only", "--quiet"];
     const detail = {
@@ -821,6 +838,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildQuickCheckSuccessActionLogEntry,
     buildQuickCheckFailureActionLogEntry,
     buildQuickCheckNumbersRequest,
+    buildQuickCheckAllRequest,
     parseNumberCsv,
     buildAckRequest,
     createAckScriptRunner,

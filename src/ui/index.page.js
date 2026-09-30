@@ -88,6 +88,7 @@ import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-poll
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
 import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
+import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
 
 // Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
@@ -2171,6 +2172,11 @@ const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 // this one's final label depends on the outcome, so rather than touching
 // the DOM directly, this returns a `{ label, resetAfterMs? }` descriptor
 // for that component's own onCheck callback to apply.
+const buildQuickCheckCountLabel = (pendingTotal) =>
+  pendingTotal > 0
+    ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
+    : "No changes found";
+
 const handleQuickCheck = async () => {
   try {
     // Scope to the Run & Filter tab's entered PR numbers when present, so an
@@ -2179,64 +2185,12 @@ const handleQuickCheck = async () => {
     const { repo, prNumbers } = getFormBody();
     const payload = prNumbers ? { repo, prNumbers } : {};
     const { response, result } = await postJson("/view-prs/quick-check", payload);
-    if (response.status === 409) {
-      showErrorNotification(
-        "Quick check already in progress",
-        result?.error ||
-          "A quick check or auto refresh is already running. Try again shortly.",
-        6000,
-      );
-      return { label: QUICK_CHECK_BUTTON_LABEL };
-    }
-    if (response.status === 503) {
-      showWarningNotification(
-        "Quick check unavailable",
-        result?.error ||
-          "Auto refresh circuit breaker is open after repeated failures. Try again later.",
-        8000,
-      );
-      return { label: QUICK_CHECK_BUTTON_LABEL };
-    }
-    if (!response.ok || result.ok === false) {
-      notifyFailureSnackbar(
-        "Quick check failed",
-        result,
-        result?.error || "Unexpected error running quick check",
-      );
-      return { label: QUICK_CHECK_BUTTON_LABEL };
-    }
-
-    // Counts reflect only what THIS run found (server-side newPendingOpenCount/
-    // newPendingMergedClosedCount), not the scheduler's accumulated backlog -
-    // showing the latter here would misrepresent stale, already-known pending
-    // state as something this click just discovered.
-    const pendingTotal =
-      (result.newPendingOpenCount || 0) + (result.newPendingMergedClosedCount || 0);
-    const failedCount = Array.isArray(result.reposFailed) ? result.reposFailed.length : 0;
-
-    // A repo failing to check (e.g. expired gh auth) still returns ok:true
-    // when other repos succeeded - surface it anyway so "No changes found"
-    // is never confused with "the check for this repo didn't actually run".
-    if (failedCount > 0) {
-      showWarningNotification(
-        "Quick check incomplete",
-        result?.error ||
-          `Quick check failed for ${failedCount} repo(s). See server logs for details.`,
-        10000,
-      );
-    }
-
-    // Reflects the fresh pending counts in the Auto Refresh panel right
-    // away instead of waiting for its own independent poll interval.
-    void loadSchedulerStatus();
-
-    return {
-      label:
-        pendingTotal > 0
-          ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
-          : "No changes found",
-      resetAfterMs: 2500,
-    };
+    return buildQuickCheckOutcome({
+      response,
+      result,
+      fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
+      buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
+    });
   } catch (error) {
     notifyFailureSnackbar(
       "Quick check failed",
@@ -2247,12 +2201,67 @@ const handleQuickCheck = async () => {
   }
 };
 
+const QUICK_CHECK_ALL_BUTTON_LABEL = "Quick check all";
+
+// "Quick check all existing PRs" - checks every PR number already loaded in
+// the app (across every repo represented in the loaded rows, not just the
+// selected one - see collectAllLoadedPrsByRepo's own comment), instead of
+// requiring the user to type numbers into the Run & Filter tab's field.
+const handleQuickCheckAll = async () => {
+  const repoRequests = toRepoRequests(
+    collectAllLoadedPrsByRepo(latestStoredPayload?.byPrNumber),
+  );
+
+  if (repoRequests.length === 0) {
+    // Unlike the 409/503/failure branches below (which return the button's
+    // own default label, so no revert timer is needed), this label differs
+    // from the default - without resetAfterMs the button would get stuck
+    // showing "Nothing to check" forever instead of settling back.
+    return { label: "Nothing to check", resetAfterMs: 2500 };
+  }
+
+  // markPrsBusy/clearPrsBusy take one repo per call (busy state is keyed by
+  // repo+number, see PrTableApp.jsx's buildActivePrKey), so each repo in the
+  // sweep needs its own call rather than one call spanning every repo.
+  try {
+    repoRequests.forEach(({ repo, prNumbers }) => {
+      window.markPrsBusy?.(prNumbers.split(","), repo);
+    });
+    const { response, result } = await postJson("/view-prs/quick-check-all", {
+      repos: repoRequests,
+    });
+    return buildQuickCheckOutcome({
+      response,
+      result,
+      fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
+      buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
+        pendingTotal > 0
+          ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
+              reposChecked.length === 1 ? "" : "s"
+            }`
+          : "No changes found",
+    });
+  } catch (error) {
+    notifyFailureSnackbar(
+      "Quick check failed",
+      error,
+      "Unable to reach the server",
+    );
+    return { label: QUICK_CHECK_ALL_BUTTON_LABEL };
+  } finally {
+    repoRequests.forEach(({ repo, prNumbers }) => {
+      window.clearPrsBusy?.(prNumbers.split(","), repo);
+    });
+  }
+};
+
 // TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
 // their onTrigger/onCheck props - same exposure shape as
 // window.handleRequestMoreMerged above.
 if (typeof window !== "undefined") {
   window.handleTriggerAutoRun = (...args) => handleTriggerAutoRun(...args);
   window.handleQuickCheck = (...args) => handleQuickCheck(...args);
+  window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
 }
 
 const {
@@ -4148,6 +4157,17 @@ const handleRunScript = async () => {
 };
 
 const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
+
+const {
+  collectAllLoadedPrsByRepo,
+  toRepoRequests,
+  buildQuickCheckOutcome,
+} = prQuickCheckActionsHelperFactory.createPrQuickCheckActionsHelpers({
+  showErrorNotification: (...args) => showErrorNotification(...args),
+  showWarningNotification: (...args) => showWarningNotification(...args),
+  notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
+  loadSchedulerStatus: (...args) => loadSchedulerStatus(...args),
+});
 
 // Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
 // wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same

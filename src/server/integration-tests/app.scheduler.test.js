@@ -1118,6 +1118,119 @@ describe("runViewPrsQuickCheck behavior", () => {
       expect(scriptCalls.every((args) => !args.includes("--quick-check-numbers"))).toBe(true);
     });
   });
+
+  describe("with repoRequests (Quick Check All)", () => {
+    test("checks each repo sequentially, one script call per repo, with the bulk --jobs and timeout", async () => {
+      const scriptCalls = [];
+      const scriptOptions = [];
+      appModule.runViewPrsScript = async (commandArgs, _maxBufferBytes, options) => {
+        scriptCalls.push(commandArgs);
+        scriptOptions.push(options);
+        return {
+          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+          stderr: "",
+        };
+      };
+
+      const result = await runViewPrsQuickCheck({
+        repoRequests: [
+          { repo: "owner/repo-a", prNumbers: "501,502" },
+          { repo: "owner/repo-b", prNumbers: "601" },
+        ],
+      });
+
+      expect(scriptCalls).toHaveLength(2);
+      expect(scriptCalls[0]).toEqual(
+        expect.arrayContaining([
+          "--repo",
+          "owner/repo-a",
+          "--jobs",
+          "12",
+          "--quick-check-numbers",
+          "501,502",
+        ]),
+      );
+      expect(scriptCalls[1]).toEqual(
+        expect.arrayContaining([
+          "--repo",
+          "owner/repo-b",
+          "--jobs",
+          "12",
+          "--quick-check-numbers",
+          "601",
+        ]),
+      );
+      // A much bigger budget than the default single-listing-call timeout,
+      // since this path does one gh pr view call per PR number.
+      expect(scriptOptions[0].timeoutMs).toBe(300000);
+      expect(scriptOptions[1].timeoutMs).toBe(300000);
+      expect(result.reposChecked).toEqual(["owner/repo-a", "owner/repo-b"]);
+    });
+
+    test("one repo failing doesn't stop the rest, and is reported in reposFailed", async () => {
+      appModule.runViewPrsScript = async (commandArgs) => {
+        const repoFlagIndex = commandArgs.findIndex((arg) => arg === "--repo");
+        const repo = repoFlagIndex >= 0 ? String(commandArgs[repoFlagIndex + 1] || "") : "";
+        if (repo === "owner/repo-broken") {
+          throw new Error("gh rate limited");
+        }
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      const result = await runViewPrsQuickCheck({
+        repoRequests: [
+          { repo: "owner/repo-broken", prNumbers: "1" },
+          { repo: "owner/repo-fine", prNumbers: "2" },
+        ],
+      });
+
+      expect(result.reposChecked).toEqual(["owner/repo-fine"]);
+      expect(result.reposFailed).toEqual([
+        expect.objectContaining({ repo: "owner/repo-broken" }),
+      ]);
+    });
+
+    test("still fast-follows a full auto-refresh for a repo with newly-pending open PRs", async () => {
+      const originalRunViewPrsAutoRefresh = appModule.runViewPrsAutoRefresh;
+      const autoRefreshCalls = [];
+      appModule.runViewPrsAutoRefresh = async (options) => {
+        autoRefreshCalls.push(options);
+        return { ok: true };
+      };
+      appModule.runViewPrsScript = async () => ({
+        stdout: JSON.stringify({ pendingOpen: ["501"], pendingMergedClosed: [] }),
+        stderr: "",
+      });
+
+      try {
+        await runViewPrsQuickCheck({
+          repoRequests: [{ repo: "owner/repo-a", prNumbers: "501" }],
+        });
+
+        expect(autoRefreshCalls).toEqual([
+          expect.objectContaining({ reposOverride: ["owner/repo-a"] }),
+        ]);
+      } finally {
+        appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
+      }
+    });
+
+    test("an empty repoRequests array falls through to the existing all-repos default path", async () => {
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      await withAutoRepos("owner/repo-default", async () => {
+        await runViewPrsQuickCheck({ repoRequests: [] });
+      });
+
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--repo", "owner/repo-default"]));
+      expect(scriptCalls[0]).not.toContain("--quick-check-numbers");
+    });
+  });
 });
 
 describe("runViewPrsMergedQueueDrain behavior", () => {
