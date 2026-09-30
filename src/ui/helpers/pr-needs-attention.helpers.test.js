@@ -64,21 +64,150 @@ describe("pr needs attention helpers", () => {
     ).toBe(true);
   });
 
-  test("given draft section and in-review enabled row, when checking needs attention visibility, then result is true", () => {
+  test("given no-activity mode mine-only and viewer is only a requested reviewer (not assigned), when checking no-activity attention, then result is true", () => {
     const helpers = createPrNeedsAttentionHelpers({
-      isInReviewEnabled: () => true,
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [],
+      collectRequestedReviewers: () => [{ login: "Alice" }],
     });
 
     expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "mine-only" },
+      ),
+    ).toBe(true);
+  });
+
+  test("given no-activity mode assigned-only and viewer is assignee, when checking no-activity attention, then result is true", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [{ login: "Alice" }],
+      collectRequestedReviewers: () => [],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "assigned-only" },
+      ),
+    ).toBe(true);
+  });
+
+  test("given no-activity mode assigned-only and viewer is only a requested reviewer (not assigned), when checking no-activity attention, then result is false", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [],
+      collectRequestedReviewers: () => [{ login: "Alice" }],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "assigned-only" },
+      ),
+    ).toBe(false);
+  });
+
+  test("given no-activity mode reviewer-only and viewer is a requested reviewer, when checking no-activity attention, then result is true", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [],
+      collectRequestedReviewers: () => [{ login: "Alice" }],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "reviewer-only" },
+      ),
+    ).toBe(true);
+  });
+
+  test("given no-activity mode reviewer-only and viewer is only assigned (not a requested reviewer), when checking no-activity attention, then result is false", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [{ login: "Alice" }],
+      collectRequestedReviewers: () => [],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "reviewer-only" },
+      ),
+    ).toBe(false);
+  });
+
+  test("given no-activity mode assigned-only or reviewer-only and no effective viewer login, when checking no-activity attention, then result is false", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "",
+      collectAssignedUsers: () => [{ login: "Alice" }],
+      collectRequestedReviewers: () => [{ login: "Alice" }],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "assigned-only" },
+      ),
+    ).toBe(false);
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "NO_ACTIVITY" },
+        { noActivityMode: "reviewer-only" },
+      ),
+    ).toBe(false);
+  });
+
+  test("given a non-NO_ACTIVITY status, when checking no-activity attention under the new assigned-only/reviewer-only modes, then result is false regardless of assignment/review state", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "alice",
+      collectAssignedUsers: () => [{ login: "Alice" }],
+      collectRequestedReviewers: () => [{ login: "Alice" }],
+    });
+
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "CHANGED" },
+        { noActivityMode: "assigned-only" },
+      ),
+    ).toBe(false);
+    expect(
+      helpers.shouldTreatNoActivityAsAttention(
+        { status: "CHANGED" },
+        { noActivityMode: "reviewer-only" },
+      ),
+    ).toBe(false);
+  });
+
+  test("given draft section and no changed/no-activity attention configured, when checking needs attention visibility, then result is false regardless of in-review state", () => {
+    // The dedicated "In Review" smart group and status/reason override
+    // (check-open-pr-updates.sh) already surface in-review PRs, so
+    // shouldShowNeedsAttention no longer needs its own in-review carve-out.
+    const helpers = createPrNeedsAttentionHelpers();
+
+    expect(
       helpers.shouldShowNeedsAttention({
-        row: { status: "NO_ACTIVITY" },
+        row: { status: "NO_ACTIVITY", inReview: true },
         sectionKey: "draft",
         config: {
           includeDraftChanged: false,
           includeDraftNoActivity: false,
         },
       }),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  test("given an open-section row with no changed/no-activity status, when checking entryNeedsAttention, then an in-review row no longer unconditionally needs attention", () => {
+    const helpers = createPrNeedsAttentionHelpers();
+
+    expect(
+      helpers.entryNeedsAttention(
+        { section: "open", data: { status: "NO_CHANGE", inReview: true } },
+        {},
+      ),
+    ).toBe(false);
   });
 
   test("given entry baseline value, when checking last activity flag, then non-empty non-dash values return true", () => {

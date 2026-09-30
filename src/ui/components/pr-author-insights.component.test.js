@@ -116,29 +116,48 @@ describe("pr author insights component (refactored)", () => {
     document.body.innerHTML = '<div id="author-insights"></div>';
   });
 
-  test("given empty author rows, when renderAuthorInsights is called, then an empty-state message is shown", () => {
-    const component = createPrAuthorInsightsComponent(createDependencies());
+  // Deferred-items follow-up (full vanilla-to-React sweep, see
+  // REACT_MIGRATION_PLAN.md): renderAuthorInsights used to build the
+  // "No local rows..."/"No authors found..." empty-state <p> itself via
+  // document.createElement and append it into #author-insights - that
+  // message is now rendered by AuthorInsightsSelector.jsx (see its own
+  // test file), so this function's only remaining job for the empty case
+  // is clearing selectedAuthorLogin via the React bridge - it must NOT
+  // build any DOM of its own anymore.
+  test("given empty author rows, when renderAuthorInsights is called, then selectedAuthorLogin is cleared via the React bridge and no DOM is built directly", () => {
+    const updateReactSelectedAuthorLogin = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({ updateReactSelectedAuthorLogin }),
+    );
 
     component.renderAuthorInsights([], {});
 
+    expect(updateReactSelectedAuthorLogin).toHaveBeenCalledWith("");
     const host = document.getElementById("author-insights");
-    expect(host?.textContent).toContain("No local rows available for author insights.");
+    expect(host?.textContent).toBe("");
   });
 
-  test("given a valid row fixture, when renderAuthorInsights is called, then author controls and selected header are rendered", () => {
-    const component = createPrAuthorInsightsComponent(createDependencies());
+  test("given a rows update, when renderAuthorInsights re-runs, then the selected-author-login React bridge is called with the resolved login (all 5 sections now read this from PrDataContext directly - Track C, REACT_MIGRATION_PLAN.md)", () => {
+    const updateReactSelectedAuthorLogin = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({ updateReactSelectedAuthorLogin }),
+    );
     const rows = [createPrRowEntry()];
 
-    component.renderAuthorInsights(rows, {
-      "author-login": "Author Name",
-    });
+    component.renderAuthorInsights(rows, { "author-login": "Author Name" });
 
-    const select = document.querySelector("#author-insights-select");
-    expect(select).toBeTruthy();
-    expect(select?.tagName).toBe("SELECT");
+    expect(updateReactSelectedAuthorLogin).toHaveBeenCalledWith("author-login");
+  });
 
-    const selectedHeader = document.querySelector(".author-insights-selected");
-    expect(selectedHeader?.textContent).toContain("Showing insights for");
+  test("given empty author rows, when renderAuthorInsights is called, then the selected-author-login React bridge is cleared", () => {
+    const updateReactSelectedAuthorLogin = jest.fn(() => true);
+    const component = createPrAuthorInsightsComponent(
+      createDependencies({ updateReactSelectedAuthorLogin }),
+    );
+
+    component.renderAuthorInsights([], {});
+
+    expect(updateReactSelectedAuthorLogin).toHaveBeenCalledWith("");
   });
 
   test("given missing required helpers, when creating component, then error thrown", () => {

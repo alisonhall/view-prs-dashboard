@@ -11,6 +11,7 @@ describe("pr render state commit helpers", () => {
       pendingAutoRenderPayload: null,
       lastRenderedPrFingerprint: "fingerprint-123",
       latestPrManifest: { key: "value" },
+      filteredRows: [{ prNumber: "1" }],
     };
 
     expect(
@@ -21,6 +22,7 @@ describe("pr render state commit helpers", () => {
       pendingAutoRenderPayload: null,
       lastRenderedPrFingerprint: "fingerprint-123",
       latestPrManifest: { key: "value" },
+      filteredRows: [{ prNumber: "1" }],
     });
   });
 
@@ -35,6 +37,7 @@ describe("pr render state commit helpers", () => {
       pendingAutoRenderPayload: null,
       lastRenderedPrFingerprint: "",
       latestPrManifest: {},
+      filteredRows: [],
     });
   });
 
@@ -53,6 +56,7 @@ describe("pr render state commit helpers", () => {
       pendingAutoRenderPayload: { dataVersion: "v1" },
       lastRenderedPrFingerprint: "",
       latestPrManifest: {},
+      filteredRows: [],
     });
   });
 });

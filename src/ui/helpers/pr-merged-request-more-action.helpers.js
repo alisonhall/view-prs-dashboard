@@ -1,17 +1,14 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsMergedRequestMoreActionHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsMergedRequestMoreActionHelpers fallback.
+export const { createPrMergedRequestMoreActionHelpers } = (() => {
   const createPrMergedRequestMoreActionHelpers = ({
     getIsRequestMoreMergedPending,
     setIsRequestMoreMergedPending,
     getLatestSelectedRepo,
     defaultRepo,
-    getOptionalElementById,
     beginRequestActivity,
     postJson,
     setLatestStoredPayload,
@@ -34,10 +31,6 @@
         ? getLatestSelectedRepo
         : () => "";
     const defaultRepoSafe = typeof defaultRepo === "string" ? defaultRepo : "";
-    const getOptionalElementByIdSafe =
-      typeof getOptionalElementById === "function"
-        ? getOptionalElementById
-        : () => null;
     const beginRequestActivitySafe =
       typeof beginRequestActivity === "function"
         ? beginRequestActivity
@@ -68,24 +61,32 @@
         ? notifyFailureSnackbar
         : () => {};
 
-    const handleRequestMoreMerged = async (repoOverride = "") => {
+    // onPendingChange/onStatusChange are call-time options, not constructor
+    // deps - unlike the DOM element lookups they replace (which used to
+    // read whatever #merged-request-more-btn/-status happened to exist at
+    // click time), the caller is now a specific React component instance
+    // (components/MergedRequestMoreAction.jsx) passing its own state
+    // setters, so they have to be supplied per call, not once at module init.
+    const handleRequestMoreMerged = async (
+      repoOverride = "",
+      { onPendingChange, onStatusChange } = {},
+    ) => {
       if (getIsRequestMoreMergedPendingSafe()) {
         return;
       }
 
+      const onPendingChangeSafe =
+        typeof onPendingChange === "function" ? onPendingChange : () => {};
+      const onStatusChangeSafe =
+        typeof onStatusChange === "function" ? onStatusChange : () => {};
+
       const repo =
         String(repoOverride || getLatestSelectedRepoSafe() || "").trim() ||
         defaultRepoSafe;
-      const button = getOptionalElementByIdSafe("merged-request-more-btn");
-      const status = getOptionalElementByIdSafe("merged-request-more-status");
 
       setIsRequestMoreMergedPendingSafe(true);
-      if (button) {
-        button.disabled = true;
-      }
-      if (status) {
-        status.textContent = "Requesting 30 more merged PRs...";
-      }
+      onPendingChangeSafe(true);
+      onStatusChangeSafe("Requesting 30 more merged PRs...");
       setStatusMessageSafe("Requesting more merged PRs...");
 
       const finishActivity = beginRequestActivitySafe("dataLoad");
@@ -119,15 +120,11 @@
             ? `Loaded ${refreshedCount} merged PR${refreshedCount === 1 ? "" : "s"}.`
             : "No missing merged PRs found in the scanned range.";
 
-        if (status) {
-          status.textContent = refreshedText;
-        }
+        onStatusChangeSafe(refreshedText);
         setStatusMessageSafe(refreshedText);
       } catch (error) {
         const message = String(error?.message || error || "Request failed");
-        if (status) {
-          status.textContent = message;
-        }
+        onStatusChangeSafe(message);
         setStatusMessageSafe("Failed to request more merged PRs");
         notifyFailureSnackbarSafe(
           "Request more failed",
@@ -136,9 +133,7 @@
         );
       } finally {
         setIsRequestMoreMergedPendingSafe(false);
-        if (button) {
-          button.disabled = false;
-        }
+        onPendingChangeSafe(false);
         finishActivity();
       }
     };
@@ -151,4 +146,4 @@
   return {
     createPrMergedRequestMoreActionHelpers,
   };
-});
+})();

@@ -1,5 +1,3 @@
-/** @jest-environment jsdom */
-
 const {
   createPrRenderContextHelpers,
 } = require("./pr-render-context.helpers.js");
@@ -12,12 +10,10 @@ describe("pr render context helpers", () => {
       "scope-mode": { id: "scope-mode" },
     };
     const getElementById = jest.fn((id) => elements[id] || null);
-    const captureInsightsViewState = jest.fn(() => ({ expanded: new Set(["1"]) }));
     const capturePrSectionOpenState = jest.fn(() => new Map([["open", true]]));
 
     const { captureRenderContext } = createPrRenderContextHelpers({
       getElementById,
-      captureInsightsViewState,
       capturePrSectionOpenState,
     });
 
@@ -38,14 +34,12 @@ describe("pr render context helpers", () => {
     });
     expect(context.allEntries).toEqual([{ prNumber: 101 }, { prNumber: 102 }]);
     expect(context.lastRun).toEqual({ repo: "org/repo", updatedAt: "run-stamp" });
-    expect(captureInsightsViewState).toHaveBeenCalledWith({ id: "pr-sections" });
     expect(capturePrSectionOpenState).toHaveBeenCalledWith({ id: "pr-sections" });
   });
 
   test("given missing payload fields, when capturing render context, then defaults are returned", () => {
     const { captureRenderContext } = createPrRenderContextHelpers({
       getElementById: () => null,
-      captureInsightsViewState: () => ({ expanded: new Set() }),
       capturePrSectionOpenState: () => new Map(),
     });
 

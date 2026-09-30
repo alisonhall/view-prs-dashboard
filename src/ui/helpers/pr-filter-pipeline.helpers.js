@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsFilterPipelineHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsFilterPipelineHelpers fallback.
+export const { createPrFilterPipelineHelpers } = (() => {
   const createPrFilterPipelineHelpers = ({
     buildSelectedFiltersViewModel,
     buildRowFilterCriteria,
@@ -55,6 +53,12 @@
       selectedApproverLogins,
       openModeFilter,
       alwaysShowInReview,
+      customComments,
+      otherNotes,
+      prDifficulty,
+      rallyStories,
+      rallyLinks,
+      analysisOfPr,
     } = {}) => {
       const safeRows = Array.isArray(rows) ? rows : [];
       const selectedFilters = buildSelectedFiltersViewModelSafe({
@@ -75,6 +79,12 @@
         assignedLogins: selectedFilters.selectedAssignedLogins,
         approverLogins: selectedFilters.selectedApproverLogins,
         alwaysShowInReview: selectedFilters.alwaysShowInReview,
+        customComments,
+        otherNotes,
+        prDifficulty,
+        rallyStories,
+        rallyLinks,
+        analysisOfPr,
       });
 
       return {
@@ -91,4 +101,4 @@
   return {
     createPrFilterPipelineHelpers,
   };
-});
+})();

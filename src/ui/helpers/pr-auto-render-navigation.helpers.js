@@ -1,11 +1,9 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsAutoRenderNavigationHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsAutoRenderNavigationHelpers fallback.
+export const { createPrAutoRenderNavigationHelpers } = (() => {
   const createPrAutoRenderNavigationHelpers = ({
     normalizePrNumber,
     normalizeActorLogin,
@@ -24,6 +22,7 @@
     renderAuthorInsights,
     documentRef,
     setTimeoutFn,
+    isReactTableMounted,
   } = {}) => {
     const normalizePrNumberSafe =
       typeof normalizePrNumber === "function"
@@ -93,6 +92,8 @@
       typeof setTimeoutFn === "function"
         ? setTimeoutFn
         : (fn, ms) => setTimeout(fn, ms);
+    const isReactTableMountedSafe =
+      typeof isReactTableMounted === "function" ? isReactTableMounted : () => false;
 
     const navigateToPrInTable = (prNumber, { focusUnsaved = false } = {}) => {
       const normalizedPrNumber = normalizePrNumberSafe(prNumber);
@@ -111,15 +112,31 @@
         }
 
         const prLink = prLinks[0];
-        const prRow = prLink.closest("tr");
-        if (prRow) {
-          const nextRow = prRow.nextElementSibling;
-          if (nextRow && nextRow.querySelector(".insights-row-cell")) {
-            nextRow.hidden = false;
-            const toggleButton = prRow.querySelector(".row-insights-toggle");
-            if (toggleButton) {
-              toggleButton.textContent = "Hide insights";
-              toggleButton.setAttribute("aria-expanded", "true");
+        if (isReactTableMountedSafe()) {
+          // React owns the insights row's expand/collapse state
+          // (PrTableApp's expandedInsights) - dispatch and let its own
+          // listener update that state, matching
+          // pr-author-insights-pr-link.helpers.js's navigateToPrInTable.
+          // Directly mutating `.hidden`/textContent on a React-rendered
+          // node, like the branch below does, would leave the toggle
+          // button claiming "expanded" while the insights content never
+          // actually renders.
+          if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+            window.dispatchEvent(
+              new CustomEvent("pr-navigate-to-insights", { detail: { prNumber: normalizedPrNumber } }),
+            );
+          }
+        } else {
+          const prRow = prLink.closest("tr");
+          if (prRow) {
+            const nextRow = prRow.nextElementSibling;
+            if (nextRow && nextRow.querySelector(".insights-row-cell")) {
+              nextRow.hidden = false;
+              const toggleButton = prRow.querySelector(".row-insights-toggle");
+              if (toggleButton) {
+                toggleButton.textContent = "Hide insights";
+                toggleButton.setAttribute("aria-expanded", "true");
+              }
             }
           }
         }
@@ -256,4 +273,4 @@
   return {
     createPrAutoRenderNavigationHelpers,
   };
-});
+})();

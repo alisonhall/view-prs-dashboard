@@ -5,4 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-npm run start -- "$@"
+# Deliberately NOT `npm run start -- "$@"` - `start` launches the React dev
+# servers (see package.json), a completely separate thing from running the
+# CLI script directly. This is the actual "recommended local launcher" the
+# README describes (--open, --repo, --ack, --backup-list, etc.), invoked via
+# bash explicitly (not `sh`) since the script relies on bash-only syntax
+# (local -a arrays, [[, pipefail) that a POSIX-only /bin/sh (e.g. dash) can't run.
+bash src/script/check-open-pr-updates.sh "$@"

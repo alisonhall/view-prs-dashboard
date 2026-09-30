@@ -273,6 +273,12 @@ const getPrDiffCommitFingerprint = (entry) => {
     .map((commit) => String(commit?.oid || "").trim())
     .filter(Boolean)
     .join(",");
+  if (String(row?.mergedAt || "").trim()) {
+    // Merged PRs have an immutable commit set — the code diff can never
+    // change again, so metadata-only updates (comments, labels, reviews)
+    // must not invalidate the cached diff and trigger a re-fetch.
+    return ["merged", commitOids].join("|");
+  }
   return [
     String(row?.sourceUpdatedAt || "").trim(),
     String(row?.updatedAt || "").trim(),

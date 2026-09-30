@@ -70,4 +70,47 @@ describe("pr section grouping helpers", () => {
       merged: [],
     });
   });
+
+  test("given the same row array reference-for-reference as the previous call, when building grouped sections again, then the cached result is returned without re-sorting", () => {
+    const sortRowsByPrNumberDesc = jest.fn((rows) => rows);
+    const sortRowsByDateFieldDesc = jest.fn((rows) => rows);
+    const { buildGroupedPrSections } = createPrSectionGroupingHelpers({
+      sortRowsByPrNumberDesc,
+      sortRowsByDateFieldDesc,
+    });
+
+    const rows = [
+      { section: "open", data: { number: 1 } },
+      { section: "closed", data: { closedAt: "2026-07-16T00:00:00Z" } },
+    ];
+
+    const first = buildGroupedPrSections(rows);
+    // Called once per section (open, draft) / (closed, merged) regardless
+    // of how many rows actually belong to each - matches the existing
+    // "given mixed section rows" test's own call-count expectations above.
+    expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+    expect(sortRowsByDateFieldDesc).toHaveBeenCalledTimes(2);
+
+    const second = buildGroupedPrSections([...rows]);
+    expect(second).toBe(first);
+    expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+    expect(sortRowsByDateFieldDesc).toHaveBeenCalledTimes(2);
+  });
+
+  test("given a row array with a different entry reference at some position, when building grouped sections again, then it recomputes", () => {
+    const sortRowsByPrNumberDesc = jest.fn((rows) => rows);
+    const sortRowsByDateFieldDesc = jest.fn((rows) => rows);
+    const { buildGroupedPrSections } = createPrSectionGroupingHelpers({
+      sortRowsByPrNumberDesc,
+      sortRowsByDateFieldDesc,
+    });
+
+    const entryA = { section: "open", data: { number: 1 } };
+    buildGroupedPrSections([entryA]);
+    expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+
+    const entryB = { section: "open", data: { number: 1 } };
+    buildGroupedPrSections([entryB]);
+    expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(4);
+  });
 });

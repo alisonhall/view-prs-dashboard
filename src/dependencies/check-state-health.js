@@ -91,6 +91,12 @@ const evaluateStateHealth = ({
 
     if (state.error) {
       failures.push(`user-state file parse failure: ${state.error}`);
+    } else if (Object.keys(state).length === 0) {
+      // An untouched `{}` is what a fresh install looks like before the app's
+      // first write - equivalent to the file not existing yet, not corruption.
+      warnings.push(
+        `user-state file is empty (new install?): ${userStateFile}`,
+      );
     } else {
       const missingKeys = USER_STATE_REQUIRED_KEYS.filter(
         (k) => !Object.prototype.hasOwnProperty.call(state, k),

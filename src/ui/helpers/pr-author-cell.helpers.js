@@ -1,87 +1,63 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsAuthorCellHelpers fallback.
+export const { createPrAuthorCellHelpers } = (() => {
+  // A commit whose headline starts with "Merge" (merging a branch/PR into
+  // another) - same definition pr-needs-attention.helpers.js's
+  // isMergeCommitHeadline uses for "ignore merge-only commits", duplicated
+  // here (rather than threaded through as a dependency) since it's a pure
+  // one-liner with no state of its own.
+  const isMergeCommitHeadline = (messageHeadline = "") =>
+    /^Merge\b/i.test(String(messageHeadline || "").trim());
 
-  root.ViewPrsAuthorCellHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const createPrAuthorCellHelpers = ({
     getPreferredActorKey,
-    createActorIdentityElement,
-    getManualNotesSummary,
-    documentRef,
   } = {}) => {
     const getPreferredActorKeySafe =
       typeof getPreferredActorKey === "function"
         ? getPreferredActorKey
         : (login, name) => String(login || name || "").trim();
-    const createActorIdentityElementSafe =
-      typeof createActorIdentityElement === "function"
-        ? createActorIdentityElement
-        : () => null;
-    const getManualNotesSummarySafe =
-      typeof getManualNotesSummary === "function"
-        ? getManualNotesSummary
-        : () => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false });
 
-    const getDocument = () =>
-      documentRef || (typeof document !== "undefined" ? document : null);
+    // Returns the official PR author (always first, marked isPrimary) plus
+    // every distinct person with a non-merge commit on the branch, in the
+    // order their commits appear, deduped by the same login/name key
+    // ActorIdentity rendering uses everywhere else - so a commit author who
+    // is also the PR author (the common case) only appears once.
+    const collectPrAuthors = (row = {}) => {
+      const authors = [];
+      const seenKeys = new Set();
 
-    const createAuthorCell = (entry, row, actorsMapFromPayload = {}) => {
-      const doc = getDocument();
-      if (!doc || typeof doc.createElement !== "function") {
-        return null;
-      }
-
-      const td = doc.createElement("td");
-      td.className = "author-cell";
-
-      const authorLogin = getPreferredActorKeySafe(row?.authorLogin, row?.author);
-      if (authorLogin) {
-        const identityNode = createActorIdentityElementSafe({
-          row,
-          login: authorLogin,
-          actorsMap: actorsMapFromPayload,
-          fallbackName: row?.author,
-          tagName: "div",
-          className: "author-cell-name",
-        });
-        if (identityNode) {
-          td.appendChild(identityNode);
+      const addAuthor = (loginValue, nameValue, isPrimary) => {
+        const key = getPreferredActorKeySafe(loginValue, nameValue);
+        if (!key || seenKeys.has(key)) {
+          return;
         }
-      } else {
-        const authorName = doc.createElement("div");
-        authorName.className = "author-cell-name";
-        authorName.textContent = "-";
-        td.appendChild(authorName);
-      }
+        seenKeys.add(key);
+        authors.push({ key, name: String(nameValue || "").trim(), isPrimary });
+      };
 
-      const notesSummary = getManualNotesSummarySafe(entry, row);
-      const notesIndicator = doc.createElement("div");
-      notesIndicator.className = [
-        "author-notes-indicator",
-        notesSummary.hasNotes
-          ? "author-notes-indicator-has"
-          : "author-notes-indicator-none",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      notesIndicator.textContent = notesSummary.hasNotes ? "📝 Notes" : "";
-      notesIndicator.title = notesSummary.hasNotes
-        ? `${notesSummary.commentsCount} manual comment${notesSummary.commentsCount === 1 ? "" : "s"}${notesSummary.hasOtherNotes ? " + other notes" : ""}`
-        : "No manual comments or notes";
-      td.appendChild(notesIndicator);
+      addAuthor(row?.authorLogin, row?.author, true);
 
-      return td;
+      (Array.isArray(row?.commits) ? row.commits : []).forEach((commit) => {
+        if (isMergeCommitHeadline(commit?.messageHeadline)) {
+          return;
+        }
+        (Array.isArray(commit?.authors) ? commit.authors : []).forEach((author) => {
+          addAuthor(author?.login, author?.name, false);
+        });
+      });
+
+      return authors;
     };
 
     return {
-      createAuthorCell,
+      collectPrAuthors,
     };
   };
 
   return {
     createPrAuthorCellHelpers,
   };
-});
+})();

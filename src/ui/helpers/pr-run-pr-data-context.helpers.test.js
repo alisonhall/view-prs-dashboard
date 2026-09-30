@@ -8,7 +8,6 @@ describe("pr run pr data context helpers", () => {
   test("given payload and runtime inputs, when deriving run-pr-data context, then composed render/repo/scope/row-source context is returned", () => {
     const captureRenderContext = jest.fn(() => ({
       sectionsHost: { id: "sections" },
-      insightsViewState: { expanded: ["1"] },
       prSectionOpenState: { opened: true },
       meta: { textContent: "" },
       scopeSelect: { value: "last-run" },
@@ -66,7 +65,6 @@ describe("pr run pr data context helpers", () => {
     });
     expect(result).toEqual({
       sectionsHost: { id: "sections" },
-      insightsViewState: { expanded: ["1"] },
       prSectionOpenState: { opened: true },
       meta: { textContent: "" },
       scopeSelect: { value: "last-run" },

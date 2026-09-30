@@ -26,6 +26,7 @@ const registerViewPrsPrRoutes = ({
   resolveCanonicalActorLogin,
   isRepoSlug,
   syncPrDiffForEntry,
+  runInsightsHookScript,
 }) => {
   const { sendSuccessPayload, sendInternalError, sendErrorStatus, sendRouteResult } =
     createViewPrsRouteResponseHelpers();
@@ -368,6 +369,26 @@ const registerViewPrsPrRoutes = ({
       res,
       result: buildDiffSyncRouteResult({ repo, prNumber, diffResult }),
     });
+  });
+
+  app.get(["/insights-hook", "/view-prs/insights-hook"], async (req, res) => {
+    const insightsHookRequestResult = resolveDiffRequestResult({
+      query: req.query,
+      byPrNumber: readViewPrsData()?.byPrNumber,
+    });
+
+    if (!insightsHookRequestResult.ok) {
+      sendErrorStatus({ res, ...insightsHookRequestResult });
+      return;
+    }
+
+    const { entry } = insightsHookRequestResult;
+    try {
+      const { html, error } = await runInsightsHookScript(entry);
+      sendSuccessPayload({ res, payload: { ok: true, html, error: error || null } });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
   });
 };
 

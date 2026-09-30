@@ -5,7 +5,7 @@ const {
 } = require("./pr-row-sources.helpers.js");
 
 describe("pr row sources helpers", () => {
-  test("given repo filter, when deriving row sources, then rowsForRepo only includes matching repo entries", () => {
+  test("given a repo filter, when deriving row sources, then rowsForRepo still includes entries from other repos (PR data for a non-current repo must still render)", () => {
     const normalizeRows = jest.fn((rows) => rows);
     const { deriveRowSources } = createPrRowSourcesHelpers({ normalizeRows });
 
@@ -20,6 +20,7 @@ describe("pr row sources helpers", () => {
 
     expect(result.rowsForRepo).toEqual([
       { repo: "org/repo-a", id: 1 },
+      { repo: "org/repo-b", id: 2 },
       { repo: "org/repo-a", id: 3 },
     ]);
     expect(result.allStoredRows).toEqual([

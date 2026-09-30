@@ -11,6 +11,7 @@ describe("pr render pipeline helpers", () => {
       currentViewerLogin: "me",
     }));
     const deriveRenderFilterSummaryState = jest.fn(() => ({
+      rows: [{ number: 1 }],
       grouped: { opened: [{ number: 1 }] },
       appliedSummaryText: "Repo: org/repo",
       filterChips: ["author:me"],
@@ -46,7 +47,6 @@ describe("pr render pipeline helpers", () => {
       prSectionOpenState: { opened: true },
       lastSuccessfulRenderedCheckAt: "2026-07-19T00:00:00.000Z",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
 
@@ -70,6 +70,7 @@ describe("pr render pipeline helpers", () => {
     expect(deriveRenderFinalizedState).toHaveBeenCalledWith({
       payload: { actorsMap: { me: {} } },
       allStoredRows: [{ number: 1 }],
+      filteredRows: [{ number: 1 }],
       sectionsHost: { nodeType: 1 },
       meta: { textContent: "" },
       appliedSummaryText: "Repo: org/repo",
@@ -80,7 +81,6 @@ describe("pr render pipeline helpers", () => {
       selectedScope: "mine",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
       latestSchedulerState: { activePrNumbers: [1] },
     });
     expect(

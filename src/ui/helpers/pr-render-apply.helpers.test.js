@@ -5,40 +5,33 @@ const {
 } = require("./pr-render-apply.helpers.js");
 
 describe("pr render apply helpers", () => {
-  test("given render artifacts and payload, when applying render results, then all render side effects are coordinated and next render state is returned", () => {
+  afterEach(() => {
+    delete window.updateReactMergedRequestMoreAction;
+    delete window.updateReactDataMetaText;
+  });
+
+  test("given render artifacts and payload, when applying render results, then side effects and the merged-request-more action are coordinated and next render state is returned", () => {
     const renderManagementFilterSummary = jest.fn();
-    const renderExportFieldCatalog = jest.fn();
     const renderAuthorInsights = jest.fn();
-    const renderStatsView = jest.fn();
-    const clearElementContents = jest.fn();
-    const buildPrSectionConfigs = jest.fn(() => [{ id: "section-1" }]);
-    const appendPrSections = jest.fn();
-    const buildMergedRequestMoreActionOptions = jest.fn(() => ({ enabled: true }));
-    const appendMergedRequestMoreAction = jest.fn();
-    const restoreInsightsViewState = jest.fn();
-    const applyActivePrProgressIndicators = jest.fn();
-    const recomputeDirtyPrSectionsFields = jest.fn();
+    const buildMergedRequestMoreActionOptions = jest.fn(() => ({
+      isVisible: true,
+      repo: "org/repo",
+    }));
     const computePrDataFingerprint = jest.fn(() => "fingerprint-1");
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
+    const updateReactMergedRequestMoreAction = jest.fn();
+    window.updateReactMergedRequestMoreAction = updateReactMergedRequestMoreAction;
+    const updateReactDataMetaText = jest.fn();
+    window.updateReactDataMetaText = updateReactDataMetaText;
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary,
-      renderExportFieldCatalog,
       renderAuthorInsights,
-      renderStatsView,
-      clearElementContents,
-      buildPrSectionConfigs,
-      appendPrSections,
       buildMergedRequestMoreActionOptions,
-      appendMergedRequestMoreAction,
-      restoreInsightsViewState,
-      applyActivePrProgressIndicators,
-      recomputeDirtyPrSectionsFields,
       computePrDataFingerprint,
       computePrDataManifest,
     });
 
-    const sectionsHost = { id: "sections" };
     const meta = { textContent: "" };
     const payload = {
       actorsMap: { user1: { displayName: "User One" } },
@@ -49,75 +42,59 @@ describe("pr render apply helpers", () => {
     const result = applyRenderResults({
       payload,
       allStoredRows: [{ id: 1 }],
-      sectionsHost,
+      filteredRows: [{ id: 2 }],
       meta,
       appliedSummaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],
-      grouped: { opened: [{ id: 1 }] },
-      prSectionOpenState: { opened: true },
-      lastSuccessfulRenderedCheckAt: "2026-07-17T00:00:00Z",
       selectedScope: "all",
       repoFilter: "org/repo",
       latestSelectedRepo: "org/repo",
-      insightsViewState: { expanded: ["1"] },
-      latestSchedulerState: { activePrNumbers: [123, 456] },
     });
 
-    expect(meta.textContent).toBe("Applied filters: repo=org/repo");
+    // Deferred-items follow-up (full vanilla-to-React sweep, see
+    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now - `meta`
+    // (the DOM element) is still threaded through as a param but no
+    // longer written to directly.
+    expect(meta.textContent).toBe("");
+    expect(updateReactDataMetaText).toHaveBeenCalledWith("Applied filters: repo=org/repo");
     expect(renderManagementFilterSummary).toHaveBeenCalledWith({
       summaryText: "Applied filters: repo=org/repo",
       filterChips: ["repo=org/repo"],
     });
-    expect(renderExportFieldCatalog).toHaveBeenCalledWith(payload);
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
-    expect(renderStatsView).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
-    expect(clearElementContents).toHaveBeenCalledWith(sectionsHost);
-    expect(buildPrSectionConfigs).toHaveBeenCalledWith({
-      grouped: { opened: [{ id: 1 }] },
-      prSectionOpenState: { opened: true },
-      lastCheckedAt: "2026-07-17T00:00:00Z",
-      actorsMapFromPayload: payload.actorsMap,
-    });
-    expect(appendPrSections).toHaveBeenCalledWith(sectionsHost, [{ id: "section-1" }]);
     expect(buildMergedRequestMoreActionOptions).toHaveBeenCalledWith({
       selectedScope: "all",
       repoFilter: "org/repo",
       lastRunRepo: "org/repo",
       latestSelectedRepo: "org/repo",
     });
-    expect(appendMergedRequestMoreAction).toHaveBeenCalledWith(sectionsHost, {
-      enabled: true,
-    });
-    expect(restoreInsightsViewState).toHaveBeenCalledWith(sectionsHost, {
-      expanded: ["1"],
-    });
-    expect(applyActivePrProgressIndicators).toHaveBeenCalledWith([123, 456]);
-    expect(recomputeDirtyPrSectionsFields).toHaveBeenCalled();
+    expect(updateReactMergedRequestMoreAction).toHaveBeenCalledWith(true, "org/repo");
     expect(computePrDataFingerprint).toHaveBeenCalledWith(payload);
     expect(computePrDataManifest).not.toHaveBeenCalled();
     expect(result).toEqual({
       pendingAutoRenderPayload: null,
       lastRenderedPrFingerprint: "fingerprint-1",
       latestPrManifest: { version: "v1" },
+      filteredRows: [{ id: 2 }],
     });
   });
 
-  test("given missing payload fields and scheduler state, when applying render results, then fallback values are used", () => {
+  test("given no window.updateReactMergedRequestMoreAction bridge is installed, when applying render results, then nothing throws", () => {
+    const { applyRenderResults } = createPrRenderApplyHelpers({
+      buildMergedRequestMoreActionOptions: () => ({ isVisible: true, repo: "org/repo" }),
+    });
+
+    expect(() =>
+      applyRenderResults({ payload: {}, allStoredRows: [], meta: {} }),
+    ).not.toThrow();
+  });
+
+  test("given missing payload fields, when applying render results, then fallback values are used", () => {
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
-    const applyActivePrProgressIndicators = jest.fn();
     const { applyRenderResults } = createPrRenderApplyHelpers({
       renderManagementFilterSummary: () => {},
-      renderExportFieldCatalog: () => {},
       renderAuthorInsights: () => {},
-      renderStatsView: () => {},
-      clearElementContents: () => {},
-      buildPrSectionConfigs: () => [],
-      appendPrSections: () => {},
       buildMergedRequestMoreActionOptions: () => ({}),
-      appendMergedRequestMoreAction: () => {},
-      restoreInsightsViewState: () => {},
-      applyActivePrProgressIndicators,
-      recomputeDirtyPrSectionsFields: () => {},
       computePrDataFingerprint: () => "",
       computePrDataManifest,
     });
@@ -125,14 +102,60 @@ describe("pr render apply helpers", () => {
     const result = applyRenderResults({
       payload: {},
       allStoredRows: [],
-      sectionsHost: {},
       meta: {},
-      grouped: {},
     });
 
-    expect(applyActivePrProgressIndicators).toHaveBeenCalledWith([]);
     expect(computePrDataManifest).toHaveBeenCalledWith({});
     expect(result.latestPrManifest).toEqual({ fallback: true });
+  });
+
+  test("given the author insights tab panel is hidden, when applying render results, then its render is skipped", () => {
+    const renderAuthorInsights = jest.fn();
+    const panelsById = {
+      "tab-panel-author-insights": { hidden: true },
+    };
+    const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
+
+    const { applyRenderResults } = createPrRenderApplyHelpers({
+      renderAuthorInsights,
+      getOptionalElementById,
+    });
+
+    applyRenderResults({
+      payload: { actorsMap: {} },
+      allStoredRows: [{ id: 1 }],
+      sectionsHost: {},
+      meta: {},
+    });
+
+    expect(renderAuthorInsights).not.toHaveBeenCalled();
+  });
+
+  test("given a hidden author insights tab panel becomes visible, when its catch-up render is triggered, then it renders with the most recently applied rows", () => {
+    const renderAuthorInsights = jest.fn();
+    const panelsById = {
+      "tab-panel-author-insights": { hidden: true },
+    };
+    const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
+
+    const { applyRenderResults, renderAuthorInsightsIfVisible } =
+      createPrRenderApplyHelpers({
+        renderAuthorInsights,
+        getOptionalElementById,
+      });
+
+    const actorsMap = { user1: { displayName: "User One" } };
+    applyRenderResults({
+      payload: { actorsMap },
+      allStoredRows: [{ id: 1 }],
+      sectionsHost: {},
+      meta: {},
+    });
+    expect(renderAuthorInsights).not.toHaveBeenCalled();
+
+    panelsById["tab-panel-author-insights"].hidden = false;
+    renderAuthorInsightsIfVisible();
+    expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
   });
 
   test("given missing dependencies, when applying render results, then safe defaults are returned without throwing", () => {

@@ -1,22 +1,15 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
-
-  root.ViewPrsRenderContextHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsRenderContextHelpers fallback.
+export const { createPrRenderContextHelpers } = (() => {
   const createPrRenderContextHelpers = ({
     getElementById,
-    captureInsightsViewState,
     capturePrSectionOpenState,
   } = {}) => {
     const getElementByIdSafe =
       typeof getElementById === "function" ? getElementById : () => null;
-    const captureInsightsViewStateSafe =
-      typeof captureInsightsViewState === "function"
-        ? captureInsightsViewState
-        : () => ({ expanded: new Set(), innerOpen: new Map() });
     const capturePrSectionOpenStateSafe =
       typeof capturePrSectionOpenState === "function"
         ? capturePrSectionOpenState
@@ -24,7 +17,6 @@
 
     const captureRenderContext = (payload) => {
       const sectionsHost = getElementByIdSafe("pr-sections");
-      const insightsViewState = captureInsightsViewStateSafe(sectionsHost);
       const prSectionOpenState = capturePrSectionOpenStateSafe(sectionsHost);
       const meta = getElementByIdSafe("data-meta");
       const scopeSelect = getElementByIdSafe("scope-mode");
@@ -34,7 +26,6 @@
 
       return {
         sectionsHost,
-        insightsViewState,
         prSectionOpenState,
         meta,
         scopeSelect,
@@ -52,4 +43,4 @@
   return {
     createPrRenderContextHelpers,
   };
-});
+})();

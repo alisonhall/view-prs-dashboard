@@ -1,12 +1,13 @@
-(function (root, factory) {
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-    return;
-  }
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
+// wrapper every other src/ui/helpers file still uses - the factory body
+// below is unchanged, only the export mechanism differs. index.page.js
+// imports this directly instead of using the
+// require()/globalThis.ViewPrsPrDataTabsHelpers fallback.
+export const { createPrDataTabsHelpers } = (() => {
+  const createPrDataTabsHelpers = ({ getOptionalElementById, onTabActivated }) => {
+    const onTabActivatedSafe =
+      typeof onTabActivated === "function" ? onTabActivated : () => {};
 
-  root.ViewPrsPrDataTabsHelpers = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const createPrDataTabsHelpers = ({ getOptionalElementById }) => {
     const activateDataTab = (key) => {
       const prDataTab = getOptionalElementById("tab-pr-data");
       const reviewStatsTab = getOptionalElementById("tab-review-stats");
@@ -55,6 +56,13 @@
       prDataPanel.hidden = !showPrData;
       reviewStatsPanel.hidden = !showReviewStats;
       authorInsightsPanel.hidden = !showAuthorInsights;
+
+      // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
+      // the shared render pipeline now skips rebuilding a hidden tab's
+      // content on every data render - whichever tab just became visible
+      // here needs a catch-up render with the latest data, in case it was
+      // skipped while hidden.
+      onTabActivatedSafe(key);
     };
 
     const initDataTabs = () => {
@@ -81,4 +89,4 @@
   return {
     createPrDataTabsHelpers,
   };
-});
+})();

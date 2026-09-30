@@ -14,6 +14,12 @@ describe("pr filter selection inputs helpers", () => {
       getSelectedApproverLogins: () => ["approver-1"],
       getOpenModeFilter: () => "ready",
       shouldAlwaysShowInReviewRows: () => true,
+      getCustomCommentsFilter: () => "with",
+      getOtherNotesFilter: () => "without",
+      getPrDifficultyFilter: () => "4",
+      getRallyStoriesFilter: () => "with",
+      getRallyLinksFilter: () => "without",
+      getAnalysisOfPrFilter: () => "with",
     });
 
     expect(deriveFilterSelectionInputs()).toEqual({
@@ -24,6 +30,12 @@ describe("pr filter selection inputs helpers", () => {
       selectedApproverLogins: ["approver-1"],
       openModeFilter: "ready",
       alwaysShowInReview: true,
+      customComments: "with",
+      otherNotes: "without",
+      prDifficulty: "4",
+      rallyStories: "with",
+      rallyLinks: "without",
+      analysisOfPr: "with",
     });
   });
 
@@ -36,6 +48,12 @@ describe("pr filter selection inputs helpers", () => {
       getSelectedApproverLogins: () => [],
       getOpenModeFilter: () => "",
       shouldAlwaysShowInReviewRows: () => false,
+      getCustomCommentsFilter: () => "",
+      getOtherNotesFilter: () => "",
+      getPrDifficultyFilter: () => "",
+      getRallyStoriesFilter: () => "",
+      getRallyLinksFilter: () => "",
+      getAnalysisOfPrFilter: () => "",
     });
 
     expect(deriveFilterSelectionInputs()).toEqual({
@@ -46,6 +64,12 @@ describe("pr filter selection inputs helpers", () => {
       selectedApproverLogins: [],
       openModeFilter: "none",
       alwaysShowInReview: false,
+      customComments: "",
+      otherNotes: "",
+      prDifficulty: "",
+      rallyStories: "",
+      rallyLinks: "",
+      analysisOfPr: "",
     });
   });
 
@@ -60,6 +84,12 @@ describe("pr filter selection inputs helpers", () => {
       selectedApproverLogins: [],
       openModeFilter: "none",
       alwaysShowInReview: false,
+      customComments: "",
+      otherNotes: "",
+      prDifficulty: "",
+      rallyStories: "",
+      rallyLinks: "",
+      analysisOfPr: "",
     });
   });
 });

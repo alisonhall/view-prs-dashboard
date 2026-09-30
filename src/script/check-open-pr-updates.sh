@@ -2,7 +2,12 @@
 
 set -euo pipefail
 
-REPO='optum-rx-clinicalproducts/orx-cpp-mp-uis'
+# Precedence: --repo CLI flag (parse_args, below) > VIEW_PRS_REPO env var.
+# No hardcoded fallback repo - defaults to empty (not unset) specifically so
+# `set -u` above doesn't crash the whole script, including --help, before
+# parse_args/the real "$REPO" validation below even run; an empty/missing
+# value is instead caught there with a clear message.
+REPO="${VIEW_PRS_REPO:-}"
 LIMIT=200
 OPEN_MODE='all'
 MERGED_LIMIT=15
@@ -18,6 +23,9 @@ INCLUDE_AUTHOR=''
 INCLUDE_AUTHORS=''
 SHOW_REASON=1
 QUIET=0
+QUICK_CHECK=0
+QUICK_CHECK_NUMBERS_RAW_INPUT=''
+QUICK_CHECK_NUMBERS=''
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -49,6 +57,28 @@ VIEWED_FILES_FRESH_CACHE_DIR="${VIEWED_FILES_FRESH_CACHE_DIR:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEW_PRS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Portability (see REACT_MIGRATION_PLAN.md-adjacent dependency work): prefer
+# the jq binary npm already downloaded via the node-jq devDependency over a
+# system-wide `jq` on PATH, so `npm install` alone provides a working jq
+# with no manual system install step. Falls back to plain `jq` (relying on
+# PATH, as before) when node_modules/node-jq isn't present - e.g. this
+# script run standalone outside the npm-managed project. Shadowing `jq`
+# itself as a function (rather than rewriting every call site below) means
+# every existing invocation picks this up unchanged; `export -f` propagates
+# it into the `bash -c` subshells the parallel-fetch helpers below spawn.
+if [[ -x "$VIEW_PRS_DIR/node_modules/node-jq/bin/jq" ]]; then
+  JQ_BIN="$VIEW_PRS_DIR/node_modules/node-jq/bin/jq"
+elif [[ -x "$VIEW_PRS_DIR/node_modules/node-jq/bin/jq.exe" ]]; then
+  JQ_BIN="$VIEW_PRS_DIR/node_modules/node-jq/bin/jq.exe"
+else
+  JQ_BIN=""
+fi
+if [[ -n "$JQ_BIN" ]]; then
+  jq() { "$JQ_BIN" "$@"; }
+  export -f jq
+fi
+
 DATA_DIR="${DATA_DIR:-$VIEW_PRS_DIR/data}"
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"
@@ -87,6 +117,7 @@ DEBUG_LOG_FILE="${CHECK_OPEN_PR_DEBUG_LOG:-}"
 CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=''
 CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=''
 CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=''
+CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN='true'
 USER_DEFAULTS_FILE=''
 
 debug_log() {
@@ -166,7 +197,7 @@ Checks open PRs, closed PRs that were not merged, and latest merged PRs,
 reporting status/approval and changed reasons.
 
 Options:
-  -r, --repo <owner/name>      Repository to scan (default: optum-rx-clinicalproducts/orx-cpp-mp-uis)
+  -r, --repo <owner/name>      Repository to scan (default: $VIEW_PRS_REPO env var)
   -p, --pr <number>            Inspect a single PR number only
       --label <name(s)>        Include only PRs that have these label(s), comma-separated
       --exclude-label <name(s)> Exclude PRs that have these label(s), comma-separated
@@ -176,7 +207,7 @@ Options:
       --jobs <number>          Parallel workers for API prefetch (default: 6)
       --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
       --ack-clear <numbers>    Clear acknowledgment for PR number(s)
-      --in-review <numbers>    Mark PR number(s) as in-review (forces NO_CHANGE -> CHANGED)
+      --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
       --in-review-clear <numbers> Clear in-review toggle for PR number(s)
       --flagged <numbers>      Mark PR number(s) as flagged
       --flagged-clear <numbers> Clear flagged toggle for PR number(s)
@@ -188,6 +219,13 @@ Options:
       --hide-reason            Hide inline changed reason in STATUS
       --quiet                  Hide run metadata header
       --open <mode>            Browser behavior: all | changed | none (default: all)
+      --quick-check            List PRs and report which changed (by updatedAt) without
+                                fetching full details/diffs; prints JSON to stdout and exits
+      --quick-check-numbers <numbers> With --quick-check, check exactly these PR number(s)
+                                (comma-separated) via direct lookup instead of listing -
+                                bypasses --limit/--merged-limit/the day-window entirely, so
+                                an older merged/closed PR can still be checked. Mutually
+                                exclusive with -p/--pr.
   -h, --help                   Show this help
 
 Examples:
@@ -328,10 +366,17 @@ create_state_backup() {
   if [[ "$retention" =~ ^[0-9]+$ ]] && ((retention > 0)); then
     pattern="$STATE_BACKUP_DIR/$(basename "$target_file").${tag}.*.bak"
     if compgen -G "$pattern" >/dev/null; then
+      # Best-effort trim only: with `set -e -o pipefail`, if a concurrent
+      # invocation of this same cleanup deletes the last matching files
+      # between the compgen check above and `ls` running here, the glob
+      # expands to nothing, `ls` fails (no such file), and pipefail would
+      # propagate that failure through the whole pipeline and abort the
+      # entire script — silently dropping whatever ack/flag/clear operation
+      # was in progress. `|| true` keeps that race from being fatal.
       ls -1t $pattern 2>/dev/null | awk -v keep="$retention" 'NR > keep { print }' | while IFS= read -r old_file; do
         [[ -n "$old_file" ]] || continue
         rm -f "$old_file" 2>/dev/null || true
-      done
+      done || true
     fi
   fi
 }
@@ -557,15 +602,27 @@ set_ack_ts() {
 
 clear_ack_ts_unlocked() {
   local number="$1"
+  # set_reverify: the manual "--ack-clear" path (default) also sets
+  # reverifyByRepo so the row shows CHANGED("ack-cleared") even absent any
+  # real new activity. The automatic clear-on-new-activity path (see
+  # compute_pr_state_json) passes false: status is already CHANGED for a
+  # real reason there, and forcing reverifyByRepo too would keep pinning it
+  # to CHANGED forever once that real activity ages out of effective_last.
+  local set_reverify="${2:-true}"
   local tmp
   tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  if [[ "$set_reverify" == 'true' ]]; then
+    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  else
+    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+  fi
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }
 
 clear_ack_ts() {
   local number="$1"
-  with_user_state_lock clear_ack_ts_unlocked "$number"
+  local set_reverify="${2:-true}"
+  with_user_state_lock clear_ack_ts_unlocked "$number" "$set_reverify"
 }
 
 clear_all_repo_acks_unlocked() {
@@ -614,8 +671,9 @@ load_change_filter_config() {
   CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(jq -r '.changeFilters.ignoreCommentsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(jq -r '.changeFilters.ignoreReviewsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(jq -r '.changeFilters.ignoreCommitPatterns // [] | join("|")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
+  CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN=$(jq -r 'if .changeFilters.useBuiltinMergePattern == null then true else .changeFilters.useBuiltinMergePattern end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo 'true')
   
-  debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS"
+  debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS use_builtin_merge=$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN"
 }
 
 lock_info_file() {
@@ -636,20 +694,28 @@ is_pid_alive() {
 }
 write_lock_metadata() {
   local lock_dir="$1"
-  local info_file now
+  local info_file tmp_file now
   info_file=$(lock_info_file "$lock_dir")
+  tmp_file="${info_file}.tmp.$$"
   now=$(get_epoch_seconds)
 
+  # Write to a temp file and rename it into place rather than writing
+  # info_file directly. `{ ...; } >"$info_file"` truncates info_file to 0
+  # bytes the instant the redirect opens, before any of the printfs run —
+  # under heavy concurrency, a competing process's staleness check can land
+  # in that gap, see an existing-but-empty file, parse no pid from it, and
+  # conclude (wrongly) that this brand-new, live lock is stale and abandoned
+  # by a dead process. Renaming a fully-written temp file into place is
+  # atomic, so readers only ever see "absent" or "complete", never "empty".
   {
     printf 'pid=%s\n' "$$"
     printf 'createdAt=%s\n' "$now"
     printf 'script=%s\n' "$0"
-  } >"$info_file" 2>/dev/null || true
+  } >"$tmp_file" 2>/dev/null && mv -f "$tmp_file" "$info_file" 2>/dev/null || true
 }
-recover_stale_lock_dir() {
+is_lock_dir_currently_stale() {
   local lock_dir="$1"
-  local lock_label="$2"
-  local info_file pid created_at now age stale_after mtime
+  local info_file pid now age stale_after mtime
 
   [[ -d "$lock_dir" ]] || return 1
 
@@ -672,6 +738,25 @@ recover_stale_lock_dir() {
       fi
     fi
   fi
+
+  return 0
+}
+
+recover_stale_lock_dir() {
+  local lock_dir="$1"
+  local lock_label="$2"
+
+  is_lock_dir_currently_stale "$lock_dir" || return 1
+
+  # Re-verify immediately before the destructive step. Under contention,
+  # checking "pid" or "reading the info file" can take long enough (process
+  # scheduling, subprocess forking for `stat`/`kill -0`/`awk`) for a
+  # different waiter to legitimately win the lock in between our verdict and
+  # actually acting on it. Without this, we'd blow away a lock dir another
+  # process just created and is actively holding, letting both believe they
+  # own it — the exact way concurrent ack/flag/clear requests silently lose
+  # each other's writes.
+  is_lock_dir_currently_stale "$lock_dir" || return 1
 
   if rm -rf "$lock_dir" 2>/dev/null; then
     debug_log "Recovered stale ${lock_label} lock: ${lock_dir}"
@@ -914,6 +999,72 @@ prefetch_pr_details() {
     done
     exit 0
   ' _ '{}' "$REPO" "$DETAIL_CACHE_DIR" "$GH_COMMAND_TIMEOUT_SECONDS"
+}
+
+# Fetches specific PR numbers directly (used by --quick-check-numbers), in
+# parallel via the same xargs -P "$JOBS" + 3-attempt/backoff/timeout idiom as
+# prefetch_pr_details above, instead of listing PRs via `gh pr list`. This is
+# what lets a quick-check-by-number bypass LIMIT/MERGED_LIMIT/MERGED_DAYS_DEFAULT
+# entirely - an old merged PR is fetched directly, never subject to the
+# listing/day-window logic. A number that fails after all retries (not found,
+# wrong repo) is silently skipped rather than failing the whole run, unlike
+# -p/--pr's hard-fail, since a batch shouldn't abort over one bad number.
+fetch_quick_check_target_prs() {
+  local numbers="$1"
+  [[ -z "$numbers" ]] && return
+
+  local scratch_dir
+  scratch_dir=$(mktemp -d)
+
+  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+    number="$1"
+    repo="$2"
+    out_dir="$3"
+    gh_timeout="$4"
+
+    run_with_timeout_inner() {
+      local timeout_seconds="$1"
+      shift
+
+      if ! [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || ((timeout_seconds <= 0)); then
+        "$@"
+        return $?
+      fi
+
+      if command -v gtimeout >/dev/null 2>&1; then
+        gtimeout --signal=TERM "$timeout_seconds" "$@"
+        return $?
+      fi
+
+      if command -v timeout >/dev/null 2>&1; then
+        timeout --signal=TERM "$timeout_seconds" "$@"
+        return $?
+      fi
+
+      perl -e "alarm shift @ARGV; exec @ARGV; die qq(exec failed: $!)" "$timeout_seconds" "$@"
+    }
+
+    for attempt in 1 2 3; do
+      if run_with_timeout_inner "$gh_timeout" gh pr view "$number" -R "$repo" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq ". | @base64" > "$out_dir/$number.txt" 2>/dev/null; then
+        exit 0
+      fi
+      sleep $((2 ** (attempt - 1)))
+    done
+    exit 0
+  ' _ '{}' "$REPO" "$scratch_dir" "$GH_COMMAND_TIMEOUT_SECONDS"
+
+  local number result_file
+  while IFS= read -r number; do
+    [[ -z "$number" ]] && continue
+    result_file="$scratch_dir/$number.txt"
+    if [[ -s "$result_file" ]]; then
+      cat "$result_file"
+    else
+      debug_log "quick-check-numbers: PR #$number not found in $REPO, skipping"
+    fi
+  done <<<"$numbers"
+
+  rm -rf "$scratch_dir"
 }
 
 prefetch_review_threads() {
@@ -1336,13 +1487,13 @@ build_activity_events_json() {
       }),
       ($commits[]? as $commit
         | $commit.authors[]?
-        | select((.login // "") != "")
+        | select(((.login // "") != "") or ((.name // "") != "") or ((.email // "") != ""))
         | {
             sourceId: ($commit.oid // ""),
             threadId: "",
             occurredAt: ($commit.committedAt // ""),
             date: (($commit.committedAt // "") | split("T") | .[0]),
-            actor: .login,
+            actor: (if (.login // "") != "" then .login elif (.name // "") != "" then .name elif (.email // "") != "" then .email else "unknown" end),
             type: "commit",
             channel: "commit",
             messageHeadline: ($commit.messageHeadline // ""),
@@ -2031,11 +2182,19 @@ compute_pr_state_json() {
   activity_timeline_summary=$(build_activity_timeline_summary "$activity_timeline_json")
   metrics_json=$(build_pr_metrics_json "$comments_json" "$reviews_json" "$commits_json" "$threads_json" "$comment_events_json" "$activity_events_json" "$author_login" "$merged_at")
 
-  my_last=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
+  # Includes the viewer's own review-thread comments (inline diff replies),
+  # not just top-level PR comments/submitted reviews/commits - a viewer who
+  # only replies inline (a common review flow, e.g. answering a thread
+  # without submitting a formal review) previously had no activity here at
+  # all, leaving effective_last empty below even though the "N open
+  # conversations with me" summary (getOpenConversationCountWithMe in
+  # index.page.js) already proves the viewer's own thread comments exist.
+  my_last=$(jq -nr --arg me "$VIEWER_LOGIN" --argjson detail "$detail_json" --argjson threads "${threads_json:-[]}" '
     [
-      (.comments[]? | select(.author.login == $me) | .createdAt),
-      (.reviews[]? | select(.author.login == $me) | .submittedAt),
-      (.commits[]? | .authors[]? | select(.login == $me) | .committedDate)
+      ($detail.comments[]? | select(.author.login == $me) | .createdAt),
+      ($detail.reviews[]? | select(.author.login == $me) | .submittedAt),
+      ($detail.commits[]? | .authors[]? | select(.login == $me) | .committedDate),
+      ($threads[]? | .comments[]? | select(.authorLogin == $me) | .createdAt)
     ]
     | map(select(. != null and . != ""))
     | sort
@@ -2069,15 +2228,15 @@ compute_pr_state_json() {
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" '
-      # Build combined pattern: built-in merge pattern + user patterns
-      ("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + 
-       (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern
+    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
+      # Build combined pattern: optionally include built-in merge pattern + user patterns
+      ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
+       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
       | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))
         | select((.committedDate // "") > $since)
-        | select(((.messageHeadline // "") | test($combinedPattern)) | not)
+        | select(($combinedPattern | length) == 0 or (((.messageHeadline // "") | test($combinedPattern)) | not))
       ]
       | length
     ')
@@ -2100,14 +2259,14 @@ compute_pr_state_json() {
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" '
-      # Build combined pattern: built-in merge pattern + user patterns
-      ("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + 
-       (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern
+    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
+      # Build combined pattern: optionally include built-in merge pattern + user patterns
+      ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
+       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
       | [
         .commits[]?
         | select(any(.authors[]?; .login != null and .login != $me))
-        | select(((.messageHeadline // "") | test($combinedPattern)) | not)
+        | select(($combinedPattern | length) == 0 or (((.messageHeadline // "") | test($combinedPattern)) | not))
       ]
       | length
     ')
@@ -2283,15 +2442,31 @@ compute_pr_state_json() {
     fi
   fi
 
+  # A PR acked earlier that has genuinely new activity since that ack
+  # (effective_last is pinned to at least ack_at above, so a CHANGED status
+  # here always means something happened after the ack) should no longer
+  # read as acknowledged - clear it so the row's Ack button/state matches
+  # the CHANGED status instead of contradicting it. Passes set_reverify=false
+  # since changed_reason already carries the real reason (comment/review/
+  # commit/etc.) - no need for the manual-clear-only 'ack-cleared' pin, which
+  # would keep forcing CHANGED even once this activity ages out of
+  # effective_last on a later run.
+  if [[ "$status" == 'CHANGED' && -n "$ack_at" ]]; then
+    clear_ack_ts "$number" false
+  fi
+
   reverify_required=$(get_reverify_required "$number")
-  in_review_required=$(get_in_review_required "$number")
-  if [[ "$status" == 'NO_CHANGE' && "$in_review_required" == 'true' ]]; then
-    status='CHANGED'
-    changed_reason='in-review'
-  elif [[ "$reverify_required" == 'true' && "$status" == 'NO_CHANGE' ]]; then
+  if [[ "$reverify_required" == 'true' && "$status" == 'NO_CHANGE' ]]; then
     status='CHANGED'
     changed_reason='ack-cleared'
   fi
+
+  # Populates row.inReview (checkbox state, "In Review" smart group) without
+  # forcing status/changed_reason to CHANGED(in-review) — the dedicated
+  # "In Review" and "Needs Attention" groups already surface these PRs, so
+  # the status override is no longer needed to flag that they're being
+  # worked on.
+  in_review_required=$(get_in_review_required "$number")
 
   check_state=$(printf '%s' "$detail_json" | jq -r '
     def to_state:
@@ -3071,6 +3246,58 @@ collect_stale_numbers_from_b64() {
   done <<<"$b64_lines"
 }
 
+pr_updated_at_matches_cache() {
+  local number="$1"
+  local section="$2"
+  local source_updated_at="$3"
+  local cached_updated_at
+
+  cached_updated_at=$(
+    jq -r \
+      --arg number "$number" \
+      --arg repo "$REPO" \
+      --arg section "$section" \
+      '.byPrNumber[$number] // empty | select(.repo == $repo and .section == $section) | (.data.sourceUpdatedAt // empty)' \
+      "$PR_STATE_FILE" 2>/dev/null
+  )
+
+  [[ -n "$cached_updated_at" && "$cached_updated_at" == "$source_updated_at" ]]
+}
+
+# Cheap "did it change" check used by --quick-check: compares the just-listed
+# updatedAt against the cached row's sourceUpdatedAt directly, independent of
+# the full-fetch caching gate (VIEW_PRS_SKIP_UNCHANGED, off by default) and
+# without requiring every other detail field to already be populated.
+collect_quick_check_pending_numbers() {
+  local b64_lines="$1"
+  local section="$2"
+  local is_draft number source_updated_at pr_json
+
+  while IFS= read -r pr_item; do
+    [[ -z "$pr_item" ]] && continue
+    pr_json=$(printf '%s' "$pr_item" | base64 --decode)
+    number=$(printf '%s' "$pr_json" | jq -r '.number')
+    [[ -z "$number" || "$number" == 'null' ]] && continue
+
+    is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft // false')
+    if [[ "$section" == 'open' && "$is_draft" == 'true' ]]; then
+      continue
+    fi
+    if [[ "$section" == 'draft' && "$is_draft" != 'true' ]]; then
+      continue
+    fi
+
+    source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
+    [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && continue
+
+    if pr_updated_at_matches_cache "$number" "$section" "$source_updated_at"; then
+      continue
+    fi
+
+    printf '%s\n' "$number"
+  done <<<"$b64_lines"
+}
+
 collect_prioritized_stale_number_sets() {
   local open_b64="$1"
   local closed_b64="$2"
@@ -3093,6 +3320,19 @@ collect_prioritized_stale_number_sets() {
       printf '%s\n' "$STALE_MERGED_PR_NUMBERS"
     } | awk 'NF' | sort -u
   )
+}
+
+emit_quick_check_result() {
+  local repo="$1"
+  local open_draft_numbers="$2"
+  local closed_merged_numbers="$3"
+
+  jq -n \
+    --arg repo "$repo" \
+    --arg checkedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --argjson pendingOpen "$(printf '%s\n' "$open_draft_numbers" | awk 'NF' | jq -R 'tonumber' | jq -s '.')" \
+    --argjson pendingMergedClosed "$(printf '%s\n' "$closed_merged_numbers" | awk 'NF' | jq -R 'tonumber' | jq -s '.')" \
+    '{repo: $repo, checkedAt: $checkedAt, pendingOpen: $pendingOpen, pendingMergedClosed: $pendingMergedClosed}'
 }
 
 parse_number_list() {
@@ -3142,6 +3382,10 @@ parse_args() {
         ;;
       -p | --pr)
         TARGET_PR_NUMBER="$2"
+        shift 2
+        ;;
+      --quick-check-numbers)
+        QUICK_CHECK_NUMBERS_RAW_INPUT="$2"
         shift 2
         ;;
       --label)
@@ -3227,6 +3471,10 @@ parse_args() {
         OPEN_MODE="$2"
         shift 2
         ;;
+      --quick-check)
+        QUICK_CHECK=1
+        shift
+        ;;
       -h | --help)
         usage
         exit 0
@@ -3259,6 +3507,11 @@ main() {
     exit 0
   fi
 
+  if [[ -z "$REPO" ]]; then
+    echo "No repo specified. Set VIEW_PRS_REPO=owner/name or pass --repo owner/name." >&2
+    exit 1
+  fi
+
   if [[ "$REPO" != */* ]]; then
     echo "Invalid --repo value: $REPO (expected owner/name)" >&2
     exit 1
@@ -3266,7 +3519,7 @@ main() {
 
   REPO_OWNER="${REPO%%/*}"
   REPO_NAME="${REPO##*/}"
-  debug_log "parsed repo=$REPO open_mode=$OPEN_MODE limit=$LIMIT merged_limit_set=$MERGED_LIMIT_SET jobs=$JOBS target_pr=${TARGET_PR_NUMBER:-none}"
+  debug_log "parsed repo=$REPO open_mode=$OPEN_MODE limit=$LIMIT merged_limit_set=$MERGED_LIMIT_SET jobs=$JOBS target_pr=${TARGET_PR_NUMBER:-none} quick_check_numbers=${QUICK_CHECK_NUMBERS//$'\n'/,}"
 
   if [[ "$OPEN_MODE" != 'all' && "$OPEN_MODE" != 'changed' && "$OPEN_MODE" != 'none' ]]; then
     echo "Invalid --open mode: $OPEN_MODE (expected: all | changed | none)" >&2
@@ -3283,6 +3536,23 @@ main() {
       echo "Invalid --pr value: $TARGET_PR_NUMBER (expected positive integer)" >&2
       exit 1
     fi
+  fi
+
+  if [[ -n "$QUICK_CHECK_NUMBERS_RAW_INPUT" ]]; then
+    if [[ -n "$TARGET_PR_NUMBER" ]]; then
+      echo '--quick-check-numbers cannot be combined with -p/--pr' >&2
+      exit 1
+    fi
+    # Without this, --quick-check-numbers would silently feed a real gh
+    # pr view fetch into the full (non-quick-check) report path below -
+    # untested territory whose run-metadata header still claims the normal
+    # --limit/--merged-limit/day-window shown, even though none of that
+    # applied to how these specific PRs were actually fetched.
+    if [[ "$QUICK_CHECK" -ne 1 ]]; then
+      echo '--quick-check-numbers requires --quick-check' >&2
+      exit 1
+    fi
+    QUICK_CHECK_NUMBERS=$(parse_number_list_or_fail "$QUICK_CHECK_NUMBERS_RAW_INPUT" '--quick-check-numbers')
   fi
 
   INCLUDE_LABEL=$(printf '%s' "$INCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -3349,6 +3619,10 @@ main() {
     ACK_NUMBERS=$(parse_number_list_or_fail "$ACK_RAW_INPUT" '--ack')
   fi
 
+  if [[ "$ACK_CLEAR_ENABLED" -eq 1 ]]; then
+    ACK_CLEAR_NUMBERS=$(parse_number_list_or_fail "$ACK_CLEAR_RAW_INPUT" '--ack-clear')
+  fi
+
   ensure_ack_store
   load_change_filter_config
   apply_ack_changes
@@ -3373,10 +3647,6 @@ main() {
   if ! gh auth status >/dev/null 2>&1; then
     echo 'Please authenticate first: gh auth login' >&2
     exit 1
-  fi
-
-  if [[ "$ACK_CLEAR_ENABLED" -eq 1 ]]; then
-    ACK_CLEAR_NUMBERS=$(parse_number_list_or_fail "$ACK_CLEAR_RAW_INPUT" '--ack-clear')
   fi
 
   VIEWER_LOGIN=$(gh_with_retry gh api graphql -f query='query { viewer { login } }' --jq '.data.viewer.login')
@@ -3405,7 +3675,32 @@ main() {
     echo
   fi
 
-  if [[ -n "$TARGET_PR_NUMBER" ]]; then
+  if [[ -n "$QUICK_CHECK_NUMBERS" ]]; then
+    quick_check_numbers_b64=$(fetch_quick_check_target_prs "$QUICK_CHECK_NUMBERS")
+
+    prs_b64=''
+    closed_prs_b64=''
+    closed_prs_b64_all=''
+    merged_prs_b64=''
+    merged_prs_b64_all=''
+
+    while IFS= read -r pr_b64_line; do
+      [[ -z "$pr_b64_line" ]] && continue
+      pr_json=$(printf '%s' "$pr_b64_line" | base64 --decode)
+      merged_at=$(printf '%s' "$pr_json" | jq -r '.mergedAt // ""')
+      closed_at=$(printf '%s' "$pr_json" | jq -r '.closedAt // ""')
+
+      if [[ -n "$merged_at" ]]; then
+        merged_prs_b64+="$pr_b64_line"$'\n'
+        merged_prs_b64_all+="$pr_b64_line"$'\n'
+      elif [[ -n "$closed_at" ]]; then
+        closed_prs_b64+="$pr_b64_line"$'\n'
+        closed_prs_b64_all+="$pr_b64_line"$'\n'
+      else
+        prs_b64+="$pr_b64_line"$'\n'
+      fi
+    done <<<"$quick_check_numbers_b64"
+  elif [[ -n "$TARGET_PR_NUMBER" ]]; then
     target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64')
 
     if [[ -z "$target_pr_b64" ]]; then
@@ -3500,6 +3795,23 @@ main() {
   fi
 
   ensure_pr_state_store
+
+  if [[ "$QUICK_CHECK" -eq 1 ]]; then
+    quick_check_open_draft_pending=$(
+      {
+        collect_quick_check_pending_numbers "$prs_b64" 'open'
+        collect_quick_check_pending_numbers "$prs_b64" 'draft'
+      } | awk 'NF' | sort -u
+    )
+    quick_check_closed_merged_pending=$(
+      {
+        collect_quick_check_pending_numbers "$closed_prs_b64" 'closed'
+        collect_quick_check_pending_numbers "$merged_prs_b64" 'merged'
+      } | awk 'NF' | sort -u
+    )
+    emit_quick_check_result "$REPO" "$quick_check_open_draft_pending" "$quick_check_closed_merged_pending"
+    exit 0
+  fi
 
   current_open_numbers=$(collect_numbers_from_b64 "$prs_b64")
   current_closed_numbers=$(collect_numbers_from_b64 "$closed_prs_b64")
