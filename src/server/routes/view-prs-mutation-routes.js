@@ -55,6 +55,7 @@ const registerViewPrsMutationRoutes = ({
     buildQuickCheckSuccessResult,
     buildQuickCheckSuccessActionLogEntry,
     buildQuickCheckFailureActionLogEntry,
+    buildQuickCheckNumbersRequest,
     buildAckRequest,
     createAckScriptRunner,
     buildAckRefreshList,
@@ -208,10 +209,20 @@ const registerViewPrsMutationRoutes = ({
   // Branches entirely on runViewPrsQuickCheck's own returned result rather
   // than re-checking scheduler state independently beforehand, so the
   // route can't drift from what the function actually decided.
-  app.post(["/quick-check", "/view-prs/quick-check"], async (_req, res) => {
+  app.post(["/quick-check", "/view-prs/quick-check"], async (req, res) => {
     const timingContext = createTimingContext();
 
-    const checkResult = await runViewPrsQuickCheck();
+    // Populated only when the Run & Filter tab's PR-number field had numbers
+    // entered - scopes this check to exactly those PRs in one repo, bypassing
+    // check-open-pr-updates.sh's day-window entirely (see --quick-check-numbers).
+    // undefined here preserves today's default: every configured repo, listed
+    // and day-windowed as usual.
+    const numbersRequest = buildQuickCheckNumbersRequest({
+      body: req.body || {},
+      defaultViewPrsRepo,
+    });
+
+    const checkResult = await runViewPrsQuickCheck(numbersRequest);
 
     if (checkResult.skipped) {
       const skipResult =

@@ -24,6 +24,8 @@ INCLUDE_AUTHORS=''
 SHOW_REASON=1
 QUIET=0
 QUICK_CHECK=0
+QUICK_CHECK_NUMBERS_RAW_INPUT=''
+QUICK_CHECK_NUMBERS=''
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -219,6 +221,11 @@ Options:
       --open <mode>            Browser behavior: all | changed | none (default: all)
       --quick-check            List PRs and report which changed (by updatedAt) without
                                 fetching full details/diffs; prints JSON to stdout and exits
+      --quick-check-numbers <numbers> With --quick-check, check exactly these PR number(s)
+                                (comma-separated) via direct lookup instead of listing -
+                                bypasses --limit/--merged-limit/the day-window entirely, so
+                                an older merged/closed PR can still be checked. Mutually
+                                exclusive with -p/--pr.
   -h, --help                   Show this help
 
 Examples:
@@ -992,6 +999,72 @@ prefetch_pr_details() {
     done
     exit 0
   ' _ '{}' "$REPO" "$DETAIL_CACHE_DIR" "$GH_COMMAND_TIMEOUT_SECONDS"
+}
+
+# Fetches specific PR numbers directly (used by --quick-check-numbers), in
+# parallel via the same xargs -P "$JOBS" + 3-attempt/backoff/timeout idiom as
+# prefetch_pr_details above, instead of listing PRs via `gh pr list`. This is
+# what lets a quick-check-by-number bypass LIMIT/MERGED_LIMIT/MERGED_DAYS_DEFAULT
+# entirely - an old merged PR is fetched directly, never subject to the
+# listing/day-window logic. A number that fails after all retries (not found,
+# wrong repo) is silently skipped rather than failing the whole run, unlike
+# -p/--pr's hard-fail, since a batch shouldn't abort over one bad number.
+fetch_quick_check_target_prs() {
+  local numbers="$1"
+  [[ -z "$numbers" ]] && return
+
+  local scratch_dir
+  scratch_dir=$(mktemp -d)
+
+  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+    number="$1"
+    repo="$2"
+    out_dir="$3"
+    gh_timeout="$4"
+
+    run_with_timeout_inner() {
+      local timeout_seconds="$1"
+      shift
+
+      if ! [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || ((timeout_seconds <= 0)); then
+        "$@"
+        return $?
+      fi
+
+      if command -v gtimeout >/dev/null 2>&1; then
+        gtimeout --signal=TERM "$timeout_seconds" "$@"
+        return $?
+      fi
+
+      if command -v timeout >/dev/null 2>&1; then
+        timeout --signal=TERM "$timeout_seconds" "$@"
+        return $?
+      fi
+
+      perl -e "alarm shift @ARGV; exec @ARGV; die qq(exec failed: $!)" "$timeout_seconds" "$@"
+    }
+
+    for attempt in 1 2 3; do
+      if run_with_timeout_inner "$gh_timeout" gh pr view "$number" -R "$repo" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq ". | @base64" > "$out_dir/$number.txt" 2>/dev/null; then
+        exit 0
+      fi
+      sleep $((2 ** (attempt - 1)))
+    done
+    exit 0
+  ' _ '{}' "$REPO" "$scratch_dir" "$GH_COMMAND_TIMEOUT_SECONDS"
+
+  local number result_file
+  while IFS= read -r number; do
+    [[ -z "$number" ]] && continue
+    result_file="$scratch_dir/$number.txt"
+    if [[ -s "$result_file" ]]; then
+      cat "$result_file"
+    else
+      debug_log "quick-check-numbers: PR #$number not found in $REPO, skipping"
+    fi
+  done <<<"$numbers"
+
+  rm -rf "$scratch_dir"
 }
 
 prefetch_review_threads() {
@@ -3311,6 +3384,10 @@ parse_args() {
         TARGET_PR_NUMBER="$2"
         shift 2
         ;;
+      --quick-check-numbers)
+        QUICK_CHECK_NUMBERS_RAW_INPUT="$2"
+        shift 2
+        ;;
       --label)
         INCLUDE_LABEL="$2"
         shift 2
@@ -3442,7 +3519,7 @@ main() {
 
   REPO_OWNER="${REPO%%/*}"
   REPO_NAME="${REPO##*/}"
-  debug_log "parsed repo=$REPO open_mode=$OPEN_MODE limit=$LIMIT merged_limit_set=$MERGED_LIMIT_SET jobs=$JOBS target_pr=${TARGET_PR_NUMBER:-none}"
+  debug_log "parsed repo=$REPO open_mode=$OPEN_MODE limit=$LIMIT merged_limit_set=$MERGED_LIMIT_SET jobs=$JOBS target_pr=${TARGET_PR_NUMBER:-none} quick_check_numbers=${QUICK_CHECK_NUMBERS//$'\n'/,}"
 
   if [[ "$OPEN_MODE" != 'all' && "$OPEN_MODE" != 'changed' && "$OPEN_MODE" != 'none' ]]; then
     echo "Invalid --open mode: $OPEN_MODE (expected: all | changed | none)" >&2
@@ -3459,6 +3536,23 @@ main() {
       echo "Invalid --pr value: $TARGET_PR_NUMBER (expected positive integer)" >&2
       exit 1
     fi
+  fi
+
+  if [[ -n "$QUICK_CHECK_NUMBERS_RAW_INPUT" ]]; then
+    if [[ -n "$TARGET_PR_NUMBER" ]]; then
+      echo '--quick-check-numbers cannot be combined with -p/--pr' >&2
+      exit 1
+    fi
+    # Without this, --quick-check-numbers would silently feed a real gh
+    # pr view fetch into the full (non-quick-check) report path below -
+    # untested territory whose run-metadata header still claims the normal
+    # --limit/--merged-limit/day-window shown, even though none of that
+    # applied to how these specific PRs were actually fetched.
+    if [[ "$QUICK_CHECK" -ne 1 ]]; then
+      echo '--quick-check-numbers requires --quick-check' >&2
+      exit 1
+    fi
+    QUICK_CHECK_NUMBERS=$(parse_number_list_or_fail "$QUICK_CHECK_NUMBERS_RAW_INPUT" '--quick-check-numbers')
   fi
 
   INCLUDE_LABEL=$(printf '%s' "$INCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -3581,7 +3675,32 @@ main() {
     echo
   fi
 
-  if [[ -n "$TARGET_PR_NUMBER" ]]; then
+  if [[ -n "$QUICK_CHECK_NUMBERS" ]]; then
+    quick_check_numbers_b64=$(fetch_quick_check_target_prs "$QUICK_CHECK_NUMBERS")
+
+    prs_b64=''
+    closed_prs_b64=''
+    closed_prs_b64_all=''
+    merged_prs_b64=''
+    merged_prs_b64_all=''
+
+    while IFS= read -r pr_b64_line; do
+      [[ -z "$pr_b64_line" ]] && continue
+      pr_json=$(printf '%s' "$pr_b64_line" | base64 --decode)
+      merged_at=$(printf '%s' "$pr_json" | jq -r '.mergedAt // ""')
+      closed_at=$(printf '%s' "$pr_json" | jq -r '.closedAt // ""')
+
+      if [[ -n "$merged_at" ]]; then
+        merged_prs_b64+="$pr_b64_line"$'\n'
+        merged_prs_b64_all+="$pr_b64_line"$'\n'
+      elif [[ -n "$closed_at" ]]; then
+        closed_prs_b64+="$pr_b64_line"$'\n'
+        closed_prs_b64_all+="$pr_b64_line"$'\n'
+      else
+        prs_b64+="$pr_b64_line"$'\n'
+      fi
+    done <<<"$quick_check_numbers_b64"
+  elif [[ -n "$TARGET_PR_NUMBER" ]]; then
     target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64')
 
     if [[ -z "$target_pr_b64" ]]; then

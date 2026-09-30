@@ -1000,6 +1000,153 @@ JSON
   assert_eq "$(printf '%s' "$empty_result_json" | jq -c '.pendingMergedClosed')" '[]' 'emit_quick_check_result should emit an empty array when nothing is pending'
 }
 
+run_quick_check_numbers_tests() {
+  source "$SCRIPT_PATH"
+
+  local old_path="$PATH"
+  local mock_bin="$TEST_TMP/quick-check-numbers-mock-bin"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/gh" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+# Drop any jq() wrapper inherited (via export -f) from the real script having
+# sourced/run beforehand in an ancestor process - it points at a bundled
+# JQ_BIN path that isn't itself exported, so calling it here would fail with
+# "JQ_BIN: unbound variable" under set -u. Falls back to the real jq on PATH.
+unset -f jq 2>/dev/null || true
+
+if [[ "$1" == "auth" && "$2" == "status" ]]; then
+  exit 0
+fi
+
+if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+  jq_expr=''
+  i=1
+  while [[ $i -le $# ]]; do
+    eval "arg=\${$i}"
+    if [[ "$arg" == "--jq" ]]; then
+      i=$((i + 1))
+      eval "jq_expr=\${$i}"
+      break
+    fi
+    i=$((i + 1))
+  done
+  payload='{"data":{"viewer":{"login":"me_user"}}}'
+  if [[ -n "$jq_expr" ]]; then
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
+  else
+    printf '%s' "$payload"
+  fi
+  exit 0
+fi
+
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  number="$3"
+  jq_expr=''
+  i=1
+  while [[ $i -le $# ]]; do
+    eval "arg=\${$i}"
+    if [[ "$arg" == "--jq" ]]; then
+      i=$((i + 1))
+      eval "jq_expr=\${$i}"
+      break
+    fi
+    i=$((i + 1))
+  done
+
+  case "$number" in
+    501)
+      payload='{"number":501,"title":"Old Merged","url":"https://example.com/501","labels":[],"isDraft":false,"author":{"login":"other"},"mergedAt":"2024-01-05T00:00:00Z","closedAt":"2024-01-05T00:00:00Z","mergedBy":null,"createdAt":"2023-12-01T00:00:00Z","updatedAt":"2026-05-01T09:00:00Z","headRefName":"feature","baseRefName":"main"}'
+      ;;
+    502)
+      payload='{"number":502,"title":"Still Open","url":"https://example.com/502","labels":[],"isDraft":false,"author":{"login":"other"},"mergedAt":"","closedAt":"","mergedBy":null,"createdAt":"2026-04-01T00:00:00Z","updatedAt":"2026-04-20T00:00:00Z","headRefName":"feature-2","baseRefName":"main"}'
+      ;;
+    *)
+      echo "PR not found: $number" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ -n "$jq_expr" ]]; then
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
+  else
+    printf '%s' "$payload"
+  fi
+  exit 0
+fi
+
+echo "unsupported mock gh call: $*" >&2
+exit 1
+MOCK
+  chmod +x "$mock_bin/gh"
+  PATH="$mock_bin:$PATH"
+
+  # Function-level: fetch_quick_check_target_prs should fetch every valid
+  # number directly (no gh pr list at all) and silently skip one that fails
+  # after retries, rather than aborting the whole batch.
+  REPO='owner/repo'
+  JOBS=2
+  GH_COMMAND_TIMEOUT_SECONDS=5
+
+  fetched_b64=$(fetch_quick_check_target_prs $'501\n502\n999')
+  fetched_numbers=$(printf '%s\n' "$fetched_b64" | awk 'NF' | while IFS= read -r line; do
+    printf '%s' "$line" | base64 --decode | jq -r '.number'
+  done | sort -n | tr -d '\r' | tr '\n' ',' | sed 's/,$//')
+  assert_eq "$fetched_numbers" '501,502' 'fetch_quick_check_target_prs should fetch valid numbers and skip one that does not exist'
+
+  # End-to-end: --quick-check-numbers should report a PR as pending purely by
+  # updatedAt drift, regardless of how long ago it merged - proving the
+  # 7-day/MERGED_DAYS_DEFAULT window is fully bypassed for explicit numbers.
+  local numbers_state="$TEST_TMP/quick-check-numbers-state.json"
+  local numbers_state_lock="$TEST_TMP/quick-check-numbers-state.lock"
+  cat >"$numbers_state" <<'JSON'
+{
+  "byPrNumber": {
+    "501": {
+      "prNumber": "501",
+      "repo": "owner/repo",
+      "section": "merged",
+      "data": { "number": "501", "sourceUpdatedAt": "2024-01-05T00:00:00Z" }
+    },
+    "502": {
+      "prNumber": "502",
+      "repo": "owner/repo",
+      "section": "open",
+      "data": { "number": "502", "sourceUpdatedAt": "2026-04-20T00:00:00Z" }
+    }
+  },
+  "ackByRepo": {}
+}
+JSON
+
+  local e2e_out
+  e2e_out=$(PATH="$mock_bin:$PATH" PR_STATE_FILE="$numbers_state" PR_STATE_LOCK_DIR="$numbers_state_lock" JOBS=2 sh "$SCRIPT_PATH" --quick-check --quick-check-numbers 501,502 --repo owner/repo --quiet)
+
+  assert_eq "$(printf '%s' "$e2e_out" | jq -c '.pendingMergedClosed')" '[501]' '--quick-check-numbers should report an old merged PR as pending when its cached updatedAt has drifted, bypassing the day-window entirely'
+  assert_eq "$(printf '%s' "$e2e_out" | jq -c '.pendingOpen')" '[]' '--quick-check-numbers should not report an entered PR whose updatedAt is unchanged'
+
+  # -p/--pr and --quick-check-numbers are mutually exclusive.
+  local mutual_exclusion_err
+  set +e
+  mutual_exclusion_err=$(sh "$SCRIPT_PATH" --quick-check -p 5 --quick-check-numbers 6 --repo owner/repo --quiet 2>&1)
+  local mutual_exclusion_status=$?
+  set -e
+  assert_true "[[ $mutual_exclusion_status -ne 0 ]]" '-p combined with --quick-check-numbers should fail'
+  assert_contains "$mutual_exclusion_err" 'cannot be combined' '-p combined with --quick-check-numbers should report a clear error'
+
+  # --quick-check-numbers without --quick-check should fail, rather than
+  # silently falling through into the full (non-quick-check) report path.
+  local missing_quick_check_err
+  set +e
+  missing_quick_check_err=$(sh "$SCRIPT_PATH" --quick-check-numbers 501 --repo owner/repo --quiet 2>&1)
+  local missing_quick_check_status=$?
+  set -e
+  assert_true "[[ $missing_quick_check_status -ne 0 ]]" '--quick-check-numbers without --quick-check should fail'
+  assert_contains "$missing_quick_check_err" 'requires --quick-check' '--quick-check-numbers without --quick-check should report a clear error'
+
+  PATH="$old_path"
+}
+
 run_row_order_stability_tests() {
   source "$SCRIPT_PATH"
 
@@ -1289,6 +1436,7 @@ run_all_tests() {
   run_reconcile_missing_open_rows_tests
   run_cache_freshness_tests
   run_quick_check_tests
+  run_quick_check_numbers_tests
   run_row_order_stability_tests
   run_main_integration_tests
 }

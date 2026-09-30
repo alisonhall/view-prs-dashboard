@@ -1790,7 +1790,11 @@ const callRunViewPrsAutoRefresh = (...args) =>
 // a caller can tell "confirmed nothing changed" apart from "the check
 // didn't actually run" (every repo failing used to look identical to a
 // clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
-const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
+const runViewPrsQuickCheck = async ({
+  awaitTargetedRefresh = false,
+  repo: targetRepo,
+  prNumbers,
+} = {}) => {
   if (
     viewPrsSchedulerState.isQuickCheckInProgress ||
     viewPrsSchedulerState.isAutoRunInProgress
@@ -1821,51 +1825,59 @@ const runViewPrsQuickCheck = async ({ awaitTargetedRefresh = false } = {}) => {
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
 
   try {
-    const repos = getViewPrsAutoRefreshRepos();
     const reposWithPendingOpen = new Set();
     const reposChecked = [];
     const reposFailed = [];
     let newPendingOpenCount = 0;
     let newPendingMergedClosedCount = 0;
 
-    await Promise.all(
-      repos.map(async (repo) => {
-        try {
-          const result = await callRunViewPrsScript(
-            [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo],
-            1024 * 1024,
-            { timeoutMs: viewPrsQuickCheckScriptTimeoutMs, trackSchedulerPrProgress: false },
-          );
-          const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
-          const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
-          const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
-            ? parsed.pendingMergedClosed
-            : [];
+    // `extraArgs` lets the entered-PR-numbers path (below) reuse this same
+    // per-repo body with `--quick-check-numbers` appended, bypassing the
+    // script's own day-window entirely for those specific numbers - see
+    // check-open-pr-updates.sh's --quick-check-numbers flag.
+    const runQuickCheckForRepo = async (repo, extraArgs = []) => {
+      try {
+        const result = await callRunViewPrsScript(
+          [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo, ...extraArgs],
+          1024 * 1024,
+          { timeoutMs: viewPrsQuickCheckScriptTimeoutMs, trackSchedulerPrProgress: false },
+        );
+        const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
+        const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
+        const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
+          ? parsed.pendingMergedClosed
+          : [];
 
-          reposChecked.push(repo);
-          newPendingOpenCount += pendingOpen.length;
-          newPendingMergedClosedCount += pendingMergedClosed.length;
+        reposChecked.push(repo);
+        newPendingOpenCount += pendingOpen.length;
+        newPendingMergedClosedCount += pendingMergedClosed.length;
 
-          if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
-            // Clear any stale pending flag this repo left behind from an
-            // earlier quick check - previously this returned early here
-            // without clearing, so a since-resolved repo could keep
-            // reporting an old pending count indefinitely.
-            clearPendingForRepo(repo);
-            return;
-          }
-
-          setPendingForRepo(repo, { open: pendingOpen, mergedClosed: pendingMergedClosed });
-          if (pendingOpen.length > 0) {
-            reposWithPendingOpen.add(repo);
-          }
-        } catch (repoError) {
-          const message = repoError?.message || String(repoError);
-          reposFailed.push({ repo, error: message });
-          console.warn(`[view-prs] quick-check failed for ${repo}: ${message}`);
+        if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
+          // Clear any stale pending flag this repo left behind from an
+          // earlier quick check - previously this returned early here
+          // without clearing, so a since-resolved repo could keep
+          // reporting an old pending count indefinitely.
+          clearPendingForRepo(repo);
+          return;
         }
-      }),
-    );
+
+        setPendingForRepo(repo, { open: pendingOpen, mergedClosed: pendingMergedClosed });
+        if (pendingOpen.length > 0) {
+          reposWithPendingOpen.add(repo);
+        }
+      } catch (repoError) {
+        const message = repoError?.message || String(repoError);
+        reposFailed.push({ repo, error: message });
+        console.warn(`[view-prs] quick-check failed for ${repo}: ${message}`);
+      }
+    };
+
+    if (prNumbers) {
+      await runQuickCheckForRepo(targetRepo, ["--quick-check-numbers", prNumbers]);
+    } else {
+      const repos = getViewPrsAutoRefreshRepos();
+      await Promise.all(repos.map((repo) => runQuickCheckForRepo(repo)));
+    }
 
     viewPrsSchedulerState.lastQuickCheckAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckError = null;

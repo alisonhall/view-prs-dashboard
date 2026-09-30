@@ -2173,7 +2173,12 @@ const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 // for that component's own onCheck callback to apply.
 const handleQuickCheck = async () => {
   try {
-    const { response, result } = await postJson("/view-prs/quick-check", {});
+    // Scope to the Run & Filter tab's entered PR numbers when present, so an
+    // older merged PR typed in there is still checked (bypassing the day-
+    // window server-side) - an empty field sends {}, identical to before.
+    const { repo, prNumbers } = getFormBody();
+    const payload = prNumbers ? { repo, prNumbers } : {};
+    const { response, result } = await postJson("/view-prs/quick-check", payload);
     if (response.status === 409) {
       showErrorNotification(
         "Quick check already in progress",

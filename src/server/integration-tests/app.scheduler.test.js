@@ -1062,6 +1062,62 @@ describe("runViewPrsQuickCheck behavior", () => {
     expect(viewPrsSchedulerState.lastQuickCheckError).toBeNull();
     expect(viewPrsSchedulerState.pendingByRepo["owner/repo-bad-json"]).toBeUndefined();
   });
+
+  describe("with explicit prNumbers", () => {
+    test("checks only the given repo via --quick-check-numbers, not every configured repo", async () => {
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return {
+          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+          stderr: "",
+        };
+      };
+
+      let result;
+      await withAutoRepos("owner/repo-a,owner/repo-b", async () => {
+        result = await runViewPrsQuickCheck({ repo: "owner/repo-a", prNumbers: "501,502" });
+      });
+
+      // A single script invocation for the entered repo only - the other
+      // configured repo (owner/repo-b) is never touched by this path.
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(
+        expect.arrayContaining(["--repo", "owner/repo-a", "--quick-check-numbers", "501,502"]),
+      );
+      expect(result.reposChecked).toEqual(["owner/repo-a"]);
+      expect(viewPrsSchedulerState.pendingByRepo["owner/repo-b"]).toBeUndefined();
+    });
+
+    test("still records pending merged/closed PRs found via the numbers path", async () => {
+      appModule.runViewPrsScript = async () => ({
+        stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+        stderr: "",
+      });
+
+      const result = await runViewPrsQuickCheck({ repo: "owner/repo-a", prNumbers: "501" });
+
+      expect(result.newPendingMergedClosedCount).toBe(1);
+      expect(viewPrsSchedulerState.pendingByRepo["owner/repo-a"]).toEqual(
+        expect.objectContaining({ open: [], mergedClosed: ["501"] }),
+      );
+    });
+
+    test("omitting prNumbers still exercises the existing all-repos default path", async () => {
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      await withAutoRepos("owner/repo-a,owner/repo-b", async () => {
+        await runViewPrsQuickCheck();
+      });
+
+      expect(scriptCalls).toHaveLength(2);
+      expect(scriptCalls.every((args) => !args.includes("--quick-check-numbers"))).toBe(true);
+    });
+  });
 });
 
 describe("runViewPrsMergedQueueDrain behavior", () => {

@@ -287,6 +287,23 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
       .map((value) => value.trim())
       .filter((value) => /^\d+$/.test(value));
 
+  // Scopes a manual Quick Check to exactly the PR numbers entered in the
+  // Run & Filter tab's PR-number field, when present - undefined signals the
+  // route/runViewPrsQuickCheck to fall back to their existing all-configured-
+  // repos, day-windowed default (unchanged when the field is empty). Mirrors
+  // buildApplyLabelRequest's repo/prNumbers shape, defaulting repo the same
+  // lenient way (fall back to defaultViewPrsRepo rather than rejecting).
+  const buildQuickCheckNumbersRequest = ({ body = {}, defaultViewPrsRepo }) => {
+    const prNumbers = parseNumberCsv(body.prNumbers);
+    if (prNumbers.length === 0) {
+      return undefined;
+    }
+    return {
+      repo: toTrimmedString(body.repo) || defaultViewPrsRepo,
+      prNumbers: prNumbers.join(","),
+    };
+  };
+
   const buildAckRequest = ({ body = {}, viewPrsRunScriptRelativePath }) => {
     const args = [viewPrsRunScriptRelativePath, "--ack-only", "--quiet"];
     const detail = {
@@ -803,6 +820,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     buildQuickCheckSuccessResult,
     buildQuickCheckSuccessActionLogEntry,
     buildQuickCheckFailureActionLogEntry,
+    buildQuickCheckNumbersRequest,
     parseNumberCsv,
     buildAckRequest,
     createAckScriptRunner,

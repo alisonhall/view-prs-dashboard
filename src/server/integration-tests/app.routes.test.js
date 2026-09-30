@@ -1436,6 +1436,76 @@ describe("route behavior", () => {
     }
   });
 
+  test("scopes to the entered PR numbers and repo when POST /quick-check includes prNumbers", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-not-touched";
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      scriptCalls.push(commandArgs);
+      return {
+        stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+        stderr: "",
+      };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {
+        repo: "owner/repo-numbers",
+        prNumbers: "501,502",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.newPendingMergedClosedCount).toBe(1);
+      expect(payload.reposChecked).toEqual(["owner/repo-numbers"]);
+      // The configured all-repos default (owner/repo-not-touched) is never
+      // checked when explicit numbers are supplied.
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(
+        expect.arrayContaining([
+          "--repo",
+          "owner/repo-numbers",
+          "--quick-check-numbers",
+          "501,502",
+        ]),
+      );
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      if (originalAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = originalAutoRepos;
+      }
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-numbers"];
+    }
+  });
+
+  test("omitting prNumbers on POST /quick-check still exercises the existing all-repos default", async () => {
+    const originalRun = appModule.runViewPrsScript;
+    const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-default-path";
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      scriptCalls.push(commandArgs);
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/quick-check", {});
+
+      expect(response.status).toBe(200);
+      expect(payload.reposChecked).toEqual(["owner/repo-default-path"]);
+      expect(scriptCalls[0]).not.toContain("--quick-check-numbers");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      if (originalAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = originalAutoRepos;
+      }
+      delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-default-path"];
+    }
+  });
+
   test("returns 503 when POST /quick-check is requested while the auto-refresh circuit is open", async () => {
     appModule.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
       Date.now() + 60 * 60 * 1000,

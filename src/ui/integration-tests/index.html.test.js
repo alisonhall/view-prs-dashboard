@@ -2266,6 +2266,98 @@ describe("index page rendering with Testing Library", () => {
     expect(quickCheckBtn.textContent).toBe("Quick check");
   });
 
+  test("given PR numbers entered in the Run & Filter tab when Quick check is clicked then the POST body carries repo and prNumbers", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo"],
+          reposFailed: [],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 1,
+        });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const repoField = document.getElementById("repo");
+    await user.clear(repoField);
+    await user.type(repoField, "owner/repo");
+
+    const prNumbersInput = document.getElementById("pr-numbers");
+    await user.clear(prNumbersInput);
+    await user.type(prNumbersInput, "912,921");
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      expect(quickCheckBtn.textContent).toBe("1 update found");
+    });
+
+    const quickCheckCall = fetchMock.mock.calls.find((call) => {
+      const [url, callInit] = call;
+      return (
+        String(url || "") === "/view-prs/quick-check" &&
+        String(callInit?.method || "GET").toUpperCase() === "POST"
+      );
+    });
+    const body = JSON.parse(String(quickCheckCall?.[1]?.body || "{}"));
+    expect(body.repo).toBe("owner/repo");
+    expect(body.prNumbers).toBe("912,921");
+  });
+
+  test("given an empty PR-numbers field when Quick check is clicked then the POST body stays empty, unchanged from before", async () => {
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const normalizedUrl = String(url || "");
+      const method = String(init?.method || "GET").toUpperCase();
+
+      if (normalizedUrl === "/view-prs/quick-check" && method === "POST") {
+        return createOkJsonResponse({
+          ok: true,
+          lastQuickCheckAt: "2026-06-16T10:00:00Z",
+          reposChecked: ["owner/repo"],
+          reposFailed: [],
+          newPendingOpenCount: 0,
+          newPendingMergedClosedCount: 0,
+        });
+      }
+
+      return createOkJsonResponse({ ok: true });
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+    const prNumbersInput = document.getElementById("pr-numbers");
+    await user.clear(prNumbersInput);
+
+    const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
+    await user.click(quickCheckBtn);
+
+    await waitFor(() => {
+      expect(quickCheckBtn.textContent).toBe("No changes found");
+    });
+
+    const quickCheckCall = fetchMock.mock.calls.find((call) => {
+      const [url, callInit] = call;
+      return (
+        String(url || "") === "/view-prs/quick-check" &&
+        String(callInit?.method || "GET").toUpperCase() === "POST"
+      );
+    });
+    const body = JSON.parse(String(quickCheckCall?.[1]?.body || "{}"));
+    expect(body).toEqual({});
+  });
+
   test("given a quick check already in progress when Quick check is clicked then a conflict notification is shown", async () => {
     fetchMock.mockImplementation(async (url, init = {}) => {
       const normalizedUrl = String(url || "");
