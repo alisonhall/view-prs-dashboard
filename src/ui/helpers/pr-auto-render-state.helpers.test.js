@@ -8,7 +8,7 @@ describe("auto render state helpers", () => {
   const createHelpers = (overrides = {}) =>
     createPrAutoRenderStateHelpers({
       getDirtyTrackedFields: () => [{ id: "a" }, { id: "b" }],
-      getUnsavedNotesSections: () => [{ id: "n1" }],
+      getUnsavedNotesPrNumbers: () => ["7"],
       getBlockingPrNumbers: () => ["12", "15"],
       getBlockingAuthorInsightsLogins: () => ["alice"],
       formatBlockingPrNumbersLabel: (prNumbers) =>

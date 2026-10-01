@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
 
 const TONE_OPTIONS = [
@@ -79,6 +80,7 @@ function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStorie
 
 export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const { normalizeActorLogin, resolveActorDisplayName } = useActorIdentity();
+  const { setNotesDirty } = useNotesDirty();
   const { noteAuthorMatchesSelection } = useMemo(
     () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
     [normalizeActorLogin, resolveActorDisplayName],
@@ -87,7 +89,6 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const buildPrPeopleOptions = window.buildPrPeopleOptions || (() => []);
   const normalizeNotesListForUi = window.normalizeNotesListForUi || ((value) => (Array.isArray(value) && value.length ? value : ['']));
   const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
-  const recomputeDirtyPrSectionsFields = window.recomputeDirtyPrSectionsFields || (() => {});
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const repo = entry?.repo || '';
@@ -144,17 +145,18 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   })();
 
   useEffect(() => {
-    recomputeDirtyPrSectionsFields();
+    setNotesDirty(prNumber, hasChanges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasChanges]);
+  }, [hasChanges, prNumber]);
 
   useEffect(() => {
     // If this section unmounts (row collapsed/filtered away) while still
-    // dirty, its data-has-unsaved-notes="true" node leaves the DOM without
-    // ever notifying the blocker — rescan so a stale block doesn't linger.
-    return () => recomputeDirtyPrSectionsFields();
+    // dirty, it must not leave a stale block behind — clear its entry
+    // explicitly rather than relying on the effect above (which won't
+    // re-run on unmount).
+    return () => setNotesDirty(prNumber, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [prNumber]);
 
   const updateComment = (id, patch) => {
     setComments((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -211,7 +213,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   };
 
   return (
-    <div className="pr-notes-section" data-pr-number={prNumber} data-has-unsaved-notes={hasChanges ? 'true' : 'false'}>
+    <div className="pr-notes-section" data-pr-number={prNumber}>
       <div className="pr-notes-title">Notes</div>
 
       <div className="pr-notes-subtitle">Comments</div>

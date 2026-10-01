@@ -13,7 +13,6 @@ const React = require("react");
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
 const { render: rtlRender, cleanup } = require("@testing-library/react");
-const { flushSync } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -24,7 +23,9 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataProvider } = require("../state/PrDataProvider");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
-const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
+const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
+const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
@@ -346,81 +347,30 @@ const injectRunFilterFieldElements = () => {
 // delegation (a typed input's native value updated the DOM but never
 // reached React's onChange/state at all). cleanup() is RTL's own
 // real, battle-tested fix for exactly this class of problem.
-// Phase 6 (see REACT_MIGRATION_PLAN.md): pr-filter-panel.helpers.js's
-// multi-select populate functions and renderManagementFilterSummary have
-// no DOM-building of their own anymore - they only call
-// window.renderReactMultiSelectList/window.renderReactFilterSummary
-// (real react-app.jsx bridges, never loaded in this jsdom-only suite - see
-// installReactTableMountBridge's own comment for why the PR table gets the
-// same "reimplement just the bridge, not the whole module" treatment).
-// Real containers already exist in index.html for all of these (no
-// `-root` placeholder/portal involved, matching react-app.jsx's own
-// comment on MULTI_SELECT_LIST_ID_PREFIXES and mountAppliedFilterSummary),
-// so this mounts the same real components react-app.jsx does, directly
-// into them, via RTL's render()/cleanup() like every other bridge here.
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  "label-list": "label",
-  "exclude-label-list": "exclude-label",
-  "author-list": "author",
-  "assigned-list": "assigned",
-  "approver-list": "approver",
-  // Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): these 4 are built
-  // directly in index.page.js (not pr-filter-panel.helpers.js) but share
-  // the exact same window.renderReactMultiSelectList bridge/no-fallback
-  // shape - added here to match react-app.jsx's real
-  // MULTI_SELECT_LIST_ID_PREFIXES after index.page.js's own vanilla
-  // DOM-building fallback for them was deleted as dead code (it was never
-  // reachable in production, only in this stub, once it always returned
-  // `false` for these 4 ids for lack of an entry here).
-  "attention-author-thread-resolution-allow-list": "attention-author-thread-resolution-allow",
-  "attention-author-thread-resolution-deny-list": "attention-author-thread-resolution-deny",
-  "change-filter-ignore-comment-authors-list": "change-filter-ignore-comment-authors",
-  "change-filter-ignore-review-authors-list": "change-filter-ignore-review-authors",
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
+// lists' OPTIONS are no longer pushed imperatively via
+// window.renderReactMultiSelectList (deleted - nothing calls it in
+// production any more) - they're derived reactively by the real
+// FilterOptionsProvider/MultiSelectListPortals (imported above), same as
+// react-app.jsx's own AppRoot. buildMultiSelectContainers() resolves the
+// real DOM containers these portal into, matching react-app.jsx's own
+// computeStaticContainers resolution, for use by
+// installReactTableMountBridge() below (which mounts this inside the SAME
+// <PrDataProvider> instance the PR table uses, so both read the identical
+// payload/selectedRepo - the real react-app.jsx structure, not two
+// independent trees).
+const buildMultiSelectContainers = () => {
+  const multiSelect = {};
+  const multiSelectSummary = {};
+  Object.keys(MULTI_SELECT_LIST_ID_PREFIXES).forEach((listId) => {
+    const listContainer = document.getElementById(listId);
+    multiSelect[listId] = listContainer;
+    multiSelectSummary[listId] = listContainer?.closest("details")?.querySelector(".multi-select-summary") || null;
+  });
+  return { multiSelect, multiSelectSummary };
 };
 
 const installReactFilterPanelMountBridges = () => {
-  const multiSelectEntries = {};
-  window.renderReactMultiSelectList = (listId, options) => {
-    const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-    const container = document.getElementById(listId);
-    if (!idPrefix || !container) return false;
-    // Matches react-app.jsx's renderReactMultiSelectList exactly: an
-    // incrementing `key` forces a full remount (not a prop-diff update) on
-    // every call, so the component's internal `checked` state always
-    // re-initializes fresh from `options` - see MultiSelectCheckboxList.jsx's
-    // own comment for why a plain rerender() would be wrong here.
-    const entry = multiSelectEntries[listId] || { rerender: null, renderCount: 0 };
-    entry.renderCount += 1;
-    // emptyClassContainer/summaryContainer (deferred-items follow-up, full
-    // vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md): same
-    // resolution react-app.jsx's own computeStaticContainers does, so
-    // MultiSelectCheckboxList's "empty" class toggle and summary count
-    // text work the same way in this test harness as in the real app.
-    const element = React.createElement(MultiSelectCheckboxList, {
-      key: entry.renderCount,
-      options,
-      idPrefix,
-      emptyClassContainer: container,
-      summaryContainer: container.closest("details")?.querySelector(".multi-select-summary") || null,
-    });
-    // flushSync, matching react-app.jsx's real renderReactMultiSelectList:
-    // a same-tick DOM read right after this call (getSelectedMultiSelectValues,
-    // used to seed a *different* list or the filter-apply pipeline that
-    // triggered this render in the first place) must see the committed
-    // result, not React 18's default batched/deferred commit.
-    if (entry.rerender) {
-      flushSync(() => entry.rerender(element));
-    } else {
-      let rerender;
-      flushSync(() => {
-        ({ rerender } = rtlRender(element, { container }));
-      });
-      entry.rerender = rerender;
-    }
-    multiSelectEntries[listId] = entry;
-    return true;
-  };
-
   let filterSummaryRerender = null;
   window.renderReactFilterSummary = (summaryText, filterChips) => {
     const container = document.getElementById("management-filter-summary-root");
@@ -550,11 +500,26 @@ const installReactTableMountBridge = () => {
         React.createElement(
           NeedsAttentionProvider,
           null,
-          React.createElement(PrTableApp, {
-            onCheckboxChange: props?.onCheckboxChange,
-            onAckAction: props?.onAckAction,
-            onApplyLabel: props?.onApplyLabel,
-          }),
+          React.createElement(
+            NotesDirtyProvider,
+            null,
+            React.createElement(PrTableApp, {
+              onCheckboxChange: props?.onCheckboxChange,
+              onAckAction: props?.onAckAction,
+              onApplyLabel: props?.onApplyLabel,
+            }),
+          ),
+        ),
+        // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
+        // inside the SAME <PrDataProvider /> instance as PrTableApp above -
+        // matching react-app.jsx's real AppRoot structure, so
+        // FilterOptionsProvider derives its 9 option lists from the exact
+        // payload/selectedRepo the table itself is showing, not a second,
+        // independently-fed copy.
+        React.createElement(
+          FilterOptionsProvider,
+          null,
+          React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
         ),
       ),
       { container: containerElement },
@@ -580,6 +545,16 @@ const initTestPage = ({
   // DOM to run against.
   cleanup();
   jest.resetModules();
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
+  // lists' "pending selections" now live on a dedicated window-level store
+  // (pr-pending-multi-select-selections.helpers.js), not a module-scope
+  // variable inside index.page.js - jest.resetModules() above no longer
+  // resets them for free (a fresh require("../index.page.js") gets fresh
+  // module-scope state, but window itself is shared across every test in
+  // this file). Reset explicitly, same reasoning as the interval/listener
+  // tracking below this function.
+  delete window.viewPrsPendingMultiSelectSelections;
+  delete window.viewPrsPendingMultiSelectSelectionsListeners;
   latestDataPayload = dataPayload || { ok: true, byPrNumber: {}, lastRun: null };
   actionLogEntries = Array.isArray(actionEntries) ? actionEntries : [];
   actorNameCacheEntries = actorNameEntries && typeof actorNameEntries === "object"
@@ -7858,6 +7833,72 @@ describe("index page rendering with Testing Library", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 6
+  // FilterOptionSelect "Any (with/without)" fields (filter-custom-comments,
+  // filter-other-notes, filter-pr-difficulty, filter-rally-stories,
+  // filter-rally-links, filter-analysis-of-pr) were never included in
+  // persistUiOptionOverrides/restoreUiOptionOverrides/getUiOptionDefaults -
+  // a real, undocumented persistence gap, not an intentional exclusion
+  // (unlike their separate, deliberate exclusion from auto-apply-on-change).
+  // Covers both directions of that fix for one representative field
+  // (filter-pr-difficulty); the other 5 share the exact same code path.
+  describe("FilterOptionSelect persistence (persistence-gap fix)", () => {
+    test("given a FilterOptionSelect value, when Apply filters clicked, then it is persisted to user-defaults", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 850 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      await user.selectOptions(document.getElementById("filter-pr-difficulty"), "3");
+
+      fetchMock.mockClear();
+      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      let latestPutCall;
+      await waitFor(() => {
+        latestPutCall = fetchMock.mock.calls
+          .slice()
+          .reverse()
+          .find((call) => {
+            const [url, init] = call;
+            return (
+              String(url || "") === "/view-prs/user-defaults" &&
+              String(init?.method || "GET").toUpperCase() === "PUT"
+            );
+          });
+        expect(latestPutCall).toBeDefined();
+      });
+
+      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
+      expect(savedOverrides["filter-pr-difficulty"]).toBe("3");
+    });
+
+    test("given user-defaults with a FilterOptionSelect value, when page loads, then it is restored", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 851 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+        userDefaultsOverrides: {
+          repo: "owner/repo",
+          "filter-pr-difficulty": "4",
+        },
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      await waitFor(() => {
+        expect(document.getElementById("filter-pr-difficulty").value).toBe("4");
+      });
+    });
   });
 
   describe("change detection filters", () => {

@@ -34,11 +34,14 @@ export function FilterStateProvider({ initialValues, children }) {
     window.getFilterStateValues = () => valuesRef.current;
     // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): flushSync-wrapped so
     // a write is synchronously visible to any window.getFilterStateValues()
-    // read that follows in the same call stack - needed for
-    // restoreUiOptionOverrides' multi-select "pending selections" write ->
-    // immediate same-tick re-populate-read chain (index.page.js), the same
-    // stale-batched-read problem react-app.jsx's renderReactMultiSelectList
-    // bridge already solves with flushSync for the same reason.
+    // read that follows in the same call stack (e.g. a later
+    // getFilterStateOverrideForFieldId call within the same synchronous
+    // restoreUiOptionOverrides pass, index.page.js). The 9 multi-select
+    // lists' "pending selections" no longer go through this bridge at all
+    // (Phase 7, sub-phase 7.4 - see
+    // pr-pending-multi-select-selections.helpers.js), so this flushSync
+    // is no longer load-bearing for them specifically, only for the other
+    // FILTER_STATE_FIELD_MAP-mapped fields still routed through here.
     window.setFilterStateValue = (key, value) => {
       flushSync(() => setValue(key, value));
     };

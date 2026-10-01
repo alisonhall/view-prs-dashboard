@@ -12,9 +12,9 @@
  * `key` that changes on every populate call, so its internal `checked`
  * state (below) always re-initializes fresh from the caller-computed
  * `options` prop rather than trying to diff/reconcile against whatever was
- * checked before - the caller (populateIncludeLabelOptions, etc.) already
- * does that diffing itself (seedSelections/selectedTokens) before calling
- * in.
+ * checked before - the caller (MultiSelectListPortals.jsx, via
+ * pr-multi-select-checked-state.helpers.js's seedCheckedState) already
+ * does that diffing itself before calling in.
  *
  * React mounts directly into the existing `<div id="...-list">` container
  * (like Phase 1's `#pr-sections`), not into a separate wrapper span - the

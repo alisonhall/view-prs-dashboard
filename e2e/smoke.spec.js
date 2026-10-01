@@ -250,6 +250,39 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
 });
 
+test("editing a PR Notes field in the real React-owned row reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+  // Regression test for Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md):
+  // NotesSection.jsx used to report an unsaved edit via a
+  // data-has-unsaved-notes DOM attribute, scanned by vanilla
+  // pr-auto-render-unsaved.helpers.js. It's now reported through
+  // NotesDirtyProvider's own React state, read back by vanilla via
+  // window.getDirtyNotesPrNumbers() - this is the one piece of the auto-
+  // render-blocking feature with no other e2e coverage, so it's verified
+  // in a real browser rather than only via jsdom (NotesDirtyProvider.test.jsx
+  // already covers the same wiring at the component level).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const notesTextarea = page.locator(".pr-notes-section").first().getByPlaceholder("Other notes...");
+  await expect(notesTextarea).toBeVisible();
+  const originalValue = await notesTextarea.inputValue();
+
+  expect(await page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+
+  await notesTextarea.fill(`${originalValue}a note left during this test`);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
+
+  // Restore the exact original value (not just "clear it") - this suite's
+  // webServer is one long-lived process shared by every test, so leaving
+  // this field genuinely dirty would bleed into whichever test runs next.
+  await notesTextarea.fill(originalValue);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+});
+
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
   // runAckAction/runApplyLabelAction (bulk operations submitted via the

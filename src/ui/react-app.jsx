@@ -9,7 +9,7 @@
 
 import { Suspense, lazy, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { flushSync, createPortal } from 'react-dom';
+import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
 import { PrNumberFilterInput } from './components/PrNumberFilterInput';
 import { ScopeFilterSelect } from './components/ScopeFilterSelect';
@@ -19,7 +19,7 @@ import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityM
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
 import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
-import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
+import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
@@ -35,8 +35,10 @@ import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
+import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { ReviewStatsProvider } from './components/ReviewStatsProvider';
 import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
+import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -325,40 +327,6 @@ const FILTER_OPTION_SELECT_FIELDS = [
 ];
 
 /**
- * Multi-select checkbox lists (Phase 2 - see REACT_MIGRATION_PLAN.md).
- * Unlike every field above, these lists' *options* are rebuilt from the PR
- * payload on every data (re)load - see MultiSelectCheckboxList.jsx's own
- * comment for why each render uses an incrementing `key` instead of
- * relying on prop diffing. React mounts directly into the existing
- * `<div id="...-list">` container (like Phase 1's #pr-sections), not a
- * wrapper span, so no index.html/index.css change is needed for these.
- *
- * MULTI_SELECT_LIST_ID_PREFIXES maps each list's container id to the
- * checkbox-id prefix its options previously used (the vanilla fallback's
- * own id-generation scheme, since removed along with the rest of its
- * DOM-building code from pr-filter-panel.helpers.js - see the
- * `${idPrefix}-${login}-${index}` scheme still in index.page.js's own
- * renderActorOptionsList/renderChangeFilterActorList) so generated ids
- * stay stable across the conversion. Covers every multi-select in the app:
- * five owned by pr-filter-panel.helpers.js (label/exclude-label/author/
- * assigned/approver) and four built directly in index.page.js
- * (thread-resolution allow/deny, change-filter ignore-comment/review-
- * authors) - same bridge, same flushSync fix (gotcha #4), just two
- * different call sites feeding it.
- */
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  'label-list': 'label',
-  'exclude-label-list': 'exclude-label',
-  'author-list': 'author',
-  'assigned-list': 'assigned',
-  'approver-list': 'approver',
-  'attention-author-thread-resolution-allow-list': 'attention-author-thread-resolution-allow',
-  'attention-author-thread-resolution-deny-list': 'attention-author-thread-resolution-deny',
-  'change-filter-ignore-comment-authors-list': 'change-filter-ignore-comment-authors',
-  'change-filter-ignore-review-authors-list': 'change-filter-ignore-review-authors',
-};
-
-/**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * looks up every static DOM container this app mounts into, once. Kept
  * separate from <AppRoot />'s render body so it only runs a single time
@@ -462,6 +430,7 @@ const DEFAULT_STATS_VIEW_STATE = {
   startDate: getDefaultStatsStartDate(),
   endDate: '',
 };
+
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
@@ -474,7 +443,6 @@ function AppRoot() {
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
   const [prTable, setPrTable] = useState(null);
-  const [multiSelectStates, setMultiSelectStates] = useState({});
   const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
   const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
@@ -523,30 +491,6 @@ function AppRoot() {
       delete window.mountReactPrTable;
     };
   }, []);
-
-  useEffect(() => {
-    window.renderReactMultiSelectList = (listId, options) => {
-      const container = containers.multiSelect[listId];
-      const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-      if (!container || !idPrefix) {
-        return false;
-      }
-      // flushSync: see MultiSelectCheckboxList's own callers historically -
-      // a same-tick DOM read right after this call (e.g.
-      // getSelectedMultiSelectValues) must see the just-committed state,
-      // not a pre-commit stale one.
-      flushSync(() => {
-        setMultiSelectStates((previous) => ({
-          ...previous,
-          [listId]: { options, renderKey: (previous[listId]?.renderKey || 0) + 1 },
-        }));
-      });
-      return true;
-    };
-    return () => {
-      delete window.renderReactMultiSelectList;
-    };
-  }, [containers]);
 
   useEffect(() => {
     window.renderReactFilterSummary = (summaryText, filterChips) => {
@@ -709,8 +653,8 @@ function AppRoot() {
   useEffect(() => {
     // queueMicrotask, not a direct dispatch: every listener (index.page.js)
     // is invoked synchronously by dispatchEvent, and several call back into
-    // flushSync-wrapped bridges (window.renderReactMultiSelectList,
-    // window.setFilterStateValue) either directly or via a fetch
+    // flushSync-wrapped bridges (window.setFilterStateValue) either
+    // directly or via a fetch
     // continuation that can resolve fast enough to still be "inside"
     // React's own effect-flush for this commit. flushSync reentrant with
     // an in-progress render throws "flushSync was called from inside a
@@ -738,49 +682,21 @@ function AppRoot() {
         {prTable &&
           createPortal(
             <NeedsAttentionProvider>
-              <PrTableApp
-                onCheckboxChange={prTable.onCheckboxChange}
-                onAckAction={prTable.onAckAction}
-                onApplyLabel={prTable.onApplyLabel}
-              />
+              <NotesDirtyProvider>
+                <PrTableApp
+                  onCheckboxChange={prTable.onCheckboxChange}
+                  onAckAction={prTable.onAckAction}
+                  onApplyLabel={prTable.onApplyLabel}
+                />
+              </NotesDirtyProvider>
             </NeedsAttentionProvider>,
             prTable.container,
             'pr-table',
           )}
 
-        {Object.entries(containers.multiSelect).map(([listId, container]) => {
-          if (!container) {
-            return null;
-          }
-          const state = multiSelectStates[listId];
-          return createPortal(
-            // key includes renderKey (bumped on every populate call, see
-            // window.renderReactMultiSelectList above) so this remounts on
-            // every populate, matching MultiSelectCheckboxList's own doc
-            // comment - its `checked` state is seeded once from `options`
-            // via a lazy useState initializer, not kept in sync with
-            // subsequent prop updates, since the caller (populateXOptions
-            // in pr-filter-panel.helpers.js) already does its own
-            // checked/unchecked diffing before calling in. A static
-            // `key={listId}` (the bug this fixes) meant every populate
-            // after the very first silently no-op'd on the checked state:
-            // confirmed via a reload repro where a persisted "enhancement"
-            // label selection rendered into the DOM with checked: true
-            // (traced through populateIncludeLabelOptions and
-            // window.renderReactMultiSelectList) yet the actual checkbox
-            // stayed unchecked, because this component was never told to
-            // re-run its initializer.
-            <MultiSelectCheckboxList
-              key={`${listId}-${state?.renderKey ?? 0}`}
-              options={state?.options || []}
-              idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
-              emptyClassContainer={container}
-              summaryContainer={containers.multiSelectSummary[listId]}
-            />,
-            container,
-            listId,
-          );
-        })}
+        <FilterOptionsProvider>
+          <MultiSelectListPortals containers={containers} />
+        </FilterOptionsProvider>
 
         {containers.appliedFilterSummary &&
           createPortal(

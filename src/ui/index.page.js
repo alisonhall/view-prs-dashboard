@@ -10,7 +10,6 @@ import * as reactCallbackHelperFactory from "./helpers/react-callbacks.helpers.j
 import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
 import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.orchestrator.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
-import * as prMultiSelectRenderCacheHelperFactory from "./helpers/pr-multi-select-render-cache.helpers.js";
 import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
 import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity-render.helpers.js";
@@ -84,6 +83,12 @@ import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpe
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
+import {
+  extractRowLabelNames,
+  normalizeFilterToken,
+  getLabelName,
+} from "./helpers/pr-filter-label-extraction.helpers.js";
+import { setPendingMultiSelectSelection } from "./helpers/pr-pending-multi-select-selections.helpers.js";
 import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
@@ -135,15 +140,6 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
   }
 };
 
-let pendingAuthorFilterSelections = null;
-let pendingAssignedFilterSelections = null;
-let pendingApproverFilterSelections = null;
-let pendingLabelFilterSelections = null;
-let pendingExcludeLabelFilterSelections = null;
-let pendingAuthorThreadResolutionAllowSelections = null;
-let pendingAuthorThreadResolutionDenySelections = null;
-let _pendingChangeFilterIgnoreCommentAuthors = null;
-let _pendingChangeFilterIgnoreReviewAuthors = null;
 let currentViewerLogin = "";
 let currentActorLoginAliases = {};
 let supportsDataMetaPolling = true;
@@ -610,6 +606,19 @@ const getUiOptionDefaults = () => ({
   "attention-author-thread-resolution-allow": [],
   "attention-author-thread-resolution-deny": [],
   "change-filter-use-builtin-merge-pattern": true,
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): these 6 "Any
+  // (with/without)" metadata filters (FilterOptionSelect.jsx) were never
+  // included here - a real, undocumented persistence gap found while
+  // scoping this sub-phase, not a deliberate exclusion (unlike their
+  // separate, intentional exclusion from auto-apply-on-change - see
+  // react-app.jsx's FILTER_OPTION_SELECT_FIELDS comment). Default "" for
+  // all 6 matches each field's own first <option value="">Any...</option>.
+  "filter-custom-comments": "",
+  "filter-other-notes": "",
+  "filter-pr-difficulty": "",
+  "filter-rally-stories": "",
+  "filter-rally-links": "",
+  "filter-analysis-of-pr": "",
 });
 
 const readUiSessionOverrides = async () => {
@@ -678,6 +687,14 @@ const FILTER_STATE_FIELD_MAP = {
   "attention-author-thread-resolution-mode": "attentionAuthorThreadResolutionMode",
   "change-filter-use-builtin-merge-pattern": "changeFilterUseBuiltinMergePattern",
   "change-filter-ignore-commit-patterns": "changeFilterIgnoreCommitPatterns",
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
+  // fix - see getUiOptionDefaults' matching comment above.
+  "filter-custom-comments": "filterCustomComments",
+  "filter-other-notes": "filterOtherNotes",
+  "filter-pr-difficulty": "filterPrDifficulty",
+  "filter-rally-stories": "filterRallyStories",
+  "filter-rally-links": "filterRallyLinks",
+  "filter-analysis-of-pr": "filterAnalysisOfPr",
 };
 
 // Reads a migrated field's current value from FilterStateProvider's
@@ -709,32 +726,20 @@ const setFilterStateOverrideForFieldId = (id, value) => {
 
 // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): the 9 multi-select lists'
 // "pending selections" (used only as a restore-time seed before any
-// checkbox exists yet - see the 9 `let pendingXxx`/`_pendingChangeFilterIgnoreXAuthors`
-// declarations below) have no corresponding DOM element id, so they can't
+// checkbox exists yet) have no corresponding DOM element id, so they can't
 // go through FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId like
-// every other field - these two helpers are the same handled/fallback
-// shape, just keyed directly by Context key instead of DOM id.
-// `getPendingSelectionsValue` uses `hasOwnProperty` rather than a falsy/
-// undefined check, since the module-scope fallback variable's own valid
-// values include `null` (its initial/cleared state) and arrays.
-const getPendingSelectionsValue = (contextKey, fallbackValue) => {
-  const values =
-    typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
-      ? window.getFilterStateValues()
-      : undefined;
-  return values && Object.prototype.hasOwnProperty.call(values, contextKey)
-    ? values[contextKey]
-    : fallbackValue;
-};
-const setPendingSelectionsValue = (contextKey, value, setFallback) => {
-  // Always keep the module-scope variable in sync too, regardless of
-  // whether Context has mounted - it's the fallback storage the vanilla
-  // DOM-building path (and any bare-fixture unit test) still reads/writes
-  // directly.
-  setFallback(value);
-  if (typeof window !== "undefined" && typeof window.setFilterStateValue === "function") {
-    window.setFilterStateValue(contextKey, value);
-  }
+// every other field.
+//
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): writes to a
+// dedicated window-level store (pr-pending-multi-select-selections.helpers.js)
+// instead of FilterStateProvider's generic Context bridge - the reader
+// (react-app.jsx's MultiSelectListPortals.jsx) now lives in a different ES
+// module than this write side, with no shared closure scope, and routing
+// through window.setFilterStateValue would have the side effect of
+// changing every OTHER migrated field's restore behavior too (see that
+// helper module's own comment for the full reasoning).
+const setPendingSelectionsValue = (contextKey, value) => {
+  setPendingMultiSelectSelection(contextKey, value);
 };
 
 const persistUiOptionOverrides = async (fieldIds = null) => {
@@ -775,6 +780,14 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
     "filter-pr-numbers",
     "attention-no-activity-mode",
     "attention-author-thread-resolution-mode",
+    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
+    // fix - see getUiOptionDefaults' matching comment above.
+    "filter-custom-comments",
+    "filter-other-notes",
+    "filter-pr-difficulty",
+    "filter-rally-stories",
+    "filter-rally-links",
+    "filter-analysis-of-pr",
   ];
 
   textIds.forEach((id) => {
@@ -1007,6 +1020,14 @@ const restoreUiOptionOverrides = async () => {
     "filter-pr-numbers",
     "attention-no-activity-mode",
     "attention-author-thread-resolution-mode",
+    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
+    // fix - see getUiOptionDefaults' matching comment above.
+    "filter-custom-comments",
+    "filter-other-notes",
+    "filter-pr-difficulty",
+    "filter-rally-stories",
+    "filter-rally-links",
+    "filter-analysis-of-pr",
   ].forEach((id) => {
     if (Object.prototype.hasOwnProperty.call(overrides, id)) {
       setText(id, overrides[id]);
@@ -1034,9 +1055,6 @@ const restoreUiOptionOverrides = async () => {
     setPendingSelectionsValue(
       "pendingAuthorSelections",
       overrides.author.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingAuthorFilterSelections = v;
-      },
     );
   }
 
@@ -1044,9 +1062,6 @@ const restoreUiOptionOverrides = async () => {
     setPendingSelectionsValue(
       "pendingAssignedSelections",
       overrides.assigned.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingAssignedFilterSelections = v;
-      },
     );
   }
 
@@ -1054,9 +1069,6 @@ const restoreUiOptionOverrides = async () => {
     setPendingSelectionsValue(
       "pendingApproverSelections",
       overrides.approver.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingApproverFilterSelections = v;
-      },
     );
   }
 
@@ -1067,9 +1079,6 @@ const restoreUiOptionOverrides = async () => {
     setPendingSelectionsValue(
       "pendingLabelSelections",
       values.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingLabelFilterSelections = v;
-      },
     );
   }
 
@@ -1080,9 +1089,6 @@ const restoreUiOptionOverrides = async () => {
     setPendingSelectionsValue(
       "pendingExcludeLabelSelections",
       values.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingExcludeLabelFilterSelections = v;
-      },
     );
   }
 
@@ -1092,9 +1098,6 @@ const restoreUiOptionOverrides = async () => {
       overrides["attention-author-thread-resolution-allow"]
         .map((value) => String(value || "").trim())
         .filter(Boolean),
-      (v) => {
-        pendingAuthorThreadResolutionAllowSelections = v;
-      },
     );
   }
 
@@ -1104,9 +1107,6 @@ const restoreUiOptionOverrides = async () => {
       overrides["attention-author-thread-resolution-deny"]
         .map((value) => String(value || "").trim())
         .filter(Boolean),
-      (v) => {
-        pendingAuthorThreadResolutionDenySelections = v;
-      },
     );
   }
 
@@ -1129,9 +1129,6 @@ const restoreUiOptionOverrides = async () => {
         overrides.changeFilters.ignoreCommentsFromAuthors
           .map((value) => String(value || "").trim())
           .filter(Boolean),
-        (v) => {
-          _pendingChangeFilterIgnoreCommentAuthors = v;
-        },
       );
     }
 
@@ -1141,9 +1138,6 @@ const restoreUiOptionOverrides = async () => {
         overrides.changeFilters.ignoreReviewsFromAuthors
           .map((value) => String(value || "").trim())
           .filter(Boolean),
-        (v) => {
-          _pendingChangeFilterIgnoreReviewAuthors = v;
-        },
       );
     }
 
@@ -1173,10 +1167,12 @@ const restoreUiOptionOverrides = async () => {
   }
 
   updateAuthorThreadResolutionRuleVisibility();
-  if (latestStoredPayload?.actorsMap) {
-    populateAuthorThreadResolutionActorOptions(latestStoredPayload.actorsMap);
-    populateChangeFilterActorOptions(latestStoredPayload.actorsMap);
-  }
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): no repopulate
+  // call needed here any more - the thread-resolution/change-filter actor
+  // lists are now derived reactively by FilterOptionsProvider.jsx from
+  // PrDataContext, and react-app.jsx's MultiSelectListPortals effect
+  // already re-seeds checked state whenever the pending-selection Context
+  // values written just above change, with no manual trigger required.
 };
 
 const persistRunScriptOptionOverrides = async () => {
@@ -1215,6 +1211,16 @@ const persistViewFilterOptionOverrides = async () => {
     "change-filter-ignore-comment-authors",
     "change-filter-ignore-review-authors",
     "change-filter-ignore-commit-patterns",
+    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
+    // fix - see getUiOptionDefaults' matching comment above. This is the
+    // function "Apply filters (local)" actually invokes, so this is what
+    // makes these 6 fields' last-applied value survive a reload.
+    "filter-custom-comments",
+    "filter-other-notes",
+    "filter-pr-difficulty",
+    "filter-rally-stories",
+    "filter-rally-links",
+    "filter-analysis-of-pr",
   ]);
 };
 
@@ -1490,18 +1496,16 @@ const { deriveViewerContext } =
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
   });
 
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): populateFilterOptions
+// is now a permanent no-op shell - every populate function it used to
+// orchestrate moved to FilterOptionsProvider.jsx. Its caller
+// (deriveViewerFilterSetup, part of renderPrData's still-vanilla pipeline)
+// can't be deleted yet - see the sub-phase 7.2 writeup for why renderPrData
+// itself is still needed - so this stays wired in as an inert call target
+// rather than being ripped out of that pipeline, candidate for outright
+// removal in sub-phase 7.7's final cleanup.
 const { populateFilterOptions } =
-  prFilterOptionsHelperFactory.createPrFilterOptionsHelpers({
-    populateIncludeLabelOptions: (...args) => populateIncludeLabelOptions(...args),
-    populateExcludeLabelOptions: (...args) => populateExcludeLabelOptions(...args),
-    populateAuthorOptions: (...args) => populateAuthorOptions(...args),
-    populateAssignedOptions: (...args) => populateAssignedOptions(...args),
-    populateApproverOptions: (...args) => populateApproverOptions(...args),
-    populateAuthorThreadResolutionActorOptions: (...args) =>
-      populateAuthorThreadResolutionActorOptions(...args),
-    populateChangeFilterActorOptions: (...args) =>
-      populateChangeFilterActorOptions(...args),
-  });
+  prFilterOptionsHelperFactory.createPrFilterOptionsHelpers();
 
 const { deriveScopedRows } =
   prScopedRowsHelperFactory.createPrScopedRowsHelpers({
@@ -1721,27 +1725,6 @@ const { buildSelectedFiltersViewModel } =
 const { getOrCompute: getOrComputeEntryDerivedValue } =
   prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
 
-// Phase 5 residual (see REACT_MIGRATION_PLAN.md): the 9 filter-dropdown
-// populate functions (5 in pr-filter-panel.helpers.js, 2 shared-shape ones
-// below covering 4 more) already read cheap, cached per-entry values (see
-// getOrComputeEntryDerivedValue above), but every one of them still
-// unconditionally called window.renderReactMultiSelectList on every render
-// - which react-app.jsx answers by bumping an incrementing `key`, forcing
-// MultiSelectCheckboxList to fully remount even when the resulting option
-// list is identical to last time. Wrapped once here (not in each populate
-// function) so every call site benefits without individual changes - see
-// pr-multi-select-render-cache.helpers.js's own comment for why `checked`
-// has to be part of the skip signature, not just `value`/`label`.
-const renderMultiSelectListSkipUnchanged =
-  prMultiSelectRenderCacheHelperFactory
-    .createMultiSelectRenderCache()
-    .wrapRenderMultiSelectList((listId, items) =>
-      typeof window !== "undefined" &&
-      typeof window.renderReactMultiSelectList === "function"
-        ? window.renderReactMultiSelectList(listId, items)
-        : false,
-    );
-
 const { buildRowFilterCriteria, applyRowUiFilters } =
   prRowFilteringHelperFactory.createPrRowFilteringHelpers({
     rowMatchesUiFilters: (...args) => rowMatchesUiFilters(...args),
@@ -1755,13 +1738,18 @@ const { expandAncestorDetailsElements, ensureInsightsRowVisibleForElement } =
 
 const {
   getDirtyTrackedFields,
-  getUnsavedNotesSections,
+  getUnsavedNotesPrNumbers,
   normalizePrNumber,
   getBlockingPrNumbers,
   getFirstUnsavedElementForPrNumber,
 } = prAutoRenderUnsavedHelperFactory.createPrAutoRenderUnsavedHelpers({
   getOptionalElementById,
   readElementAttribute: (...args) => readElementAttribute(...args),
+  // Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): PR Notes dirty
+  // tracking is now NotesDirtyProvider.jsx's own React state, read here via
+  // this dedicated bridge instead of scanning data-has-unsaved-notes DOM
+  // attributes.
+  getDirtyNotesPrNumbers: () => window.getDirtyNotesPrNumbers?.() || [],
 });
 
 const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } =
@@ -1815,7 +1803,7 @@ const { renderAutoRenderBlockedLinks } =
 const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
   prAutoRenderStateHelperFactory.createPrAutoRenderStateHelpers({
     getDirtyTrackedFields,
-    getUnsavedNotesSections,
+    getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     // Bug fix (found while auditing this cluster for Phase 7, sub-phase
     // 7.0 - see REACT_MIGRATION_PLAN.md): getAutoRenderBlockingState calls
@@ -2264,6 +2252,13 @@ if (typeof window !== "undefined") {
   window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
 }
 
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5
+// populateXOptions functions this factory used to also provide have moved
+// to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals,
+// which derive the same option lists reactively from PrDataContext instead
+// of being pushed imperatively through here - trimmed DI surface down to
+// just what's still used (selection readers, the 6 "Any" filter getters,
+// the applied-filter summary, and the dropdown-closing listener).
 const {
   getSelectedAuthorLogins,
   getSelectedAssignedLogins,
@@ -2276,68 +2271,12 @@ const {
   getRallyStoriesFilter,
   getRallyLinksFilter,
   getAnalysisOfPrFilter,
-  populateIncludeLabelOptions,
-  populateExcludeLabelOptions,
-  populateAuthorOptions,
-  populateAssignedOptions,
-  populateApproverOptions,
   renderManagementFilterSummary,
   setupMultiSelectDropdownClosing,
 } = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
-  getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-  resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  collectAssignedUsers: (...args) => collectAssignedUsers(...args),
-  collectApproversFromRow: (...args) => collectApproversFromRow(...args),
-  extractRowLabelNames: (...args) => extractRowLabelNames(...args),
-  normalizeFilterToken: (...args) => normalizeFilterToken(...args),
-  getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
-  // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): these 5 getter/setter
-  // pairs now prefer FilterStateProvider's Context (via
-  // getPendingSelectionsValue/setPendingSelectionsValue) over the plain
-  // module variable, falling back to it when Context hasn't mounted -
-  // pr-filter-panel.helpers.js itself is unchanged, since it only ever
-  // calls these as opaque functions.
-  getPendingAuthorFilterSelections: () =>
-    getPendingSelectionsValue("pendingAuthorSelections", pendingAuthorFilterSelections),
-  setPendingAuthorFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingAuthorSelections", value, (v) => {
-      pendingAuthorFilterSelections = v;
-    }),
-  getPendingAssignedFilterSelections: () =>
-    getPendingSelectionsValue("pendingAssignedSelections", pendingAssignedFilterSelections),
-  setPendingAssignedFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingAssignedSelections", value, (v) => {
-      pendingAssignedFilterSelections = v;
-    }),
-  getPendingApproverFilterSelections: () =>
-    getPendingSelectionsValue("pendingApproverSelections", pendingApproverFilterSelections),
-  setPendingApproverFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingApproverSelections", value, (v) => {
-      pendingApproverFilterSelections = v;
-    }),
-  getPendingLabelFilterSelections: () =>
-    getPendingSelectionsValue("pendingLabelSelections", pendingLabelFilterSelections),
-  setPendingLabelFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingLabelSelections", value, (v) => {
-      pendingLabelFilterSelections = v;
-    }),
-  getPendingExcludeLabelFilterSelections: () =>
-    getPendingSelectionsValue("pendingExcludeLabelSelections", pendingExcludeLabelFilterSelections),
-  setPendingExcludeLabelFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingExcludeLabelSelections", value, (v) => {
-      pendingExcludeLabelFilterSelections = v;
-    }),
-  // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): delegates
-  // to react-app.jsx's bridge when it has mounted a given list id; a no-op
-  // (React hasn't finished loading/mounting yet) when this returns false -
-  // pr-filter-panel.helpers.js no longer has any DOM-building of its own to
-  // fall back to. Phase 5 residual: routed through
-  // renderMultiSelectListSkipUnchanged so an unchanged list doesn't force a
-  // remount.
-  renderMultiSelectList: (listId, items) => renderMultiSelectListSkipUnchanged(listId, items),
   // Delegates the "Applied filters: ..." summary/chips to react-app.jsx's
   // bridge (AppliedFilterSummary.jsx) - same handled/fallback-to-no-op
-  // shape as renderMultiSelectList above.
+  // shape every Phase 2 bridge in this file uses.
   renderFilterSummary: (summaryText, filterChips) =>
     typeof window !== "undefined" && typeof window.renderReactFilterSummary === "function"
       ? window.renderReactFilterSummary(summaryText, filterChips)
@@ -2357,195 +2296,6 @@ const {
     return values?.[key];
   },
 });
-
-const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
-  const actorEntries = Object.entries(
-    actorsMap && typeof actorsMap === "object" ? actorsMap : {},
-  )
-    .map(([login, displayName]) => {
-      const loginValue = String(login || "").trim();
-      if (!loginValue) {
-        return null;
-      }
-      return {
-        login: loginValue,
-        displayName: resolveActorDisplayName(loginValue, actorsMap, displayName),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = String(a.displayName || a.login).toLowerCase();
-      const right = String(b.displayName || b.login).toLowerCase();
-      return left.localeCompare(right);
-    });
-
-  const renderActorOptionsList = ({
-    listId,
-    pendingSelections,
-    setPendingSelections,
-  }) => {
-    const listNode = getOptionalElementById(listId);
-    if (!listNode) {
-      return;
-    }
-
-    const existingSelections = getSelectedMultiSelectValuesFromList(listId);
-    const seedSelections =
-      existingSelections.length > 0
-        ? existingSelections
-        : Array.isArray(pendingSelections)
-          ? pendingSelections
-          : [];
-    const selectedSet = new Set(seedSelections);
-
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
-    // fallback here any more - same always-available assumption (and same
-    // typeof guard, only for the brief pre-mount race, never a real
-    // fallback path) the pr-filter-panel/pr-json-modal cleanup slice
-    // already relied on to delete that file's 5 equivalent fallback
-    // blocks. This one (and renderChangeFilterActorList's identical twin
-    // below) were missed in that slice; removed here the same way. Phase 5
-    // residual: routed through renderMultiSelectListSkipUnchanged (see its
-    // own comment above) so an unchanged list doesn't force a remount.
-    // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): this used to also toggle
-    // listNode.classList "empty" and call updateMultiSelectSummary(listId)
-    // (both deleted) - MultiSelectCheckboxList.jsx now owns both directly
-    // from the `options` it's given below.
-    renderMultiSelectListSkipUnchanged(
-      listId,
-      actorEntries.map(({ login, displayName }) => ({
-        value: login,
-        label: displayName,
-        checked: selectedSet.has(login),
-      })),
-    );
-
-    if (Array.isArray(pendingSelections)) {
-      const appliedCount = actorEntries.filter(({ login }) =>
-        selectedSet.has(login),
-      ).length;
-      if (appliedCount > 0 || existingSelections.length > 0) {
-        setPendingSelections(null);
-      }
-    }
-  };
-
-  renderActorOptionsList({
-    listId: "attention-author-thread-resolution-allow-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingAuthorThreadResolutionAllowSelections",
-      pendingAuthorThreadResolutionAllowSelections,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingAuthorThreadResolutionAllowSelections", value, (v) => {
-        pendingAuthorThreadResolutionAllowSelections = v;
-      }),
-  });
-  renderActorOptionsList({
-    listId: "attention-author-thread-resolution-deny-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingAuthorThreadResolutionDenySelections",
-      pendingAuthorThreadResolutionDenySelections,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingAuthorThreadResolutionDenySelections", value, (v) => {
-        pendingAuthorThreadResolutionDenySelections = v;
-      }),
-  });
-};
-
-const populateChangeFilterActorOptions = (actorsMap = {}) => {
-  const actorEntries = Object.entries(
-    actorsMap && typeof actorsMap === "object" ? actorsMap : {},
-  )
-    .map(([login, displayName]) => {
-      const loginValue = String(login || "").trim();
-      if (!loginValue) {
-        return null;
-      }
-      return {
-        login: loginValue,
-        displayName: resolveActorDisplayName(loginValue, actorsMap, displayName),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = String(a.displayName || a.login).toLowerCase();
-      const right = String(b.displayName || b.login).toLowerCase();
-      return left.localeCompare(right);
-    });
-
-  const renderChangeFilterActorList = ({
-    listId,
-    pendingSelections,
-    setPendingSelections,
-  }) => {
-    const listNode = getOptionalElementById(listId);
-    if (!listNode) {
-      return;
-    }
-
-    const existingSelections = getSelectedMultiSelectValuesFromList(listId);
-    const seedSelections =
-      existingSelections.length > 0
-        ? existingSelections
-        : Array.isArray(pendingSelections)
-          ? pendingSelections
-          : [];
-    const selectedSet = new Set(seedSelections);
-
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
-    // fallback here any more - see renderActorOptionsList's identical twin
-    // above for why (this one was missed in the pr-filter-panel/
-    // pr-json-modal cleanup slice; removed here the same way). Phase 5
-    // residual: routed through renderMultiSelectListSkipUnchanged too.
-    // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): this used to also toggle listNode.classList
-    // "empty" and call updateMultiSelectSummary(listId) (both deleted) -
-    // MultiSelectCheckboxList.jsx now owns both directly.
-    renderMultiSelectListSkipUnchanged(
-      listId,
-      actorEntries.map(({ login, displayName }) => ({
-        value: login,
-        label: displayName,
-        checked: selectedSet.has(login),
-      })),
-    );
-
-    if (Array.isArray(pendingSelections)) {
-      const appliedCount = actorEntries.filter(({ login }) =>
-        selectedSet.has(login),
-      ).length;
-      if (appliedCount > 0 || existingSelections.length > 0) {
-        setPendingSelections(null);
-      }
-    }
-  };
-
-  renderChangeFilterActorList({
-    listId: "change-filter-ignore-comment-authors-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingChangeFilterIgnoreCommentAuthors",
-      _pendingChangeFilterIgnoreCommentAuthors,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingChangeFilterIgnoreCommentAuthors", value, (v) => {
-        _pendingChangeFilterIgnoreCommentAuthors = v;
-      }),
-  });
-  renderChangeFilterActorList({
-    listId: "change-filter-ignore-review-authors-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingChangeFilterIgnoreReviewAuthors",
-      _pendingChangeFilterIgnoreReviewAuthors,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingChangeFilterIgnoreReviewAuthors", value, (v) => {
-        _pendingChangeFilterIgnoreReviewAuthors = v;
-      }),
-  });
-};
 
 // Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
 // window.updateReactBackfillBadges actually exists - see that listener's
@@ -3465,21 +3215,6 @@ const parseCsvTokens = (rawValue) =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-const getLabelName = (label) => {
-  if (typeof label === "string") {
-    return String(label || "").trim();
-  }
-  if (label && typeof label === "object") {
-    return String(label.name || "").trim();
-  }
-  return "";
-};
-
-const extractRowLabelNames = (row = {}) =>
-  (Array.isArray(row?.labels) ? row.labels : [])
-    .map((label) => getLabelName(label))
-    .filter(Boolean);
-
 const parsePrNumbersInput = (rawValue) =>
   formParsingHelpers?.parsePrNumbersInput
     ? formParsingHelpers.parsePrNumbersInput(rawValue)
@@ -3522,12 +3257,6 @@ const updateSelectedPrNumbers = (prNumber, shouldSelect) => {
 
   setSelectedPrNumbers(next);
 };
-
-const normalizeFilterToken = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/[\u2018\u2019]/g, "'")
-    .toLowerCase();
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): "always-show-in-review" is
 // migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
@@ -4360,19 +4089,17 @@ const initPage = () => {
   //
   // queueMicrotask, not a direct call: this .then() can run essentially
   // immediately (a fast/local fetch resolving inside the same microtask
-  // flush React is still processing from its own initial-mount effects),
-  // and renderPrData()'s multi-select repopulate calls
-  // window.renderReactMultiSelectList, which is flushSync-wrapped -
-  // calling that reentrantly mid-render throws "flushSync was called from
-  // inside a lifecycle method" (confirmed via this exact warning in a CI
-  // run). Queuing a fresh microtask guarantees React has fully finished
-  // whatever it was doing first, exactly as that warning's own message
-  // suggests ("Consider moving this call to a scheduler task or micro
-  // task") - a plain setTimeout also works in a real browser, but jsdom
-  // integration tests that `await user.click(...)` and assert immediately
-  // (no `waitFor`) only drain the microtask queue, not macrotasks, and
-  // would see the pre-restore value; a microtask still resolves within
-  // that same drain.
+  // flush React is still processing from its own initial-mount effects) -
+  // calling straight into React reentrantly mid-render/mid-effect-flush
+  // has repeatedly caused real "flushSync was called from inside a
+  // lifecycle method" warnings/errors elsewhere in this codebase (see
+  // MultiSelectListPortals.jsx's own comment for the most recent one,
+  // sub-phase 7.4). Queuing a fresh microtask guarantees React has fully
+  // finished whatever it was doing first - a plain setTimeout also works
+  // in a real browser, but jsdom integration tests that `await
+  // user.click(...)` and assert immediately (no `waitFor`) only drain the
+  // microtask queue, not macrotasks, and would see the pre-restore value;
+  // a microtask still resolves within that same drain.
   void restoreUiOptionOverrides().then(() => {
     if (latestStoredPayload) {
       queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
@@ -4403,19 +4130,17 @@ const initPage = () => {
         // The 9 multi-select lists' pending selections (label,
         // exclude-label, author, assigned, approver, thread-resolution
         // allow/deny, change-filter ignore-author) have no DOM id and so go
-        // through getPendingSelectionsValue/setPendingSelectionsValue
-        // instead of FILTER_STATE_FIELD_MAP (see that helper's own
-        // comment) - this restore call is what actually syncs them into
-        // Context for real (the first call above almost always predates
-        // FilterStateProvider mounting, so it only ever reaches the
-        // module-scope fallback var). But nothing was re-reading that fresh
-        // Context value afterward: if loadStoredData's own renderPrData
-        // call had already populated these lists (raced ahead of both
-        // restoreUiOptionOverrides calls), their checkboxes were seeded
-        // from whatever was visible at that time and never revisited,
-        // leaving a persisted selection unchecked after every reload even
-        // though Context now genuinely has it. Re-render so the just-synced
-        // pending selections actually reach the checkboxes.
+        // through setPendingSelectionsValue instead of FILTER_STATE_FIELD_MAP
+        // (see that function's own comment). Every OTHER Context-migrated
+        // field restored above still needs this re-render to reach the
+        // vanilla-rendered UI (data-meta summary, filter chips, etc.) -
+        // the 9 multi-select lists specifically do not any more:
+        // setPendingSelectionsValue's write (just above, inside
+        // restoreUiOptionOverrides) notifies MultiSelectListPortals.jsx
+        // directly (see pr-pending-multi-select-selections.helpers.js's
+        // subscribeToPendingMultiSelectSelections), which re-seeds their
+        // checked state on its own, independent of whether this renderPrData
+        // call even changes anything a memo would notice.
         //
         // queueMicrotask: same flushSync-reentrancy/jsdom-await reasons as
         // the first restoreUiOptionOverrides().then() above - this one is
@@ -4636,11 +4361,12 @@ const initPage = () => {
   // call would then see "already mounted" and skip straight to
   // updateReactTable, re-running the vanilla filter-dropdown population a
   // second time in the process (once for this empty mount, once for the
-  // real update) - exactly the stale-DOM-read double-populate race
-  // flushSync (see renderReactMultiSelectList in react-app.jsx) exists to
-  // guard against, just one extra time. Only re-render here once real data
-  // has actually loaded; otherwise loadStoredData()'s own renderPrData call
-  // below already lands on the correct (mount, not update) path unaided.
+  // real update) - exactly the stale-DOM-read double-populate race the
+  // multi-select lists' own render-cache (createMultiSelectRenderCache,
+  // MultiSelectListPortals.jsx) exists to guard against, just one extra
+  // time. Only re-render here once real data has actually loaded;
+  // otherwise loadStoredData()'s own renderPrData call below already
+  // lands on the correct (mount, not update) path unaided.
   window.addEventListener(
     "viewprs:react-ready",
     () => {
