@@ -122,6 +122,7 @@ export default defineConfig([
       "src/ui/helpers/pr-ack-label-actions.helpers.js",
       "src/ui/helpers/pr-concurrency.helpers.js",
       "src/ui/helpers/pr-quick-check-actions.helpers.js",
+      "src/ui/helpers/pr-trigger-auto-run-action.helpers.js",
       "src/ui/helpers/pr-http.helpers.js",
       "src/ui/helpers/pr-status-display.helpers.js",
       "src/ui/helpers/pr-command-output.helpers.js",

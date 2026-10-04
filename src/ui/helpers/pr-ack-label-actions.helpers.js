@@ -95,6 +95,12 @@ export const { createPrAckLabelActionsHelpers } = (() => {
     markPrsQueued,
     clearPrsQueued,
     runWithConcurrencyLimit,
+    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): only
+    // needed for the loadStoredData-fallback branches below, to read back
+    // the payload loadStoredData itself just wrote via applyLatestPrData -
+    // a synchronous read strictly after that write has already completed,
+    // not the same-tick-as-mutation hazard this whole effort removes.
+    getLatestStoredPayload,
   } = {}) => {
     const postJsonSafe = typeof postJson === "function" ? postJson : async () => ({
       response: { ok: false },
@@ -143,9 +149,15 @@ export const { createPrAckLabelActionsHelpers } = (() => {
             }
             return results;
           };
+    const getLatestStoredPayloadSafe =
+      typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
 
     // The original, single-request code path - unchanged behavior, used
     // whenever a batch fits in one chunk (see the module-level comment).
+    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
+    // exit point now returns null (failure) or { payload, selectedRepo }
+    // (success) - see pr-row-checkbox-actions.helpers.js's own comment for
+    // why, same reasoning applies here.
     const runSingleAckRequest = async (payload, actionLabel) => {
       try {
         const { response, result } = await postJsonSafe("/view-prs/ack", payload);
@@ -165,7 +177,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : `HTTP ${response.status}: Check the output below for details.`,
             0,
           );
-          return;
+          return null;
         }
 
         setStatusMessageSafe(`${actionLabel} completed`);
@@ -182,10 +194,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           );
         }
 
+        const selectedRepo = payload.repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, payload.repo || defaultRepoSafe);
+          renderPrDataSafe(result.prData, selectedRepo);
+          return { payload: result.prData, selectedRepo };
         } else {
-          await loadStoredDataSafe(payload.repo || defaultRepoSafe);
+          await loadStoredDataSafe(selectedRepo);
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (error) {
         setStatusMessageSafe("Failed (network/error)");
@@ -195,6 +210,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           String(error || "An unknown error occurred"),
           0,
         );
+        return null;
       }
     };
 
@@ -267,7 +283,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(first.error || "An unknown error occurred"),
           0,
         );
-        return;
+        return null;
       }
 
       if (failedChunks.length > 0) {
@@ -299,7 +315,9 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         );
       }
 
-      await loadStoredDataSafe(repo || defaultRepoSafe);
+      const selectedRepo = repo || defaultRepoSafe;
+      await loadStoredDataSafe(selectedRepo);
+      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
     };
 
     const runAckAction = async (payload, actionLabel) => {
@@ -315,13 +333,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         if (chunks.length <= 1) {
           markPrsBusySafe(prNumbers, repo);
           try {
-            await runSingleAckRequest(payload, actionLabel);
+            return await runSingleAckRequest(payload, actionLabel);
           } finally {
             clearPrsBusySafe(prNumbers, repo);
           }
         } else {
           markPrsQueuedSafe(prNumbers, repo);
-          await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
+          return await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
         }
       } finally {
         finishActivity();
@@ -334,11 +352,11 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const ack = String(ackValue || body.prNumbers || "").trim();
       if (!ack) {
         setStatusMessageSafe('Ack only requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runAckAction({ repo, ack }, "Ack only");
+      return await runAckAction({ repo, ack }, "Ack only");
     };
 
     const runClearOnlyWorkflow = async (ackClearValue = "", repoOverride = "") => {
@@ -347,11 +365,11 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const ackClear = String(ackClearValue || body.prNumbers || "").trim();
       if (!ackClear) {
         setStatusMessageSafe('Clear only requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runAckAction({ repo, ackClear }, "Clear only");
+      return await runAckAction({ repo, ackClear }, "Clear only");
     };
 
     // The original, single-request code path - unchanged behavior, used
@@ -379,7 +397,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
             0,
           );
-          return;
+          return null;
         }
 
         setStatusMessageSafe(result.summary || `${actionLabel} completed`);
@@ -397,10 +415,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           );
         }
 
+        const selectedRepo = repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, repo || defaultRepoSafe);
+          renderPrDataSafe(result.prData, selectedRepo);
+          return { payload: result.prData, selectedRepo };
         } else {
-          await loadStoredDataSafe(repo || defaultRepoSafe);
+          await loadStoredDataSafe(selectedRepo);
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (error) {
         setStatusMessageSafe("Failed (network/error)");
@@ -410,6 +431,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           String(error || "An unknown error occurred"),
           0,
         );
+        return null;
       }
     };
 
@@ -474,7 +496,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(first.error || "An unknown error occurred"),
           0,
         );
-        return;
+        return null;
       }
 
       if (failedChunks.length > 0) {
@@ -499,7 +521,9 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         );
       }
 
-      await loadStoredDataSafe(repo || defaultRepoSafe);
+      const selectedRepo = repo || defaultRepoSafe;
+      await loadStoredDataSafe(selectedRepo);
+      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
     };
 
     const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
@@ -513,13 +537,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         if (chunks.length <= 1) {
           markPrsBusySafe(prNumberList, repo);
           try {
-            await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
+            return await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
           } finally {
             clearPrsBusySafe(prNumberList, repo);
           }
         } else {
           markPrsQueuedSafe(prNumberList, repo);
-          await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
+          return await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
         }
       } finally {
         finishActivity();
@@ -532,17 +556,17 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
       if (!prNumbers) {
         setStatusMessageSafe('Apply label requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const label = String(labelValue || "").trim();
       if (!label) {
         setStatusMessageSafe("Choose a label to apply");
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
+      return await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
     };
 
     return {

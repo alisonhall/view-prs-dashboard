@@ -42,6 +42,15 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
     const loadStoredDataSafe =
       typeof loadStoredData === "function" ? loadStoredData : async () => {};
 
+    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
+    // exit point returns either null (failure) or { payload, selectedRepo }
+    // (success) instead of a bare return - this is what lets
+    // react-callbacks.helpers.js push the just-computed value into React
+    // directly, without reading latestStoredPayload back synchronously
+    // right after this function writes it (the documented regression class
+    // that deferred this - a setState-backed Context read can't satisfy a
+    // same-tick readback, but using this function's own return value
+    // doesn't go through Context at all).
     const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
       const prNumber = String(row.number || entry.prNumber || "").trim();
 
@@ -53,7 +62,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           "Missing PR number",
           "Unable to update in-review state",
         );
-        return;
+        return null;
       }
 
       checkbox.disabled = true;
@@ -79,10 +88,12 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
             result,
             `Failed to update in-review for #${prNumber}`,
           );
-          return;
+          return null;
         }
 
         setStatusTextOnlySafe(`${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`);
+
+        const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
 
         // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
         // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
@@ -91,27 +102,25 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           // latestStoredPayload so React's reference-equality checks (useState
           // bail-out, useEffect deps) actually detect the change and re-render.
           const currentPayload = getLatestStoredPayloadSafe();
-          applyLatestPrDataSafe({
-            payload: currentPayload
-              ? {
-                  ...currentPayload,
-                  flaggedByRepo: result.flaggedByRepo,
-                  inReviewByRepo: result.inReviewByRepo,
-                }
-              : currentPayload,
-            selectedRepo: payload.repo || getLatestSelectedRepoSafe(),
-          });
+          const updatedPayload = currentPayload
+            ? {
+                ...currentPayload,
+                flaggedByRepo: result.flaggedByRepo,
+                inReviewByRepo: result.inReviewByRepo,
+              }
+            : currentPayload;
+          applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
           // Don't call renderPrData() - checkbox already updated, UI is correct
           // Smart groups will update on next full refresh
+          return { payload: updatedPayload, selectedRepo };
         } else if (result.prData) {
           // Full response (backward compatibility)
-          applyLatestPrDataSafe({
-            payload: result.prData,
-            selectedRepo: payload.repo || getLatestSelectedRepoSafe(),
-          });
+          applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
+          return { payload: result.prData, selectedRepo };
         } else {
           // Fallback to full reload only if no data returned
-          await loadStoredDataSafe(payload.repo || getLatestSelectedRepoSafe() || "");
+          await loadStoredDataSafe(selectedRepo || "");
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (_error) {
         checkbox.checked = !nextValue;
@@ -121,6 +130,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           _error,
           `Failed to update in-review for #${prNumber}`,
         );
+        return null;
       } finally {
         checkbox.disabled = false;
       }
@@ -137,7 +147,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           "Missing PR number",
           "Unable to update flagged state",
         );
-        return;
+        return null;
       }
 
       checkbox.disabled = true;
@@ -163,10 +173,12 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
             result,
             `Failed to update flagged state for #${prNumber}`,
           );
-          return;
+          return null;
         }
 
         setStatusTextOnlySafe(`${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`);
+
+        const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
 
         // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
         // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
@@ -175,27 +187,25 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           // latestStoredPayload so React's reference-equality checks (useState
           // bail-out, useEffect deps) actually detect the change and re-render.
           const currentPayload = getLatestStoredPayloadSafe();
-          applyLatestPrDataSafe({
-            payload: currentPayload
-              ? {
-                  ...currentPayload,
-                  flaggedByRepo: result.flaggedByRepo,
-                  inReviewByRepo: result.inReviewByRepo,
-                }
-              : currentPayload,
-            selectedRepo: payload.repo || getLatestSelectedRepoSafe(),
-          });
+          const updatedPayload = currentPayload
+            ? {
+                ...currentPayload,
+                flaggedByRepo: result.flaggedByRepo,
+                inReviewByRepo: result.inReviewByRepo,
+              }
+            : currentPayload;
+          applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
           // Don't call renderPrData() - checkbox already updated, UI is correct
           // Smart groups will update on next full refresh
+          return { payload: updatedPayload, selectedRepo };
         } else if (result.prData) {
           // Full response (backward compatibility)
-          applyLatestPrDataSafe({
-            payload: result.prData,
-            selectedRepo: payload.repo || getLatestSelectedRepoSafe(),
-          });
+          applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
+          return { payload: result.prData, selectedRepo };
         } else {
           // Fallback to full reload only if no data returned
-          await loadStoredDataSafe(payload.repo || getLatestSelectedRepoSafe() || "");
+          await loadStoredDataSafe(selectedRepo || "");
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (_error) {
         checkbox.checked = !nextValue;
@@ -205,6 +215,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
           _error,
           `Failed to update flagged state for #${prNumber}`,
         );
+        return null;
       } finally {
         checkbox.disabled = false;
       }

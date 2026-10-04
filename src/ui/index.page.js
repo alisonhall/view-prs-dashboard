@@ -94,6 +94,7 @@ import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-ac
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
 import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
 import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
+import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
 // Deliberately empty - not a real repo any other user of this tool would
 // have access to (see src/server/config/app-config.js's own
@@ -2116,35 +2117,14 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned
 // (components/TriggerAutoRunButton.jsx), which manages disabled/label
-// state around this call as its injected onTrigger callback - this
-// function no longer touches the DOM at all, only the fetch/branching
-// business logic remains here.
-const handleTriggerAutoRun = async () => {
-  try {
-    const { response, result } = await postJson("/view-prs/run-auto", {});
-    if (response.status === 409) {
-      showErrorNotification(
-        "Auto run already in progress",
-        "An auto run is already running. It will complete shortly.",
-        6000,
-      );
-    } else if (!response.ok || result.ok === false) {
-      notifyFailureSnackbar(
-        "Failed to trigger auto run",
-        result,
-        result?.error || "Unexpected error triggering auto run",
-      );
-    }
-  } catch (error) {
-    notifyFailureSnackbar(
-      "Failed to trigger auto run",
-      error,
-      "Unable to reach the server",
-    );
-  }
-};
+// state around this call as its injected onTrigger callback. Phase 7,
+// sub-phase 7.6: the fetch/branching logic itself now lives in
+// pr-trigger-auto-run-action.helpers.js's runTriggerAutoRunWorkflow (pure
+// extraction, zero behavior change) - this is a thin wrapper so the
+// window.handleTriggerAutoRun bridge below stays unchanged.
+const handleTriggerAutoRun = () => runTriggerAutoRunWorkflow();
 
 const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 
@@ -2155,93 +2135,42 @@ const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 // firing-and-forgetting like "Trigger auto run" does for the full refresh.
 //
 // Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned
 // (components/QuickCheckButton.jsx). Unlike handleTriggerAutoRun above,
 // this one's final label depends on the outcome, so rather than touching
 // the DOM directly, this returns a `{ label, resetAfterMs? }` descriptor
-// for that component's own onCheck callback to apply.
+// for that component's own onCheck callback to apply. Phase 7, sub-phase
+// 7.6: the fetch/branching logic itself now lives in
+// pr-quick-check-actions.helpers.js's runQuickCheckWorkflow.
 const buildQuickCheckCountLabel = (pendingTotal) =>
   pendingTotal > 0
     ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
     : "No changes found";
 
-const handleQuickCheck = async () => {
-  try {
-    // Scope to the Run & Filter tab's entered PR numbers when present, so an
-    // older merged PR typed in there is still checked (bypassing the day-
-    // window server-side) - an empty field sends {}, identical to before.
-    const { repo, prNumbers } = getFormBody();
-    const payload = prNumbers ? { repo, prNumbers } : {};
-    const { response, result } = await postJson("/view-prs/quick-check", payload);
-    return buildQuickCheckOutcome({
-      response,
-      result,
-      fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
-      buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
-    });
-  } catch (error) {
-    notifyFailureSnackbar(
-      "Quick check failed",
-      error,
-      "Unable to reach the server",
-    );
-    return { label: QUICK_CHECK_BUTTON_LABEL };
-  }
-};
+const handleQuickCheck = () =>
+  runQuickCheckWorkflow({
+    fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
+    buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
+  });
 
 const QUICK_CHECK_ALL_BUTTON_LABEL = "Quick check all";
 
 // "Quick check all existing PRs" - checks every PR number already loaded in
 // the app (across every repo represented in the loaded rows, not just the
-// selected one - see collectAllLoadedPrsByRepo's own comment), instead of
-// requiring the user to type numbers into the Run & Filter tab's field.
-const handleQuickCheckAll = async () => {
-  const repoRequests = toRepoRequests(
-    collectAllLoadedPrsByRepo(latestStoredPayload?.byPrNumber),
-  );
-
-  if (repoRequests.length === 0) {
-    // Unlike the 409/503/failure branches below (which return the button's
-    // own default label, so no revert timer is needed), this label differs
-    // from the default - without resetAfterMs the button would get stuck
-    // showing "Nothing to check" forever instead of settling back.
-    return { label: "Nothing to check", resetAfterMs: 2500 };
-  }
-
-  // markPrsBusy/clearPrsBusy take one repo per call (busy state is keyed by
-  // repo+number, see PrTableApp.jsx's buildActivePrKey), so each repo in the
-  // sweep needs its own call rather than one call spanning every repo.
-  try {
-    repoRequests.forEach(({ repo, prNumbers }) => {
-      window.markPrsBusy?.(prNumbers.split(","), repo);
-    });
-    const { response, result } = await postJson("/view-prs/quick-check-all", {
-      repos: repoRequests,
-    });
-    return buildQuickCheckOutcome({
-      response,
-      result,
-      fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
-      buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
-        pendingTotal > 0
-          ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
-              reposChecked.length === 1 ? "" : "s"
-            }`
-          : "No changes found",
-    });
-  } catch (error) {
-    notifyFailureSnackbar(
-      "Quick check failed",
-      error,
-      "Unable to reach the server",
-    );
-    return { label: QUICK_CHECK_ALL_BUTTON_LABEL };
-  } finally {
-    repoRequests.forEach(({ repo, prNumbers }) => {
-      window.clearPrsBusy?.(prNumbers.split(","), repo);
-    });
-  }
-};
+// selected one), instead of requiring the user to type numbers into the Run
+// & Filter tab's field. Phase 7, sub-phase 7.6: the fetch/branching logic
+// itself now lives in pr-quick-check-actions.helpers.js's
+// runQuickCheckAllWorkflow (which also owns collectAllLoadedPrsByRepo).
+const handleQuickCheckAll = () =>
+  runQuickCheckAllWorkflow({
+    fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
+    buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
+      pendingTotal > 0
+        ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
+            reposChecked.length === 1 ? "" : "s"
+          }`
+        : "No changes found",
+  });
 
 // TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
 // their onTrigger/onCheck props - same exposure shape as
@@ -3888,15 +3817,29 @@ const handleRunScript = async () => {
 const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
 
 const {
-  collectAllLoadedPrsByRepo,
-  toRepoRequests,
-  buildQuickCheckOutcome,
+  runQuickCheckWorkflow,
+  runQuickCheckAllWorkflow,
 } = prQuickCheckActionsHelperFactory.createPrQuickCheckActionsHelpers({
   showErrorNotification: (...args) => showErrorNotification(...args),
   showWarningNotification: (...args) => showWarningNotification(...args),
   notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
   loadSchedulerStatus: (...args) => loadSchedulerStatus(...args),
+  postJson: (...args) => postJson(...args),
+  getFormBody: () => getFormBody(),
+  getLatestStoredPayload: () => latestStoredPayload,
+  markPrsBusy: (...args) => window.markPrsBusy?.(...args),
+  clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
 });
+
+// Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): see that function's
+// own module for why this is a separate, single-action helper file rather
+// than folded into pr-quick-check-actions.helpers.js above.
+const { runTriggerAutoRunWorkflow } =
+  prTriggerAutoRunActionHelperFactory.createPrTriggerAutoRunActionHelpers({
+    postJson: (...args) => postJson(...args),
+    showErrorNotification: (...args) => showErrorNotification(...args),
+    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
+  });
 
 // Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
 // wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same
@@ -3935,6 +3878,11 @@ const {
   markPrsQueued: (...args) => window.markPrsQueued?.(...args),
   clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
   runWithConcurrencyLimit: (...args) => runWithConcurrencyLimit(...args),
+  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): lets
+  // the loadStoredData-fallback branches return the freshly-loaded payload
+  // directly, instead of react-callbacks.helpers.js having to read it back
+  // itself afterward.
+  getLatestStoredPayload: () => latestStoredPayload,
 });
 
 const handleAckOnly = async () => {
@@ -4044,22 +3992,24 @@ function createReactCallbacks() {
 
     // State getters
     stateGetters: {
-      // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md):
-      // deliberately NOT switched to the window.getReactPrTablePayload
-      // read bridge, unlike the other two DI wirings above/nearby - this
-      // one is different in a way the original design missed.
-      // handleCheckboxChange/handleAckAction/handleApplyLabel (below) all
-      // mutate latestStoredPayload as a synchronous side effect (via
+      // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): no
+      // getLatestStoredPayload here any more. handleCheckboxChange/
+      // handleAckAction/handleApplyLabel (react-callbacks.helpers.js) used
+      // to mutate latestStoredPayload as a synchronous side effect (via
       // toggleFlaggedForRow/toggleInReviewForRow/runAckOnlyWorkflow/etc.)
-      // and then immediately read it back via this getter, in the SAME
-      // call, specifically to push the just-mutated value into React. The
-      // Context bridge can't satisfy that: Context's payload only updates
-      // *after* this getter's return value reaches updateReactTableSafe,
-      // so reading it here would hand back the pre-mutation payload and
-      // silently undo the very change this handler just made (confirmed
-      // via a real Playwright regression - the checkbox-toggle smoke test
-      // failed with the checked state reverting right after the click).
-      getLatestStoredPayload: () => latestStoredPayload,
+      // and then immediately read it back via a getter, in the SAME call,
+      // to push the just-mutated value into React - a real, Playwright-
+      // confirmed hazard if that getter were ever switched to the
+      // window.getReactPrTablePayload Context bridge (Context's payload
+      // only updates *after* the getter's return value reaches
+      // updateReactTableSafe, so reading it there would hand back the
+      // pre-mutation payload and undo the change). Resolved by having
+      // those vanilla functions return their freshly-computed
+      // { payload, selectedRepo } directly instead of writing it
+      // somewhere react-callbacks.helpers.js has to read back - see each
+      // function's own comment. getLatestSelectedRepo stays: it's used for
+      // an unrelated, pre-call repoOverride fallback, not a same-tick
+      // readback.
       getLatestSelectedRepo: () => latestSelectedRepo,
     },
   });

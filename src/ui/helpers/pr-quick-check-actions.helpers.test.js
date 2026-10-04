@@ -10,6 +10,9 @@ function buildHarness(overrides = {}) {
     showWarningNotification: [],
     notifyFailureSnackbar: [],
     loadSchedulerStatus: [],
+    postJson: [],
+    markPrsBusy: [],
+    clearPrsBusy: [],
   };
 
   const helpers = createPrQuickCheckActionsHelpers({
@@ -17,6 +20,8 @@ function buildHarness(overrides = {}) {
     showWarningNotification: (...args) => calls.showWarningNotification.push(args),
     notifyFailureSnackbar: (...args) => calls.notifyFailureSnackbar.push(args),
     loadSchedulerStatus: (...args) => calls.loadSchedulerStatus.push(args),
+    markPrsBusy: (...args) => calls.markPrsBusy.push(args),
+    clearPrsBusy: (...args) => calls.clearPrsBusy.push(args),
     ...overrides,
   });
 
@@ -239,6 +244,151 @@ describe("pr-quick-check-actions.helpers", () => {
     });
   });
 
+  describe("runQuickCheckWorkflow", () => {
+    test("given no entered PR numbers, when running the workflow, then it POSTs an empty payload and applies the success label", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 200, ok: true },
+        result: { ok: true, newPendingOpenCount: 2, reposChecked: ["owner/repo"], reposFailed: [] },
+      });
+      const { helpers } = buildHarness({ postJson, getFormBody: () => ({ repo: "", prNumbers: "" }) });
+
+      const outcome = await helpers.runQuickCheckWorkflow({
+        fallbackLabel: "Quick check",
+        buildSuccessLabel: ({ pendingTotal }) => `${pendingTotal} found`,
+      });
+
+      expect(postJson).toHaveBeenCalledWith("/view-prs/quick-check", {});
+      expect(outcome).toEqual({ label: "2 found", resetAfterMs: 2500 });
+    });
+
+    test("given entered PR numbers, when running the workflow, then it POSTs the scoped repo/prNumbers payload", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 200, ok: true },
+        result: { ok: true, reposChecked: [], reposFailed: [] },
+      });
+      const { helpers } = buildHarness({
+        postJson,
+        getFormBody: () => ({ repo: "owner/repo", prNumbers: "12,15" }),
+      });
+
+      await helpers.runQuickCheckWorkflow({ fallbackLabel: "Quick check" });
+
+      expect(postJson).toHaveBeenCalledWith("/view-prs/quick-check", {
+        repo: "owner/repo",
+        prNumbers: "12,15",
+      });
+    });
+
+    test("given a 409 response, when running the workflow, then it reverts to the fallback label", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 409, ok: false },
+        result: { error: "busy" },
+      });
+      const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
+
+      const outcome = await helpers.runQuickCheckWorkflow({ fallbackLabel: "Quick check" });
+
+      expect(outcome).toEqual({ label: "Quick check" });
+      expect(calls.showErrorNotification).toHaveLength(1);
+    });
+
+    test("given postJson rejects, when running the workflow, then it reports a failure snackbar and reverts to the fallback label", async () => {
+      const postJson = jest.fn().mockRejectedValue(new Error("network down"));
+      const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
+
+      const outcome = await helpers.runQuickCheckWorkflow({ fallbackLabel: "Quick check" });
+
+      expect(outcome).toEqual({ label: "Quick check" });
+      expect(calls.notifyFailureSnackbar).toEqual([
+        ["Quick check failed", expect.any(Error), "Unable to reach the server"],
+      ]);
+    });
+  });
+
+  describe("runQuickCheckAllWorkflow", () => {
+    test("given nothing loaded, when running the workflow, then it short-circuits without calling postJson", async () => {
+      const postJson = jest.fn();
+      const { helpers } = buildHarness({ postJson, getLatestStoredPayload: () => ({ byPrNumber: {} }) });
+
+      const outcome = await helpers.runQuickCheckAllWorkflow({ fallbackLabel: "Quick check all" });
+
+      expect(outcome).toEqual({ label: "Nothing to check", resetAfterMs: 2500 });
+      expect(postJson).not.toHaveBeenCalled();
+    });
+
+    test("given PRs loaded across repos, when running the workflow, then it marks/clears busy per repo and POSTs the grouped repo requests", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 200, ok: true },
+        result: { ok: true, newPendingOpenCount: 1, reposChecked: ["owner/repo-a", "owner/repo-b"], reposFailed: [] },
+      });
+      const byPrNumber = {
+        "1": { repo: "owner/repo-a", data: { number: "1" } },
+        "2": { repo: "owner/repo-b", data: { number: "2" } },
+      };
+      const { helpers, calls } = buildHarness({
+        postJson,
+        getLatestStoredPayload: () => ({ byPrNumber }),
+      });
+
+      const outcome = await helpers.runQuickCheckAllWorkflow({
+        fallbackLabel: "Quick check all",
+        buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
+          `${pendingTotal} across ${reposChecked.length} repos`,
+      });
+
+      expect(postJson).toHaveBeenCalledWith("/view-prs/quick-check-all", {
+        repos: [
+          { repo: "owner/repo-a", prNumbers: "1" },
+          { repo: "owner/repo-b", prNumbers: "2" },
+        ],
+      });
+      expect(calls.markPrsBusy).toEqual([
+        [["1"], "owner/repo-a"],
+        [["2"], "owner/repo-b"],
+      ]);
+      expect(calls.clearPrsBusy).toEqual([
+        [["1"], "owner/repo-a"],
+        [["2"], "owner/repo-b"],
+      ]);
+      expect(outcome).toEqual({ label: "1 across 2 repos", resetAfterMs: 2500 });
+    });
+
+    test("given postJson rejects, when running the workflow, then it still clears busy state via finally and reverts to the fallback label", async () => {
+      const postJson = jest.fn().mockRejectedValue(new Error("network down"));
+      const byPrNumber = { "1": { repo: "owner/repo-a", data: { number: "1" } } };
+      const { helpers, calls } = buildHarness({
+        postJson,
+        getLatestStoredPayload: () => ({ byPrNumber }),
+      });
+
+      const outcome = await helpers.runQuickCheckAllWorkflow({ fallbackLabel: "Quick check all" });
+
+      expect(outcome).toEqual({ label: "Quick check all" });
+      expect(calls.notifyFailureSnackbar).toEqual([
+        ["Quick check failed", expect.any(Error), "Unable to reach the server"],
+      ]);
+      expect(calls.clearPrsBusy).toEqual([[["1"], "owner/repo-a"]]);
+    });
+
+    test("given a partial repo failure, when running the workflow, then it still applies the success label alongside the incomplete warning", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 200, ok: true },
+        result: {
+          ok: true,
+          newPendingOpenCount: 1,
+          reposChecked: ["owner/repo-a"],
+          reposFailed: [{ repo: "owner/repo-b", error: "gh auth expired" }],
+        },
+      });
+      const byPrNumber = { "1": { repo: "owner/repo-a", data: { number: "1" } } };
+      const { helpers, calls } = buildHarness({ postJson, getLatestStoredPayload: () => ({ byPrNumber }) });
+
+      await helpers.runQuickCheckAllWorkflow({ fallbackLabel: "Quick check all" });
+
+      expect(calls.showWarningNotification).toHaveLength(1);
+    });
+  });
+
   describe("safe fallbacks", () => {
     test("given no dependencies injected, when building an outcome through every branch, then nothing throws", () => {
       const helpers = createPrQuickCheckActionsHelpers();
@@ -259,6 +409,18 @@ describe("pr-quick-check-actions.helpers", () => {
           buildSuccessLabel: () => "done",
         }),
       ).not.toThrow();
+    });
+
+    test("given no dependencies injected, when running either workflow, then it rejects safely to the fallback label instead of throwing", async () => {
+      const helpers = createPrQuickCheckActionsHelpers();
+
+      await expect(
+        helpers.runQuickCheckWorkflow({ fallbackLabel: "Quick check" }),
+      ).resolves.toEqual({ label: "Quick check" });
+
+      await expect(
+        helpers.runQuickCheckAllWorkflow({ fallbackLabel: "Quick check all" }),
+      ).resolves.toEqual({ label: "Nothing to check", resetAfterMs: 2500 });
     });
   });
 });

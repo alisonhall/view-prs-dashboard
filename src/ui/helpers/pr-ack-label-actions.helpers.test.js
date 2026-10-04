@@ -21,6 +21,13 @@ function buildHarness(overrides = {}) {
     clearPrsQueued: [],
   };
   const finishActivity = jest.fn();
+  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): a
+  // fake "latestStoredPayload" so the loadStoredData-fallback branches'
+  // return values are testable - loadStoredData itself doesn't actually
+  // mutate this in production (that happens via applyLatestPrData inside
+  // the real loadStoredData), so tests that exercise that branch set
+  // `state.latestStoredPayload` explicitly before calling.
+  const state = { latestStoredPayload: overrides.initialPayload ?? null };
 
   const helpers = createPrAckLabelActionsHelpers({
     postJson: overrides.postJson,
@@ -45,9 +52,10 @@ function buildHarness(overrides = {}) {
     markPrsQueued: (...args) => calls.markPrsQueued.push(args),
     clearPrsQueued: (...args) => calls.clearPrsQueued.push(args),
     runWithConcurrencyLimit: overrides.runWithConcurrencyLimit || runWithConcurrencyLimit,
+    getLatestStoredPayload: () => state.latestStoredPayload,
   });
 
-  return { helpers, calls, finishActivity };
+  return { helpers, calls, finishActivity, state };
 }
 
 describe("pr ack label actions helpers", () => {
@@ -59,12 +67,13 @@ describe("pr ack label actions helpers", () => {
       }));
       const { helpers, calls, finishActivity } = buildHarness({ postJson });
 
-      await helpers.runAckAction({ repo: "o/r", ack: "1" }, "Ack only");
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "1" }, "Ack only");
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/ack", { repo: "o/r", ack: "1" });
       expect(calls.setStatusMessage).toEqual([["Ack only..."], ["Ack only completed"]]);
       expect(calls.renderPrData).toEqual([[{ byPrNumber: { 1: {} } }, "o/r"]]);
       expect(finishActivity).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ payload: { byPrNumber: { 1: {} } }, selectedRepo: "o/r" });
     });
 
     test("given a successful ack with warnings, when running, then a warning notification shows with the summary", async () => {
@@ -93,24 +102,26 @@ describe("pr ack label actions helpers", () => {
       }));
       const { helpers, calls } = buildHarness({ postJson, getGithubAuthFailureHint: () => "sign in" });
 
-      await helpers.runAckAction({ repo: "o/r", ack: "3" }, "Ack only");
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "3" }, "Ack only");
 
       expect(calls.setStatusMessage).toEqual([["Ack only..."], ["Failed (401) - GitHub auth required"]]);
       expect(calls.showErrorNotification[0][0]).toBe("Ack only failed");
       expect(calls.showErrorNotification[0][1]).toMatch(/GitHub authentication/);
+      expect(result).toBeNull();
     });
 
-    test("given postJson throws, when running, then the network-failure path runs and finishActivity still fires", async () => {
+    test("given postJson throws, when running, then the network-failure path runs, finishActivity still fires, and it returns null", async () => {
       const postJson = jest.fn(async () => {
         throw new Error("offline");
       });
       const { helpers, calls, finishActivity } = buildHarness({ postJson });
 
-      await helpers.runAckAction({ repo: "o/r", ack: "4" }, "Ack only");
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "4" }, "Ack only");
 
       expect(calls.setStatusMessage).toEqual([["Ack only..."], ["Failed (network/error)"]]);
       expect(calls.showErrorNotification[0]).toEqual(["Ack only failed", "Error: offline", 0]);
       expect(finishActivity).toHaveBeenCalledTimes(1);
+      expect(result).toBeNull();
     });
 
     test("given a multi-PR ack value, when running, then every PR number is marked busy before the request and cleared after", async () => {
@@ -141,9 +152,11 @@ describe("pr ack label actions helpers", () => {
         postedBodies.push(body);
         return { response: { ok: true }, result: { ok: true } };
       });
-      const { helpers, calls } = buildHarness({ postJson });
+      const { helpers, calls, state } = buildHarness({ postJson });
+      const reloadedPayload = { byPrNumber: { 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {} } };
+      state.latestStoredPayload = reloadedPayload;
 
-      await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
 
       expect(postJson).toHaveBeenCalledTimes(2);
       expect(postedBodies).toEqual(
@@ -152,6 +165,7 @@ describe("pr ack label actions helpers", () => {
           { repo: "o/r", ack: "6,7" },
         ]),
       );
+      expect(result).toEqual({ payload: reloadedPayload, selectedRepo: "o/r" });
       // Whole batch marked queued up front, exactly once (not busy - a
       // multi-chunk batch goes queued -> busy per chunk, see the dedicated
       // queued-state test below).
@@ -231,11 +245,12 @@ describe("pr ack label actions helpers", () => {
       }));
       const { helpers, calls } = buildHarness({ postJson });
 
-      await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
 
       expect(calls.showErrorNotification).toHaveLength(1);
       expect(calls.showErrorNotification[0][0]).toBe("Ack only failed");
       expect(calls.loadStoredData).toHaveLength(0);
+      expect(result).toBeNull();
     });
 
     test("given a single-chunk batch (5 or fewer PR numbers), when running, then it never marks anything queued", async () => {
@@ -256,29 +271,34 @@ describe("pr ack label actions helpers", () => {
       const postJson = jest.fn();
       const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
 
-      await helpers.runAckOnlyWorkflow("", "");
+      const result = await helpers.runAckOnlyWorkflow("", "");
 
       expect(postJson).not.toHaveBeenCalled();
       expect(calls.setStatusMessage).toEqual([['Ack only requires numeric value(s) in "PR number(s)"']]);
+      expect(result).toBeNull();
     });
 
-    test("given a value and repo override, when running ack-only, then it posts with the ack field", async () => {
+    test("given a value and repo override, when running ack-only, then it posts with the ack field and returns the reloaded payload", async () => {
       const postJson = jest.fn(async () => ({ response: { ok: true }, result: { ok: true } }));
-      const { helpers } = buildHarness({ postJson, getFormBody: () => ({ prNumbers: "9", repo: "form/repo" }) });
+      const { helpers, state } = buildHarness({ postJson, getFormBody: () => ({ prNumbers: "9", repo: "form/repo" }) });
+      const reloadedPayload = { byPrNumber: { 5: {} } };
+      state.latestStoredPayload = reloadedPayload;
 
-      await helpers.runAckOnlyWorkflow("5", "override/repo");
+      const result = await helpers.runAckOnlyWorkflow("5", "override/repo");
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/ack", { repo: "override/repo", ack: "5" });
+      expect(result).toEqual({ payload: reloadedPayload, selectedRepo: "override/repo" });
     });
 
-    test("given no clear value, when running clear-only, then it shows the clear-only validation message", async () => {
+    test("given no clear value, when running clear-only, then it shows the clear-only validation message and returns null", async () => {
       const postJson = jest.fn();
       const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
 
-      await helpers.runClearOnlyWorkflow("", "");
+      const result = await helpers.runClearOnlyWorkflow("", "");
 
       expect(postJson).not.toHaveBeenCalled();
       expect(calls.setStatusMessage).toEqual([['Clear only requires numeric value(s) in "PR number(s)"']]);
+      expect(result).toBeNull();
     });
 
     test("given a clear value, when running clear-only, then it posts with the ackClear field", async () => {
@@ -299,11 +319,12 @@ describe("pr ack label actions helpers", () => {
       }));
       const { helpers, calls } = buildHarness({ postJson });
 
-      await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2" }, "Apply label");
+      const result = await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2" }, "Apply label");
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/labels/apply", { repo: "o/r", label: "bug", prNumbers: "1,2" });
       expect(calls.setStatusMessage).toEqual([["Apply label..."], ["Applied to 2 PRs"]]);
       expect(calls.renderPrData).toEqual([[{ byPrNumber: {} }, "o/r"]]);
+      expect(result).toEqual({ payload: { byPrNumber: {} }, selectedRepo: "o/r" });
     });
 
     test("given apply errors and refresh errors, when running the action, then a combined warning notification shows", async () => {
@@ -407,44 +428,48 @@ describe("pr ack label actions helpers", () => {
       }));
       const { helpers, calls } = buildHarness({ postJson });
 
-      await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2,3,4,5,6,7" }, "Apply label");
+      const result = await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2,3,4,5,6,7" }, "Apply label");
 
       expect(calls.showErrorNotification).toHaveLength(1);
       expect(calls.showErrorNotification[0][0]).toBe("Apply label failed");
       expect(calls.loadStoredData).toHaveLength(0);
+      expect(result).toBeNull();
     });
 
-    test("given no prNumbers value or form value, when running the workflow, then it shows a validation message and never posts", async () => {
+    test("given no prNumbers value or form value, when running the workflow, then it shows a validation message, never posts, and returns null", async () => {
       const postJson = jest.fn();
       const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
 
-      await helpers.runApplyLabelWorkflow("", "bug", "");
+      const result = await helpers.runApplyLabelWorkflow("", "bug", "");
 
       expect(postJson).not.toHaveBeenCalled();
       expect(calls.setStatusMessage).toEqual([['Apply label requires numeric value(s) in "PR number(s)"']]);
+      expect(result).toBeNull();
     });
 
-    test("given prNumbers but no label, when running the workflow, then it shows the choose-a-label message", async () => {
+    test("given prNumbers but no label, when running the workflow, then it shows the choose-a-label message and returns null", async () => {
       const postJson = jest.fn();
       const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({ prNumbers: "1" }) });
 
-      await helpers.runApplyLabelWorkflow("1", "", "");
+      const result = await helpers.runApplyLabelWorkflow("1", "", "");
 
       expect(postJson).not.toHaveBeenCalled();
       expect(calls.setStatusMessage).toEqual([["Choose a label to apply"]]);
+      expect(result).toBeNull();
     });
 
-    test("given valid prNumbers and label, when running the workflow, then it delegates to runApplyLabelAction", async () => {
-      const postJson = jest.fn(async () => ({ response: { ok: true }, result: { ok: true } }));
+    test("given valid prNumbers and label, when running the workflow, then it delegates to runApplyLabelAction and returns its result", async () => {
+      const postJson = jest.fn(async () => ({ response: { ok: true }, result: { ok: true, prData: { byPrNumber: { 3: {} } } } }));
       const { helpers } = buildHarness({ postJson, getFormBody: () => ({ repo: "form/repo" }) });
 
-      await helpers.runApplyLabelWorkflow("3,4", "enhancement", "");
+      const result = await helpers.runApplyLabelWorkflow("3,4", "enhancement", "");
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/labels/apply", {
         repo: "form/repo",
         label: "enhancement",
         prNumbers: "3,4",
       });
+      expect(result).toEqual({ payload: { byPrNumber: { 3: {} } }, selectedRepo: "form/repo" });
     });
   });
 });
