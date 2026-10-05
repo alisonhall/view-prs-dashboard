@@ -15,6 +15,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
+import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
@@ -366,15 +367,13 @@ export function PrTableApp({
   // instantiation works.
   const sectionGroupingHelpersRef = useRef(null);
   if (!sectionGroupingHelpersRef.current) {
-    // Matches the inline code this replaces: fall back to an identity
-    // function (rows unchanged) when window.sortRowsByX isn't available
-    // yet (e.g. bare-fixture unit tests), not an empty array - reading
-    // window.* fresh on each call (not captured once here) so tests that
-    // install these globals *after* this component first mounts still
-    // take effect, matching every other window.* consumer in this file.
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
+    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.js -
+    // genuinely zero-dependency, so this is a direct import now instead
+    // of a window.* bridge read.
     sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
-      sortRowsByPrNumberDesc: (...args) => (window.sortRowsByPrNumberDesc || ((rows) => rows))(...args),
-      sortRowsByDateFieldDesc: (...args) => (window.sortRowsByDateFieldDesc || ((rows) => rows))(...args),
+      sortRowsByPrNumberDesc,
+      sortRowsByDateFieldDesc,
     });
   }
 
@@ -454,8 +453,9 @@ export function PrTableApp({
       // vanilla's own cross-section ordering (normalizeRows: rowOrder
       // ascending, tie-broken by PR number descending) rather than any
       // single lifecycle section's sort — matching how vanilla builds
-      // "allStoredRows" for its smart groups.
-      const normalizeRows = window.normalizeRows || ((rows) => rows);
+      // "allStoredRows" for its smart groups. Phase 7 (see
+      // REACT_MIGRATION_PLAN.md): direct import now, not a window.*
+      // bridge read - genuinely zero-dependency.
       const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
 
       const smartGroupHelpers = prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({

@@ -2377,34 +2377,20 @@ const isInReviewEnabled = (row) => {
   return value === true || String(value || "").toLowerCase() === "true";
 };
 
-// Expose for the React hybrid table bridge (see components/PrTableApp.jsx),
-// same reasoning as window.entryNeedsAttention/window.getNeedsAttentionConfig
-// above - PrTableApp's needs-attention icon should show for the same two
-// reasons vanilla's attention-cell did (components/pr-section-table.component.js,
-// before it was deleted): shouldShowNeedsAttention() OR isInReviewEnabled().
-if (typeof window !== "undefined") {
-  window.isInReviewEnabled = isInReviewEnabled;
-}
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the window.isInReviewEnabled
+// bridge this used to also populate (for components/PrTableApp.jsx) was
+// confirmed dead - PrTableApp.jsx's own checkNeedsAttention delegates to
+// window.entryNeedsAttention only, never isInReviewEnabled (a past bug,
+// already fixed - PrTableApp.test.jsx/index.html.test.js's own regression
+// tests prove this value is never read). isInReviewEnabled's real,
+// legitimate consumer is this file's own "alwaysShowInReview" filter
+// below, which calls it directly, not through window.
 
-const isFlaggedEnabled = (entry, row) => {
-  const rowValue = row?.flagged;
-  if (rowValue === true || String(rowValue || "").toLowerCase() === "true") {
-    return true;
-  }
-
-  const repo =
-    String(entry?.repo || "").trim() ||
-    String(latestSelectedRepo || "").trim() ||
-    DEFAULT_REPO;
-  const prNumber = String(row?.number || entry?.prNumber || "").trim();
-  if (!repo || !prNumber) {
-    return false;
-  }
-
-  const flaggedByRepo = latestStoredPayload?.flaggedByRepo;
-  const value = flaggedByRepo?.[repo]?.[prNumber];
-  return value === true || String(value || "").toLowerCase() === "true";
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): isFlaggedEnabled (the sibling of
+// isInReviewEnabled above) used to live here - deleted entirely, not just
+// its window.* bridge, since it had zero callers of any kind (confirmed
+// via grep) - unlike isInReviewEnabled, nothing internal ever called it
+// either (no "alwaysShowFlagged"-style filter exists).
 
 // Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
 // wire-ups around pr-row-checkbox-actions.helpers.js's extracted factory -
@@ -3981,8 +3967,13 @@ const initPage = () => {
     updateSelectedPrNumbers,
     getLabelName,
     getAvailableRepoLabels,
-    isInReviewEnabled,
-    isFlaggedEnabled,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
+    // isFlaggedEnabled used to also be bridged here - confirmed dead for
+    // the React/component side (see the comments at isInReviewEnabled's
+    // definition and isFlaggedEnabled's old location above), so both
+    // entries are removed. isInReviewEnabled's definition stays (still
+    // used by this file's own internal filtering); isFlaggedEnabled's
+    // definition was deleted outright - it had no callers at all.
     toCount,
     runSinglePrUpdate,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
@@ -4021,10 +4012,12 @@ const initPage = () => {
     getExportFieldCatalog,
     getVisiblePrNumbersFromSectionsHost,
     buildExportPayload,
-    // ---- Row sorting (see components/PrTableApp.jsx) ----
-    normalizeRows,
-    sortRowsByPrNumberDesc,
-    sortRowsByDateFieldDesc,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeRows/
+    // sortRowsByPrNumberDesc/sortRowsByDateFieldDesc ("Row sorting", see
+    // components/PrTableApp.jsx) used to be bridged here too -
+    // PrTableApp.jsx now imports all 3 directly from
+    // helpers/pr-row-sorting.helpers.js instead (genuinely
+    // zero-dependency), and no other component read them off window.
     // ---- Auto-render-blocked indicator links (see
     // components/AutoRenderBlockedLinks.jsx) ----
     navigateToPrInTable,

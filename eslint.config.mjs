@@ -96,6 +96,7 @@ export default defineConfig([
       "src/ui/helpers/pr-filter-label-extraction.helpers.js",
       "src/ui/helpers/pr-multi-select-checked-state.helpers.js",
       "src/ui/helpers/pr-pending-multi-select-selections.helpers.js",
+      "src/ui/helpers/pr-row-sorting.helpers.js",
     ],
     languageOptions: { sourceType: "module" },
   },
