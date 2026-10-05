@@ -1413,6 +1413,18 @@ Extended `PrInsightsDisplayContext`/`PrInsightsDisplayProvider` (rather than cre
 
 **Verified:** full jest suite (2099 tests, +7), `npx eslint .` clean project-wide, full Playwright smoke suite (38 tests), `index.html.test.js` run in isolation (104 tests, unchanged - confirmed via grep this suite never referenced any of the 4 names).
 
+## 🚧 **`ReviewConversationsUiStateContext`/`Provider`: retiring `reviewConversationsUiStateByKey` (2026-10-05)**
+
+`ReviewThreadsSection.jsx` used `window.readReviewConversationsUiState`/`window.writeReviewConversationsUiState` to remember a user's per-PR "Review conversations" filter-mode and summary-cards-toggle choice across its own mount/unmount (collapsing/re-expanding a row's "More insights" panel resets its local `useState`). Backed by `index.page.js`'s module-scope `reviewConversationsUiStateByKey = new Map()`.
+
+Unlike every other slice this session, this one eliminates the underlying vanilla state entirely, not just the `window.*` read of it - confirmed via grep that nothing outside `ReviewThreadsSection.jsx` ever read or wrote this Map. New `state/ReviewConversationsUiStateContext.jsx` + `components/ReviewConversationsUiStateProvider.jsx` own a `useRef`-held `Map` (not `useState` - writes don't need to trigger a re-render anywhere; each `ReviewThreadsSection` instance already manages its own re-render via its own local state), mounted once in `react-app.jsx` alongside `NeedsAttentionProvider`/`NotesDirtyProvider`/`PrInsightsDisplayProvider`. No `window.*` bridge published at all (unlike `NotesDirtyProvider`) - nothing outside this component ever needs to read it. The state-key derivation (`getReviewConversationsStateKey`) and the saved-value defaulting logic moved to a new zero-dependency `helpers/pr-review-conversations-ui-state.helpers.js`, with its own tests.
+
+`getAuthorThreadResolutionPolicy` (the sibling entry in the same `useHelpers()` object) stays exactly as-is - still a genuine DOM-scan dependency (sub-phase 7.4's own finding), not part of this slice.
+
+**A real coverage gap closed:** no existing test proved the toggle actually survived a real remount - `ReviewThreadsSection.test.jsx` only ever rendered one instance per test. New `components/ReviewConversationsUiStateProvider.test.jsx` mounts the Provider once and uses `rerender` to collapse/re-expand the *same* section instance (a fresh `render()` per "remount" would instead create a brand-new Provider/Map each time and prove nothing - caught this exact mistake in the test's first draft, when two tests failed for the right reason).
+
+**Verified:** full jest suite (2110 tests, +11), `npx eslint .` clean project-wide, full Playwright smoke suite (38 tests), `index.html.test.js` run in isolation (104 tests, unchanged - confirmed via grep this suite never referenced any of the retired names).
+
 ---
 
 ## 📞 **Getting Help**

@@ -175,7 +175,6 @@ const authorInsightsState = {
   latestRows: null,
   latestActorsMap: null,
 };
-const reviewConversationsUiStateByKey = new Map();
 const formParsingHelpers = formParsingHelpersModule;
 const toBoolean =
   formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
@@ -2831,55 +2830,14 @@ const {
 // instead of the window.* bridge these used to populate, and nothing
 // else in this file calls them.
 
-const getReviewConversationsStateKey = (row) => {
-  const urlKey = String(row?.url || "").trim();
-  if (urlKey) {
-    return urlKey;
-  }
-
-  const repoKey = String(row?.repo || "").trim();
-  const prNumberKey = String(row?.number || "").trim();
-  if (!repoKey && !prNumberKey) {
-    return "";
-  }
-
-  return `${repoKey}#${prNumberKey}`;
-};
-
-const readReviewConversationsUiState = (row) => {
-  const stateKey = getReviewConversationsStateKey(row);
-  const savedState = stateKey
-    ? reviewConversationsUiStateByKey.get(stateKey) || null
-    : null;
-  const mode = String(savedState?.conversationFilterMode || "")
-    .trim()
-    .toLowerCase();
-
-  return {
-    stateKey,
-    conversationFilterMode: ["all", "unresolved", "resolved"].includes(mode)
-      ? mode
-      : "unresolved",
-    showSummaryCards:
-      typeof savedState?.showSummaryCards === "boolean"
-        ? savedState.showSummaryCards
-        : true,
-  };
-};
-
-const writeReviewConversationsUiState = (
-  stateKey,
-  conversationFilterMode,
-  showSummaryCards,
-) => {
-  if (!stateKey) {
-    return;
-  }
-  reviewConversationsUiStateByKey.set(stateKey, {
-    conversationFilterMode,
-    showSummaryCards,
-  });
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getReviewConversationsStateKey/
+// readReviewConversationsUiState/writeReviewConversationsUiState (and the
+// reviewConversationsUiStateByKey Map they read/wrote) moved to
+// helpers/pr-review-conversations-ui-state.helpers.js +
+// components/ReviewConversationsUiStateProvider.jsx -
+// ReviewThreadsSection.jsx now owns this entirely in React (no outward
+// consumer ever needed it), and nothing else in this file calls any of
+// the above.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): buildPrPeopleOptions moved to
 // helpers/pr-notes-people-options.helpers.js - NotesSection.jsx now gets
@@ -4037,19 +3995,18 @@ const initPage = () => {
     // normalizePrRootUrl/renderMarkdownAsHtml/buildPrPeopleOptions/
     // normalizeNotesListForUi/formatDurationMinutes all moved off this
     // bridge onto PrInsightsDisplayProvider/usePrInsightsDisplay()
-    // (state/PrInsightsDisplayContext.jsx). parseMarkerState/
-    // getViewedFilesSummary (above)/getOpenConversationCountWithMe (above)
-    // stay - AuthorInsightsPrDataMeta.jsx/PrApprovedCell.jsx still read
-    // them off window directly, a documented follow-up opportunity, not
-    // an oversight. getAuthorThreadResolutionPolicy/
-    // readReviewConversationsUiState/writeReviewConversationsUiState also
-    // stay - genuinely separate concerns (a DOM-scan dependency and a
-    // module-scope Map respectively), deliberately out of scope.
+    // (state/PrInsightsDisplayContext.jsx), and so did
+    // readReviewConversationsUiState/writeReviewConversationsUiState (onto
+    // ReviewConversationsUiStateProvider - no window.* bridge needed at
+    // all there, nothing outside ReviewThreadsSection.jsx ever read them).
+    // parseMarkerState/getViewedFilesSummary (above) stay -
+    // AuthorInsightsPrDataMeta.jsx still reads them off window directly, a
+    // documented follow-up opportunity, not an oversight.
+    // getAuthorThreadResolutionPolicy stays too - a genuinely separate
+    // concern (a DOM-scan dependency), deliberately out of scope.
     parseMarkerState,
     getAuthorThreadResolutionPolicy,
     parseSortableTime,
-    readReviewConversationsUiState,
-    writeReviewConversationsUiState,
     noteAuthorMatchesSelection,
     getNotesDifficultyLevelText,
     postJson,

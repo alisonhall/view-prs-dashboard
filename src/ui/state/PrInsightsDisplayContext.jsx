@@ -43,10 +43,13 @@ const {
  * permissive `window.x || fallback` behavior, same "safe no-op when
  * unwrapped" shape as ActorIdentityContext/AuthorInsightsContext.
  *
- * getAuthorThreadResolutionPolicy/readReviewConversationsUiState/
- * writeReviewConversationsUiState are deliberately NOT part of this
- * Context - see REACT_MIGRATION_PLAN.md for why (a DOM-scan dependency and
- * a module-scope Map respectively, each a separate concern).
+ * getAuthorThreadResolutionPolicy is deliberately NOT part of this
+ * Context - see REACT_MIGRATION_PLAN.md for why (a DOM-scan dependency,
+ * a separate concern). readReviewConversationsUiState/
+ * writeReviewConversationsUiState used to be deferred here for a similar
+ * reason (a module-scope Map) but have since been fully retired - see
+ * state/ReviewConversationsUiStateContext.jsx, which owns that state with
+ * no window.* bridge at all.
  */
 const buildDefaultPrInsightsDisplay = () => {
   const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({

@@ -37,6 +37,7 @@ import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
+import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
 import { ReviewStatsProvider } from './components/ReviewStatsProvider';
 import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
 import { FilterOptionsProvider } from './components/FilterOptionsProvider';
@@ -685,11 +686,13 @@ function AppRoot() {
             <NeedsAttentionProvider>
               <NotesDirtyProvider>
                 <PrInsightsDisplayProvider>
-                  <PrTableApp
-                    onCheckboxChange={prTable.onCheckboxChange}
-                    onAckAction={prTable.onAckAction}
-                    onApplyLabel={prTable.onApplyLabel}
-                  />
+                  <ReviewConversationsUiStateProvider>
+                    <PrTableApp
+                      onCheckboxChange={prTable.onCheckboxChange}
+                      onAckAction={prTable.onAckAction}
+                      onApplyLabel={prTable.onApplyLabel}
+                    />
+                  </ReviewConversationsUiStateProvider>
                 </PrInsightsDisplayProvider>
               </NotesDirtyProvider>
             </NeedsAttentionProvider>,
