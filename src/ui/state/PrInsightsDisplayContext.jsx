@@ -13,6 +13,7 @@ import { createPrApprovalDurationHelpers } from '../helpers/pr-approval-duration
 import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.js';
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.js';
+import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.js';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { defaultActorIdentity } from './ActorIdentityContext';
@@ -48,15 +49,16 @@ const {
  * a module-scope Map respectively, each a separate concern).
  */
 const buildDefaultPrInsightsDisplay = () => {
-  const { formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
+  const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
     asArray,
     resolveActorDisplayName,
   });
-  const { formatAssignedUsersDisplay } = createPrAssignedUsersHelpers({
+  const { collectAssignedUsers, formatAssignedUsersDisplay } = createPrAssignedUsersHelpers({
     asArray,
     normalizeActorLogin,
     resolveActorDisplayName,
   });
+  const { getUserInitials } = createPrUserInitialsHelpers();
   const { formatApproversDisplay } = createPrApproversHelpers({
     asArray,
     getPreferredActorKey,
@@ -90,7 +92,10 @@ const buildDefaultPrInsightsDisplay = () => {
     parseMarkerState,
     formatApproversDisplay,
     formatRequestedReviewersDisplay,
+    collectRequestedReviewers,
     formatAssignedUsersDisplay,
+    collectAssignedUsers,
+    getUserInitials,
     normalizeRowMetrics,
     getOpenConversationCount,
     getOpenConversationCountWithMe,

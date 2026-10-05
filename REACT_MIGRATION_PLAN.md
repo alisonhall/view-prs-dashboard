@@ -1401,6 +1401,18 @@ Next Phase 7 slice after the `#repo` override above - a fresh inventory (via a r
 
 **Verified:** full jest suite (2092 tests, +43), `npx eslint .` clean project-wide, full Playwright smoke suite (38 tests, including "checkbox toggle and More insights expand work" exercising this exact cluster in a real browser), `index.html.test.js` run in isolation (104 tests, unchanged - confirmed this suite never referenced any of the 22 names, so is unaffected either way).
 
+## 🚧 **`PrApprovedCell.jsx` off `window.*`, closing out the "More insights" follow-up (2026-10-05)**
+
+Closes the follow-up flagged in the previous entry: `cells/PrApprovedCell.jsx` read `window.collectAssignedUsers`/`window.collectRequestedReviewers`/`window.getUserInitials`/`window.getOpenConversationCountWithMe` - confirmed via project-wide grep that all 4 names were read, outside test files, only by this one component.
+
+Extended `PrInsightsDisplayContext`/`PrInsightsDisplayProvider` (rather than creating a new Context) with 3 more exports: `collectAssignedUsers`/`collectRequestedReviewers` (both already instantiated there as inputs to `formatAssignedUsersDisplay`/`formatRequestedReviewersDisplay` - just not exposed on the returned object before now) and `getUserInitials` (a new, genuinely zero-dependency extraction - `index.page.js`'s own `getUserInitials`/`normalizeNameForInitials` into `helpers/pr-user-initials.helpers.js`, with its own unit tests). `getOpenConversationCountWithMe` was already on the Context from the previous slice. `PrApprovedCell.jsx` now gets all 4 from one `usePrInsightsDisplay()` call; all 4 `Object.assign` entries deleted from `index.page.js`, along with the now-fully-dead `getOpenConversationCountWithMe`/`createPrOpenConversationCountHelpers` wiring that slice had added (zero other internal caller once this bridge went) - `collectAssignedUsers`/`collectRequestedReviewers`'s own `index.page.js` destructures stay, confirmed to still have other internal (non-window) callers.
+
+**Ruled out as candidates for this same cleanup, both confirmed by reading the files directly rather than assumed:**
+- `AuthorInsightsPrDataMeta.jsx` - its own header comment explicitly defers `toCount`/`formatChkDisplay`/`parseMarkerState`/`getViewedFilesSummary` as one atomic unit ("Track C"), and it has a documented pre-existing bug (`formatChkDisplay` called with an already-parsed value) out of scope to touch incidentally.
+- `ExportTab.jsx`'s `getVisiblePrNumbersFromSectionsHost`/`getExportFieldCatalog`/`buildExportPayload` - that file's own header comment already explains these are *deliberately* window-bridged pure-DOM/data-shaping helpers: `<details open>` UI state (which sections are currently expanded) is explicitly something `PrDataContext` "doesn't (and shouldn't) track." Not a migration gap.
+
+**Verified:** full jest suite (2099 tests, +7), `npx eslint .` clean project-wide, full Playwright smoke suite (38 tests), `index.html.test.js` run in isolation (104 tests, unchanged - confirmed via grep this suite never referenced any of the 4 names).
+
 ---
 
 ## 📞 **Getting Help**

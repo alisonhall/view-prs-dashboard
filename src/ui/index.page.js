@@ -17,7 +17,6 @@ import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-revie
 import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
 import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
 import * as prViewedFilesSummaryHelperFactory from "./helpers/pr-viewed-files-summary.helpers.js";
-import * as prOpenConversationCountHelperFactory from "./helpers/pr-open-conversation-count.helpers.js";
 import * as prAuthorCellHelperFactory from "./helpers/pr-author-cell.helpers.js";
 import * as prUiRenderUtilsHelperFactory from "./helpers/pr-ui-render-utils.helpers.js";
 import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
@@ -2310,20 +2309,11 @@ const getViewedFilesState = (row) => {
   };
 };
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction into
-// helpers/pr-open-conversation-count.helpers.js - getOpenConversationCountWithMe
-// is still bridged below, PrApprovedCell.jsx reads
-// window.getOpenConversationCountWithMe directly (PrInsightsRow.jsx now
-// gets both from PrInsightsDisplayProvider/usePrInsightsDisplay()
-// instead). getEffectiveViewerLogin is the same derivation the old inline
-// body used (currentViewerLogin || row.viewerLogin ||
-// inferViewerLoginFromPage()) - already instantiated above for
-// entryNeedsAttention's sake, reused here rather than reimplemented.
-const { getOpenConversationCountWithMe } =
-  prOpenConversationCountHelperFactory.createPrOpenConversationCountHelpers({
-    getEffectiveViewerLogin: (...args) => getEffectiveViewerLogin(...args),
-    asArray: (...args) => asArray(...args),
-  });
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getOpenConversationCountWithMe
+// used to be wired here for the window.* bridge below - PrApprovedCell.jsx
+// (like PrInsightsRow.jsx before it) now gets it from
+// PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and nothing
+// else in this file calls it or getOpenConversationCount.
 
 const getManualNotesSummary = (entry = {}, row = {}) => {
   const notes = entry?.notes || row?.notes || {};
@@ -2377,46 +2367,11 @@ const getManualNotesFieldSummary = (entry = {}, row = {}) => {
   };
 };
 
-const normalizeNameForInitials = (value) => {
-  const raw = String(value || "")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!raw) return "";
-
-  if (raw.includes(",")) {
-    const [lastNameRaw, firstNameRaw] = raw.split(",", 2);
-    const firstName = String(firstNameRaw || "").trim();
-    const lastName = String(lastNameRaw || "").trim();
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`.trim();
-    }
-  }
-
-  return raw;
-};
-
-const getUserInitials = (displayName, fallbackLogin = "") => {
-  const cleanedName = normalizeNameForInitials(displayName);
-  const words = cleanedName.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
-  }
-  if (words.length === 1 && words[0].length >= 2) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-
-  const login = String(fallbackLogin || "")
-    .replace(/[_-]+/g, " ")
-    .trim();
-  const loginWords = login.split(/\s+/).filter(Boolean);
-  if (loginWords.length >= 2) {
-    return `${loginWords[0][0] || ""}${loginWords[1][0] || ""}`.toUpperCase();
-  }
-  return login.slice(0, 2).toUpperCase() || "--";
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getUserInitials/
+// normalizeNameForInitials moved to helpers/pr-user-initials.helpers.js -
+// PrApprovedCell.jsx now gets getUserInitials from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead of the window.* bridge this used to
+// populate, and nothing else in this file calls it.
 
 const isInReviewEnabled = (row) => {
   const value = row?.inReview;
@@ -4054,10 +4009,11 @@ const initPage = () => {
   Object.assign(window, {
     formatChkDisplay,
     collectPrAuthors,
-    collectAssignedUsers,
-    collectRequestedReviewers,
-    getUserInitials,
-    getOpenConversationCountWithMe,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): collectAssignedUsers/
+    // collectRequestedReviewers/getUserInitials/getOpenConversationCountWithMe
+    // used to be bridged here too - PrApprovedCell.jsx now gets all 4 from
+    // PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and no
+    // other component reads any of these 4 names off window.
     getManualNotesSummary,
     getManualNotesFieldSummary,
     buildPrLastCheckedIndicator,

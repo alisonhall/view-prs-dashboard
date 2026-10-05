@@ -129,6 +129,7 @@ export default defineConfig([
       "src/ui/helpers/pr-notes-people-options.helpers.js",
       "src/ui/helpers/pr-open-conversation-count.helpers.js",
       "src/ui/helpers/pr-viewed-files-summary.helpers.js",
+      "src/ui/helpers/pr-user-initials.helpers.js",
       "src/ui/helpers/pr-http.helpers.js",
       "src/ui/helpers/pr-status-display.helpers.js",
       "src/ui/helpers/pr-command-output.helpers.js",
