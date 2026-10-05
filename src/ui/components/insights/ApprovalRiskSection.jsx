@@ -8,14 +8,15 @@
 
 import { InsightSection } from './InsightSection';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
 export function ApprovalRiskSection({ metrics, actorsMap }) {
   const { resolveActorDisplayName } = useActorIdentity();
+  const { formatDurationMinutes } = usePrInsightsDisplay();
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const formatDurationMinutes = window.formatDurationMinutes || ((value) => String(value ?? '-'));
 
   const approvals = asArray(metrics?.approvals);
   if (!approvals.length) return null;

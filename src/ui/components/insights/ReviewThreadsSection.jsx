@@ -19,6 +19,7 @@ import React, { useMemo, useState } from 'react';
 import { InsightSection } from './InsightSection';
 import { ActorIdentity } from '../ActorIdentity';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
 
@@ -26,6 +27,7 @@ const { formatIsoDatetime } = createPrFormattingHelpers();
 
 function useHelpers() {
   const { getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
+  const { renderMarkdownAsHtml } = usePrInsightsDisplay();
   return {
     asArray: window.asArray || ((value) => (Array.isArray(value) ? value : [])),
     getPreferredActorKey,
@@ -34,7 +36,7 @@ function useHelpers() {
       window.getAuthorThreadResolutionPolicy || (() => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() })),
     parseSortableTime,
     formatIsoDatetime,
-    renderMarkdownAsHtml: window.renderMarkdownAsHtml || ((text) => String(text || '')),
+    renderMarkdownAsHtml,
     readReviewConversationsUiState:
       window.readReviewConversationsUiState || (() => ({ stateKey: '', conversationFilterMode: 'unresolved', showSummaryCards: true })),
     writeReviewConversationsUiState: window.writeReviewConversationsUiState || (() => {}),

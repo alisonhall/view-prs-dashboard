@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
 
 const TONE_OPTIONS = [
@@ -85,9 +86,8 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
     () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
     [normalizeActorLogin, resolveActorDisplayName],
   );
+  const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const buildPrPeopleOptions = window.buildPrPeopleOptions || (() => []);
-  const normalizeNotesListForUi = window.normalizeNotesListForUi || ((value) => (Array.isArray(value) && value.length ? value : ['']));
   const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();

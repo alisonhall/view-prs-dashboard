@@ -6,15 +6,10 @@ const { ActivityEventsSection } = require('./ActivityEventsSection');
 
 function installDefaultHelpers() {
   window.asArray = (v) => (Array.isArray(v) ? v : []);
-  window.buildFallbackActivityEvents = () => [];
-  window.buildActivityEventKey = (e) => `${e?.sourceId || ''}|${e?.occurredAt || ''}`;
-  window.normalizePrRootUrl = (url) => String(url || '');
 }
 
 function clearHelpers() {
-  ['asArray', 'buildFallbackActivityEvents', 'buildActivityEventKey', 'normalizePrRootUrl'].forEach(
-    (key) => delete window[key],
-  );
+  delete window.asArray;
 }
 
 describe('ActivityEventsSection', () => {

@@ -17,6 +17,7 @@ import { LinesChangedInsight } from './insights/LinesChangedInsight';
 import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 import { CopyIconButton } from './CopyIconButton';
 import { useActorIdentity } from '../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
@@ -37,21 +38,22 @@ function InsightRow({ label, labelTitle, children, endAdornment }) {
 
 export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, compositeKey, onDataRefresh }) {
   const { buildRowActorsMap } = useActorIdentity();
-  const parseMarkerState = window.parseMarkerState || (() => '-');
-  const formatApproversDisplay = window.formatApproversDisplay || (() => '-');
-  const formatRequestedReviewersDisplay = window.formatRequestedReviewersDisplay || (() => '-');
-  const formatAssignedUsersDisplay = window.formatAssignedUsersDisplay || (() => '-');
-  const normalizeRowMetrics = window.normalizeRowMetrics || (() => ({}));
-  const getOpenConversationCountWithMe = window.getOpenConversationCountWithMe || (() => ({ count: 0, isViewerSpecific: false }));
-  const getViewedFilesSummary =
-    window.getViewedFilesSummary || ((row) => `${toCount(row?.viewedFilesCount)}/${toCount(row?.changedFilesCount)} viewed`);
-  const getBadgeClassForStatus = window.getBadgeClassForStatus || (() => '');
-  const getBadgeClassForCheck = window.getBadgeClassForCheck || (() => '');
-  const getBadgeClassForMerge = window.getBadgeClassForMerge || (() => '');
-  const formatReviewFootprint = window.formatReviewFootprint || (() => '-');
-  const formatConversationStatus = window.formatConversationStatus || (() => '-');
-  const formatApprovalRisk = window.formatApprovalRisk || (() => '-');
-  const formatCommentUsefulness = window.formatCommentUsefulness || (() => '-');
+  const {
+    parseMarkerState,
+    formatApproversDisplay,
+    formatRequestedReviewersDisplay,
+    formatAssignedUsersDisplay,
+    normalizeRowMetrics,
+    getOpenConversationCountWithMe,
+    getViewedFilesSummary,
+    getBadgeClassForStatus,
+    getBadgeClassForCheck,
+    getBadgeClassForMerge,
+    formatReviewFootprint,
+    formatConversationStatus,
+    formatApprovalRisk,
+    formatCommentUsefulness,
+  } = usePrInsightsDisplay();
 
   const checkState = String(pr.checkState || parseMarkerState(pr.titleDisplay, 'CHK') || '-');
   const mergeState = String(pr.mergeState || parseMarkerState(pr.titleDisplay, 'MRG') || '-');

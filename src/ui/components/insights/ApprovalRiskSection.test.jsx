@@ -4,23 +4,30 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ApprovalRiskSection } = require('./ApprovalRiskSection');
 const { createPrFormattingHelpers } = require('../../helpers/pr-formatting.helpers.js');
+const { PrInsightsDisplayContext, defaultPrInsightsDisplay } = require('../../state/PrInsightsDisplayContext');
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+
+function renderSection(props, displayOverrides = {}) {
+  return render(
+    <PrInsightsDisplayContext.Provider value={{ ...defaultPrInsightsDisplay, ...displayOverrides }}>
+      <ApprovalRiskSection {...props} />
+    </PrInsightsDisplayContext.Provider>,
+  );
+}
 
 describe('ApprovalRiskSection', () => {
   afterEach(() => {
     delete window.asArray;
-    delete window.formatDurationMinutes;
   });
 
   test('given no approvals, when rendering, then renders nothing', () => {
-    const { container } = render(<ApprovalRiskSection metrics={{ approvals: [] }} actorsMap={{}} />);
+    const { container } = renderSection({ metrics: { approvals: [] }, actorsMap: {} });
     expect(container).toBeEmptyDOMElement();
   });
 
   test('given a risky approval, when rendering, then flags it and shows the after-approval counts', () => {
     window.asArray = (v) => (Array.isArray(v) ? v : []);
-    window.formatDurationMinutes = (v) => `${v}m`;
 
     const metrics = {
       approvals: [
@@ -37,7 +44,7 @@ describe('ApprovalRiskSection', () => {
         },
       ],
     };
-    render(<ApprovalRiskSection metrics={metrics} actorsMap={{}} />);
+    renderSection({ metrics, actorsMap: {} }, { formatDurationMinutes: (v) => `${v}m` });
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText(/risk flagged/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`approved ${formatIsoDatetime('2026-01-01').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))).toBeInTheDocument();
@@ -48,7 +55,7 @@ describe('ApprovalRiskSection', () => {
     window.asArray = (v) => (Array.isArray(v) ? v : []);
 
     const metrics = { approvals: [{ login: 'bob', approvedAt: '-', riskyApproval: false, mergeLeadMinutes: null }] };
-    render(<ApprovalRiskSection metrics={metrics} actorsMap={{}} />);
+    renderSection({ metrics, actorsMap: {} });
     expect(screen.getByText(/no later issue signal/)).toBeInTheDocument();
     expect(screen.getByText(/merge lead: -/)).toBeInTheDocument();
   });

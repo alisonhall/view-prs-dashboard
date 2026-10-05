@@ -63,9 +63,20 @@ export const { createPrDataTabOrchestrator } = (function () {
     // this orchestrator (and every existing unit test, which doesn't pass
     // this) falls back to reading the DOM element's `.value` unchanged.
     getFilterStateValue,
+    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): optional -
+    // when provided, returns "repo"'s current value from PrDataProvider's
+    // Context (via a dedicated window.getReactPrTableSelectedRepo bridge -
+    // "repo" isn't a FilterStateProvider-migrated field, so it can't use
+    // getFilterStateValue above), or undefined before the provider mounts.
+    // Defaults to always undefined so every existing unit test (which
+    // doesn't pass this) falls back to reading the DOM element's `.value`
+    // unchanged.
+    getSelectedRepoOverride,
   }) {
     const getFilterStateValueSafe =
       typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
+    const getSelectedRepoOverrideSafe =
+      typeof getSelectedRepoOverride === "function" ? getSelectedRepoOverride : () => undefined;
     // Private state (tab-specific)
     let isInitialized = false;
 
@@ -113,11 +124,21 @@ export const { createPrDataTabOrchestrator } = (function () {
           ? filterPrNumbersOverride.trim()
           : filterPrNumbersInput.value.trim();
 
+      // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): prefer
+      // PrDataProvider's Context value over the DOM read when the
+      // provider has mounted - same handled/fallback shape as
+      // filterPrNumbersRaw above.
+      const selectedRepoOverride = getSelectedRepoOverrideSafe();
+      const inputRepo =
+        typeof selectedRepoOverride === "string"
+          ? selectedRepoOverride.trim()
+          : repoInput.value.trim();
+
       // Derive rendering context using helper
       const runContext = deriveRunPrDataContext({
         payload: effectivePayload,
         selectedRepo,
-        inputRepo: repoInput.value.trim(),
+        inputRepo,
         filterPrNumbersRaw,
         optionsUseLastRunScope: options.useLastRunScope,
       });

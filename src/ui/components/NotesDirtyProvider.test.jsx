@@ -16,14 +16,10 @@ const { NotesSection } = require('./insights/NotesSection');
 describe('NotesDirtyProvider + NotesSection wiring', () => {
   beforeEach(() => {
     window.asArray = (v) => (Array.isArray(v) ? v : []);
-    window.buildPrPeopleOptions = () => [];
-    window.normalizeNotesListForUi = (value) => (Array.isArray(value) && value.length ? value : ['']);
   });
 
   afterEach(() => {
     delete window.asArray;
-    delete window.buildPrPeopleOptions;
-    delete window.normalizeNotesListForUi;
     delete window.postJson;
     delete window.getDirtyNotesPrNumbers;
     cleanup();

@@ -8,6 +8,7 @@
 
 import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -31,10 +32,8 @@ function getEventKind(event) {
   return 'system';
 }
 
-function buildActivityEvents(pr) {
+function buildActivityEvents(pr, { buildFallbackActivityEvents, buildActivityEventKey }) {
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const buildFallbackActivityEvents = window.buildFallbackActivityEvents || (() => []);
-  const buildActivityEventKey = window.buildActivityEventKey || (() => '');
 
   const timelineEvents = asArray(pr.activityTimeline).flatMap((bucket) => asArray(bucket?.events));
   const sourceEvents = timelineEvents.length ? timelineEvents : asArray(pr.activityEvents);
@@ -92,9 +91,9 @@ function buildActivityEvents(pr) {
 }
 
 export function ActivityEventsSection({ pr, actorsMap }) {
-  const normalizePrRootUrl = window.normalizePrRootUrl || ((url) => String(url || ''));
+  const { normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEventKey } = usePrInsightsDisplay();
 
-  const activityEvents = buildActivityEvents(pr);
+  const activityEvents = buildActivityEvents(pr, { buildFallbackActivityEvents, buildActivityEventKey });
   if (!activityEvents.length) return null;
 
   return (

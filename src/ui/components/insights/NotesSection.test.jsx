@@ -7,14 +7,10 @@ const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
 
 function installDefaultHelpers() {
   window.asArray = (v) => (Array.isArray(v) ? v : []);
-  window.buildPrPeopleOptions = () => [{ login: 'alice', name: 'Alice' }];
-  window.normalizeNotesListForUi = (value) => (Array.isArray(value) && value.length ? value : ['']);
 }
 
 function clearHelpers() {
-  ['asArray', 'buildPrPeopleOptions', 'normalizeNotesListForUi', 'postJson'].forEach(
-    (key) => delete window[key],
-  );
+  ['asArray', 'postJson'].forEach((key) => delete window[key]);
 }
 
 function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {

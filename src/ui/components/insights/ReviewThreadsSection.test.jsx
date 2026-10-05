@@ -7,7 +7,6 @@ const { ReviewThreadsSection } = require('./ReviewThreadsSection');
 function installDefaultHelpers() {
   window.asArray = (value) => (Array.isArray(value) ? value : []);
   window.getAuthorThreadResolutionPolicy = () => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() });
-  window.renderMarkdownAsHtml = (text) => `<p>${text}</p>`;
   window.readReviewConversationsUiState = () => ({ stateKey: 'k', conversationFilterMode: 'unresolved', showSummaryCards: true });
   window.writeReviewConversationsUiState = () => {};
 }
@@ -16,7 +15,6 @@ function clearHelpers() {
   [
     'asArray',
     'getAuthorThreadResolutionPolicy',
-    'renderMarkdownAsHtml',
     'readReviewConversationsUiState',
     'writeReviewConversationsUiState',
   ].forEach((key) => delete window[key]);

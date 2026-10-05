@@ -16,8 +16,8 @@ import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity
 import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
 import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
 import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
-import * as prInsightBadgeClassHelperFactory from "./helpers/pr-insight-badge-class.helpers.js";
-import * as prInsightMetricsSummaryHelperFactory from "./helpers/pr-insight-metrics-summary.helpers.js";
+import * as prViewedFilesSummaryHelperFactory from "./helpers/pr-viewed-files-summary.helpers.js";
+import * as prOpenConversationCountHelperFactory from "./helpers/pr-open-conversation-count.helpers.js";
 import * as prAuthorCellHelperFactory from "./helpers/pr-author-cell.helpers.js";
 import * as prUiRenderUtilsHelperFactory from "./helpers/pr-ui-render-utils.helpers.js";
 import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
@@ -63,7 +63,6 @@ import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-rend
 import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
 import * as prAutoRenderNavigationHelperFactory from "./helpers/pr-auto-render-navigation.helpers.js";
 import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
-import * as prNotesHelperFactory from "./helpers/pr-notes.helpers.js";
 import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.js";
 import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
@@ -74,7 +73,6 @@ import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
 import * as prExportHelperFactory from "./helpers/pr-export.helpers.js";
-import * as prReviewStatsAggregationHelperFactory from "./helpers/pr-review-stats-aggregation.helpers.js";
 import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
 import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
 import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
@@ -1369,20 +1367,30 @@ const {
   inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
 });
 
-const { collectRequestedReviewers, formatRequestedReviewersDisplay } =
+// Phase 7 (see REACT_MIGRATION_PLAN.md): formatRequestedReviewersDisplay/
+// formatAssignedUsersDisplay/formatApproversDisplay used to also be
+// destructured here for the window.* bridge below - PrInsightsRow.jsx now
+// gets them from PrInsightsDisplayProvider/usePrInsightsDisplay() instead
+// (state/PrInsightsDisplayContext.jsx builds its own separate instance of
+// each factory, same "call the zero-dependency factory again rather than
+// import index.page.js's own instance" pattern every other Context in
+// this migration already uses). collectRequestedReviewers/
+// collectAssignedUsers/collectApproversFromRow stay - still used by other
+// vanilla code in this file.
+const { collectRequestedReviewers } =
   prRequestedReviewersHelperFactory.createPrRequestedReviewersHelpers({
     asArray: (...args) => asArray(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
 
-const { collectAssignedUsers, formatAssignedUsersDisplay } =
+const { collectAssignedUsers } =
   prAssignedUsersHelperFactory.createPrAssignedUsersHelpers({
     asArray: (...args) => asArray(...args),
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
 
-const { collectApproversFromRow, formatApproversDisplay } =
+const { collectApproversFromRow } =
   prApproversHelperFactory.createPrApproversHelpers({
     asArray: (...args) => asArray(...args),
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
@@ -1390,21 +1398,12 @@ const { collectApproversFromRow, formatApproversDisplay } =
     formatIsoDatetime: (...args) => formatIsoDatetime(...args),
   });
 
-const {
-  getBadgeClassForStatus,
-  getBadgeClassForCheck,
-  getBadgeClassForMerge,
-} = prInsightBadgeClassHelperFactory.createPrInsightBadgeClassHelpers({
-  isChangedStatus: (...args) => isChangedStatus(...args),
-});
-
-const {
-  formatReviewFootprint,
-  formatConversationStatus,
-  formatApprovalRisk,
-  formatCommentUsefulness,
-} =
-  prInsightMetricsSummaryHelperFactory.createPrInsightMetricsSummaryHelpers();
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getBadgeClassForStatus/Check/Merge
+// and formatReviewFootprint/ConversationStatus/ApprovalRisk/
+// CommentUsefulness used to be destructured here for the window.* bridge
+// below - PrInsightsRow.jsx now gets them from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead, and nothing else in this file calls
+// either factory's output directly.
 
 const { collectPrAuthors } =
   prAuthorCellHelperFactory.createPrAuthorCellHelpers({
@@ -2002,28 +2001,13 @@ const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
   };
 };
 
-const EXPIRED_GITHUB_IMAGE_PLACEHOLDER = `<span class="md-image-expired" title="Image unavailable (expired GitHub URL)">[image unavailable]</span>`;
-
-// Replaces <img> tags whose src points to GitHub-hosted attachment URLs
-// that are commonly inaccessible/expired in local environments.
-const replaceExpiredGithubImages = (html) => {
-  // Replace entire <img ...> tags where src is from known expiring/private GitHub attachment hosts.
-  return html.replace(
-    /<img\b[^>]*\bsrc=["']https:\/\/(?:private-user-images\.githubusercontent\.com|github\.com\/user-attachments)\/[^"']*["'][^>]*>/gi,
-    EXPIRED_GITHUB_IMAGE_PLACEHOLDER,
-  );
-};
-
-const renderMarkdownAsHtml = (markdownText) => {
-  if (!markdownText || !window.marked) return String(markdownText || "").trim();
-  try {
-    const html = window.marked.parse(String(markdownText).trim());
-    return replaceExpiredGithubImages(html);
-  } catch (error) {
-    console.warn("Failed to render markdown", error);
-    return String(markdownText).trim();
-  }
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): this file's former
+// renderMarkdownAsHtml/replaceExpiredGithubImages bodies moved to
+// helpers/pr-markdown-render.helpers.js - ReviewThreadsSection.jsx now
+// gets renderMarkdownAsHtml from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead of the window.* bridge this used to
+// populate, and nothing else in this file calls it, so it's not
+// re-instantiated here at all.
 
 const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
@@ -2305,11 +2289,14 @@ const loadSchedulerStatus = async () => {
   return result;
 };
 
-const getViewedFilesSummary = (row) =>
-  String(
-    row?.viewedFilesSummary ||
-      `${toCount(row?.viewedFilesCount)}/${toCount(row?.changedFilesCount)} viewed`,
-  );
+// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction into
+// helpers/pr-viewed-files-summary.helpers.js - still bridged below,
+// AuthorInsightsPrDataMeta.jsx reads window.getViewedFilesSummary
+// directly (PrInsightsRow.jsx now gets it from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead).
+const { getViewedFilesSummary } = prViewedFilesSummaryHelperFactory.createPrViewedFilesSummaryHelpers({
+  toCount: (...args) => toCount(...args),
+});
 
 const getViewedFilesState = (row) => {
   const viewedFilesCount = toCount(row?.viewedFilesCount);
@@ -2323,58 +2310,20 @@ const getViewedFilesState = (row) => {
   };
 };
 
-const getOpenConversationCount = (row) => {
-  const openConversationCountRaw = row?.openConversationCount;
-  const metrics = normalizeRowMetrics(row);
-  const fallbackOpenConversations =
-    metrics.conversationSummary.estimatedOpenConversations ||
-    metrics.counts.openConversations ||
-    metrics.conversationSummary.openThreads;
-
-  return Number.isFinite(Number(openConversationCountRaw))
-    ? Number(openConversationCountRaw)
-    : toCount(fallbackOpenConversations);
-};
-
-const getOpenConversationCountWithMe = (row) => {
-  const viewerLogin = String(
-    currentViewerLogin || row?.viewerLogin || inferViewerLoginFromPage() || "",
-  )
-    .trim()
-    .toLowerCase();
-
-  if (!viewerLogin) {
-    return {
-      count: getOpenConversationCount(row),
-      isViewerSpecific: false,
-    };
-  }
-
-  const openThreads = asArray(row?.reviewThreads).filter(
-    (thread) => thread && thread.isResolved !== true,
-  );
-
-  return {
-    count: openThreads.filter((thread) => {
-      const participants = asArray(thread?.participants).map((p) =>
-        String(p || "")
-          .trim()
-          .toLowerCase(),
-      );
-      if (participants.includes(viewerLogin)) {
-        return true;
-      }
-
-      return asArray(thread?.comments).some(
-        (comment) =>
-          String(comment?.authorLogin || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-    }).length,
-    isViewerSpecific: true,
-  };
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction into
+// helpers/pr-open-conversation-count.helpers.js - getOpenConversationCountWithMe
+// is still bridged below, PrApprovedCell.jsx reads
+// window.getOpenConversationCountWithMe directly (PrInsightsRow.jsx now
+// gets both from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead). getEffectiveViewerLogin is the same derivation the old inline
+// body used (currentViewerLogin || row.viewerLogin ||
+// inferViewerLoginFromPage()) - already instantiated above for
+// entryNeedsAttention's sake, reused here rather than reimplemented.
+const { getOpenConversationCountWithMe } =
+  prOpenConversationCountHelperFactory.createPrOpenConversationCountHelpers({
+    getEffectiveViewerLogin: (...args) => getEffectiveViewerLogin(...args),
+    asArray: (...args) => asArray(...args),
+  });
 
 const getManualNotesSummary = (entry = {}, row = {}) => {
   const notes = entry?.notes || row?.notes || {};
@@ -2518,7 +2467,11 @@ const { toggleInReviewForRow, toggleFlaggedForRow } =
     loadStoredData: (...args) => loadStoredData(...args),
   });
 
-const { normalizeNotesListForUi } = prNotesHelperFactory.createPrNotesHelpers();
+// Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeNotesListForUi used to
+// be destructured here for the window.* bridge below - NotesSection.jsx
+// now gets it from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead, and nothing else in this file calls this factory's output
+// directly.
 
 const {
   computePrDataFingerprint,
@@ -2607,6 +2560,12 @@ const prDataTabOrchestrator =
           : undefined;
       return values?.[key];
     },
+    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): lets
+    // renderPrData prefer "repo"'s Context value over the DOM read. A
+    // separate bridge from getFilterStateValue above - "repo" isn't a
+    // FilterStateProvider-migrated field, it's real PrDataProvider
+    // Context state instead (state/PrDataProvider.jsx).
+    getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
   });
 
 const { getRequestActivityBadges, getSchedulerBadges } =
@@ -2730,15 +2689,10 @@ const {
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
-const formatDurationMinutes = (value) => {
-  const totalMinutes = toCount(value);
-  if (totalMinutes <= 0) return "0m";
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): formatDurationMinutes used to be
+// defined here for the window.* bridge below - ApprovalRiskSection.jsx
+// now gets it from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead, and nothing else in this file calls it.
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
 // tab's whole aggregation cluster (statsViewState, getNormalizedStatsDateRange,
@@ -2748,16 +2702,11 @@ const formatDurationMinutes = (value) => {
 // state/ReviewStatsContext.jsx and components/ReviewStatsProvider.jsx,
 // which derive all of it fresh from PrDataContext's statsViewState (now
 // real state, owned by ReviewStatsControls) instead of a vanilla-closure
-// snapshot. normalizeRowMetrics is the one export from this factory still
-// needed here - getOpenConversationCount (below) uses it for the "More
-// insights" panel, unrelated to review stats - so the factory call stays,
-// just without any of the review-stats-specific DI params (none of which
-// normalizeRowMetrics itself reads).
-const { normalizeRowMetrics } =
-  prReviewStatsAggregationHelperFactory.createPrReviewStatsAggregationHelpers({
-    toCount,
-    asArray,
-  });
+// snapshot. normalizeRowMetrics used to also be destructured here for
+// getOpenConversationCount's sake (the "More insights" panel) - that's
+// now PrInsightsDisplayProvider's own separate instance of this same
+// factory (helpers/pr-open-conversation-count.helpers.js), so nothing in
+// this file needs it any more.
 
 if (typeof window !== "undefined") {
   // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
@@ -2920,121 +2869,12 @@ const {
   getActorLoginAliases: () => currentActorLoginAliases,
 });
 
-const buildActivityEventKey = (event = {}) =>
-  [
-    String(event?.sourceId || ""),
-    String(event?.occurredAt || ""),
-    String(event?.actor || ""),
-    String(event?.type || ""),
-    String(event?.channel || ""),
-  ].join("|");
-
-const normalizePrRootUrl = (url) => {
-  const raw = String(url || "").trim();
-  if (!raw) return "";
-
-  try {
-    const parsed = new URL(raw);
-    parsed.hash = "";
-    parsed.search = "";
-    return parsed.toString().replace(/\/$/, "");
-  } catch (_error) {
-    return raw.split("#")[0].split("?")[0].replace(/\/$/, "");
-  }
-};
-
-const buildFallbackActivityEvents = (row = {}) => {
-  const fallback = [];
-  const explicitCommentEvents = asArray(row.commentEvents);
-
-  explicitCommentEvents.forEach((event) => {
-    fallback.push({
-      ...event,
-      type: String(event?.type || "comment"),
-      channel: String(event?.channel || "top-level"),
-      sourceId: String(event?.sourceId || ""),
-      occurredAt: String(event?.occurredAt || ""),
-      actor: String(event?.actor || "unknown"),
-      body: String(event?.body || ""),
-      url: String(event?.url || ""),
-    });
-  });
-
-  if (!explicitCommentEvents.length) {
-    asArray(row.comments).forEach((comment) => {
-      fallback.push({
-        sourceId: String(comment?.id || ""),
-        occurredAt: String(comment?.createdAt || ""),
-        actor: String(comment?.authorLogin || "unknown"),
-        type: "comment",
-        channel: "top-level",
-        body: String(comment?.body || ""),
-        url: String(comment?.url || ""),
-      });
-    });
-
-    asArray(row.reviewThreads).forEach((thread) => {
-      asArray(thread?.comments).forEach((comment) => {
-        fallback.push({
-          sourceId: String(comment?.id || ""),
-          threadId: String(thread?.id || ""),
-          occurredAt: String(comment?.createdAt || ""),
-          actor: String(comment?.authorLogin || "unknown"),
-          type: "comment",
-          channel: "thread",
-          body: String(comment?.body || ""),
-          url: String(comment?.url || ""),
-          conversationResolved: thread?.isResolved,
-        });
-      });
-    });
-  }
-
-  asArray(row.reviews).forEach((review) => {
-    const state = String(review?.state || "");
-    fallback.push({
-      sourceId: String(review?.id || ""),
-      occurredAt: String(review?.submittedAt || ""),
-      actor: String(review?.authorLogin || "unknown"),
-      type: state === "APPROVED" ? "approval" : "review",
-      channel: "review",
-      state,
-      body: String(review?.body || ""),
-      url: String(review?.url || ""),
-      commitOid: String(review?.commitOid || ""),
-    });
-  });
-
-  asArray(row.commits).forEach((commit) => {
-    asArray(commit?.authors).forEach((author) => {
-      const authorLogin = String(author?.login || "");
-      if (!authorLogin) return;
-      fallback.push({
-        sourceId: String(commit?.oid || ""),
-        occurredAt: String(commit?.committedAt || ""),
-        actor: authorLogin,
-        type: "commit",
-        channel: "commit",
-        messageHeadline: String(commit?.messageHeadline || ""),
-        messageBody: String(commit?.messageBody || ""),
-      });
-    });
-  });
-
-  const mergedAt = String(row?.mergedAt || "");
-  if (mergedAt) {
-    fallback.push({
-      sourceId: "merged",
-      occurredAt: mergedAt,
-      actor: "unknown",
-      type: "merged",
-      channel: "system",
-      url: String(row?.url || ""),
-    });
-  }
-
-  return fallback.filter((event) => String(event?.occurredAt || "").trim());
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): buildActivityEventKey/
+// normalizePrRootUrl/buildFallbackActivityEvents moved to
+// helpers/pr-activity-events.helpers.js - ActivityEventsSection.jsx now
+// gets them from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead of the window.* bridge these used to populate, and nothing
+// else in this file calls them.
 
 const getReviewConversationsStateKey = (row) => {
   const urlKey = String(row?.url || "").trim();
@@ -3086,25 +2926,11 @@ const writeReviewConversationsUiState = (
   });
 };
 
-const buildPrPeopleOptions = (row, actorsMap = {}) => {
-  const people = new Map();
-  const addPerson = (login, name) => {
-    const l = String(login || "").trim();
-    if (!l) return;
-    if (!people.has(l)) {
-      people.set(l, resolveActorDisplayName(l, actorsMap, name));
-    }
-  };
-  addPerson(row?.authorLogin, row?.author);
-  asArray(row?.metrics?.commentsByActor).forEach((p) =>
-    addPerson(p.login, p.name),
-  );
-  asArray(row?.metrics?.reviewsByActor).forEach((p) =>
-    addPerson(p.login, p.name),
-  );
-  asArray(row?.approvers).forEach((p) => addPerson(p.login, p.name));
-  return Array.from(people.entries()).map(([login, name]) => ({ login, name }));
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): buildPrPeopleOptions moved to
+// helpers/pr-notes-people-options.helpers.js - NotesSection.jsx now gets
+// it from PrInsightsDisplayProvider/usePrInsightsDisplay() instead of
+// the window.* bridge this used to populate, and nothing else in this
+// file calls it.
 
 const autoResizeTextarea = (el) => {
   el.style.height = "auto";
@@ -4247,31 +4073,29 @@ const initPage = () => {
     runSinglePrUpdate,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): formatApproversDisplay/
+    // formatRequestedReviewersDisplay/formatAssignedUsersDisplay/
+    // normalizeRowMetrics/getBadgeClassForStatus/Check/Merge/
+    // formatReviewFootprint/ConversationStatus/ApprovalRisk/
+    // CommentUsefulness/buildFallbackActivityEvents/buildActivityEventKey/
+    // normalizePrRootUrl/renderMarkdownAsHtml/buildPrPeopleOptions/
+    // normalizeNotesListForUi/formatDurationMinutes all moved off this
+    // bridge onto PrInsightsDisplayProvider/usePrInsightsDisplay()
+    // (state/PrInsightsDisplayContext.jsx). parseMarkerState/
+    // getViewedFilesSummary (above)/getOpenConversationCountWithMe (above)
+    // stay - AuthorInsightsPrDataMeta.jsx/PrApprovedCell.jsx still read
+    // them off window directly, a documented follow-up opportunity, not
+    // an oversight. getAuthorThreadResolutionPolicy/
+    // readReviewConversationsUiState/writeReviewConversationsUiState also
+    // stay - genuinely separate concerns (a DOM-scan dependency and a
+    // module-scope Map respectively), deliberately out of scope.
     parseMarkerState,
-    formatApproversDisplay,
-    formatRequestedReviewersDisplay,
-    formatAssignedUsersDisplay,
-    normalizeRowMetrics,
-    getBadgeClassForStatus,
-    getBadgeClassForCheck,
-    getBadgeClassForMerge,
-    formatReviewFootprint,
-    formatConversationStatus,
-    formatApprovalRisk,
-    formatCommentUsefulness,
-    buildFallbackActivityEvents,
-    buildActivityEventKey,
-    normalizePrRootUrl,
     getAuthorThreadResolutionPolicy,
     parseSortableTime,
     readReviewConversationsUiState,
     writeReviewConversationsUiState,
-    renderMarkdownAsHtml,
-    buildPrPeopleOptions,
     noteAuthorMatchesSelection,
-    normalizeNotesListForUi,
     getNotesDifficultyLevelText,
-    formatDurationMinutes,
     postJson,
     asArray,
     autoResizeTextarea,
