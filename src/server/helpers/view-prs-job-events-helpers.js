@@ -85,6 +85,36 @@ const createViewPrsJobEventsHelpers = ({
     scheduler: getViewPrsSchedulerPublicStateSafe(),
   });
 
+  const buildDataChangedEnvelope = () => ({
+    type: "data-changed",
+    at: now(),
+    seq: nextSeq(),
+    scheduler: getViewPrsSchedulerPublicStateSafe(),
+  });
+
+  // Fired by a user-mutation route (ack, apply-label, manual run, "request
+  // more merged PRs") once it has actually written to the stored PR data
+  // file - NOT on every request, only when a write genuinely happened (see
+  // each call site's own guard in app.js/view-prs-mutation-routes.js). The
+  // requesting tab already learns its own result synchronously via the
+  // route's own response; this is purely for every *other* connected tab,
+  // which otherwise has no way to know - see the "Polling retirement"
+  // section of the activity-drawer plan for why the PR-data poll itself
+  // couldn't be fully retired without this.
+  const emitDataChanged = () => {
+    if (emitter.listenerCount(JOB_EVENT_CHANNEL) === 0) {
+      return null;
+    }
+    try {
+      const envelope = buildDataChangedEnvelope();
+      emitter.emit(JOB_EVENT_CHANNEL, envelope);
+      return envelope;
+    } catch (error) {
+      consoleSafe?.error?.("[view-prs] emitDataChanged failed", error);
+      return null;
+    }
+  };
+
   const emitSchedulerStateChangedImmediate = () => {
     try {
       const envelope = buildSchedulerStateEnvelope();
@@ -171,6 +201,7 @@ const createViewPrsJobEventsHelpers = ({
     buildJobEventEnvelope,
     emitJobEvent,
     emitSchedulerStateChanged,
+    emitDataChanged,
     subscribeToJobEvents,
     getJobEventsSubscriberCount,
   };

@@ -1561,8 +1561,6 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   await assertNoStalePrefix(page.locator("#data-meta"), "Loading...");
   await assertNoStalePrefix(page.locator("#status"), "Not run");
   await assertNoStalePrefix(page.locator("#output"), "Run the script to see output");
-  await assertNoStalePrefix(page.locator("#scheduler-details"), "Loading scheduler status...");
-  await assertNoStalePrefix(page.locator("#request-activity-details"), "Monitoring request activity...");
 
   await page.getByRole("tab", { name: "Backfill" }).click();
   await assertNoStalePrefix(page.locator("#backfill-details"), "Loading backfill status...");

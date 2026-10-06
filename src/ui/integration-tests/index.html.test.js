@@ -12,7 +12,7 @@ const React = require("react");
 // `screen`/`waitFor`/`within` below read from) with an eventWrapper that
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
-const { render: rtlRender, cleanup, act } = require("@testing-library/react");
+const { render: rtlRender, cleanup } = require("@testing-library/react");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -389,16 +389,18 @@ const installReactFilterPanelMountBridges = () => {
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the 7 status/log panels (#status, #output,
-// #scheduler-details, #request-activity-details, #backfill-details,
-// #backfill-log, #data-meta) are now React-portaled plain text
-// (react-app.jsx's AppRoot), not written directly by index.page.js. Since
-// this test file exercises index.page.js without react-app.jsx's real
-// <AppRoot/> ever mounting, these bridges are otherwise never assigned -
-// a plain textContent write is a faithful simulation here since the real
-// bridges do nothing more than that (createPortal(text, container, key)),
-// unlike the multi-select/filter-summary bridges above which mount real
-// components.
+// REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
+// #output, #backfill-details, #backfill-log, #data-meta) are now
+// React-portaled plain text (react-app.jsx's AppRoot), not written directly
+// by index.page.js. Since this test file exercises index.page.js without
+// react-app.jsx's real <AppRoot/> ever mounting, these bridges are
+// otherwise never assigned - a plain textContent write is a faithful
+// simulation here since the real bridges do nothing more than that
+// (createPortal(text, container, key)), unlike the multi-select/filter-
+// summary bridges above which mount real components. (#scheduler-details/
+// #request-activity-details - and their bridges - were removed as
+// redundant with the activity drawer's own live display, see
+// REACT_MIGRATION_PLAN.md.)
 const installReactStatusTextMountBridges = () => {
   const wireTextBridge = (bridgeName, containerId) => {
     window[bridgeName] = (text) => {
@@ -410,8 +412,6 @@ const installReactStatusTextMountBridges = () => {
   };
   wireTextBridge("updateReactStatusText", "status");
   wireTextBridge("updateReactOutputText", "output");
-  wireTextBridge("updateReactSchedulerDetailsText", "scheduler-details");
-  wireTextBridge("updateReactRequestActivityDetailsText", "request-activity-details");
   wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
   wireTextBridge("updateReactBackfillLogText", "backfill-log");
   wireTextBridge("updateReactDataMetaText", "data-meta");
@@ -1816,7 +1816,7 @@ describe("index page rendering with Testing Library", () => {
     expect(document.getElementById("tab-panel-status").hidden).toBe(true);
   });
 
-  test("filters, scheduler, backfill, and visibility toggles update rendered output", async () => {
+  test("filters, backfill, and visibility toggles update rendered output", async () => {
     initTestPage({
       backfillStatusResponse: {
         ok: true,
@@ -1864,20 +1864,12 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMeta).toContain("Rows: 1");
     });
 
-    // The scheduler badges themselves are React-owned (#scheduler-badges,
-    // mounted by react-app.jsx, reusing <BackfillBadges />) and no longer
-    // have a vanilla-DOM fallback to assert against in this jsdom-only
-    // suite (which never loads react-app.jsx) - see SchedulerBadges
-    // coverage via BackfillBadges.test.jsx (shared component) plus the
-    // "React-owned scheduler status badges..." e2e test for that coverage.
-    // `details` stays vanilla-rendered regardless, so it's still asserted
-    // on directly here.
-    const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
-    expect(schedulerDetailsText).toContain("Last auto error:");
-    // Surfaces why a quick check was skipped (e.g. blocked by an in-progress
-    // full auto refresh) - previously invisible, since runViewPrsQuickCheck's
-    // skip branches didn't persist anything to scheduler state at all.
-    expect(schedulerDetailsText).toContain("Last quick check skip: already-in-progress");
+    // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
+    // Refresh Scheduler" display) were removed as redundant with the
+    // activity drawer's own live "Scheduled background jobs" section (see
+    // REACT_MIGRATION_PLAN.md) - this fixture's scheduler object (lastAutoError/
+    // lastQuickCheckSkipReason) is kept only because the rest of this test's
+    // payload shape mirrors a real response; nothing here reads it anymore.
 
     await user.click(screen.getByRole("tab", { name: "Backfill" }));
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
@@ -1916,53 +1908,6 @@ describe("index page rendering with Testing Library", () => {
     await waitFor(() => {
       expect(isMultiSelectEmpty("author-list")).toBe(true);
     });
-  });
-
-  test("window.renderSchedulerStatus with isLive: false marks #scheduler-details as showing stale data (activity drawer resilience fix)", async () => {
-    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): once SSE fully
-    // replaced the old scheduler poll, #scheduler-badges/details had no
-    // fallback left if the SSE connection ever failed - JobEventsProvider.jsx
-    // calls this exact bridge with isLive: false in that case, using the
-    // last scheduler object it actually received. #scheduler-details stays
-    // vanilla-rendered regardless (no react-app.jsx in this suite - see the
-    // neighboring test's own comment for why #scheduler-badges itself isn't
-    // assertable here), so the warning line is directly checkable.
-    expect(typeof window.renderSchedulerStatus).toBe("function");
-
-    act(() => {
-      window.renderSchedulerStatus(
-        { lastAutoRunAt: "2026-01-01T00:00:00.000Z" },
-        { isLive: false },
-      );
-    });
-
-    await waitFor(() => {
-      const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
-      expect(schedulerDetailsText).toContain("Live updates offline - showing last known state");
-    });
-
-    act(() => {
-      window.renderSchedulerStatus({ lastAutoRunAt: "2026-01-01T00:00:00.000Z" });
-    });
-
-    await waitFor(() => {
-      const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
-      expect(schedulerDetailsText).not.toContain("Live updates offline");
-    });
-  });
-
-  test("renders request-activity details from JavaScript init logic", async () => {
-    // The request-activity badges themselves are React-owned
-    // (#request-activity-badges, mounted by react-app.jsx, reusing
-    // <BackfillBadges />) and no longer have a vanilla-DOM fallback to
-    // assert against in this jsdom-only suite (which never loads
-    // react-app.jsx) - see pr-activity-badges.helpers.test.js for
-    // getRequestActivityBadges' own coverage. `details` stays
-    // vanilla-rendered regardless, so it's still asserted on directly here.
-    await waitFor(() => {
-      expect(screen.getByText(/Current status: Not run/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Active requests: none/i)).toBeInTheDocument();
   });
 
   test("applies non-credential autofill hints without changing existing form field names", () => {

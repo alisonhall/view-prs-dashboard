@@ -138,10 +138,7 @@ describe('JobEventsProvider', () => {
     });
 
     expect(ProbeLastValue.jobs.autoRefresh.status).toBe('running');
-    expect(window.renderSchedulerStatus).toHaveBeenCalledWith(
-      { isAutoRunInProgress: true },
-      { isLive: true },
-    );
+    expect(window.renderSchedulerStatus).toHaveBeenCalledWith({ isAutoRunInProgress: true });
   });
 
   test('an autoRefresh finish event triggers an immediate window.pollForDataChanges call', () => {
@@ -155,6 +152,22 @@ describe('JobEventsProvider', () => {
 
     act(() => {
       instance.emit('job', { type: 'job', job: 'autoRefresh', phase: 'finish', seq: 1, ok: true });
+    });
+
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
+  test('a "data-changed" event (from ack/apply-label/manual-run/request-more) triggers an immediate window.pollForDataChanges call', () => {
+    window.pollForDataChanges = jest.fn();
+    render(
+      <JobEventsProvider>
+        <Probe />
+      </JobEventsProvider>,
+    );
+    const instance = FakeEventSource.instances[0];
+
+    act(() => {
+      instance.emit('data-changed', { type: 'data-changed', seq: 1, at: '2026-01-01T00:00:00.000Z' });
     });
 
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
@@ -213,49 +226,6 @@ describe('JobEventsProvider', () => {
     expect(FakeEventSource.instances).toHaveLength(2);
   });
 
-  test('going offline re-renders #scheduler-badges with the last known scheduler object and isLive: false, so that surface stays honest instead of silently freezing', () => {
-    window.renderSchedulerStatus = jest.fn();
-    render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
-    );
-    const instance = FakeEventSource.instances[0];
-
-    act(() => {
-      instance.emit('snapshot', {
-        at: '2026-01-01T00:00:00.000Z',
-        scheduler: { isAutoRunInProgress: true },
-      });
-    });
-    window.renderSchedulerStatus.mockClear();
-
-    act(() => {
-      instance.simulateError(FakeEventSource.CLOSED);
-    });
-
-    expect(window.renderSchedulerStatus).toHaveBeenCalledWith(
-      { isAutoRunInProgress: true },
-      { isLive: false },
-    );
-  });
-
-  test('going offline before any scheduler object has ever been received does not call window.renderSchedulerStatus with nothing', () => {
-    window.renderSchedulerStatus = jest.fn();
-    render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
-    );
-    const instance = FakeEventSource.instances[0];
-
-    act(() => {
-      instance.simulateError(FakeEventSource.CLOSED);
-    });
-
-    expect(window.renderSchedulerStatus).not.toHaveBeenCalled();
-  });
-
   test('staleness watchdog flips isStale after 60s of silence following an open event', () => {
     render(
       <JobEventsProvider>
@@ -273,36 +243,6 @@ describe('JobEventsProvider', () => {
       jest.advanceTimersByTime(90000);
     });
     expect(ProbeLastValue.isStale).toBe(true);
-  });
-
-  test('going stale (without ever actually disconnecting) also re-renders #scheduler-badges with isLive: false', () => {
-    window.renderSchedulerStatus = jest.fn();
-    render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
-    );
-    const instance = FakeEventSource.instances[0];
-
-    act(() => {
-      instance.emit('job', {
-        type: 'job',
-        seq: 1,
-        at: new Date().toISOString(),
-        scheduler: { isAutoRunInProgress: false },
-      });
-    });
-    window.renderSchedulerStatus.mockClear();
-
-    act(() => {
-      jest.advanceTimersByTime(90000);
-    });
-
-    expect(ProbeLastValue.isStale).toBe(true);
-    expect(window.renderSchedulerStatus).toHaveBeenCalledWith(
-      { isAutoRunInProgress: false },
-      { isLive: false },
-    );
   });
 
   test('unmount closes the EventSource and clears pending timers', () => {

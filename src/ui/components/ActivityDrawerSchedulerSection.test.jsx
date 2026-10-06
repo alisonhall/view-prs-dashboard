@@ -104,4 +104,28 @@ describe('ActivityDrawerSchedulerSection', () => {
 
     expect(screen.getByText(/Last skip: already-in-progress/)).toBeInTheDocument();
   });
+
+  test('shows the pending open/merged-closed counts on the Merged/closed drain row when there is pending work', () => {
+    renderWithValue({
+      connection: 'open',
+      isStale: false,
+      jobs: { autoRefresh: baseJob(), quickCheck: { ...baseJob(), waitingOn: null }, mergedQueueDrain: baseJob() },
+      pendingOpenCount: 2,
+      pendingMergedClosedCount: 1,
+    });
+
+    expect(screen.getByText(/Update queued: 2 open, 1 merged\/closed/)).toBeInTheDocument();
+  });
+
+  test('shows no pending-work line when both counts are zero', () => {
+    renderWithValue({
+      connection: 'open',
+      isStale: false,
+      jobs: { autoRefresh: baseJob(), quickCheck: { ...baseJob(), waitingOn: null }, mergedQueueDrain: baseJob() },
+      pendingOpenCount: 0,
+      pendingMergedClosedCount: 0,
+    });
+
+    expect(screen.queryByText(/Update queued/)).not.toBeInTheDocument();
+  });
 });

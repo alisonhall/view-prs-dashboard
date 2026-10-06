@@ -25,6 +25,15 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
     getLatestSelectedRepo,
     applyLatestPrData,
     loadStoredData,
+    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): these were
+    // previously untracked entirely - a checkbox toggle is normally
+    // near-instant (the server's own isCheckboxOnly path skips any PR
+    // refresh), so there was nothing to see in practice, but a genuinely
+    // slow/hung network request had no visibility anywhere either. Wrapped
+    // the same way every other tracked action already is, so the only
+    // behavior change is a toggle that's taking unusually long becoming
+    // visible in the drawer's "In-flight user actions" section.
+    beginRequestActivity,
   } = {}) => {
     const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
       throw new Error("fetchFn is not available");
@@ -41,6 +50,8 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
       typeof applyLatestPrData === "function" ? applyLatestPrData : () => {};
     const loadStoredDataSafe =
       typeof loadStoredData === "function" ? loadStoredData : async () => {};
+    const beginRequestActivitySafe =
+      typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
 
     // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
     // exit point returns either null (failure) or { payload, selectedRepo }
@@ -67,6 +78,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
 
       checkbox.disabled = true;
       setStatusTextOnlySafe(`${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`);
+      const finishActivity = beginRequestActivitySafe("checkboxToggle");
 
       try {
         const payload = {
@@ -133,6 +145,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
         return null;
       } finally {
         checkbox.disabled = false;
+        finishActivity();
       }
     };
 
@@ -152,6 +165,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
 
       checkbox.disabled = true;
       setStatusTextOnlySafe(`${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`);
+      const finishActivity = beginRequestActivitySafe("checkboxToggle");
 
       try {
         const payload = {
@@ -218,6 +232,7 @@ export const { createPrRowCheckboxActionsHelpers } = (() => {
         return null;
       } finally {
         checkbox.disabled = false;
+        finishActivity();
       }
     };
 

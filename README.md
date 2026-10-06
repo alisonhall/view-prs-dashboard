@@ -407,10 +407,12 @@ When localhost is running, the server starts an automatic background refresh for
 
 An **Activity** button (top-right of the page) opens a collapsible drawer showing all of this background activity in one place:
 
-- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. A quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position - there's no real job queue on the backend, just that one deferred-retry case.
+- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. A quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position - there's no real job queue on the backend, just that one deferred-retry case. Any PRs quick-check has flagged as changed but the merged/closed drain hasn't picked up yet show as "Update queued" on that row.
 - **Backfill** and **in-flight requests from this browser tab** - both still polled (every 5s and 1s respectively), shown in the drawer as-is.
 - **Bulk Ack/Clear or Apply-label queue** - the one place a real ordered queue exists: a batch larger than 5 PRs is split into chunks run a few at a time, and the drawer shows each chunk's real position and outcome (including a chunk that failed, distinct from one that succeeded).
-- If the live connection drops, the drawer shows its own status (reconnecting/offline), and `#scheduler-badges`/`#scheduler-details` outside the drawer are marked "Live updates offline - showing last known state" rather than silently going stale.
+- If the live connection drops, the drawer shows its own status (reconnecting/offline).
+
+The 30s PR-data poll itself isn't fully retired - it's the only mechanism that catches a change made from a *different* browser tab or user, which has no push hook. But ack, apply-label, a manual "Run script", and "Request more merged PRs" each push a lightweight signal the moment they've actually written data, so every other open tab refreshes immediately instead of waiting out that poll's own interval; it remains as a slower fallback for anything outside those four actions.
 
 Optional tuning via env vars:
 

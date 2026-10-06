@@ -2069,4 +2069,188 @@ describe("route behavior", () => {
       appModule.runViewPrsBashCommand = originalBash;
     }
   });
+
+  describe("emitDataChanged (activity drawer - other tabs learn about data changes over SSE)", () => {
+    // These 4 routes are the ones that write to the stored PR data file
+    // outside the 3 already-SSE-instrumented scheduler jobs (see
+    // REACT_MIGRATION_PLAN.md) - audited directly against the route bodies
+    // before wiring anything, not assumed. Each test below captures calls
+    // via the same module.exports.X override pattern already used
+    // elsewhere in this file for runViewPrsScript/runViewPrsBashCommand,
+    // reusing whatever mocks each route already needs to succeed.
+    let originalEmitDataChanged;
+    let dataChangedCallCount;
+
+    beforeEach(() => {
+      originalEmitDataChanged = appModule.emitDataChanged;
+      dataChangedCallCount = 0;
+      appModule.emitDataChanged = () => {
+        dataChangedCallCount += 1;
+        return null;
+      };
+    });
+
+    afterEach(() => {
+      appModule.emitDataChanged = originalEmitDataChanged;
+    });
+
+    test("POST /run emits data-changed on a successful run", async () => {
+      const { response, payload } = await postJson(server, "/run", {
+        repo: "owner/repo",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(dataChangedCallCount).toBe(1);
+    });
+
+    test("POST /ack emits data-changed for a real ack (non-checkbox) operation that actually refreshed a PR", async () => {
+      const { response, payload } = await postJson(server, "/ack", {
+        repo: "owner/repo",
+        ack: "501",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.refreshedPrs).toContain("501");
+      expect(dataChangedCallCount).toBe(1);
+    });
+
+    test("POST /ack does NOT emit data-changed for a checkbox-only (flagged/inReview) operation", async () => {
+      const { response, payload } = await postJson(server, "/ack", {
+        repo: "owner/repo",
+        flagged: "501",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(dataChangedCallCount).toBe(0);
+    });
+
+    test("POST /labels/apply emits data-changed when a matching stored row is actually patched", async () => {
+      const dataFilePath = appModule.viewPrsDataFile;
+      const dataFileExisted = fs.existsSync(dataFilePath);
+      const originalDataRaw = dataFileExisted
+        ? fs.readFileSync(dataFilePath, "utf8")
+        : "";
+      const originalBash = appModule.runViewPrsBashCommand;
+
+      fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+      fs.writeFileSync(
+        dataFilePath,
+        JSON.stringify({
+          byPrNumber: {
+            704: { repo: "owner/repo", data: { number: 704, labels: [] } },
+          },
+          lastRun: null,
+        }),
+        "utf8",
+      );
+      appModule.runViewPrsBashCommand = async (bashArgs) => {
+        const command = String(bashArgs?.[1] || "");
+        if (command.includes("gh pr view")) {
+          return { stdout: JSON.stringify(["bug"]), stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      try {
+        const { response, payload } = await postJson(server, "/labels/apply", {
+          repo: "owner/repo",
+          label: "bug",
+          prNumbers: "704",
+        });
+
+        expect(response.status).toBe(200);
+        expect(payload.appliedPrs).toEqual(["704"]);
+        expect(dataChangedCallCount).toBe(1);
+      } finally {
+        appModule.runViewPrsBashCommand = originalBash;
+        if (dataFileExisted) {
+          fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+        } else {
+          fs.rmSync(dataFilePath, { force: true });
+        }
+      }
+    });
+
+    test("POST /labels/apply does NOT emit data-changed when there is no matching stored row to patch", async () => {
+      const dataFilePath = appModule.viewPrsDataFile;
+      const dataFileExisted = fs.existsSync(dataFilePath);
+      const originalDataRaw = dataFileExisted
+        ? fs.readFileSync(dataFilePath, "utf8")
+        : "";
+      const originalBash = appModule.runViewPrsBashCommand;
+
+      fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+      fs.writeFileSync(dataFilePath, JSON.stringify({ byPrNumber: {}, lastRun: null }), "utf8");
+      appModule.runViewPrsBashCommand = async () => ({ stdout: "[]", stderr: "" });
+
+      try {
+        const { response, payload } = await postJson(server, "/labels/apply", {
+          repo: "owner/repo",
+          label: "bug",
+          prNumbers: "705",
+        });
+
+        expect(response.status).toBe(200);
+        // The GitHub-side apply (gh pr edit) still succeeds - appliedPrs
+        // reflects that, not whether the local patch found a row. The
+        // subsequent patchStoredPrLabels finds no matching stored "705"
+        // entry (byPrNumber is empty here), so refreshedPrs - the thing
+        // emitDataChangedSafe is actually gated on - stays empty and
+        // nothing was written to the data file.
+        expect(payload.appliedPrs).toEqual(["705"]);
+        expect(payload.refreshErrors).toEqual([
+          { prNumber: "705", error: "No matching stored PR entry to update" },
+        ]);
+        expect(dataChangedCallCount).toBe(0);
+      } finally {
+        appModule.runViewPrsBashCommand = originalBash;
+        if (dataFileExisted) {
+          fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+        } else {
+          fs.rmSync(dataFilePath, { force: true });
+        }
+      }
+    });
+
+    test("POST /merged/request-more emits data-changed when it actually refreshes candidates", async () => {
+      const originalBash = appModule.runViewPrsBashCommand;
+      appModule.runViewPrsBashCommand = async () => ({
+        stdout: JSON.stringify([{ number: 603, mergedAt: "2026-01-03T00:00:00Z" }]),
+        stderr: "",
+      });
+
+      try {
+        const { response, payload } = await postJson(server, "/merged/request-more", {
+          repo: "owner/repo",
+          count: 1,
+        });
+
+        expect(response.status).toBe(200);
+        expect(payload.refreshedPrs).toEqual(expect.arrayContaining(["603"]));
+        expect(dataChangedCallCount).toBe(1);
+      } finally {
+        appModule.runViewPrsBashCommand = originalBash;
+      }
+    });
+
+    test("POST /merged/request-more does NOT emit data-changed when there are no missing candidates to refresh", async () => {
+      const originalBash = appModule.runViewPrsBashCommand;
+      appModule.runViewPrsBashCommand = async () => ({ stdout: "[]", stderr: "" });
+
+      try {
+        const { response, payload } = await postJson(server, "/merged/request-more", {
+          repo: "owner/repo",
+          count: 1,
+        });
+
+        expect(response.status).toBe(200);
+        expect(payload.refreshedPrs).toEqual([]);
+        expect(dataChangedCallCount).toBe(0);
+      } finally {
+        appModule.runViewPrsBashCommand = originalBash;
+      }
+    });
+  });
 });

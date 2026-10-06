@@ -3,6 +3,7 @@ import { useJobEvents } from '../state/JobEventsContext';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { ActivityDrawerSchedulerSection } from './ActivityDrawerSchedulerSection';
 import { ActivityDrawerQueueSection } from './ActivityDrawerQueueSection';
+import { ActivityDrawerRecentActivitySection } from './ActivityDrawerRecentActivitySection';
 import { BackfillBadges } from './BackfillBadges';
 
 /**
@@ -23,6 +24,7 @@ export function ActivityDrawer({
   backfillBadges = [],
   backfillDetailsText = '',
   requestActivityBadges = [],
+  recentRequestActivity = [],
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { jobs } = useJobEvents();
@@ -110,6 +112,8 @@ export function ActivityDrawer({
                 <BackfillBadges badges={requestActivityBadges} />
               </div>
             </section>
+
+            <ActivityDrawerRecentActivitySection recentRequestActivity={recentRequestActivity} />
           </div>
         </div>
       )}

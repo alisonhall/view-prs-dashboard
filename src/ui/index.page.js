@@ -155,6 +155,17 @@ const requestActivityCounters = {
   singlePr: 0,
   dataLoad: 0,
   backfill: 0,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): labelApply was
+  // already being passed to setRequestActivityCounter (from
+  // pr-ack-label-actions.helpers.js) before this key existed here - it
+  // silently no-opped every time (setRequestActivityCounter's own
+  // hasOwnProperty guard), so apply-label requests never showed up
+  // anywhere. checkboxToggle/notesSave/authorComment are newly tracked -
+  // see the "not all actions are shown" follow-up.
+  labelApply: 0,
+  checkboxToggle: 0,
+  notesSave: 0,
+  authorComment: 0,
 };
 const requestActivityStartedAtMs = {
   runScript: 0,
@@ -162,6 +173,39 @@ const requestActivityStartedAtMs = {
   singlePr: 0,
   dataLoad: 0,
   backfill: 0,
+  labelApply: 0,
+  checkboxToggle: 0,
+  notesSave: 0,
+  authorComment: 0,
+};
+// Capped, in-memory, this-tab-only history of recently finished user
+// actions - "finished" just means the in-flight counter returned to 0, not
+// necessarily success (threading real success/failure through every one of
+// these call sites' own try/catch shapes would be a much larger change for
+// a history list - the live badge above already surfaces failures via its
+// own notification/snackbar path). Scheduler jobs get real ok/error in
+// their own recent-activity list (JobEventsContext's recentFinished,
+// SSE-driven) since that data already exists there for free.
+const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
+let recentRequestActivityEntries = [];
+const REQUEST_ACTIVITY_LABELS = {
+  runScript: "Run script",
+  ackClear: "Ack/Clear",
+  singlePr: "Single PR update",
+  dataLoad: "Data refresh",
+  backfill: "Backfill request",
+  labelApply: "Apply label",
+  checkboxToggle: "Checkbox toggle",
+  notesSave: "Notes save",
+  authorComment: "Author comment",
+};
+const recordRecentRequestActivity = (key) => {
+  const label = REQUEST_ACTIVITY_LABELS[key] || key;
+  recentRequestActivityEntries = [
+    { key, label, finishedAt: new Date().toISOString() },
+    ...recentRequestActivityEntries,
+  ].slice(0, RECENT_REQUEST_ACTIVITY_LIMIT);
+  window.updateReactRecentRequestActivity?.(recentRequestActivityEntries);
 };
 const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
 const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
@@ -185,21 +229,7 @@ const {
   toCount,
 } = prFormattingHelperFactory.createPrFormattingHelpers();
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #status's text is React-owned now
-// (window.updateReactStatusText), so renderRequestActivity (below) can no
-// longer read document.getElementById("status").textContent to embed the
-// current status in its own "Current status: ..." line - React's state
-// commit is asynchronous, so that DOM read would be stale right after this
-// same function calls window.updateReactStatusText and then immediately
-// calls renderRequestActivity(). Tracked here instead, matching this
-// codebase's established "vanilla variable is the source of truth"
-// pattern (e.g. latestStoredPayload) rather than relying on DOM commit
-// timing.
-let latestStatusText = "Not run";
-
 const setStatusTextOnly = (message) => {
-  latestStatusText = message;
   window.updateReactStatusText?.(message);
 };
 
@@ -275,43 +305,26 @@ const getRequestActivitySeverityClass = (elapsedMs) => {
   return "";
 };
 
-const getActiveRequestActivityEntries = () => {
-  const entries = [];
+// Iterates requestActivityCounters generically (keyed off
+// REQUEST_ACTIVITY_LABELS) rather than one hand-written `if` block per key -
+// this is exactly the shape that silently dropped labelApply before (a new
+// counter key existed, but no matching branch here ever read it). Order
+// matches REQUEST_ACTIVITY_LABELS' own declaration order, which mirrors the
+// original hand-written order for the first 5 keys.
+const getActiveRequestActivityEntries = () =>
+  Object.keys(REQUEST_ACTIVITY_LABELS)
+    .filter((key) => requestActivityCounters[key] > 0)
+    .map((key) => ({
+      label: `${REQUEST_ACTIVITY_LABELS[key]} x${requestActivityCounters[key]}`,
+      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs[key]),
+    }));
 
-  if (requestActivityCounters.runScript > 0) {
-    entries.push({
-      label: `Run script x${requestActivityCounters.runScript}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.runScript),
-    });
-  }
-  if (requestActivityCounters.ackClear > 0) {
-    entries.push({
-      label: `Ack/Clear x${requestActivityCounters.ackClear}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.ackClear),
-    });
-  }
-  if (requestActivityCounters.singlePr > 0) {
-    entries.push({
-      label: `Single PR update x${requestActivityCounters.singlePr}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.singlePr),
-    });
-  }
-  if (requestActivityCounters.dataLoad > 0) {
-    entries.push({
-      label: `Data refresh x${requestActivityCounters.dataLoad}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.dataLoad),
-    });
-  }
-  if (requestActivityCounters.backfill > 0) {
-    entries.push({
-      label: `Backfill request x${requestActivityCounters.backfill}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.backfill),
-    });
-  }
-
-  return entries;
-};
-
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): #request-activity-details
+// (the Status tab's old "Current status/Active requests" text) was removed
+// as redundant with the drawer's own live "In-flight user actions" section -
+// this function's remaining job is just keeping #request-activity-badges
+// (still a real prop the drawer reads via AppRoot's requestActivityBadges
+// state) up to date.
 const renderRequestActivity = () => {
   const activeEntries = getActiveRequestActivityEntries();
   const isAutoRunInProgress = Boolean(
@@ -323,35 +336,8 @@ const renderRequestActivity = () => {
       )
     : null;
 
-  const totalActive = activeEntries.length + (isAutoRunInProgress ? 1 : 0);
-
-  // Renders the badge list into #request-activity-badges via React (see
-  // mountRequestActivityBadges in react-app.jsx) - same
-  // compute-a-badges-array-then-hand-it-to-React shape renderBackfillStatus
-  // and renderSchedulerStatus already use.
   window.updateReactRequestActivityBadges?.(
     getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
-  );
-
-  const statusLine = String(latestStatusText || "-");
-  window.updateReactRequestActivityDetailsText?.(
-    [
-      `Current status: ${statusLine}`,
-      `Active requests: ${
-        totalActive > 0
-          ? [
-              isAutoRunInProgress
-                ? withElapsedSuffix("Auto run", autoRunElapsedMs)
-                : "",
-              ...activeEntries.map((entry) =>
-                withElapsedSuffix(entry.label, entry.elapsedMs),
-              ),
-            ]
-              .filter(Boolean)
-              .join(" | ")
-          : "none"
-      }`,
-    ].join("\n"),
   );
 };
 
@@ -366,8 +352,17 @@ const beginRequestActivity = (key) => {
     ended = true;
     setRequestActivityCounter(key, -1);
     renderRequestActivity();
+    recordRecentRequestActivity(key);
   };
 };
+
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): exposes
+// beginRequestActivity for React components that make their own network
+// call directly rather than through a vanilla helper factory (NotesSection.jsx
+// is the one case today - it already reads window.postJson the same way).
+if (typeof window !== "undefined") {
+  window.beginRequestActivity = (...args) => beginRequestActivity(...args);
+}
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the snackbar itself is fully React-owned now
@@ -2007,47 +2002,17 @@ const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
 // populate, and nothing else in this file calls it, so it's not
 // re-instantiated here at all.
 
-// Activity drawer feature (see REACT_MIGRATION_PLAN.md): isLive defaults to
-// true for every existing caller (the kept-for-test-compat pollSchedulerStatus
-// poll, and any other direct call) - only JobEventsProvider.jsx's own
-// "connection just went down" effect ever passes isLive: false, using the
-// last scheduler object it actually received. Without this, #scheduler-badges
-// had no fallback poll left once SSE fully replaced it (see "Polling
-// retirement") and would go silently stale with zero visible indication if
-// the SSE connection ever failed - the drawer's own connection banner isn't
-// enough, since a user may never open it.
-const renderSchedulerStatus = (schedulerRaw = {}, { isLive = true } = {}) => {
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): #scheduler-badges/
+// #scheduler-details (the Status tab's old "Auto Refresh Scheduler" display)
+// were removed as redundant once the drawer's own live "Scheduled background
+// jobs" section covered the same ground - this function's only remaining
+// jobs are keeping latestSchedulerState current (read by
+// renderRequestActivity below) and driving the per-row progress indicator +
+// request-activity re-render, both independent of anything scheduler-status
+// text ever showed.
+const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
   latestSchedulerState = scheduler;
-
-  const baseBadges = getSchedulerBadges(scheduler);
-  const badges = isLive
-    ? baseBadges
-    : [
-        { text: "Live updates offline - showing last known state", className: "scheduler-badge-warning" },
-        ...baseBadges,
-      ];
-
-  // Renders the badge list into #scheduler-badges via React (see
-  // mountSchedulerBadges in react-app.jsx) - same shape renderBackfillStatus
-  // already uses for #backfill-badges.
-  window.updateReactSchedulerBadges?.(badges);
-
-  const lines = [
-    ...(isLive ? [] : ["Live updates offline - showing last known state"]),
-    `Last manual run: ${formatIsoDatetime(scheduler.lastManualRunAt || "-")}`,
-    `Last auto attempt: ${formatIsoDatetime(scheduler.lastAutoAttemptAt || "-")}`,
-    `Last auto success: ${formatIsoDatetime(scheduler.lastAutoRunAt || "-")}`,
-    `Last auto skip: ${scheduler.lastAutoSkipReason || "-"}`,
-    `Last auto error: ${scheduler.lastAutoError || "-"}`,
-    `Last quick check: ${formatIsoDatetime(scheduler.lastQuickCheckAt || "-")}`,
-    `Last quick check attempt: ${formatIsoDatetime(scheduler.lastQuickCheckAttemptAt || "-")}`,
-    `Last quick check skip: ${scheduler.lastQuickCheckSkipReason || "-"}`,
-    `Last quick check error: ${scheduler.lastQuickCheckError || "-"}`,
-    `Last merged/closed drain: ${formatIsoDatetime(scheduler.lastMergedDrainAt || "-")}`,
-  ];
-
-  window.updateReactSchedulerDetailsText?.(lines.join("\n"));
   applyActivePrProgressIndicators(scheduler.activePrNumbers || []);
   renderRequestActivity();
 };
@@ -2423,6 +2388,7 @@ const { toggleInReviewForRow, toggleFlaggedForRow } =
     getLatestSelectedRepo: () => latestSelectedRepo,
     applyLatestPrData: (...args) => applyLatestPrData(...args),
     loadStoredData: (...args) => loadStoredData(...args),
+    beginRequestActivity: (...args) => beginRequestActivity(...args),
   });
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeNotesListForUi used to
@@ -2526,7 +2492,7 @@ const prDataTabOrchestrator =
     getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
   });
 
-const { getRequestActivityBadges, getSchedulerBadges } =
+const { getRequestActivityBadges } =
   prActivityBadgesHelperFactory.createPrActivityBadgesHelpers({
     withElapsedSuffix,
     getRequestActivitySeverityClass,
@@ -2806,15 +2772,30 @@ if (typeof window !== "undefined") {
   };
   window.loadAuthorManualComments = (login, onComplete) =>
     prAuthorInsightsDataHelpers.loadAuthorManualComments(login, authorInsightsState, onComplete);
-  window.saveAuthorManualComment = ({ authorLogin, note, sentiment }) =>
-    prAuthorInsightsDataHelpers.saveAuthorManualComment({
-      authorLogin,
-      note,
-      sentiment,
-      postJson: (...args) => postJson(...args),
-    });
-  window.updateAuthorManualComment = (args) =>
-    prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
+  // untracked - wrapped the same way every other tracked action is, so a
+  // genuinely slow save becomes visible instead of just sitting silent.
+  window.saveAuthorManualComment = async ({ authorLogin, note, sentiment }) => {
+    const finishActivity = beginRequestActivity("authorComment");
+    try {
+      return await prAuthorInsightsDataHelpers.saveAuthorManualComment({
+        authorLogin,
+        note,
+        sentiment,
+        postJson: (...args) => postJson(...args),
+      });
+    } finally {
+      finishActivity();
+    }
+  };
+  window.updateAuthorManualComment = async (args) => {
+    const finishActivity = beginRequestActivity("authorComment");
+    try {
+      return await prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
+    } finally {
+      finishActivity();
+    }
+  };
 }
 
 const {

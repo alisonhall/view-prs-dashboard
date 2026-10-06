@@ -6,11 +6,13 @@ describe("pr job events helpers", () => {
     createPrJobEventsHelpers({ now: () => FIXED_NOW });
 
   describe("getInitialJobEventsState", () => {
-    test("starts idle with no waitingOn and an empty recentFinished list", () => {
+    test("starts idle with no waitingOn, zero pending counts, and an empty recentFinished list", () => {
       const state = getInitialJobEventsState();
       expect(state.connection).toBe("connecting");
       expect(state.jobs.autoRefresh.status).toBe("idle");
       expect(state.jobs.quickCheck.waitingOn).toBeNull();
+      expect(state.pendingOpenCount).toBe(0);
+      expect(state.pendingMergedClosedCount).toBe(0);
       expect(state.recentFinished).toEqual([]);
     });
   });
@@ -30,6 +32,16 @@ describe("pr job events helpers", () => {
       expect(state.connection).toBe("open");
       expect(state.jobs.autoRefresh.status).toBe("running");
       expect(state.jobs.quickCheck.waitingOn).toEqual({ job: "autoRefresh", since: FIXED_NOW });
+    });
+
+    test("carries pendingOpenCount/pendingMergedClosedCount from the scheduler payload", () => {
+      const state = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: { pendingOpenCount: 3, pendingMergedClosedCount: 2 },
+      });
+
+      expect(state.pendingOpenCount).toBe(3);
+      expect(state.pendingMergedClosedCount).toBe(2);
     });
 
     test("is authoritative regardless of lastSeq, and resets lastSeq to 0", () => {
@@ -156,13 +168,35 @@ describe("pr job events helpers", () => {
       expect(stale).toBe(first);
     });
 
-    test("a job-agnostic scheduler-type envelope (no job field) only bumps lastEventAt/lastSeq", () => {
+    test("a job-agnostic scheduler-type envelope (no job field) only bumps lastEventAt/lastSeq/pendingCounts, not jobs", () => {
       const initial = getInitialJobEventsState();
 
-      const state = applyJobEvent(initial, { seq: 1, at: FIXED_NOW });
+      const state = applyJobEvent(initial, {
+        seq: 1,
+        at: FIXED_NOW,
+        scheduler: { pendingOpenCount: 4, pendingMergedClosedCount: 1 },
+      });
 
       expect(state.lastSeq).toBe(1);
       expect(state.jobs).toBe(initial.jobs);
+      expect(state.pendingOpenCount).toBe(4);
+      expect(state.pendingMergedClosedCount).toBe(1);
+    });
+
+    test("a job envelope also refreshes pendingOpenCount/pendingMergedClosedCount from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        job: "mergedQueueDrain",
+        phase: "finish",
+        seq: 1,
+        at: FIXED_NOW,
+        ok: true,
+        scheduler: { pendingOpenCount: 0, pendingMergedClosedCount: 5 },
+      });
+
+      expect(state.pendingOpenCount).toBe(0);
+      expect(state.pendingMergedClosedCount).toBe(5);
     });
 
     test("returns the same state reference for a malformed envelope", () => {

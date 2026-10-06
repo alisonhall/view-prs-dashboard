@@ -369,11 +369,7 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
-    schedulerBadges: document.getElementById('scheduler-badges'),
-    requestActivityBadges: document.getElementById('request-activity-badges'),
     statusText: document.getElementById('status'),
-    requestActivityDetails: document.getElementById('request-activity-details'),
-    schedulerDetails: document.getElementById('scheduler-details'),
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
@@ -451,8 +447,13 @@ function AppRoot() {
   const [prTable, setPrTable] = useState(null);
   const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
-  const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
+  // Activity" section's history of this tab's own finished requests - no
+  // DOM container/portal needed, same as requestActivityBadges above once
+  // #request-activity-badges itself was removed from the Status tab; this
+  // only ever reaches the drawer as a prop.
+  const [recentRequestActivity, setRecentRequestActivity] = useState([]);
   const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
   const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
@@ -466,8 +467,6 @@ function AppRoot() {
   // match each `<pre>`'s original static index.html text, so there's no
   // flash of empty content before the first bridge call.
   const [statusText, setStatusText] = useState('Not run');
-  const [requestActivityDetailsText, setRequestActivityDetailsText] = useState('Monitoring request activity...');
-  const [schedulerDetailsText, setSchedulerDetailsText] = useState('Loading scheduler status...');
   const [outputText, setOutputText] = useState('Run the script to see output');
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
@@ -522,22 +521,22 @@ function AppRoot() {
   }, []);
 
   useEffect(() => {
-    window.updateReactSchedulerBadges = (badges) => {
-      setSchedulerBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerBadges;
-    };
-  }, []);
-
-  useEffect(() => {
     window.updateReactRequestActivityBadges = (badges) => {
       setRequestActivityBadges({ badges });
       return true;
     };
     return () => {
       delete window.updateReactRequestActivityBadges;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactRecentRequestActivity = (entries) => {
+      setRecentRequestActivity(Array.isArray(entries) ? entries : []);
+      return true;
+    };
+    return () => {
+      delete window.updateReactRecentRequestActivity;
     };
   }, []);
 
@@ -578,26 +577,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactStatusText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactRequestActivityDetailsText = (text) => {
-      setRequestActivityDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactRequestActivityDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactSchedulerDetailsText = (text) => {
-      setSchedulerDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerDetailsText;
     };
   }, []);
 
@@ -702,6 +681,7 @@ function AppRoot() {
                   backfillBadges={backfillBadges.badges}
                   backfillDetailsText={backfillDetailsText}
                   requestActivityBadges={requestActivityBadges.badges}
+                  recentRequestActivity={recentRequestActivity}
                 />,
                 containers.activityDrawer,
                 'activity-drawer',
@@ -851,27 +831,7 @@ function AppRoot() {
             'backfill-badges',
           )}
 
-        {containers.schedulerBadges &&
-          createPortal(
-            <BackfillBadges badges={schedulerBadges.badges} />,
-            containers.schedulerBadges,
-            'scheduler-badges',
-          )}
-
-        {containers.requestActivityBadges &&
-          createPortal(
-            <BackfillBadges badges={requestActivityBadges.badges} />,
-            containers.requestActivityBadges,
-            'request-activity-badges',
-          )}
-
         {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
-
-        {containers.requestActivityDetails &&
-          createPortal(requestActivityDetailsText, containers.requestActivityDetails, 'request-activity-details')}
-
-        {containers.schedulerDetails &&
-          createPortal(schedulerDetailsText, containers.schedulerDetails, 'scheduler-details')}
 
         {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 

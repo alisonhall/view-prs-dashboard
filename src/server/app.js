@@ -937,6 +937,7 @@ const {
   JOB_PHASES,
   emitJobEvent,
   emitSchedulerStateChanged,
+  emitDataChanged,
   subscribeToJobEvents,
   getJobEventsSubscriberCount,
 } = createViewPrsJobEventsHelpers({
@@ -952,6 +953,8 @@ const callEmitJobEvent = (...args) =>
   (module.exports.emitJobEvent || emitJobEvent)(...args);
 const callEmitSchedulerStateChanged = (...args) =>
   (module.exports.emitSchedulerStateChanged || emitSchedulerStateChanged)(...args);
+const callEmitDataChanged = (...args) =>
+  (module.exports.emitDataChanged || emitDataChanged)(...args);
 
 // Use command execution helpers
 const formatScriptFailureMessage = (failure, fallbackMessage) =>
@@ -2335,6 +2338,7 @@ const createViewPrsApp = () => {
     applyLabelToPr,
     fetchGithubPrLabels,
     patchStoredPrLabels,
+    emitDataChanged: callEmitDataChanged,
   });
 
   registerViewPrsPrRoutes({
@@ -2453,6 +2457,7 @@ module.exports = {
   runViewPrsMergedQueueDrain,
   emitJobEvent,
   emitSchedulerStateChanged,
+  emitDataChanged,
   subscribeToJobEvents,
   getJobEventsSubscriberCount,
   // Core config/constants

@@ -3441,6 +3441,32 @@
             font-weight: 600;
         }
 
+        .activity-drawer-recent-group {
+            margin-bottom: 10px;
+        }
+
+        .activity-drawer-recent-group-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #57606a;
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-recent-list {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .activity-drawer-recent-item {
+            font-size: 11px;
+            color: #24292f;
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-recent-item.is-failed {
+            color: #cf222e;
+        }
+
         @media (max-width: 768px) {
             .activity-drawer-panel {
                 width: 100vw;

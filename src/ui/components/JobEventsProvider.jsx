@@ -20,30 +20,29 @@ const {
  * job state via JobEventsContext.
  *
  * A Provider (not a bare hook) deliberately - so exactly one EventSource
- * exists for the page even as more consumers are added later (the drawer
- * today, #scheduler-badges as a follow-up - see the plan's "Polling
- * retirement" section), the same reasoning NotesDirtyProvider documents
- * for owning genuinely shared state rather than letting each consumer
- * re-derive it.
+ * exists for the page even as more consumers are added later, the same
+ * reasoning NotesDirtyProvider documents for owning genuinely shared state
+ * rather than letting each consumer re-derive it.
  *
- * Also responsible for retiring the old scheduler poll: on every frame it
- * receives (snapshot/job/scheduler), it calls window.renderSchedulerStatus
- * with the bundled scheduler object - the exact function the old 30s
- * /view-prs/scheduler poll used to call, just re-triggered by push instead
- * of a timer. And on an autoRefresh/mergedQueueDrain "finish" job event, it
- * calls window.pollForDataChanges immediately rather than waiting for that
- * poll's own next tick - see the plan's reasoning for why that poll itself
- * can't be fully retired (it's the only signal for cross-tab mutations).
+ * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
+ * window.renderSchedulerStatus with the bundled scheduler object - that
+ * function's only remaining job (since #scheduler-badges/#scheduler-details
+ * were removed as redundant with this drawer's own live display) is keeping
+ * the per-row progress indicator and #request-activity-badges current, both
+ * independent of this drawer's own UI. And on an autoRefresh/
+ * mergedQueueDrain "finish" job event, OR a "data-changed" event (fired by
+ * ack/apply-label/manual-run/request-more once one of those routes actually
+ * wrote to the stored PR data file), it calls window.pollForDataChanges
+ * immediately rather than waiting for that poll's own next tick - the
+ * interval itself stays as a slower safety net, since not every possible
+ * write path is instrumented (e.g. anything that bypasses these routes
+ * entirely would still rely on it).
  */
 export function JobEventsProvider({ children }) {
   const [jobEventsState, setJobEventsState] = useState(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
   const lastEventAtRef = useRef(null);
   lastEventAtRef.current = jobEventsState.lastEventAt;
-  // Last real scheduler object received from any frame - kept so the
-  // "connection just went down" effect below can still re-render
-  // #scheduler-badges (with isLive: false) using real data, not nothing.
-  const lastSchedulerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window.EventSource !== 'function') {
@@ -57,10 +56,7 @@ export function JobEventsProvider({ children }) {
     let stopped = false;
 
     const applySchedulerSideEffects = (scheduler) => {
-      if (scheduler) {
-        lastSchedulerRef.current = scheduler;
-      }
-      window.renderSchedulerStatus?.(scheduler, { isLive: true });
+      window.renderSchedulerStatus?.(scheduler);
     };
 
     const handleSnapshot = (event) => {
@@ -87,7 +83,14 @@ export function JobEventsProvider({ children }) {
       const isDataWritingJobFinish =
         envelope?.phase === 'finish' &&
         (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain');
-      if (isDataWritingJobFinish) {
+      // "data-changed" (see REACT_MIGRATION_PLAN.md's poll-conversion
+      // follow-up): emitted by ack/apply-label/manual-run/request-more once
+      // one of those routes has actually written to the stored PR data file
+      // - the requesting tab already has its own fresh result from that
+      // route's own response, so this is specifically for every *other*
+      // connected tab.
+      const isDataChangedEvent = envelope?.type === 'data-changed';
+      if (isDataWritingJobFinish || isDataChangedEvent) {
         window.pollForDataChanges?.();
       }
     };
@@ -106,6 +109,7 @@ export function JobEventsProvider({ children }) {
       eventSource.addEventListener('snapshot', handleSnapshot);
       eventSource.addEventListener('job', handleJobOrSchedulerFrame);
       eventSource.addEventListener('scheduler', handleJobOrSchedulerFrame);
+      eventSource.addEventListener('data-changed', handleJobOrSchedulerFrame);
 
       eventSource.onerror = () => {
         if (stopped) {
@@ -154,25 +158,6 @@ export function JobEventsProvider({ children }) {
     }, STALENESS_CHECK_INTERVAL_MS);
     return () => clearInterval(watchdog);
   }, []);
-
-  // Resilience follow-up: once SSE fully replaced the old scheduler poll,
-  // #scheduler-badges/details-text had no fallback left if the connection
-  // ever failed (a buffering proxy, an unsupported browser, a blocked
-  // route) - they'd just freeze with no visible indication outside the
-  // drawer, since the drawer's own connection banner only renders while a
-  // user has it open. Whenever the connection isn't genuinely live, re-render
-  // the last known scheduler object with isLive: false so that surface
-  // stays honest about being stale instead of silently going quiet. The
-  // reverse transition (back to live) doesn't need its own effect here -
-  // the next real frame arrives almost immediately on reconnect and calls
-  // applySchedulerSideEffects with isLive: true through the normal path.
-  useEffect(() => {
-    const isLive = jobEventsState.connection === 'open' && !isStale;
-    if (isLive || !lastSchedulerRef.current) {
-      return;
-    }
-    window.renderSchedulerStatus?.(lastSchedulerRef.current, { isLive: false });
-  }, [jobEventsState.connection, isStale]);
 
   const value = useMemo(
     () => ({ ...jobEventsState, isStale }),

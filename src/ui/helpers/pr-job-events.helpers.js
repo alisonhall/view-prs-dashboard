@@ -27,7 +27,21 @@ export const { createPrJobEventsHelpers } = (() => {
         quickCheck: { ...createJobState(), waitingOn: null },
         mergedQueueDrain: createJobState(),
       },
+      // Flagged by quick-check, drained by mergedQueueDrain - this is the
+      // one piece of the old (now-removed) #scheduler-badges display that
+      // had no equivalent anywhere in the drawer, so it's carried here
+      // instead of being silently dropped. Read off every envelope's own
+      // bundled scheduler object (every frame carries it, not just a
+      // mergedQueueDrain-specific one), so it stays current regardless of
+      // which job most recently emitted.
+      pendingOpenCount: 0,
+      pendingMergedClosedCount: 0,
       recentFinished: [],
+    });
+
+    const extractPendingCounts = (scheduler) => ({
+      pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
+      pendingMergedClosedCount: Number(scheduler?.pendingMergedClosedCount) || 0,
     });
 
     const setConnectionState = (state, connection) => ({ ...state, connection });
@@ -76,14 +90,15 @@ export const { createPrJobEventsHelpers } = (() => {
         lastSnapshotAt: at,
         lastSeq: 0,
         jobs,
+        ...extractPendingCounts(scheduler),
       };
     };
 
     // envelope is either a `job` envelope ({job, phase, ok, detail, seq})
     // or a job-agnostic `scheduler` envelope ({seq} only, no job/phase) -
     // see view-prs-job-events-helpers.js. The latter only bumps lastEventAt/
-    // lastSeq; the drawer's own per-job rows don't change from it (that
-    // signal drives the legacy #scheduler-badges bridge instead - see
+    // lastSeq/pendingCounts; the drawer's own per-job rows don't change from
+    // it (it drives the per-row progress indicator instead - see
     // JobEventsProvider).
     const applyJobEvent = (state, envelope) => {
       if (!envelope || typeof envelope !== "object") {
@@ -97,9 +112,10 @@ export const { createPrJobEventsHelpers } = (() => {
       const nextSeq = typeof envelope.seq === "number" ? envelope.seq : state.lastSeq;
       const jobKey = envelope.job;
       const previousJob = jobKey ? state.jobs[jobKey] : null;
+      const pendingCounts = extractPendingCounts(envelope.scheduler);
 
       if (!previousJob) {
-        return { ...state, connection: "open", lastEventAt: at, lastSeq: nextSeq };
+        return { ...state, connection: "open", lastEventAt: at, lastSeq: nextSeq, ...pendingCounts };
       }
 
       const isQuickCheck = jobKey === "quickCheck";
@@ -158,6 +174,7 @@ export const { createPrJobEventsHelpers } = (() => {
         lastSeq: nextSeq,
         jobs: { ...state.jobs, [jobKey]: nextJob },
         recentFinished,
+        ...pendingCounts,
       };
     };
 

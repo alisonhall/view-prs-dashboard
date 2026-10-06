@@ -16,9 +16,10 @@ const CONNECTION_MESSAGES = {
   unsupported: 'Live updates unavailable in this browser.',
 };
 
-function JobRow({ jobKey, job }) {
+function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
   const label = JOB_LABELS[jobKey] || jobKey;
   const isRunning = job.status === 'running';
+  const hasPendingWork = pendingOpenCount > 0 || pendingMergedClosedCount > 0;
 
   return (
     <div className="activity-drawer-job-row">
@@ -34,6 +35,13 @@ function JobRow({ jobKey, job }) {
       {jobKey === 'quickCheck' && job.waitingOn && (
         <div className="activity-drawer-job-waiting">
           Waiting on auto refresh — will run as soon as the refresh finishes.
+        </div>
+      )}
+
+      {jobKey === 'mergedQueueDrain' && hasPendingWork && (
+        <div className="activity-drawer-job-waiting">
+          Update queued: {pendingOpenCount} open, {pendingMergedClosedCount} merged/closed - flagged by
+          quick check, waiting for the next drain.
         </div>
       )}
 
@@ -59,9 +67,15 @@ function JobRow({ jobKey, job }) {
  * queue, just one deferred-retry flag (see runViewPrsQuickCheck's own
  * comment in app.js), so the honest copy here is "waiting on X", never a
  * position or count.
+ *
+ * pendingOpenCount/pendingMergedClosedCount (shown on the mergedQueueDrain
+ * row) carry the one piece of information the old, now-removed
+ * #scheduler-badges display had that nothing else in the drawer covered -
+ * PRs quick-check already flagged as changed but not yet picked up by a
+ * full drain.
  */
 export function ActivityDrawerSchedulerSection() {
-  const { connection, isStale, jobs } = useJobEvents();
+  const { connection, isStale, jobs, pendingOpenCount, pendingMergedClosedCount } = useJobEvents();
   const connectionMessage = connection !== 'open' ? CONNECTION_MESSAGES[connection] : null;
 
   return (
@@ -83,7 +97,12 @@ export function ActivityDrawerSchedulerSection() {
 
       <JobRow jobKey="autoRefresh" job={jobs.autoRefresh} />
       <JobRow jobKey="quickCheck" job={jobs.quickCheck} />
-      <JobRow jobKey="mergedQueueDrain" job={jobs.mergedQueueDrain} />
+      <JobRow
+        jobKey="mergedQueueDrain"
+        job={jobs.mergedQueueDrain}
+        pendingOpenCount={pendingOpenCount}
+        pendingMergedClosedCount={pendingMergedClosedCount}
+      />
     </section>
   );
 }

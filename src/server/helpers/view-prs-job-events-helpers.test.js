@@ -167,6 +167,59 @@ describe("View Prs Job Events Helpers", () => {
     });
   });
 
+  describe("Given emitDataChanged", () => {
+    test("When called with no subscribers, Then it does no work and returns null", () => {
+      // Act
+      const envelope = helpers.emitDataChanged();
+
+      // Assert
+      expect(envelope).toBeNull();
+    });
+
+    test("When called with a subscriber present, Then it builds a data-changed envelope bundling the current scheduler state", () => {
+      // Arrange
+      helpers.subscribeToJobEvents(() => {});
+
+      // Act
+      const envelope = helpers.emitDataChanged();
+
+      // Assert
+      expect(envelope).toEqual({
+        type: "data-changed",
+        at: "2026-01-01T00:00:00.000Z",
+        seq: 1,
+        scheduler: { isAutoRunInProgress: false },
+      });
+    });
+
+    test("When a subscriber throws, Then emitDataChanged does not propagate the error", () => {
+      // Arrange
+      helpers.subscribeToJobEvents(() => {
+        throw new Error("listener boom");
+      });
+
+      // Act
+      const act = () => helpers.emitDataChanged();
+
+      // Assert
+      expect(act).not.toThrow();
+      expect(mockConsole.error).toHaveBeenCalled();
+    });
+
+    test("When called repeatedly, Then each envelope shares the same monotonic seq counter as other emit functions", () => {
+      // Arrange
+      helpers.subscribeToJobEvents(() => {});
+
+      // Act
+      const first = helpers.emitDataChanged();
+      const second = helpers.emitJobEvent({ job: "autoRefresh", phase: "start" });
+      const third = helpers.emitDataChanged();
+
+      // Assert
+      expect([first.seq, second.seq, third.seq]).toEqual([1, 2, 3]);
+    });
+  });
+
   describe("Given subscribeToJobEvents", () => {
     test("When a listener subscribes, Then it receives emitted envelopes", () => {
       // Arrange

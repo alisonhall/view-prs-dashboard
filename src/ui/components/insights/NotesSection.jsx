@@ -89,6 +89,10 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
   const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
   const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
+  // untracked - a slow/hung notes save had no visibility anywhere outside
+  // this component's own "Saving..." status text.
+  const beginRequestActivity = window.beginRequestActivity || (() => () => {});
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const repo = entry?.repo || '';
@@ -171,6 +175,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const handleSave = async () => {
     setSaving(true);
     setStatus('Saving...');
+    const finishActivity = beginRequestActivity('notesSave');
     try {
       const cleanedRallyStories = rallyStories.map((v) => v.trim()).filter(Boolean);
       const cleanedRallyLinks = rallyLinks.map((v) => v.trim()).filter(Boolean);
@@ -209,6 +214,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
       setStatus('Save failed.');
     } finally {
       setSaving(false);
+      finishActivity();
     }
   };
 

@@ -32,7 +32,16 @@ const registerViewPrsMutationRoutes = ({
   applyLabelToPr,
   fetchGithubPrLabels,
   patchStoredPrLabels,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): called once a
+  // route below has actually written to the stored PR data file, so every
+  // *other* connected tab can refresh immediately instead of waiting for
+  // its own 30s poll - the requesting tab already learns its own result
+  // synchronously via this route's own response. Safely no-ops if absent
+  // (e.g. in tests that don't wire it).
+  emitDataChanged,
 }) => {
+  const emitDataChangedSafe =
+    typeof emitDataChanged === "function" ? emitDataChanged : () => {};
   const { sendRouteResult } = createViewPrsRouteResponseHelpers();
   const {
     createTimingContext,
@@ -140,6 +149,7 @@ const registerViewPrsMutationRoutes = ({
         );
         const prData = readViewPrsData();
         enqueuePrDiffRefreshForData(prData);
+        emitDataChangedSafe();
         const successResult = buildRunSuccessResult({
           displayCommand,
           stdout,
@@ -365,6 +375,10 @@ const registerViewPrsMutationRoutes = ({
           }
         }
 
+        if (refreshedPrs.length > 0) {
+          emitDataChangedSafe();
+        }
+
         appendActionLogEntry(
           buildAckSuccessActionLogEntry({
             timingContext,
@@ -469,6 +483,7 @@ const registerViewPrsMutationRoutes = ({
 
       if (refreshedPrs.length > 0) {
         setLastManualRunNow();
+        emitDataChangedSafe();
       }
 
       appendActionLogEntry(
@@ -627,6 +642,10 @@ const registerViewPrsMutationRoutes = ({
             error: error?.message || "Failed to refresh label state",
           });
         }
+      }
+
+      if (refreshedPrs.length > 0) {
+        emitDataChangedSafe();
       }
 
       appendActionLogEntry(

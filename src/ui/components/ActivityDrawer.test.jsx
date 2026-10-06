@@ -22,6 +22,7 @@ const idleContextValue = {
     quickCheck: { ...baseJob(), waitingOn: null },
     mergedQueueDrain: baseJob(),
   },
+  recentFinished: [],
 };
 
 const renderDrawer = (props = {}, contextValue = idleContextValue) =>
