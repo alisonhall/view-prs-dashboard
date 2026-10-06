@@ -208,6 +208,8 @@ export default defineConfig([
       "src/ui/orchestrators/backfill-tab.orchestrator.js",
       "src/ui/helpers/pr-section-config.helpers.js",
       "src/ui/helpers/pr-smart-groups.helpers.js",
+      "src/ui/helpers/pr-job-events.helpers.js",
+      "src/ui/helpers/pr-bulk-action-batches.helpers.js",
     ],
     languageOptions: { sourceType: "module" },
   },

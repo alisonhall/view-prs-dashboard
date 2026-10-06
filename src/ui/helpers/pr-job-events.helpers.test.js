@@ -1,0 +1,181 @@
+const { createPrJobEventsHelpers } = require("./pr-job-events.helpers.js");
+
+describe("pr job events helpers", () => {
+  const FIXED_NOW = "2026-01-01T00:00:00.000Z";
+  const { getInitialJobEventsState, applyJobEventsSnapshot, applyJobEvent, setConnectionState } =
+    createPrJobEventsHelpers({ now: () => FIXED_NOW });
+
+  describe("getInitialJobEventsState", () => {
+    test("starts idle with no waitingOn and an empty recentFinished list", () => {
+      const state = getInitialJobEventsState();
+      expect(state.connection).toBe("connecting");
+      expect(state.jobs.autoRefresh.status).toBe("idle");
+      expect(state.jobs.quickCheck.waitingOn).toBeNull();
+      expect(state.recentFinished).toEqual([]);
+    });
+  });
+
+  describe("applyJobEventsSnapshot", () => {
+    test("seeds job statuses from the scheduler payload and marks the connection open", () => {
+      const state = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: {
+          isAutoRunInProgress: true,
+          isQuickCheckInProgress: false,
+          isMergedDrainInProgress: false,
+          quickCheckSkippedWhileAutoRunInProgress: true,
+        },
+      });
+
+      expect(state.connection).toBe("open");
+      expect(state.jobs.autoRefresh.status).toBe("running");
+      expect(state.jobs.quickCheck.waitingOn).toEqual({ job: "autoRefresh", since: FIXED_NOW });
+    });
+
+    test("is authoritative regardless of lastSeq, and resets lastSeq to 0", () => {
+      const midStream = { ...getInitialJobEventsState(), lastSeq: 42 };
+
+      const state = applyJobEventsSnapshot(midStream, {
+        at: FIXED_NOW,
+        scheduler: { isAutoRunInProgress: false },
+      });
+
+      expect(state.lastSeq).toBe(0);
+    });
+  });
+
+  describe("applyJobEvent - skipped vs deferred (the honesty contract)", () => {
+    test("a skipped event records lastSkip but does not change status", () => {
+      const state = applyJobEvent(getInitialJobEventsState(), {
+        job: "quickCheck",
+        phase: "skipped",
+        seq: 1,
+        at: FIXED_NOW,
+        detail: { reason: "already-in-progress", willRunAfter: false },
+      });
+
+      expect(state.jobs.quickCheck.status).toBe("idle");
+      expect(state.jobs.quickCheck.lastSkip).toEqual({ reason: "already-in-progress", at: FIXED_NOW });
+      expect(state.jobs.quickCheck.waitingOn).toBeNull();
+    });
+
+    test("a deferred event sets waitingOn without touching status", () => {
+      const state = applyJobEvent(getInitialJobEventsState(), {
+        job: "quickCheck",
+        phase: "deferred",
+        seq: 1,
+        at: FIXED_NOW,
+        detail: { waitingOn: "autoRefresh", willRunAfter: true },
+      });
+
+      expect(state.jobs.quickCheck.status).toBe("idle");
+      expect(state.jobs.quickCheck.waitingOn).toEqual({ job: "autoRefresh", since: FIXED_NOW });
+    });
+
+    test("any subsequent non-deferred quickCheck event clears waitingOn", () => {
+      const deferred = applyJobEvent(getInitialJobEventsState(), {
+        job: "quickCheck",
+        phase: "deferred",
+        seq: 1,
+        at: FIXED_NOW,
+        detail: { waitingOn: "autoRefresh" },
+      });
+
+      const started = applyJobEvent(deferred, {
+        job: "quickCheck",
+        phase: "start",
+        seq: 2,
+        at: FIXED_NOW,
+      });
+
+      expect(started.jobs.quickCheck.waitingOn).toBeNull();
+    });
+  });
+
+  describe("applyJobEvent - start/finish lifecycle", () => {
+    test("start marks the job running", () => {
+      const state = applyJobEvent(getInitialJobEventsState(), {
+        job: "autoRefresh",
+        phase: "start",
+        seq: 1,
+        at: FIXED_NOW,
+      });
+
+      expect(state.jobs.autoRefresh.status).toBe("running");
+      expect(state.jobs.autoRefresh.startedAt).toBe(FIXED_NOW);
+    });
+
+    test("finish marks the job idle, records ok/error, and is tolerated without a prior start", () => {
+      const state = applyJobEvent(getInitialJobEventsState(), {
+        job: "autoRefresh",
+        phase: "finish",
+        seq: 1,
+        at: FIXED_NOW,
+        ok: true,
+        detail: { error: null },
+      });
+
+      expect(state.jobs.autoRefresh.status).toBe("idle");
+      expect(state.jobs.autoRefresh.lastOk).toBe(true);
+    });
+
+    test("finish appends to recentFinished, capped at 10 entries", () => {
+      let state = getInitialJobEventsState();
+      for (let i = 1; i <= 12; i += 1) {
+        state = applyJobEvent(state, {
+          job: "autoRefresh",
+          phase: "finish",
+          seq: i,
+          at: FIXED_NOW,
+          ok: true,
+        });
+      }
+
+      expect(state.recentFinished).toHaveLength(10);
+    });
+  });
+
+  describe("applyJobEvent - dedupe and job-agnostic frames", () => {
+    test("ignores a job event whose seq is not greater than lastSeq", () => {
+      const first = applyJobEvent(getInitialJobEventsState(), {
+        job: "autoRefresh",
+        phase: "start",
+        seq: 5,
+        at: FIXED_NOW,
+      });
+
+      const stale = applyJobEvent(first, {
+        job: "autoRefresh",
+        phase: "finish",
+        seq: 3,
+        at: FIXED_NOW,
+        ok: true,
+      });
+
+      expect(stale.jobs.autoRefresh.status).toBe("running");
+      expect(stale).toBe(first);
+    });
+
+    test("a job-agnostic scheduler-type envelope (no job field) only bumps lastEventAt/lastSeq", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, { seq: 1, at: FIXED_NOW });
+
+      expect(state.lastSeq).toBe(1);
+      expect(state.jobs).toBe(initial.jobs);
+    });
+
+    test("returns the same state reference for a malformed envelope", () => {
+      const initial = getInitialJobEventsState();
+      expect(applyJobEvent(initial, null)).toBe(initial);
+      expect(applyJobEvent(initial, "not-an-object")).toBe(initial);
+    });
+  });
+
+  describe("setConnectionState", () => {
+    test("updates only the connection field", () => {
+      const state = setConnectionState(getInitialJobEventsState(), "offline");
+      expect(state.connection).toBe("offline");
+    });
+  });
+});

@@ -197,6 +197,30 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_ACK_REFRESH_TIMEOUT_MS || "300000", 10) || 300000,
   );
 
+  // Activity drawer feature (SSE, see REACT_MIGRATION_PLAN.md): how often a
+  // keep-alive comment is written to an idle /view-prs/events connection,
+  // and how many concurrent connections that route accepts before
+  // responding 503 to further ones.
+  const viewPrsEventsHeartbeatIntervalMs = Math.max(
+    1000,
+    Number.parseInt(env.VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS || "25000", 10) || 25000,
+  );
+
+  const viewPrsEventsMaxClients = Math.max(
+    1,
+    Number.parseInt(env.VIEW_PRS_EVENTS_MAX_CLIENTS || "25", 10) || 25,
+  );
+
+  // Caps how often the job-events emitter will push a job-agnostic
+  // "scheduler" SSE frame (activePrNumbers progress) - incrementActivePrNumber/
+  // decrementActivePrNumber fire roughly twice per PR touched by a refresh,
+  // which without this bound could emit (and have every connected client
+  // re-render from) many frames per second during a large multi-repo run.
+  const viewPrsSchedulerStateThrottleMs = Math.max(
+    0,
+    Number.parseInt(env.VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS || "250", 10) || 250,
+  );
+
   const viewPrsAckTotalRefreshTimeoutMs = Math.max(
     60 * 1000,
     Number.parseInt(env.VIEW_PRS_ACK_TOTAL_REFRESH_TIMEOUT_MS || "480000", 10) || 480000,
@@ -281,6 +305,9 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAckScriptTimeoutMs,
     viewPrsAckRefreshScriptTimeoutMs,
     viewPrsAckTotalRefreshTimeoutMs,
+    viewPrsEventsHeartbeatIntervalMs,
+    viewPrsEventsMaxClients,
+    viewPrsSchedulerStateThrottleMs,
     viewPrsBackfillStatusTimeoutMs,
     viewPrsBackfillActionTimeoutMs,
     viewPrsPrDiffTimeoutMs,

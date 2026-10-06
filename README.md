@@ -405,6 +405,19 @@ When localhost is running, the server starts an automatic background refresh for
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
 - A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
 
+An **Activity** button (top-right of the page) opens a collapsible drawer showing all of this background activity in one place:
+
+- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. A quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position - there's no real job queue on the backend, just that one deferred-retry case.
+- **Backfill** and **in-flight requests from this browser tab** - both still polled (every 5s and 1s respectively), shown in the drawer as-is.
+- **Bulk Ack/Clear or Apply-label queue** - the one place a real ordered queue exists: a batch larger than 5 PRs is split into chunks run a few at a time, and the drawer shows each chunk's real position and outcome (including a chunk that failed, distinct from one that succeeded).
+- If the live connection drops, the drawer shows its own status (reconnecting/offline), and `#scheduler-badges`/`#scheduler-details` outside the drawer are marked "Live updates offline - showing last known state" rather than silently going stale.
+
+Optional tuning via env vars:
+
+- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a keep-alive comment is written to an idle `/view-prs/events` connection.
+- `VIEW_PRS_EVENTS_MAX_CLIENTS` (default `25`): how many concurrent `/view-prs/events` connections are accepted before a further one gets a 503.
+- `VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS` (default `250`): caps how often a per-PR progress update (during a refresh) actually pushes an SSE frame - set to `0` to disable throttling entirely.
+
 Use the form to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
 UI filter behavior:

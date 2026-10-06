@@ -1637,6 +1637,88 @@ test("Snackbar (error/warning notifications) shows, has the right variant class,
   await expect(page.locator("#error-snackbar")).toBeHidden({ timeout: 2000 });
 });
 
+test("the activity drawer opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md) - a real gap this
+  // closes: every other test for this feature (JobEventsProvider.test.jsx,
+  // ActivityDrawer.test.jsx, etc.) runs under jsdom with a hand-rolled fake
+  // EventSource - none of them prove a real browser's actual EventSource
+  // can open GET /view-prs/events through the real server, let alone
+  // through Vite's dev proxy (vite.config.js forwards /view-prs to
+  // localhost:9000 - never previously exercised for a streaming response
+  // in this suite, only ordinary fetch/JSON routes).
+  //
+  // Placed deliberately BEFORE "Trigger auto run and Quick check..." below:
+  // every test in this suite shares one long-lived server process
+  // (playwright.config.js), and that test's own "Trigger auto run" click
+  // starts a real auto-refresh that - with no real GitHub network/auth in
+  // whatever environment runs this suite - can stay "in progress" for a
+  // long time afterward (the button itself only waits for the fire-and-
+  // forget POST to respond, not for the job to finish). Running this test
+  // first guarantees a clean, idle scheduler state to assert against.
+  const { consoleErrors, failedRequests } = collectPageErrors(page);
+
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("button", { name: /Activity/ }).click();
+  const activityPanel = page.locator(".activity-drawer-panel-content");
+  await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
+  await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
+  await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
+
+  // No "connecting/reconnecting/offline/unsupported" banner should still be
+  // showing a few seconds after open - the real EventSource must have
+  // actually reached `open`, not be stuck retrying or unsupported.
+  await expect(page.locator(".activity-drawer-connection-banner")).toHaveCount(0, { timeout: 10000 });
+
+  // Matched by each row's own label specifically (not the row's full text
+  // content) - the Quick check row's "Waiting on auto refresh..." copy
+  // would otherwise ambiguously match a loose "Auto refresh" text filter.
+  for (const jobLabel of ["Auto refresh", "Quick check", "Merged/closed drain"]) {
+    await expect(
+      page.locator(".activity-drawer-job-row").filter({ has: page.locator(".activity-drawer-job-label", { hasText: jobLabel }) }),
+    ).toBeVisible();
+  }
+
+  // Closing via Escape (not just the close button) - see ActivityDrawer.jsx.
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Scheduled background jobs")).toBeHidden();
+
+  expect(failedRequests.filter((entry) => entry.includes("/view-prs/events"))).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("clicking Quick check pushes a real 'running' state into the drawer over SSE, not a poll", async ({ page }) => {
+  // Also placed before "Trigger auto run and Quick check..." below, for
+  // the same shared-server reason as the test above - this one would
+  // otherwise see quickCheck immediately skipped (isAutoRunInProgress
+  // already true from that other test), never reaching "Running" at all.
+  //
+  // Deliberately does NOT wait for the quick check to actually finish -
+  // the underlying script shells out to `gh`, which can hang for a long
+  // time (or indefinitely) with no real GitHub network/auth available in
+  // whatever environment runs this suite. runViewPrsQuickCheck's own
+  // "start" SSE emit fires synchronously, right after its in-memory guards
+  // pass and before any of that network work begins (see app.js) - waiting
+  // only for "Running" to appear proves the same real push end-to-end
+  // without depending on how long (or whether) the job itself completes.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("button", { name: /Activity/ }).click();
+  const quickCheckRow = page
+    .locator(".activity-drawer-job-row")
+    .filter({ has: page.locator(".activity-drawer-job-label", { hasText: "Quick check" }) });
+  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Idle");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#quick-check-btn").click();
+
+  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Running", {
+    timeout: 10000,
+  });
+});
+
 test("Trigger auto run and Quick check buttons click, show a transient state, and settle back to enabled", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): both buttons are now React-owned

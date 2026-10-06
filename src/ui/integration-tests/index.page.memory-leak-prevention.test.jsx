@@ -43,14 +43,20 @@ describe('Memory leak prevention', () => {
   });
 
   describe('interval registration', () => {
-    test('given the component mounts, when each interval elapses, then all 4 interval types actually fire', () => {
+    test('given the component mounts, when each interval elapses, then all 3 remaining interval types actually fire', () => {
       render(<PrDataPolling />);
 
       jest.advanceTimersByTime(30000);
       expect(window.pollForDataChanges).toHaveBeenCalled();
-      expect(window.pollSchedulerStatus).toHaveBeenCalled();
       expect(window.pollBackfillStatus).toHaveBeenCalled();
       expect(window.renderRequestActivity).toHaveBeenCalled();
+    });
+
+    test('given the component mounts, then window.pollSchedulerStatus is never called - that interval was retired in favor of SSE (see JobEventsProvider)', () => {
+      render(<PrDataPolling />);
+
+      jest.advanceTimersByTime(60000);
+      expect(window.pollSchedulerStatus).not.toHaveBeenCalled();
     });
   });
 
@@ -60,7 +66,6 @@ describe('Memory leak prevention', () => {
       jest.advanceTimersByTime(30000);
       const callCountsBeforeUnmount = {
         data: window.pollForDataChanges.mock.calls.length,
-        scheduler: window.pollSchedulerStatus.mock.calls.length,
         backfill: window.pollBackfillStatus.mock.calls.length,
         activity: window.renderRequestActivity.mock.calls.length,
       };
@@ -69,7 +74,6 @@ describe('Memory leak prevention', () => {
       jest.advanceTimersByTime(60000);
 
       expect(window.pollForDataChanges.mock.calls.length).toBe(callCountsBeforeUnmount.data);
-      expect(window.pollSchedulerStatus.mock.calls.length).toBe(callCountsBeforeUnmount.scheduler);
       expect(window.pollBackfillStatus.mock.calls.length).toBe(callCountsBeforeUnmount.backfill);
       expect(window.renderRequestActivity.mock.calls.length).toBe(callCountsBeforeUnmount.activity);
     });
@@ -99,7 +103,6 @@ describe('Memory leak prevention', () => {
 
       jest.advanceTimersByTime(30000);
       expect(window.pollForDataChanges).toHaveBeenCalled();
-      expect(window.pollSchedulerStatus).toHaveBeenCalled();
       expect(window.pollBackfillStatus).toHaveBeenCalled();
       expect(window.renderRequestActivity).toHaveBeenCalled();
     });

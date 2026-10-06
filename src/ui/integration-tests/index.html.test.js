@@ -12,7 +12,7 @@ const React = require("react");
 // `screen`/`waitFor`/`within` below read from) with an eventWrapper that
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
-const { render: rtlRender, cleanup } = require("@testing-library/react");
+const { render: rtlRender, cleanup, act } = require("@testing-library/react");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -1915,6 +1915,39 @@ describe("index page rendering with Testing Library", () => {
 
     await waitFor(() => {
       expect(isMultiSelectEmpty("author-list")).toBe(true);
+    });
+  });
+
+  test("window.renderSchedulerStatus with isLive: false marks #scheduler-details as showing stale data (activity drawer resilience fix)", async () => {
+    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): once SSE fully
+    // replaced the old scheduler poll, #scheduler-badges/details had no
+    // fallback left if the SSE connection ever failed - JobEventsProvider.jsx
+    // calls this exact bridge with isLive: false in that case, using the
+    // last scheduler object it actually received. #scheduler-details stays
+    // vanilla-rendered regardless (no react-app.jsx in this suite - see the
+    // neighboring test's own comment for why #scheduler-badges itself isn't
+    // assertable here), so the warning line is directly checkable.
+    expect(typeof window.renderSchedulerStatus).toBe("function");
+
+    act(() => {
+      window.renderSchedulerStatus(
+        { lastAutoRunAt: "2026-01-01T00:00:00.000Z" },
+        { isLive: false },
+      );
+    });
+
+    await waitFor(() => {
+      const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
+      expect(schedulerDetailsText).toContain("Live updates offline - showing last known state");
+    });
+
+    act(() => {
+      window.renderSchedulerStatus({ lastAutoRunAt: "2026-01-01T00:00:00.000Z" });
+    });
+
+    await waitFor(() => {
+      const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
+      expect(schedulerDetailsText).not.toContain("Live updates offline");
     });
   });
 

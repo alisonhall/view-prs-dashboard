@@ -10,6 +10,12 @@ const {
   createViewPrsSchedulerHelpers,
 } = require("./helpers/view-prs-scheduler-helpers");
 const {
+  createViewPrsJobEventsHelpers,
+} = require("./helpers/view-prs-job-events-helpers");
+const {
+  registerViewPrsEventsRoutes,
+} = require("./routes/view-prs-events-routes");
+const {
   createViewPrsPrDiffCache,
 } = require("./helpers/view-prs-pr-diff-cache");
 const {
@@ -111,6 +117,9 @@ const {
   viewPrsViewerLoginCacheTtlMs,
   viewPrsInsightsHookTimeoutMs,
   viewPrsBackupRetention,
+  viewPrsEventsHeartbeatIntervalMs,
+  viewPrsEventsMaxClients,
+  viewPrsSchedulerStateThrottleMs,
 } = config;
 
 // Note: getViewPrsAutoRepoConcurrency is now a constant, not a function
@@ -147,6 +156,7 @@ const viewPrsSchedulerState = {
   // check's ~5 minute interval would suggest.
   quickCheckSkippedWhileAutoRunInProgress: false,
   lastMergedDrainAt: null,
+  isMergedDrainInProgress: false,
   pendingByRepo: {},
 };
 
@@ -207,6 +217,11 @@ const syncSchedulerActivePrNumbers = () => {
       }
       return Number(left.prNumber) - Number(right.prNumber);
     });
+  // Pushes the same per-PR progress signal the 30s scheduler poll used to
+  // surface, just live - see the "Polling retirement" section of the
+  // activity-drawer plan for why this isn't tied to a specific job's
+  // start/finish lifecycle (manual single-PR refreshes drive it too).
+  callEmitSchedulerStateChanged();
 };
 
 const incrementActivePrNumber = (prNumber, repo) => {
@@ -917,6 +932,27 @@ const {
   viewPrsLegacySchedulerFile,
 });
 
+const {
+  JOB_NAMES,
+  JOB_PHASES,
+  emitJobEvent,
+  emitSchedulerStateChanged,
+  subscribeToJobEvents,
+  getJobEventsSubscriberCount,
+} = createViewPrsJobEventsHelpers({
+  console,
+  getViewPrsSchedulerPublicState,
+  schedulerStateThrottleMs: viewPrsSchedulerStateThrottleMs,
+});
+
+// Same override-checking pattern as callRunViewPrsScript etc. - lets tests
+// spy on/replace emitJobEvent via module.exports before createViewPrsApp()
+// without needing a live SSE connection.
+const callEmitJobEvent = (...args) =>
+  (module.exports.emitJobEvent || emitJobEvent)(...args);
+const callEmitSchedulerStateChanged = (...args) =>
+  (module.exports.emitSchedulerStateChanged || emitSchedulerStateChanged)(...args);
+
 // Use command execution helpers
 const formatScriptFailureMessage = (failure, fallbackMessage) =>
   _formatScriptFailureMessage(failure, fallbackMessage);
@@ -1502,6 +1538,11 @@ const runViewPrsAutoRefresh = async ({
   reposOverride = null,
 } = {}) => {
   if (viewPrsSchedulerState.isAutoRunInProgress) {
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "already-in-progress" },
+    });
     return;
   }
 
@@ -1513,6 +1554,14 @@ const runViewPrsAutoRefresh = async ({
       viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
       viewPrsSchedulerState.lastAutoSkipReason = `auto refresh circuit open until ${circuitState.openUntilIso}`;
       viewPrsSchedulerState.lastAutoError = null;
+      callEmitJobEvent({
+        job: JOB_NAMES.AUTO_REFRESH,
+        phase: JOB_PHASES.SKIPPED,
+        detail: {
+          reason: "circuit-open",
+          message: viewPrsSchedulerState.lastAutoSkipReason,
+        },
+      });
       return;
     }
   }
@@ -1524,6 +1573,14 @@ const runViewPrsAutoRefresh = async ({
       ", ",
     )}`;
     viewPrsSchedulerState.lastAutoError = null;
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.SKIPPED,
+      detail: {
+        reason: "missing-dependencies",
+        missing: dependencyStatus.missing,
+      },
+    });
     return;
   }
 
@@ -1537,6 +1594,11 @@ const runViewPrsAutoRefresh = async ({
       viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
       viewPrsSchedulerState.lastAutoSkipReason = skipReason;
       viewPrsSchedulerState.lastAutoError = null;
+      callEmitJobEvent({
+        job: JOB_NAMES.AUTO_REFRESH,
+        phase: JOB_PHASES.SKIPPED,
+        detail: { reason: "manual-cooldown", message: skipReason },
+      });
       return;
     }
   }
@@ -1547,6 +1609,10 @@ const runViewPrsAutoRefresh = async ({
 
   const autoStartedAt = viewPrsSchedulerState.lastAutoAttemptAt;
   const autoTriggerMs = Date.now();
+  let emittedAutoRefreshStart = false;
+  let finishSuccessCount = 0;
+  let finishFailureCount = 0;
+  let finishRepos = [];
 
   try {
     const reposToRefresh =
@@ -1556,6 +1622,13 @@ const runViewPrsAutoRefresh = async ({
     console.log(
       `[view-prs] auto refresh repos (${reposToRefresh.length}): ${reposToRefresh.join(", ") || "(none)"}`,
     );
+    finishRepos = reposToRefresh;
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.START,
+      detail: { repos: reposToRefresh, repoCount: reposToRefresh.length },
+    });
+    emittedAutoRefreshStart = true;
     const refreshResults = new Array(reposToRefresh.length);
     const repoConcurrency = Math.min(
       reposToRefresh.length,
@@ -1679,6 +1752,8 @@ const runViewPrsAutoRefresh = async ({
     const successCount = refreshResults.filter(
       (result) => result && result.ok === true,
     ).length;
+    finishSuccessCount = successCount;
+    finishFailureCount = failures.length;
     const repoMetrics = refreshResults
       .filter((result) => result && result.metrics)
       .map((result) => result.metrics);
@@ -1760,6 +1835,20 @@ const runViewPrsAutoRefresh = async ({
     );
   } finally {
     viewPrsSchedulerState.isAutoRunInProgress = false;
+    if (emittedAutoRefreshStart) {
+      callEmitJobEvent({
+        job: JOB_NAMES.AUTO_REFRESH,
+        phase: JOB_PHASES.FINISH,
+        ok: finishFailureCount === 0 && finishSuccessCount > 0,
+        detail: {
+          successCount: finishSuccessCount,
+          failureCount: finishFailureCount,
+          repos: finishRepos,
+          durationMs: Date.now() - autoTriggerMs,
+          error: viewPrsSchedulerState.lastAutoError || null,
+        },
+      });
+    }
     if (viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress) {
       // See the flag's own comment (near viewPrsSchedulerState's
       // definition) - a quick check was starved by this exact refresh being
@@ -1806,6 +1895,21 @@ const runViewPrsQuickCheck = async ({
     viewPrsSchedulerState.lastQuickCheckSkipReason = "already-in-progress";
     if (viewPrsSchedulerState.isAutoRunInProgress) {
       viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+      callEmitJobEvent({
+        job: JOB_NAMES.QUICK_CHECK,
+        phase: JOB_PHASES.DEFERRED,
+        detail: {
+          waitingOn: "autoRefresh",
+          reason: "auto-refresh-in-progress",
+          willRunAfter: true,
+        },
+      });
+    } else {
+      callEmitJobEvent({
+        job: JOB_NAMES.QUICK_CHECK,
+        phase: JOB_PHASES.SKIPPED,
+        detail: { reason: "already-in-progress", willRunAfter: false },
+      });
     }
     return { skipped: true, skipReason: "already-in-progress" };
   }
@@ -1814,18 +1918,49 @@ const runViewPrsQuickCheck = async ({
   if (!dependencyStatus.ok) {
     viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckSkipReason = `missing dependencies: ${dependencyStatus.missing.join(", ")}`;
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.SKIPPED,
+      detail: {
+        reason: "missing-dependencies",
+        missing: dependencyStatus.missing,
+        willRunAfter: false,
+      },
+    });
     return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
   }
 
   if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
     viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckSkipReason = "circuit-open";
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "circuit-open", willRunAfter: false },
+    });
     return { skipped: true, skipReason: "circuit-open" };
   }
 
   viewPrsSchedulerState.isQuickCheckInProgress = true;
   viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
+
+  const quickCheckStartedMs = Date.now();
+  const quickCheckScope = prNumbers
+    ? "entered-numbers"
+    : Array.isArray(repoRequests) && repoRequests.length > 0
+      ? "loaded-prs"
+      : "all-repos";
+  callEmitJobEvent({
+    job: JOB_NAMES.QUICK_CHECK,
+    phase: JOB_PHASES.START,
+    detail: { scope: quickCheckScope },
+  });
+  let finishReposCheckedCount = 0;
+  let finishReposFailedCount = 0;
+  let finishNewPendingOpenCount = 0;
+  let finishNewPendingMergedClosedCount = 0;
+  let finishPendingOpenRepos = [];
 
   try {
     const reposWithPendingOpen = new Set();
@@ -1921,6 +2056,12 @@ const runViewPrsQuickCheck = async ({
       }
     }
 
+    finishReposCheckedCount = reposChecked.length;
+    finishReposFailedCount = reposFailed.length;
+    finishNewPendingOpenCount = newPendingOpenCount;
+    finishNewPendingMergedClosedCount = newPendingMergedClosedCount;
+    finishPendingOpenRepos = Array.from(reposWithPendingOpen);
+
     return {
       skipped: false,
       reposChecked,
@@ -1938,6 +2079,20 @@ const runViewPrsQuickCheck = async ({
     return { skipped: false, fatalError: viewPrsSchedulerState.lastQuickCheckError };
   } finally {
     viewPrsSchedulerState.isQuickCheckInProgress = false;
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.FINISH,
+      ok: !viewPrsSchedulerState.lastQuickCheckError,
+      detail: {
+        reposCheckedCount: finishReposCheckedCount,
+        reposFailedCount: finishReposFailedCount,
+        newPendingOpenCount: finishNewPendingOpenCount,
+        newPendingMergedClosedCount: finishNewPendingMergedClosedCount,
+        pendingOpenRepos: finishPendingOpenRepos,
+        durationMs: Date.now() - quickCheckStartedMs,
+        error: viewPrsSchedulerState.lastQuickCheckError || null,
+      },
+    });
   }
 };
 
@@ -1960,10 +2115,35 @@ const runViewPrsMergedQueueDrain = async () => {
   persistViewPrsSchedulerState();
 
   if (reposToDrain.length === 0) {
+    callEmitJobEvent({
+      job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "nothing-pending" },
+    });
     return;
   }
 
-  await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+  viewPrsSchedulerState.isMergedDrainInProgress = true;
+  const drainStartedMs = Date.now();
+  callEmitJobEvent({
+    job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+    phase: JOB_PHASES.START,
+    detail: { repos: reposToDrain, repoCount: reposToDrain.length },
+  });
+  try {
+    await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+  } finally {
+    viewPrsSchedulerState.isMergedDrainInProgress = false;
+    callEmitJobEvent({
+      job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+      phase: JOB_PHASES.FINISH,
+      detail: {
+        repos: reposToDrain,
+        repoCount: reposToDrain.length,
+        durationMs: Date.now() - drainStartedMs,
+      },
+    });
+  }
 };
 
 // Same override-checking pattern as callRunViewPrsAutoRefresh/callRunViewPrsQuickCheck
@@ -2214,6 +2394,16 @@ const createViewPrsApp = () => {
     readActionLog,
   });
 
+  registerViewPrsEventsRoutes({
+    app,
+    subscribeToJobEvents,
+    getJobEventsSubscriberCount,
+    getViewPrsSchedulerPublicState,
+    console,
+    heartbeatIntervalMs: viewPrsEventsHeartbeatIntervalMs,
+    maxClients: viewPrsEventsMaxClients,
+  });
+
   return app;
 };
 
@@ -2261,6 +2451,10 @@ module.exports = {
   runViewPrsAutoRefresh,
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
+  emitJobEvent,
+  emitSchedulerStateChanged,
+  subscribeToJobEvents,
+  getJobEventsSubscriberCount,
   // Core config/constants
   viewPrsDir,
   viewPrsUiIndexFile,

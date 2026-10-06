@@ -53,6 +53,7 @@ const { PrTableApp } = require('./PrTableApp');
 const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
+const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
@@ -70,6 +71,13 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // this from FilterStateProvider/ActorIdentityContext, but tests here want
 // direct per-test control instead, the same way renderCell's
 // actorIdentityOverrides works in PrApprovedCell.test.jsx.
+//
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): busyPrNumbers/
+// queuedPrNumbers and their window.markPrsBusy/clearPrsBusy/markPrsQueued/
+// clearPrsQueued bridges moved from PrTableApp's own local state into
+// PrActivityQueueProvider.jsx - this wraps every render the same way
+// react-app.jsx's real AppRoot now does, so those bridges and the resulting
+// activePrNumbers prop still behave exactly as before this lift.
 const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, needsAttention, ...tableProps } = {}) =>
   render(
     <PrDataProvider
@@ -78,7 +86,9 @@ const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, need
       initialVisiblePrNumbers={visiblePrNumbers}
     >
       <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
-        <PrTableApp {...tableProps} />
+        <PrActivityQueueProvider>
+          <PrTableApp {...tableProps} />
+        </PrActivityQueueProvider>
       </NeedsAttentionContext.Provider>
     </PrDataProvider>,
   );

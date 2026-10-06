@@ -2007,16 +2007,34 @@ const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
 // populate, and nothing else in this file calls it, so it's not
 // re-instantiated here at all.
 
-const renderSchedulerStatus = (schedulerRaw = {}) => {
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): isLive defaults to
+// true for every existing caller (the kept-for-test-compat pollSchedulerStatus
+// poll, and any other direct call) - only JobEventsProvider.jsx's own
+// "connection just went down" effect ever passes isLive: false, using the
+// last scheduler object it actually received. Without this, #scheduler-badges
+// had no fallback poll left once SSE fully replaced it (see "Polling
+// retirement") and would go silently stale with zero visible indication if
+// the SSE connection ever failed - the drawer's own connection banner isn't
+// enough, since a user may never open it.
+const renderSchedulerStatus = (schedulerRaw = {}, { isLive = true } = {}) => {
   const scheduler = schedulerRaw || {};
   latestSchedulerState = scheduler;
+
+  const baseBadges = getSchedulerBadges(scheduler);
+  const badges = isLive
+    ? baseBadges
+    : [
+        { text: "Live updates offline - showing last known state", className: "scheduler-badge-warning" },
+        ...baseBadges,
+      ];
 
   // Renders the badge list into #scheduler-badges via React (see
   // mountSchedulerBadges in react-app.jsx) - same shape renderBackfillStatus
   // already uses for #backfill-badges.
-  window.updateReactSchedulerBadges?.(getSchedulerBadges(scheduler));
+  window.updateReactSchedulerBadges?.(badges);
 
   const lines = [
+    ...(isLive ? [] : ["Live updates offline - showing last known state"]),
     `Last manual run: ${formatIsoDatetime(scheduler.lastManualRunAt || "-")}`,
     `Last auto attempt: ${formatIsoDatetime(scheduler.lastAutoAttemptAt || "-")}`,
     `Last auto success: ${formatIsoDatetime(scheduler.lastAutoRunAt || "-")}`,
@@ -3405,6 +3423,13 @@ if (typeof window !== "undefined") {
   window.pollSchedulerStatus = (...args) => pollSchedulerStatus(...args);
   window.pollBackfillStatus = (...args) => pollBackfillStatus(...args);
   window.renderRequestActivity = (...args) => renderRequestActivity(...args);
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
+  // retirement" section): JobEventsProvider.jsx calls this directly with
+  // the scheduler object bundled into every SSE frame, replacing the old
+  // schedulerInterval poll (removed from PrDataPolling.jsx) as the trigger
+  // for this same rendering - the function itself (badges, details text,
+  // the pr-active-progress-update dispatch) is unchanged.
+  window.renderSchedulerStatus = (...args) => renderSchedulerStatus(...args);
   window.AUTO_DATA_POLL_MS = AUTO_DATA_POLL_MS;
   window.AUTO_BACKFILL_POLL_MS = AUTO_BACKFILL_POLL_MS;
 }
@@ -3602,6 +3627,14 @@ const {
   clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
   markPrsQueued: (...args) => window.markPrsQueued?.(...args),
   clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): bridges into
+  // PrActivityQueueProvider.jsx's bulk-batch manifest, the one place the
+  // drawer shows a real ordered queue. Same no-op-until-mounted fallback
+  // as the busy/queued bridges above.
+  beginBulkActionBatch: (...args) => window.beginBulkActionBatch?.(...args),
+  markBulkActionChunkInFlight: (...args) => window.markBulkActionChunkInFlight?.(...args),
+  markBulkActionChunkDone: (...args) => window.markBulkActionChunkDone?.(...args),
+  finishBulkActionBatch: (...args) => window.finishBulkActionBatch?.(...args),
   runWithConcurrencyLimit: (...args) => runWithConcurrencyLimit(...args),
   // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): lets
   // the loadStoredData-fallback branches return the freshly-loaded payload

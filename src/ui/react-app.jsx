@@ -41,6 +41,9 @@ import { ReviewConversationsUiStateProvider } from './components/ReviewConversat
 import { ReviewStatsProvider } from './components/ReviewStatsProvider';
 import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
 import { FilterOptionsProvider } from './components/FilterOptionsProvider';
+import { JobEventsProvider } from './components/JobEventsProvider';
+import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
+import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -386,6 +389,7 @@ function computeStaticContainers() {
     applyLabelSelect: document.getElementById('apply-label-select-root'),
     autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
+    activityDrawer: document.getElementById('activity-drawer-root'),
   };
 }
 
@@ -679,26 +683,52 @@ function AppRoot() {
       initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
     >
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
-        {containers.filterFields.portals}
+        {/* PrActivityQueueProvider wraps both the drawer's bulk-queue
+            section and PrTableApp below - they're sibling portals (not an
+            ancestor/descendant pair) that need to share the same
+            busyPrNumbers/queuedPrNumbers state, which is exactly why this
+            state was lifted out of PrTableApp itself (see
+            PrActivityQueueProvider.jsx's own comment). JobEventsProvider
+            stays scoped to just the drawer portal for now - the only
+            current consumer of useJobEvents(). Widen that one if/when
+            another consumer is added (e.g. repointing #scheduler-badges at
+            this same live state - see the activity-drawer plan's "Polling
+            retirement" follow-up). */}
+        <PrActivityQueueProvider>
+          <JobEventsProvider>
+            {containers.activityDrawer &&
+              createPortal(
+                <ActivityDrawer
+                  backfillBadges={backfillBadges.badges}
+                  backfillDetailsText={backfillDetailsText}
+                  requestActivityBadges={requestActivityBadges.badges}
+                />,
+                containers.activityDrawer,
+                'activity-drawer',
+              )}
+          </JobEventsProvider>
 
-        {prTable &&
-          createPortal(
-            <NeedsAttentionProvider>
-              <NotesDirtyProvider>
-                <PrInsightsDisplayProvider>
-                  <ReviewConversationsUiStateProvider>
-                    <PrTableApp
-                      onCheckboxChange={prTable.onCheckboxChange}
-                      onAckAction={prTable.onAckAction}
-                      onApplyLabel={prTable.onApplyLabel}
-                    />
-                  </ReviewConversationsUiStateProvider>
-                </PrInsightsDisplayProvider>
-              </NotesDirtyProvider>
-            </NeedsAttentionProvider>,
-            prTable.container,
-            'pr-table',
-          )}
+          {prTable &&
+            createPortal(
+              <NeedsAttentionProvider>
+                <NotesDirtyProvider>
+                  <PrInsightsDisplayProvider>
+                    <ReviewConversationsUiStateProvider>
+                      <PrTableApp
+                        onCheckboxChange={prTable.onCheckboxChange}
+                        onAckAction={prTable.onAckAction}
+                        onApplyLabel={prTable.onApplyLabel}
+                      />
+                    </ReviewConversationsUiStateProvider>
+                  </PrInsightsDisplayProvider>
+                </NotesDirtyProvider>
+              </NeedsAttentionProvider>,
+              prTable.container,
+              'pr-table',
+            )}
+        </PrActivityQueueProvider>
+
+        {containers.filterFields.portals}
 
         <FilterOptionsProvider>
           <MultiSelectListPortals containers={containers} />

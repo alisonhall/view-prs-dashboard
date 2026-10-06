@@ -19,6 +19,11 @@ function buildHarness(overrides = {}) {
     clearPrsBusy: [],
     markPrsQueued: [],
     clearPrsQueued: [],
+    order: [],
+    beginBulkActionBatch: [],
+    markBulkActionChunkInFlight: [],
+    markBulkActionChunkDone: [],
+    finishBulkActionBatch: [],
   };
   const finishActivity = jest.fn();
   // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): a
@@ -51,6 +56,22 @@ function buildHarness(overrides = {}) {
     clearPrsBusy: (...args) => calls.clearPrsBusy.push(args),
     markPrsQueued: (...args) => calls.markPrsQueued.push(args),
     clearPrsQueued: (...args) => calls.clearPrsQueued.push(args),
+    beginBulkActionBatch: (...args) => {
+      calls.beginBulkActionBatch.push(args);
+      calls.order.push("begin");
+    },
+    markBulkActionChunkInFlight: (...args) => {
+      calls.markBulkActionChunkInFlight.push(args);
+      calls.order.push(`in-flight:${args[0]?.chunkIndex}`);
+    },
+    markBulkActionChunkDone: (...args) => {
+      calls.markBulkActionChunkDone.push(args);
+      calls.order.push(`done:${args[0]?.chunkIndex}`);
+    },
+    finishBulkActionBatch: (...args) => {
+      calls.finishBulkActionBatch.push(args);
+      calls.order.push("finish");
+    },
     runWithConcurrencyLimit: overrides.runWithConcurrencyLimit || runWithConcurrencyLimit,
     getLatestStoredPayload: () => state.latestStoredPayload,
   });
@@ -198,6 +219,49 @@ describe("pr ack label actions helpers", () => {
       expect(calls.showErrorNotification).toHaveLength(0);
     });
 
+    test("given a 7-PR batch (2 chunks), when running, then the bulk-batch bridges fire begin -> per-chunk in-flight/done -> finish, in that order", async () => {
+      const postJson = jest.fn(async () => ({ response: { ok: true }, result: { ok: true } }));
+      const { helpers, calls, state } = buildHarness({ postJson });
+      state.latestStoredPayload = { byPrNumber: {} };
+
+      await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
+
+      expect(calls.beginBulkActionBatch).toHaveLength(1);
+      expect(calls.beginBulkActionBatch[0][0]).toMatchObject({
+        actionLabel: "Ack only",
+        repo: "o/r",
+        chunks: [["1", "2", "3", "4", "5"], ["6", "7"]],
+      });
+      expect(typeof calls.beginBulkActionBatch[0][0].batchId).toBe("string");
+
+      expect(calls.markBulkActionChunkInFlight).toHaveLength(2);
+      expect(calls.markBulkActionChunkDone).toHaveLength(2);
+      expect(calls.finishBulkActionBatch).toHaveLength(1);
+
+      // "begin" happens before any chunk transition, "finish" happens after
+      // every chunk has reached "done", and each chunk's own in-flight
+      // precedes its own done - exactly the real order the drawer renders.
+      expect(calls.order[0]).toBe("begin");
+      expect(calls.order[calls.order.length - 1]).toBe("finish");
+      expect(calls.order.indexOf("in-flight:0")).toBeLessThan(calls.order.indexOf("done:0"));
+      expect(calls.order.indexOf("in-flight:1")).toBeLessThan(calls.order.indexOf("done:1"));
+
+      // Same batchId used for every bridge call in this batch.
+      const batchId = calls.beginBulkActionBatch[0][0].batchId;
+      expect(calls.markBulkActionChunkInFlight.every((args) => args[0].batchId === batchId)).toBe(true);
+      expect(calls.finishBulkActionBatch[0][0].batchId).toBe(batchId);
+    });
+
+    test("given a single-chunk batch (5 or fewer PR numbers), when running, then the bulk-batch bridges are never called", async () => {
+      const postJson = jest.fn(async () => ({ response: { ok: true }, result: { ok: true } }));
+      const { helpers, calls } = buildHarness({ postJson });
+
+      await helpers.runAckAction({ repo: "o/r", ack: "1,2,3" }, "Ack only");
+
+      expect(calls.beginBulkActionBatch).toHaveLength(0);
+      expect(calls.finishBulkActionBatch).toHaveLength(0);
+    });
+
     test("given 7 PR numbers where all chunks succeed, when running, then the final status message and output reflect all 7 PRs, not just the last chunk to resolve", async () => {
       const postJson = jest.fn(async (_url, body) => ({
         response: { ok: true },
@@ -236,6 +300,16 @@ describe("pr ack label actions helpers", () => {
       expect(calls.setStatusMessage.at(-1)[0]).toBe("Ack only completed with failures (5 of 7 PR(s) succeeded)");
       // Partial success still refreshes once at the end.
       expect(calls.loadStoredData).toEqual([["o/r"]]);
+
+      // The drawer's queue section must be able to tell the failed chunk
+      // apart from the successful one - markBulkActionChunkDone's `ok`
+      // reflects each chunk's own real outcome, not just "it finished".
+      expect(calls.markBulkActionChunkDone).toHaveLength(2);
+      const doneCallsByChunkIndex = Object.fromEntries(
+        calls.markBulkActionChunkDone.map((args) => [args[0].chunkIndex, args[0].ok]),
+      );
+      expect(doneCallsByChunkIndex[0]).toBe(true); // "1,2,3,4,5" succeeded
+      expect(doneCallsByChunkIndex[1]).toBe(false); // "6,7" failed
     });
 
     test("given 7 PR numbers where every chunk fails, when running, then a single error notification is shown and no refresh happens", async () => {

@@ -24,13 +24,20 @@ describe('PrDataPolling', () => {
     delete window.AUTO_BACKFILL_POLL_MS;
   });
 
-  test('given the component mounts, when the data/scheduler poll interval elapses, then both bridges fire', () => {
+  test('given the component mounts, when the data poll interval elapses, then the bridge fires', () => {
     render(<PrDataPolling />);
 
     jest.advanceTimersByTime(30000);
 
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
-    expect(window.pollSchedulerStatus).toHaveBeenCalledTimes(1);
+  });
+
+  test('given the component mounts, then it never fires window.pollSchedulerStatus itself - that poll was retired in favor of SSE (see JobEventsProvider)', () => {
+    render(<PrDataPolling />);
+
+    jest.advanceTimersByTime(60000);
+
+    expect(window.pollSchedulerStatus).not.toHaveBeenCalled();
   });
 
   test('given the component mounts, when the backfill poll interval elapses, then the backfill bridge fires on its own faster cadence', () => {

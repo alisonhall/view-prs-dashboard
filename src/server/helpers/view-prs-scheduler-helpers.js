@@ -149,6 +149,10 @@ const createViewPrsSchedulerHelpers = ({
     autoCircuitCooldownMinutes: Math.round(viewPrsAutoCircuitCooldownMs / 60000),
     startedAt: viewPrsSchedulerState.startedAt,
     isAutoRunInProgress: viewPrsSchedulerState.isAutoRunInProgress,
+    isQuickCheckInProgress: viewPrsSchedulerState.isQuickCheckInProgress,
+    quickCheckSkippedWhileAutoRunInProgress:
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress,
+    isMergedDrainInProgress: viewPrsSchedulerState.isMergedDrainInProgress,
     lastManualRunAt: viewPrsSchedulerState.lastManualRunAt,
     lastAutoAttemptAt: viewPrsSchedulerState.lastAutoAttemptAt,
     lastAutoRunAt: viewPrsSchedulerState.lastAutoRunAt,
