@@ -40,6 +40,12 @@ const registerViewPrsDataRoutes = ({
   viewPrsActorLoginAliasesFile,
   viewPrsBackfillLogFile,
   viewPrsBackfillPidFile,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md's dispatcher
+  // plan): lets a person manually reprioritize one (repo, taskType)
+  // dispatcher entry to run sooner instead of waiting for its normal
+  // due time. Safely no-ops if absent (e.g. in tests that don't wire it).
+  bumpDispatcherEntry,
+  dispatcherTaskTypes,
 }) => {
   const {
     normalizeActorNameCacheEntries,
@@ -78,8 +84,12 @@ const registerViewPrsDataRoutes = ({
     sendEntries,
     sendInternalError,
     sendErrorStatus,
-  } =
-    createViewPrsRouteResponseHelpers();
+  } = createViewPrsRouteResponseHelpers();
+  const bumpDispatcherEntrySafe =
+    typeof bumpDispatcherEntry === "function" ? bumpDispatcherEntry : () => null;
+  const dispatcherTaskTypesSafe = Array.isArray(dispatcherTaskTypes)
+    ? dispatcherTaskTypes
+    : [];
   const { validateJsonObjectBody, validateNonEmptyMappings, validateDataDeltaRequest } =
     createViewPrsDataRouteValidationHelpers({ isObject, sendErrorStatus });
   const { readDataWithDiffRefreshEnqueued } = createViewPrsDataReadHelpers({
@@ -270,6 +280,57 @@ const registerViewPrsDataRoutes = ({
       sendSuccessPayload({ res, payload: buildSchedulerPayload() });
       },
       fallbackMessage: getDataRouteErrorMessage("scheduler"),
+    }),
+  );
+
+  // Manual "run sooner" reprioritization from the Activity drawer's
+  // dispatcher queue - makes one (repo, taskType) entry immediately due
+  // and kicks an immediate dispatcher tick, without waiting on it. Returns
+  // the fresh scheduler payload (including the updated dispatcherQueue) so
+  // the requesting tab sees the reordered queue right away, same as every
+  // other mutation route's own-tab synchronous feedback.
+  app.post(
+    ["/dispatcher/bump", "/view-prs/dispatcher/bump"],
+    createSyncHandler({
+      handler: (req, res) => {
+      const body = isObject(req.body) ? req.body : {};
+      const { repo, taskType } = body;
+
+      if (typeof repo !== "string" || repo.trim().length === 0) {
+        sendErrorStatus({ res, statusCode: 400, error: "repo is required" });
+        return;
+      }
+      if (!dispatcherTaskTypesSafe.includes(taskType)) {
+        sendErrorStatus({
+          res,
+          statusCode: 400,
+          error: `taskType must be one of: ${dispatcherTaskTypesSafe.join(", ")}`,
+        });
+        return;
+      }
+
+      const bumpResult = bumpDispatcherEntrySafe(repo, taskType, {
+        reason: "manual-reprioritize",
+      });
+      if (!bumpResult?.entry) {
+        sendErrorStatus({
+          res,
+          statusCode: 404,
+          error: `No dispatcher entry for ${repo} / ${taskType}`,
+        });
+        return;
+      }
+
+      // applied: false means the entry was already due/running before this
+      // call, so the bump had no real effect - told apart from a genuine
+      // reprioritization rather than reporting ok:true either way (see
+      // bumpDispatcherEntry's own comment in app.js).
+      sendSuccessPayload({
+        res,
+        payload: { ...buildSchedulerPayload(), applied: bumpResult.applied },
+      });
+      },
+      fallbackMessage: getDataRouteErrorMessage("dispatcherBump"),
     }),
   );
 };

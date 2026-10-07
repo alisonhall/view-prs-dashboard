@@ -682,6 +682,9 @@ function AppRoot() {
                   backfillDetailsText={backfillDetailsText}
                   requestActivityBadges={requestActivityBadges.badges}
                   recentRequestActivity={recentRequestActivity}
+                  onBumpDispatcherEntry={(repo, taskType) =>
+                    window.handleDispatcherBump?.(repo, taskType)
+                  }
                 />,
                 containers.activityDrawer,
                 'activity-drawer',

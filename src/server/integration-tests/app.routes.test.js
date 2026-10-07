@@ -548,6 +548,90 @@ describe("route behavior", () => {
     });
   });
 
+  test("manually bumps a dispatcher entry and returns the updated scheduler payload when POST /dispatcher/bump is requested", async () => {
+    const { response, payload } = await postJson(server, "/dispatcher/bump", {
+      repo: "test-org/test-repo",
+      taskType: "mergedDrain",
+    });
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.scheduler).toHaveProperty("dispatcherQueue");
+    const bumpedEntry = payload.scheduler.dispatcherQueue.find(
+      (entry) => entry.repo === "test-org/test-repo" && entry.taskType === "mergedDrain",
+    );
+    expect(bumpedEntry).toBeDefined();
+    expect(["running", "due"]).toContain(bumpedEntry.status);
+    // This entry had never been seen before this call, so getOrInitRegistry
+    // created it fresh with nextDueAt = now - already "due" before the bump
+    // even ran, so the bump itself had no real effect.
+    expect(payload.applied).toBe(false);
+  });
+
+  test("reports applied:true when POST /dispatcher/bump pulls forward a genuinely not-yet-due entry", async () => {
+    const key = "test-org/test-repo::autoRefresh";
+    // Seed a real "scheduled" (not-yet-due) entry directly, same pattern as
+    // app.scheduler.test.js's own direct dispatcher.entries manipulation -
+    // the opposite case from the test above, where the entry is already due
+    // the moment it's created.
+    appModule.viewPrsSchedulerState.dispatcher = appModule.viewPrsSchedulerState.dispatcher || {
+      entries: {},
+      reservedGhSlots: 0,
+    };
+    appModule.viewPrsSchedulerState.dispatcher.entries[key] = {
+      repo: "test-org/test-repo",
+      taskType: "autoRefresh",
+      priority: 3,
+      intervalMs: 900000,
+      nextDueAt: new Date(Date.now() + 900000).toISOString(),
+      lastStartedAt: null,
+      lastFinishedAt: null,
+      lastOk: null,
+      lastError: null,
+      isRunning: false,
+      runCount: 0,
+      consecutiveFailureCount: 0,
+    };
+
+    const { response, payload } = await postJson(server, "/dispatcher/bump", {
+      repo: "test-org/test-repo",
+      taskType: "autoRefresh",
+    });
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.applied).toBe(true);
+  });
+
+  test("returns 400 when POST /dispatcher/bump omits repo", async () => {
+    const { response, payload } = await postJson(server, "/dispatcher/bump", {
+      taskType: "mergedDrain",
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+  });
+
+  test("returns 400 when POST /dispatcher/bump has an invalid taskType", async () => {
+    const { response, payload } = await postJson(server, "/dispatcher/bump", {
+      repo: "test-org/test-repo",
+      taskType: "notARealTaskType",
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+  });
+
+  test("returns 404 when POST /dispatcher/bump targets an unknown repo", async () => {
+    const { response, payload } = await postJson(server, "/dispatcher/bump", {
+      repo: "nobody/nowhere",
+      taskType: "mergedDrain",
+    });
+
+    expect(response.status).toBe(404);
+    expect(payload.ok).toBe(false);
+  });
+
   test("serves stylesheet content when GET /index.css is requested", async () => {
     const address = server.address();
     if (!address || typeof address !== "object") {

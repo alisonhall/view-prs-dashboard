@@ -3467,6 +3467,15 @@
             color: #cf222e;
         }
 
+        .activity-drawer-dispatcher-legend {
+            font-size: 11px;
+            color: #57606a;
+            margin: 0 0 6px;
+            cursor: help;
+            border-bottom: 1px dotted #57606a;
+            display: inline-block;
+        }
+
         .activity-drawer-dispatcher-queue {
             margin: 0;
             padding-left: 18px;
@@ -3489,10 +3498,36 @@
 
         .activity-drawer-dispatcher-entry-priority {
             color: #57606a;
+            cursor: help;
+            border-bottom: 1px dotted #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry-status {
+            cursor: help;
+            border-bottom: 1px dotted transparent;
         }
 
         .activity-drawer-dispatcher-entry-due {
             color: #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry-bump {
+            font-size: 11px;
+            padding: 1px 6px;
+            border: 1px solid #57606a;
+            border-radius: 4px;
+            background: #fff;
+            color: #24292f;
+            cursor: pointer;
+        }
+
+        .activity-drawer-dispatcher-entry-bump:hover:not(:disabled) {
+            background: #f6f8fa;
+        }
+
+        .activity-drawer-dispatcher-entry-bump:disabled {
+            opacity: 0.6;
+            cursor: default;
         }
 
         .activity-drawer-dispatcher-entry.is-running .activity-drawer-dispatcher-entry-status {

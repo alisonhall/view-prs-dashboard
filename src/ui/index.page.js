@@ -2137,6 +2137,31 @@ const handleQuickCheckAll = () =>
         : "No changes found",
   });
 
+// Manual "run sooner" reprioritization from the Activity drawer's
+// dispatcher queue (see REACT_MIGRATION_PLAN.md's dispatcher plan) - POSTs
+// to /view-prs/dispatcher/bump, which makes that one (repo, taskType)
+// dispatcher entry immediately due and kicks an immediate tick server-side.
+// The drawer's own queue re-renders from the next SSE frame (JobEventsContext),
+// so this doesn't need to apply any result to the UI itself - just report
+// failure if the request didn't succeed. ActivityDrawerDispatcherSection.jsx
+// calls this as its onBump prop.
+const handleDispatcherBump = async (repo, taskType) => {
+  try {
+    const { response, result } = await postJson("/view-prs/dispatcher/bump", {
+      repo,
+      taskType,
+    });
+    if (!response.ok || result.ok === false) {
+      notifyFailureSnackbar("Reprioritize failed", result, "Unable to reprioritize this task");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    notifyFailureSnackbar("Reprioritize failed", error, "Unable to reach the server");
+    return false;
+  }
+};
+
 // TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
 // their onTrigger/onCheck props - same exposure shape as
 // window.handleRequestMoreMerged above.
@@ -2144,6 +2169,7 @@ if (typeof window !== "undefined") {
   window.handleTriggerAutoRun = (...args) => handleTriggerAutoRun(...args);
   window.handleQuickCheck = (...args) => handleQuickCheck(...args);
   window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
+  window.handleDispatcherBump = (...args) => handleDispatcherBump(...args);
 }
 
 // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5

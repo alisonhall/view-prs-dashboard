@@ -11,6 +11,7 @@ const {
 } = require("./helpers/view-prs-scheduler-helpers");
 const {
   createViewPrsDispatcherHelpers,
+  TASK_TYPES: DISPATCHER_TASK_TYPES,
 } = require("./helpers/view-prs-dispatcher-helpers");
 const {
   createViewPrsJobEventsHelpers,
@@ -2388,6 +2389,33 @@ const runDispatcherTick = async () => {
 const callRunDispatcherTick = (...args) =>
   (module.exports.runDispatcherTick || runDispatcherTick)(...args);
 
+// Manual "run this sooner" reprioritization from the Activity drawer (see
+// REACT_MIGRATION_PLAN.md's dispatcher plan) - the exact same
+// bump-then-tick mechanism the two automatic fast-follow call sites above
+// already use, just triggered by a person instead of a quick-check result.
+// getOrInitRegistry() first for the same reason the fast-follow call sites
+// need it: the target entry might not exist yet if no tick has run since
+// this repo was added. Fire-and-forget on the tick, same as every other
+// bump call site - the caller doesn't wait on the actual task to finish.
+//
+// Returns { entry, applied } rather than just the entry: `applied` is false
+// when the entry was already "due" or "running" *before* this call, so the
+// bump had no real effect (nextDueAt was already <= now, or it's mid-flight)
+// - without this, the route would report ok:true for a no-op bump with no
+// way for the caller to tell the difference from a real reprioritization.
+const bumpDispatcherEntry = (repo, taskType, opts) => {
+  callDispatcherHelpers().getOrInitRegistry();
+  const previousStatus = callDispatcherHelpers()
+    .getDispatcherQueueSnapshot({ limit: Infinity })
+    .find((item) => item.repo === repo && item.taskType === taskType)?.status;
+  const entry = callDispatcherHelpers().bumpEntryUrgent(repo, taskType, opts);
+  if (!entry) {
+    return null;
+  }
+  void callRunDispatcherTick();
+  return { entry, applied: previousStatus !== "due" && previousStatus !== "running" };
+};
+
 // Vite dev middleware (React/JSX transform)
 //
 // index.html loads react-app.jsx as an ES module. Express can't transpile
@@ -2630,6 +2658,8 @@ const createViewPrsApp = () => {
     viewPrsActorLoginAliasesFile,
     viewPrsBackfillLogFile,
     viewPrsBackfillPidFile,
+    bumpDispatcherEntry,
+    dispatcherTaskTypes: DISPATCHER_TASK_TYPES,
   });
 
   registerViewPrsBackfillRoutes({

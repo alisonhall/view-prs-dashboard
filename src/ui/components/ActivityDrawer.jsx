@@ -26,6 +26,7 @@ export function ActivityDrawer({
   backfillDetailsText = '',
   requestActivityBadges = [],
   recentRequestActivity = [],
+  onBumpDispatcherEntry,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { jobs } = useJobEvents();
@@ -91,7 +92,7 @@ export function ActivityDrawer({
           <div className="activity-drawer-panel-content">
             <ActivityDrawerSchedulerSection />
 
-            <ActivityDrawerDispatcherSection />
+            <ActivityDrawerDispatcherSection onBump={onBumpDispatcherEntry} />
 
             <ActivityDrawerQueueSection />
 
