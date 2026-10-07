@@ -10,6 +10,9 @@ const {
   createViewPrsSchedulerHelpers,
 } = require("./helpers/view-prs-scheduler-helpers");
 const {
+  createViewPrsDispatcherHelpers,
+} = require("./helpers/view-prs-dispatcher-helpers");
+const {
   createViewPrsJobEventsHelpers,
 } = require("./helpers/view-prs-job-events-helpers");
 const {
@@ -114,6 +117,8 @@ const {
   viewPrsBackfillActionTimeoutMs,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
+  viewPrsDispatcherGhProcessBudget,
+  viewPrsDispatcherTickIntervalMs,
   viewPrsViewerLoginCacheTtlMs,
   viewPrsInsightsHookTimeoutMs,
   viewPrsBackupRetention,
@@ -885,6 +890,16 @@ const readViewPrsDataRef = (...args) => readViewPrsData(...args);
 const callReadViewPrsData = (...args) =>
   (module.exports.readViewPrsData || readViewPrsDataRef)(...args);
 
+// Breaks a circular construction order: createViewPrsDispatcherHelpers (below)
+// needs getViewPrsAutoRefreshRepos FROM createViewPrsSchedulerHelpers, but
+// createViewPrsSchedulerHelpers's own getViewPrsSchedulerPublicState needs
+// the dispatcher's getPublicStateFields - a plain mutable box, assigned
+// once dispatcherHelpers actually exists a few lines down, read lazily (by
+// closure, not by value) so the order of construction doesn't matter by
+// the time either function is actually CALLED (always well after both
+// factories have run, since this is all synchronous module-load-time code).
+let dispatcherHelpersRef = null;
+
 const {
   getManualCooldownSkipReason,
   readViewPrsSchedulerState,
@@ -908,6 +923,7 @@ const {
   toTrimmedString,
   isRepoSlug,
   parseRepoCsv,
+  getDispatcherDerivedFields: () => dispatcherHelpersRef?.getPublicStateFields() || {},
   // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
   // below (the only consumer) reads via this as a lazy default parameter
   // (`data = readViewPrsData()`) - using the plain ref bypassed the
@@ -931,6 +947,65 @@ const {
   viewPrsSchedulerFile,
   viewPrsLegacySchedulerFile,
 });
+
+// Per-repo-aware priority dispatcher (see REACT_MIGRATION_PLAN.md's
+// dispatcher plan) - replaces the three flat setIntervals + flat
+// in-progress booleans below with one registry of (repo, taskType) entries
+// and one concurrency-budget-aware tick loop. Constructed after
+// createViewPrsSchedulerHelpers specifically because it needs
+// getViewPrsAutoRefreshRepos from it.
+const dispatcherGhCostByTaskType = { quickCheck: 1, autoRefresh: 4, mergedDrain: 4 };
+
+// Guards against a real footgun: VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET has
+// no upper-bound relationship enforced against dispatcherGhCostByTaskType
+// at the config layer (app-config.js just floors it at 1) - set it below
+// the highest per-task cost (4, for autoRefresh/mergedDrain) and
+// pickNextBatch would NEVER select those task types again: `cost <=
+// remaining` is permanently false for every entry of that type, silently,
+// forever, with nothing anywhere surfacing why background refresh/drain
+// just stopped. Clamping up to the minimum viable budget (with a loud
+// warning when clamping actually happens) makes that starvation
+// impossible by construction instead of just documenting the risk.
+const minViableDispatcherGhProcessBudget = Math.max(
+  ...Object.values(dispatcherGhCostByTaskType),
+);
+const effectiveDispatcherGhProcessBudget = Math.max(
+  viewPrsDispatcherGhProcessBudget,
+  minViableDispatcherGhProcessBudget,
+);
+if (effectiveDispatcherGhProcessBudget !== viewPrsDispatcherGhProcessBudget) {
+  console.warn(
+    `[view-prs] VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET=${viewPrsDispatcherGhProcessBudget} is below ` +
+      `the highest per-task-type cost (${minViableDispatcherGhProcessBudget}) - that task type would ` +
+      `never be scheduled. Using ${effectiveDispatcherGhProcessBudget} instead.`,
+  );
+}
+
+const dispatcherHelpers = createViewPrsDispatcherHelpers({
+  console,
+  parseTimestamp,
+  viewPrsSchedulerState,
+  getViewPrsAutoRefreshRepos,
+  // Read fresh (not cached) on every call so a PUT to /view-prs/user-defaults
+  // takes effect on the next dispatch tick without a restart.
+  getSchedulerRepoConfig: () => readUserDefaults()?.schedulerRepoConfig || {},
+  defaultIntervalsByTaskType: {
+    quickCheck: viewPrsQuickCheckIntervalMs,
+    autoRefresh: viewPrsAutoIntervalMs,
+    mergedDrain: viewPrsMergedFullSweepIntervalMs,
+  },
+  ghCostByTaskType: dispatcherGhCostByTaskType,
+});
+// Same override-checking pattern as every other call site in this file -
+// lets tests spy on/replace dispatcherHelpers via module.exports before
+// createViewPrsApp() runs.
+const callDispatcherHelpers = () => module.exports.dispatcherHelpers || dispatcherHelpers;
+// Fulfills the forward reference createViewPrsSchedulerHelpers was given
+// above (getDispatcherDerivedFields) - see dispatcherHelpersRef's own
+// comment there. Uses the override-aware callDispatcherHelpers, not the
+// bare dispatcherHelpers, so a test monkeypatching module.exports.dispatcherHelpers
+// is reflected in getViewPrsSchedulerPublicState() too.
+dispatcherHelpersRef = { getPublicStateFields: () => callDispatcherHelpers().getPublicStateFields() };
 
 const {
   JOB_NAMES,
@@ -1885,7 +1960,6 @@ const callRunViewPrsAutoRefresh = (...args) =>
 // didn't actually run" (every repo failing used to look identical to a
 // clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
 const runViewPrsQuickCheck = async ({
-  awaitTargetedRefresh = false,
   repo: targetRepo,
   prNumbers,
   repoRequests,
@@ -1967,6 +2041,7 @@ const runViewPrsQuickCheck = async ({
 
   try {
     const reposWithPendingOpen = new Set();
+    const reposWithNewPendingMergedClosed = new Set();
     const reposChecked = [];
     const reposFailed = [];
     let newPendingOpenCount = 0;
@@ -2010,6 +2085,9 @@ const runViewPrsQuickCheck = async ({
         if (pendingOpen.length > 0) {
           reposWithPendingOpen.add(repo);
         }
+        if (pendingMergedClosed.length > 0) {
+          reposWithNewPendingMergedClosed.add(repo);
+        }
       } catch (repoError) {
         const message = repoError?.message || String(repoError);
         reposFailed.push({ repo, error: message });
@@ -2041,22 +2119,41 @@ const runViewPrsQuickCheck = async ({
     viewPrsSchedulerState.lastQuickCheckError = null;
     persistViewPrsSchedulerState();
 
-    if (reposWithPendingOpen.size > 0) {
-      // Fast-follow: don't wait for the next full-sweep timer once an open
-      // PR is known to have actually changed. `awaitTargetedRefresh` lets
-      // the startup sequence (initializeScheduler) wait for this priority
-      // refresh to actually finish before it moves on to the full,
-      // every-repo update - the periodic setInterval caller never passes
-      // it, since blocking the quick-check timer on a potentially slow
-      // refresh would defeat the point of checking quickly.
-      const targetedRefresh = callRunViewPrsAutoRefresh({
-        reposOverride: Array.from(reposWithPendingOpen),
+    // Fast-follow via the dispatcher: don't wait for either task type's own
+    // next due-time once a change is actually known. Bumping the entry
+    // (making it immediately due) and then ticking the dispatcher right
+    // away - rather than calling runViewPrsAutoRefresh/runViewPrsMergedQueueDrain
+    // directly - keeps the registry as the single source of truth for
+    // "is this entry currently running / when did it last run", so the next
+    // regular tick doesn't redundantly re-run something this fast-follow
+    // just covered.
+    //
+    // The mergedDrain bump is the fix for a real priority-inversion bug:
+    // open-PR changes have always fast-followed immediately, but
+    // closed/merged changes previously only sat flagged until
+    // mergedQueueDrain's own fixed (and, at the default config, actually
+    // *longer* than autoRefresh's) interval - see REACT_MIGRATION_PLAN.md.
+    //
+    // getOrInitRegistry() first: a manual single-repo/single-PR quick check
+    // (from a user-triggered route) can reach here for a repo the
+    // dispatcher has never seen yet, with no periodic tick having run to
+    // register it - without this, bumpEntryUrgent would silently no-op
+    // against a nonexistent entry.
+    if (reposWithPendingOpen.size > 0 || reposWithNewPendingMergedClosed.size > 0) {
+      callDispatcherHelpers().getOrInitRegistry();
+    }
+    reposWithPendingOpen.forEach((repo) => {
+      callDispatcherHelpers().bumpEntryUrgent(repo, "autoRefresh", {
+        reason: "quick-check-pending-open",
       });
-      if (awaitTargetedRefresh) {
-        await targetedRefresh;
-      } else {
-        void targetedRefresh;
-      }
+    });
+    reposWithNewPendingMergedClosed.forEach((repo) => {
+      callDispatcherHelpers().bumpEntryUrgent(repo, "mergedDrain", {
+        reason: "quick-check-pending-merged-closed",
+      });
+    });
+    if (reposWithPendingOpen.size > 0 || reposWithNewPendingMergedClosed.size > 0) {
+      void callRunDispatcherTick();
     }
 
     finishReposCheckedCount = reposChecked.length;
@@ -2109,9 +2206,22 @@ const callRunViewPrsQuickCheck = (...args) =>
 // Batches up closed/merged PRs flagged by the quick-check into a full fetch.
 // Runs on a much longer interval than the quick-check itself, and does
 // nothing at all when nothing has actually changed (see viewPrsMergedFullSweepIntervalMs).
-const runViewPrsMergedQueueDrain = async () => {
-  const reposToDrain = getReposWithPendingMergedClosed().filter(
-    (repo) => !getReposWithPendingOpen().includes(repo),
+const runViewPrsMergedQueueDrain = async ({ reposOverride } = {}) => {
+  // reposOverride (new): the dispatcher calls this scoped to one repo at a
+  // time (see runTaskForEntry) - no manual route calls this function at
+  // all, so narrowing to a single repo here has no effect on anything
+  // other than the periodic path. A direct call with no args (every
+  // existing test, and the pre-dispatcher periodic timer) keeps today's
+  // exact behavior: every repo with pending merged/closed changes, minus
+  // any also pending-open (that repo's open-PR fast-follow autoRefresh
+  // already covers it).
+  const candidateRepos = Array.isArray(reposOverride)
+    ? reposOverride
+    : getReposWithPendingMergedClosed();
+  const reposToDrain = candidateRepos.filter(
+    (repo) =>
+      getReposWithPendingMergedClosed().includes(repo) &&
+      !getReposWithPendingOpen().includes(repo),
   );
 
   viewPrsSchedulerState.lastMergedDrainAt = new Date().toISOString();
@@ -2155,6 +2265,128 @@ const runViewPrsMergedQueueDrain = async () => {
 // (below) can be verified without waiting on a real timer/drain.
 const callRunViewPrsMergedQueueDrain = (...args) =>
   (module.exports.runViewPrsMergedQueueDrain || runViewPrsMergedQueueDrain)(...args);
+
+// Runs every due entry of ONE task type together, in a single call -
+// never one call per repo. This matters beyond efficiency: runViewPrsQuickCheck/
+// runViewPrsAutoRefresh are single-flight by design (their own
+// isQuickCheckInProgress/isAutoRunInProgress guards assume at most one call
+// of that function runs at a time, process-wide) - calling either of them
+// twice concurrently (once per repo) would make the second call's guard
+// trip and silently skip, exactly the kind of "known work silently
+// dropped" bug this whole feature exists to close. Each function already
+// accepts multiple repos in one call (reposOverride/repoRequests), which is
+// the existing, safe way to cover several due repos of the same task type
+// at once - see view-prs-dispatcher-helpers.js for the per-repo
+// priority/budget selection this group is built from.
+const runTaskGroup = async (taskType, entries) => {
+  const repos = entries.map((entry) => entry.repo);
+  if (taskType === "quickCheck") {
+    const result = await callRunViewPrsQuickCheck({
+      repoRequests: repos.map((repo) => ({ repo })),
+    });
+    return { ok: !result?.fatalError, error: result?.fatalError || null };
+  }
+  if (taskType === "autoRefresh") {
+    await callRunViewPrsAutoRefresh({ reposOverride: repos });
+    return { ok: true, error: null };
+  }
+  // mergedDrain
+  await callRunViewPrsMergedQueueDrain({ reposOverride: repos });
+  return { ok: true, error: null };
+};
+
+// The dispatcher's single periodic driver, replacing the three independent
+// setIntervals below it (see REACT_MIGRATION_PLAN.md's dispatcher plan).
+// Picks every entry that's both due and affordable within the shared
+// gh-process budget (manual routes' own reserveGhSlots calls - see
+// view-prs-mutation-routes.js - count against the same budget, so the
+// background dispatcher throttles around manual work without ever making
+// a manual action wait), groups them by task type (see runTaskGroup for
+// why), runs each group's one call concurrently with the other groups', and
+// records the outcome back onto every entry in the group.
+// Re-entrancy guard: runDispatcherTick can be invoked from 3 places - the
+// periodic setInterval, initializeScheduler's own startup call, and the
+// urgency-bump call sites in runViewPrsQuickCheck - and a tick can legitimately
+// take a while (real `gh` calls in production). Without this guard, an
+// urgency bump firing WHILE a tick is already mid-flight would start a
+// SECOND, overlapping tick whose own pickNextBatch doesn't yet see the
+// outer tick's in-progress entries as isRunning (they're marked one
+// task-type group at a time, sequentially, not all upfront) - confirmed to
+// cause the same entry being selected and run twice within what's
+// conceptually one selection round. A bump that arrives while a tick is
+// already running just waits for the NEXT tick (periodic, ≤5s by default,
+// or the current tick's own completion re-triggering nothing - the bumped
+// entry's nextDueAt is already set, so the very next tick picks it up
+// regardless) rather than forcing a correctness-risking overlap.
+let isDispatcherTickInFlight = false;
+
+const runDispatcherTick = async () => {
+  if (isDispatcherTickInFlight) {
+    return;
+  }
+  isDispatcherTickInFlight = true;
+  try {
+    const dispatcher = callDispatcherHelpers();
+    dispatcher.getOrInitRegistry();
+    const nowMs = Date.now();
+    const availableGhSlots = Math.max(
+      0,
+      effectiveDispatcherGhProcessBudget - dispatcher.getReservedGhSlots(),
+    );
+    const { selected } = dispatcher.pickNextBatch({ nowMs, availableGhSlots });
+    if (selected.length === 0) {
+      return;
+    }
+
+    const groupsByTaskType = new Map();
+    selected.forEach((entry) => {
+      if (!groupsByTaskType.has(entry.taskType)) {
+        groupsByTaskType.set(entry.taskType, []);
+      }
+      groupsByTaskType.get(entry.taskType).push(entry);
+    });
+
+    // Sequential across task-type groups, not Promise.all - deliberately.
+    // runViewPrsQuickCheck's own guard checks isAutoRunInProgress: running
+    // quickCheck's group concurrently with autoRefresh's would make
+    // quickCheck's own guard trip on every tick where both happen to be
+    // due together - the common case right after startup/migration, not a
+    // rare edge case - triggering its existing catch-up retry (void
+    // callRunViewPrsQuickCheck() in runViewPrsAutoRefresh's finally block)
+    // repeatedly. Sequencing trades a little wall-clock time within one
+    // tick for never hitting that guard at all; this is a background
+    // scheduler, not a latency-critical path.
+    for (const [taskType, entries] of groupsByTaskType) {
+      const startedAtMs = Date.now();
+      entries.forEach((entry) => dispatcher.markEntryRunning(entry, { nowMs: startedAtMs }));
+      try {
+        const { ok, error } = await runTaskGroup(taskType, entries);
+        const finishedAtMs = Date.now();
+        entries.forEach((entry) =>
+          dispatcher.markEntryFinished(entry, { nowMs: finishedAtMs, ok, error }),
+        );
+      } catch (error) {
+        const finishedAtMs = Date.now();
+        entries.forEach((entry) =>
+          dispatcher.markEntryFinished(entry, {
+            nowMs: finishedAtMs,
+            ok: false,
+            error: error?.message || String(error),
+          }),
+        );
+      }
+    }
+  } finally {
+    isDispatcherTickInFlight = false;
+  }
+};
+
+// Same override-checking pattern as every other call site in this file -
+// lets the two urgency-bump call sites above (in runViewPrsQuickCheck) and
+// initializeScheduler's own setInterval be verified without waiting on a
+// real timer.
+const callRunDispatcherTick = (...args) =>
+  (module.exports.runDispatcherTick || runDispatcherTick)(...args);
 
 // Vite dev middleware (React/JSX transform)
 //
@@ -2339,6 +2571,22 @@ const createViewPrsApp = () => {
     fetchGithubPrLabels,
     patchStoredPrLabels,
     emitDataChanged: callEmitDataChanged,
+    // Non-blocking budget reservation (see view-prs-dispatcher-helpers.js) -
+    // manual routes never wait on the dispatcher's own gh-process budget,
+    // they just occupy a slot of it for their own duration so the
+    // background dispatcher's next tick sees fewer availableGhSlots while a
+    // manual action is in flight.
+    reserveGhSlots: (...args) => callDispatcherHelpers().reserveGhSlots(...args),
+    releaseGhSlots: (...args) => callDispatcherHelpers().releaseGhSlots(...args),
+    // /run-auto is the one manual route that triggers runViewPrsAutoRefresh
+    // with no repo scope, fanning out across up to viewPrsPrDiffConcurrency
+    // repos *in parallel* (the same multi-repo worker pool the dispatcher's
+    // own autoRefresh entries use) - every other manual route is a single
+    // script/gh invocation, correctly represented by the default
+    // reservation of 1. Reusing the dispatcher's own autoRefresh cost
+    // estimate keeps this consistent with how the dispatcher accounts for
+    // that same kind of work, rather than a second, disconnected guess.
+    runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
   });
 
   registerViewPrsPrRoutes({
@@ -2411,41 +2659,68 @@ const createViewPrsApp = () => {
   return app;
 };
 
+// Migrates today's flat { lastManualRunAt, lastAutoRunAt, lastQuickCheckAt,
+// lastMergedDrainAt, pendingByRepo } persisted shape into the dispatcher's
+// per-(repo, taskType) registry the first time it's loaded after upgrading -
+// readViewPrsSchedulerState itself only does a plain data copy when the
+// persisted file already has the new shape (dispatcherVersion: 2); it
+// deliberately does NOT call into dispatcherHelpers (that would create a
+// circular dependency between the two helper factories, since
+// dispatcherHelpers itself depends on getViewPrsAutoRefreshRepos from
+// createViewPrsSchedulerHelpers) - so this one-time migration glue lives
+// here instead, in the orchestration layer that already constructs both.
+const migrateDispatcherStateIfNeeded = () => {
+  if (viewPrsSchedulerState.dispatcher) {
+    return;
+  }
+  const legacyShape = {
+    lastManualRunAt: viewPrsSchedulerState.lastManualRunAt,
+    lastAutoRunAt: viewPrsSchedulerState.lastAutoRunAt,
+    lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt,
+    lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt,
+    pendingByRepo: viewPrsSchedulerState.pendingByRepo,
+  };
+  const { entries, pendingByRepo } = callDispatcherHelpers().migrateLegacyPersistedState(
+    legacyShape,
+    { repos: getViewPrsAutoRefreshRepos(), nowMs: Date.now() },
+  );
+  viewPrsSchedulerState.dispatcher = { entries, reservedGhSlots: 0 };
+  viewPrsSchedulerState.pendingByRepo = pendingByRepo;
+  persistViewPrsSchedulerState();
+};
+
 // Scheduler management functions for external use
 const initializeScheduler = () => {
   readViewPrsSchedulerState();
-  // On startup, check what's actually changed before spending time on a
-  // full every-repo update: run the quick check first, let its own
-  // fast-follow targeted refresh for repos with pending open changes
-  // actually finish (awaitTargetedRefresh - see runViewPrsQuickCheck's own
-  // comment), and only then fall back to a full update - excluding
-  // whichever repos the targeted refresh JUST covered, so a repo with
-  // pending changes doesn't get a full check-open-pr-updates.sh pass
-  // (real GitHub API calls) twice within moments of each other for no
-  // benefit. Not awaited here - initializeScheduler's own callers
-  // (server.js) don't wait on startup work finishing, and the periodic
-  // intervals below are scheduled immediately regardless.
-  void (async () => {
-    const quickCheckResult = await callRunViewPrsQuickCheck({ awaitTargetedRefresh: true });
-    const alreadyRefreshedRepos = new Set(quickCheckResult?.reposWithPendingOpen || []);
-    const remainingRepos = getViewPrsAutoRefreshRepos().filter(
-      (repo) => !alreadyRefreshedRepos.has(repo),
-    );
-    if (remainingRepos.length > 0) {
-      await callRunViewPrsAutoRefresh({ reposOverride: remainingRepos });
-    }
-    // else: every repo the scheduler would otherwise have refreshed was
-    // already just covered by the targeted pass above - nothing left to do.
-  })();
-  // Wrapped in arrow functions (rather than passing the bare function
-  // references) so each tick re-checks module.exports.X fresh, same as
-  // every other overridable call site in this file - a bare reference here
-  // would permanently bind to whichever function was in scope when
-  // initializeScheduler ran, making it un-mockable by tests that
-  // monkeypatch module.exports.X afterward.
-  setInterval(() => callRunViewPrsQuickCheck(), viewPrsQuickCheckIntervalMs);
-  setInterval(() => callRunViewPrsMergedQueueDrain(), viewPrsMergedFullSweepIntervalMs);
-  return setInterval(() => callRunViewPrsAutoRefresh(), viewPrsAutoIntervalMs);
+  migrateDispatcherStateIfNeeded();
+  // getOrInitRegistry's own job (beyond the one-time migration above):
+  // register any repo newly discovered since the persisted file was last
+  // written, and refresh every entry's priority/interval from the current
+  // schedulerRepoConfig - safe/cheap to call once here even before the
+  // dispatcher is wired into the live tick (next step).
+  callDispatcherHelpers().getOrInitRegistry();
+  // No bespoke "check everything once" startup burst needed anymore: every
+  // registry entry defaults to immediately-due on a fresh install, and any
+  // entry restored from a migrated/existing persisted file keeps whatever
+  // real nextDueAt its own run history already implies - so the very first
+  // dispatch tick below naturally reproduces "check everything once at
+  // startup" through the same generic mechanism every later tick uses,
+  // without the old dedicated code path's risk of double-checking a repo
+  // (that code existed specifically to avoid running autoRefresh twice for
+  // the same repo across its two startup passes - moot now, since
+  // autoRefresh-for-a-repo is one registry entry that pickNextBatch can
+  // only select once per tick).
+  //
+  // Not awaited here - initializeScheduler's own callers (server.js) don't
+  // wait on startup work finishing.
+  void callRunDispatcherTick();
+  // Wrapped in an arrow function (rather than passing the bare function
+  // reference) so each tick re-checks module.exports.runDispatcherTick
+  // fresh, same as every other overridable call site in this file - a bare
+  // reference here would permanently bind to whichever function was in
+  // scope when initializeScheduler ran, making it un-mockable by tests that
+  // monkeypatch module.exports.runDispatcherTick afterward.
+  return setInterval(() => callRunDispatcherTick(), viewPrsDispatcherTickIntervalMs);
 };
 
 module.exports = {
@@ -2455,11 +2730,13 @@ module.exports = {
   runViewPrsAutoRefresh,
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
+  runDispatcherTick,
   emitJobEvent,
   emitSchedulerStateChanged,
   emitDataChanged,
   subscribeToJobEvents,
   getJobEventsSubscriberCount,
+  dispatcherHelpers,
   // Core config/constants
   viewPrsDir,
   viewPrsUiIndexFile,

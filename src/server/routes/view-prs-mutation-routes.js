@@ -39,9 +39,30 @@ const registerViewPrsMutationRoutes = ({
   // synchronously via this route's own response. Safely no-ops if absent
   // (e.g. in tests that don't wire it).
   emitDataChanged,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md's dispatcher plan):
+  // called around each route's own gh-calling work below so the background
+  // dispatcher's budget-aware pickNextBatch sees fewer availableGhSlots
+  // while a manual action is in flight - manual routes never wait on this,
+  // they only occupy a slot of it. Safely no-ops if absent (e.g. in tests
+  // that don't wire it).
+  reserveGhSlots,
+  releaseGhSlots,
+  // /run-auto fans out across multiple repos in parallel (unlike every
+  // other manual route here, which is a single script/gh invocation) - see
+  // its own call site below for why it reserves this many slots instead of
+  // the default 1. Falls back to 1 (matching every other route) if absent.
+  runAutoGhReservationCost,
 }) => {
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
+  const runAutoGhReservationCostSafe =
+    Number.isFinite(runAutoGhReservationCost) && runAutoGhReservationCost > 0
+      ? runAutoGhReservationCost
+      : 1;
+  const reserveGhSlotsSafe =
+    typeof reserveGhSlots === "function" ? reserveGhSlots : () => {};
+  const releaseGhSlotsSafe =
+    typeof releaseGhSlots === "function" ? releaseGhSlots : () => {};
   const { sendRouteResult } = createViewPrsRouteResponseHelpers();
   const {
     createTimingContext,
@@ -126,6 +147,7 @@ const registerViewPrsMutationRoutes = ({
     }
 
     const timingContext = createTimingContext();
+    reserveGhSlotsSafe();
     callRunViewPrsScript(args, 10 * 1024 * 1024, {
       timeoutMs: viewPrsManualScriptTimeoutMs,
       // Tags this run's active-PR-tracking entries with the repo it
@@ -134,6 +156,7 @@ const registerViewPrsMutationRoutes = ({
       // alongside this run's in the UI.
       repo: detail.repo,
     })
+      .finally(() => releaseGhSlotsSafe())
       .then(({ stdout, stderr }) => {
         setLastManualRunNow();
         // A full-repo manual run (no single --pr target) covers everything
@@ -205,7 +228,15 @@ const registerViewPrsMutationRoutes = ({
     }
 
     resetViewPrsAutoRefreshFailureState();
-    void runViewPrsAutoRefresh({ skipCooldownChecks: true });
+    // Reserves more than the default 1 slot - this is the one manual route
+    // that fans out across multiple repos in parallel (see
+    // runAutoGhReservationCost's own comment above), so a flat 1 would
+    // under-represent its real gh-process usage to the background
+    // dispatcher's budget.
+    reserveGhSlotsSafe(runAutoGhReservationCostSafe);
+    void runViewPrsAutoRefresh({ skipCooldownChecks: true }).finally(() =>
+      releaseGhSlotsSafe(runAutoGhReservationCostSafe),
+    );
 
     appendActionLogEntry(buildRunAutoSuccessActionLogEntry({ timingContext }));
 
@@ -281,7 +312,13 @@ const registerViewPrsMutationRoutes = ({
       defaultViewPrsRepo,
     });
 
-    const checkResult = await runViewPrsQuickCheck(numbersRequest);
+    reserveGhSlotsSafe();
+    let checkResult;
+    try {
+      checkResult = await runViewPrsQuickCheck(numbersRequest);
+    } finally {
+      releaseGhSlotsSafe();
+    }
     sendQuickCheckResult({ res, timingContext, checkResult });
   });
 
@@ -312,7 +349,13 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
-    const checkResult = await runViewPrsQuickCheck({ repoRequests });
+    reserveGhSlotsSafe();
+    let checkResult;
+    try {
+      checkResult = await runViewPrsQuickCheck({ repoRequests });
+    } finally {
+      releaseGhSlotsSafe();
+    }
     sendQuickCheckResult({ res, timingContext, checkResult });
   });
 
@@ -343,7 +386,8 @@ const registerViewPrsMutationRoutes = ({
     
     // Determine if this is a checkbox-only operation (flagged/inReview only)
     const isCheckboxOnly = !detail.ack && !detail.ackClear;
-    
+
+    reserveGhSlotsSafe();
     runScript(args)
       .then(async ({ stdout, stderr }) => {
         const effectiveRepo = repo || defaultViewPrsRepo;
@@ -428,7 +472,8 @@ const registerViewPrsMutationRoutes = ({
           }),
         );
         sendRouteResult({ res, result: failureResult });
-      });
+      })
+      .finally(() => releaseGhSlotsSafe());
   });
 
   app.post(["/merged/request-more", "/view-prs/merged/request-more"], async (req, res) => {
@@ -455,6 +500,7 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
+    reserveGhSlotsSafe();
     try {
       const currentData = readViewPrsData();
       const storedForRepo = buildStoredPrNumbersForRepo({
@@ -518,6 +564,8 @@ const registerViewPrsMutationRoutes = ({
         }),
       );
       sendRouteResult({ res, result: failureResult });
+    } finally {
+      releaseGhSlotsSafe();
     }
   });
 
@@ -535,6 +583,7 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
+    reserveGhSlotsSafe();
     try {
       const labels = await listRepoLabels({ repo });
       sendRouteResult({
@@ -543,6 +592,8 @@ const registerViewPrsMutationRoutes = ({
       });
     } catch (error) {
       sendRouteResult({ res, result: buildListRepoLabelsFailureResult(error) });
+    } finally {
+      releaseGhSlotsSafe();
     }
   });
 
@@ -595,6 +646,7 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
+    reserveGhSlotsSafe();
     try {
       const appliedPrs = [];
       const applyErrors = [];
@@ -687,6 +739,8 @@ const registerViewPrsMutationRoutes = ({
         }),
       );
       sendRouteResult({ res, result: failureResult });
+    } finally {
+      releaseGhSlotsSafe();
     }
   });
 };

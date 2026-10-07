@@ -828,6 +828,47 @@ describe("route behavior", () => {
     expect(payload.overrides["scope-mode"]).toBe("mine");
   });
 
+  test("a schedulerRepoConfig override in /user-defaults takes effect on the dispatcher's next registry read, with no restart", async () => {
+    // Per-repo cadence/priority config for this round's dispatcher (see
+    // REACT_MIGRATION_PLAN.md and view-prs-dispatcher-helpers.js) is read
+    // fresh from this same PUT/GET JSON blob - no dedicated settings route.
+    const address = server.address();
+    const putResponse = await fetch(
+      `http://127.0.0.1:${address.port}/user-defaults`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schedulerRepoConfig: {
+            "acme-org/repo-config-test": { priority: 9, autoRefreshIntervalMs: 60000 },
+          },
+        }),
+      },
+    );
+    expect(putResponse.status).toBe(200);
+
+    const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "acme-org/repo-config-test";
+    try {
+      appModule.viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+      appModule.dispatcherHelpers.getOrInitRegistry();
+
+      const entry =
+        appModule.viewPrsSchedulerState.dispatcher.entries[
+          "acme-org/repo-config-test::autoRefresh"
+        ];
+      expect(entry.priority).toBe(9);
+      expect(entry.intervalMs).toBe(60000);
+    } finally {
+      if (savedAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
+      }
+      appModule.viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+    }
+  });
+
   test("returns 400 when PUT /user-defaults receives a non-object body", async () => {
     const address = server.address();
     const putResponse = await fetch(
@@ -2251,6 +2292,105 @@ describe("route behavior", () => {
       } finally {
         appModule.runViewPrsBashCommand = originalBash;
       }
+    });
+  });
+
+  describe("reserveGhSlots/releaseGhSlots (manual routes count against the dispatcher's gh-process budget)", () => {
+    // Regression test for a real gap: these two functions (view-prs-
+    // dispatcher-helpers.js) were fully built and unit-tested in isolation,
+    // but no mutation route actually called them - the dispatcher's budget
+    // was never actually aware of concurrent manual work despite app.js's
+    // own comment claiming otherwise. Spies on the real
+    // appModule.dispatcherHelpers methods (not a full override - other
+    // code paths, like runDispatcherTick, still need the real object's
+    // other methods) to confirm each route reserves exactly once and
+    // releases exactly once, in balance, regardless of success or failure.
+    let reserveSpy;
+    let releaseSpy;
+
+    beforeEach(() => {
+      reserveSpy = jest.spyOn(appModule.dispatcherHelpers, "reserveGhSlots");
+      releaseSpy = jest.spyOn(appModule.dispatcherHelpers, "releaseGhSlots");
+    });
+
+    afterEach(() => {
+      reserveSpy.mockRestore();
+      releaseSpy.mockRestore();
+    });
+
+    test("POST /run reserves and releases a slot around the script invocation", async () => {
+      const { response } = await postJson(server, "/run", { repo: "owner/repo" });
+
+      expect(response.status).toBe(200);
+      expect(reserveSpy).toHaveBeenCalledTimes(1);
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test("POST /quick-check reserves and releases a slot even when the check itself is skipped", async () => {
+      appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+      try {
+        const { response } = await postJson(server, "/quick-check", {});
+
+        expect(response.status).toBe(409);
+        expect(reserveSpy).toHaveBeenCalledTimes(1);
+        expect(releaseSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+      }
+    });
+
+    test("POST /ack reserves and releases a slot, including for a checkbox-only operation", async () => {
+      const { response } = await postJson(server, "/ack", {
+        repo: "owner/repo",
+        flagged: "501",
+      });
+
+      expect(response.status).toBe(200);
+      expect(reserveSpy).toHaveBeenCalledTimes(1);
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test("POST /labels/apply reserves and releases a slot even when the apply itself fails", async () => {
+      const originalBash = appModule.runViewPrsBashCommand;
+      appModule.runViewPrsBashCommand = async () => {
+        throw new Error("gh rate limited");
+      };
+
+      try {
+        const { response } = await postJson(server, "/labels/apply", {
+          repo: "owner/repo",
+          label: "bug",
+          prNumbers: "704",
+        });
+
+        expect(response.status).toBe(200);
+        expect(reserveSpy).toHaveBeenCalledTimes(1);
+        expect(releaseSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        appModule.runViewPrsBashCommand = originalBash;
+      }
+    });
+
+    test("POST /run-auto (fire-and-forget) reserves immediately and releases once the background refresh settles", async () => {
+      const { response } = await postJson(server, "/run-auto", {});
+
+      expect(response.status).toBe(202);
+      expect(reserveSpy).toHaveBeenCalledTimes(1);
+      // The actual refresh is fire-and-forget - give its mocked (near-
+      // instant) promise a tick to settle before asserting the release.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test("POST /run-auto reserves more than the default 1 slot - it's the one manual route that fans out across repos in parallel", async () => {
+      await postJson(server, "/run-auto", {});
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Matches the dispatcher's own autoRefresh entry cost (4) - see
+      // runAutoGhReservationCost in app.js - not the flat 1 every other
+      // manual route reserves.
+      expect(reserveSpy).toHaveBeenCalledWith(4);
+      expect(releaseSpy).toHaveBeenCalledWith(4);
     });
   });
 });

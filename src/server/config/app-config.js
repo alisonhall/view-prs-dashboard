@@ -112,7 +112,14 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     path.join(viewPrsDir, "data/user-defaults.json");
 
   // Timeouts and intervals (with env overrides and validation)
-  const viewPrsAutoIntervalMs = 15 * 60 * 1000;
+  // Global default auto-refresh cadence - the per-repo dispatcher (see
+  // view-prs-dispatcher-helpers.js) falls back to this when a repo has no
+  // schedulerRepoConfig override. Gains an env override here for
+  // consistency with quick-check/merged-drain below, which already have one.
+  const viewPrsAutoIntervalMs = Math.max(
+    60 * 1000,
+    Number.parseInt(env.VIEW_PRS_AUTO_INTERVAL_MS || "900000", 10) || 900000,
+  );
   const viewPrsManualCooldownMs = 15 * 60 * 1000;
 
   // Cheap "did it change" poll (listing calls only, no detail/diff fetch).
@@ -246,6 +253,26 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Math.min(4, Number.parseInt(env.VIEW_PRS_PR_DIFF_CONCURRENCY || "2", 10) || 2),
   );
 
+  // Dispatcher's single ceiling on total concurrent `gh` processes across
+  // all background-scheduler-launched tasks (quick-check/auto-refresh/
+  // merged-drain combined) - see view-prs-dispatcher-helpers.js. Deliberately
+  // NOT the same knob as viewPrsPrDiffConcurrency above (that one governs an
+  // unrelated PR-diff fetch pool) so the two can't be tuned against each
+  // other by accident.
+  const viewPrsDispatcherGhProcessBudget = Math.max(
+    1,
+    Number.parseInt(env.VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET || "8", 10) || 8,
+  );
+
+  // How often the dispatcher re-evaluates due entries. Short enough that an
+  // urgency bump (quick-check finding a change) is acted on with no
+  // perceptible added latency vs. a direct function call, long enough to be
+  // cheap when idle (most of this process's life).
+  const viewPrsDispatcherTickIntervalMs = Math.max(
+    1000,
+    Number.parseInt(env.VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS || "5000", 10) || 5000,
+  );
+
   const viewPrsViewerLoginCacheTtlMs = 5 * 60 * 1000;
 
   // Optional, absent by default - only present if the user opts in to a
@@ -312,6 +339,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsBackfillActionTimeoutMs,
     viewPrsPrDiffTimeoutMs,
     viewPrsPrDiffConcurrency,
+    viewPrsDispatcherGhProcessBudget,
+    viewPrsDispatcherTickIntervalMs,
     viewPrsViewerLoginCacheTtlMs,
     viewPrsInsightsHookTimeoutMs,
 

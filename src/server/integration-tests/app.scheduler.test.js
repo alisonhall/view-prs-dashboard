@@ -1,3 +1,4 @@
+const fs = require("fs");
 const appModule = require("../app.js");
 const {
   parseTimestamp,
@@ -11,6 +12,7 @@ const {
   resetViewPrsAutoRefreshFailureState,
   initializeScheduler,
   viewPrsSchedulerState,
+  viewPrsSchedulerFile,
 } = appModule;
 
 const resetSchedulerState = () => {
@@ -25,6 +27,28 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.lastQuickCheckAttemptAt = null;
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
   viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
+  viewPrsSchedulerState.pendingByRepo = {};
+  // The per-repo dispatcher registry (see view-prs-dispatcher-helpers.js)
+  // persists across tests otherwise - entries for a repo one test's own
+  // withAutoRepos/env override registered would leak into every later
+  // test's own dispatch ticks, since getOrInitRegistry only ever adds
+  // entries, never removes stale ones for a repo no longer configured.
+  viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+  // Also delete the ON-DISK scheduler state file (a real temp file shared
+  // by every test in this worker - see jest.setup.env.js): any test that
+  // calls initializeScheduler() has it call readViewPrsSchedulerState()
+  // first, which would otherwise read back a PREVIOUS test's own persisted
+  // dispatcher entries (written by persistViewPrsSchedulerState, called
+  // from inside a real quick-check/auto-refresh run) and clobber the
+  // in-memory reset above with stale isRunning/nextDueAt/lastFinishedAt
+  // data - confirmed as the root cause of a cross-test leak where a repo's
+  // quickCheck entry looked "already run 5 minutes ago" in a test that had
+  // only just created it.
+  try {
+    fs.rmSync(viewPrsSchedulerFile, { force: true });
+  } catch (_error) {
+    // Best-effort - a missing file is exactly the desired end state anyway.
+  }
   resetViewPrsAutoRefreshFailureState();
 };
 
@@ -428,16 +452,27 @@ describe("runViewPrsAutoRefresh behavior", () => {
       });
 
     const calls = [];
+    let quickCheckCallCount = 0;
     appModule.runViewPrsScript = async (commandArgs) => {
       const isQuickCheck = commandArgs.includes("--quick-check");
       calls.push(isQuickCheck ? "quick-check" : "full-refresh");
       if (isQuickCheck) {
-        // Reports a pending open change so the quick check's own
-        // fast-follow targeted refresh fires too - that should also
-        // complete (a second "full-refresh" entry) before
-        // initializeScheduler's own full update runs.
+        quickCheckCallCount += 1;
+        // Reports a pending open change on the FIRST quick check only -
+        // same as real usage, where autoRefresh's own fast-follow fetch
+        // updates the cached updatedAt, so a repeat quick check of the same
+        // PR stops reporting it as changed. Reporting it on every call
+        // would keep re-bumping the dispatcher's autoRefresh entry forever
+        // (bumpEntryUrgent -> immediate tick -> autoRefresh runs -> its own
+        // quickCheckSkippedWhileAutoRunInProgress catch-up -> quick check
+        // again -> pendingOpen again -> ...), a self-sustaining loop that's
+        // a test-fixture artifact, not a real steady state.
         return {
-          stdout: JSON.stringify({ pendingOpen: ["1"], pendingMergedClosed: [] }),
+          stdout: JSON.stringify(
+            quickCheckCallCount === 1
+              ? { pendingOpen: ["1"], pendingMergedClosed: [] }
+              : { pendingOpen: [], pendingMergedClosed: [] },
+          ),
           stderr: "",
         };
       }
@@ -449,18 +484,23 @@ describe("runViewPrsAutoRefresh behavior", () => {
 
       // Everything above is mocked to resolve near-instantly; this just
       // gives the unawaited startup chain (quick check -> its targeted
-      // fast-follow -> the full update) room to actually run.
+      // fast-follow bump + tick -> the dispatcher's own full update) room
+      // to actually run.
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // The first call must be the quick check, and it must be followed by
-      // at least one full-refresh call (the fast-follow, then
-      // initializeScheduler's own full update) - never a full-refresh
-      // before any quick check has run at all.
+      // The first call must be the quick check (it has the highest default
+      // priority, see view-prs-dispatcher-helpers.js), and it must be
+      // followed by at least one full-refresh call (the fast-follow, and/or
+      // the dispatcher's own due-now autoRefresh entry) - never a
+      // full-refresh before any quick check has run at all.
       expect(calls[0]).toBe("quick-check");
       expect(calls.filter((call) => call === "full-refresh").length).toBeGreaterThanOrEqual(1);
     } finally {
       createdIntervals.forEach((id) => clearInterval(id));
       setIntervalSpy.mockRestore();
+      // Let anything still in flight finish inside this test's own
+      // lifetime instead of leaking into the next test.
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   });
 
@@ -513,16 +553,14 @@ describe("runViewPrsAutoRefresh behavior", () => {
     }
   });
 
-  test("initializeScheduler's periodic setInterval ticks route through the overridable module.exports functions too, not raw closures", async () => {
-    // Regression test: the three setInterval(...) registrations previously
-    // passed the raw runViewPrsQuickCheck/runViewPrsMergedQueueDrain/
-    // runViewPrsAutoRefresh closures directly, so - unlike every other
-    // call site fixed alongside this one - even a monkeypatch applied
-    // *before* initializeScheduler() runs would never reach a periodic
-    // tick, since the bare reference is captured once, permanently, when
-    // setInterval() is called. Verified here by invoking each captured
-    // callback directly rather than waiting on the real, minutes-long
-    // interval durations.
+  test("initializeScheduler registers exactly one periodic setInterval, driving runDispatcherTick through the overridable module.exports function", async () => {
+    // Regression test, updated for the dispatcher cutover: the three
+    // independent setInterval(...) registrations (one per job) are gone -
+    // there is now exactly one, driving the dispatcher's own tick, which in
+    // turn is itself overridable (same "always re-check module.exports.X
+    // fresh" pattern every other call site in this file already uses).
+    // Verified by invoking the captured callback directly rather than
+    // waiting on the real tick interval.
     const realSetInterval = global.setInterval;
     const createdIntervals = [];
     const registeredCallbacks = [];
@@ -535,48 +573,41 @@ describe("runViewPrsAutoRefresh behavior", () => {
         return realId;
       });
 
-    const originalRunViewPrsQuickCheck = appModule.runViewPrsQuickCheck;
-    const originalRunViewPrsMergedQueueDrain = appModule.runViewPrsMergedQueueDrain;
-    const originalRunViewPrsAutoRefresh = appModule.runViewPrsAutoRefresh;
-    let quickCheckTickCount = 0;
-    let mergedDrainTickCount = 0;
-    let autoRefreshTickCount = 0;
-    appModule.runViewPrsQuickCheck = async () => {
-      quickCheckTickCount += 1;
-      return { reposWithPendingOpen: [] };
-    };
-    appModule.runViewPrsMergedQueueDrain = async () => {
-      mergedDrainTickCount += 1;
-    };
-    appModule.runViewPrsAutoRefresh = async () => {
-      autoRefreshTickCount += 1;
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
+    let tickCount = 0;
+    appModule.runDispatcherTick = async () => {
+      tickCount += 1;
     };
 
     try {
       initializeScheduler();
-      // initializeScheduler's own unawaited startup chain also calls
-      // runViewPrsQuickCheck/runViewPrsAutoRefresh once each - let that
-      // settle first so only the *periodic* ticks below are counted.
+      // initializeScheduler's own unawaited startup call also ticks once -
+      // let that settle first so only the *periodic* interval tick below
+      // is counted.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      const quickCheckTicksFromStartup = quickCheckTickCount;
-      const autoRefreshTicksFromStartup = autoRefreshTickCount;
+      const tickCountAfterStartup = tickCount;
 
-      expect(registeredCallbacks).toHaveLength(3);
+      expect(registeredCallbacks).toHaveLength(1);
       await Promise.all(registeredCallbacks.map((callback) => callback()));
 
-      expect(quickCheckTickCount).toBe(quickCheckTicksFromStartup + 1);
-      expect(mergedDrainTickCount).toBe(1);
-      expect(autoRefreshTickCount).toBe(autoRefreshTicksFromStartup + 1);
+      expect(tickCount).toBe(tickCountAfterStartup + 1);
     } finally {
       createdIntervals.forEach((id) => clearInterval(id));
       setIntervalSpy.mockRestore();
-      appModule.runViewPrsQuickCheck = originalRunViewPrsQuickCheck;
-      appModule.runViewPrsMergedQueueDrain = originalRunViewPrsMergedQueueDrain;
-      appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
+      appModule.runDispatcherTick = originalRunDispatcherTick;
     }
   });
 
-  test("on startup, initializeScheduler does not re-refresh a repo the quick check's targeted pass already covered", async () => {
+  test("on startup, a repo whose quick check also reports a pending open change is not double-refreshed", async () => {
+    // Under the dispatcher model there's no separate "targeted pass" vs.
+    // "follow-up full update" to keep from double-covering a repo (see
+    // REACT_MIGRATION_PLAN.md) - autoRefresh-for-a-repo is one registry
+    // entry, selectable at most once per tick, so this is now a structural
+    // guarantee rather than bespoke dedup logic. Still worth a regression
+    // test: "acme-org/acme-repo" is due at startup AND has its autoRefresh
+    // entry bumped by its own quick check's pendingOpen finding - either
+    // path alone would refresh it once; together they still must not
+    // refresh it twice.
     const realSetInterval = global.setInterval;
     const createdIntervals = [];
     const setIntervalSpy = jest
@@ -588,16 +619,19 @@ describe("runViewPrsAutoRefresh behavior", () => {
       });
 
     const fullRefreshRepos = [];
+    const quickCheckCallCountByRepo = {};
     appModule.runViewPrsScript = async (commandArgs) => {
       const repoIndex = commandArgs.indexOf("--repo");
       const repo = repoIndex !== -1 ? commandArgs[repoIndex + 1] : null;
       if (commandArgs.includes("--quick-check")) {
-        // Only the fixture's own repo reports a pending open change - the
-        // second repo (added via VIEW_PRS_AUTO_REPOS below) reports
-        // nothing pending, so it's untouched by the targeted pass and
-        // should only be refreshed once, by initializeScheduler's own
-        // follow-up.
-        const pendingOpen = repo === "acme-org/acme-repo" ? ["1"] : [];
+        quickCheckCallCountByRepo[repo] = (quickCheckCallCountByRepo[repo] || 0) + 1;
+        // Only the fixture's own repo reports a pending open change, and
+        // only on its first quick check - see the "runs the quick check...
+        // before the full every-repo update" test above for why an
+        // always-pending mock creates a self-sustaining loop rather than a
+        // realistic one-time finding.
+        const pendingOpen =
+          repo === "acme-org/acme-repo" && quickCheckCallCountByRepo[repo] === 1 ? ["1"] : [];
         return {
           stdout: JSON.stringify({ pendingOpen, pendingMergedClosed: [] }),
           stderr: "",
@@ -615,12 +649,13 @@ describe("runViewPrsAutoRefresh behavior", () => {
       // Everything above resolves near-instantly; this gives the
       // unawaited startup chain room to actually run.
       await new Promise((resolve) => setTimeout(resolve, 200));
+      // 2 repos x 3 task types can exceed the default gh-process budget in
+      // a single tick (quickCheck cost 1 + autoRefresh/mergedDrain cost 4
+      // each, per repo) - whatever didn't fit in the first tick is still
+      // due, not lost, and picked up by the next one. Force that next tick
+      // directly rather than waiting out the real (multi-second) interval.
+      await appModule.runDispatcherTick();
 
-      // "acme-org/acme-repo" gets exactly one real full-refresh script
-      // call (from the quick check's own targeted pass) - not a second
-      // one from initializeScheduler's own follow-up full update, which
-      // should only cover "acme-org/other-repo" (never touched by the
-      // targeted pass, since it had nothing pending).
       expect(
         fullRefreshRepos.filter((repo) => repo === "acme-org/acme-repo").length,
       ).toBe(1);
@@ -633,6 +668,9 @@ describe("runViewPrsAutoRefresh behavior", () => {
       } else {
         process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
       }
+      // Let anything still in flight finish inside this test's own
+      // lifetime instead of leaking into the next test.
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   });
 
@@ -739,6 +777,14 @@ describe("runViewPrsQuickCheck behavior", () => {
     viewPrsSchedulerState.pendingByRepo = {};
     viewPrsSchedulerState.autoCircuitOpenUntil = null;
     viewPrsSchedulerState.consecutiveAutoFailures = 0;
+    // See resetSchedulerState's own comment above for why this (and the
+    // on-disk file delete right after) is needed every test, not just once.
+    viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+    try {
+      fs.rmSync(viewPrsSchedulerFile, { force: true });
+    } catch (_error) {
+      // Best-effort.
+    }
     appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
   };
 
@@ -959,34 +1005,87 @@ describe("runViewPrsQuickCheck behavior", () => {
     await new Promise((resolve) => setTimeout(resolve, 75));
   });
 
-  test("routes its fast-follow refresh through the overridable module.exports.runViewPrsAutoRefresh, not the raw closure", async () => {
-    // Regression test: the fast-follow call previously referenced the raw
-    // runViewPrsAutoRefresh closure directly, so monkeypatching
-    // module.exports.runViewPrsAutoRefresh (the pattern every other
-    // overridable dependency in this file uses) silently had no effect here.
+  test("bumps the dispatcher's autoRefresh entry for a repo with newly-pending open PRs, and triggers an immediate dispatch tick", async () => {
+    // Fast-follow is now expressed through the dispatcher registry (see
+    // view-prs-dispatcher-helpers.js) rather than a direct
+    // runViewPrsAutoRefresh call - bumpEntryUrgent makes the entry
+    // immediately due, and a tick is triggered right away so it's picked up
+    // with no added latency. Overriding module.exports.runDispatcherTick to
+    // a spy (rather than letting the real tick cascade) isolates "did
+    // quickCheck bump the right entry and ask for a tick" from "does a tick
+    // actually run the right function for a due entry" - the latter is
+    // covered end-to-end by app.dispatcher-tick.test.js.
     appModule.runViewPrsScript = async () => ({
       stdout: JSON.stringify({ pendingOpen: ["202"], pendingMergedClosed: [] }),
       stderr: "",
     });
 
-    let receivedArgs = null;
-    const originalRunViewPrsAutoRefresh = appModule.runViewPrsAutoRefresh;
-    appModule.runViewPrsAutoRefresh = async (args) => {
-      receivedArgs = args;
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
+    let dispatcherTickCalled = false;
+    appModule.runDispatcherTick = async () => {
+      dispatcherTickCalled = true;
     };
 
     try {
       await withAutoRepos("owner/repo-fast-follow-override", async () => {
-        await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
+        await runViewPrsQuickCheck();
       });
     } finally {
-      appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
+      appModule.runDispatcherTick = originalRunDispatcherTick;
     }
 
-    expect(receivedArgs).toEqual({ reposOverride: ["owner/repo-fast-follow-override"] });
+    expect(dispatcherTickCalled).toBe(true);
+    expect(
+      viewPrsSchedulerState.dispatcher.entries["owner/repo-fast-follow-override::autoRefresh"]
+        .nextDueAt,
+    ).not.toBeNull();
+    expect(
+      Date.parse(
+        viewPrsSchedulerState.dispatcher.entries["owner/repo-fast-follow-override::autoRefresh"]
+          .nextDueAt,
+      ),
+    ).toBeLessThanOrEqual(Date.now());
   });
 
-  test("given awaitTargetedRefresh, when a repo has pending open PRs, then the fast-follow full refresh actually finishes before returning (startup ordering: quick check's priority refresh completes before initializeScheduler moves on to the full update)", async () => {
+  test("bumps the dispatcher's mergedDrain entry for a repo with newly-pending merged/closed PRs (the priority-inversion bug fix)", async () => {
+    // Before this round, a merged/closed change only sat flagged until
+    // mergedQueueDrain's own fixed (and, at default config, actually
+    // *longer* than autoRefresh's) interval - see
+    // REACT_MIGRATION_PLAN.md. It now gets the exact same immediate
+    // fast-follow treatment open-PR changes have always had.
+    appModule.runViewPrsScript = async () => ({
+      stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["303"] }),
+      stderr: "",
+    });
+
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
+    let dispatcherTickCalled = false;
+    appModule.runDispatcherTick = async () => {
+      dispatcherTickCalled = true;
+    };
+
+    try {
+      await withAutoRepos("owner/repo-merged-drain-bump", async () => {
+        await runViewPrsQuickCheck();
+      });
+    } finally {
+      appModule.runDispatcherTick = originalRunDispatcherTick;
+    }
+
+    expect(dispatcherTickCalled).toBe(true);
+    const mergedDrainEntry =
+      viewPrsSchedulerState.dispatcher.entries["owner/repo-merged-drain-bump::mergedDrain"];
+    expect(mergedDrainEntry).toBeDefined();
+    expect(Date.parse(mergedDrainEntry.nextDueAt)).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("queues pending merged/closed PRs without them counting as pending-open", async () => {
+    // A non-empty pendingMergedClosed also fires a fire-and-forget fast-follow
+    // mergedDrain (not awaited by runViewPrsQuickCheck) - the actual fix for
+    // the priority-inversion bug this round closed (see
+    // REACT_MIGRATION_PLAN.md). Delaying the non-quick-check script call
+    // keeps that race from clearing pendingByRepo before this assertion
+    // runs, same technique the pending-*open* test above already uses.
     appModule.runViewPrsScript = async (commandArgs) => {
       const isQuickCheckCall = commandArgs.includes("--quick-check");
       if (!isQuickCheckCall) {
@@ -994,27 +1093,10 @@ describe("runViewPrsQuickCheck behavior", () => {
         return { stdout: "", stderr: "" };
       }
       return {
-        stdout: JSON.stringify({ pendingOpen: ["101"], pendingMergedClosed: [] }),
+        stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["202"] }),
         stderr: "",
       };
     };
-
-    await withAutoRepos("owner/repo-pending-open-awaited", async () => {
-      await runViewPrsQuickCheck({ awaitTargetedRefresh: true });
-    });
-
-    // The fast-follow full refresh (which takes 50ms, per the mock above)
-    // has already run to completion and cleared this repo's pending flag -
-    // unlike the fire-and-forget version above, no extra wait is needed
-    // after runViewPrsQuickCheck() itself returns.
-    expect(viewPrsSchedulerState.pendingByRepo["owner/repo-pending-open-awaited"]).toBeUndefined();
-  });
-
-  test("queues pending merged/closed PRs without them counting as pending-open", async () => {
-    appModule.runViewPrsScript = async () => ({
-      stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["202"] }),
-      stderr: "",
-    });
 
     await withAutoRepos("owner/repo-pending-merged", async () => {
       await runViewPrsQuickCheck();
@@ -1023,6 +1105,10 @@ describe("runViewPrsQuickCheck behavior", () => {
     expect(viewPrsSchedulerState.pendingByRepo["owner/repo-pending-merged"]).toEqual(
       expect.objectContaining({ open: [], mergedClosed: ["202"] }),
     );
+
+    // Let the fire-and-forget fast-follow finish inside this test's own
+    // lifetime instead of leaking into the next test.
+    await new Promise((resolve) => setTimeout(resolve, 75));
   });
 
   test("continues checking other repos and records no top-level error when one repo's quick check fails", async () => {
@@ -1066,10 +1152,13 @@ describe("runViewPrsQuickCheck behavior", () => {
   describe("with explicit prNumbers", () => {
     test("checks only the given repo via --quick-check-numbers, not every configured repo", async () => {
       const scriptCalls = [];
+      // No pendingOpen/pendingMergedClosed here deliberately - this test is
+      // isolating single-repo scoping, not the (separately covered)
+      // fast-follow behavior either kind of pending change triggers.
       appModule.runViewPrsScript = async (commandArgs) => {
         scriptCalls.push(commandArgs);
         return {
-          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }),
           stderr: "",
         };
       };
@@ -1123,11 +1212,14 @@ describe("runViewPrsQuickCheck behavior", () => {
     test("checks each repo sequentially, one script call per repo, with the bulk --jobs and timeout", async () => {
       const scriptCalls = [];
       const scriptOptions = [];
+      // No pending changes here deliberately - this test isolates the
+      // per-repo sequential call shape, not the (separately covered)
+      // fast-follow bump either kind of pending change triggers.
       appModule.runViewPrsScript = async (commandArgs, _maxBufferBytes, options) => {
         scriptCalls.push(commandArgs);
         scriptOptions.push(options);
         return {
-          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: ["501"] }),
+          stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }),
           stderr: "",
         };
       };
@@ -1190,12 +1282,11 @@ describe("runViewPrsQuickCheck behavior", () => {
       ]);
     });
 
-    test("still fast-follows a full auto-refresh for a repo with newly-pending open PRs", async () => {
-      const originalRunViewPrsAutoRefresh = appModule.runViewPrsAutoRefresh;
-      const autoRefreshCalls = [];
-      appModule.runViewPrsAutoRefresh = async (options) => {
-        autoRefreshCalls.push(options);
-        return { ok: true };
+    test("still fast-follows (bumps the dispatcher's autoRefresh entry) for a repo with newly-pending open PRs", async () => {
+      const originalRunDispatcherTick = appModule.runDispatcherTick;
+      let dispatcherTickCalled = false;
+      appModule.runDispatcherTick = async () => {
+        dispatcherTickCalled = true;
       };
       appModule.runViewPrsScript = async () => ({
         stdout: JSON.stringify({ pendingOpen: ["501"], pendingMergedClosed: [] }),
@@ -1203,15 +1294,20 @@ describe("runViewPrsQuickCheck behavior", () => {
       });
 
       try {
-        await runViewPrsQuickCheck({
-          repoRequests: [{ repo: "owner/repo-a", prNumbers: "501" }],
+        await withAutoRepos("owner/repo-a", async () => {
+          await runViewPrsQuickCheck({
+            repoRequests: [{ repo: "owner/repo-a", prNumbers: "501" }],
+          });
         });
 
-        expect(autoRefreshCalls).toEqual([
-          expect.objectContaining({ reposOverride: ["owner/repo-a"] }),
-        ]);
+        expect(dispatcherTickCalled).toBe(true);
+        expect(
+          Date.parse(
+            viewPrsSchedulerState.dispatcher.entries["owner/repo-a::autoRefresh"].nextDueAt,
+          ),
+        ).toBeLessThanOrEqual(Date.now());
       } finally {
-        appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
+        appModule.runDispatcherTick = originalRunDispatcherTick;
       }
     });
 

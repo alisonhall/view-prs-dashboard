@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useJobEvents } from '../state/JobEventsContext';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { ActivityDrawerSchedulerSection } from './ActivityDrawerSchedulerSection';
+import { ActivityDrawerDispatcherSection } from './ActivityDrawerDispatcherSection';
 import { ActivityDrawerQueueSection } from './ActivityDrawerQueueSection';
 import { ActivityDrawerRecentActivitySection } from './ActivityDrawerRecentActivitySection';
 import { BackfillBadges } from './BackfillBadges';
@@ -89,6 +90,8 @@ export function ActivityDrawer({
 
           <div className="activity-drawer-panel-content">
             <ActivityDrawerSchedulerSection />
+
+            <ActivityDrawerDispatcherSection />
 
             <ActivityDrawerQueueSection />
 

@@ -14,6 +14,7 @@ describe("pr job events helpers", () => {
       expect(state.pendingOpenCount).toBe(0);
       expect(state.pendingMergedClosedCount).toBe(0);
       expect(state.recentFinished).toEqual([]);
+      expect(state.dispatcherQueue).toEqual([]);
     });
   });
 
@@ -42,6 +43,24 @@ describe("pr job events helpers", () => {
 
       expect(state.pendingOpenCount).toBe(3);
       expect(state.pendingMergedClosedCount).toBe(2);
+    });
+
+    test("carries dispatcherQueue from the scheduler payload, or defaults to empty if absent/malformed", () => {
+      const withQueue = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: {
+          dispatcherQueue: [{ repo: "owner/repo", taskType: "autoRefresh", status: "running" }],
+        },
+      });
+      expect(withQueue.dispatcherQueue).toEqual([
+        { repo: "owner/repo", taskType: "autoRefresh", status: "running" },
+      ]);
+
+      const withoutQueue = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: { dispatcherQueue: "not-an-array" },
+      });
+      expect(withoutQueue.dispatcherQueue).toEqual([]);
     });
 
     test("is authoritative regardless of lastSeq, and resets lastSeq to 0", () => {
@@ -197,6 +216,37 @@ describe("pr job events helpers", () => {
 
       expect(state.pendingOpenCount).toBe(0);
       expect(state.pendingMergedClosedCount).toBe(5);
+    });
+
+    test("a job-agnostic scheduler-type envelope also refreshes dispatcherQueue from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        seq: 1,
+        at: FIXED_NOW,
+        scheduler: { dispatcherQueue: [{ repo: "owner/repo", taskType: "quickCheck", status: "due" }] },
+      });
+
+      expect(state.dispatcherQueue).toEqual([
+        { repo: "owner/repo", taskType: "quickCheck", status: "due" },
+      ]);
+    });
+
+    test("a job envelope also refreshes dispatcherQueue from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        job: "mergedQueueDrain",
+        phase: "finish",
+        seq: 1,
+        at: FIXED_NOW,
+        ok: true,
+        scheduler: { dispatcherQueue: [{ repo: "owner/repo", taskType: "mergedDrain", status: "running" }] },
+      });
+
+      expect(state.dispatcherQueue).toEqual([
+        { repo: "owner/repo", taskType: "mergedDrain", status: "running" },
+      ]);
     });
 
     test("returns the same state reference for a malformed envelope", () => {

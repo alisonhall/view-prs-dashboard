@@ -62,11 +62,14 @@ function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
 /**
  * Activity drawer feature (see REACT_MIGRATION_PLAN.md): section 1 of the
  * drawer, the three genuinely in-process background jobs, driven live by
- * JobEventsContext (SSE). Deliberately does not render a queue position
- * for quickCheck's "waitingOn" state - the server has no real ordered
- * queue, just one deferred-retry flag (see runViewPrsQuickCheck's own
- * comment in app.js), so the honest copy here is "waiting on X", never a
- * position or count.
+ * JobEventsContext (SSE). Deliberately stays a per-job-type status display
+ * (running/idle, last result, last skip) rather than growing a queue
+ * position for quickCheck's "waitingOn" state - that's no longer because
+ * no real ordering exists (a per-repo-aware dispatcher now DOES order
+ * work - see ActivityDrawerDispatcherSection, right below this one in the
+ * drawer), but because this section's own job is answering "what's each
+ * job type doing right now", not "what's next" - the dispatcher section
+ * is where the real order actually lives.
  *
  * pendingOpenCount/pendingMergedClosedCount (shown on the mergedQueueDrain
  * row) carry the one piece of information the old, now-removed

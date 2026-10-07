@@ -45,7 +45,11 @@ export function QuickCheckAllButton({ onCheck }) {
     <button
       type="button"
       id="quick-check-all-btn"
-      title="Checks every PR row already loaded, across every repo, for changes"
+      title={
+        'Checks every PR row already loaded, across every repo, for changes.\n' +
+        'Relies on GitHub\'s own "updated at" timestamp, so it won\'t catch a CI check finishing, ' +
+        'mergeability changing, or a review thread being resolved - those need a full refresh.'
+      }
       disabled={state.disabled}
       onClick={handleClick}
     >

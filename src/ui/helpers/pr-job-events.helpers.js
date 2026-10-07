@@ -37,7 +37,15 @@ export const { createPrJobEventsHelpers } = (() => {
       pendingOpenCount: 0,
       pendingMergedClosedCount: 0,
       recentFinished: [],
+      // The dispatcher's real, ordered upcoming/running task list (see
+      // view-prs-dispatcher-helpers.js's getDispatcherQueueSnapshot) -
+      // same job-agnostic, whole-scheduler-snapshot category as the
+      // pending counts above, extracted the same way.
+      dispatcherQueue: [],
     });
+
+    const extractDispatcherQueue = (scheduler) =>
+      Array.isArray(scheduler?.dispatcherQueue) ? scheduler.dispatcherQueue : [];
 
     const extractPendingCounts = (scheduler) => ({
       pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
@@ -91,6 +99,7 @@ export const { createPrJobEventsHelpers } = (() => {
         lastSeq: 0,
         jobs,
         ...extractPendingCounts(scheduler),
+        dispatcherQueue: extractDispatcherQueue(scheduler),
       };
     };
 
@@ -113,9 +122,17 @@ export const { createPrJobEventsHelpers } = (() => {
       const jobKey = envelope.job;
       const previousJob = jobKey ? state.jobs[jobKey] : null;
       const pendingCounts = extractPendingCounts(envelope.scheduler);
+      const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
 
       if (!previousJob) {
-        return { ...state, connection: "open", lastEventAt: at, lastSeq: nextSeq, ...pendingCounts };
+        return {
+          ...state,
+          connection: "open",
+          lastEventAt: at,
+          lastSeq: nextSeq,
+          ...pendingCounts,
+          dispatcherQueue,
+        };
       }
 
       const isQuickCheck = jobKey === "quickCheck";
@@ -175,6 +192,7 @@ export const { createPrJobEventsHelpers } = (() => {
         jobs: { ...state.jobs, [jobKey]: nextJob },
         recentFinished,
         ...pendingCounts,
+        dispatcherQueue,
       };
     };
 

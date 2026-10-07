@@ -22,6 +22,13 @@ describe('QuickCheckAllButton', () => {
     expect(document.getElementById('quick-check-all-btn')).toBe(button);
   });
 
+  test('its tooltip warns that a CI/mergeability/thread-resolution-only change is not detected', () => {
+    render(<QuickCheckAllButton onCheck={() => Promise.resolve({ label: 'Quick check all' })} />);
+    const button = screen.getByRole('button', { name: 'Quick check all' });
+    expect(button).toHaveAttribute('title', expect.stringContaining('updated at'));
+    expect(button.getAttribute('title')).toMatch(/CI check finishing/);
+  });
+
   test('given a click, when the onCheck call is pending, then the button disables and shows "Checking..."', async () => {
     let resolveCheck;
     const onCheck = jest.fn(() => new Promise((resolve) => { resolveCheck = resolve; }));

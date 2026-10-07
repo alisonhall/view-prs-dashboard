@@ -3467,6 +3467,48 @@
             color: #cf222e;
         }
 
+        .activity-drawer-dispatcher-queue {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .activity-drawer-dispatcher-entry {
+            font-size: 11px;
+            color: #57606a;
+            margin-bottom: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: baseline;
+        }
+
+        .activity-drawer-dispatcher-entry-repo {
+            font-weight: 600;
+            color: #24292f;
+        }
+
+        .activity-drawer-dispatcher-entry-priority {
+            color: #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry-due {
+            color: #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry.is-running .activity-drawer-dispatcher-entry-status {
+            color: #0969da;
+            font-weight: 600;
+        }
+
+        .activity-drawer-dispatcher-entry.is-due .activity-drawer-dispatcher-entry-status {
+            color: #9a6700;
+            font-weight: 600;
+        }
+
+        .activity-drawer-dispatcher-entry.is-scheduled .activity-drawer-dispatcher-entry-status {
+            color: #57606a;
+        }
+
         @media (max-width: 768px) {
             .activity-drawer-panel {
                 width: 100vw;
