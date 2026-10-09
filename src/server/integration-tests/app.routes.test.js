@@ -1485,8 +1485,15 @@ describe("route behavior", () => {
     expect(runAutoEntry).toHaveProperty("ok");
   });
 
-  test("returns 409 when POST /run-auto is requested during an active auto run", async () => {
+  test("returns 409 when POST /run-auto is requested during an active auto run for the same repo(s)", async () => {
     appModule.viewPrsSchedulerState.isAutoRunInProgress = true;
+    // An unscoped /run-auto body targets every configured repo - populate
+    // autoRefreshInProgressRepos with that same set so this is a genuine
+    // full-overlap collision (auto refresh is now per-repo-aware - see
+    // autoRefreshInProgressRepos's own comment in app.js).
+    appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(
+      appModule.getViewPrsAutoRefreshRepos(),
+    );
     try {
       const { response, payload } = await postJson(server, "/run-auto", {});
 
@@ -1495,6 +1502,73 @@ describe("route behavior", () => {
       expect(String(payload.error || "")).toMatch(/already in progress/i);
     } finally {
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
+      appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
+    }
+  });
+
+  test("returns 200 and actually refreshes the free repo when POST /run-auto is scoped to a repo not currently running", async () => {
+    appModule.viewPrsSchedulerState.isAutoRunInProgress = true;
+    appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set([
+      "owner/repo-run-auto-busy",
+    ]);
+    const originalRun = appModule.runViewPrsScript;
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoIndex = commandArgs.indexOf("--repo");
+      scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      return { stdout: "", stderr: "" };
+    };
+    try {
+      const { response, payload } = await postJson(server, "/run-auto", {
+        repo: "owner/repo-run-auto-free",
+      });
+
+      // Fire-and-forget route - 202 Accepted, matching buildRunAutoSuccessResult.
+      expect(response.status).toBe(202);
+      expect(payload.ok).toBe(true);
+      // The fire-and-forget refresh itself runs asynchronously - give it a
+      // turn before asserting it actually touched the free repo's script.
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(scriptCalls).toContain("owner/repo-run-auto-free");
+      expect(scriptCalls).not.toContain("owner/repo-run-auto-busy");
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
+      appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
+    }
+  });
+
+  test("POST /run-auto scoped to a repo only resets that repo's own circuit breaker, not every repo's", async () => {
+    appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-run-auto-scoped"] = {
+      consecutiveFailures: 3,
+      circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      lastCircuitOpenedAt: new Date().toISOString(),
+    };
+    appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-run-auto-unrelated"] = {
+      consecutiveFailures: 2,
+      circuitOpenUntil: null,
+      lastCircuitOpenedAt: null,
+    };
+    const originalRun = appModule.runViewPrsScript;
+    appModule.runViewPrsScript = async () => ({ stdout: "", stderr: "" });
+    try {
+      const { response } = await postJson(server, "/run-auto", {
+        repo: "owner/repo-run-auto-scoped",
+      });
+
+      expect(response.status).toBe(202);
+      expect(
+        appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-run-auto-scoped"],
+      ).toBeUndefined();
+      expect(
+        appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-run-auto-unrelated"]
+          .consecutiveFailures,
+      ).toBe(2);
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      appModule.runViewPrsScript = originalRun;
+      appModule.viewPrsSchedulerState.autoCircuitByRepo = {};
     }
   });
 
@@ -1564,7 +1638,18 @@ describe("route behavior", () => {
   test("scopes to the entered PR numbers and repo when POST /quick-check includes prNumbers", async () => {
     const originalRun = appModule.runViewPrsScript;
     const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
     process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-not-touched";
+    // Pre-existing flakiness, unrelated to this test's own assertions: the
+    // mocked script below always reports a pending merged/closed PR (for
+    // whichever repo it's called with), which fast-follow-bumps a dispatcher
+    // tick. That tick's own getOrInitRegistry() call discovers
+    // "owner/repo-not-touched" (set above) for the FIRST time, so its entries
+    // start out immediately due - the tick can then opportunistically also
+    // run ITS quickCheck/autoRefresh, racing this test's own assertions on
+    // scriptCalls. Neutralized here since this test is about prNumbers
+    // scoping, not dispatcher behavior (covered separately elsewhere).
+    appModule.runDispatcherTick = async () => {};
     const scriptCalls = [];
     appModule.runViewPrsScript = async (commandArgs) => {
       scriptCalls.push(commandArgs);
@@ -1596,6 +1681,7 @@ describe("route behavior", () => {
       );
     } finally {
       appModule.runViewPrsScript = originalRun;
+      appModule.runDispatcherTick = originalRunDispatcherTick;
       if (originalAutoRepos === undefined) {
         delete process.env.VIEW_PRS_AUTO_REPOS;
       } else {
@@ -1633,6 +1719,14 @@ describe("route behavior", () => {
 
   test("checks every repo grouped in the body when POST /quick-check-all succeeds", async () => {
     const originalRun = appModule.runViewPrsScript;
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
+    // Pre-existing flakiness, unrelated to this test's own assertions - see
+    // the identical comment on "scopes to the entered PR numbers..." above:
+    // the mocked script always reports a pending merged/closed PR, which
+    // fast-follow-bumps and ticks the dispatcher, which can then
+    // opportunistically also run the default repo's own due quickCheck/
+    // autoRefresh, racing this test's scriptCalls assertions.
+    appModule.runDispatcherTick = async () => {};
     const scriptCalls = [];
     appModule.runViewPrsScript = async (commandArgs) => {
       scriptCalls.push(commandArgs);
@@ -1658,6 +1752,7 @@ describe("route behavior", () => {
       expect(scriptCalls[1]).toEqual(expect.arrayContaining(["--quick-check-numbers", "601"]));
     } finally {
       appModule.runViewPrsScript = originalRun;
+      appModule.runDispatcherTick = originalRunDispatcherTick;
       delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-a"];
       delete appModule.viewPrsSchedulerState.pendingByRepo["owner/repo-all-b"];
     }
@@ -1713,8 +1808,15 @@ describe("route behavior", () => {
     }
   });
 
-  test("returns 409 when POST /quick-check-all is requested while a quick check is already in progress", async () => {
+  test("returns 409 when POST /quick-check-all is requested while a quick check is already in progress for the same repo", async () => {
     appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+    // Quick check is now per-repo-aware - populate quickCheckInProgressRepos
+    // with the exact repo this request targets so this is a genuine
+    // full-overlap collision (see quickCheckInProgressRepos's own comment
+    // in app.js).
+    appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set([
+      "owner/repo-all-conflict",
+    ]);
     try {
       const { response, payload } = await postJson(server, "/quick-check-all", {
         repos: [{ repo: "owner/repo-all-conflict", prNumbers: "1" }],
@@ -1725,14 +1827,23 @@ describe("route behavior", () => {
       expect(String(payload.error || "")).toMatch(/already in progress/i);
     } finally {
       appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+      appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
     }
   });
 
   test("returns 503 when POST /quick-check is requested while the auto-refresh circuit is open", async () => {
-    appModule.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60 * 60 * 1000,
-    ).toISOString();
-    appModule.viewPrsSchedulerState.consecutiveAutoFailures = 3;
+    // /quick-check with an empty body targets every configured repo -
+    // populate that same set's own circuit breaker entries (circuit
+    // breaker is now per-repo - see autoCircuitByRepo's own comment in
+    // app.js).
+    const openUntilIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    appModule.getViewPrsAutoRefreshRepos().forEach((repo) => {
+      appModule.viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1740,13 +1851,147 @@ describe("route behavior", () => {
       expect(payload.ok).toBe(false);
       expect(String(payload.error || "")).toMatch(/circuit breaker is open/i);
     } finally {
-      appModule.viewPrsSchedulerState.autoCircuitOpenUntil = null;
-      appModule.viewPrsSchedulerState.consecutiveAutoFailures = 0;
+      appModule.viewPrsSchedulerState.autoCircuitByRepo = {};
     }
   });
 
-  test("returns 409 when POST /quick-check is requested while a quick check is already in progress", async () => {
+  test("POST /circuit-breaker/reset clears just one repo's breaker when scoped, leaving others alone", async () => {
+    appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-reset-a"] = {
+      consecutiveFailures: 3,
+      circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      lastCircuitOpenedAt: new Date().toISOString(),
+    };
+    appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-reset-b"] = {
+      consecutiveFailures: 2,
+      circuitOpenUntil: null,
+      lastCircuitOpenedAt: null,
+    };
+    try {
+      const { response, payload } = await postJson(server, "/circuit-breaker/reset", {
+        repo: "owner/repo-reset-a",
+      });
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-reset-a"]).toBeUndefined();
+      expect(
+        appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-reset-b"].consecutiveFailures,
+      ).toBe(2);
+    } finally {
+      appModule.viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+  });
+
+  test("POST /circuit-breaker/reset with no body clears every repo's breaker", async () => {
+    appModule.viewPrsSchedulerState.autoCircuitByRepo["owner/repo-reset-all"] = {
+      consecutiveFailures: 3,
+      circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      lastCircuitOpenedAt: new Date().toISOString(),
+    };
+    try {
+      const { response, payload } = await postJson(server, "/circuit-breaker/reset", {});
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(appModule.viewPrsSchedulerState.autoCircuitByRepo).toEqual({});
+    } finally {
+      appModule.viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+  });
+
+  test("returns 400 when POST /circuit-breaker/reset is given a non-string repo", async () => {
+    const { response, payload } = await postJson(server, "/circuit-breaker/reset", {
+      repo: 123,
+    });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+  });
+
+  test("POST /circuit-breaker/reset pushes a scheduler-state-changed SSE frame so other tabs update live", async () => {
+    // Resetting has no OTHER side effect (unlike /dispatcher/bump, which
+    // triggers a real tick) that would naturally emit a job event carrying
+    // a fresh scheduler snapshot - this route must push one explicitly.
+    const originalEmitSchedulerStateChanged = appModule.emitSchedulerStateChanged;
+    let callCount = 0;
+    appModule.emitSchedulerStateChanged = () => {
+      callCount += 1;
+      return null;
+    };
+    try {
+      const { response } = await postJson(server, "/circuit-breaker/reset", {});
+
+      expect(response.status).toBe(200);
+      expect(callCount).toBe(1);
+    } finally {
+      appModule.emitSchedulerStateChanged = originalEmitSchedulerStateChanged;
+    }
+  });
+
+  test("POST /circuit-breaker/reset actually retries the affected repo soon, not just clears breaker bookkeeping", async () => {
+    // Regression test: resetAutoCircuitBreaker alone never touched the
+    // dispatcher, so the affected repo's entries could still be up to a
+    // full task interval away from their next natural attempt even after
+    // a "successful" reset - this route must also bump + tick them.
+    // Must be a CONFIGURED repo (getOrInitRegistry only creates entries for
+    // repos getViewPrsAutoRefreshRepos() actually returns).
+    const [targetRepo] = appModule.getViewPrsAutoRefreshRepos();
+    appModule.viewPrsSchedulerState.autoCircuitByRepo[targetRepo] = {
+      consecutiveFailures: 3,
+      circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      lastCircuitOpenedAt: new Date().toISOString(),
+    };
+    const originalRunDispatcherTick = appModule.runDispatcherTick;
+    let tickCalled = false;
+    appModule.runDispatcherTick = async () => {
+      tickCalled = true;
+    };
+    try {
+      const { response } = await postJson(server, "/circuit-breaker/reset", {
+        repo: targetRepo,
+      });
+
+      expect(response.status).toBe(200);
+      expect(tickCalled).toBe(true);
+      const entries = appModule.viewPrsSchedulerState.dispatcher.entries;
+      ["quickCheck", "autoRefresh", "mergedDrain"].forEach((taskType) => {
+        const entry = entries[`${targetRepo}::${taskType}`];
+        expect(entry).toBeDefined();
+        expect(Date.parse(entry.nextDueAt)).toBeLessThanOrEqual(Date.now());
+      });
+    } finally {
+      appModule.runDispatcherTick = originalRunDispatcherTick;
+      appModule.viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+  });
+
+  test("POST /circuit-breaker/reset clears a stale 'circuit open' lastAutoSkipReason, but leaves an unrelated skip reason alone", async () => {
+    appModule.viewPrsSchedulerState.lastAutoSkipReason =
+      "auto refresh circuit open for owner/repo-stale until 2026-01-01T00:00:00.000Z";
+    try {
+      await postJson(server, "/circuit-breaker/reset", {});
+      expect(appModule.viewPrsSchedulerState.lastAutoSkipReason).toBeNull();
+    } finally {
+      appModule.viewPrsSchedulerState.lastAutoSkipReason = null;
+    }
+
+    appModule.viewPrsSchedulerState.lastAutoSkipReason = "missing dependencies: gh";
+    try {
+      await postJson(server, "/circuit-breaker/reset", {});
+      expect(appModule.viewPrsSchedulerState.lastAutoSkipReason).toBe("missing dependencies: gh");
+    } finally {
+      appModule.viewPrsSchedulerState.lastAutoSkipReason = null;
+    }
+  });
+
+  test("returns 409 when POST /quick-check is requested while a quick check is already in progress for the same repo(s)", async () => {
     appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+    // /quick-check with an empty body targets every configured repo -
+    // populate quickCheckInProgressRepos with that same set for a genuine
+    // full-overlap collision (quick check is now per-repo-aware).
+    appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set(
+      appModule.getViewPrsAutoRefreshRepos(),
+    );
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1755,11 +2000,20 @@ describe("route behavior", () => {
       expect(String(payload.error || "")).toMatch(/already in progress/i);
     } finally {
       appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+      appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
     }
   });
 
-  test("returns 409 when POST /quick-check is requested during an active auto run", async () => {
+  test("returns 409 when POST /quick-check is requested during an active auto run for the same repo(s)", async () => {
     appModule.viewPrsSchedulerState.isAutoRunInProgress = true;
+    // /quick-check with an empty body targets every configured repo (see
+    // runViewPrsQuickCheck's own target-repo resolution) - populate
+    // autoRefreshInProgressRepos with that exact same set so this is a
+    // genuine full-overlap collision (quick check is now per-repo-aware,
+    // see autoRefreshInProgressRepos's own comment in app.js).
+    appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(
+      appModule.getViewPrsAutoRefreshRepos(),
+    );
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1768,6 +2022,7 @@ describe("route behavior", () => {
       expect(String(payload.error || "")).toMatch(/already in progress/i);
     } finally {
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
+      appModule.viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
     }
   });
 
@@ -2412,6 +2667,9 @@ describe("route behavior", () => {
 
     test("POST /quick-check reserves and releases a slot even when the check itself is skipped", async () => {
       appModule.viewPrsSchedulerState.isQuickCheckInProgress = true;
+      appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set(
+        appModule.getViewPrsAutoRefreshRepos(),
+      );
       try {
         const { response } = await postJson(server, "/quick-check", {});
 
@@ -2420,6 +2678,7 @@ describe("route behavior", () => {
         expect(releaseSpy).toHaveBeenCalledTimes(1);
       } finally {
         appModule.viewPrsSchedulerState.isQuickCheckInProgress = false;
+        appModule.viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
       }
     });
 

@@ -3,6 +3,7 @@ import { useJobEvents } from '../state/JobEventsContext';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { ActivityDrawerSchedulerSection } from './ActivityDrawerSchedulerSection';
 import { ActivityDrawerDispatcherSection } from './ActivityDrawerDispatcherSection';
+import { ActivityDrawerCircuitBreakerSection } from './ActivityDrawerCircuitBreakerSection';
 import { ActivityDrawerQueueSection } from './ActivityDrawerQueueSection';
 import { ActivityDrawerRecentActivitySection } from './ActivityDrawerRecentActivitySection';
 import { BackfillBadges } from './BackfillBadges';
@@ -27,6 +28,7 @@ export function ActivityDrawer({
   requestActivityBadges = [],
   recentRequestActivity = [],
   onBumpDispatcherEntry,
+  onResetCircuitBreaker,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { jobs } = useJobEvents();
@@ -93,6 +95,8 @@ export function ActivityDrawer({
             <ActivityDrawerSchedulerSection />
 
             <ActivityDrawerDispatcherSection onBump={onBumpDispatcherEntry} />
+
+            <ActivityDrawerCircuitBreakerSection onReset={onResetCircuitBreaker} />
 
             <ActivityDrawerQueueSection />
 

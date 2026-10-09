@@ -46,6 +46,19 @@ const registerViewPrsDataRoutes = ({
   // due time. Safely no-ops if absent (e.g. in tests that don't wire it).
   bumpDispatcherEntry,
   dispatcherTaskTypes,
+  // Per-repo circuit breaker manual reset (see view-prs-scheduler-helpers.js)
+  // - e.g. for when a laptop sleep/lock caused a burst of failures that
+  // shouldn't count once it's back. Safely no-ops if absent (e.g. in tests
+  // that don't wire it).
+  resetAutoCircuitBreaker,
+  // Pushes a job-agnostic SSE frame carrying a fresh scheduler snapshot
+  // (see view-prs-job-events-helpers.js) - called after a successful reset
+  // so every connected tab's Activity drawer updates immediately instead
+  // of waiting for some UNRELATED job event to happen to carry a fresh
+  // snapshot (unlike POST /dispatcher/bump, resetting the circuit breaker
+  // has no other side effect that would trigger one on its own). Safely
+  // no-ops if absent (e.g. in tests that don't wire it).
+  emitSchedulerStateChanged,
 }) => {
   const {
     normalizeActorNameCacheEntries,
@@ -90,6 +103,10 @@ const registerViewPrsDataRoutes = ({
   const dispatcherTaskTypesSafe = Array.isArray(dispatcherTaskTypes)
     ? dispatcherTaskTypes
     : [];
+  const resetAutoCircuitBreakerSafe =
+    typeof resetAutoCircuitBreaker === "function" ? resetAutoCircuitBreaker : () => {};
+  const emitSchedulerStateChangedSafe =
+    typeof emitSchedulerStateChanged === "function" ? emitSchedulerStateChanged : () => {};
   const { validateJsonObjectBody, validateNonEmptyMappings, validateDataDeltaRequest } =
     createViewPrsDataRouteValidationHelpers({ isObject, sendErrorStatus });
   const { readDataWithDiffRefreshEnqueued } = createViewPrsDataReadHelpers({
@@ -331,6 +348,39 @@ const registerViewPrsDataRoutes = ({
       });
       },
       fallbackMessage: getDataRouteErrorMessage("dispatcherBump"),
+    }),
+  );
+
+  // Manual "Reset circuit breaker" action from the Activity drawer - for
+  // when a laptop sleep/lock caused a burst of auto-refresh failures that
+  // shouldn't count once it's back (see autoCircuitByRepo's own comment in
+  // app.js). Optional { repo } body resets just that one repo's breaker;
+  // omitted resets every repo's. Pure in-memory state mutation, no gh/script
+  // involvement - same shape as POST /dispatcher/bump.
+  app.post(
+    ["/circuit-breaker/reset", "/view-prs/circuit-breaker/reset"],
+    createSyncHandler({
+      handler: (req, res) => {
+      const body = isObject(req.body) ? req.body : {};
+      const { repo } = body;
+
+      if (repo !== undefined && (typeof repo !== "string" || repo.trim().length === 0)) {
+        sendErrorStatus({ res, statusCode: 400, error: "repo, if given, must be a non-empty string" });
+        return;
+      }
+
+      resetAutoCircuitBreakerSafe(repo ? { repo } : {});
+      // Resetting has no OTHER side effect that would naturally trigger a
+      // job event (unlike POST /dispatcher/bump, which kicks off a real
+      // tick) - push a scheduler-only SSE frame explicitly so every
+      // connected tab's Activity drawer updates immediately instead of
+      // waiting for some unrelated job event to happen to carry a fresh
+      // snapshot.
+      emitSchedulerStateChangedSafe();
+
+      sendSuccessPayload({ res, payload: buildSchedulerPayload() });
+      },
+      fallbackMessage: getDataRouteErrorMessage("circuitBreakerReset"),
     }),
   );
 };

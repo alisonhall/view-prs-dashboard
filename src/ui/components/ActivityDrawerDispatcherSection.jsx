@@ -16,6 +16,8 @@ const TASK_TYPE_LABELS = {
 // ambiguously (it means "waiting its turn", not "overdue/late").
 const STATUS_EXPLANATIONS = {
   running: 'Currently executing.',
+  'circuit-open':
+    "This repo's auto-refresh circuit breaker is open after repeated failures - this task won't run until it's reset or the cooldown expires. See the Circuit breaker section below.",
   due: 'Past its scheduled time and waiting for a free slot in the shared gh-process budget - runs on the next dispatcher tick that has room.',
   scheduled: "Waiting for its next scheduled time - hasn't come due yet.",
 };

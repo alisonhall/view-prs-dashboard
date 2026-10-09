@@ -15,6 +15,7 @@ describe("pr job events helpers", () => {
       expect(state.pendingMergedClosedCount).toBe(0);
       expect(state.recentFinished).toEqual([]);
       expect(state.dispatcherQueue).toEqual([]);
+      expect(state.openAutoCircuitRepos).toEqual([]);
     });
   });
 
@@ -61,6 +62,20 @@ describe("pr job events helpers", () => {
         scheduler: { dispatcherQueue: "not-an-array" },
       });
       expect(withoutQueue.dispatcherQueue).toEqual([]);
+    });
+
+    test("carries openAutoCircuitRepos from the scheduler payload, or defaults to empty if absent/malformed", () => {
+      const withRepos = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: { openAutoCircuitRepos: ["owner/repo-a"] },
+      });
+      expect(withRepos.openAutoCircuitRepos).toEqual(["owner/repo-a"]);
+
+      const withoutRepos = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: { openAutoCircuitRepos: "not-an-array" },
+      });
+      expect(withoutRepos.openAutoCircuitRepos).toEqual([]);
     });
 
     test("is authoritative regardless of lastSeq, and resets lastSeq to 0", () => {
@@ -247,6 +262,33 @@ describe("pr job events helpers", () => {
       expect(state.dispatcherQueue).toEqual([
         { repo: "owner/repo", taskType: "mergedDrain", status: "running" },
       ]);
+    });
+
+    test("a job-agnostic scheduler-type envelope also refreshes openAutoCircuitRepos from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        seq: 1,
+        at: FIXED_NOW,
+        scheduler: { openAutoCircuitRepos: ["owner/repo-a"] },
+      });
+
+      expect(state.openAutoCircuitRepos).toEqual(["owner/repo-a"]);
+    });
+
+    test("a job envelope also refreshes openAutoCircuitRepos from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        job: "mergedQueueDrain",
+        phase: "finish",
+        seq: 1,
+        at: FIXED_NOW,
+        ok: true,
+        scheduler: { openAutoCircuitRepos: ["owner/repo-b"] },
+      });
+
+      expect(state.openAutoCircuitRepos).toEqual(["owner/repo-b"]);
     });
 
     test("returns the same state reference for a malformed envelope", () => {

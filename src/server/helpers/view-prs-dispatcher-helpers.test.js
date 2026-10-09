@@ -217,6 +217,19 @@ describe("View Prs Dispatcher Helpers", () => {
 
       expect(due.some((entry) => entry.repo === "owner/repoA" && entry.taskType === "autoRefresh")).toBe(false);
     });
+
+    test("When a repo's circuit breaker is open, Then ALL of its due entries (every task type) are excluded, but a different repo's are not", () => {
+      helpers = makeHelpers({
+        getViewPrsAutoRefreshRepos: () => ["owner/repoA", "owner/repoB"],
+        getOpenAutoCircuitRepos: () => ["owner/repoA"],
+      });
+      helpers.getOrInitRegistry();
+
+      const due = helpers.getDueEntries({ nowMs: BASE_MS });
+
+      expect(due.some((entry) => entry.repo === "owner/repoA")).toBe(false);
+      expect(due.some((entry) => entry.repo === "owner/repoB")).toBe(true);
+    });
   });
 
   describe("Given pickNextBatch's concurrency/rate-limit budget", () => {
@@ -300,6 +313,27 @@ describe("View Prs Dispatcher Helpers", () => {
     });
   });
 
+  describe("Given markEntryDeferred (a call that was skipped, not run)", () => {
+    beforeEach(() => {
+      helpers.getOrInitRegistry();
+    });
+
+    test("When an entry is deferred, Then isRunning clears, consecutiveFailureCount is untouched, and nextDueAt is a short retry - not the full interval", () => {
+      const entry = viewPrsSchedulerState.dispatcher.entries["owner/repoA::autoRefresh"];
+      entry.consecutiveFailureCount = 2;
+      helpers.markEntryRunning(entry, { nowMs: BASE_MS });
+
+      helpers.markEntryDeferred(entry, { nowMs: BASE_MS + 1000, skipReason: "already-in-progress" });
+
+      expect(entry.isRunning).toBe(false);
+      expect(entry.consecutiveFailureCount).toBe(2);
+      expect(entry.lastSkipReason).toBe("already-in-progress");
+      const nextDueMs = new Date(entry.nextDueAt).getTime();
+      expect(nextDueMs).toBeGreaterThan(BASE_MS + 1000);
+      expect(nextDueMs).toBeLessThan(BASE_MS + 1000 + entry.intervalMs);
+    });
+  });
+
   describe("Given bumpEntryUrgent (the mechanism behind both fast-follow cases)", () => {
     beforeEach(() => {
       helpers.getOrInitRegistry();
@@ -379,6 +413,30 @@ describe("View Prs Dispatcher Helpers", () => {
     test("When there are more entries than the limit, Then the snapshot is capped", () => {
       const snapshot = helpers.getDispatcherQueueSnapshot({ limit: 2 });
       expect(snapshot).toHaveLength(2);
+    });
+
+    test("When a repo's circuit breaker is open, Then its due/scheduled entries show status circuit-open, sorted after running but before due/scheduled", () => {
+      helpers = makeHelpers({
+        getViewPrsAutoRefreshRepos: () => ["owner/repoA", "owner/repoB"],
+        getOpenAutoCircuitRepos: () => ["owner/repoA"],
+      });
+      helpers.getOrInitRegistry();
+      const entries = viewPrsSchedulerState.dispatcher.entries;
+      entries["owner/repoB::quickCheck"].isRunning = true;
+      entries["owner/repoB::autoRefresh"].nextDueAt = iso(BASE_MS);
+
+      const snapshot = helpers.getDispatcherQueueSnapshot({ limit: 20 });
+
+      const repoAStatuses = snapshot
+        .filter((entry) => entry.repo === "owner/repoA")
+        .map((entry) => entry.status);
+      expect(repoAStatuses).toEqual(["circuit-open", "circuit-open", "circuit-open"]);
+      // running still sorts ahead of circuit-open.
+      expect(snapshot[0]).toMatchObject({ repo: "owner/repoB", status: "running" });
+      // circuit-open sorts ahead of a genuinely-due different repo's entry.
+      const circuitOpenIndex = snapshot.findIndex((entry) => entry.status === "circuit-open");
+      const dueIndex = snapshot.findIndex((entry) => entry.status === "due");
+      expect(circuitOpenIndex).toBeLessThan(dueIndex);
     });
   });
 
@@ -473,6 +531,39 @@ describe("View Prs Dispatcher Helpers", () => {
       expect(helpers.getReservedGhSlots()).toBe(2);
       helpers.releaseGhSlots(10);
       expect(helpers.getReservedGhSlots()).toBe(0);
+    });
+  });
+
+  describe("Given getRunningGhCost (budget accounting for ticks that outlive their own claim phase)", () => {
+    beforeEach(() => {
+      helpers = makeHelpers({
+        getViewPrsAutoRefreshRepos: () => ["owner/repoA", "owner/repoB"],
+        ghCostByTaskType: { quickCheck: 1, autoRefresh: 4, mergedDrain: 4 },
+      });
+      helpers.getOrInitRegistry();
+    });
+
+    test("When no entry is running, Then it is 0", () => {
+      expect(helpers.getRunningGhCost()).toBe(0);
+    });
+
+    test("When some entries are running, Then it sums only their cost by task type", () => {
+      const entries = viewPrsSchedulerState.dispatcher.entries;
+      helpers.markEntryRunning(entries["owner/repoA::autoRefresh"], { nowMs: BASE_MS });
+      helpers.markEntryRunning(entries["owner/repoB::quickCheck"], { nowMs: BASE_MS });
+
+      // autoRefresh (4) + quickCheck (1) - every other entry stays idle and
+      // doesn't contribute, confirming this isn't just "sum everything".
+      expect(helpers.getRunningGhCost()).toBe(5);
+    });
+
+    test("When an entry finishes, Then it stops counting toward the running cost", () => {
+      const entries = viewPrsSchedulerState.dispatcher.entries;
+      helpers.markEntryRunning(entries["owner/repoA::autoRefresh"], { nowMs: BASE_MS });
+      expect(helpers.getRunningGhCost()).toBe(4);
+
+      helpers.markEntryFinished(entries["owner/repoA::autoRefresh"], { nowMs: BASE_MS, ok: true });
+      expect(helpers.getRunningGhCost()).toBe(0);
     });
   });
 });

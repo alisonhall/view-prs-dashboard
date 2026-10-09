@@ -258,6 +258,12 @@ const createViewPrsSchedulerHelpers = ({
       consecutiveAutoFailures: viewPrsSchedulerState.consecutiveAutoFailures,
       autoCircuitOpenUntil: viewPrsSchedulerState.autoCircuitOpenUntil,
       lastAutoCircuitOpenedAt: viewPrsSchedulerState.lastAutoCircuitOpenedAt,
+      // The specific repos currently circuit-broken (per-repo breaker, see
+      // autoCircuitByRepo's own comment near viewPrsSchedulerState's
+      // definition) - lets the Activity drawer show which repo(s) a
+      // "Reset circuit breaker" action would actually affect, rather than
+      // just the global worst-case aggregates above.
+      openAutoCircuitRepos: getOpenAutoCircuitRepos(),
       // New: the dispatcher's real, ordered upcoming/running task list -
       // see the Activity drawer's ActivityDrawerDispatcherSection.
       dispatcherQueue: Array.isArray(dispatcherFields.dispatcherQueue)
@@ -343,9 +349,89 @@ const createViewPrsSchedulerHelpers = ({
     return keys;
   };
 
+  // Per-repo circuit breaker (deliberately separate from the dispatcher's
+  // own per-(repo, taskType) consecutiveFailureCount/backoff in
+  // view-prs-dispatcher-helpers.js's markEntryFinished): that mechanism is a
+  // soft "push this entry's next run further out" scheduling nudge: it
+  // never fully stops a repo's work, and isn't surfaced to the user. This
+  // one is a hard "stop entirely for N minutes" safety stop per repo,
+  // surfaced in the public scheduler state and manually resettable (see
+  // resetAutoCircuitBreaker below) - e.g. for when a laptop sleeping/locking
+  // caused a burst of failures that shouldn't count once it's back. Don't
+  // conflate the two.
+  const ensureAutoCircuitEntry = (repo) => {
+    if (!isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)) {
+      viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+    if (!isPlainObject(viewPrsSchedulerState.autoCircuitByRepo[repo])) {
+      viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 0,
+        circuitOpenUntil: null,
+        lastCircuitOpenedAt: null,
+      };
+    }
+    return viewPrsSchedulerState.autoCircuitByRepo[repo];
+  };
+
+  // The flat consecutiveAutoFailures/autoCircuitOpenUntil/lastAutoCircuitOpenedAt
+  // fields stay as back-compat aggregates (existing consumers - the public
+  // scheduler-state shape, pr-applied-summary.helpers.js's "Last auto skip"
+  // text - keep working unchanged): the worst case across every repo
+  // (highest failure count; soonest-still-open circuit, if any).
+  const recomputeAutoCircuitAggregates = () => {
+    const byRepo = isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)
+      ? viewPrsSchedulerState.autoCircuitByRepo
+      : {};
+    let maxFailures = 0;
+    let latestOpenUntilIso = null;
+    let latestOpenUntilMs = null;
+    let latestOpenedAtIso = null;
+    Object.values(byRepo).forEach((entry) => {
+      if (Number(entry.consecutiveFailures) > maxFailures) {
+        maxFailures = Number(entry.consecutiveFailures);
+      }
+      const openUntilMs = parseTimestamp(entry.circuitOpenUntil);
+      if (openUntilMs !== null && (latestOpenUntilMs === null || openUntilMs > latestOpenUntilMs)) {
+        latestOpenUntilMs = openUntilMs;
+        latestOpenUntilIso = entry.circuitOpenUntil;
+        latestOpenedAtIso = entry.lastCircuitOpenedAt;
+      }
+    });
+    viewPrsSchedulerState.consecutiveAutoFailures = maxFailures;
+    viewPrsSchedulerState.autoCircuitOpenUntil = latestOpenUntilIso;
+    viewPrsSchedulerState.lastAutoCircuitOpenedAt = latestOpenedAtIso;
+  };
+
+  // Read-only lookup - unlike ensureAutoCircuitEntry, never creates an
+  // entry just from being checked (checking happens far more often than
+  // failing, so this avoids persisting an empty breaker entry for every
+  // repo that's ever simply been looked at).
+  const getAutoCircuitOpenUntilForRepo = (repo) => {
+    const byRepo = isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)
+      ? viewPrsSchedulerState.autoCircuitByRepo
+      : {};
+    return byRepo[repo]?.circuitOpenUntil ?? null;
+  };
+
+  const getOpenAutoCircuitRepos = ({ nowMs = Date.now() } = {}) => {
+    const byRepo = isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)
+      ? viewPrsSchedulerState.autoCircuitByRepo
+      : {};
+    return Object.keys(byRepo).filter((repo) => {
+      const openUntilMs = parseTimestamp(byRepo[repo].circuitOpenUntil);
+      return openUntilMs !== null && nowMs < openUntilMs;
+    });
+  };
+
+  // `repo` resolves against the per-repo breaker; `autoCircuitOpenUntil`
+  // can still be passed directly (existing pure-logic tests do this) and
+  // takes precedence over both - preserved for backward compat.
   const getViewPrsAutoCircuitOpenState = ({
     nowMs = Date.now(),
-    autoCircuitOpenUntil = viewPrsSchedulerState.autoCircuitOpenUntil,
+    repo,
+    autoCircuitOpenUntil = repo
+      ? getAutoCircuitOpenUntilForRepo(repo)
+      : viewPrsSchedulerState.autoCircuitOpenUntil,
   } = {}) => {
     const circuitOpenUntilMs = parseTimestamp(autoCircuitOpenUntil);
     if (circuitOpenUntilMs === null || nowMs >= circuitOpenUntilMs) {
@@ -380,24 +466,93 @@ const createViewPrsSchedulerHelpers = ({
     }));
   };
 
-  const recordViewPrsAutoRefreshFailure = () => {
-    viewPrsSchedulerState.consecutiveAutoFailures += 1;
-    if (
-      viewPrsSchedulerState.consecutiveAutoFailures >=
-      viewPrsAutoCircuitFailureThreshold
-    ) {
-      const openUntilMs = Date.now() + viewPrsAutoCircuitCooldownMs;
-      const openUntilIso = new Date(openUntilMs).toISOString();
-      const openedAtIso = new Date().toISOString();
-      viewPrsSchedulerState.autoCircuitOpenUntil = openUntilIso;
-      viewPrsSchedulerState.lastAutoCircuitOpenedAt = openedAtIso;
-      viewPrsSchedulerState.lastAutoSkipReason = `auto refresh circuit open until ${openUntilIso} after ${viewPrsSchedulerState.consecutiveAutoFailures} consecutive failure(s)`;
-    }
+  // Takes the repos that ACTUALLY failed in one auto-refresh batch (not
+  // called once per batch regardless of scope, like before) - each failed
+  // repo's own counter is incremented and its own circuit opened
+  // independently, so one repo's flaky gh auth no longer trips every
+  // other repo's breaker too.
+  const recordViewPrsAutoRefreshFailure = (failedRepos = []) => {
+    const repos = Array.isArray(failedRepos) ? failedRepos : [];
+    repos.forEach((repo) => {
+      const entry = ensureAutoCircuitEntry(repo);
+      entry.consecutiveFailures += 1;
+      if (entry.consecutiveFailures >= viewPrsAutoCircuitFailureThreshold) {
+        const openUntilMs = Date.now() + viewPrsAutoCircuitCooldownMs;
+        entry.circuitOpenUntil = new Date(openUntilMs).toISOString();
+        entry.lastCircuitOpenedAt = new Date().toISOString();
+        viewPrsSchedulerState.lastAutoSkipReason = `auto refresh circuit open for ${repo} until ${entry.circuitOpenUntil} after ${entry.consecutiveFailures} consecutive failure(s)`;
+      }
+    });
+    recomputeAutoCircuitAggregates();
   };
 
+  // Takes the repos that succeeded (not called unconditionally once per
+  // clean batch) - only resets the repos that actually just succeeded,
+  // leaving any OTHER repo's own existing failure count/open circuit alone.
+  const resetAutoCircuitFailuresForRepos = (succeededRepos = []) => {
+    const repos = Array.isArray(succeededRepos) ? succeededRepos : [];
+    const byRepo = isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)
+      ? viewPrsSchedulerState.autoCircuitByRepo
+      : {};
+    repos.forEach((repo) => {
+      const entry = byRepo[repo];
+      if (!entry) {
+        return;
+      }
+      entry.consecutiveFailures = 0;
+      entry.circuitOpenUntil = null;
+    });
+    recomputeAutoCircuitAggregates();
+  };
+
+  // The person-triggered "Reset circuit breaker" action (e.g. after a
+  // laptop sleep/lock caused a burst of failures that shouldn't count once
+  // it's back) - `repo` resets just that one repo's breaker; omitted
+  // resets every repo's (the UI's own "reset everything" scope - see
+  // REACT_MIGRATION_PLAN.md). `repos` (array) resets exactly that list -
+  // used by /run-auto's own internal reset, scoped to whatever repos that
+  // particular call targets, instead of blowing away every other repo's
+  // breaker state just because one repo was manually retried.
+  const resetAutoCircuitBreaker = ({ repo, repos } = {}) => {
+    if (!isPlainObject(viewPrsSchedulerState.autoCircuitByRepo)) {
+      viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+    // null means "reset everything" (no scope) - kept distinct from an
+    // empty array, which would mean "reset nothing".
+    const resetRepoList = Array.isArray(repos) ? repos : repo ? [repo] : null;
+    if (resetRepoList) {
+      resetRepoList.forEach((oneRepo) => {
+        delete viewPrsSchedulerState.autoCircuitByRepo[oneRepo];
+      });
+    } else {
+      viewPrsSchedulerState.autoCircuitByRepo = {};
+    }
+    // Only clear lastAutoSkipReason if it's actually the circuit-open
+    // message THIS reset just addressed - a skip for a DIFFERENT reason
+    // (missing dependencies, manual cooldown) shouldn't be erased just
+    // because someone reset an unrelated circuit, and neither should a
+    // message about a DIFFERENT repo's own still-open circuit just because
+    // this reset happened to be scoped to some other repo (e.g. /run-auto's
+    // own internal reset runs on every call, not just when something was
+    // actually open for the repo(s) it targets). An unscoped (reset-
+    // everything) call has no such ambiguity - any lingering circuit
+    // message is necessarily stale once every repo's breaker is cleared.
+    const lastSkipReason = viewPrsSchedulerState.lastAutoSkipReason;
+    const shouldClearSkipReason =
+      typeof lastSkipReason === "string" &&
+      lastSkipReason.includes("circuit open") &&
+      (resetRepoList === null || resetRepoList.some((oneRepo) => lastSkipReason.includes(oneRepo)));
+    if (shouldClearSkipReason) {
+      viewPrsSchedulerState.lastAutoSkipReason = null;
+    }
+    recomputeAutoCircuitAggregates();
+  };
+
+  // Kept as a no-arg alias of resetAutoCircuitBreaker() (resets everything)
+  // for every existing caller of this name (today: /run-auto's own
+  // pre-trigger reset) - same behavior as before per-repo tracking existed.
   const resetViewPrsAutoRefreshFailureState = () => {
-    viewPrsSchedulerState.consecutiveAutoFailures = 0;
-    viewPrsSchedulerState.autoCircuitOpenUntil = null;
+    resetAutoCircuitBreaker();
   };
 
   const getViewPrsAutoRefreshRepos = (
@@ -452,6 +607,9 @@ const createViewPrsSchedulerHelpers = ({
     buildAckRefreshBudgetSkipErrors,
     recordViewPrsAutoRefreshFailure,
     resetViewPrsAutoRefreshFailureState,
+    resetAutoCircuitFailuresForRepos,
+    resetAutoCircuitBreaker,
+    getOpenAutoCircuitRepos,
     getViewPrsAutoRefreshRepos,
     setPendingForRepo,
     clearPendingForRepo,

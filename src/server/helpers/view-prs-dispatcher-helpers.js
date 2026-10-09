@@ -6,6 +6,12 @@
 // app.js still owns actually invoking the three existing job functions.
 const TASK_TYPES = ["quickCheck", "autoRefresh", "mergedDrain"];
 
+// How soon a deferred (skipped, not failed) entry is retried - short on
+// purpose: the blocking condition (an overlapping run, a manual cooldown)
+// is expected to clear quickly, unlike a genuine failure's backoff or a
+// genuine success's full task interval.
+const DEFERRED_RETRY_MS = 30 * 1000;
+
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -17,6 +23,13 @@ const createViewPrsDispatcherHelpers = ({
   parseTimestamp,
   viewPrsSchedulerState,
   getViewPrsAutoRefreshRepos,
+  // () => array of repos whose auto-refresh circuit breaker is currently
+  // open (see autoCircuitByRepo in app.js / view-prs-scheduler-helpers.js).
+  // Read fresh (not cached) every call, same reasoning as
+  // getSchedulerRepoConfig below - a repo's circuit can open/close between
+  // ticks. Used so the dispatcher never selects a call that's guaranteed to
+  // silently no-op (see getDueEntries's own comment).
+  getOpenAutoCircuitRepos = () => [],
   // () => parsed schedulerRepoConfig object from user-defaults.json, read
   // fresh (not cached) every time so a PUT takes effect without a restart.
   getSchedulerRepoConfig = () => ({}),
@@ -146,15 +159,32 @@ const createViewPrsDispatcherHelpers = ({
 
   const getAllEntries = () => Object.values(ensureDispatcherState().entries);
 
-  const getDueEntries = ({ nowMs = now() } = {}) =>
-    getAllEntries()
-      .filter((entry) => !entry.isRunning && Date.parse(entry.nextDueAt) <= nowMs)
+  // Excludes entries whose repo currently has an open circuit breaker -
+  // every task type (not just autoRefresh/mergedDrain: a quick check for a
+  // circuit-open repo also silently no-ops, see runViewPrsQuickCheck's own
+  // circuit check) for that repo would be selected only to immediately
+  // no-op inside runViewPrsAutoRefresh/runViewPrsQuickCheck, wasting a
+  // gh-process budget slot another, genuinely-runnable entry could have
+  // used, and getting falsely recorded as a successful run (see
+  // runTaskGroup's own comment in app.js). Still surfaced in
+  // getDispatcherQueueSnapshot below with its own "circuit-open" status,
+  // not silently hidden.
+  const getDueEntries = ({ nowMs = now() } = {}) => {
+    const openCircuitRepos = new Set(getOpenAutoCircuitRepos());
+    return getAllEntries()
+      .filter(
+        (entry) =>
+          !entry.isRunning &&
+          Date.parse(entry.nextDueAt) <= nowMs &&
+          !openCircuitRepos.has(entry.repo),
+      )
       .sort((a, b) => {
         if (b.priority !== a.priority) {
           return b.priority - a.priority;
         }
         return Date.parse(a.nextDueAt) - Date.parse(b.nextDueAt);
       });
+  };
 
   const estimateGhCost = (taskType) => ghCostByTaskType[taskType] ?? 1;
 
@@ -211,6 +241,19 @@ const createViewPrsDispatcherHelpers = ({
     return entry;
   };
 
+  // For a call that was prevented from even attempting to run (missing
+  // dependencies, an overlapping in-flight run, a manual cooldown) - neither
+  // a success nor a failure, so consecutiveFailureCount is left untouched
+  // and nextDueAt gets a short fixed retry instead of the full interval or
+  // a failure backoff.
+  const markEntryDeferred = (entry, { nowMs = now(), skipReason = null } = {}) => {
+    entry.isRunning = false;
+    entry.lastFinishedAt = new Date(nowMs).toISOString();
+    entry.lastSkipReason = skipReason;
+    entry.nextDueAt = new Date(nowMs + DEFERRED_RETRY_MS).toISOString();
+    return entry;
+  };
+
   // The single function both existing fast-follow cases (open-PR change ->
   // autoRefresh, and the previously-missing merged/closed change ->
   // mergedDrain) call. Makes the entry immediately due; the caller is
@@ -227,9 +270,17 @@ const createViewPrsDispatcherHelpers = ({
     return entry;
   };
 
-  const classifyEntryStatus = (entry, nowMs) => {
+  // "circuit-open" takes priority over "due"/"scheduled": an entry whose
+  // repo's circuit is open would never actually be selected to run (see
+  // getDueEntries), so showing it as a routine "due"/"scheduled" wait would
+  // be misleading - it's stuck for a different, more specific reason worth
+  // a person's attention (see the Circuit breaker drawer section).
+  const classifyEntryStatus = (entry, nowMs, openCircuitRepos) => {
     if (entry.isRunning) {
       return "running";
+    }
+    if (openCircuitRepos.has(entry.repo)) {
+      return "circuit-open";
     }
     return Date.parse(entry.nextDueAt) <= nowMs ? "due" : "scheduled";
   };
@@ -237,22 +288,23 @@ const createViewPrsDispatcherHelpers = ({
   // Produces the dispatcherQueue array surfaced in getViewPrsSchedulerPublicState
   // (bundled into every SSE envelope) and rendered honestly in the Activity
   // drawer - sorted in the actual order the dispatcher will process it:
-  // running first, then due (priority desc), then scheduled (soonest due
-  // first).
+  // running first, then circuit-open (worth noticing even though it won't
+  // run), then due (priority desc), then scheduled (soonest due first).
   const getDispatcherQueueSnapshot = ({ limit = 20 } = {}) => {
     const nowMs = now();
+    const openCircuitRepos = new Set(getOpenAutoCircuitRepos());
     const items = getAllEntries().map((entry) => ({
       repo: entry.repo,
       taskType: entry.taskType,
       priority: entry.priority,
-      status: classifyEntryStatus(entry, nowMs),
+      status: classifyEntryStatus(entry, nowMs, openCircuitRepos),
       nextDueAt: entry.nextDueAt,
       intervalMs: entry.intervalMs,
       lastFinishedAt: entry.lastFinishedAt,
       lastOk: entry.lastOk,
     }));
 
-    const statusRank = { running: 0, due: 1, scheduled: 2 };
+    const statusRank = { running: 0, "circuit-open": 1, due: 2, scheduled: 3 };
     items.sort((a, b) => {
       if (statusRank[a.status] !== statusRank[b.status]) {
         return statusRank[a.status] - statusRank[b.status];
@@ -371,6 +423,17 @@ const createViewPrsDispatcherHelpers = ({
 
   const getReservedGhSlots = () => ensureDispatcherState().reservedGhSlots;
 
+  // Sum of estimateGhCost across every currently-isRunning entry - needed
+  // once tick executions can outlive the tick that claimed them (see
+  // runDispatcherTick's own "claim phase vs. execution phase" comment in
+  // app.js): a later tick's own pickNextBatch must subtract this, not just
+  // getReservedGhSlots(), or an earlier tick's still-running work plus a
+  // later tick's own new selection could together exceed the shared budget.
+  const getRunningGhCost = () =>
+    getAllEntries()
+      .filter((entry) => entry.isRunning)
+      .reduce((sum, entry) => sum + estimateGhCost(entry.taskType), 0);
+
   return {
     TASK_TYPES,
     getOrInitRegistry,
@@ -379,6 +442,7 @@ const createViewPrsDispatcherHelpers = ({
     getDueEntries,
     pickNextBatch,
     markEntryRunning,
+    markEntryDeferred,
     markEntryFinished,
     bumpEntryUrgent,
     getDispatcherQueueSnapshot,
@@ -389,6 +453,7 @@ const createViewPrsDispatcherHelpers = ({
     reserveGhSlots,
     releaseGhSlots,
     getReservedGhSlots,
+    getRunningGhCost,
   };
 };
 

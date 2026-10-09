@@ -3540,8 +3540,44 @@
             font-weight: 600;
         }
 
+        .activity-drawer-dispatcher-entry.is-circuit-open .activity-drawer-dispatcher-entry-status {
+            color: #cf222e;
+            font-weight: 600;
+        }
+
         .activity-drawer-dispatcher-entry.is-scheduled .activity-drawer-dispatcher-entry-status {
             color: #57606a;
+        }
+
+        .activity-drawer-circuit-breaker-repos {
+            margin: 0 0 8px;
+            padding-left: 18px;
+            font-size: 11px;
+            color: #9a6700;
+            font-weight: 600;
+        }
+
+        .activity-drawer-circuit-breaker-repo {
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-circuit-breaker-reset {
+            font-size: 11px;
+            padding: 3px 8px;
+            border: 1px solid #cf222e;
+            border-radius: 4px;
+            background: #fff;
+            color: #cf222e;
+            cursor: pointer;
+        }
+
+        .activity-drawer-circuit-breaker-reset:hover:not(:disabled) {
+            background: #fff0ef;
+        }
+
+        .activity-drawer-circuit-breaker-reset:disabled {
+            opacity: 0.6;
+            cursor: default;
         }
 
         @media (max-width: 768px) {

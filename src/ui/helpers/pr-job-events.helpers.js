@@ -42,10 +42,17 @@ export const { createPrJobEventsHelpers } = (() => {
       // same job-agnostic, whole-scheduler-snapshot category as the
       // pending counts above, extracted the same way.
       dispatcherQueue: [],
+      // Repos whose own auto-refresh circuit breaker is currently open
+      // (see autoCircuitByRepo in app.js) - same job-agnostic,
+      // whole-scheduler-snapshot category as dispatcherQueue above.
+      openAutoCircuitRepos: [],
     });
 
     const extractDispatcherQueue = (scheduler) =>
       Array.isArray(scheduler?.dispatcherQueue) ? scheduler.dispatcherQueue : [];
+
+    const extractOpenAutoCircuitRepos = (scheduler) =>
+      Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
 
     const extractPendingCounts = (scheduler) => ({
       pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
@@ -100,6 +107,7 @@ export const { createPrJobEventsHelpers } = (() => {
         jobs,
         ...extractPendingCounts(scheduler),
         dispatcherQueue: extractDispatcherQueue(scheduler),
+        openAutoCircuitRepos: extractOpenAutoCircuitRepos(scheduler),
       };
     };
 
@@ -123,6 +131,7 @@ export const { createPrJobEventsHelpers } = (() => {
       const previousJob = jobKey ? state.jobs[jobKey] : null;
       const pendingCounts = extractPendingCounts(envelope.scheduler);
       const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
+      const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
 
       if (!previousJob) {
         return {
@@ -132,6 +141,7 @@ export const { createPrJobEventsHelpers } = (() => {
           lastSeq: nextSeq,
           ...pendingCounts,
           dispatcherQueue,
+          openAutoCircuitRepos,
         };
       }
 
@@ -193,6 +203,7 @@ export const { createPrJobEventsHelpers } = (() => {
         recentFinished,
         ...pendingCounts,
         dispatcherQueue,
+        openAutoCircuitRepos,
       };
     };
 

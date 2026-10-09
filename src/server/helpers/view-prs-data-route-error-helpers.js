@@ -4,6 +4,7 @@ const DATA_ROUTE_ERROR_MESSAGES = {
   dataDelta: "Failed to fetch data delta",
   scheduler: "Failed to fetch scheduler status",
   dispatcherBump: "Failed to reprioritize dispatcher entry",
+  circuitBreakerReset: "Failed to reset circuit breaker",
 };
 
 const createViewPrsDataRouteErrorHelpers = () => {

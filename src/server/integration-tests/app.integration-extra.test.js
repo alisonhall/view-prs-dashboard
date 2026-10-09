@@ -742,15 +742,23 @@ describe("integration behavior", () => {
     const origDep = app.getDependencyStatus;
     app.getDependencyStatus = () => ({ ok: true, missing: [] });
     app.viewPrsSchedulerState.isAutoRunInProgress = false;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60000,
-    ).toISOString();
+    // No-arg auto refresh targets every configured repo - populate that
+    // same set's own circuit breaker entries (circuit breaker is now
+    // per-repo - see autoCircuitByRepo's own comment in app.js).
+    const openUntilIso = new Date(Date.now() + 60000).toISOString();
+    app.getViewPrsAutoRefreshRepos().forEach((repo) => {
+      app.viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
     await runViewPrsAutoRefresh();
     expect(app.viewPrsSchedulerState.lastAutoSkipReason).toMatch(
       /auto refresh circuit open/,
     );
     app.getDependencyStatus = origDep;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = null;
+    app.viewPrsSchedulerState.autoCircuitByRepo = {};
   });
 
   test("blocks auto refresh when runViewPrsAutoRefresh detects missing dependencies", async () => {

@@ -10,6 +10,10 @@ const {
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
   resetViewPrsAutoRefreshFailureState,
+  recordViewPrsAutoRefreshFailure,
+  resetAutoCircuitFailuresForRepos,
+  resetAutoCircuitBreaker,
+  getOpenAutoCircuitRepos,
   initializeScheduler,
   viewPrsSchedulerState,
   viewPrsSchedulerFile,
@@ -27,6 +31,9 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.lastQuickCheckAttemptAt = null;
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
   viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
+  viewPrsSchedulerState.quickCheckSkippedRepos = new Set();
+  viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
+  viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
   viewPrsSchedulerState.pendingByRepo = {};
   // The per-repo dispatcher registry (see view-prs-dispatcher-helpers.js)
   // persists across tests otherwise - entries for a repo one test's own
@@ -177,6 +184,124 @@ describe("scheduler helper behavior", () => {
         openUntilIso: null,
       });
     });
+
+    test("with a repo and no explicit autoCircuitOpenUntil, resolves against that repo's own breaker entry", () => {
+      viewPrsSchedulerState.autoCircuitByRepo["owner/repo-open"] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: "2026-03-11T10:20:00Z",
+        lastCircuitOpenedAt: "2026-03-11T10:10:00Z",
+      };
+
+      const openResult = getViewPrsAutoCircuitOpenState({
+        nowMs: Date.parse("2026-03-11T10:14:00Z"),
+        repo: "owner/repo-open",
+      });
+      expect(openResult).toEqual({ isOpen: true, openUntilIso: "2026-03-11T10:20:00.000Z" });
+
+      // A different, unrelated repo with no breaker entry at all is closed.
+      const closedResult = getViewPrsAutoCircuitOpenState({
+        nowMs: Date.parse("2026-03-11T10:14:00Z"),
+        repo: "owner/repo-untouched",
+      });
+      expect(closedResult).toEqual({ isOpen: false, openUntilIso: null });
+
+      delete viewPrsSchedulerState.autoCircuitByRepo["owner/repo-open"];
+    });
+
+    test("an explicit autoCircuitOpenUntil still takes precedence over a repo's own breaker entry", () => {
+      viewPrsSchedulerState.autoCircuitByRepo["owner/repo-override"] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: "2026-03-11T10:20:00Z",
+        lastCircuitOpenedAt: "2026-03-11T10:10:00Z",
+      };
+
+      const result = getViewPrsAutoCircuitOpenState({
+        nowMs: Date.parse("2026-03-11T10:14:00Z"),
+        repo: "owner/repo-override",
+        autoCircuitOpenUntil: null,
+      });
+
+      expect(result).toEqual({ isOpen: false, openUntilIso: null });
+      delete viewPrsSchedulerState.autoCircuitByRepo["owner/repo-override"];
+    });
+  });
+
+  describe("recordViewPrsAutoRefreshFailure / resetAutoCircuitFailuresForRepos / resetAutoCircuitBreaker (per-repo)", () => {
+    beforeEach(() => {
+      viewPrsSchedulerState.autoCircuitByRepo = {};
+    });
+
+    test("only increments the failed repo's own counter, leaving an unrelated repo's breaker untouched", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-x"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-x"]);
+
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-x"].consecutiveFailures).toBe(2);
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-y"]).toBeUndefined();
+    });
+
+    test("opens only the failing repo's own circuit once its threshold is reached, not every repo's", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-flaky"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-flaky"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-flaky"]);
+
+      expect(getOpenAutoCircuitRepos()).toEqual(["owner/repo-flaky"]);
+      expect(viewPrsSchedulerState.lastAutoSkipReason).toMatch(/owner\/repo-flaky/);
+    });
+
+    test("resetAutoCircuitFailuresForRepos only resets the repos actually passed in", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-a", "owner/repo-b"]);
+      resetAutoCircuitFailuresForRepos(["owner/repo-a"]);
+
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-a"].consecutiveFailures).toBe(0);
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-b"].consecutiveFailures).toBe(1);
+    });
+
+    test("resetAutoCircuitBreaker({repo}) clears only that one repo, leaving others alone", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-a", "owner/repo-b"]);
+      resetAutoCircuitBreaker({ repo: "owner/repo-a" });
+
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-a"]).toBeUndefined();
+      expect(viewPrsSchedulerState.autoCircuitByRepo["owner/repo-b"].consecutiveFailures).toBe(1);
+    });
+
+    test("resetAutoCircuitBreaker({repos}) scoped to one repo does not clear lastAutoSkipReason about a DIFFERENT, still-open repo", () => {
+      // Regression: resetAutoCircuitBreaker's lastAutoSkipReason-clearing
+      // used to only check whether the message said "circuit open" at
+      // all, not which repo it was about - a scoped reset for an unrelated
+      // repo (e.g. /run-auto's own internal reset, which runs on every
+      // call regardless of whether that repo was ever open) would wrongly
+      // wipe a still-valid message about a different repo's open circuit.
+      recordViewPrsAutoRefreshFailure(["owner/repo-a"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-a"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-a"]);
+      expect(viewPrsSchedulerState.lastAutoSkipReason).toMatch(/owner\/repo-a/);
+
+      resetAutoCircuitBreaker({ repos: ["owner/repo-unrelated"] });
+
+      expect(viewPrsSchedulerState.lastAutoSkipReason).toMatch(/owner\/repo-a/);
+      expect(getOpenAutoCircuitRepos()).toContain("owner/repo-a");
+
+      // Resetting the repo the message is ACTUALLY about does clear it.
+      resetAutoCircuitBreaker({ repos: ["owner/repo-a"] });
+      expect(viewPrsSchedulerState.lastAutoSkipReason).toBeNull();
+    });
+
+    test("resetAutoCircuitBreaker() with no args clears every repo's breaker", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-a", "owner/repo-b"]);
+      resetAutoCircuitBreaker();
+
+      expect(viewPrsSchedulerState.autoCircuitByRepo).toEqual({});
+    });
+
+    test("the flat aggregate fields reflect the worst case (highest failure count, soonest-still-open circuit) across every repo", () => {
+      recordViewPrsAutoRefreshFailure(["owner/repo-a"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-b"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-b"]);
+      recordViewPrsAutoRefreshFailure(["owner/repo-b"]);
+
+      expect(viewPrsSchedulerState.consecutiveAutoFailures).toBe(3);
+      expect(viewPrsSchedulerState.autoCircuitOpenUntil).not.toBeNull();
+    });
   });
 
   describe("buildAckRefreshBudgetSkipErrors", () => {
@@ -286,10 +411,17 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("sets a circuit-open skip reason when runViewPrsAutoRefresh is called while the circuit is open", async () => {
-    viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60 * 60 * 1000,
-    ).toISOString();
-    viewPrsSchedulerState.consecutiveAutoFailures = 3;
+    // No-override auto refresh targets every configured repo - populate
+    // that same repo's own circuit breaker entry (circuit breaker is now
+    // per-repo - see autoCircuitByRepo's own comment in app.js).
+    const openUntilIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    getViewPrsAutoRefreshRepos().forEach((repo) => {
+      viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
 
     await runViewPrsAutoRefresh();
 
@@ -335,8 +467,15 @@ describe("runViewPrsAutoRefresh behavior", () => {
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
   });
 
-  test("does not start a second run when runViewPrsAutoRefresh is called during an active run", async () => {
+  test("does not start a second run when runViewPrsAutoRefresh is called during an active run for the same repo(s)", async () => {
     viewPrsSchedulerState.isAutoRunInProgress = true;
+    // No-override auto refresh targets every configured repo - populate
+    // autoRefreshInProgressRepos with that same set for a genuine
+    // full-overlap collision (auto refresh is now per-repo-aware - see
+    // autoRefreshInProgressRepos's own comment in app.js).
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(
+      getViewPrsAutoRefreshRepos(),
+    );
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
@@ -347,12 +486,67 @@ describe("runViewPrsAutoRefresh behavior", () => {
 
     // Clean up for subsequent tests
     viewPrsSchedulerState.isAutoRunInProgress = false;
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
   });
 
   test("clears isAutoRunInProgress when runViewPrsAutoRefresh finishes successfully", async () => {
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
+  });
+
+  test("refreshes the free repo and skips only the one whose auto refresh is already in progress, instead of blocking the whole call", async () => {
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(["owner/repo-ar-busy"]);
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoIndex = commandArgs.indexOf("--repo");
+      scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsAutoRefresh({
+      skipCooldownChecks: true,
+      reposOverride: ["owner/repo-ar-busy", "owner/repo-ar-free"],
+    });
+
+    // Only the free repo's script call actually happened.
+    expect(scriptCalls).toEqual(["owner/repo-ar-free"]);
+    expect(viewPrsSchedulerState.lastAutoAttemptAt).toBeTruthy();
+    // isAutoRunInProgress reflects the Set's size - still true because
+    // owner/repo-ar-busy's OWN (external, simulated) claim is still there,
+    // not because this call left anything running itself.
+    expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(true);
+    expect(viewPrsSchedulerState.autoRefreshInProgressRepos.has("owner/repo-ar-free")).toBe(
+      false,
+    );
+    expect(viewPrsSchedulerState.autoRefreshInProgressRepos.has("owner/repo-ar-busy")).toBe(
+      true,
+    );
+  });
+
+  test("refreshes the free repo and skips only the one whose own circuit breaker is open, instead of blocking the whole call", async () => {
+    viewPrsSchedulerState.autoCircuitByRepo["owner/repo-cb-open"] = {
+      consecutiveFailures: 3,
+      circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      lastCircuitOpenedAt: new Date().toISOString(),
+    };
+    const scriptCalls = [];
+    appModule.runViewPrsScript = async (commandArgs) => {
+      const repoIndex = commandArgs.indexOf("--repo");
+      scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      return { stdout: "", stderr: "" };
+    };
+
+    // skipCooldownChecks NOT set (false) - the circuit check only runs
+    // when cooldown checks aren't bypassed.
+    await runViewPrsAutoRefresh({
+      reposOverride: ["owner/repo-cb-open", "owner/repo-cb-free"],
+    });
+
+    // Only the free repo's script call actually happened - the other
+    // repo's OWN open circuit didn't block it.
+    expect(scriptCalls).toEqual(["owner/repo-cb-free"]);
+    expect(viewPrsSchedulerState.lastAutoAttemptAt).toBeTruthy();
   });
 
   test("fires an immediate catch-up quick check when a quick check was starved by this run", async () => {
@@ -365,9 +559,12 @@ describe("runViewPrsAutoRefresh behavior", () => {
     // like a brand-new PR, undetected far longer than the quick-check's own
     // ~5 minute interval would suggest).
     viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+    viewPrsSchedulerState.quickCheckSkippedRepos = new Set(["owner/repo-starved"]);
     let quickCheckRunCount = 0;
-    appModule.runViewPrsQuickCheck = async () => {
+    let quickCheckRunArgs = null;
+    appModule.runViewPrsQuickCheck = async (args) => {
       quickCheckRunCount += 1;
+      quickCheckRunArgs = args;
       return { skipped: false, reposChecked: [], reposFailed: [] };
     };
 
@@ -378,7 +575,14 @@ describe("runViewPrsAutoRefresh behavior", () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(quickCheckRunCount).toBe(1);
+      // Scoped to exactly the repos that were actually starved, not every
+      // configured repo (today's correctness improvement over the old
+      // blind "re-check everything" catch-up).
+      expect(quickCheckRunArgs).toEqual({
+        repoRequests: [{ repo: "owner/repo-starved" }],
+      });
       expect(viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress).toBe(false);
+      expect(viewPrsSchedulerState.quickCheckSkippedRepos.size).toBe(0);
     } finally {
       delete appModule.runViewPrsQuickCheck;
     }
@@ -774,9 +978,13 @@ describe("runViewPrsQuickCheck behavior", () => {
     viewPrsSchedulerState.lastQuickCheckSkipReason = null;
     viewPrsSchedulerState.lastQuickCheckError = null;
     viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
+    viewPrsSchedulerState.quickCheckSkippedRepos = new Set();
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
+    viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
     viewPrsSchedulerState.pendingByRepo = {};
     viewPrsSchedulerState.autoCircuitOpenUntil = null;
     viewPrsSchedulerState.consecutiveAutoFailures = 0;
+    viewPrsSchedulerState.autoCircuitByRepo = {};
     // See resetSchedulerState's own comment above for why this (and the
     // on-disk file delete right after) is needed every test, not just once.
     viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
@@ -821,6 +1029,12 @@ describe("runViewPrsQuickCheck behavior", () => {
 
   test("does nothing when a quick check is already in progress, but records the skip for diagnosis", async () => {
     viewPrsSchedulerState.isQuickCheckInProgress = true;
+    // No-arg quick check targets every configured repo - populate
+    // quickCheckInProgressRepos with that same set for a genuine
+    // full-overlap collision (quick check is now per-repo-aware).
+    viewPrsSchedulerState.quickCheckInProgressRepos = new Set(
+      getViewPrsAutoRefreshRepos(),
+    );
 
     const result = await runViewPrsQuickCheck();
 
@@ -837,6 +1051,13 @@ describe("runViewPrsQuickCheck behavior", () => {
 
   test("does nothing while a full auto-refresh run is in progress, and arms the catch-up flag", async () => {
     viewPrsSchedulerState.isAutoRunInProgress = true;
+    // Quick check with no args targets every configured repo - populate
+    // autoRefreshInProgressRepos with that same set for a genuine
+    // full-overlap collision (quick check is now per-repo-aware - see
+    // autoRefreshInProgressRepos's own comment in app.js).
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(
+      appModule.getViewPrsAutoRefreshRepos(),
+    );
 
     const result = await runViewPrsQuickCheck();
 
@@ -883,10 +1104,17 @@ describe("runViewPrsQuickCheck behavior", () => {
   });
 
   test("does nothing while the auto-refresh circuit is open", async () => {
-    viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60 * 60 * 1000,
-    ).toISOString();
-    viewPrsSchedulerState.consecutiveAutoFailures = 3;
+    // No-arg quick check targets every configured repo - populate that
+    // same repo's own circuit breaker entry (circuit breaker is now
+    // per-repo - see autoCircuitByRepo's own comment in app.js).
+    const openUntilIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    getViewPrsAutoRefreshRepos().forEach((repo) => {
+      viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
 
     const result = await runViewPrsQuickCheck();
 
@@ -916,6 +1144,9 @@ describe("runViewPrsQuickCheck behavior", () => {
       skipped: false,
       reposChecked: ["owner/repo-quickcheck"],
       reposFailed: [],
+      reposSkippedForAutoRefresh: [],
+      reposSkippedForQuickCheckInProgress: [],
+      reposSkippedForCircuitOpen: [],
       newPendingOpenCount: 0,
       newPendingMergedClosedCount: 0,
       reposWithPendingOpen: [],
@@ -967,6 +1198,9 @@ describe("runViewPrsQuickCheck behavior", () => {
       skipped: false,
       reposChecked: [],
       reposFailed: [{ repo: "owner/repo-qc-fails", error: "gh rate limited" }],
+      reposSkippedForAutoRefresh: [],
+      reposSkippedForQuickCheckInProgress: [],
+      reposSkippedForCircuitOpen: [],
       newPendingOpenCount: 0,
       newPendingMergedClosedCount: 0,
       reposWithPendingOpen: [],
@@ -1325,6 +1559,76 @@ describe("runViewPrsQuickCheck behavior", () => {
       expect(scriptCalls).toHaveLength(1);
       expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--repo", "owner/repo-default"]));
       expect(scriptCalls[0]).not.toContain("--quick-check-numbers");
+    });
+
+    test("checks the free repo and skips only the one whose auto refresh is in progress, instead of blocking the whole call", async () => {
+      viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(["owner/repo-busy"]);
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      const result = await runViewPrsQuickCheck({
+        repoRequests: [{ repo: "owner/repo-busy" }, { repo: "owner/repo-free" }],
+      });
+
+      // Only the free repo's script call actually happened.
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--repo", "owner/repo-free"]));
+      expect(result.skipped).toBe(false);
+      expect(result.reposChecked).toEqual(["owner/repo-free"]);
+      expect(result.reposSkippedForAutoRefresh).toEqual(["owner/repo-busy"]);
+      expect(viewPrsSchedulerState.quickCheckSkippedRepos.has("owner/repo-busy")).toBe(true);
+      expect(viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress).toBe(true);
+    });
+
+    test("checks the free repo and skips only the one a DIFFERENT concurrent quick check call is already covering", async () => {
+      viewPrsSchedulerState.quickCheckInProgressRepos = new Set(["owner/repo-busy-qc"]);
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      const result = await runViewPrsQuickCheck({
+        repoRequests: [{ repo: "owner/repo-busy-qc" }, { repo: "owner/repo-free-qc" }],
+      });
+
+      // Only the free repo's script call actually happened.
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--repo", "owner/repo-free-qc"]));
+      expect(result.skipped).toBe(false);
+      expect(result.reposChecked).toEqual(["owner/repo-free-qc"]);
+      expect(result.reposSkippedForQuickCheckInProgress).toEqual(["owner/repo-busy-qc"]);
+      // No catch-up is armed for this reason, unlike the auto-refresh-overlap
+      // case above (a quick-check-vs-quick-check collision is short-lived
+      // and self-resolves - see reposBusyWithAutoRefresh's own comment).
+      expect(viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress).toBe(false);
+      expect(viewPrsSchedulerState.quickCheckSkippedRepos.size).toBe(0);
+    });
+
+    test("checks the free repo and skips only the one whose own circuit breaker is open", async () => {
+      viewPrsSchedulerState.autoCircuitByRepo["owner/repo-cb-open-qc"] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+      const scriptCalls = [];
+      appModule.runViewPrsScript = async (commandArgs) => {
+        scriptCalls.push(commandArgs);
+        return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+      };
+
+      const result = await runViewPrsQuickCheck({
+        repoRequests: [{ repo: "owner/repo-cb-open-qc" }, { repo: "owner/repo-cb-free-qc" }],
+      });
+
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]).toEqual(expect.arrayContaining(["--repo", "owner/repo-cb-free-qc"]));
+      expect(result.skipped).toBe(false);
+      expect(result.reposChecked).toEqual(["owner/repo-cb-free-qc"]);
+      expect(result.reposSkippedForCircuitOpen).toEqual(["owner/repo-cb-open-qc"]);
     });
   });
 });

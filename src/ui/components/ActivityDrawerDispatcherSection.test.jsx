@@ -72,6 +72,29 @@ describe('ActivityDrawerDispatcherSection', () => {
     ).toBeInTheDocument();
   });
 
+  test('a circuit-open entry explains why via its tooltip, applies the is-circuit-open class, and offers no "Run now" button', () => {
+    const onBump = jest.fn();
+    renderWithQueue(
+      [
+        {
+          repo: 'owner/repoA',
+          taskType: 'autoRefresh',
+          priority: 3,
+          status: 'circuit-open',
+          nextDueAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      { onBump },
+    );
+
+    expect(screen.getByText('circuit-open')).toHaveAttribute(
+      'title',
+      expect.stringContaining('circuit breaker is open'),
+    );
+    expect(screen.getByRole('listitem')).toHaveClass('is-circuit-open');
+    expect(screen.queryByRole('button', { name: 'Run now' })).not.toBeInTheDocument();
+  });
+
   test('offers a "Run now" button only for scheduled entries, and calls onBump with repo/taskType', async () => {
     const onBump = jest.fn().mockResolvedValue(true);
     renderWithQueue(

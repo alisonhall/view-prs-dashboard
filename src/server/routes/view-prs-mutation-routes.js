@@ -23,6 +23,17 @@ const registerViewPrsMutationRoutes = ({
   formatScriptFailureMessage,
   viewPrsSchedulerState,
   resetViewPrsAutoRefreshFailureState,
+  // Per-repo circuit-breaker reset (see view-prs-scheduler-helpers.js) -
+  // used here to scope /run-auto's own pre-trigger reset to just the
+  // repos it targets. Safely no-ops if absent (e.g. in tests that don't
+  // wire it).
+  resetAutoCircuitBreaker,
+  // Used only to resolve /run-auto's own pre-check against the EXACT same
+  // "every configured repo" default runViewPrsAutoRefresh itself falls back
+  // to when no repo scope is given - see that route's own comment. Falls
+  // back to an empty list if absent (e.g. in tests that don't wire it),
+  // which just means the pre-check's "all busy" branch can never match.
+  getViewPrsAutoRefreshRepos,
   runViewPrsAutoRefresh,
   runViewPrsQuickCheck,
   buildAckRefreshBudgetSkipErrors,
@@ -59,6 +70,10 @@ const registerViewPrsMutationRoutes = ({
     Number.isFinite(runAutoGhReservationCost) && runAutoGhReservationCost > 0
       ? runAutoGhReservationCost
       : 1;
+  const getViewPrsAutoRefreshReposSafe = () =>
+    typeof getViewPrsAutoRefreshRepos === "function" ? getViewPrsAutoRefreshRepos() : [];
+  const resetAutoCircuitBreakerSafe =
+    typeof resetAutoCircuitBreaker === "function" ? resetAutoCircuitBreaker : () => {};
   const reserveGhSlotsSafe =
     typeof reserveGhSlots === "function" ? reserveGhSlots : () => {};
   const releaseGhSlotsSafe =
@@ -197,10 +212,31 @@ const registerViewPrsMutationRoutes = ({
       });
   });
 
-  app.post(["/run-auto", "/view-prs/run-auto"], (_req, res) => {
+  app.post(["/run-auto", "/view-prs/run-auto"], (req, res) => {
     const timingContext = createTimingContext();
 
-    if (viewPrsSchedulerState.isAutoRunInProgress) {
+    // Optional repo scoping (new - previously this route always meant
+    // "every configured repo", unconditionally): { repo: "owner/name" } or
+    // { repos: ["owner/name", ...] }. Omitted (today's default) still means
+    // every configured repo. Resolved up front, mirroring
+    // runViewPrsAutoRefresh's own requestedAutoRefreshRepos resolution, so
+    // this route's pre-check agrees with what that function will actually
+    // decide - a request whose targets only PARTIALLY overlap an
+    // already-running refresh should still return 200 and actually run the
+    // free repos, not a blanket 409 (see autoRefreshInProgressRepos's own
+    // comment in app.js).
+    const body = req.body || {};
+    const requestedRepos = Array.isArray(body.repos)
+      ? body.repos.filter((repo) => typeof repo === "string" && repo.trim().length > 0)
+      : typeof body.repo === "string" && body.repo.trim().length > 0
+        ? [body.repo.trim()]
+        : null;
+    const targetRepos = requestedRepos || getViewPrsAutoRefreshReposSafe();
+    const allTargetsBusy =
+      targetRepos.length > 0 &&
+      targetRepos.every((repo) => viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo));
+
+    if (allTargetsBusy) {
       const conflictResult = buildRunAutoAlreadyInProgressResult();
       appendActionLogEntry(
         buildRunAutoFailureActionLogEntry({
@@ -227,16 +263,31 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
-    resetViewPrsAutoRefreshFailureState();
+    // Scoped to exactly the repos THIS call targets (if scoped), not
+    // every repo's breaker just because one repo was manually retried -
+    // falls back to resetting everything for an unscoped (every-repo)
+    // request, matching today's behavior before per-repo tracking existed.
+    if (requestedRepos) {
+      resetAutoCircuitBreakerSafe({ repos: requestedRepos });
+    } else {
+      resetViewPrsAutoRefreshFailureState();
+    }
     // Reserves more than the default 1 slot - this is the one manual route
     // that fans out across multiple repos in parallel (see
     // runAutoGhReservationCost's own comment above), so a flat 1 would
     // under-represent its real gh-process usage to the background
-    // dispatcher's budget.
-    reserveGhSlotsSafe(runAutoGhReservationCostSafe);
-    void runViewPrsAutoRefresh({ skipCooldownChecks: true }).finally(() =>
-      releaseGhSlotsSafe(runAutoGhReservationCostSafe),
-    );
+    // dispatcher's budget. Scaled down for an explicitly-scoped request
+    // (e.g. a single repo shouldn't reserve the same budget as a full
+    // every-repo fan-out) - capped at the existing default for an unscoped
+    // request, which still means "every configured repo".
+    const reservationCost = requestedRepos
+      ? Math.min(runAutoGhReservationCostSafe, requestedRepos.length)
+      : runAutoGhReservationCostSafe;
+    reserveGhSlotsSafe(reservationCost);
+    void runViewPrsAutoRefresh({
+      skipCooldownChecks: true,
+      reposOverride: requestedRepos,
+    }).finally(() => releaseGhSlotsSafe(reservationCost));
 
     appendActionLogEntry(buildRunAutoSuccessActionLogEntry({ timingContext }));
 

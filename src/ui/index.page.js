@@ -2162,6 +2162,30 @@ const handleDispatcherBump = async (repo, taskType) => {
   }
 };
 
+// Manual "Reset circuit breaker" action from the Activity drawer's
+// circuit-breaker section - POSTs to /view-prs/circuit-breaker/reset with
+// no body, resetting every repo's breaker at once (the section only shows
+// up when at least one is open, and resetting "everything" matches the
+// person's actual intent in the motivating case - coming back after the
+// computer was asleep/locked, where the fix is "let auto refresh try
+// again", not "pick which repo"). The section's own queue/state re-renders
+// from the next SSE frame, so this doesn't need to apply any result to the
+// UI itself - just report failure if the request didn't succeed.
+// ActivityDrawerCircuitBreakerSection.jsx calls this as its onReset prop.
+const handleResetCircuitBreaker = async () => {
+  try {
+    const { response, result } = await postJson("/view-prs/circuit-breaker/reset", {});
+    if (!response.ok || result.ok === false) {
+      notifyFailureSnackbar("Reset failed", result, "Unable to reset the circuit breaker");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    notifyFailureSnackbar("Reset failed", error, "Unable to reach the server");
+    return false;
+  }
+};
+
 // TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
 // their onTrigger/onCheck props - same exposure shape as
 // window.handleRequestMoreMerged above.
@@ -2170,6 +2194,7 @@ if (typeof window !== "undefined") {
   window.handleQuickCheck = (...args) => handleQuickCheck(...args);
   window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
   window.handleDispatcherBump = (...args) => handleDispatcherBump(...args);
+  window.handleResetCircuitBreaker = (...args) => handleResetCircuitBreaker(...args);
 }
 
 // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5

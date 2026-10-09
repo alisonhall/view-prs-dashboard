@@ -685,6 +685,7 @@ function AppRoot() {
                   onBumpDispatcherEntry={(repo, taskType) =>
                     window.handleDispatcherBump?.(repo, taskType)
                   }
+                  onResetCircuitBreaker={() => window.handleResetCircuitBreaker?.()}
                 />,
                 containers.activityDrawer,
                 'activity-drawer',
