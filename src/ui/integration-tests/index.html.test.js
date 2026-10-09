@@ -304,6 +304,10 @@ const injectRunFilterFieldElements = () => {
   );
   setRootContent("jobs-root", '<input type="number" id="jobs" name="jobs" min="1" placeholder="6" />');
   setRootContent(
+    "pr-numbers-root",
+    '<input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />',
+  );
+  setRootContent(
     "open-mode-root",
     '<select id="open-mode" name="openMode"><option value="none" selected>none</option><option value="changed">changed</option><option value="all">all</option></select>',
   );

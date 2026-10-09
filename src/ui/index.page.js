@@ -576,6 +576,7 @@ const getUiOptionDefaults = () => ({
   limit: "",
   "merged-limit": "",
   jobs: "",
+  "pr-numbers": "",
   "open-mode": "none",
   "ack-changed": false,
   "show-reason": true,
@@ -671,6 +672,7 @@ const FILTER_STATE_FIELD_MAP = {
   "limit": "limit",
   "merged-limit": "mergedLimit",
   "jobs": "jobs",
+  "pr-numbers": "prNumbersInput",
   "open-mode": "openMode",
   "ack-changed": "ackChanged",
   "show-reason": "showReason",
@@ -767,6 +769,7 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
     "limit",
     "merged-limit",
     "jobs",
+    "pr-numbers",
     "open-mode",
     "scope-mode",
     "filter-pr-numbers",
@@ -1007,6 +1010,7 @@ const restoreUiOptionOverrides = async () => {
     "limit",
     "merged-limit",
     "jobs",
+    "pr-numbers",
     "open-mode",
     "scope-mode",
     "filter-pr-numbers",
@@ -1173,6 +1177,7 @@ const persistRunScriptOptionOverrides = async () => {
     "limit",
     "merged-limit",
     "jobs",
+    "pr-numbers",
     "open-mode",
     "ack-changed",
     "show-reason",
@@ -2924,43 +2929,17 @@ const parsePrNumbersInput = (rawValue) =>
     ? formParsingHelpers.parsePrNumbersInput(rawValue)
     : parseCsvTokens(rawValue).filter((value) => /^\d+$/.test(String(value)));
 
-const getPrNumbersInput = () => document.getElementById("pr-numbers");
-
-const getSelectedPrNumbers = () =>
-  parsePrNumbersInput(getPrNumbersInput().value);
-
-const setSelectedPrNumbers = (prNumbers) => {
-  getPrNumbersInput().value = prNumbers.join(",");
-};
-
-const handlePrNumbersInputChange = () => {
-  const prNumbersInput = getPrNumbersInput();
-  if (!String(prNumbersInput?.value || "").trim()) {
-    prNumbersInput.value = "";
-  }
-};
-
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): this used to also call
-// syncSelectionCheckboxesWithInput() (deleted) - a tree-walk over
-// #pr-sections toggling `.checked` on any `.row-select-checkbox` node.
-// That class doesn't exist anywhere in the current React-rendered table
-// or any component, so it was inert dead code, not a live sync.
-const updateSelectedPrNumbers = (prNumber, shouldSelect) => {
-  const current = getSelectedPrNumbers();
-  const normalizedPrNumber = String(prNumber || "").trim();
-  if (!/^\d+$/.test(normalizedPrNumber)) {
-    return;
-  }
-
-  const next = shouldSelect
-    ? current.includes(normalizedPrNumber)
-      ? current
-      : [...current, normalizedPrNumber]
-    : current.filter((value) => value !== normalizedPrNumber);
-
-  setSelectedPrNumbers(next);
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getPrNumbersInput/getSelectedPrNumbers/
+// setSelectedPrNumbers/handlePrNumbersInputChange/updateSelectedPrNumbers used
+// to live here, reading/writing the "#pr-numbers" DOM input directly and
+// bridged onto window for PrSelectionCell.jsx. "#pr-numbers" is now
+// Context-backed (FilterStateProvider, via ContextRunScriptTextInput.jsx -
+// see FILTER_STATE_FIELD_MAP's "pr-numbers" entry above) and
+// PrSelectionCell.jsx reads/writes the same Context value directly via
+// window.getFilterStateValues()/setFilterStateValue() (helpers/
+// pr-selected-pr-numbers.helpers.js holds the pure toggle logic that used
+// to live in updateSelectedPrNumbers) - no window.* bridge needed for
+// this cluster at all anymore.
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): "always-show-in-review" is
 // migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
@@ -3927,6 +3906,22 @@ const initPage = () => {
     },
     { once: true },
   );
+  // Same bridge-not-ready-yet race as the two listeners above, for
+  // applyNonCredentialFieldHints() below: it reaches for the 5 "Run Script
+  // options" fields (repo/limit/merged-limit/jobs/pr-numbers) by DOM id,
+  // but all 5 are React-portaled (FilterStateProvider, see
+  // ContextRunScriptTextInput.jsx) and don't exist in the DOM yet at this
+  // point in a real page load - react-app.jsx's own module graph is still
+  // loading, same race the other listeners in this block exist for. The
+  // initial call below is harmless-but-ineffective until this fires (finds
+  // nothing, silently no-ops via getOptionalElementById) - kept anyway for
+  // any environment where React happens to already be mounted (e.g. a test
+  // harness that injects the markup synchronously up front).
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => applyNonCredentialFieldHints(),
+    { once: true },
+  );
   registerUiOptionPersistenceHandlers();
   initManagementTabs();
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
@@ -4028,8 +4023,11 @@ const initPage = () => {
     buildPrLastCheckedIndicator,
     getViewedFilesState,
     getViewedFilesSummary,
-    getSelectedPrNumbers,
-    updateSelectedPrNumbers,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): getSelectedPrNumbers/
+    // updateSelectedPrNumbers used to be bridged here too -
+    // PrSelectionCell.jsx now reads/writes "#pr-numbers"'s Context value
+    // directly instead (see the comment at that field's old definition,
+    // above getUiOptionDefaults' call sites).
     getLabelName,
     getAvailableRepoLabels,
     // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
@@ -4169,9 +4167,6 @@ const initPage = () => {
   // *what triggers it* for those fields has moved off the vanilla
   // delegated "change" listener.
   window.debouncedApplyFilters = debouncedApplyFilters;
-  
-  getPrNumbersInput().addEventListener("input", handlePrNumbersInputChange);
-  getPrNumbersInput().addEventListener("change", handlePrNumbersInputChange);
 
   // Delegated on the form (a stable ancestor never replaced by React) for
   // every field below rather than attached to each field directly:

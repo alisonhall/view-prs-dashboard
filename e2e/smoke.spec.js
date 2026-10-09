@@ -633,7 +633,8 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
 test("React-owned Run Script options (text inputs, select, checkboxes) survive a persisted restore together", async ({ page }) => {
   // Same restore-race class as the "Needs Attention rules" batch test
   // above, this time for the "Run Script options (rarely changed)" fields
-  // (RunScriptTextInput x4, OpenModeSelect, FilterCheckbox x3). These
+  // (ContextRunScriptTextInput x5 - repo/limit/merged-limit/jobs/pr-numbers,
+  // OpenModeSelect, FilterCheckbox x3). These
   // fields have no "change" listener of their own - they're only ever read
   // via .value/.checked when the real "Run script" button is clicked (see
   // persistRunScriptOptionOverrides in index.page.js) - so unlike the
@@ -663,6 +664,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
         limit: "50",
         "merged-limit": "10",
         jobs: "3",
+        "pr-numbers": "912,921",
         "open-mode": "changed",
         "ack-changed": true,
         "show-reason": false,
@@ -680,6 +682,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   await expect(page.locator("#limit")).toHaveValue("50");
   await expect(page.locator("#merged-limit")).toHaveValue("10");
   await expect(page.locator("#jobs")).toHaveValue("3");
+  await expect(page.locator("#pr-numbers")).toHaveValue("912,921");
   await expect(page.locator("#open-mode")).toHaveValue("changed");
   await expect(page.locator("#ack-changed")).toBeChecked();
   await expect(page.locator("#show-reason")).not.toBeChecked();
@@ -691,7 +694,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     const overrides = { ...(current?.overrides || {}) };
-    for (const key of ["repo", "limit", "merged-limit", "jobs", "open-mode", "ack-changed", "show-reason", "quiet"]) {
+    for (const key of ["repo", "limit", "merged-limit", "jobs", "pr-numbers", "open-mode", "ack-changed", "show-reason", "quiet"]) {
       delete overrides[key];
     }
     await fetch("/view-prs/user-defaults", {
@@ -700,6 +703,74 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
       body: JSON.stringify(overrides),
     });
   });
+});
+
+test("all 6 React-portaled non-credential-hint fields get their credential-manager-suppressing attributes applied, despite mounting after initPage()'s own first pass", async ({ page }) => {
+  // Regression test for a real race: applyNonCredentialFieldHints()
+  // (index.page.js) is called once, synchronously, from initPage() -
+  // which runs to completion before react-app.jsx's own module graph has
+  // necessarily finished loading, so these fields (all React-portaled -
+  // repo/limit/merged-limit/jobs/pr-numbers via
+  // ContextRunScriptTextInput.jsx, filter-pr-numbers via
+  // PrNumberFilterInput.jsx) may not exist in the DOM yet on that first
+  // pass. jest's own integration suite (index.html.test.js) can't catch a
+  // regression here - its test harness injects the equivalent markup
+  // synchronously, before initPage() ever runs, so the race never
+  // manifests there. Only a real browser load exercises the actual
+  // timing. Fixed by re-running applyNonCredentialFieldHints() once more
+  // on 'viewprs:react-ready', same pattern already used for the backfill
+  // status badges/log text bridges. Covers every id in
+  // NON_CREDENTIAL_HINT_FIELD_IDS, not just the "Run Script options"
+  // group, since the fix re-runs the whole function, not a per-field list.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByText("Run Script options (rarely changed)").click();
+
+  for (const id of ["repo", "limit", "merged-limit", "jobs", "pr-numbers", "filter-pr-numbers"]) {
+    const field = page.locator(`#${id}`);
+    await expect(field).toHaveAttribute("autocomplete", "off");
+    await expect(field).toHaveAttribute("data-lpignore", "true");
+  }
+});
+
+test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers input", async ({ page }) => {
+  // Regression test for Phase 7's "#pr-numbers" migration (see
+  // REACT_MIGRATION_PLAN.md) - PrSelectionCell.jsx's checkbox used to read/
+  // write this field through its own one-off window.getSelectedPrNumbers/
+  // updateSelectedPrNumbers bridge; it now reads/writes the exact same
+  // FilterStateProvider Context value the "PR number(s)" text input itself
+  // is backed by (ContextRunScriptTextInput.jsx). Exercises the real
+  // entanglement that deferred this migration for several prior sessions:
+  // a checkbox click must land in the real "#pr-numbers" <input> (not just
+  // an in-memory value disconnected from it), since a subsequent "Run
+  // script" submission reads it via native FormData, not React.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // PR #1 can legitimately be sitting inside one or more currently-
+  // collapsed lifecycle/smart-group sections (collapsed by default, and
+  // it can appear in more than one - e.g. "open" and "in-review" - at
+  // once; its exact membership can shift as other tests in this
+  // shared-webServer suite toggle its flagged/in-review state) - force
+  // every matching ancestor <details> open directly rather than hunting
+  // for the right summary to click, same reasoning the other "PR #1 might
+  // be collapsed" tests in this file document.
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  const selectCheckbox = page.locator('.row-select-checkbox[data-pr-number="1"]').first();
+  await expect(selectCheckbox).not.toBeChecked();
+
+  await selectCheckbox.check();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByText("Run Script options (rarely changed)").click();
+  await expect(page.locator("#pr-numbers")).toHaveValue("1");
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {

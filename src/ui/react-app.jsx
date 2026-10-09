@@ -150,6 +150,19 @@ const FILTER_STATE_TEXT_FIELDS = [
   { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200', defaultValue: '' },
   { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15', defaultValue: '' },
   { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): the one remaining field in this
+  // group - previously left as plain vanilla markup specifically because
+  // PrSelectionCell.jsx's bulk-select checkboxes read/write its value too
+  // (off their own one-off window.getSelectedPrNumbers/updateSelectedPrNumbers
+  // bridge). Now Context-backed like its 4 siblings; PrSelectionCell.jsx
+  // reads/writes the same prNumbersInput Context key non-reactively via
+  // window.getFilterStateValues()/setFilterStateValue() instead (the same
+  // generic bridge index.page.js's own vanilla code already uses) rather
+  // than subscribing via useFilterState(), since it's mounted once per
+  // visible table row - a reactive subscription there would re-render
+  // every row's checkbox on every keystroke in ANY of the 30+ filter
+  // fields, not just this one.
+  { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
 ];
 
 function buildFilterStateFieldPortals() {

@@ -105,7 +105,10 @@
                         <h3>Run check-open-pr-updates.sh</h3>
                         <div class="form-grid single-field-grid">
                             <label for="pr-numbers">PR number(s) (comma-separated)</label>
-                            <input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />
+                            <!-- Rendered by React (ContextRunScriptTextInput.jsx, mounted
+                                 in react-app.jsx, Context-backed by FilterStateProvider) -
+                                 see REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep. -->
+                            <span id="pr-numbers-root"></span>
                         </div>
                         <div class="form-actions primary-actions">
                             <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
