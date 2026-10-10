@@ -53,6 +53,8 @@ const { PrTableApp } = require('./PrTableApp');
 const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
+const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
 const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
@@ -78,18 +80,52 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // PrActivityQueueProvider.jsx - this wraps every render the same way
 // react-app.jsx's real AppRoot now does, so those bridges and the resulting
 // activePrNumbers prop still behave exactly as before this lift.
-const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, needsAttention, ...tableProps } = {}) =>
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+// is no longer read from PrDataProvider by PrTableApp (useVisiblePrNumbers()
+// derives it live from Context instead - see that hook's own comment), so
+// the `visiblePrNumbers` param here is now dead for actual filtering
+// (initialVisiblePrNumbers is still passed through harmlessly, matching
+// PrDataProvider's own "left wired, not ripped out" choice). FilterStateProvider/
+// RowFilterSelectionProvider are new required ancestors for useVisiblePrNumbers()
+// - `filterStateValues` lets an individual test override the defaults
+// below (e.g. to exercise a specific scope/PR-number filter) without every
+// existing call site needing to pass a full values object.
+const renderPrTableApp = ({
+  initialPayload,
+  selectedRepo,
+  visiblePrNumbers,
+  needsAttention,
+  filterStateValues,
+  ...tableProps
+} = {}) =>
   render(
     <PrDataProvider
       initialPayload={initialPayload}
       initialSelectedRepo={selectedRepo}
       initialVisiblePrNumbers={visiblePrNumbers}
     >
-      <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
-        <PrActivityQueueProvider>
-          <PrTableApp {...tableProps} />
-        </PrActivityQueueProvider>
-      </NeedsAttentionContext.Provider>
+      <FilterStateProvider
+        initialValues={{
+          scopeMode: 'all',
+          filterPrNumbers: '',
+          alwaysShowInReview: false,
+          filterCustomComments: '',
+          filterOtherNotes: '',
+          filterPrDifficulty: '',
+          filterRallyStories: '',
+          filterRallyLinks: '',
+          filterAnalysisOfPr: '',
+          ...filterStateValues,
+        }}
+      >
+        <RowFilterSelectionProvider>
+          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
+            <PrActivityQueueProvider>
+              <PrTableApp {...tableProps} />
+            </PrActivityQueueProvider>
+          </NeedsAttentionContext.Provider>
+        </RowFilterSelectionProvider>
+      </FilterStateProvider>
     </PrDataProvider>,
   );
 
@@ -459,9 +495,13 @@ describe('PrTableApp', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       const buildTree = (attentionFlag) => (
         <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
-            <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
-          </NeedsAttentionContext.Provider>
+          <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <RowFilterSelectionProvider>
+              <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
+                <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
+              </NeedsAttentionContext.Provider>
+            </RowFilterSelectionProvider>
+          </FilterStateProvider>
         </PrDataProvider>
       );
 

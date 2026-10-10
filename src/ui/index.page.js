@@ -16,9 +16,6 @@ import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity
 import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
 import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
 import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
-import * as prViewedFilesSummaryHelperFactory from "./helpers/pr-viewed-files-summary.helpers.js";
-import * as prAuthorCellHelperFactory from "./helpers/pr-author-cell.helpers.js";
-import * as prUiRenderUtilsHelperFactory from "./helpers/pr-ui-render-utils.helpers.js";
 import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
 import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
@@ -52,6 +49,7 @@ import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-ca
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
 import * as prSelectedFiltersHelperFactory from "./helpers/pr-selected-filters.helpers.js";
 import * as prRowFilteringHelperFactory from "./helpers/pr-row-filtering.helpers.js";
+import * as prRowMatchFiltersHelperFactory from "./helpers/pr-row-match-filters.helpers.js";
 import * as prDomVisibilityHelperFactory from "./helpers/pr-dom-visibility.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
@@ -81,6 +79,7 @@ import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.he
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 import { asArray } from "./helpers/pr-as-array.helpers.js";
+import { getManualNotesFieldSummary } from "./helpers/pr-manual-notes-summary.helpers.js";
 import { getPerPrUserStateFromPayload } from "./helpers/pr-per-pr-user-state.helpers.js";
 import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
 import {
@@ -225,7 +224,6 @@ const toBoolean =
 const {
   stripAnsi,
   formatIsoDatetime,
-  toCount,
 } = prFormattingHelperFactory.createPrFormattingHelpers();
 
 const setStatusTextOnly = (message) => {
@@ -1402,16 +1400,19 @@ const { collectApproversFromRow } =
 // usePrInsightsDisplay() instead, and nothing else in this file calls
 // either factory's output directly.
 
-const { collectPrAuthors } =
-  prAuthorCellHelperFactory.createPrAuthorCellHelpers({
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-  });
+// collectPrAuthors now built in PrAuthorCell.jsx itself, via
+// createPrAuthorCellHelpers (helpers/pr-author-cell.helpers.js) threaded
+// with the real useActorIdentity().getPreferredActorKey (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - no window.* bridge needed any more, and
+// nothing else in this file called this factory's output directly.
 
 // safeJsonStringify now a bare export from helpers/pr-ui-render-utils.helpers.js
 // (Phase 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/ExportTab.jsx
 // import it directly instead of reading it off window.safeJsonStringify.
-const { parseMarkerState } =
-  prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
+// parseMarkerState (this module's other export) is no longer used here at
+// all - AuthorInsightsPrDataMeta.jsx (its one remaining consumer) builds
+// formatChkDisplay directly now instead of parseMarkerState + a buggy
+// formatChkDisplay call (see that file's own comment for the fix).
 
 const {
   entryNeedsAttention,
@@ -1933,77 +1934,11 @@ const setButtonDisabled = (id, disabled) => {
   }
 };
 
-const OPEN_PR_LAST_CHECK_STALE_MS = 15 * 60 * 1000;
-
-const parseIsoTimestampMs = (isoValue) => {
-  const raw = String(isoValue ?? "").trim();
-  if (!raw || raw === "-") {
-    return Number.NaN;
-  }
-
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
-};
-
-const formatRelativeLastCheckedLabel = (updatedAt, nowMs = Date.now()) => {
-  const updatedAtMs = parseIsoTimestampMs(updatedAt);
-  if (!Number.isFinite(updatedAtMs)) {
-    return {
-      label: "↻ unknown",
-      elapsedMs: Number.NaN,
-      title: "Last checked for updates timestamp is unavailable.",
-    };
-  }
-
-  const elapsedMs = Math.max(0, Number(nowMs) - updatedAtMs);
-  const elapsedSeconds = Math.floor(elapsedMs / 1000);
-  if (elapsedSeconds < 60) {
-    return {
-      label: "↻ just now",
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) {
-    return {
-      label: `↻ ${elapsedMinutes}m ago`,
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) {
-    return {
-      label: `↻ ${elapsedHours}h ago`,
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return {
-    label: `↻ ${elapsedDays}d ago`,
-    elapsedMs,
-    title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-  };
-};
-
-const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
-  const relative = formatRelativeLastCheckedLabel(updatedAt);
-  const isOpenSection = sectionKey === "open";
-  const isStale =
-    isOpenSection &&
-    Number.isFinite(relative.elapsedMs) &&
-    relative.elapsedMs > OPEN_PR_LAST_CHECK_STALE_MS;
-
-  return {
-    ...relative,
-    isStale,
-  };
-};
+// buildPrLastCheckedIndicator (and its formatRelativeLastCheckedLabel/
+// parseIsoTimestampMs/OPEN_PR_LAST_CHECK_STALE_MS internals) now imported
+// from helpers/pr-last-checked-indicator.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - PrStatusCell.jsx imports it directly instead
+// of reading it off window.buildPrLastCheckedIndicator.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): this file's former
 // renderMarkdownAsHtml/replaceExpiredGithubImages bodies moved to
@@ -2332,26 +2267,15 @@ const loadSchedulerStatus = async () => {
   return result;
 };
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction into
-// helpers/pr-viewed-files-summary.helpers.js - still bridged below,
-// AuthorInsightsPrDataMeta.jsx reads window.getViewedFilesSummary
-// directly (PrInsightsRow.jsx now gets it from PrInsightsDisplayProvider/
-// usePrInsightsDisplay() instead).
-const { getViewedFilesSummary } = prViewedFilesSummaryHelperFactory.createPrViewedFilesSummaryHelpers({
-  toCount: (...args) => toCount(...args),
-});
+// getViewedFilesSummary (helpers/pr-viewed-files-summary.helpers.js) no
+// longer built here at all (Phase 7, see REACT_MIGRATION_PLAN.md) -
+// AuthorInsightsPrDataMeta.jsx builds its own copy directly now (the same
+// zero-dependency composition PrInsightsDisplayProvider.jsx already uses),
+// instead of reading window.getViewedFilesSummary.
 
-const getViewedFilesState = (row) => {
-  const viewedFilesCount = toCount(row?.viewedFilesCount);
-  const changedFilesCount = toCount(row?.changedFilesCount);
-
-  return {
-    viewedFilesCount,
-    changedFilesCount,
-    isComplete: viewedFilesCount === changedFilesCount,
-    hasUnviewedFiles: viewedFilesCount < changedFilesCount,
-  };
-};
+// getViewedFilesState now imported from helpers/pr-viewed-files-state.helpers.js
+// (Phase 7, see REACT_MIGRATION_PLAN.md) - PrStatusCell.jsx imports it
+// directly instead of reading it off window.getViewedFilesState.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): getOpenConversationCountWithMe
 // used to be wired here for the window.* bridge below - PrApprovedCell.jsx
@@ -2359,57 +2283,11 @@ const getViewedFilesState = (row) => {
 // PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and nothing
 // else in this file calls it or getOpenConversationCount.
 
-const getManualNotesSummary = (entry = {}, row = {}) => {
-  const notes = entry?.notes || row?.notes || {};
-  const comments = asArray(notes?.comments).filter((comment) => {
-    const noteText = String(comment?.note || "").trim();
-    const authorText = String(comment?.author || "").trim();
-    return Boolean(noteText || authorText);
-  });
-  const otherNotes = String(notes?.otherNotes || "").trim();
-
-  return {
-    hasNotes: comments.length > 0 || Boolean(otherNotes),
-    commentsCount: comments.length,
-    hasOtherNotes: Boolean(otherNotes),
-  };
-};
-
-const getNotesDifficultyLevelText = (difficultyValue) => {
-  const text = String(difficultyValue || "").trim();
-  if (!text) return "";
-
-  const matchedDigits = text.match(/\d+/);
-  return matchedDigits ? matchedDigits[0] : "";
-};
-
-const getManualNotesFieldSummary = (entry = {}, row = {}) => {
-  const notes = entry?.notes || row?.notes || {};
-  const comments = asArray(notes?.comments).filter((comment) => {
-    const noteText = String(comment?.note || "").trim();
-    const authorText = String(comment?.author || "").trim();
-    return Boolean(noteText || authorText);
-  });
-  const otherNotes = String(notes?.otherNotes || "").trim();
-  const difficultyRaw = String(notes?.prDifficulty || "").trim();
-  const rallyStories = asArray(notes?.rallyStories).filter((story) =>
-    Boolean(String(story || "").trim()),
-  );
-  const rallyLinks = asArray(notes?.rallyLinks).filter((link) =>
-    Boolean(String(link || "").trim()),
-  );
-  const analysisOfPr = String(notes?.analysisOfPr || "").trim();
-
-  return {
-    hasCustomComments: comments.length > 0,
-    hasOtherNotes: Boolean(otherNotes),
-    hasDifficulty: Boolean(difficultyRaw),
-    difficultyLevelText: getNotesDifficultyLevelText(difficultyRaw),
-    hasRallyStories: rallyStories.length > 0,
-    hasRallyLinks: rallyLinks.length > 0,
-    hasAnalysisOfPr: Boolean(analysisOfPr),
-  };
-};
+// getManualNotesSummary/getManualNotesFieldSummary (and their shared
+// getNotesDifficultyLevelText internal) now imported from
+// helpers/pr-manual-notes-summary.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - PrAuthorCell.jsx/PrDateCell.jsx import them
+// directly instead of reading them off window.*.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): getUserInitials/
 // normalizeNameForInitials moved to helpers/pr-user-initials.helpers.js -
@@ -2478,7 +2356,6 @@ const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
 const {
   isChangedStatus,
   statusIcon,
-  formatChkDisplay,
 } = prStatusDisplayHelperFactory.createPrStatusDisplayHelpers();
 
 void statusIcon;
@@ -2874,10 +2751,10 @@ const {
 // the window.* bridge this used to populate, and nothing else in this
 // file calls it.
 
-const autoResizeTextarea = (el) => {
-  el.style.height = "auto";
-  el.style.height = el.scrollHeight + "px";
-};
+// autoResizeTextarea now imported from
+// helpers/pr-textarea-autoresize.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - NotesSection.jsx imports it directly instead
+// of reading it off window.autoResizeTextarea.
 
 const normalizeRows = (rows) =>
   rows.sort((a, b) => {
@@ -2943,117 +2820,24 @@ const shouldAlwaysShowInReviewRows = () => {
   return Boolean(getOptionalElementById("always-show-in-review")?.checked);
 };
 
-const rowMatchesUiFilters = (entry, filters) => {
-  const row = entry?.data || {};
-  const labels = extractRowLabelNames(row)
-    .map((label) => normalizeFilterToken(label))
-    .filter(Boolean);
-  const prNumber = String(row.number || entry?.prNumber || "").trim();
-  const authorLogin = getPreferredActorKey(row.authorLogin, row.author);
-  const assignedLogins = collectAssignedUsers(row).map((user) => user.login);
-  const approverLogins = collectApproversFromRow(row).map((user) => user.login);
-
-  if (filters.alwaysShowInReview && isInReviewEnabled(row)) {
-    return true;
-  }
-
-  if (filters.prNumbers.length > 0 && !filters.prNumbers.includes(prNumber)) {
-    return false;
-  }
-
-  if (filters.prNumbers.length > 0) {
-    return true;
-  }
-
-  if (
-    filters.includeLabels.length > 0 &&
-    !filters.includeLabels.some((label) =>
-      labels.includes(normalizeFilterToken(label)),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    filters.excludeLabels.length > 0 &&
-    filters.excludeLabels.some((label) =>
-      labels.includes(normalizeFilterToken(label)),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    filters.authorLogins.length > 0 &&
-    !filters.authorLogins.includes(authorLogin)
-  ) {
-    return false;
-  }
-
-  if (
-    filters.assignedLogins.length > 0 &&
-    !filters.assignedLogins.some((login) => assignedLogins.includes(login))
-  ) {
-    return false;
-  }
-
-  if (
-    filters.approverLogins.length > 0 &&
-    !filters.approverLogins.some((login) => approverLogins.includes(login))
-  ) {
-    return false;
-  }
-
-  const notesSummary = getManualNotesFieldSummary(entry, row);
-
-  if (filters.customComments === "with" && !notesSummary.hasCustomComments) {
-    return false;
-  }
-  if (filters.customComments === "without" && notesSummary.hasCustomComments) {
-    return false;
-  }
-
-  if (filters.otherNotes === "with" && !notesSummary.hasOtherNotes) {
-    return false;
-  }
-  if (filters.otherNotes === "without" && notesSummary.hasOtherNotes) {
-    return false;
-  }
-
-  if (filters.prDifficulty === "not-set" && notesSummary.hasDifficulty) {
-    return false;
-  }
-  if (
-    filters.prDifficulty &&
-    filters.prDifficulty !== "not-set" &&
-    notesSummary.difficultyLevelText !== filters.prDifficulty
-  ) {
-    return false;
-  }
-
-  if (filters.rallyStories === "with" && !notesSummary.hasRallyStories) {
-    return false;
-  }
-  if (filters.rallyStories === "without" && notesSummary.hasRallyStories) {
-    return false;
-  }
-
-  if (filters.rallyLinks === "with" && !notesSummary.hasRallyLinks) {
-    return false;
-  }
-  if (filters.rallyLinks === "without" && notesSummary.hasRallyLinks) {
-    return false;
-  }
-
-  if (filters.analysisOfPr === "with" && !notesSummary.hasAnalysisOfPr) {
-    return false;
-  }
-  if (filters.analysisOfPr === "without" && notesSummary.hasAnalysisOfPr) {
-    return false;
-  }
-
-  return true;
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): extracted into
+// its own module, pr-row-match-filters.helpers.js, matching the sibling
+// pr-scope-selection.helpers.js/pr-row-filtering.helpers.js factory
+// pattern - the new reactive useVisiblePrNumbers derivation
+// (state/useVisiblePrNumbers.jsx) needs the same logic callable with
+// Context-derived actor-identity functions instead of this file's own
+// closures. Same closures wired in here as before the extraction, so this
+// is a zero-behavior-change move on the vanilla side.
+const { rowMatchesUiFilters } =
+  prRowMatchFiltersHelperFactory.createPrRowMatchFiltersHelpers({
+    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
+    collectAssignedUsers: (...args) => collectAssignedUsers(...args),
+    collectApproversFromRow: (...args) => collectApproversFromRow(...args),
+    extractRowLabelNames,
+    normalizeFilterToken,
+    getManualNotesFieldSummary,
+    isInReviewEnabled,
+  });
 
 const ensureDefaultFilterValues = () => {};
 
@@ -3656,15 +3440,20 @@ const handleClearOnly = async () => {
 let availableRepoLabels = [];
 let isFetchingRepoLabels = false;
 
-const getAvailableRepoLabels = () => availableRepoLabels;
-
-// Renders the dropdown into #apply-label-select-root via React (see
-// ApplyLabelSelect.jsx, mounted in react-app.jsx) - a native <select>'s own
-// selection-preservation behavior on re-render replaces the vanilla
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getAvailableRepoLabels (a plain
+// pull of this module variable) used to be bridged on window for
+// PrActionsCell.jsx to read directly - both it and ApplyLabelSelect.jsx
+// (Run & Filter tab dropdown, below) now read the same RepoLabelsContext
+// instead, fed by the one write point below, consolidating what used to
+// be two separate window.* bridges for this one list.
+//
+// Renders into both React consumers via RepoLabelsContext
+// (RepoLabelsProvider.jsx, mounted in react-app.jsx) - a native <select>'s
+// own selection-preservation behavior on re-render replaces the vanilla
 // version's manual "restore previous value if still valid" logic, so no
 // bridge return value or key remount is needed here.
 const populateApplyLabelSelect = () => {
-  window.updateReactApplyLabelOptions?.(availableRepoLabels);
+  window.setAvailableRepoLabels?.(availableRepoLabels);
 };
 
 let labelsFetchedForRepo = "";
@@ -3749,14 +3538,15 @@ function createReactCallbacks() {
 
     // State getters
     stateGetters: {
-      // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): no
-      // getLatestStoredPayload here any more. handleCheckboxChange/
-      // handleAckAction/handleApplyLabel (react-callbacks.helpers.js) used
-      // to mutate latestStoredPayload as a synchronous side effect (via
-      // toggleFlaggedForRow/toggleInReviewForRow/runAckOnlyWorkflow/etc.)
-      // and then immediately read it back via a getter, in the SAME call,
-      // to push the just-mutated value into React - a real, Playwright-
-      // confirmed hazard if that getter were ever switched to the
+      // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md):
+      // getLatestStoredPayload was removed from here because
+      // handleCheckboxChange/handleAckAction/handleApplyLabel
+      // (react-callbacks.helpers.js) used to mutate latestStoredPayload as
+      // a synchronous side effect (via toggleFlaggedForRow/
+      // toggleInReviewForRow/runAckOnlyWorkflow/etc.) and then immediately
+      // read it back via this getter, in the SAME call, to push the
+      // just-mutated value into React - a real, Playwright-confirmed
+      // hazard if this getter were ever switched to the
       // window.getReactPrTablePayload Context bridge (Context's payload
       // only updates *after* the getter's return value reaches
       // updateReactTableSafe, so reading it there would hand back the
@@ -3767,6 +3557,17 @@ function createReactCallbacks() {
       // function's own comment. getLatestSelectedRepo stays: it's used for
       // an unrelated, pre-call repoOverride fallback, not a same-tick
       // readback.
+      //
+      // ROADMAP.md's "checkbox's on-failure revert" item (re-investigated
+      // during this same follow-up review) turned out to already be
+      // stale: a failed toggle still calls setStatusTextOnly, which pushes
+      // to AppRoot's own local useState and re-renders PrTableApp (a
+      // non-memoized child) regardless of outcome - so the controlled
+      // checkbox already re-derives from the unchanged payload on every
+      // failure, with no extra re-push needed. Confirmed empirically: a
+      // Playwright regression test for this (e2e/smoke.spec.js) passes
+      // identically whether or not a getLatestStoredPayload-based re-push
+      // is wired in here. Left out again for that reason.
       getLatestSelectedRepo: () => latestSelectedRepo,
     },
   });
@@ -3986,10 +3787,14 @@ const initPage = () => {
   // consuming components now import it directly), escapeHtml/
   // formatIsoDatetime (createPrFormattingHelpers(), same reasoning), and
   // countPendingThreadComments (extracted from an inline index.page.js
-  // function into helpers/pr-thread-comments.helpers.js). formatChkDisplay
-  // and toCount stay - AuthorInsightsPrDataMeta.jsx still reads them off
-  // window (see that file's own comment for why it's deliberately deferred
-  // as one atomic unit, not cherry-picked here). shouldShowNeedsAttention/
+  // function into helpers/pr-thread-comments.helpers.js). formatChkDisplay/
+  // toCount/parseMarkerState/getViewedFilesSummary ("Track C" - see
+  // AuthorInsightsPrDataMeta.jsx's own comment) used to stay bridged here
+  // too - re-investigated and found all 4 are genuinely zero-dependency,
+  // the same as every other name in this comment; that file now builds
+  // its own copies directly (also fixing a real, previously-masked
+  // formatChkDisplay call-signature bug along the way - see its own
+  // comment). shouldShowNeedsAttention/
   // entryNeedsAttention/getNeedsAttentionConfig also moved off (both the
   // separate window.entryNeedsAttention/window.getNeedsAttentionConfig
   // assignment above and shouldShowNeedsAttention here) - PrTableApp.jsx
@@ -3999,18 +3804,17 @@ const initPage = () => {
   // Context-native (Phase 6, FilterStateProvider) and the classification
   // helpers only need actor-identity, itself already Context-native.
   Object.assign(window, {
-    formatChkDisplay,
-    collectPrAuthors,
     // Phase 7 (see REACT_MIGRATION_PLAN.md): collectAssignedUsers/
     // collectRequestedReviewers/getUserInitials/getOpenConversationCountWithMe
     // used to be bridged here too - PrApprovedCell.jsx now gets all 4 from
     // PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and no
     // other component reads any of these 4 names off window.
-    getManualNotesSummary,
-    getManualNotesFieldSummary,
-    buildPrLastCheckedIndicator,
-    getViewedFilesState,
-    getViewedFilesSummary,
+    // collectPrAuthors/getManualNotesSummary/getManualNotesFieldSummary/
+    // buildPrLastCheckedIndicator/getViewedFilesState used to be bridged
+    // here too - PrAuthorCell.jsx/PrDateCell.jsx/PrStatusCell.jsx now
+    // import/build these directly instead (collectPrAuthors via
+    // createPrAuthorCellHelpers + useActorIdentity(); the other 4 from
+    // their own new/existing helper modules).
     // Phase 7 (see REACT_MIGRATION_PLAN.md): getSelectedPrNumbers/
     // updateSelectedPrNumbers used to be bridged here too -
     // PrSelectionCell.jsx now reads/writes "#pr-numbers"'s Context value
@@ -4021,8 +3825,10 @@ const initPage = () => {
     // entirely, not just the bridge entry); PrActionsCell.jsx/
     // PrLabelsCell.jsx now import it directly from
     // pr-filter-label-extraction.helpers.js instead of reading
-    // window.getLabelName.
-    getAvailableRepoLabels,
+    // window.getLabelName. getAvailableRepoLabels used to be bridged here
+    // too - PrActionsCell.jsx now reads RepoLabelsContext directly instead
+    // (see populateApplyLabelSelect's own comment, above
+    // getAvailableRepoLabels' old definition).
     // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
     // isFlaggedEnabled used to also be bridged here - confirmed dead for
     // the React/component side (see the comments at isInReviewEnabled's
@@ -4030,7 +3836,6 @@ const initPage = () => {
     // entries are removed. isInReviewEnabled's definition stays (still
     // used by this file's own internal filtering); isFlaggedEnabled's
     // definition was deleted outright - it had no callers at all.
-    toCount,
     runSinglePrUpdate,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
@@ -4046,12 +3851,8 @@ const initPage = () => {
     // readReviewConversationsUiState/writeReviewConversationsUiState (onto
     // ReviewConversationsUiStateProvider - no window.* bridge needed at
     // all there, nothing outside ReviewThreadsSection.jsx ever read them).
-    // parseMarkerState/getViewedFilesSummary (above) stay -
-    // AuthorInsightsPrDataMeta.jsx still reads them off window directly, a
-    // documented follow-up opportunity, not an oversight.
-    // getAuthorThreadResolutionPolicy stays too - a genuinely separate
+    // getAuthorThreadResolutionPolicy stays - a genuinely separate
     // concern (a DOM-scan dependency), deliberately out of scope.
-    parseMarkerState,
     getAuthorThreadResolutionPolicy,
     // Phase 7 (see REACT_MIGRATION_PLAN.md): parseSortableTime/
     // noteAuthorMatchesSelection/getAuthorInsightsDisplayName (further
@@ -4062,11 +3863,14 @@ const initPage = () => {
     // or a Context hook (noteAuthorMatchesSelection,
     // AuthorInsightsContext/a local useMemo; getAuthorInsightsDisplayName,
     // useAuthorInsights()). getNotesDifficultyLevelText had no window.X
-    // consumer at all, anywhere - only the bridge entry is removed; its
-    // definition stays, still used by this file's own internal
-    // getManualNotesFieldSummary.
-    postJson,
-    autoResizeTextarea,
+    // consumer at all, anywhere, even before this round - it moved along
+    // with getManualNotesFieldSummary (its only remaining caller) into
+    // helpers/pr-manual-notes-summary.helpers.js. postJson/
+    // autoResizeTextarea used to be bridged here too - NotesSection.jsx
+    // (their one shared consumer) now imports both directly instead
+    // (postJson via a new bare export alongside pr-http.helpers.js's
+    // existing, still test-mockable factory; autoResizeTextarea via new
+    // helpers/pr-textarea-autoresize.helpers.js).
     recomputeDirtyPrSectionsFields,
     // Phase 7 (see REACT_MIGRATION_PLAN.md): asArray/safeJsonStringify/
     // getPerPrUserStateFromPayload/DEFAULT_REPO used to also be bridged

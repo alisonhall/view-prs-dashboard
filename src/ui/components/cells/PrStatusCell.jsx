@@ -6,6 +6,8 @@
  */
 
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+import { buildPrLastCheckedIndicator } from '../../helpers/pr-last-checked-indicator.helpers.js';
+import { getViewedFilesState } from '../../helpers/pr-viewed-files-state.helpers.js';
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): a genuinely
 // zero-dependency pure-function factory - no viewer/payload state involved,
@@ -13,11 +15,6 @@ import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.he
 const { isChangedStatus, statusClass } = createPrStatusDisplayHelpers();
 
 export function PrStatusCell({ pr, lastCheckedAt, sectionKey }) {
-  const getViewedFilesState =
-    window.getViewedFilesState ||
-    (() => ({ viewedFilesCount: 0, changedFilesCount: 0, isComplete: false, hasUnviewedFiles: false }));
-  const buildPrLastCheckedIndicator = window.buildPrLastCheckedIndicator || (() => ({ label: '', title: '', isStale: false }));
-
   const statusText =
     pr?.reason && pr.reason !== '-' && isChangedStatus(pr?.status)
       ? `${pr.status}(${pr.reason})`

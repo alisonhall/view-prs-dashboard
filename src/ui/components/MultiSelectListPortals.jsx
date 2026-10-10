@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MultiSelectCheckboxList } from './MultiSelectCheckboxList';
 import { useFilterOptions } from '../state/FilterOptionsContext';
+import { useRowFilterSelection } from '../state/RowFilterSelectionContext';
 import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.js';
 import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.js';
 import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.js';
@@ -76,6 +77,19 @@ const MULTI_SELECT_NORMALIZE_TOKEN = {
   'exclude-label-list': normalizeFilterToken,
 };
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the 5 lists
+// whose checked-state now also lives in RowFilterSelectionContext (the
+// useVisiblePrNumbers derivation reads it from there) - the other 4 lists
+// here don't feed row filtering and keep their checked-state local to
+// MultiSelectCheckboxList, same as before this change.
+const ROW_FILTER_LIST_IDS = new Set([
+  'label-list',
+  'exclude-label-list',
+  'author-list',
+  'assigned-list',
+  'approver-list',
+]);
+
 /**
  * Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): renders the 9
  * multi-select filter lists, replacing the imperative
@@ -94,14 +108,23 @@ const MULTI_SELECT_NORMALIZE_TOKEN = {
  * Each list's checked state still has to be seeded imperatively (read the
  * currently-checked DOM values, or fall back to a pending restore-time
  * selection - see pr-multi-select-checked-state.helpers.js's
- * seedCheckedState) since that state lives in MultiSelectCheckboxList's own
- * local component state, not anywhere this component can read via props/
- * Context. The render-cache (createMultiSelectRenderCache) is preserved
- * unchanged from index.page.js's former renderMultiSelectListSkipUnchanged
- * so an unchanged list still doesn't force a remount on every poll tick.
+ * seedCheckedState). For 4 of the 9 lists (thread-resolution allow/deny,
+ * the 2 change-filter actor lists) that state lives only in
+ * MultiSelectCheckboxList's own local component state, not anywhere this
+ * component can read via props/Context. The other 5 - the row-filtering
+ * lists (include/exclude label, author, assigned, approver) - also mirror
+ * their seeded checked values into RowFilterSelectionContext (Phase 7, see
+ * REACT_MIGRATION_PLAN.md "live filtering"), since the reactive
+ * visible-PR-numbers derivation needs to read "currently checked" without
+ * a DOM query; the seeding logic itself (seedCheckedState,
+ * existingChecked/pendingSelections precedence) is identical either way.
+ * The render-cache (createMultiSelectRenderCache) is preserved unchanged
+ * from index.page.js's former renderMultiSelectListSkipUnchanged so an
+ * unchanged list still doesn't force a remount on every poll tick.
  */
 export function MultiSelectListPortals({ containers }) {
   const filterOptions = useFilterOptions();
+  const rowFilterSelection = useRowFilterSelection();
   const [renderState, setRenderState] = useState({});
   const renderCacheRef = useRef(null);
   if (!renderCacheRef.current) {
@@ -156,6 +179,17 @@ export function MultiSelectListPortals({ containers }) {
 
       skipUnchanged(listId, items);
 
+      // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): for the 5
+      // row-filtering lists, also push the freshly-seeded checked values
+      // into RowFilterSelectionContext - this is the one extra step this
+      // round adds to the otherwise-unchanged seeding pass above.
+      if (ROW_FILTER_LIST_IDS.has(listId)) {
+        rowFilterSelection.setChecked(
+          listId,
+          items.filter((item) => item.checked).map((item) => item.value),
+        );
+      }
+
       if (shouldClearPending) {
         pendingClears.push(pendingKey);
       }
@@ -185,19 +219,26 @@ export function MultiSelectListPortals({ containers }) {
       return null;
     }
     const state = renderState[listId];
+    const isRowFilterList = ROW_FILTER_LIST_IDS.has(listId);
     return createPortal(
       // key includes renderKey (bumped only when this list's own items
       // signature actually changed, see the render-cache above) so this
       // remounts on every real change, matching MultiSelectCheckboxList's
       // own doc comment - its `checked` state is seeded once from
       // `options` via a lazy useState initializer, not kept in sync with
-      // subsequent prop updates.
+      // subsequent prop updates. For the 5 row-filtering lists, checked
+      // state now lives in RowFilterSelectionContext instead (see
+      // checkedSet/onToggle below) - a remount here is still harmless for
+      // them, it just re-reads the same Context value, so this `key`
+      // mechanism is left firing for all 9 lists unchanged.
       <MultiSelectCheckboxList
         key={`${listId}-${state?.renderKey ?? 0}`}
         options={state?.items || []}
         idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
         emptyClassContainer={container}
         summaryContainer={containers.multiSelectSummary[listId]}
+        checkedSet={isRowFilterList ? rowFilterSelection.checkedByListId[listId] || new Set() : undefined}
+        onToggle={isRowFilterList ? (value) => rowFilterSelection.toggle(listId, value) : undefined}
       />,
       container,
       listId,

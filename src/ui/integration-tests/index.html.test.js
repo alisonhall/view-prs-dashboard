@@ -26,6 +26,7 @@ const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
+const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
@@ -501,29 +502,51 @@ const installReactTableMountBridge = () => {
           initialSelectedRepo: props?.selectedRepo,
           initialVisiblePrNumbers: props?.visiblePrNumbers,
         },
+        // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
+        // RowFilterSelectionProvider wraps both sibling subtrees below,
+        // matching react-app.jsx's own AppRoot structure - PrTableApp's
+        // useVisiblePrNumbers and MultiSelectListPortals' seeding both need
+        // the same Context. Deliberately NOT also mounting a
+        // FilterStateProvider here (tried, reverted) - it installs global
+        // window.getFilterStateValues/setFilterStateValue bridges that
+        // restoreUiOptionOverrides (index.page.js) and other DOM-read
+        // fallback call sites throughout THIS SAME test file would then
+        // prefer over the plain DOM writes several unrelated persisted-
+        // restore tests assert on directly, since no real filter-field
+        // input components are mounted here to keep that Context in sync
+        // with the DOM the way the real app's AppRoot does. useVisiblePrNumbers
+        // itself tolerates a missing FilterStateProvider gracefully (reads
+        // FilterStateContext directly with safe defaults, not the
+        // throwing useFilterState() hook) specifically so this harness -
+        // which exercises index.page.js's vanilla pipeline in isolation -
+        // doesn't need one.
         React.createElement(
-          NeedsAttentionProvider,
+          RowFilterSelectionProvider,
           null,
           React.createElement(
-            NotesDirtyProvider,
+            NeedsAttentionProvider,
             null,
-            React.createElement(PrTableApp, {
-              onCheckboxChange: props?.onCheckboxChange,
-              onAckAction: props?.onAckAction,
-              onApplyLabel: props?.onApplyLabel,
-            }),
+            React.createElement(
+              NotesDirtyProvider,
+              null,
+              React.createElement(PrTableApp, {
+                onCheckboxChange: props?.onCheckboxChange,
+                onAckAction: props?.onAckAction,
+                onApplyLabel: props?.onApplyLabel,
+              }),
+            ),
           ),
-        ),
-        // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
-        // inside the SAME <PrDataProvider /> instance as PrTableApp above -
-        // matching react-app.jsx's real AppRoot structure, so
-        // FilterOptionsProvider derives its 9 option lists from the exact
-        // payload/selectedRepo the table itself is showing, not a second,
-        // independently-fed copy.
-        React.createElement(
-          FilterOptionsProvider,
-          null,
-          React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+          // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
+          // inside the SAME <PrDataProvider /> instance as PrTableApp above -
+          // matching react-app.jsx's real AppRoot structure, so
+          // FilterOptionsProvider derives its 9 option lists from the exact
+          // payload/selectedRepo the table itself is showing, not a second,
+          // independently-fed copy.
+          React.createElement(
+            FilterOptionsProvider,
+            null,
+            React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+          ),
         ),
       ),
       { container: containerElement },
@@ -2596,6 +2619,10 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
+    // The vanilla pipeline's own data-meta summary (its PR-number-filter
+    // precedence over label/author/assigned, computed from the plain DOM
+    // reads this harness exercises) is unaffected by "live filtering" -
+    // still asserted here unchanged.
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
       expect(dataMetaText).toContain("Rows: 1");
@@ -2603,12 +2630,25 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=all stored rows");
     });
 
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the REAL
+    // React table no longer reflects this DOM-only scope-mode/PR-number
+    // filter at all - it reads useVisiblePrNumbers(), a reactive Context
+    // derivation, and scopeMode/filterPrNumbers have no Context-backed
+    // input component mounted in this reduced harness (unlike the real
+    // app's ScopeFilterSelect/PrNumberFilterInput). The table instead
+    // reflects whatever IS Context-backed here: the 4 multi-select
+    // filters above (label=frontend/exclude=bug/author=author-other/
+    // assigned=assignee-other), which match PR #2, not PR #1 - the
+    // opposite of what the vanilla-only precedence computed above. This
+    // PR-number-filter-precedence behavior itself is covered where it's
+    // actually reachable: pr-visible-pr-numbers.helpers.test.js (unit) and
+    // the real, fully-wired app (Playwright e2e).
     expect(
-      screen.getByRole("button", { name: "View PR JSON details for #1" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "View PR JSON details for #2" }),
+      screen.queryByRole("button", { name: "View PR JSON details for #1" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "View PR JSON details for #2" }).length,
+    ).toBeGreaterThan(0);
   });
 
   test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {

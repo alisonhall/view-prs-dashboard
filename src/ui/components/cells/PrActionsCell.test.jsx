@@ -3,22 +3,27 @@
 const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrActionsCell } = require('./PrActionsCell');
+const { RepoLabelsContext } = require('../../state/RepoLabelsContext');
 
 describe('PrActionsCell', () => {
   afterEach(() => {
     delete window.runSinglePrUpdate;
-    delete window.getAvailableRepoLabels;
   });
 
-  const renderCell = (props = {}) =>
+  // repoLabels comes from useRepoLabels() now (Phase 7, see
+  // REACT_MIGRATION_PLAN.md) instead of window.getAvailableRepoLabels -
+  // wraps in a RepoLabelsContext.Provider instead of stubbing window.
+  const renderCell = (props = {}, repoLabels = []) =>
     render(
-      <table>
-        <tbody>
-          <tr>
-            <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} {...props} />
-          </tr>
-        </tbody>
-      </table>,
+      <RepoLabelsContext.Provider value={{ labels: repoLabels }}>
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} {...props} />
+            </tr>
+          </tbody>
+        </table>
+      </RepoLabelsContext.Provider>,
     );
 
   test('given isInReview/isFlagged, when rendering, then reflects checked state on each toggle', () => {
@@ -113,12 +118,14 @@ describe('PrActionsCell', () => {
     );
   });
 
-  test('given repo labels from window.getAvailableRepoLabels, when rendering, then lists labels not already on the PR', () => {
-    window.getAvailableRepoLabels = () => [
-      { name: 'bug', color: 'd73a4a' },
-      { name: 'dependencies', color: '0366d6' },
-    ];
-    renderCell({ pr: { number: '101', labels: ['dependencies'] } });
+  test('given repo labels from RepoLabelsContext, when rendering, then lists labels not already on the PR', () => {
+    renderCell(
+      { pr: { number: '101', labels: ['dependencies'] } },
+      [
+        { name: 'bug', color: 'd73a4a' },
+        { name: 'dependencies', color: '0366d6' },
+      ],
+    );
 
     const select = screen.getByLabelText('Add label to PR #101');
     const optionLabels = Array.from(select.options).map((option) => option.textContent);
@@ -126,9 +133,8 @@ describe('PrActionsCell', () => {
   });
 
   test('given the label select, when a label is chosen, then onApplyLabel fires with (number, label, repo) and the select resets', () => {
-    window.getAvailableRepoLabels = () => [{ name: 'bug', color: 'd73a4a' }];
     const onApplyLabel = jest.fn();
-    renderCell({ pr: { number: '101' }, onApplyLabel });
+    renderCell({ pr: { number: '101' }, onApplyLabel }, [{ name: 'bug', color: 'd73a4a' }]);
 
     const select = screen.getByLabelText('Add label to PR #101');
     require('@testing-library/react').fireEvent.change(select, { target: { value: 'bug' } });
@@ -137,9 +143,22 @@ describe('PrActionsCell', () => {
     expect(select.value).toBe('');
   });
 
-  test('given no window.getAvailableRepoLabels, when rendering, then only the placeholder option is shown', () => {
+  test('given no repo labels at all, when rendering, then only the placeholder option is shown', () => {
     renderCell({ pr: { number: '101' } });
     const select = screen.getByLabelText('Add label to PR #101');
     expect(select.options).toHaveLength(1);
+  });
+
+  test('given no RepoLabelsProvider ancestor at all, when rendering, then it falls back to just the placeholder option', () => {
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} />
+          </tr>
+        </tbody>
+      </table>,
+    );
+    expect(screen.getByLabelText('Add label to PR #101').options).toHaveLength(1);
   });
 });

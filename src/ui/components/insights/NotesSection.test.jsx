@@ -2,12 +2,18 @@
 
 const { render, screen, fireEvent, cleanup } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+
+// postJson is a plain ES import now (Phase 7, see REACT_MIGRATION_PLAN.md) -
+// a jest.mock is the equivalent of swapping a window.* global, same pattern
+// this codebase already uses for pr-row-sorting.helpers.js/
+// pr-section-config.helpers.js in PrTableApp.test.jsx.
+jest.mock('../../helpers/pr-http.helpers.js', () => ({
+  postJson: jest.fn(),
+}));
+
 const { NotesSection } = require('./NotesSection');
 const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
-
-function clearHelpers() {
-  delete window.postJson;
-}
+const { postJson } = require('../../helpers/pr-http.helpers.js');
 
 function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
   return render(
@@ -18,7 +24,9 @@ function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
 }
 
 describe('NotesSection', () => {
-  afterEach(clearHelpers);
+  afterEach(() => {
+    postJson.mockReset();
+  });
 
   test('given no existing notes, when rendering, then the Save button starts disabled', () => {
     render(<NotesSection entry={{}} pr={{ number: '1' }} actorsMap={{}} />);
@@ -49,8 +57,7 @@ describe('NotesSection', () => {
   });
 
   test('given unsaved changes, when Save notes is clicked, then POSTs to /view-prs/notes with the current field values', async () => {
-    const postJson = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: true } });
-    window.postJson = postJson;
+    postJson.mockResolvedValue({ response: { ok: true }, result: { ok: true } });
     const entry = { repo: 'owner/repo' };
     render(<NotesSection entry={entry} pr={{ number: '42' }} actorsMap={{}} />);
 
@@ -68,7 +75,7 @@ describe('NotesSection', () => {
 
   test('given a successful save that returns prData, when it resolves, then calls onDataRefresh with it', async () => {
     const prData = { byPrNumber: {} };
-    window.postJson = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: true, prData } });
+    postJson.mockResolvedValue({ response: { ok: true }, result: { ok: true, prData } });
     const onDataRefresh = jest.fn();
     render(<NotesSection entry={{}} pr={{ number: '1' }} actorsMap={{}} onDataRefresh={onDataRefresh} />);
 

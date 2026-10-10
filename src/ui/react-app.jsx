@@ -27,6 +27,7 @@ import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
+import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
@@ -43,6 +44,8 @@ import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
 import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
+import { RepoLabelsProvider } from './components/RepoLabelsProvider';
+import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
@@ -446,6 +449,16 @@ const DEFAULT_STATS_VIEW_STATE = {
   endDate: '',
 };
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a
+// thin wrapper so useAppliedFilterSummary() (a hook) can be called from
+// AppRoot's JSX, which otherwise can't call hooks mid-render. Must be
+// mounted inside both <RowFilterSelectionProvider> and <JobEventsProvider>
+// - see where it's actually portaled in AppRoot's own JSX.
+function AppliedFilterSummaryLive() {
+  const { summaryText, filterChips } = useAppliedFilterSummary();
+  return <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />;
+}
+
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
@@ -458,7 +471,6 @@ function AppRoot() {
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
   const [prTable, setPrTable] = useState(null);
-  const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
@@ -467,7 +479,6 @@ function AppRoot() {
   // #request-activity-badges itself was removed from the Status tab; this
   // only ever reaches the drawer as a prop.
   const [recentRequestActivity, setRecentRequestActivity] = useState([]);
-  const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
   const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
 
@@ -510,18 +521,19 @@ function AppRoot() {
     };
   }, []);
 
-  useEffect(() => {
-    window.renderReactFilterSummary = (summaryText, filterChips) => {
-      if (!containers.appliedFilterSummary) {
-        return false;
-      }
-      setFilterSummary({ summaryText, filterChips });
-      return true;
-    };
-    return () => {
-      delete window.renderReactFilterSummary;
-    };
-  }, [containers]);
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+  // window.renderReactFilterSummary (the push bridge this useEffect used
+  // to register) is gone - <AppliedFilterSummaryLive> now derives the
+  // chip/summary text itself, reactively, via useAppliedFilterSummary().
+  // index.page.js's own vanilla computation of the same text still runs
+  // (deriveRenderSummary's other callers depend on it) and still tries to
+  // call this now-nonexistent bridge - that call site's own
+  // `typeof window.renderReactFilterSummary === "function"` guard makes
+  // it a harmless no-op, left wired rather than ripped out for the same
+  // reason index.page.js's own dead visiblePrNumbers computation was
+  // (PrDataProvider.jsx's own comment) - removing it is naturally scoped
+  // together with a future deriveRenderSummary/renderSchedulerStatus
+  // decoupling pass, not this slice.
 
   useEffect(() => {
     window.updateReactBackfillBadges = (badges) => {
@@ -550,16 +562,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactRecentRequestActivity;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactApplyLabelOptions = (labels) => {
-      setApplyLabelOptions({ labels });
-      return true;
-    };
-    return () => {
-      delete window.updateReactApplyLabelOptions;
     };
   }, []);
 
@@ -675,19 +677,39 @@ function AppRoot() {
       initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
     >
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
+        {/* RepoLabelsProvider wraps everything below for the same reason
+            PrActivityQueueProvider does: ApplyLabelSelect's own portal
+            (inside the filter-field portals further down) and PrTableApp's
+            PrActionsCell (inside the prTable portal) are siblings, not an
+            ancestor/descendant pair, that both need the same available-
+            labels list - see RepoLabelsContext.jsx's own comment. */}
+        <RepoLabelsProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
+            RowFilterSelectionProvider wraps everything below for the same
+            cross-portal-sharing reason RepoLabelsProvider does -
+            MultiSelectListPortals (the filter-field portals further down)
+            and PrTableApp's own useVisiblePrNumbers (inside the prTable
+            portal) are sibling portals, not an ancestor/descendant pair,
+            that both need the same 5 row-filtering lists' checked-state. */}
+        <RowFilterSelectionProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+            JobEventsProvider widened from "just the drawer portal" (its own
+            prior comment here predicted this) to wrap everything
+            RowFilterSelectionProvider does - useAppliedFilterSummary.jsx
+            (consumed inside the prTable portal below AND by the
+            appliedFilterSummary portal further down) needs useJobEvents()'s
+            schedulerSummary too, and those are sibling portals relative to
+            the drawer, not an ancestor/descendant pair - same
+            cross-portal-sharing reason every other Provider at this level
+            is already this wide. */}
+        <JobEventsProvider>
         {/* PrActivityQueueProvider wraps both the drawer's bulk-queue
             section and PrTableApp below - they're sibling portals (not an
             ancestor/descendant pair) that need to share the same
             busyPrNumbers/queuedPrNumbers state, which is exactly why this
             state was lifted out of PrTableApp itself (see
-            PrActivityQueueProvider.jsx's own comment). JobEventsProvider
-            stays scoped to just the drawer portal for now - the only
-            current consumer of useJobEvents(). Widen that one if/when
-            another consumer is added (e.g. repointing #scheduler-badges at
-            this same live state - see the activity-drawer plan's "Polling
-            retirement" follow-up). */}
+            PrActivityQueueProvider.jsx's own comment). */}
         <PrActivityQueueProvider>
-          <JobEventsProvider>
             {containers.activityDrawer &&
               createPortal(
                 <ActivityDrawer
@@ -703,7 +725,6 @@ function AppRoot() {
                 containers.activityDrawer,
                 'activity-drawer',
               )}
-          </JobEventsProvider>
 
           {prTable &&
             createPortal(
@@ -733,10 +754,7 @@ function AppRoot() {
 
         {containers.appliedFilterSummary &&
           createPortal(
-            <AppliedFilterSummary
-              summaryText={filterSummary.summaryText}
-              filterChips={filterSummary.filterChips}
-            />,
+            <AppliedFilterSummaryLive />,
             containers.appliedFilterSummary,
             'applied-filter-summary',
           )}
@@ -889,7 +907,7 @@ function AppRoot() {
 
         {containers.applyLabelSelect &&
           createPortal(
-            <ApplyLabelSelect labels={applyLabelOptions.labels} />,
+            <ApplyLabelSelect />,
             containers.applyLabelSelect,
             'apply-label-select',
           )}
@@ -923,6 +941,9 @@ function AppRoot() {
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
+        </JobEventsProvider>
+        </RowFilterSelectionProvider>
+        </RepoLabelsProvider>
       </FilterStateProvider>
       <PrDataPolling />
     </PrDataProvider>

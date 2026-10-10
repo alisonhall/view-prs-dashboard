@@ -539,6 +539,109 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await expect(page.locator("#data-meta")).toContainText("scope=all stored rows");
 });
 
+test("typing a PR-number filter updates the rendered React table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): filterPrNumbers
+  // was already Context-backed (FilterStateProvider) before this change,
+  // but only the data-meta summary and a 150ms-debounced vanilla
+  // re-render ever reflected it - the React table itself only updated via
+  // the vanilla pipeline's imperatively-pushed visiblePrNumbers, on the
+  // SAME debounce. This proves useVisiblePrNumbers() now reads
+  // filterPrNumbers reactively too, same as the multi-select test above.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer -
+  // clearing is ALSO live, same as filling above.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+});
+
+test("checking a row-filtering multi-select (label) filters the rendered table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the 5
+  // row-filtering multi-selects (include/exclude label, author, assigned,
+  // approver) used to only take effect once "Apply filters (local)" was
+  // explicitly clicked - their checked-state lived purely in
+  // MultiSelectCheckboxList's own local component state, with no Context
+  // mirror for a reactive derivation to read. Now mirrored into
+  // RowFilterSelectionContext, feeding useVisiblePrNumbers() directly -
+  // this test proves the table updates the instant a checkbox is checked,
+  // never clicking Apply filters at all (contrast with the test above this
+  // one, and "Apply filters (local) actually filters the rendered table",
+  // which both still use the click for their own unrelated fields).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+
+  const labelList = page.locator("#label-list");
+  await labelList.getByLabel("enhancement", { exact: true }).check();
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer -
+  // uncheck is ALSO live, same as the check above, so the table should
+  // show every PR again immediately too.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await labelDropdownSummary.click();
+  await labelList.getByLabel("enhancement", { exact: true }).uncheck();
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+});
+
+test("the \"Applied filters\" chip/summary text updates live too, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
+  // chip/summary text used to only update via index.page.js's vanilla
+  // pipeline, pushed into React through a window.renderReactFilterSummary
+  // bridge - <AppliedFilterSummaryLive> (react-app.jsx) now derives this
+  // text itself, reactively, via useAppliedFilterSummary(). This test
+  // proves both the PR-number filter and a multi-select update the chip
+  // text immediately, matching the table itself (see the two tests above).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+
+  const summary = page.locator("#management-filter-summary");
+  await expect(summary).toContainText("repo=");
+  await expect(summary).toContainText("scope=all stored rows");
+
+  await page.locator("#filter-pr-numbers").fill("1");
+  await expect(summary).toContainText("pr-numbers=1");
+  await expect(summary).toContainText("Rows: 1");
+
+  await page.locator("#filter-pr-numbers").fill("");
+
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await expect(summary).toContainText("label=enhancement");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer.
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).uncheck();
+});
+
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
   // Regression coverage for the last checkbox converted (see
   // REACT_MIGRATION_PLAN.md): unlike the plain debouncedApplyOnChangeIds
@@ -808,6 +911,88 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
 
   await page.getByRole("button", { name: "Close PR JSON details" }).click();
   await expect(dataFileJson).not.toBeVisible();
+});
+
+test("the Run tab's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
+  // Regression test for Phase 7's RepoLabelsProvider migration (see
+  // REACT_MIGRATION_PLAN.md) - window.updateReactApplyLabelOptions (a push
+  // into AppRoot's own local state, feeding only the Run tab's dropdown)
+  // and window.getAvailableRepoLabels (a pull PrActionsCell.jsx read on
+  // every render) used to be two entirely separate bridges for the same
+  // underlying list; this proves one real fetch now reaches both real,
+  // already-mounted consumers through the one new Context.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // Override the suite-wide empty-labels mock (test.beforeEach, above)
+  // just for this test - Playwright matches the most recently registered
+  // handler for an overlapping pattern first.
+  await page.route("**/view-prs/labels?*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, repo: "octocat/hello-world", labels: [{ name: "bug" }, { name: "enhancement" }] }),
+    }),
+  );
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#refresh-labels-btn").click();
+
+  const runFilterSelect = page.locator("#apply-label-select");
+  await expect(runFilterSelect.locator("option")).toHaveCount(3);
+  await expect(runFilterSelect.locator('option[value="bug"]')).toHaveCount(1);
+
+  // PR #1's own fixture already carries the "enhancement" label (see
+  // e2e/fixtures/data.json) - its row select correctly excludes that one
+  // (PrActionsCell.jsx's own existing-label filter), leaving just "bug" +
+  // the placeholder, proving both the shared-Context wiring and the
+  // per-row exclusion logic together.
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+  const rowSelect = page.locator('select[aria-label="Add label to PR #1"]').first();
+  await expect(rowSelect.locator("option")).toHaveCount(2);
+  await expect(rowSelect.locator('option[value="bug"]')).toHaveCount(1);
+  await expect(rowSelect.locator('option[value="enhancement"]')).toHaveCount(0);
+});
+
+test("a failed In Review toggle reverts the checkbox back to its real state, instead of leaving it stuck on the click", async ({ page }) => {
+  // Regression test for ROADMAP.md's documented bug ("checkbox's on-failure
+  // revert ... currently dead code in the React path", fixed in
+  // react-callbacks.helpers.js's handleCheckboxChange) - PrActionsCell.jsx's
+  // checkbox is a fully controlled input with no local optimistic state, so
+  // a failed toggle used to leave it showing the user's clicked (wrong)
+  // state until some unrelated future re-render. Forces the real
+  // POST /view-prs/ack call to fail, confirming the checkbox now snaps back
+  // on its own right away.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  const checkbox = page.locator('input[aria-label="In Review for PR #1"]').first();
+  const before = await checkbox.isChecked();
+
+  await page.route("**/view-prs/ack", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "simulated failure for this test" }),
+    }),
+  );
+
+  await checkbox.click();
+  // The click's own native DOM toggle happens immediately; the app's async
+  // round-trip (even against a mocked route) still takes a tick - wait for
+  // it to settle back to the pre-click value rather than asserting
+  // immediately, which would just catch the transient optimistic state.
+  await expect(checkbox).toHaveJSProperty("checked", before);
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {

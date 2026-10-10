@@ -4,6 +4,7 @@ const { render, act, cleanup } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { JobEventsProvider } = require('./JobEventsProvider');
 const { useJobEvents } = require('../state/JobEventsContext');
+const { PrDataContext } = require('../state/PrDataContext');
 
 // jsdom does not implement EventSource, and there is no existing
 // EventSource/WebSocket usage anywhere in this repo to copy a mock from -
@@ -114,6 +115,70 @@ describe('JobEventsProvider', () => {
     expect(ProbeLastValue.jobs.quickCheck.waitingOn).toEqual({
       job: 'autoRefresh',
       since: '2026-01-01T00:00:00.000Z',
+    });
+  });
+
+  // Regression tests: schedulerSummary's own default
+  // (getInitialJobEventsState) is a hardcoded placeholder, not real data -
+  // without a payload.scheduler fallback, a fresh page load would
+  // briefly show it instead of the real values PrDataProvider's payload
+  // already has from its own very first /view-prs/data fetch. Found via
+  // code review.
+  describe('schedulerSummary payload.scheduler fallback (see JobEventsProvider.jsx\'s own comment)', () => {
+    test('given a payload.scheduler and no SSE snapshot has arrived yet, when read, then schedulerSummary reflects payload.scheduler, not the hardcoded default', () => {
+      render(
+        <PrDataContext.Provider
+          value={{
+            payload: {
+              scheduler: {
+                intervalMinutes: 45,
+                lastAutoRunAt: '2026-01-01T00:05:00.000Z',
+              },
+            },
+          }}
+        >
+          <JobEventsProvider>
+            <Probe />
+          </JobEventsProvider>
+        </PrDataContext.Provider>,
+      );
+
+      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(45);
+      expect(ProbeLastValue.schedulerSummary.lastAutoRunAt).toBe('2026-01-01T00:05:00.000Z');
+    });
+
+    test('given no PrDataContext ancestor at all, when read, then schedulerSummary falls back to the hardcoded default without throwing', () => {
+      render(
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>,
+      );
+
+      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(15);
+    });
+
+    test('given a payload.scheduler fallback is showing, when a real SSE snapshot arrives, then schedulerSummary switches to the live SSE value instead', () => {
+      render(
+        <PrDataContext.Provider
+          value={{ payload: { scheduler: { intervalMinutes: 45 } } }}
+        >
+          <JobEventsProvider>
+            <Probe />
+          </JobEventsProvider>
+        </PrDataContext.Provider>,
+      );
+      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(45);
+
+      const instance = FakeEventSource.instances[0];
+      act(() => {
+        instance.triggerOpen();
+        instance.emit('snapshot', {
+          at: '2026-01-01T00:00:00.000Z',
+          scheduler: { intervalMinutes: 30 },
+        });
+      });
+
+      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(30);
     });
   });
 

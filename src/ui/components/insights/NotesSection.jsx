@@ -21,6 +21,8 @@ import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
 import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.js';
+import { postJson } from '../../helpers/pr-http.helpers.js';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },
@@ -43,10 +45,6 @@ function generateCommentId() {
 
 function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
   const ref = useRef(null);
-  const autoResizeTextarea = window.autoResizeTextarea || ((el) => {
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  });
 
   return (
     <textarea
@@ -88,7 +86,6 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
     [normalizeActorLogin, resolveActorDisplayName],
   );
   const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
-  const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
   // untracked - a slow/hung notes save had no visibility anywhere outside
   // this component's own "Saving..." status text.

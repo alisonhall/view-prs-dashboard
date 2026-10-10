@@ -6,8 +6,7 @@ const { PrStatusCell } = require('./PrStatusCell');
 
 describe('PrStatusCell', () => {
   afterEach(() => {
-    delete window.getViewedFilesState;
-    delete window.buildPrLastCheckedIndicator;
+    jest.useRealTimers();
   });
 
   const renderCell = (pr, extra = {}) =>
@@ -33,21 +32,29 @@ describe('PrStatusCell', () => {
     expect(document.querySelector('.status-cell-content > div').textContent).toBe('CHANGED(new-commits)');
   });
 
+  // getViewedFilesState is a real, directly-imported function now (Phase
+  // 7, see REACT_MIGRATION_PLAN.md) - drives this from real
+  // viewedFilesCount/changedFilesCount fixture fields instead of mocking
+  // window.getViewedFilesState.
   test('given viewed-files state, when rendering, then shows the viewed/changed progress', () => {
-    window.getViewedFilesState = () => ({ viewedFilesCount: 3, changedFilesCount: 5, isComplete: false, hasUnviewedFiles: true });
-    renderCell({});
+    renderCell({ viewedFilesCount: 3, changedFilesCount: 5 });
     const progress = document.querySelector('.approved-viewed-progress');
     expect(progress).toHaveTextContent('3/5');
     expect(progress).toHaveClass('approved-viewed-progress-incomplete');
   });
 
   test('given a stale last-checked indicator, when rendering, then applies the stale class and title', () => {
-    window.buildPrLastCheckedIndicator = () => ({ label: '2h ago', title: 'Checked 2 hours ago', isStale: true });
+    // buildPrLastCheckedIndicator is a real, directly-imported function now
+    // (Phase 7, see REACT_MIGRATION_PLAN.md) - fixes "now" via fake timers
+    // instead of mocking the function, so this exercises its real
+    // elapsed-time/staleness logic (an "open" section's indicator goes
+    // stale past 15 minutes - see OPEN_PR_LAST_CHECK_STALE_MS).
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-01T02:00:00Z'));
     renderCell({});
     const indicator = document.querySelector('.pr-last-checked-indicator');
-    expect(indicator).toHaveTextContent('2h ago');
+    expect(indicator).toHaveTextContent('↻ 2h ago');
     expect(indicator).toHaveClass('pr-last-checked-indicator-stale');
-    expect(indicator).toHaveAttribute('title', 'Checked 2 hours ago');
+    expect(indicator).toHaveAttribute('title', expect.stringContaining('Last checked for updates at'));
   });
 
   test('given updatePending is true, when rendering, then shows the update-queued badge', () => {

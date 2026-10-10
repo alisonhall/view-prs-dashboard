@@ -12,15 +12,17 @@
  */
 
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.js';
+import { useRepoLabels } from '../../state/RepoLabelsContext';
 
 export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
+  const { labels: repoLabels } = useRepoLabels();
 
   const existingLabels = new Set(
     (Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean),
   );
-  const availableLabels = ((window.getAvailableRepoLabels || (() => []))() || []).filter(
+  const availableLabels = repoLabels.filter(
     (label) => label?.name && !existingLabels.has(label.name),
   );
 

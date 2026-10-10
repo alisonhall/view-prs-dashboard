@@ -16,6 +16,14 @@ describe("pr job events helpers", () => {
       expect(state.recentFinished).toEqual([]);
       expect(state.dispatcherQueue).toEqual([]);
       expect(state.openAutoCircuitRepos).toEqual([]);
+      expect(state.schedulerSummary).toEqual({
+        intervalMinutes: 15,
+        manualCooldownMinutes: 15,
+        lastManualRunAt: null,
+        lastAutoRunAt: null,
+        lastAutoSkipReason: null,
+        lastAutoError: null,
+      });
     });
   });
 
@@ -76,6 +84,44 @@ describe("pr job events helpers", () => {
         scheduler: { openAutoCircuitRepos: "not-an-array" },
       });
       expect(withoutRepos.openAutoCircuitRepos).toEqual([]);
+    });
+
+    test("carries the scheduler-summary fields (intervalMinutes/manualCooldownMinutes/lastManualRunAt/lastAutoRunAt/lastAutoSkipReason/lastAutoError) from the scheduler payload", () => {
+      const state = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: {
+          intervalMinutes: 30,
+          manualCooldownMinutes: 10,
+          lastManualRunAt: "2026-01-01T00:00:00.000Z",
+          lastAutoRunAt: "2026-01-01T00:05:00.000Z",
+          lastAutoSkipReason: "circuit open",
+          lastAutoError: "boom",
+        },
+      });
+
+      expect(state.schedulerSummary).toEqual({
+        intervalMinutes: 30,
+        manualCooldownMinutes: 10,
+        lastManualRunAt: "2026-01-01T00:00:00.000Z",
+        lastAutoRunAt: "2026-01-01T00:05:00.000Z",
+        lastAutoSkipReason: "circuit open",
+        lastAutoError: "boom",
+      });
+    });
+
+    test("given a scheduler payload missing the summary fields, when applied, then the previous schedulerSummary is preserved field by field, not reset to defaults", () => {
+      const seeded = applyJobEventsSnapshot(getInitialJobEventsState(), {
+        at: FIXED_NOW,
+        scheduler: { lastAutoRunAt: "2026-01-01T00:05:00.000Z" },
+      });
+
+      const next = applyJobEventsSnapshot(seeded, {
+        at: FIXED_NOW,
+        scheduler: { intervalMinutes: 45 },
+      });
+
+      expect(next.schedulerSummary.lastAutoRunAt).toBe("2026-01-01T00:05:00.000Z");
+      expect(next.schedulerSummary.intervalMinutes).toBe(45);
     });
 
     test("is authoritative regardless of lastSeq, and resets lastSeq to 0", () => {
@@ -289,6 +335,36 @@ describe("pr job events helpers", () => {
       });
 
       expect(state.openAutoCircuitRepos).toEqual(["owner/repo-b"]);
+    });
+
+    test("a job-agnostic scheduler-type envelope also refreshes schedulerSummary from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        seq: 1,
+        at: FIXED_NOW,
+        scheduler: { lastAutoRunAt: "2026-01-01T00:05:00.000Z", intervalMinutes: 30 },
+      });
+
+      expect(state.schedulerSummary.lastAutoRunAt).toBe("2026-01-01T00:05:00.000Z");
+      expect(state.schedulerSummary.intervalMinutes).toBe(30);
+    });
+
+    test("a job envelope also refreshes schedulerSummary from its own bundled scheduler object", () => {
+      const initial = getInitialJobEventsState();
+
+      const state = applyJobEvent(initial, {
+        job: "autoRefresh",
+        phase: "finish",
+        seq: 1,
+        at: FIXED_NOW,
+        ok: false,
+        detail: { error: "boom" },
+        scheduler: { lastAutoError: "boom", lastAutoSkipReason: null },
+      });
+
+      expect(state.schedulerSummary.lastAutoError).toBe("boom");
+      expect(state.schedulerSummary.lastAutoSkipReason).toBeNull();
     });
 
     test("returns the same state reference for a malformed envelope", () => {

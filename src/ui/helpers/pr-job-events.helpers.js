@@ -46,6 +46,23 @@ export const { createPrJobEventsHelpers } = (() => {
       // (see autoCircuitByRepo in app.js) - same job-agnostic,
       // whole-scheduler-snapshot category as dispatcherQueue above.
       openAutoCircuitRepos: [],
+      // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+      // the fields AppliedFilterSummary's "Applied filters" chip text
+      // needs for its scheduler-summary portion (intervalMinutes/
+      // manualCooldownMinutes/lastManualRunAt/lastAutoRunAt/
+      // lastAutoSkipReason/lastAutoError) - previously only available as
+      // a vanilla module-level `let` (index.page.js's latestSchedulerState,
+      // mutated by renderSchedulerStatus), not reactive anywhere. Same
+      // job-agnostic, whole-scheduler-snapshot category as the fields
+      // above - read off every envelope's own bundled scheduler object.
+      schedulerSummary: {
+        intervalMinutes: 15,
+        manualCooldownMinutes: 15,
+        lastManualRunAt: null,
+        lastAutoRunAt: null,
+        lastAutoSkipReason: null,
+        lastAutoError: null,
+      },
     });
 
     const extractDispatcherQueue = (scheduler) =>
@@ -53,6 +70,25 @@ export const { createPrJobEventsHelpers } = (() => {
 
     const extractOpenAutoCircuitRepos = (scheduler) =>
       Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
+
+    const extractSchedulerSummary = (scheduler, previous) => ({
+      intervalMinutes: Number.isFinite(Number(scheduler?.intervalMinutes))
+        ? Number(scheduler.intervalMinutes)
+        : previous.intervalMinutes,
+      manualCooldownMinutes: Number.isFinite(Number(scheduler?.manualCooldownMinutes))
+        ? Number(scheduler.manualCooldownMinutes)
+        : previous.manualCooldownMinutes,
+      lastManualRunAt:
+        scheduler?.lastManualRunAt !== undefined ? scheduler.lastManualRunAt : previous.lastManualRunAt,
+      lastAutoRunAt:
+        scheduler?.lastAutoRunAt !== undefined ? scheduler.lastAutoRunAt : previous.lastAutoRunAt,
+      lastAutoSkipReason:
+        scheduler?.lastAutoSkipReason !== undefined
+          ? scheduler.lastAutoSkipReason
+          : previous.lastAutoSkipReason,
+      lastAutoError:
+        scheduler?.lastAutoError !== undefined ? scheduler.lastAutoError : previous.lastAutoError,
+    });
 
     const extractPendingCounts = (scheduler) => ({
       pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
@@ -108,6 +144,7 @@ export const { createPrJobEventsHelpers } = (() => {
         ...extractPendingCounts(scheduler),
         dispatcherQueue: extractDispatcherQueue(scheduler),
         openAutoCircuitRepos: extractOpenAutoCircuitRepos(scheduler),
+        schedulerSummary: extractSchedulerSummary(scheduler, state.schedulerSummary),
       };
     };
 
@@ -132,6 +169,7 @@ export const { createPrJobEventsHelpers } = (() => {
       const pendingCounts = extractPendingCounts(envelope.scheduler);
       const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
       const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
+      const schedulerSummary = extractSchedulerSummary(envelope.scheduler, state.schedulerSummary);
 
       if (!previousJob) {
         return {
@@ -142,6 +180,7 @@ export const { createPrJobEventsHelpers } = (() => {
           ...pendingCounts,
           dispatcherQueue,
           openAutoCircuitRepos,
+          schedulerSummary,
         };
       }
 
@@ -204,6 +243,7 @@ export const { createPrJobEventsHelpers } = (() => {
         ...pendingCounts,
         dispatcherQueue,
         openAutoCircuitRepos,
+        schedulerSummary,
       };
     };
 
@@ -212,6 +252,11 @@ export const { createPrJobEventsHelpers } = (() => {
       setConnectionState,
       applyJobEventsSnapshot,
       applyJobEvent,
+      // Exported for JobEventsProvider.jsx's own payload.scheduler fallback
+      // (see that file's comment) - lets it normalize payload.scheduler
+      // into the exact same schedulerSummary shape, until the first real
+      // SSE snapshot arrives.
+      extractSchedulerSummary,
     };
   };
 

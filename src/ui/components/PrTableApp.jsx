@@ -13,6 +13,7 @@ import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
+import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
@@ -41,7 +42,12 @@ export function PrTableApp({
   // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
   // which also owns window.updateReactPrTable itself. Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
-  const { payload, selectedRepo, visiblePrNumbers, setPayload } = usePrData();
+  const { payload, selectedRepo, setPayload } = usePrData();
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+  // used to come from usePrData() itself (imperatively pushed by the
+  // vanilla "Apply filters" pipeline) - now reactively derived live from
+  // Context instead. See useVisiblePrNumbers.jsx's own comment.
+  const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
