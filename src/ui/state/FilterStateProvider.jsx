@@ -42,7 +42,6 @@ export function FilterStateProvider({ initialValues, children }) {
     // pr-pending-multi-select-selections.helpers.js), so this flushSync
     // is no longer load-bearing for them specifically, only for the other
     // FILTER_STATE_FIELD_MAP-mapped fields still routed through here.
-    console.log('[DIAG] FilterStateProvider mounted, window.setFilterStateValue assigned at', performance.now().toFixed(1));
     window.setFilterStateValue = (key, value) => {
       flushSync(() => setValue(key, value));
     };

@@ -692,10 +692,7 @@ function AppRoot() {
     // integration tests that assert immediately after an awaited user
     // interaction (no explicit wait) only drain the microtask queue, not
     // macrotasks, and would see pre-restore state.
-    queueMicrotask(() => {
-      console.log('[DIAG] dispatching viewprs:react-ready at', performance.now().toFixed(1));
-      window.dispatchEvent(new CustomEvent('viewprs:react-ready'));
-    });
+    queueMicrotask(() => window.dispatchEvent(new CustomEvent('viewprs:react-ready')));
   }, []);
 
   return (
