@@ -534,8 +534,20 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await page.selectOption("#scope-mode", "last-run");
   await expect(page.locator("#data-meta")).toContainText("scope=last run rows");
 
-  // Reset so this test's change doesn't affect whatever loads next.
-  await page.selectOption("#scope-mode", "all");
+  // Reset so this test's change doesn't affect whatever loads next. This
+  // change also fires its own auto-persist PUT (registerUiOptionPersistenceHandlers,
+  // pr-ui-option-scroll.helpers.js) debounced 150ms behind the one from
+  // "last-run" above - wait for it to actually land (same reasoning as
+  // clickApplyFiltersAndWaitForPersist above) so this test can't leak a
+  // stale scope-mode value into whatever unrelated test loads next against
+  // this suite's one shared webServer.
+  const [persistResponse] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
+    ),
+    page.selectOption("#scope-mode", "all"),
+  ]);
+  expect(persistResponse.ok()).toBe(true);
   await expect(page.locator("#data-meta")).toContainText("scope=all stored rows");
 });
 

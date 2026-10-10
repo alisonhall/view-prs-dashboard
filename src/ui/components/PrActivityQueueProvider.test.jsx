@@ -92,6 +92,56 @@ describe('PrActivityQueueProvider', () => {
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
   });
 
+  // ROADMAP.md regression test (found during the "Quick check all" feature
+  // review, 2026-09-30): "Quick check all" marks every loaded PR busy up
+  // front via window.markPrsBusy and only clears them once its whole sweep
+  // finishes; an unrelated action (e.g. an Ack click, via the direct
+  // markPrBusy/clearPrBusy context methods) on one of those same PRs must
+  // not clear the spinner early just because it finished first.
+  test('given the same PR marked busy by two independent callers, when only one clears, then it stays busy until both clear', () => {
+    render(
+      <PrActivityQueueProvider>
+        <Probe />
+      </PrActivityQueueProvider>,
+    );
+
+    act(() => {
+      window.markPrsBusy(['7'], 'owner/repo');
+      ProbeLastValue.markPrBusy('7', 'owner/repo');
+    });
+    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
+
+    act(() => {
+      ProbeLastValue.clearPrBusy('7', 'owner/repo');
+    });
+    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
+
+    act(() => {
+      window.clearPrsBusy(['7'], 'owner/repo');
+    });
+    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual([]);
+  });
+
+  test('given clearPrBusy is called more times than markPrBusy for the same key, when it runs, then it never goes negative or throws', () => {
+    render(
+      <PrActivityQueueProvider>
+        <Probe />
+      </PrActivityQueueProvider>,
+    );
+
+    act(() => {
+      ProbeLastValue.markPrBusy('9', 'owner/repo');
+      ProbeLastValue.clearPrBusy('9', 'owner/repo');
+      ProbeLastValue.clearPrBusy('9', 'owner/repo');
+    });
+    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual([]);
+
+    act(() => {
+      ProbeLastValue.markPrBusy('9', 'owner/repo');
+    });
+    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::9']);
+  });
+
   test('a multi-chunk bulk batch flows through begin -> in-flight -> done -> finish', () => {
     render(
       <PrActivityQueueProvider>

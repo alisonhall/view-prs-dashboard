@@ -1870,6 +1870,36 @@ With the remaining `window.*` bridges all pointing at full new migrations not wo
 
 **Verified:** full jest suite (2466 tests, +1), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - no browser-observable behavior change, a pure perf optimization). `ROADMAP.md`'s item checked off.
 
+## 🚧 **The per-row busy indicator is now reference-counted, fixing a real "Quick check all" spinner bug (2026-10-10)**
+
+Continued down `ROADMAP.md`'s remaining bounded, already-diagnosed findings. `PrActivityQueueProvider.jsx`'s `busyPrNumbers` was a plain `Set<key>` - `markPrBusy`/`clearPrBusy` added/deleted a key unconditionally. "Quick check all" marks every loaded PR busy up front and only clears them once its whole multi-repo sweep finishes (can take minutes); if an unrelated action (e.g. an Ack click) on one of those same PRs finished first, its own `clearPrBusy` call removed the key entirely, so that row's spinner disappeared before "Quick check all" was actually done with it. Cosmetic only (no duplicate requests or data issues), but a real, user-visible bug - found during the "Quick check all" feature's own review (2026-09-30).
+
+**Fix:** a `useRef`-held `Map<key, count>` (`busyCountByKeyRef`) alongside the existing `busyPrNumbers` Set - not React state, since this bookkeeping has no UI of its own; only `busyPrNumbers` does. `markPrBusy` increments a key's count and only adds it to the Set on a 0→1 transition; `clearPrBusy` decrements and only removes it from the Set on a transition to 0 (guarded against going negative, in case a caller ever clears more times than it marked). `busyPrNumbers`' own external shape - a `Set` of keys, spread/iterated by `PrTableApp.jsx` - is completely unchanged, so no consumer needed updating.
+
+**New regression coverage, confirmed to catch the bug:** 2 new tests in `PrActivityQueueProvider.test.jsx` - one marking the same PR busy via both `window.markPrsBusy` (the "Quick check all" path) and the direct `markPrBusy` context method (the Ack path) and confirming it only clears once *both* callers clear; one confirming an unbalanced extra `clearPrBusy` call never goes negative or throws. Temporarily reverted the fix and reran the first test - it failed exactly as expected (the key was removed after only one of the two callers cleared) - before restoring it.
+
+**No new Playwright test added, unlike this session's other bug fixes:** this is a cosmetic-only UI bug with no data-loss or correctness risk (unlike the auto-render-blocking case, which got a mandatory new Playwright test for exactly that reason) - thorough, verified-to-catch-the-bug jest coverage is proportionate here; setting up a real multi-second "Quick check all" sweep racing a concurrent Ack click in a real browser would add meaningful flakiness risk for a cosmetic guarantee already covered at the unit level.
+
+**Verified:** full jest suite (2468 tests, +2), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged). `ROADMAP.md`'s item checked off.
+
+---
+
+## 🚧 **A genuine, CI-only intermittent `e2e` failure root-caused: a lost-update race in `scope-mode` persistence (2026-10-10)**
+
+CI's `e2e` job failed twice in a row on the previous commit (same ~10 scattered test timeouts, PR table stuck showing `scope=last run rows` instead of `scope=all stored rows`), never reproduced locally - not with the default suite (50/50 passed, repeatedly), not with CI's exact `CI=1` retry/timeout config, not with CDP-based CPU throttling up to 10x, not with network throttling added on top (20x combined broke navigation outright, too blunt to be diagnostic). Two prior CI failures in this repo's history were unrelated GitHub Actions infrastructure flakes ("job was not acquired by Runner"), ruling out "already-known flake."
+
+**Root cause, found via targeted `[DIAG]` diagnostic logging** (temporarily added around `restoreUiOptionOverrides`/`readUiSessionOverrides`/`setText`, piped from the browser to CI's own log via `page.on('console', ...)`, then removed once the investigation concluded): `#scope-mode`'s native "change" event is handled by *two* separate listeners, not one - `debouncedApplyOnChangeIds`' handler (`index.page.js`, apply-only) and `registerUiOptionPersistenceHandlers`' handler (`pr-ui-option-scroll.helpers.js`), which fired `persistUiOptionOverridesSafe(["scope-mode"])` un-debounced, fire-and-forget, on *every* change. `persistUiOptionOverrides` itself is a non-atomic GET-merge-PUT against `user-defaults.json`. The one Playwright test that changes `#scope-mode` twice in a row with nothing but `selectOption()` (no "Apply filters" click, no wait) fired two overlapping GET-merge-PUT cycles; whichever PUT's write happened to land second (an I/O-timing race, not a CPU-speed one - explaining why CPU throttling never reproduced it) won, and a `last-run` write landing after the test's own `all` reset left `user-defaults.json` permanently stuck, leaking into every subsequent test's fresh page load for the rest of that CI run. A genuine lost-update bug for real users too, not just test flakiness.
+
+**Fix (two parts, both needed):**
+1. **Production:** `registerUiOptionPersistenceHandlers` (`pr-ui-option-scroll.helpers.js`) now debounces its persist call 150ms, mirroring `debouncedApplyFilters`'s existing pattern exactly - two rapid changes now coalesce into one trailing PUT instead of racing.
+2. **Test:** "changing a React-owned filter auto-applies without clicking 'Apply filters (local)'" (`smoke.spec.js`) now waits for its own trailing persist PUT (`page.waitForResponse`, same shape as `clickApplyFiltersAndWaitForPersist`) before ending, so it can no longer leak a stale value forward regardless of the production fix.
+
+**New regression coverage:** `pr-ui-option-scroll.helpers.test.js` gained a test firing two rapid `scope-mode` changes under fake timers and confirming only the trailing persist call survives.
+
+**Not reproducible as a before/after local demonstration:** per the investigation above, this race never reproduced locally even under heavy throttling - it's specific to CI's I/O timing. Confirmed instead by reading the fixed code path and by the new unit test, which exercises the debounce logic directly rather than depending on real timing to expose the bug.
+
+**Verified:** full jest suite (2469 tests, +1), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged, including the fixed test).
+
 ---
 
 ## 📞 **Getting Help**

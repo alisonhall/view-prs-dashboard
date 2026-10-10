@@ -33,6 +33,23 @@ export const { createPrUiOptionScrollHelpers } = (() => {
         ? getIsBackfillRunning
         : () => false;
 
+    // Two rapid "change" events (e.g. a test or user flipping scope-mode
+    // twice quickly) must not fire two overlapping persist calls: each one
+    // is a non-atomic GET-merge-PUT against user-defaults.json
+    // (persistUiOptionOverrides, index.page.js), so overlapping calls can
+    // lose an update if the earlier PUT's write lands after the later
+    // one's. Debouncing (same 150ms pattern as debouncedApplyFilters,
+    // index.page.js) collapses them into a single trailing call instead.
+    let scopeModePersistDebounceTimer = null;
+    const debouncedPersistScopeMode = () => {
+      if (scopeModePersistDebounceTimer) {
+        clearTimeout(scopeModePersistDebounceTimer);
+      }
+      scopeModePersistDebounceTimer = setTimeout(() => {
+        void persistUiOptionOverridesSafe(["scope-mode"]);
+      }, 150);
+    };
+
     const registerUiOptionPersistenceHandlers = () => {
       // Delegated on the form (a stable ancestor never replaced by React),
       // not attached directly to #scope-mode: that element may be a
@@ -46,7 +63,7 @@ export const { createPrUiOptionScrollHelpers } = (() => {
       if (form) {
         form.addEventListener("change", (event) => {
           if (event.target?.id === "scope-mode") {
-            void persistUiOptionOverridesSafe(["scope-mode"]);
+            debouncedPersistScopeMode();
           }
         });
       }
