@@ -21,13 +21,11 @@ describe('ReviewConversationsUiStateProvider + ReviewThreadsSection wiring', () 
     ],
   };
 
-  beforeEach(() => {
-    window.getAuthorThreadResolutionPolicy = () => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() });
-  });
-
-  afterEach(() => {
-    delete window.getAuthorThreadResolutionPolicy;
-  });
+  // No FilterStateContext/AuthorThreadResolutionSelectionContext ancestor
+  // needed - both default to the same "allow-all, nothing checked" policy
+  // the old window.getAuthorThreadResolutionPolicy mock used to install
+  // (see ReviewThreadsSection.jsx's own useAuthorThreadResolutionPolicy
+  // comment).
 
   // Renders the Provider once and keeps that same instance (and its Map)
   // mounted throughout - only the inner ReviewThreadsSection is

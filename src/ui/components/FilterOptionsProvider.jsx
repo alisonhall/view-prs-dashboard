@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { FilterOptionsContext } from '../state/FilterOptionsContext';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
@@ -6,6 +6,7 @@ import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpe
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.js';
+import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 const asArray = (value) => (Array.isArray(value) ? value : []);
@@ -47,16 +48,48 @@ const toOptions = (entries) => entries.map(([value, label]) => ({ value, label }
  * the deleted vanilla code (each independently built from the same
  * actorsMap, same sort) - computed once here as `actorOptions` and shared
  * across all 4, rather than recomputing the same result 4 times.
+ *
+ * ROADMAP.md follow-up (Phase 5, "Performance Validation" - found during
+ * the multi-select-options-to-React sub-phase review, 2026-09-30): this
+ * useMemo depends on `payload`, which gets a new object reference on
+ * every poll tick (~30s) regardless of whether any PR data actually
+ * changed, so it used to fully re-loop every entry and re-run
+ * extractRowLabelNames/collectAssignedUsers/collectApproversFromRow
+ * (the latter two walk activityTimeline/commits/reviewers) unconditionally
+ * - even on an unrelated tab where these lists aren't rendered. Fixed with
+ * a WeakMap-keyed per-entry cache (createEntryDerivedCache,
+ * pr-entry-derived-cache.helpers.js - the same module useVisiblePrNumbers.jsx
+ * already uses for the row-filtering predicate), held in a useRef so it
+ * survives this Provider's own re-renders: an entry whose reference is
+ * unchanged across a poll (mergeDataDeltaPayload's shallow merge keeps an
+ * unchanged entry's exact object reference) reuses its cached
+ * label-names/preferred-author-key/assignees/approvers instead of
+ * re-deriving them. Deliberately caches only the entry-derived *raw*
+ * output (label name list, {login,name} assignee/approver lists, the
+ * preferred author key) - not the final actorsMap-dependent display-name
+ * resolution below, which is already cheap (once per unique login in the
+ * outer Maps, not once per entry) and reads the always-current `actorsMap`
+ * fresh every time. Same accepted tradeoff pr-row-filtering.helpers.js's
+ * own cache already has: if the actor-login-alias map changes without the
+ * entry itself changing, a cached per-entry value could theoretically lag
+ * by one entry-change - not handled there either, and not handled here,
+ * matching that established precedent rather than inventing a stricter
+ * one.
  */
 export function FilterOptionsProvider({ children }) {
   const { payload, selectedRepo } = usePrData();
   const { getPreferredActorKey, resolveActorDisplayName, normalizeActorLogin } = useActorIdentity();
+  const cacheRef = useRef(null);
+  if (!cacheRef.current) {
+    cacheRef.current = createEntryDerivedCache();
+  }
 
   const value = useMemo(() => {
     const allEntries = Object.values(payload?.byPrNumber || {});
     const repoFilter = String(selectedRepo || '').trim();
     const actorsMap = payload?.actorsMap && typeof payload.actorsMap === 'object' ? payload.actorsMap : {};
     const scopedEntries = repoFilter ? allEntries.filter((entry) => entry?.repo === repoFilter) : allEntries;
+    const { getOrCompute } = cacheRef.current;
 
     const { collectAssignedUsers } = createPrAssignedUsersHelpers({
       asArray,
@@ -72,7 +105,7 @@ export function FilterOptionsProvider({ children }) {
 
     const labelsByToken = new Map();
     scopedEntries.forEach((entry) => {
-      extractRowLabelNames(entry?.data || {}).forEach((labelName) => {
+      getOrCompute(entry, 'labelNames', () => extractRowLabelNames(entry?.data || {})).forEach((labelName) => {
         const token = normalizeFilterToken(labelName);
         if (!token || labelsByToken.has(token)) return;
         labelsByToken.set(token, labelName);
@@ -85,7 +118,7 @@ export function FilterOptionsProvider({ children }) {
     const authors = new Map();
     scopedEntries.forEach((entry) => {
       const row = entry?.data || {};
-      const login = getPreferredActorKey(row.authorLogin, row.author);
+      const login = getOrCompute(entry, 'preferredAuthorKey', () => getPreferredActorKey(row.authorLogin, row.author));
       if (!login || authors.has(login)) return;
       authors.set(login, resolveActorDisplayName(login, actorsMap, String(row.author || '').trim()));
     });
@@ -93,7 +126,7 @@ export function FilterOptionsProvider({ children }) {
 
     const assignees = new Map();
     scopedEntries.forEach((entry) => {
-      collectAssignedUsers(entry?.data || {}).forEach((assignee) => {
+      getOrCompute(entry, 'assignedUsers', () => collectAssignedUsers(entry?.data || {})).forEach((assignee) => {
         const login = String(assignee?.login || '').trim();
         if (!login || assignees.has(login)) return;
         assignees.set(login, resolveActorDisplayName(login, actorsMap, assignee?.name));
@@ -103,7 +136,7 @@ export function FilterOptionsProvider({ children }) {
 
     const approvers = new Map();
     scopedEntries.forEach((entry) => {
-      collectApproversFromRow(entry?.data || {}).forEach((approver) => {
+      getOrCompute(entry, 'approversFromRow', () => collectApproversFromRow(entry?.data || {})).forEach((approver) => {
         const login = String(approver?.login || '').trim();
         if (!login || approvers.has(login)) return;
         approvers.set(login, resolveActorDisplayName(login, actorsMap, approver?.name));

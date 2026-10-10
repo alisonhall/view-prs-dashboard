@@ -1762,6 +1762,46 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await clickApplyFiltersAndWaitForPersist(page);
 });
 
+test("typing an unsaved Author Insights comment draft reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+  // Regression test for Phase 7 (see REACT_MIGRATION_PLAN.md): the Author
+  // Insights manual-comment composer/edit drafts used to live only in a
+  // vanilla module-scope object, read by pr-auto-render-blocking.helpers.js's
+  // getBlockingAuthorInsightsLogins to decide whether a background poll
+  // must be deferred instead of silently discarding an unsaved comment
+  // draft. They're real AuthorInsightsDraftsProvider Context state now,
+  // republished via window.getAuthorInsightsDraftsSnapshot - same scope
+  // and reasoning as the sibling "editing a PR Notes field..." test above
+  // (checks the real bridge a real browser actually exercises, not a
+  // full simulated poll-block - AuthorInsightsDraftsProvider.test.jsx
+  // already covers the Context-to-bridge wiring itself at the component
+  // level; this is the one piece with no other e2e coverage at all).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const select = page.locator("#author-insights-selector-root select");
+  await select.selectOption({ label: "The Octocat" });
+
+  const isBlocking = () =>
+    page.evaluate(() => {
+      const snapshot = window.getAuthorInsightsDraftsSnapshot?.() || {};
+      const draft = snapshot.manualCommentDraftByAuthorLogin?.octocat;
+      return Boolean(String(draft?.note || "").trim());
+    });
+
+  expect(await isBlocking()).toBe(false);
+
+  const textarea = page.locator("#author-insights-content-root .author-insights-comment-textarea");
+  await textarea.fill("an unsaved draft left during this test");
+  await expect.poll(isBlocking).toBe(true);
+
+  // Clear it back out - this suite's webServer is one long-lived process
+  // shared by every test, so leaving this draft dirty would bleed into
+  // whichever test runs next (and would itself start blocking real polls).
+  await textarea.fill("");
+  await expect.poll(isBlocking).toBe(false);
+});
+
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
   // Phase 3 (see REACT_MIGRATION_PLAN.md): the Backfill tab's status badges
   // converted to React (<BackfillBadges />, mounted directly into the
@@ -1897,6 +1937,34 @@ test("Actor Names tab loads its mappings on its very first visit, not just on a 
   ]);
   expect(cacheResponse.ok()).toBe(true);
   expect(aliasResponse.ok()).toBe(true);
+});
+
+test("Export tab's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
+  // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
+  // exposed on window by index.page.js - ExportTab.jsx now builds and
+  // calls all 3 directly (pr-export.helpers.js). This tab had zero prior
+  // e2e coverage of any kind (confirmed by grep) - this is the only real-
+  // browser check that the catalog/preview actually work end-to-end
+  // against real page data, not a mocked window.* bridge.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Export" }).click();
+  const fieldList = page.locator("#export-field-list");
+  await expect(fieldList.locator('input[type="checkbox"]')).not.toHaveCount(0);
+
+  await page.getByRole("button", { name: "Preview JSON" }).click();
+
+  const statusText = page.locator("#tab-panel-export pre.scheduler-details");
+  await expect(statusText).toHaveText(/Prepared export JSON for \d+ visible PRs?\./);
+
+  const previewText = await page.locator("#export-preview").textContent();
+  const exportPayload = JSON.parse(previewText);
+  expect(exportPayload.prCount).toBeGreaterThan(0);
+  expect(Array.isArray(exportPayload.prs)).toBe(true);
+  expect(exportPayload.prs).toHaveLength(exportPayload.prCount);
+  expect(exportPayload.prs[0]).toHaveProperty("prNumber");
 });
 
 test("Snackbar (error/warning notifications) shows, has the right variant class, closes, and auto-dismisses", async ({ page }) => {

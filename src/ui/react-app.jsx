@@ -28,12 +28,14 @@ import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
+import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
+import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
@@ -45,7 +47,9 @@ import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
+import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
+import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
 import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
@@ -454,9 +458,53 @@ const DEFAULT_STATS_VIEW_STATE = {
 // AppRoot's JSX, which otherwise can't call hooks mid-render. Must be
 // mounted inside both <RowFilterSelectionProvider> and <JobEventsProvider>
 // - see where it's actually portaled in AppRoot's own JSX.
-function AppliedFilterSummaryLive() {
+//
+// Also portals #data-meta's text from the same single hook call, rather
+// than a separate <DataMetaTextLive> component each independently calling
+// useAppliedFilterSummary() - found via code review that two separate
+// component instances don't share one useMemo/cache, so the whole
+// row-filtering derivation inside useFilteredPrRows() (which this hook
+// composes) was running twice per render for the exact same string. #data-
+// meta showed exactly this same string even before this round (both were
+// fed the same appliedSummaryText by the vanilla pipeline's
+// applyRenderResults, pr-render-apply.helpers.js), so sharing one call is
+// correct, not just cheaper.
+//
+// dataMetaText specifically falls back to "Loading..." until payload.ok
+// confirms a real /view-prs/data response has loaded - without this,
+// PrDataProvider's initial empty-seed payload ({}) would make
+// useAppliedFilterSummary() compute a premature, real-looking summary
+// ("Applied filters: repo=all repos | ... | Rows: 0") in the window before
+// the first fetch resolves, where the old window.updateReactDataMetaText-fed
+// version showed an explicit "Loading..." placeholder. The chip text itself
+// (summaryText, passed to AppliedFilterSummary below) is left as-is - this
+// guard is specifically about restoring #data-meta's own prior placeholder
+// behavior, not a new requirement for the chip.
+function AppliedFilterSummaryLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
+  const { payload } = usePrData();
   const { summaryText, filterChips } = useAppliedFilterSummary();
-  return <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />;
+  const dataMetaText = payload?.ok ? summaryText : 'Loading...';
+  return (
+    <>
+      {appliedFilterSummaryContainer &&
+        createPortal(
+          <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />,
+          appliedFilterSummaryContainer,
+          'applied-filter-summary',
+        )}
+      {dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, 'data-meta')}
+    </>
+  );
+}
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a thin
+// wrapper so useMergedRequestMoreActionOptions() (a hook) can be called from
+// AppRoot's JSX. key={repo}: same stale-state-on-repo-change reasoning the
+// previous window.updateReactMergedRequestMoreAction-fed version already
+// documented at its own portal call site.
+function MergedRequestMoreActionLive() {
+  const { isVisible, repo } = useMergedRequestMoreActionOptions();
+  return <MergedRequestMoreAction key={repo} isVisible={isVisible} repo={repo} />;
 }
 
 function AppRoot() {
@@ -480,7 +528,6 @@ function AppRoot() {
   // only ever reaches the drawer as a prop.
   const [recentRequestActivity, setRecentRequestActivity] = useState([]);
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
-  const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
 
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the 7 remaining vanilla `.textContent =`
@@ -494,7 +541,6 @@ function AppRoot() {
   const [outputText, setOutputText] = useState('Run the script to see output');
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
-  const [dataMetaText, setDataMetaText] = useState('Loading...');
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -576,16 +622,6 @@ function AppRoot() {
   }, []);
 
   useEffect(() => {
-    window.updateReactMergedRequestMoreAction = (isVisible, repo) => {
-      setMergedRequestMoreAction({ isVisible, repo });
-      return true;
-    };
-    return () => {
-      delete window.updateReactMergedRequestMoreAction;
-    };
-  }, []);
-
-  useEffect(() => {
     window.updateReactStatusText = (text) => {
       setStatusText(text);
       return true;
@@ -622,16 +658,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactBackfillLogText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactDataMetaText = (text) => {
-      setDataMetaText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactDataMetaText;
     };
   }, []);
 
@@ -684,6 +710,14 @@ function AppRoot() {
             ancestor/descendant pair, that both need the same available-
             labels list - see RepoLabelsContext.jsx's own comment. */}
         <RepoLabelsProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorInsightsDraftsProvider
+            wraps everything below for the same cross-portal-sharing reason
+            RepoLabelsProvider does - AuthorInsightsCommentsSection (inside
+            one of the 6 separate per-portal AuthorInsightsProvider
+            instances further down) needs this state to persist across
+            every one of those remounts (author/tab switches), and nothing
+            about it is specific to any single portal. */}
+        <AuthorInsightsDraftsProvider>
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
             RowFilterSelectionProvider wraps everything below for the same
             cross-portal-sharing reason RepoLabelsProvider does -
@@ -692,6 +726,13 @@ function AppRoot() {
             portal) are sibling portals, not an ancestor/descendant pair,
             that both need the same 5 row-filtering lists' checked-state. */}
         <RowFilterSelectionProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorThreadResolutionSelectionProvider
+            wraps everything below for the same cross-portal-sharing reason
+            RowFilterSelectionProvider does, just for the 2 thread-resolution
+            allow/deny lists instead of the 5 row-filtering ones -
+            MultiSelectListPortals (seeds it) and ReviewThreadsSection (reads
+            it, inside the prTable portal) are sibling portals too. */}
+        <AuthorThreadResolutionSelectionProvider>
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
             JobEventsProvider widened from "just the drawer portal" (its own
             prior comment here predicted this) to wrap everything
@@ -752,12 +793,10 @@ function AppRoot() {
           <MultiSelectListPortals containers={containers} />
         </FilterOptionsProvider>
 
-        {containers.appliedFilterSummary &&
-          createPortal(
-            <AppliedFilterSummaryLive />,
-            containers.appliedFilterSummary,
-            'applied-filter-summary',
-          )}
+        <AppliedFilterSummaryLive
+          appliedFilterSummaryContainer={containers.appliedFilterSummary}
+          dataMetaContainer={containers.dataMeta}
+        />
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 
@@ -876,8 +915,6 @@ function AppRoot() {
         {containers.backfillLog &&
           createPortal(backfillLogText, containers.backfillLog, 'backfill-log')}
 
-        {containers.dataMeta && createPortal(dataMetaText, containers.dataMeta, 'data-meta')}
-
         {hasActionLogBeenVisible && containers.actionLog &&
           createPortal(
             <Suspense fallback={null}>
@@ -926,23 +963,14 @@ function AppRoot() {
 
         {containers.mergedRequestMoreAction &&
           createPortal(
-            // key={repo}: remounts (resetting local pending/status state)
-            // whenever the target repo actually changes - see
-            // MergedRequestMoreAction.jsx's own doc comment for the stale-
-            // state bug this fixes. Not keyed on isVisible too: if a
-            // request is still in flight when this hides and reshows for
-            // the *same* repo, showing whatever it resolved to in the
-            // meantime is correct, not stale.
-            <MergedRequestMoreAction
-              key={mergedRequestMoreAction.repo}
-              isVisible={mergedRequestMoreAction.isVisible}
-              repo={mergedRequestMoreAction.repo}
-            />,
+            <MergedRequestMoreActionLive />,
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
         </JobEventsProvider>
+        </AuthorThreadResolutionSelectionProvider>
         </RowFilterSelectionProvider>
+        </AuthorInsightsDraftsProvider>
         </RepoLabelsProvider>
       </FilterStateProvider>
       <PrDataPolling />

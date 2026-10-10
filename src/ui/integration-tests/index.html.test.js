@@ -27,6 +27,7 @@ const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
+const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
@@ -523,29 +524,38 @@ const installReactTableMountBridge = () => {
         React.createElement(
           RowFilterSelectionProvider,
           null,
+          // AuthorThreadResolutionSelectionProvider wraps the same scope as
+          // RowFilterSelectionProvider, same reasoning (Phase 7, see
+          // REACT_MIGRATION_PLAN.md) - MultiSelectListPortals' seeding needs
+          // it too, now that it also mirrors the 2 thread-resolution lists
+          // into Context (ReviewThreadsSection.jsx's own read).
           React.createElement(
-            NeedsAttentionProvider,
+            AuthorThreadResolutionSelectionProvider,
             null,
             React.createElement(
-              NotesDirtyProvider,
+              NeedsAttentionProvider,
               null,
-              React.createElement(PrTableApp, {
-                onCheckboxChange: props?.onCheckboxChange,
-                onAckAction: props?.onAckAction,
-                onApplyLabel: props?.onApplyLabel,
-              }),
+              React.createElement(
+                NotesDirtyProvider,
+                null,
+                React.createElement(PrTableApp, {
+                  onCheckboxChange: props?.onCheckboxChange,
+                  onAckAction: props?.onAckAction,
+                  onApplyLabel: props?.onApplyLabel,
+                }),
+              ),
             ),
-          ),
-          // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
-          // inside the SAME <PrDataProvider /> instance as PrTableApp above -
-          // matching react-app.jsx's real AppRoot structure, so
-          // FilterOptionsProvider derives its 9 option lists from the exact
-          // payload/selectedRepo the table itself is showing, not a second,
-          // independently-fed copy.
-          React.createElement(
-            FilterOptionsProvider,
-            null,
-            React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+            // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
+            // inside the SAME <PrDataProvider /> instance as PrTableApp above -
+            // matching react-app.jsx's real AppRoot structure, so
+            // FilterOptionsProvider derives its 9 option lists from the exact
+            // payload/selectedRepo the table itself is showing, not a second,
+            // independently-fed copy.
+            React.createElement(
+              FilterOptionsProvider,
+              null,
+              React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+            ),
           ),
         ),
       ),

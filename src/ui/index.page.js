@@ -69,7 +69,6 @@ import * as prActivityBadgesHelperFactory from "./helpers/pr-activity-badges.hel
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
-import * as prExportHelperFactory from "./helpers/pr-export.helpers.js";
 import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
 import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
 import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
@@ -80,7 +79,6 @@ import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 import { asArray } from "./helpers/pr-as-array.helpers.js";
 import { getManualNotesFieldSummary } from "./helpers/pr-manual-notes-summary.helpers.js";
-import { getPerPrUserStateFromPayload } from "./helpers/pr-per-pr-user-state.helpers.js";
 import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
 import {
   extractRowLabelNames,
@@ -207,13 +205,14 @@ const recordRecentRequestActivity = (key) => {
 };
 const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
 const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
+// Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
+// manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
+// manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin used
+// to live here too - moved to AuthorInsightsDraftsProvider.jsx's own
+// useRef-held state (confirmed via grep no other read/write of any of
+// those 5 fields remains on this object anywhere in this file).
 const authorInsightsState = {
   selectedAuthorLogin: "",
-  manualCommentsByAuthorLogin: {},
-  manualCommentsLoadingByAuthorLogin: {},
-  manualCommentsErrorByAuthorLogin: {},
-  manualCommentDraftByAuthorLogin: {},
-  manualCommentEditDraftByAuthorLogin: {},
   latestRows: null,
   latestActorsMap: null,
 };
@@ -1322,37 +1321,19 @@ const getNeedsAttentionConfig = () => ({
   ),
 });
 
-// Phase 6 (see REACT_MIGRATION_PLAN.md): "attention-author-thread-resolution-mode"
-// is migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
-// prefer it via getFilterStateOverrideForFieldId when mounted, falling
-// back to the original DOM read otherwise. Note
-// updateAuthorThreadResolutionRuleVisibility's own read of this same field
-// (for its show/hide UI) is left as a plain DOM read - the real
-// `<select>` element's `.value` always reflects whatever React (Context
-// or local state) currently renders there, so it's already correct
-// either way; only this canonical pipeline read site needed updating.
-const getAuthorThreadResolutionPolicy = () => {
-  const override = getFilterStateOverrideForFieldId(
-    "attention-author-thread-resolution-mode",
-  );
-  const rawMode =
-    typeof override === "string"
-      ? override
-      : getOptionalElementById("attention-author-thread-resolution-mode")?.value;
-  return {
-    mode: normalizeAuthorThreadResolutionMode(rawMode),
-    allowLoginKeys: new Set(
-      getSelectedAuthorThreadResolutionAllowLogins().map((value) =>
-        String(value || "").trim().toLowerCase(),
-      ),
-    ),
-    denyLoginKeys: new Set(
-      getSelectedAuthorThreadResolutionDenyLogins().map((value) =>
-        String(value || "").trim().toLowerCase(),
-      ),
-    ),
-  };
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getAuthorThreadResolutionPolicy
+// used to live here (combining "attention-author-thread-resolution-mode"'s
+// Context/DOM value with getSelectedAuthorThreadResolutionAllowLogins/
+// DenyLogins' own DOM scans) for ReviewThreadsSection.jsx's window.*
+// bridge read - re-investigated an earlier "genuinely separate concern (a
+// DOM-scan dependency)" deferral and found the DOM-scan dependency was
+// real only because the 2 allow/deny lists' checked-state had nowhere
+// else to live; moved to a dedicated useAuthorThreadResolutionPolicy hook
+// in ReviewThreadsSection.jsx itself, now that
+// AuthorThreadResolutionSelectionContext exists for exactly those 2 lists
+// (same fix RowFilterSelectionContext was for the 5 row-filtering lists).
+// getSelectedAuthorThreadResolutionAllowLogins/DenyLogins stay - still
+// used by persistUiOptionOverrides' own override-persistence logic below.
 
 const {
   getEffectiveViewerLogin,
@@ -1764,22 +1745,41 @@ const { getAuthorInsightsDisplayName } =
     getLatestActorsMap: () => authorInsightsState.latestActorsMap || {},
   });
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the draft/comment-cache CRUD
+// functions (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
+// resetAuthorInsightsComposerDraft/getAuthorInsightsEditDraftMap/
+// getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
+// resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin) used to be
+// built here directly from authorInsightsState - moved to
+// AuthorInsightsDraftsProvider.jsx (components/AuthorInsightsDraftsProvider.jsx),
+// which now owns that state as real React state and republishes the exact
+// same window.* bridge names, because pr-auto-render-blocking.helpers.js's
+// getBlockingAuthorInsightsLogins and pr-auto-render-navigation.helpers.js's
+// getFirstDirtyAuthorInsightsElement both still need to read it from here,
+// fully vanilla. Only the 3 genuinely pure functions below (confirmed via
+// reading each body: no authorInsightsState reference at all, just the
+// draft/comment object passed directly to each call) are still built
+// locally, from a fresh no-args instance of the same factory.
 const {
   normalizeAuthorInsightsSentiment,
-  getAuthorInsightsComposerDraft,
-  updateAuthorInsightsComposerDraft,
-  resetAuthorInsightsComposerDraft,
   isAuthorInsightsComposerDraftDirty,
-  getAuthorInsightsEditDraftMap,
-  getAuthorInsightsEditDraft,
-  updateAuthorInsightsEditDraft,
-  resetAuthorInsightsEditDraft,
   isAuthorInsightsEditDraftDirty,
-  getAuthorManualCommentsForLogin,
-} = prAuthorInsightsDraftsHelperFactory.createPrAuthorInsightsDraftsHelpers({
-  authorInsightsState,
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-});
+} = prAuthorInsightsDraftsHelperFactory.createPrAuthorInsightsDraftsHelpers();
+
+// Fresh-reading proxies, not direct references to a local implementation -
+// AuthorInsightsDraftsProvider (a React component) only publishes these on
+// window once it mounts, which happens after this module-level wiring runs;
+// a direct reference captured now would freeze on undefined. Same
+// indirection this file already uses for activateDataTab/collectNodesByTag
+// above.
+const getAuthorInsightsComposerDraft = (...args) => window.getAuthorInsightsComposerDraft?.(...args);
+const updateAuthorInsightsComposerDraft = (...args) => window.updateAuthorInsightsComposerDraft?.(...args);
+const resetAuthorInsightsComposerDraft = (...args) => window.resetAuthorInsightsComposerDraft?.(...args);
+const getAuthorInsightsEditDraftMap = (...args) => window.getAuthorInsightsEditDraftMap?.(...args);
+const getAuthorInsightsEditDraft = (...args) => window.getAuthorInsightsEditDraft?.(...args);
+const updateAuthorInsightsEditDraft = (...args) => window.updateAuthorInsightsEditDraft?.(...args);
+const resetAuthorInsightsEditDraft = (...args) => window.resetAuthorInsightsEditDraft?.(...args);
+const getAuthorManualCommentsForLogin = (...args) => window.getAuthorManualCommentsForLogin?.(...args);
 
 const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
   prAutoRenderBlockingHelperFactory.createPrAutoRenderBlockingHelpers({
@@ -1821,7 +1821,13 @@ const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
     // integration test exercised this specific case end-to-end - only
     // pr-auto-render-blocking.helpers.test.js's isolated unit tests, which
     // pass a real authorInsightsState explicitly and so never caught it.
-    getBlockingAuthorInsightsLogins: () => getBlockingAuthorInsightsLogins(authorInsightsState),
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): authorInsightsState's 5
+    // draft/comment-cache fields moved to AuthorInsightsDraftsProvider.jsx
+    // - window.getAuthorInsightsDraftsSnapshot is the dedicated read
+    // bridge it publishes for exactly this call (see that file's own
+    // comment for why a snapshot, not individual getters).
+    getBlockingAuthorInsightsLogins: () =>
+      getBlockingAuthorInsightsLogins(window.getAuthorInsightsDraftsSnapshot?.() || {}),
     formatBlockingPrNumbersLabel,
   });
 
@@ -2518,17 +2524,17 @@ const { initManagementTabs } =
     loadActorNameCache,
   });
 
-// getPerPrUserStateFromPayload now imported from
-// helpers/pr-per-pr-user-state.helpers.js (Phase 7, see
-// REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx imports it directly instead
-// of reading it off window.getPerPrUserStateFromPayload.
-const {
-  getFieldCatalog: getExportFieldCatalog,
-  getVisiblePrNumbersFromSectionsHost,
-  buildExportPayload,
-} = prExportHelperFactory.createPrExportHelpers({
-  getPerPrUserStateFromPayload,
-});
+// getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,
+// genuinely zero-dependency) used to be imported here too, to build this
+// file's own createPrExportHelpers({ getPerPrUserStateFromPayload }) call
+// for the window.getExportFieldCatalog/window.getVisiblePrNumbersFromSectionsHost/
+// window.buildExportPayload bridge below (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - re-investigated (all 3 pr-export.helpers.js
+// exports confirmed genuinely zero-dependency given a direct
+// getPerPrUserStateFromPayload import) and moved entirely to ExportTab.jsx
+// itself, its one real consumer, which now builds that same call directly.
+// PrJsonModal.jsx (the other consumer of getPerPrUserStateFromPayload
+// alone) already imported it directly rather than through this file.
 
 // asArray now imported from helpers/pr-as-array.helpers.js (Phase 7, see
 // REACT_MIGRATION_PLAN.md) - every component below imports it directly
@@ -2664,35 +2670,18 @@ if (typeof window !== "undefined") {
   // instead of wrapping buildManualCommentsSection via a ref - that builder
   // (and its renderComposerForm/renderManualCommentList/
   // renderManualCommentItem/renderEditForm helpers) has been deleted.
-  // These bridges expose the draft-state/data helpers that section needs.
-  // Important: draft mutations still write through
-  // getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/etc
-  // into authorInsightsState - NOT local-only React state - because
-  // pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
-  // reads authorInsightsState.manualCommentDraftByAuthorLogin/
-  // manualCommentEditDraftByAuthorLogin/manualCommentsByAuthorLogin
-  // directly to decide whether an incoming poll should be blocked because
-  // the user has unsaved author comment edits. Moving that shared-state
-  // concern into React itself (so this bridge surface can eventually go
-  // away) is Track C's job, not this one.
-  window.getAuthorInsightsComposerDraft = (...args) => getAuthorInsightsComposerDraft(...args);
-  window.updateAuthorInsightsComposerDraft = (...args) => updateAuthorInsightsComposerDraft(...args);
-  window.resetAuthorInsightsComposerDraft = (...args) => resetAuthorInsightsComposerDraft(...args);
-  window.getAuthorInsightsEditDraft = (...args) => getAuthorInsightsEditDraft(...args);
-  window.updateAuthorInsightsEditDraft = (...args) => updateAuthorInsightsEditDraft(...args);
-  window.resetAuthorInsightsEditDraft = (...args) => resetAuthorInsightsEditDraft(...args);
-  window.getAuthorManualCommentsForLogin = (...args) => getAuthorManualCommentsForLogin(...args);
-  window.getAuthorInsightsManualCommentsLoadState = (login) => ({
-    loading: Boolean(authorInsightsState.manualCommentsLoadingByAuthorLogin[login]),
-    error: authorInsightsState.manualCommentsErrorByAuthorLogin[login] || "",
-  });
-  window.setAuthorInsightsManualComments = (login, comments) => {
-    authorInsightsState.manualCommentsByAuthorLogin[login] = Array.isArray(comments)
-      ? comments
-      : [];
-  };
-  window.loadAuthorManualComments = (login, onComplete) =>
-    prAuthorInsightsDataHelpers.loadAuthorManualComments(login, authorInsightsState, onComplete);
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft-state/data CRUD
+  // bridges that section needs (getAuthorInsightsComposerDraft/
+  // updateAuthorInsightsComposerDraft/resetAuthorInsightsComposerDraft/
+  // getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
+  // resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin/
+  // getAuthorInsightsManualCommentsLoadState/setAuthorInsightsManualComments/
+  // loadAuthorManualComments) used to be assigned here directly - now
+  // published by AuthorInsightsDraftsProvider.jsx instead (mounted in
+  // react-app.jsx), which owns the underlying state as real React state.
+  // Assigning them here too would create direct recursion with this
+  // file's own fresh-reading proxy consts of the same names (see those
+  // consts' own comment, above) - this file is no longer their source.
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
   // untracked - wrapped the same way every other tracked action is, so a
   // genuinely slow save becomes visible instead of just sitting silent.
@@ -3851,9 +3840,10 @@ const initPage = () => {
     // readReviewConversationsUiState/writeReviewConversationsUiState (onto
     // ReviewConversationsUiStateProvider - no window.* bridge needed at
     // all there, nothing outside ReviewThreadsSection.jsx ever read them).
-    // getAuthorThreadResolutionPolicy stays - a genuinely separate
-    // concern (a DOM-scan dependency), deliberately out of scope.
-    getAuthorThreadResolutionPolicy,
+    // getAuthorThreadResolutionPolicy used to also be bridged here -
+    // re-investigated (see this file's own comment above
+    // getSelectedAuthorThreadResolutionAllowLogins) and moved to a
+    // dedicated hook in ReviewThreadsSection.jsx instead.
     // Phase 7 (see REACT_MIGRATION_PLAN.md): parseSortableTime/
     // noteAuthorMatchesSelection/getAuthorInsightsDisplayName (further
     // below) used to also be bridged here - confirmed dead for the React
@@ -3883,9 +3873,12 @@ const initPage = () => {
     // own new helper module / pr-ui-render-utils.helpers.js's own hoisted
     // export).
     // ---- Export tab (see components/ExportTab.jsx) ----
-    getExportFieldCatalog,
-    getVisiblePrNumbersFromSectionsHost,
-    buildExportPayload,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
+    // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
+    // bridged here too - ExportTab.jsx now builds its own
+    // createPrExportHelpers({ getPerPrUserStateFromPayload }) directly
+    // instead (confirmed genuinely zero-dependency - see that file's own
+    // comment).
     // Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeRows/
     // sortRowsByPrNumberDesc/sortRowsByDateFieldDesc ("Row sorting", see
     // components/PrTableApp.jsx) used to be bridged here too -

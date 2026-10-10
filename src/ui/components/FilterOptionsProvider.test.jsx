@@ -1,7 +1,19 @@
 /** @jest-environment jsdom */
 
-const { render, screen } = require('@testing-library/react');
+const { render, screen, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+
+// ROADMAP.md follow-up (Phase 5, "Performance Validation"): spies on the
+// real extractRowLabelNames (jest.requireActual, not a fake) to prove the
+// new per-entry cache actually skips re-deriving an unchanged entry on a
+// second render - not just that the rendered options still come out
+// correct (the 4 tests below already proved that before this change).
+jest.mock('../helpers/pr-filter-label-extraction.helpers.js', () => {
+  const real = jest.requireActual('../helpers/pr-filter-label-extraction.helpers.js');
+  return { ...real, extractRowLabelNames: jest.fn(real.extractRowLabelNames) };
+});
+const { extractRowLabelNames } = require('../helpers/pr-filter-label-extraction.helpers.js');
+
 const { FilterOptionsProvider } = require('./FilterOptionsProvider');
 const { useFilterOptions } = require('../state/FilterOptionsContext');
 const { PrDataProvider } = require('../state/PrDataProvider');
@@ -85,6 +97,35 @@ describe('FilterOptionsProvider', () => {
 
     expect(screen.getByText('labelOptions: repo-a-label|repo-a-label')).toBeInTheDocument();
     expect(screen.getByText('authorOptions: alice|Alice')).toBeInTheDocument();
+  });
+
+  test('given a re-render with the same entry object references (a poll tick with no real changes), when rendering again, then entry-derived values are not recomputed', () => {
+    extractRowLabelNames.mockClear();
+    const entryA = buildEntry({
+      prNumber: '1',
+      data: { number: '1', authorLogin: 'bob', author: 'Bob', labels: [{ name: 'bug' }] },
+    });
+    const byPrNumber = { 1: entryA };
+
+    render(
+      <PrDataProvider initialPayload={{ byPrNumber, actorsMap: {} }} initialSelectedRepo="">
+        <FilterOptionsProvider>
+          <OptionsProbe />
+        </FilterOptionsProvider>
+      </PrDataProvider>,
+    );
+    expect(extractRowLabelNames).toHaveBeenCalledTimes(1);
+
+    // A new top-level payload object pushed through the real update path
+    // (window.updateReactPrTable, published by PrDataProvider itself) -
+    // mimicking a real poll tick - but entryA is still the exact same
+    // object reference, matching mergeDataDeltaPayload's own shallow
+    // merge, which keeps an unchanged entry's reference stable.
+    act(() => {
+      window.updateReactPrTable({ byPrNumber: { ...byPrNumber }, actorsMap: {} });
+    });
+
+    expect(extractRowLabelNames).toHaveBeenCalledTimes(1);
   });
 
   test('given an actorsMap, when rendering, then the 4 actor-based lists share one identical derivation', () => {

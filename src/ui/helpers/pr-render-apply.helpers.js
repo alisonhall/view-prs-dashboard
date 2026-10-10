@@ -71,6 +71,17 @@ export const { createPrRenderApplyHelpers } = (() => {
     // deriveRenderFinalizedState/the orchestrator still compute and pass
     // it through unchanged - not worth a wider refactor just to drop it
     // from that whole chain.
+    //
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+    // react-app.jsx no longer registers window.updateReactDataMetaText or
+    // window.updateReactMergedRequestMoreAction at all - DataMetaTextLive/
+    // MergedRequestMoreActionLive derive both live from Context instead
+    // (the exact same appliedSummaryText/buildMergedRequestMoreActionOptions
+    // inputs this function computes, just reactively). The two calls below
+    // are now permanently-no-op (optional-chained against an undefined
+    // function) in the real app - left wired rather than ripped out, same
+    // "don't rip out the vanilla computation mid-slice" choice as
+    // visiblePrNumbers' own now-dead vanilla computation.
     const applyRenderResults = ({
       payload,
       allStoredRows,

@@ -44,8 +44,12 @@ const {
  * unwrapped" shape as ActorIdentityContext/AuthorInsightsContext.
  *
  * getAuthorThreadResolutionPolicy is deliberately NOT part of this
- * Context - see REACT_MIGRATION_PLAN.md for why (a DOM-scan dependency,
- * a separate concern). readReviewConversationsUiState/
+ * Context - it's its own concern (the PR author thread-resolution
+ * allow/deny policy), with its own dedicated
+ * AuthorThreadResolutionSelectionContext + a useAuthorThreadResolutionPolicy
+ * hook local to ReviewThreadsSection.jsx (see REACT_MIGRATION_PLAN.md) -
+ * not a window.* bridge any more, and not folded into this Context either,
+ * since it's unrelated to what this one covers. readReviewConversationsUiState/
  * writeReviewConversationsUiState used to be deferred here for a similar
  * reason (a module-scope Map) but have since been fully retired - see
  * state/ReviewConversationsUiStateContext.jsx, which owns that state with

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { MultiSelectCheckboxList } from './MultiSelectCheckboxList';
 import { useFilterOptions } from '../state/FilterOptionsContext';
 import { useRowFilterSelection } from '../state/RowFilterSelectionContext';
+import { useAuthorThreadResolutionSelection } from '../state/AuthorThreadResolutionSelectionContext';
 import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.js';
 import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.js';
 import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.js';
@@ -90,6 +91,16 @@ const ROW_FILTER_LIST_IDS = new Set([
   'approver-list',
 ]);
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the 2 thread-resolution lists
+// whose checked-state now also lives in AuthorThreadResolutionSelectionContext
+// (ReviewThreadsSection.jsx reads it from there instead of DOM-scanning via
+// window.getAuthorThreadResolutionPolicy) - the 2 change-filter actor
+// lists still don't feed anything reactive and stay local-state-only.
+const AUTHOR_THREAD_RESOLUTION_LIST_IDS = new Set([
+  'attention-author-thread-resolution-allow-list',
+  'attention-author-thread-resolution-deny-list',
+]);
+
 /**
  * Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): renders the 9
  * multi-select filter lists, replacing the imperative
@@ -108,16 +119,19 @@ const ROW_FILTER_LIST_IDS = new Set([
  * Each list's checked state still has to be seeded imperatively (read the
  * currently-checked DOM values, or fall back to a pending restore-time
  * selection - see pr-multi-select-checked-state.helpers.js's
- * seedCheckedState). For 4 of the 9 lists (thread-resolution allow/deny,
- * the 2 change-filter actor lists) that state lives only in
- * MultiSelectCheckboxList's own local component state, not anywhere this
- * component can read via props/Context. The other 5 - the row-filtering
- * lists (include/exclude label, author, assigned, approver) - also mirror
- * their seeded checked values into RowFilterSelectionContext (Phase 7, see
- * REACT_MIGRATION_PLAN.md "live filtering"), since the reactive
- * visible-PR-numbers derivation needs to read "currently checked" without
- * a DOM query; the seeding logic itself (seedCheckedState,
- * existingChecked/pendingSelections precedence) is identical either way.
+ * seedCheckedState). Only the 2 change-filter actor lists now keep that
+ * state purely local to MultiSelectCheckboxList's own component state, not
+ * anywhere this component can read via props/Context - the other 7 also
+ * mirror their seeded checked values into a Context: the 5 row-filtering
+ * lists (include/exclude label, author, assigned, approver) into
+ * RowFilterSelectionContext (Phase 7, see REACT_MIGRATION_PLAN.md "live
+ * filtering" - the reactive visible-PR-numbers derivation needs to read
+ * "currently checked" without a DOM query), and the 2 thread-resolution
+ * lists (allow/deny) into AuthorThreadResolutionSelectionContext
+ * (ReviewThreadsSection.jsx's own read, previously a DOM-scan behind
+ * window.getAuthorThreadResolutionPolicy). The seeding logic itself
+ * (seedCheckedState, existingChecked/pendingSelections precedence) is
+ * identical regardless of which Context (if any) a list also mirrors into.
  * The render-cache (createMultiSelectRenderCache) is preserved unchanged
  * from index.page.js's former renderMultiSelectListSkipUnchanged so an
  * unchanged list still doesn't force a remount on every poll tick.
@@ -125,6 +139,7 @@ const ROW_FILTER_LIST_IDS = new Set([
 export function MultiSelectListPortals({ containers }) {
   const filterOptions = useFilterOptions();
   const rowFilterSelection = useRowFilterSelection();
+  const authorThreadResolutionSelection = useAuthorThreadResolutionSelection();
   const [renderState, setRenderState] = useState({});
   const renderCacheRef = useRef(null);
   if (!renderCacheRef.current) {
@@ -190,6 +205,15 @@ export function MultiSelectListPortals({ containers }) {
         );
       }
 
+      // Same extra step as the row-filtering lists above, for the 2
+      // thread-resolution lists and AuthorThreadResolutionSelectionContext.
+      if (AUTHOR_THREAD_RESOLUTION_LIST_IDS.has(listId)) {
+        authorThreadResolutionSelection.setChecked(
+          listId,
+          items.filter((item) => item.checked).map((item) => item.value),
+        );
+      }
+
       if (shouldClearPending) {
         pendingClears.push(pendingKey);
       }
@@ -220,6 +244,7 @@ export function MultiSelectListPortals({ containers }) {
     }
     const state = renderState[listId];
     const isRowFilterList = ROW_FILTER_LIST_IDS.has(listId);
+    const isAuthorThreadResolutionList = AUTHOR_THREAD_RESOLUTION_LIST_IDS.has(listId);
     return createPortal(
       // key includes renderKey (bumped only when this list's own items
       // signature actually changed, see the render-cache above) so this
@@ -237,8 +262,20 @@ export function MultiSelectListPortals({ containers }) {
         idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
         emptyClassContainer={container}
         summaryContainer={containers.multiSelectSummary[listId]}
-        checkedSet={isRowFilterList ? rowFilterSelection.checkedByListId[listId] || new Set() : undefined}
-        onToggle={isRowFilterList ? (value) => rowFilterSelection.toggle(listId, value) : undefined}
+        checkedSet={
+          isRowFilterList
+            ? rowFilterSelection.checkedByListId[listId] || new Set()
+            : isAuthorThreadResolutionList
+              ? authorThreadResolutionSelection.checkedByListId[listId] || new Set()
+              : undefined
+        }
+        onToggle={
+          isRowFilterList
+            ? (value) => rowFilterSelection.toggle(listId, value)
+            : isAuthorThreadResolutionList
+              ? (value) => authorThreadResolutionSelection.toggle(listId, value)
+              : undefined
+        }
       />,
       container,
       listId,
