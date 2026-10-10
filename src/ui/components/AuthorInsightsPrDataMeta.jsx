@@ -5,13 +5,33 @@
  * Shared by AuthorCreatedPrsSection.jsx and AuthorInsightsNotesSection.jsx
  * (Track B, REACT_MIGRATION_PLAN.md).
  *
- * Still reads some underlying formatting helpers off window (toCount,
- * parseMarkerState, formatChkDisplay, getViewedFilesSummary, asArray)
- * since those are pure data-shaping functions shared with the vanilla PR
- * table cells and orchestration-level concerns outside this cluster.
+ * Phase 7 (see REACT_MIGRATION_PLAN.md): toCount/formatChkDisplay/
+ * getViewedFilesSummary used to be read off window too, deferred as one
+ * "Track C" atomic unit - re-investigated and found all 3 are genuinely
+ * zero-dependency (toCount: createPrFormattingHelpers(), no args;
+ * formatChkDisplay: the same zero-arg createPrStatusDisplayHelpers()
+ * isChangedStatus/statusIcon already import directly elsewhere;
+ * getViewedFilesSummary: createPrViewedFilesSummaryHelpers({ toCount }),
+ * the exact same composition PrInsightsDisplayProvider.jsx already builds
+ * at module scope) - no Context needed, now built the same way here.
  * getAuthorInsightsCreatedPrStatus/getAuthorInsightsStatusBadgeClassName/
- * getOpenConversationCount now come from useAuthorInsights() (Phase 7,
+ * getOpenConversationCount come from useAuthorInsights() (Phase 7,
  * sub-phase 7.0 - see REACT_MIGRATION_PLAN.md).
+ *
+ * A real, pre-existing bug fixed along the way (flagged back in sub-phase
+ * 7.0's own writeup as needing a fix "whenever Track C is tackled"): the
+ * old call was `formatChkDisplay(chkState, row?.failureCount)`, passing an
+ * already-parsed marker value and a second argument the real function
+ * doesn't accept - formatChkDisplay's actual signature takes the raw
+ * `titleDisplay` string and does its own `[CHK:...]` regex extraction
+ * internally (the exact same regex parseMarkerState used to redundantly
+ * apply first here). Passing an already-extracted value like "PASS"
+ * through that same regex never matches (no brackets), so this always
+ * silently rendered "-" in production - masked only because this
+ * component's own tests stubbed window.formatChkDisplay with a
+ * differently-shaped mock. Fixed by calling
+ * `formatChkDisplay(row?.titleDisplay)` directly; parseMarkerState is no
+ * longer needed here at all as a result.
  *
  * `children` renders after the standard meta items, matching
  * buildCreatedPrsSection's own extra "merged/updated date" detail, which
@@ -21,9 +41,14 @@
  */
 
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { asArray } from '../helpers/pr-as-array.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
+import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.js';
 
-const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
-const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
+const { toCount } = createPrFormattingHelpers();
+const { formatChkDisplay } = createPrStatusDisplayHelpers();
+const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
 
 export function AuthorInsightsPrDataMeta({ entry, children }) {
   const { getAuthorInsightsCreatedPrStatus, getAuthorInsightsStatusBadgeClassName, getOpenConversationCount } =
@@ -32,10 +57,9 @@ export function AuthorInsightsPrDataMeta({ entry, children }) {
   const status = getAuthorInsightsCreatedPrStatus(entry);
   const statusClassName = getAuthorInsightsStatusBadgeClassName(status);
   const approvedLabel = `${String(row?.approved || '-').trim() || '-'} (${toCount(row?.approvalCount)})`;
-  const chkState = window.parseMarkerState ? window.parseMarkerState(row?.titleDisplay, 'CHK') || '-' : '-';
-  const chkDisplay = window.formatChkDisplay ? window.formatChkDisplay(chkState, row?.failureCount) : chkState;
+  const chkDisplay = formatChkDisplay(row?.titleDisplay);
   const conversationCount = getOpenConversationCount(row);
-  const viewedFilesSummary = window.getViewedFilesSummary ? window.getViewedFilesSummary(row) : '';
+  const viewedFilesSummary = getViewedFilesSummary(row);
   const labelsCount = asArray(row?.labels).filter(Boolean).length;
 
   return (

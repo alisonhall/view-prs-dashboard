@@ -33,7 +33,6 @@ describe('ExportTab', () => {
       prs: visiblePrNumbers.map((prNumber) => ({ prNumber })),
       selectedFields: { data: selectedDataPaths, userState: selectedUserStatePaths },
     }));
-    window.safeJsonStringify = jest.fn((value) => JSON.stringify(value));
 
     global.fetch = jest.fn((url, init = {}) => {
       const method = String(init.method || 'GET').toUpperCase();
@@ -51,7 +50,6 @@ describe('ExportTab', () => {
     delete window.getExportFieldCatalog;
     delete window.getVisiblePrNumbersFromSectionsHost;
     delete window.buildExportPayload;
-    delete window.safeJsonStringify;
     jest.restoreAllMocks();
   });
 

@@ -4,23 +4,14 @@ const { render } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDateCell } = require('./PrDateCell');
 
+// getManualNotesFieldSummary is a real, directly-imported function now
+// (Phase 7, see REACT_MIGRATION_PLAN.md) - these tests build real entry
+// fixtures that drive its actual logic instead of mocking
+// window.getManualNotesFieldSummary. An empty entry (as the first 3 tests
+// already pass) already produces the real function's all-false shape, so
+// those need no fixture changes at all.
 describe('PrDateCell', () => {
-  afterEach(() => {
-    delete window.getManualNotesFieldSummary;
-  });
-
-  const defaultFieldSummary = () => ({
-    hasCustomComments: false,
-    hasOtherNotes: false,
-    hasDifficulty: false,
-    difficultyLevelText: '',
-    hasRallyStories: false,
-    hasRallyLinks: false,
-    hasAnalysisOfPr: false,
-  });
-
   test('given mergedAt, when rendering, then it wins over closedAt/sourceUpdatedAt as the PR activity line', () => {
-    window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
         <tbody>
@@ -36,7 +27,6 @@ describe('PrDateCell', () => {
   });
 
   test('given no mergedAt, when closedAt is set, then falls back to closedAt with a "Closed at" title', () => {
-    window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
         <tbody>
@@ -52,7 +42,6 @@ describe('PrDateCell', () => {
   });
 
   test('given a baseline, when rendering, then shows the viewer activity line prefixed with "You: "', () => {
-    window.getManualNotesFieldSummary = defaultFieldSummary;
     render(
       <table>
         <tbody>
@@ -66,20 +55,17 @@ describe('PrDateCell', () => {
   });
 
   test('given manual-notes field summary flags, when rendering, then marks each indicator filled or empty', () => {
-    window.getManualNotesFieldSummary = () => ({
-      hasCustomComments: true,
-      hasOtherNotes: false,
-      hasDifficulty: true,
-      difficultyLevelText: '3',
-      hasRallyStories: false,
-      hasRallyLinks: false,
-      hasAnalysisOfPr: false,
-    });
+    const entry = {
+      notes: {
+        comments: [{ note: 'a custom comment', author: 'alice' }],
+        prDifficulty: '3',
+      },
+    };
     render(
       <table>
         <tbody>
           <tr>
-            <PrDateCell entry={{}} pr={{}} />
+            <PrDateCell entry={entry} pr={{}} />
           </tr>
         </tbody>
       </table>,

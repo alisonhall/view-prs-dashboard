@@ -94,7 +94,23 @@ export const { createPrAckLabelActionsHelpers } = (() => {
     clearPrsBusy,
     markPrsQueued,
     clearPrsQueued,
+    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): surfaces the
+    // real chunk order/progress of a multi-chunk batch in the drawer's
+    // queue section. Only called for a genuine multi-chunk batch - see
+    // runAckAction/runApplyLabelAction's own chunks.length <= 1 branch,
+    // which never calls these (matches beginBulkActionBatch's own
+    // single-chunk no-op in pr-bulk-action-batches.helpers.js).
+    beginBulkActionBatch,
+    markBulkActionChunkInFlight,
+    markBulkActionChunkDone,
+    finishBulkActionBatch,
     runWithConcurrencyLimit,
+    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): only
+    // needed for the loadStoredData-fallback branches below, to read back
+    // the payload loadStoredData itself just wrote via applyLatestPrData -
+    // a synchronous read strictly after that write has already completed,
+    // not the same-tick-as-mutation hazard this whole effort removes.
+    getLatestStoredPayload,
   } = {}) => {
     const postJsonSafe = typeof postJson === "function" ? postJson : async () => ({
       response: { ok: false },
@@ -128,6 +144,16 @@ export const { createPrAckLabelActionsHelpers } = (() => {
     const clearPrsBusySafe = typeof clearPrsBusy === "function" ? clearPrsBusy : () => {};
     const markPrsQueuedSafe = typeof markPrsQueued === "function" ? markPrsQueued : () => {};
     const clearPrsQueuedSafe = typeof clearPrsQueued === "function" ? clearPrsQueued : () => {};
+    const beginBulkActionBatchSafe =
+      typeof beginBulkActionBatch === "function" ? beginBulkActionBatch : () => {};
+    const markBulkActionChunkInFlightSafe =
+      typeof markBulkActionChunkInFlight === "function" ? markBulkActionChunkInFlight : () => {};
+    const markBulkActionChunkDoneSafe =
+      typeof markBulkActionChunkDone === "function" ? markBulkActionChunkDone : () => {};
+    const finishBulkActionBatchSafe =
+      typeof finishBulkActionBatch === "function" ? finishBulkActionBatch : () => {};
+    const generateBulkActionBatchId = () =>
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const runWithConcurrencyLimitSafe =
       typeof runWithConcurrencyLimit === "function"
         ? runWithConcurrencyLimit
@@ -143,9 +169,15 @@ export const { createPrAckLabelActionsHelpers } = (() => {
             }
             return results;
           };
+    const getLatestStoredPayloadSafe =
+      typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
 
     // The original, single-request code path - unchanged behavior, used
     // whenever a batch fits in one chunk (see the module-level comment).
+    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
+    // exit point now returns null (failure) or { payload, selectedRepo }
+    // (success) - see pr-row-checkbox-actions.helpers.js's own comment for
+    // why, same reasoning applies here.
     const runSingleAckRequest = async (payload, actionLabel) => {
       try {
         const { response, result } = await postJsonSafe("/view-prs/ack", payload);
@@ -165,7 +197,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : `HTTP ${response.status}: Check the output below for details.`,
             0,
           );
-          return;
+          return null;
         }
 
         setStatusMessageSafe(`${actionLabel} completed`);
@@ -182,10 +214,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           );
         }
 
+        const selectedRepo = payload.repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, payload.repo || defaultRepoSafe);
+          renderPrDataSafe(result.prData, selectedRepo);
+          return { payload: result.prData, selectedRepo };
         } else {
-          await loadStoredDataSafe(payload.repo || defaultRepoSafe);
+          await loadStoredDataSafe(selectedRepo);
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (error) {
         setStatusMessageSafe("Failed (network/error)");
@@ -195,6 +230,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           String(error || "An unknown error occurred"),
           0,
         );
+        return null;
       }
     };
 
@@ -212,34 +248,46 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       // drop the others (found during a post-hoc review of this feature).
       const successfulChunkOutputs = [];
 
-      await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers) => {
-        clearPrsQueuedSafe(chunkPrNumbers, repo);
-        markPrsBusySafe(chunkPrNumbers, repo);
-        const chunkPayload = {
-          repo,
-          [isClear ? "ackClear" : "ack"]: chunkPrNumbers.join(","),
-        };
-        try {
-          const { response, result } = await postJsonSafe("/view-prs/ack", chunkPayload);
-          if (!response.ok || result.ok === false) {
-            failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
-          } else {
-            const formattedOutput = formatCommandOutputSafe(result, { includeError: false });
-            if (formattedOutput) {
-              successfulChunkOutputs.push(`PR(s) ${chunkPrNumbers.join(", ")}:\n${formattedOutput}`);
+      const batchId = generateBulkActionBatchId();
+      beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
+
+      try {
+        await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
+          clearPrsQueuedSafe(chunkPrNumbers, repo);
+          markPrsBusySafe(chunkPrNumbers, repo);
+          markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
+          const chunkPayload = {
+            repo,
+            [isClear ? "ackClear" : "ack"]: chunkPrNumbers.join(","),
+          };
+          let chunkOk = true;
+          try {
+            const { response, result } = await postJsonSafe("/view-prs/ack", chunkPayload);
+            if (!response.ok || result.ok === false) {
+              failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
+              chunkOk = false;
+            } else {
+              const formattedOutput = formatCommandOutputSafe(result, { includeError: false });
+              if (formattedOutput) {
+                successfulChunkOutputs.push(`PR(s) ${chunkPrNumbers.join(", ")}:\n${formattedOutput}`);
+              }
+              if (Array.isArray(result?.refreshErrors)) {
+                allRefreshErrors.push(...result.refreshErrors);
+              }
             }
-            if (Array.isArray(result?.refreshErrors)) {
-              allRefreshErrors.push(...result.refreshErrors);
-            }
+          } catch (error) {
+            failedChunks.push({ prNumbers: chunkPrNumbers, error });
+            chunkOk = false;
+          } finally {
+            clearPrsBusySafe(chunkPrNumbers, repo);
+            markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
+            completedChunks += 1;
+            setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
           }
-        } catch (error) {
-          failedChunks.push({ prNumbers: chunkPrNumbers, error });
-        } finally {
-          clearPrsBusySafe(chunkPrNumbers, repo);
-          completedChunks += 1;
-          setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
-        }
-      });
+        });
+      } finally {
+        finishBulkActionBatchSafe({ batchId });
+      }
 
       const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
       const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
@@ -267,7 +315,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(first.error || "An unknown error occurred"),
           0,
         );
-        return;
+        return null;
       }
 
       if (failedChunks.length > 0) {
@@ -299,7 +347,9 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         );
       }
 
-      await loadStoredDataSafe(repo || defaultRepoSafe);
+      const selectedRepo = repo || defaultRepoSafe;
+      await loadStoredDataSafe(selectedRepo);
+      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
     };
 
     const runAckAction = async (payload, actionLabel) => {
@@ -315,13 +365,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         if (chunks.length <= 1) {
           markPrsBusySafe(prNumbers, repo);
           try {
-            await runSingleAckRequest(payload, actionLabel);
+            return await runSingleAckRequest(payload, actionLabel);
           } finally {
             clearPrsBusySafe(prNumbers, repo);
           }
         } else {
           markPrsQueuedSafe(prNumbers, repo);
-          await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
+          return await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
         }
       } finally {
         finishActivity();
@@ -334,11 +384,11 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const ack = String(ackValue || body.prNumbers || "").trim();
       if (!ack) {
         setStatusMessageSafe('Ack only requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runAckAction({ repo, ack }, "Ack only");
+      return await runAckAction({ repo, ack }, "Ack only");
     };
 
     const runClearOnlyWorkflow = async (ackClearValue = "", repoOverride = "") => {
@@ -347,11 +397,11 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const ackClear = String(ackClearValue || body.prNumbers || "").trim();
       if (!ackClear) {
         setStatusMessageSafe('Clear only requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runAckAction({ repo, ackClear }, "Clear only");
+      return await runAckAction({ repo, ackClear }, "Clear only");
     };
 
     // The original, single-request code path - unchanged behavior, used
@@ -379,7 +429,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
             0,
           );
-          return;
+          return null;
         }
 
         setStatusMessageSafe(result.summary || `${actionLabel} completed`);
@@ -397,10 +447,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           );
         }
 
+        const selectedRepo = repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, repo || defaultRepoSafe);
+          renderPrDataSafe(result.prData, selectedRepo);
+          return { payload: result.prData, selectedRepo };
         } else {
-          await loadStoredDataSafe(repo || defaultRepoSafe);
+          await loadStoredDataSafe(selectedRepo);
+          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
         }
       } catch (error) {
         setStatusMessageSafe("Failed (network/error)");
@@ -410,6 +463,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
           String(error || "An unknown error occurred"),
           0,
         );
+        return null;
       }
     };
 
@@ -422,31 +476,43 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const failedChunks = [];
       const allCombinedErrors = [];
 
-      await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers) => {
-        clearPrsQueuedSafe(chunkPrNumbers, repo);
-        markPrsBusySafe(chunkPrNumbers, repo);
-        try {
-          const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
-            repo,
-            label,
-            prNumbers: chunkPrNumbers.join(","),
-          });
-          if (!response.ok || result.ok === false) {
-            failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
-          } else {
-            allCombinedErrors.push(
-              ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
-              ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
-            );
+      const batchId = generateBulkActionBatchId();
+      beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
+
+      try {
+        await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
+          clearPrsQueuedSafe(chunkPrNumbers, repo);
+          markPrsBusySafe(chunkPrNumbers, repo);
+          markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
+          let chunkOk = true;
+          try {
+            const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
+              repo,
+              label,
+              prNumbers: chunkPrNumbers.join(","),
+            });
+            if (!response.ok || result.ok === false) {
+              failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
+              chunkOk = false;
+            } else {
+              allCombinedErrors.push(
+                ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
+                ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
+              );
+            }
+          } catch (error) {
+            failedChunks.push({ prNumbers: chunkPrNumbers, error });
+            chunkOk = false;
+          } finally {
+            clearPrsBusySafe(chunkPrNumbers, repo);
+            markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
+            completedChunks += 1;
+            setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
           }
-        } catch (error) {
-          failedChunks.push({ prNumbers: chunkPrNumbers, error });
-        } finally {
-          clearPrsBusySafe(chunkPrNumbers, repo);
-          completedChunks += 1;
-          setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
-        }
-      });
+        });
+      } finally {
+        finishBulkActionBatchSafe({ batchId });
+      }
 
       const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
       const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
@@ -474,7 +540,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
               : String(first.error || "An unknown error occurred"),
           0,
         );
-        return;
+        return null;
       }
 
       if (failedChunks.length > 0) {
@@ -499,7 +565,9 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         );
       }
 
-      await loadStoredDataSafe(repo || defaultRepoSafe);
+      const selectedRepo = repo || defaultRepoSafe;
+      await loadStoredDataSafe(selectedRepo);
+      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
     };
 
     const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
@@ -513,13 +581,13 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         if (chunks.length <= 1) {
           markPrsBusySafe(prNumberList, repo);
           try {
-            await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
+            return await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
           } finally {
             clearPrsBusySafe(prNumberList, repo);
           }
         } else {
           markPrsQueuedSafe(prNumberList, repo);
-          await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
+          return await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
         }
       } finally {
         finishActivity();
@@ -532,17 +600,17 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
       if (!prNumbers) {
         setStatusMessageSafe('Apply label requires numeric value(s) in "PR number(s)"');
-        return;
+        return null;
       }
 
       const label = String(labelValue || "").trim();
       if (!label) {
         setStatusMessageSafe("Choose a label to apply");
-        return;
+        return null;
       }
 
       const repo = String(repoOverride || body.repo || "").trim();
-      await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
+      return await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
     };
 
     return {

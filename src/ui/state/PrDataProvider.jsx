@@ -47,6 +47,17 @@ export function PrDataProvider({
   const [state, setState] = useState({
     payload: initialPayload || {},
     selectedRepo: initialSelectedRepo || '',
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): this field
+    // (and window.updateReactPrTable's 3rd argument below, which still
+    // writes it) is now dead for the table specifically - PrTableApp reads
+    // useVisiblePrNumbers() instead (state/useVisiblePrNumbers.jsx), a
+    // reactive derivation that supersedes this imperatively-pushed value.
+    // Left wired rather than ripped out this round: payload/selectedRepo
+    // (the other 2 args) are still live, and removing the vanilla
+    // computation that feeds this one (index.page.js's renderPrData) is
+    // naturally scoped together with the runSinglePrUpdate/
+    // recomputeDirtyPrSectionsFields follow-up this change unblocks, not
+    // this slice.
     visiblePrNumbers: initialVisiblePrNumbers ?? null,
     selectedAuthorLogin: initialSelectedAuthorLogin || '',
     statsViewState: initialStatsViewState || {},
@@ -73,6 +84,23 @@ export function PrDataProvider({
     };
   }, []);
 
+  // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): a dedicated read
+  // bridge for `selectedRepo` alone, mirroring getReactPrTablePayload above
+  // (same ref-based reasoning - the `[]`-effect closure must always read
+  // the latest value, not whatever `state` was at mount time). Kept
+  // separate from getReactPrTablePayload rather than changing its return
+  // shape, since existing callers (index.page.js) already depend on it
+  // returning the payload directly.
+  const selectedRepoRef = useRef(state.selectedRepo);
+  selectedRepoRef.current = state.selectedRepo;
+
+  useEffect(() => {
+    window.getReactPrTableSelectedRepo = () => selectedRepoRef.current;
+    return () => {
+      delete window.getReactPrTableSelectedRepo;
+    };
+  }, []);
+
   useEffect(() => {
     window.updateReactPrTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
       setState((previous) => ({
@@ -82,7 +110,10 @@ export function PrDataProvider({
         // undefined (param omitted) keeps the previous value; null/[] are
         // meaningful ("no filter" / "everything filtered out") and must
         // overwrite it - same semantics react-app.jsx's old updateTable
-        // closure had.
+        // closure had. Phase 7 (see REACT_MIGRATION_PLAN.md, "live
+        // filtering"): dead for the table now (see the state field's own
+        // comment above) - still written here harmlessly in case anything
+        // else reads it later, but PrTableApp no longer does.
         visiblePrNumbers: newVisiblePrNumbers !== undefined ? newVisiblePrNumbers : previous.visiblePrNumbers,
       }));
     };

@@ -3235,3 +3235,353 @@
         .error-snackbar-close:hover {
             opacity: 0.8;
         }
+
+        .activity-drawer-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 1100;
+            background: #0969da;
+            color: white;
+            border: none;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(31, 35, 40, 0.25);
+        }
+
+        .activity-drawer-toggle:hover {
+            background: #0757ba;
+        }
+
+        .activity-drawer-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: min(420px, 100vw);
+            z-index: 1150;
+            background: #fff;
+            border-left: 1px solid #d0d7de;
+            box-shadow: -4px 0 16px rgba(31, 35, 40, 0.15);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .activity-drawer-panel-header {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #fff;
+            border-bottom: 1px solid #d0d7de;
+        }
+
+        .activity-drawer-panel-content {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .activity-drawer-panel-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #24292f;
+        }
+
+        .activity-drawer-close {
+            background: none;
+            border: none;
+            color: #57606a;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .activity-drawer-close:hover {
+            color: #24292f;
+        }
+
+        .activity-drawer-section {
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eaeef2;
+        }
+
+        .activity-drawer-section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #24292f;
+            margin: 0 0 4px;
+        }
+
+        .activity-drawer-section-caption {
+            font-size: 11px;
+            color: #57606a;
+            margin: 0 0 8px;
+        }
+
+        .activity-drawer-connection-banner {
+            font-size: 11px;
+            color: #8a5300;
+            background: #fff8db;
+            border: 1px solid #d4a72c;
+            border-radius: 6px;
+            padding: 4px 8px;
+            margin-bottom: 8px;
+        }
+
+        .activity-drawer-job-row {
+            margin-bottom: 10px;
+        }
+
+        .activity-drawer-job-row-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .activity-drawer-job-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #24292f;
+        }
+
+        .activity-drawer-job-status {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+
+        .activity-drawer-job-status.is-running {
+            background: #ddf4ff;
+            color: #0969da;
+        }
+
+        .activity-drawer-job-status.is-idle {
+            background: #eaeef2;
+            color: #57606a;
+        }
+
+        .activity-drawer-job-waiting {
+            font-size: 11px;
+            color: #8a5300;
+            margin-top: 2px;
+        }
+
+        .activity-drawer-job-detail {
+            font-size: 11px;
+            color: #57606a;
+            margin-top: 2px;
+        }
+
+        .activity-drawer-job-skip {
+            font-size: 11px;
+            color: #57606a;
+            margin-top: 2px;
+            font-style: italic;
+        }
+
+        .activity-drawer-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .activity-drawer-details-text {
+            font-size: 11px;
+            color: #57606a;
+            white-space: pre-wrap;
+            margin-top: 6px;
+        }
+
+        .activity-drawer-batch {
+            margin-bottom: 12px;
+        }
+
+        .activity-drawer-batch-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #24292f;
+            margin-bottom: 4px;
+        }
+
+        .activity-drawer-batch-chunks {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .activity-drawer-batch-chunk {
+            font-size: 11px;
+            color: #57606a;
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-batch-chunk.is-done {
+            color: #1a7f37;
+        }
+
+        .activity-drawer-batch-chunk.is-in-flight {
+            color: #0969da;
+            font-weight: 600;
+        }
+
+        .activity-drawer-batch-chunk.is-failed {
+            color: #cf222e;
+            font-weight: 600;
+        }
+
+        .activity-drawer-batch-failed-count {
+            color: #cf222e;
+            font-weight: 600;
+        }
+
+        .activity-drawer-recent-group {
+            margin-bottom: 10px;
+        }
+
+        .activity-drawer-recent-group-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #57606a;
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-recent-list {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .activity-drawer-recent-item {
+            font-size: 11px;
+            color: #24292f;
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-recent-item.is-failed {
+            color: #cf222e;
+        }
+
+        .activity-drawer-dispatcher-legend {
+            font-size: 11px;
+            color: #57606a;
+            margin: 0 0 6px;
+            cursor: help;
+            border-bottom: 1px dotted #57606a;
+            display: inline-block;
+        }
+
+        .activity-drawer-dispatcher-queue {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .activity-drawer-dispatcher-entry {
+            font-size: 11px;
+            color: #57606a;
+            margin-bottom: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: baseline;
+        }
+
+        .activity-drawer-dispatcher-entry-repo {
+            font-weight: 600;
+            color: #24292f;
+        }
+
+        .activity-drawer-dispatcher-entry-priority {
+            color: #57606a;
+            cursor: help;
+            border-bottom: 1px dotted #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry-status {
+            cursor: help;
+            border-bottom: 1px dotted transparent;
+        }
+
+        .activity-drawer-dispatcher-entry-due {
+            color: #57606a;
+        }
+
+        .activity-drawer-dispatcher-entry-bump {
+            font-size: 11px;
+            padding: 1px 6px;
+            border: 1px solid #57606a;
+            border-radius: 4px;
+            background: #fff;
+            color: #24292f;
+            cursor: pointer;
+        }
+
+        .activity-drawer-dispatcher-entry-bump:hover:not(:disabled) {
+            background: #f6f8fa;
+        }
+
+        .activity-drawer-dispatcher-entry-bump:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .activity-drawer-dispatcher-entry.is-running .activity-drawer-dispatcher-entry-status {
+            color: #0969da;
+            font-weight: 600;
+        }
+
+        .activity-drawer-dispatcher-entry.is-due .activity-drawer-dispatcher-entry-status {
+            color: #9a6700;
+            font-weight: 600;
+        }
+
+        .activity-drawer-dispatcher-entry.is-circuit-open .activity-drawer-dispatcher-entry-status {
+            color: #cf222e;
+            font-weight: 600;
+        }
+
+        .activity-drawer-dispatcher-entry.is-scheduled .activity-drawer-dispatcher-entry-status {
+            color: #57606a;
+        }
+
+        .activity-drawer-circuit-breaker-repos {
+            margin: 0 0 8px;
+            padding-left: 18px;
+            font-size: 11px;
+            color: #9a6700;
+            font-weight: 600;
+        }
+
+        .activity-drawer-circuit-breaker-repo {
+            margin-bottom: 2px;
+        }
+
+        .activity-drawer-circuit-breaker-reset {
+            font-size: 11px;
+            padding: 3px 8px;
+            border: 1px solid #cf222e;
+            border-radius: 4px;
+            background: #fff;
+            color: #cf222e;
+            cursor: pointer;
+        }
+
+        .activity-drawer-circuit-breaker-reset:hover:not(:disabled) {
+            background: #fff0ef;
+        }
+
+        .activity-drawer-circuit-breaker-reset:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        @media (max-width: 768px) {
+            .activity-drawer-panel {
+                width: 100vw;
+            }
+        }

@@ -6,16 +6,16 @@
 export const { createPrAutoRenderStateHelpers } = (() => {
   const createPrAutoRenderStateHelpers = ({
     getDirtyTrackedFields,
-    getUnsavedNotesSections,
+    getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     getBlockingAuthorInsightsLogins,
     formatBlockingPrNumbersLabel,
   } = {}) => {
     const getDirtyTrackedFieldsSafe =
       typeof getDirtyTrackedFields === "function" ? getDirtyTrackedFields : () => [];
-    const getUnsavedNotesSectionsSafe =
-      typeof getUnsavedNotesSections === "function"
-        ? getUnsavedNotesSections
+    const getUnsavedNotesPrNumbersSafe =
+      typeof getUnsavedNotesPrNumbers === "function"
+        ? getUnsavedNotesPrNumbers
         : () => [];
     const getBlockingPrNumbersSafe =
       typeof getBlockingPrNumbers === "function" ? getBlockingPrNumbers : () => [];
@@ -30,7 +30,7 @@ export const { createPrAutoRenderStateHelpers } = (() => {
 
     const getAutoRenderBlockingState = () => {
       const dirtyTrackedFields = getDirtyTrackedFieldsSafe();
-      const unsavedNotesSections = getUnsavedNotesSectionsSafe();
+      const unsavedNotesPrNumbers = getUnsavedNotesPrNumbersSafe();
       const blockingPrNumbers = getBlockingPrNumbersSafe();
       const blockingAuthorInsightsLogins = getBlockingAuthorInsightsLoginsSafe();
 
@@ -38,8 +38,8 @@ export const { createPrAutoRenderStateHelpers } = (() => {
         dirtyFieldCount: Array.isArray(dirtyTrackedFields)
           ? dirtyTrackedFields.length
           : 0,
-        unsavedNotesCount: Array.isArray(unsavedNotesSections)
-          ? unsavedNotesSections.length
+        unsavedNotesCount: Array.isArray(unsavedNotesPrNumbers)
+          ? unsavedNotesPrNumbers.length
           : 0,
         blockingPrNumbers: Array.isArray(blockingPrNumbers)
           ? blockingPrNumbers

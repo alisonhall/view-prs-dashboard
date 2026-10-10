@@ -4,51 +4,17 @@
 // imports this directly instead of using the
 // require()/globalThis.ViewPrsFilterOptionsHelpers fallback.
 export const { createPrFilterOptionsHelpers } = (() => {
-  const createPrFilterOptionsHelpers = ({
-    populateIncludeLabelOptions,
-    populateExcludeLabelOptions,
-    populateAuthorOptions,
-    populateAssignedOptions,
-    populateApproverOptions,
-    populateAuthorThreadResolutionActorOptions,
-    populateChangeFilterActorOptions,
-  } = {}) => {
-    const populateIncludeLabelOptionsSafe =
-      typeof populateIncludeLabelOptions === "function"
-        ? populateIncludeLabelOptions
-        : () => {};
-    const populateExcludeLabelOptionsSafe =
-      typeof populateExcludeLabelOptions === "function"
-        ? populateExcludeLabelOptions
-        : () => {};
-    const populateAuthorOptionsSafe =
-      typeof populateAuthorOptions === "function" ? populateAuthorOptions : () => {};
-    const populateAssignedOptionsSafe =
-      typeof populateAssignedOptions === "function" ? populateAssignedOptions : () => {};
-    const populateApproverOptionsSafe =
-      typeof populateApproverOptions === "function" ? populateApproverOptions : () => {};
-    const populateAuthorThreadResolutionActorOptionsSafe =
-      typeof populateAuthorThreadResolutionActorOptions === "function"
-        ? populateAuthorThreadResolutionActorOptions
-        : () => {};
-    const populateChangeFilterActorOptionsSafe =
-      typeof populateChangeFilterActorOptions === "function"
-        ? populateChangeFilterActorOptions
-        : () => {};
-
-    const populateFilterOptions = ({ entries, repoFilter, actorsMap } = {}) => {
-      const safeEntries = Array.isArray(entries) ? entries : [];
-      const safeRepoFilter = typeof repoFilter === "string" ? repoFilter : "";
-      const safeActorsMap = actorsMap && typeof actorsMap === "object" ? actorsMap : {};
-
-      populateIncludeLabelOptionsSafe(safeEntries, safeRepoFilter);
-      populateExcludeLabelOptionsSafe(safeEntries, safeRepoFilter);
-      populateAuthorOptionsSafe(safeEntries, safeRepoFilter, safeActorsMap);
-      populateAssignedOptionsSafe(safeEntries, safeRepoFilter, safeActorsMap);
-      populateApproverOptionsSafe(safeEntries, safeRepoFilter, safeActorsMap);
-      populateAuthorThreadResolutionActorOptionsSafe(safeActorsMap);
-      populateChangeFilterActorOptionsSafe(safeActorsMap);
-    };
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): every populate
+  // function this used to orchestrate (5 in pr-filter-panel.helpers.js, 2
+  // in index.page.js) has moved to FilterOptionsProvider.jsx, deriving the
+  // same 9 multiselect option lists reactively from PrDataContext instead
+  // of being pushed imperatively through this pipeline.
+  // populateFilterOptions is kept as a permanent no-op shell since its
+  // caller (deriveViewerFilterSetup, part of renderPrData's still-vanilla
+  // pipeline) can't be deleted yet - see REACT_MIGRATION_PLAN.md's
+  // sub-phase 7.2 writeup for why renderPrData itself is still needed.
+  const createPrFilterOptionsHelpers = () => {
+    const populateFilterOptions = () => {};
 
     return {
       populateFilterOptions,

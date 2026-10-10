@@ -6,6 +6,7 @@
  */
 
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { getManualNotesFieldSummary } from '../../helpers/pr-manual-notes-summary.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -25,18 +26,6 @@ function FieldIndicator({ hasData, title, text = '', extraClass = '' }) {
 }
 
 export function PrDateCell({ entry, pr }) {
-  const getManualNotesFieldSummary =
-    window.getManualNotesFieldSummary ||
-    (() => ({
-      hasCustomComments: false,
-      hasOtherNotes: false,
-      hasDifficulty: false,
-      difficultyLevelText: '',
-      hasRallyStories: false,
-      hasRallyLinks: false,
-      hasAnalysisOfPr: false,
-    }));
-
   const prLastActivity = pr?.mergedAt || pr?.closedAt || pr?.sourceUpdatedAt || pr?.updatedAt || '-';
   const prActivityTitle = pr?.mergedAt ? 'Merged at' : pr?.closedAt ? 'Closed at' : 'Last commit';
   const fieldSummary = getManualNotesFieldSummary(entry, pr);

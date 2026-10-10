@@ -35,10 +35,27 @@ jest.mock('../helpers/pr-section-config.helpers.js', () => ({
 jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
   createPrSmartGroupsHelpers: jest.fn(),
 }));
+// Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.js is a
+// real ES module now too, imported directly by PrTableApp.jsx instead of
+// read off window.sortRowsByPrNumberDesc/etc - same "jest.mock is the
+// equivalent for a real import" reasoning as above. Unlike those two,
+// this mock keeps the REAL sorting behavior for every export (tests rely
+// on rows actually being sorted) and only wraps sortRowsByPrNumberDesc in
+// a jest.fn() so the one test that cares about call counts (see "row
+// sorting" below) can assert on it - normalizeRows/sortRowsByDateFieldDesc
+// pass through untouched.
+jest.mock('../helpers/pr-row-sorting.helpers.js', () => {
+  const actual = jest.requireActual('../helpers/pr-row-sorting.helpers.js');
+  return { ...actual, sortRowsByPrNumberDesc: jest.fn(actual.sortRowsByPrNumberDesc) };
+});
 
 const { PrTableApp } = require('./PrTableApp');
+const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
+const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
@@ -56,16 +73,59 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // this from FilterStateProvider/ActorIdentityContext, but tests here want
 // direct per-test control instead, the same way renderCell's
 // actorIdentityOverrides works in PrApprovedCell.test.jsx.
-const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, needsAttention, ...tableProps } = {}) =>
+//
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): busyPrNumbers/
+// queuedPrNumbers and their window.markPrsBusy/clearPrsBusy/markPrsQueued/
+// clearPrsQueued bridges moved from PrTableApp's own local state into
+// PrActivityQueueProvider.jsx - this wraps every render the same way
+// react-app.jsx's real AppRoot now does, so those bridges and the resulting
+// activePrNumbers prop still behave exactly as before this lift.
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+// is no longer read from PrDataProvider by PrTableApp (useVisiblePrNumbers()
+// derives it live from Context instead - see that hook's own comment), so
+// the `visiblePrNumbers` param here is now dead for actual filtering
+// (initialVisiblePrNumbers is still passed through harmlessly, matching
+// PrDataProvider's own "left wired, not ripped out" choice). FilterStateProvider/
+// RowFilterSelectionProvider are new required ancestors for useVisiblePrNumbers()
+// - `filterStateValues` lets an individual test override the defaults
+// below (e.g. to exercise a specific scope/PR-number filter) without every
+// existing call site needing to pass a full values object.
+const renderPrTableApp = ({
+  initialPayload,
+  selectedRepo,
+  visiblePrNumbers,
+  needsAttention,
+  filterStateValues,
+  ...tableProps
+} = {}) =>
   render(
     <PrDataProvider
       initialPayload={initialPayload}
       initialSelectedRepo={selectedRepo}
       initialVisiblePrNumbers={visiblePrNumbers}
     >
-      <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
-        <PrTableApp {...tableProps} />
-      </NeedsAttentionContext.Provider>
+      <FilterStateProvider
+        initialValues={{
+          scopeMode: 'all',
+          filterPrNumbers: '',
+          alwaysShowInReview: false,
+          filterCustomComments: '',
+          filterOtherNotes: '',
+          filterPrDifficulty: '',
+          filterRallyStories: '',
+          filterRallyLinks: '',
+          filterAnalysisOfPr: '',
+          ...filterStateValues,
+        }}
+      >
+        <RowFilterSelectionProvider>
+          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
+            <PrActivityQueueProvider>
+              <PrTableApp {...tableProps} />
+            </PrActivityQueueProvider>
+          </NeedsAttentionContext.Provider>
+        </RowFilterSelectionProvider>
+      </FilterStateProvider>
     </PrDataProvider>,
   );
 
@@ -122,33 +182,13 @@ function installSmartGroupHelpers() {
 function clearWindowHelpers() {
   createPrSectionConfigHelpers.mockReset();
   createPrSmartGroupsHelpers.mockReset();
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): window.isInReviewEnabled is
+  // confirmed dead for PrTableApp (checkNeedsAttention never reads it -
+  // see the regression tests below that set it specifically to prove
+  // that) - this cleanup just avoids the value leaking across tests, it
+  // has no effect on PrTableApp's own behavior either way.
   delete window.isInReviewEnabled;
   delete window.updateReactPrTable;
-  delete window.sortRowsByPrNumberDesc;
-  delete window.sortRowsByDateFieldDesc;
-  delete window.normalizeRows;
-}
-
-// Real equivalents of index.page.js's row-sorting functions (mirrored here
-// rather than requiring the whole vanilla script), so tests can verify
-// PrTableApp actually wires these in rather than leaving rows unsorted.
-function installSortHelpers() {
-  window.sortRowsByPrNumberDesc = (rows) =>
-    rows.sort((a, b) => Number(a?.data?.number || a?.prNumber || 0) < Number(b?.data?.number || b?.prNumber || 0) ? 1 : -1);
-  window.sortRowsByDateFieldDesc = (rows, fieldName) =>
-    rows.sort((a, b) => {
-      const dateA = Date.parse(String(a?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
-      const dateB = Date.parse(String(b?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
-      if (dateA !== dateB) return dateB - dateA;
-      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-    });
-  window.normalizeRows = (rows) =>
-    rows.sort((a, b) => {
-      const orderA = Number.isFinite(Number(a?.rowOrder)) ? Number(a.rowOrder) : Number.MAX_SAFE_INTEGER;
-      const orderB = Number.isFinite(Number(b?.rowOrder)) ? Number(b.rowOrder) : Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) return orderA - orderB;
-      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-    });
 }
 
 function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
@@ -455,9 +495,13 @@ describe('PrTableApp', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       const buildTree = (attentionFlag) => (
         <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
-            <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
-          </NeedsAttentionContext.Provider>
+          <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <RowFilterSelectionProvider>
+              <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
+                <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
+              </NeedsAttentionContext.Provider>
+            </RowFilterSelectionProvider>
+          </FilterStateProvider>
         </PrDataProvider>
       );
 
@@ -472,8 +516,6 @@ describe('PrTableApp', () => {
   });
 
   describe('row sorting', () => {
-    beforeEach(installSortHelpers);
-
     test('given open PRs in arbitrary order, when rendering, then the Open section lists them newest-PR-number-first', () => {
       const payload = {
         byPrNumber: {
@@ -534,11 +576,12 @@ describe('PrTableApp', () => {
       // (a `sections` useMemo dependency) without changing `payload`, so
       // `entriesForRepo`'s entry objects are the exact same references -
       // the cache should hit and skip re-sorting entirely.
-      // installSortHelpers() installs plain (non-spy) functions; wrap with
-      // jest.fn() here, preserving the real sorting behavior, so this test
-      // alone can count calls without affecting the other tests in this
-      // describe block.
-      window.sortRowsByPrNumberDesc = jest.fn(window.sortRowsByPrNumberDesc);
+      // sortRowsByPrNumberDesc is the module-level jest.fn()-wrapped real
+      // implementation set up at the top of this file (see the
+      // jest.mock('../helpers/pr-row-sorting.helpers.js', ...) call) -
+      // clear it here so this test's own call count isn't polluted by
+      // earlier tests in this describe block also exercising real sorting.
+      sortRowsByPrNumberDesc.mockClear();
 
       const payload = {
         byPrNumber: {
@@ -547,7 +590,7 @@ describe('PrTableApp', () => {
         },
       };
       renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
-      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
 
       const openSectionBefore = capturedSectionProps.find((p) => p.section.key === 'open');
       capturedSectionProps.length = 0;
@@ -557,7 +600,7 @@ describe('PrTableApp', () => {
 
       expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs.map((e) => e.prNumber)).toEqual(['20', '10']);
       // Not called again - the cache returned the previous result untouched.
-      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -921,7 +964,6 @@ describe('PrTableApp', () => {
 
     test('given a PR that also belongs to a smart group, when computing the open section, then it still renders there (both totalCount and prs include it)', () => {
       installSmartGroupHelpers();
-      installSortHelpers();
       // installSmartGroupHelpers' mock "Flagged" group is driven by
       // hasNeedsAttentionFlag, which PrTableApp wires to entryNeedsAttention -
       // use that as the smart-group membership hook for this test.

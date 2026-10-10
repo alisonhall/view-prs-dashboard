@@ -38,6 +38,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
@@ -215,9 +216,7 @@ export function ExportTab() {
           selectedUserStatePaths: selected.userStatePaths,
         })
       : { prCount: 0, prs: [] };
-    const jsonText = window.safeJsonStringify
-      ? window.safeJsonStringify(exportPayload)
-      : JSON.stringify(exportPayload, null, 2);
+    const jsonText = safeJsonStringify(exportPayload);
 
     return { jsonText, exportPayload };
   };

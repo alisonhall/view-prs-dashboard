@@ -3,21 +3,8 @@
 const { render, screen, waitFor, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrJsonModal } = require('./PrJsonModal');
-
-function installDefaultHelpers() {
-  window.safeJsonStringify = (value) => JSON.stringify(value ?? null, null, 2);
-  window.getPerPrUserStateFromPayload = (_payload, _entry, _prNumber, _repo) => ({
-    notesByPrNumber: null,
-    ackByRepo: null,
-    reverifyByRepo: null,
-    inReviewByRepo: null,
-  });
-  window.DEFAULT_REPO = 'owner/default-repo';
-}
-
-function clearHelpers() {
-  ['safeJsonStringify', 'getPerPrUserStateFromPayload', 'DEFAULT_REPO'].forEach((key) => delete window[key]);
-}
+const { ActivityDrawer } = require('./ActivityDrawer');
+const { JobEventsContext } = require('../state/JobEventsContext');
 
 function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old\n+new') {
   global.fetch = jest.fn().mockResolvedValue({
@@ -36,11 +23,9 @@ function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old
 
 describe('PrJsonModal', () => {
   beforeEach(() => {
-    installDefaultHelpers();
     Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
   });
   afterEach(() => {
-    clearHelpers();
     jest.restoreAllMocks();
     delete global.fetch;
   });
@@ -242,6 +227,43 @@ describe('PrJsonModal', () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('given the modal is open on top of the activity drawer, when Escape is pressed, then only the modal closes (stopPropagation prevents the drawer from also closing)', async () => {
+    mockFetchOk();
+    const onClose = jest.fn();
+    const jobEventsValue = {
+      connection: 'open',
+      isStale: false,
+      jobs: {
+        autoRefresh: { status: 'idle', lastSkip: null },
+        quickCheck: { status: 'idle', lastSkip: null, waitingOn: null },
+        mergedQueueDrain: { status: 'idle', lastSkip: null },
+      },
+    };
+
+    render(
+      <JobEventsContext.Provider value={jobEventsValue}>
+        <ActivityDrawer />
+        <PrJsonModal
+          target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+          payload={{ byPrNumber: {} }}
+          onClose={onClose}
+        />
+      </JobEventsContext.Provider>,
+    );
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+    // Open the drawer too, so both overlays are up at once.
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // The drawer's own window-level Escape listener never got the event -
+    // it's still open.
+    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
   });
 
   test('given the modal opens, when body overflow is locked, then it is restored on close/unmount', async () => {

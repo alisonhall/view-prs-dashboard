@@ -13,8 +13,11 @@ import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
+import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
+import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
+import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
@@ -39,7 +42,12 @@ export function PrTableApp({
   // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
   // which also owns window.updateReactPrTable itself. Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
-  const { payload, selectedRepo, visiblePrNumbers, setPayload } = usePrData();
+  const { payload, selectedRepo, setPayload } = usePrData();
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+  // used to come from usePrData() itself (imperatively pushed by the
+  // vanilla "Apply filters" pipeline) - now reactively derived live from
+  // Context instead. See useVisiblePrNumbers.jsx's own comment.
+  const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
@@ -79,90 +87,13 @@ export function PrTableApp({
     };
   }, []);
 
-  // State: PR numbers with a user-initiated Ack/Clear, Update, or Add-Label
-  // request currently in flight - shares the same PrNumberCell spinner as
-  // activePrNumbers (the scheduler's own in-progress set) above, merged
-  // together below, so a row shows "busy" whichever reason applies. A Set
-  // of composite "repo::prNumber" keys so concurrent actions on different
-  // rows (or, briefly, the same row) don't clobber each other's add/remove.
-  const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
-
-  const markPrBusy = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setBusyPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
-  }, []);
-
-  const clearPrBusy = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setBusyPrNumbers((prev) => {
-      if (!prev.has(key)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }, []);
-
-  // Bulk counterpart to markPrBusy/clearPrBusy above, for vanilla code
-  // (index.page.js's ack/apply-label workflows, via
-  // pr-ack-label-actions.helpers.js) to mark every PR number in a
-  // multi-PR batch request busy at once - the per-row withPrBusy wrapper
-  // below only ever covers the single row a user directly clicked, so a
-  // bulk Ack/Clear/Apply-label submitted from the "Run & Filter" tab (which
-  // never goes through a row's own onClick) previously showed no progress
-  // indicator at all for any of the PRs it affected.
-  useEffect(() => {
-    window.markPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo));
-    };
-    window.clearPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrBusy(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsBusy;
-      delete window.clearPrsBusy;
-    };
-  }, [markPrBusy, clearPrBusy]);
-
-  // State: PR numbers queued for a chunked bulk Ack/Clear/Apply-label
-  // request (pr-ack-label-actions.helpers.js) that hasn't reached the
-  // network yet, distinct from busyPrNumbers above ("actively in flight
-  // right now"). A batch larger than one chunk is marked queued in full up
-  // front, then each chunk's PR numbers move queued -> busy right before
-  // that chunk's own request actually fires - see PrNumberCell's own
-  // comment for how the two states render differently.
-  const [queuedPrNumbers, setQueuedPrNumbers] = useState(() => new Set());
-
-  const markPrQueued = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setQueuedPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
-  }, []);
-
-  const clearPrQueued = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setQueuedPrNumbers((prev) => {
-      if (!prev.has(key)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    window.markPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrQueued(prNumber, repo));
-    };
-    window.clearPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrQueued(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsQueued;
-      delete window.clearPrsQueued;
-    };
-  }, [markPrQueued, clearPrQueued]);
+  // busyPrNumbers/queuedPrNumbers (and their mark/clear functions and
+  // window bridges) moved to PrActivityQueueProvider.jsx (activity drawer
+  // feature, see REACT_MIGRATION_PLAN.md) - the drawer's bulk-action queue
+  // section is a sibling portal, not a descendant of this component, so it
+  // needs this same state lifted to a shared Provider rather than kept
+  // local here. Semantics are unchanged; this is just where it lives now.
+  const { busyPrNumbers, markPrBusy, clearPrBusy, queuedPrNumbers } = usePrActivityQueue();
 
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
@@ -366,15 +297,13 @@ export function PrTableApp({
   // instantiation works.
   const sectionGroupingHelpersRef = useRef(null);
   if (!sectionGroupingHelpersRef.current) {
-    // Matches the inline code this replaces: fall back to an identity
-    // function (rows unchanged) when window.sortRowsByX isn't available
-    // yet (e.g. bare-fixture unit tests), not an empty array - reading
-    // window.* fresh on each call (not captured once here) so tests that
-    // install these globals *after* this component first mounts still
-    // take effect, matching every other window.* consumer in this file.
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
+    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.js -
+    // genuinely zero-dependency, so this is a direct import now instead
+    // of a window.* bridge read.
     sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
-      sortRowsByPrNumberDesc: (...args) => (window.sortRowsByPrNumberDesc || ((rows) => rows))(...args),
-      sortRowsByDateFieldDesc: (...args) => (window.sortRowsByDateFieldDesc || ((rows) => rows))(...args),
+      sortRowsByPrNumberDesc,
+      sortRowsByDateFieldDesc,
     });
   }
 
@@ -454,8 +383,9 @@ export function PrTableApp({
       // vanilla's own cross-section ordering (normalizeRows: rowOrder
       // ascending, tie-broken by PR number descending) rather than any
       // single lifecycle section's sort — matching how vanilla builds
-      // "allStoredRows" for its smart groups.
-      const normalizeRows = window.normalizeRows || ((rows) => rows);
+      // "allStoredRows" for its smart groups. Phase 7 (see
+      // REACT_MIGRATION_PLAN.md): direct import now, not a window.*
+      // bridge read - genuinely zero-dependency.
       const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
 
       const smartGroupHelpers = prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({

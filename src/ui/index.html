@@ -14,6 +14,10 @@
          its target's children) - see REACT_MIGRATION_PLAN.md's full
          vanilla-to-React sweep. -->
     <div id="error-snackbar-root"></div>
+    <!-- Rendered by React (ActivityDrawer.jsx, mounted in react-app.jsx) -
+         the collapsible background-activity panel. Always mounted so its
+         toggle's live count stays accurate while the panel is closed. -->
+    <div id="activity-drawer-root"></div>
     <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-live="polite"
         aria-atomic="true" hidden>
         <div class="auto-render-blocked-title">Auto update paused</div>
@@ -63,32 +67,28 @@
         </div>
 
         <section id="tab-panel-status" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-status">
+            <!-- Activity drawer feature (see REACT_MIGRATION_PLAN.md): the
+                 "Request Activity" card and "Auto Refresh Scheduler"
+                 badges/details that used to live on this tab were removed -
+                 both were redundant with the drawer's own live "Scheduled
+                 background jobs"/"In-flight user actions" sections
+                 (ActivityDrawer.jsx, top-right of the page). The one piece
+                 of unique information the old scheduler badges had (pending
+                 open/merged-closed counts) moved into the drawer's
+                 Merged/closed drain row instead of being dropped. -->
             <div class="management-overview-grid">
-                <section class="section-card management-priority-card">
-                    <h3>Request Activity</h3>
-                    <div id="request-activity-badges" class="scheduler-badges"></div>
-                    <!-- Rendered by React (react-app.jsx, plain-string portal - see
-                         REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep) -
-                         starts empty; React's own initial state supplies the
-                         placeholder text, since createPortal doesn't clear
-                         pre-existing static content in its target. -->
-                    <pre id="request-activity-details" class="scheduler-details"></pre>
-                </section>
-
                 <section class="section-card">
                     <h3>Latest Status</h3>
                     <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                         starts empty, see #request-activity-details above. -->
+                         starts empty; React's own initial state supplies the
+                         placeholder text, since createPortal doesn't clear
+                         pre-existing static content in its target. -->
                     <pre id="status" style="white-space: break-spaces;"></pre>
                 </section>
             </div>
 
             <h3>Auto Refresh Scheduler</h3>
             <div id="scheduler-card" class="scheduler-card">
-                <div id="scheduler-badges" class="scheduler-badges"></div>
-                <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                     starts empty, see #request-activity-details above. -->
-                <pre id="scheduler-details" class="scheduler-details"></pre>
                 <div class="form-actions">
                     <!-- Rendered by React (TriggerAutoRunButton.jsx, mounted in
                          react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
@@ -105,7 +105,10 @@
                         <h3>Run check-open-pr-updates.sh</h3>
                         <div class="form-grid single-field-grid">
                             <label for="pr-numbers">PR number(s) (comma-separated)</label>
-                            <input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />
+                            <!-- Rendered by React (ContextRunScriptTextInput.jsx, mounted
+                                 in react-app.jsx, Context-backed by FilterStateProvider) -
+                                 see REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep. -->
+                            <span id="pr-numbers-root"></span>
                         </div>
                         <div class="form-actions primary-actions">
                             <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>

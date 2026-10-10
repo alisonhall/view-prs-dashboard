@@ -9,7 +9,7 @@
 
 import { Suspense, lazy, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { flushSync, createPortal } from 'react-dom';
+import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
 import { PrNumberFilterInput } from './components/PrNumberFilterInput';
 import { ScopeFilterSelect } from './components/ScopeFilterSelect';
@@ -19,7 +19,7 @@ import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityM
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
 import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
-import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
+import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
@@ -27,6 +27,7 @@ import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
+import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
@@ -35,8 +36,17 @@ import { PrDataPolling } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
+import { NotesDirtyProvider } from './components/NotesDirtyProvider';
+import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
+import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
 import { ReviewStatsProvider } from './components/ReviewStatsProvider';
 import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
+import { FilterOptionsProvider } from './components/FilterOptionsProvider';
+import { JobEventsProvider } from './components/JobEventsProvider';
+import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
+import { RepoLabelsProvider } from './components/RepoLabelsProvider';
+import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
+import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -143,6 +153,19 @@ const FILTER_STATE_TEXT_FIELDS = [
   { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200', defaultValue: '' },
   { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15', defaultValue: '' },
   { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): the one remaining field in this
+  // group - previously left as plain vanilla markup specifically because
+  // PrSelectionCell.jsx's bulk-select checkboxes read/write its value too
+  // (off their own one-off window.getSelectedPrNumbers/updateSelectedPrNumbers
+  // bridge). Now Context-backed like its 4 siblings; PrSelectionCell.jsx
+  // reads/writes the same prNumbersInput Context key non-reactively via
+  // window.getFilterStateValues()/setFilterStateValue() instead (the same
+  // generic bridge index.page.js's own vanilla code already uses) rather
+  // than subscribing via useFilterState(), since it's mounted once per
+  // visible table row - a reactive subscription there would re-render
+  // every row's checkbox on every keystroke in ANY of the 30+ filter
+  // fields, not just this one.
+  { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
 ];
 
 function buildFilterStateFieldPortals() {
@@ -325,40 +348,6 @@ const FILTER_OPTION_SELECT_FIELDS = [
 ];
 
 /**
- * Multi-select checkbox lists (Phase 2 - see REACT_MIGRATION_PLAN.md).
- * Unlike every field above, these lists' *options* are rebuilt from the PR
- * payload on every data (re)load - see MultiSelectCheckboxList.jsx's own
- * comment for why each render uses an incrementing `key` instead of
- * relying on prop diffing. React mounts directly into the existing
- * `<div id="...-list">` container (like Phase 1's #pr-sections), not a
- * wrapper span, so no index.html/index.css change is needed for these.
- *
- * MULTI_SELECT_LIST_ID_PREFIXES maps each list's container id to the
- * checkbox-id prefix its options previously used (the vanilla fallback's
- * own id-generation scheme, since removed along with the rest of its
- * DOM-building code from pr-filter-panel.helpers.js - see the
- * `${idPrefix}-${login}-${index}` scheme still in index.page.js's own
- * renderActorOptionsList/renderChangeFilterActorList) so generated ids
- * stay stable across the conversion. Covers every multi-select in the app:
- * five owned by pr-filter-panel.helpers.js (label/exclude-label/author/
- * assigned/approver) and four built directly in index.page.js
- * (thread-resolution allow/deny, change-filter ignore-comment/review-
- * authors) - same bridge, same flushSync fix (gotcha #4), just two
- * different call sites feeding it.
- */
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  'label-list': 'label',
-  'exclude-label-list': 'exclude-label',
-  'author-list': 'author',
-  'assigned-list': 'assigned',
-  'approver-list': 'approver',
-  'attention-author-thread-resolution-allow-list': 'attention-author-thread-resolution-allow',
-  'attention-author-thread-resolution-deny-list': 'attention-author-thread-resolution-deny',
-  'change-filter-ignore-comment-authors-list': 'change-filter-ignore-comment-authors',
-  'change-filter-ignore-review-authors-list': 'change-filter-ignore-review-authors',
-};
-
-/**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * looks up every static DOM container this app mounts into, once. Kept
  * separate from <AppRoot />'s render body so it only runs a single time
@@ -396,11 +385,7 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
-    schedulerBadges: document.getElementById('scheduler-badges'),
-    requestActivityBadges: document.getElementById('request-activity-badges'),
     statusText: document.getElementById('status'),
-    requestActivityDetails: document.getElementById('request-activity-details'),
-    schedulerDetails: document.getElementById('scheduler-details'),
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
@@ -416,6 +401,7 @@ function computeStaticContainers() {
     applyLabelSelect: document.getElementById('apply-label-select-root'),
     autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
+    activityDrawer: document.getElementById('activity-drawer-root'),
   };
 }
 
@@ -462,6 +448,17 @@ const DEFAULT_STATS_VIEW_STATE = {
   startDate: getDefaultStatsStartDate(),
   endDate: '',
 };
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a
+// thin wrapper so useAppliedFilterSummary() (a hook) can be called from
+// AppRoot's JSX, which otherwise can't call hooks mid-render. Must be
+// mounted inside both <RowFilterSelectionProvider> and <JobEventsProvider>
+// - see where it's actually portaled in AppRoot's own JSX.
+function AppliedFilterSummaryLive() {
+  const { summaryText, filterChips } = useAppliedFilterSummary();
+  return <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />;
+}
+
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
@@ -474,12 +471,14 @@ function AppRoot() {
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
   const [prTable, setPrTable] = useState(null);
-  const [multiSelectStates, setMultiSelectStates] = useState({});
-  const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
-  const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
-  const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
+  // Activity" section's history of this tab's own finished requests - no
+  // DOM container/portal needed, same as requestActivityBadges above once
+  // #request-activity-badges itself was removed from the Status tab; this
+  // only ever reaches the drawer as a prop.
+  const [recentRequestActivity, setRecentRequestActivity] = useState([]);
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
   const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
 
@@ -492,8 +491,6 @@ function AppRoot() {
   // match each `<pre>`'s original static index.html text, so there's no
   // flash of empty content before the first bridge call.
   const [statusText, setStatusText] = useState('Not run');
-  const [requestActivityDetailsText, setRequestActivityDetailsText] = useState('Monitoring request activity...');
-  const [schedulerDetailsText, setSchedulerDetailsText] = useState('Loading scheduler status...');
   const [outputText, setOutputText] = useState('Run the script to see output');
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
@@ -524,42 +521,19 @@ function AppRoot() {
     };
   }, []);
 
-  useEffect(() => {
-    window.renderReactMultiSelectList = (listId, options) => {
-      const container = containers.multiSelect[listId];
-      const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-      if (!container || !idPrefix) {
-        return false;
-      }
-      // flushSync: see MultiSelectCheckboxList's own callers historically -
-      // a same-tick DOM read right after this call (e.g.
-      // getSelectedMultiSelectValues) must see the just-committed state,
-      // not a pre-commit stale one.
-      flushSync(() => {
-        setMultiSelectStates((previous) => ({
-          ...previous,
-          [listId]: { options, renderKey: (previous[listId]?.renderKey || 0) + 1 },
-        }));
-      });
-      return true;
-    };
-    return () => {
-      delete window.renderReactMultiSelectList;
-    };
-  }, [containers]);
-
-  useEffect(() => {
-    window.renderReactFilterSummary = (summaryText, filterChips) => {
-      if (!containers.appliedFilterSummary) {
-        return false;
-      }
-      setFilterSummary({ summaryText, filterChips });
-      return true;
-    };
-    return () => {
-      delete window.renderReactFilterSummary;
-    };
-  }, [containers]);
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+  // window.renderReactFilterSummary (the push bridge this useEffect used
+  // to register) is gone - <AppliedFilterSummaryLive> now derives the
+  // chip/summary text itself, reactively, via useAppliedFilterSummary().
+  // index.page.js's own vanilla computation of the same text still runs
+  // (deriveRenderSummary's other callers depend on it) and still tries to
+  // call this now-nonexistent bridge - that call site's own
+  // `typeof window.renderReactFilterSummary === "function"` guard makes
+  // it a harmless no-op, left wired rather than ripped out for the same
+  // reason index.page.js's own dead visiblePrNumbers computation was
+  // (PrDataProvider.jsx's own comment) - removing it is naturally scoped
+  // together with a future deriveRenderSummary/renderSchedulerStatus
+  // decoupling pass, not this slice.
 
   useEffect(() => {
     window.updateReactBackfillBadges = (badges) => {
@@ -568,16 +542,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactBackfillBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactSchedulerBadges = (badges) => {
-      setSchedulerBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerBadges;
     };
   }, []);
 
@@ -592,12 +556,12 @@ function AppRoot() {
   }, []);
 
   useEffect(() => {
-    window.updateReactApplyLabelOptions = (labels) => {
-      setApplyLabelOptions({ labels });
+    window.updateReactRecentRequestActivity = (entries) => {
+      setRecentRequestActivity(Array.isArray(entries) ? entries : []);
       return true;
     };
     return () => {
-      delete window.updateReactApplyLabelOptions;
+      delete window.updateReactRecentRequestActivity;
     };
   }, []);
 
@@ -628,26 +592,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactStatusText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactRequestActivityDetailsText = (text) => {
-      setRequestActivityDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactRequestActivityDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactSchedulerDetailsText = (text) => {
-      setSchedulerDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerDetailsText;
     };
   }, []);
 
@@ -709,8 +653,8 @@ function AppRoot() {
   useEffect(() => {
     // queueMicrotask, not a direct dispatch: every listener (index.page.js)
     // is invoked synchronously by dispatchEvent, and several call back into
-    // flushSync-wrapped bridges (window.renderReactMultiSelectList,
-    // window.setFilterStateValue) either directly or via a fetch
+    // flushSync-wrapped bridges (window.setFilterStateValue) either
+    // directly or via a fetch
     // continuation that can resolve fast enough to still be "inside"
     // React's own effect-flush for this commit. flushSync reentrant with
     // an in-progress render throws "flushSync was called from inside a
@@ -733,61 +677,84 @@ function AppRoot() {
       initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
     >
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
+        {/* RepoLabelsProvider wraps everything below for the same reason
+            PrActivityQueueProvider does: ApplyLabelSelect's own portal
+            (inside the filter-field portals further down) and PrTableApp's
+            PrActionsCell (inside the prTable portal) are siblings, not an
+            ancestor/descendant pair, that both need the same available-
+            labels list - see RepoLabelsContext.jsx's own comment. */}
+        <RepoLabelsProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
+            RowFilterSelectionProvider wraps everything below for the same
+            cross-portal-sharing reason RepoLabelsProvider does -
+            MultiSelectListPortals (the filter-field portals further down)
+            and PrTableApp's own useVisiblePrNumbers (inside the prTable
+            portal) are sibling portals, not an ancestor/descendant pair,
+            that both need the same 5 row-filtering lists' checked-state. */}
+        <RowFilterSelectionProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+            JobEventsProvider widened from "just the drawer portal" (its own
+            prior comment here predicted this) to wrap everything
+            RowFilterSelectionProvider does - useAppliedFilterSummary.jsx
+            (consumed inside the prTable portal below AND by the
+            appliedFilterSummary portal further down) needs useJobEvents()'s
+            schedulerSummary too, and those are sibling portals relative to
+            the drawer, not an ancestor/descendant pair - same
+            cross-portal-sharing reason every other Provider at this level
+            is already this wide. */}
+        <JobEventsProvider>
+        {/* PrActivityQueueProvider wraps both the drawer's bulk-queue
+            section and PrTableApp below - they're sibling portals (not an
+            ancestor/descendant pair) that need to share the same
+            busyPrNumbers/queuedPrNumbers state, which is exactly why this
+            state was lifted out of PrTableApp itself (see
+            PrActivityQueueProvider.jsx's own comment). */}
+        <PrActivityQueueProvider>
+            {containers.activityDrawer &&
+              createPortal(
+                <ActivityDrawer
+                  backfillBadges={backfillBadges.badges}
+                  backfillDetailsText={backfillDetailsText}
+                  requestActivityBadges={requestActivityBadges.badges}
+                  recentRequestActivity={recentRequestActivity}
+                  onBumpDispatcherEntry={(repo, taskType) =>
+                    window.handleDispatcherBump?.(repo, taskType)
+                  }
+                  onResetCircuitBreaker={() => window.handleResetCircuitBreaker?.()}
+                />,
+                containers.activityDrawer,
+                'activity-drawer',
+              )}
+
+          {prTable &&
+            createPortal(
+              <NeedsAttentionProvider>
+                <NotesDirtyProvider>
+                  <PrInsightsDisplayProvider>
+                    <ReviewConversationsUiStateProvider>
+                      <PrTableApp
+                        onCheckboxChange={prTable.onCheckboxChange}
+                        onAckAction={prTable.onAckAction}
+                        onApplyLabel={prTable.onApplyLabel}
+                      />
+                    </ReviewConversationsUiStateProvider>
+                  </PrInsightsDisplayProvider>
+                </NotesDirtyProvider>
+              </NeedsAttentionProvider>,
+              prTable.container,
+              'pr-table',
+            )}
+        </PrActivityQueueProvider>
+
         {containers.filterFields.portals}
 
-        {prTable &&
-          createPortal(
-            <NeedsAttentionProvider>
-              <PrTableApp
-                onCheckboxChange={prTable.onCheckboxChange}
-                onAckAction={prTable.onAckAction}
-                onApplyLabel={prTable.onApplyLabel}
-              />
-            </NeedsAttentionProvider>,
-            prTable.container,
-            'pr-table',
-          )}
-
-        {Object.entries(containers.multiSelect).map(([listId, container]) => {
-          if (!container) {
-            return null;
-          }
-          const state = multiSelectStates[listId];
-          return createPortal(
-            // key includes renderKey (bumped on every populate call, see
-            // window.renderReactMultiSelectList above) so this remounts on
-            // every populate, matching MultiSelectCheckboxList's own doc
-            // comment - its `checked` state is seeded once from `options`
-            // via a lazy useState initializer, not kept in sync with
-            // subsequent prop updates, since the caller (populateXOptions
-            // in pr-filter-panel.helpers.js) already does its own
-            // checked/unchecked diffing before calling in. A static
-            // `key={listId}` (the bug this fixes) meant every populate
-            // after the very first silently no-op'd on the checked state:
-            // confirmed via a reload repro where a persisted "enhancement"
-            // label selection rendered into the DOM with checked: true
-            // (traced through populateIncludeLabelOptions and
-            // window.renderReactMultiSelectList) yet the actual checkbox
-            // stayed unchecked, because this component was never told to
-            // re-run its initializer.
-            <MultiSelectCheckboxList
-              key={`${listId}-${state?.renderKey ?? 0}`}
-              options={state?.options || []}
-              idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
-              emptyClassContainer={container}
-              summaryContainer={containers.multiSelectSummary[listId]}
-            />,
-            container,
-            listId,
-          );
-        })}
+        <FilterOptionsProvider>
+          <MultiSelectListPortals containers={containers} />
+        </FilterOptionsProvider>
 
         {containers.appliedFilterSummary &&
           createPortal(
-            <AppliedFilterSummary
-              summaryText={filterSummary.summaryText}
-              filterChips={filterSummary.filterChips}
-            />,
+            <AppliedFilterSummaryLive />,
             containers.appliedFilterSummary,
             'applied-filter-summary',
           )}
@@ -899,27 +866,7 @@ function AppRoot() {
             'backfill-badges',
           )}
 
-        {containers.schedulerBadges &&
-          createPortal(
-            <BackfillBadges badges={schedulerBadges.badges} />,
-            containers.schedulerBadges,
-            'scheduler-badges',
-          )}
-
-        {containers.requestActivityBadges &&
-          createPortal(
-            <BackfillBadges badges={requestActivityBadges.badges} />,
-            containers.requestActivityBadges,
-            'request-activity-badges',
-          )}
-
         {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
-
-        {containers.requestActivityDetails &&
-          createPortal(requestActivityDetailsText, containers.requestActivityDetails, 'request-activity-details')}
-
-        {containers.schedulerDetails &&
-          createPortal(schedulerDetailsText, containers.schedulerDetails, 'scheduler-details')}
 
         {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 
@@ -960,7 +907,7 @@ function AppRoot() {
 
         {containers.applyLabelSelect &&
           createPortal(
-            <ApplyLabelSelect labels={applyLabelOptions.labels} />,
+            <ApplyLabelSelect />,
             containers.applyLabelSelect,
             'apply-label-select',
           )}
@@ -994,6 +941,9 @@ function AppRoot() {
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
+        </JobEventsProvider>
+        </RowFilterSelectionProvider>
+        </RepoLabelsProvider>
       </FilterStateProvider>
       <PrDataPolling />
     </PrDataProvider>

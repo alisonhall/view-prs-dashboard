@@ -22,6 +22,7 @@
 
 import React from 'react';
 import { ActorIdentity } from '../ActorIdentity';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
 
 const DATE_CELL_STYLE = { paddingRight: '12px', paddingTop: '2px', paddingBottom: '2px', verticalAlign: 'top', whiteSpace: 'nowrap' };
 const ACTIVITY_CELL_STYLE = { paddingTop: '2px', paddingBottom: '2px' };
@@ -56,8 +57,6 @@ function normalizeTimelineType(type) {
 
 // Builds { dateKeys, groupedByDate } or null if there's no usable timeline.
 function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-
   const timeline = Array.isArray(activityTimelineRaw)
     ? activityTimelineRaw
         .filter((item) => item && typeof item === 'object')

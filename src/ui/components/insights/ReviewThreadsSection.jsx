@@ -19,25 +19,29 @@ import React, { useMemo, useState } from 'react';
 import { InsightSection } from './InsightSection';
 import { ActorIdentity } from '../ActorIdentity';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
+import { useReviewConversationsUiState } from '../../state/ReviewConversationsUiStateContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+const { getReviewConversationsStateKey, normalizeReviewConversationsUiState } =
+  createPrReviewConversationsUiStateHelpers();
 
 function useHelpers() {
   const { getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
+  const { renderMarkdownAsHtml } = usePrInsightsDisplay();
   return {
-    asArray: window.asArray || ((value) => (Array.isArray(value) ? value : [])),
+    asArray,
     getPreferredActorKey,
     resolveActorDisplayName,
     getAuthorThreadResolutionPolicy:
       window.getAuthorThreadResolutionPolicy || (() => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() })),
     parseSortableTime,
     formatIsoDatetime,
-    renderMarkdownAsHtml: window.renderMarkdownAsHtml || ((text) => String(text || '')),
-    readReviewConversationsUiState:
-      window.readReviewConversationsUiState || (() => ({ stateKey: '', conversationFilterMode: 'unresolved', showSummaryCards: true })),
-    writeReviewConversationsUiState: window.writeReviewConversationsUiState || (() => {}),
+    renderMarkdownAsHtml,
   };
 }
 
@@ -344,12 +348,17 @@ export function ReviewThreadsSection({ pr, actorsMap }) {
   const helpers = useHelpers();
   const data = useMemo(() => computeReviewThreadsData(pr, actorsMap, helpers), [pr, actorsMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const uiState = useMemo(() => helpers.readReviewConversationsUiState(pr), [pr]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { getReviewConversationsUiState, setReviewConversationsUiState } = useReviewConversationsUiState();
+  const stateKey = useMemo(() => getReviewConversationsStateKey(pr), [pr]);
+  const uiState = useMemo(
+    () => normalizeReviewConversationsUiState(getReviewConversationsUiState(stateKey)),
+    [stateKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [filterMode, setFilterMode] = useState(uiState.conversationFilterMode);
   const [showSummaryCards, setShowSummaryCards] = useState(uiState.showSummaryCards);
 
   const updateUiState = (nextFilterMode, nextShowSummaryCards) => {
-    helpers.writeReviewConversationsUiState(uiState.stateKey, nextFilterMode, nextShowSummaryCards);
+    setReviewConversationsUiState(stateKey, nextFilterMode, nextShowSummaryCards);
   };
 
   const { reviewThreads, unresolvedReviewThreads, resolvedReviewThreads, incorrectlyResolvedByAuthorCount, reviewSummaries, topLevelComments, prAuthorLogin, policy } = data;

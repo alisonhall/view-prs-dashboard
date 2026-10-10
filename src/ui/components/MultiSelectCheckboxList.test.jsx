@@ -183,4 +183,63 @@ describe('MultiSelectCheckboxList', () => {
       document.body.removeChild(summaryContainer);
     });
   });
+
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the 5
+  // row-filtering lists pass checkedSet/onToggle so their checked-state
+  // lives in RowFilterSelectionContext instead of this component's own
+  // local state - these tests cover that controlled-mode branch
+  // specifically; every test above still exercises the original
+  // uncontrolled (local-state) behavior unchanged.
+  describe('controlled mode (checkedSet/onToggle, see REACT_MIGRATION_PLAN.md "live filtering")', () => {
+    test('given a checkedSet prop, when rendering, then checked state reflects that Set, not the options\' own checked flag', () => {
+      render(
+        <MultiSelectCheckboxList
+          idPrefix="author"
+          options={[
+            { value: 'alice', label: 'alice', checked: false },
+            { value: 'bob', label: 'bob', checked: false },
+          ]}
+          checkedSet={new Set(['bob'])}
+          onToggle={() => {}}
+        />,
+      );
+
+      expect(screen.getByLabelText('alice')).not.toBeChecked();
+      expect(screen.getByLabelText('bob')).toBeChecked();
+    });
+
+    test('given a checkedSet/onToggle pair, when a checkbox is clicked, then onToggle is called with that value instead of updating local state', async () => {
+      const onToggle = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <MultiSelectCheckboxList
+          idPrefix="author"
+          options={[{ value: 'alice', label: 'alice', checked: false }]}
+          checkedSet={new Set()}
+          onToggle={onToggle}
+        />,
+      );
+
+      await user.click(screen.getByLabelText('alice'));
+
+      expect(onToggle).toHaveBeenCalledWith('alice');
+      // Not controlled locally - re-click without the prop changing leaves
+      // it exactly as the parent's Set says, not toggled by this component.
+      expect(screen.getByLabelText('alice')).not.toBeChecked();
+    });
+
+    test('given no checkedSet/onToggle props, when rendering, then it falls back to the original local-state behavior', async () => {
+      const user = userEvent.setup();
+      render(
+        <MultiSelectCheckboxList
+          idPrefix="author"
+          options={[{ value: 'alice', label: 'alice', checked: false }]}
+        />,
+      );
+
+      await user.click(screen.getByLabelText('alice'));
+
+      expect(screen.getByLabelText('alice')).toBeChecked();
+    });
+  });
 });

@@ -1,16 +1,21 @@
 const { createReactCallbackHelpers } = require("./react-callbacks.helpers.js");
 
+// Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): the
+// vanilla action functions now return { payload, selectedRepo } on
+// success and null on failure - react-callbacks.helpers.js uses that
+// return value directly instead of reading back a shared
+// getLatestStoredPayload getter (removed entirely, see that module's own
+// comment for why).
 describe("react callbacks helpers", () => {
   const makeHelpers = (overrides = {}) => {
     const deps = {
-      toggleInReviewForRow: jest.fn().mockResolvedValue(undefined),
-      toggleFlaggedForRow: jest.fn().mockResolvedValue(undefined),
-      runAckOnlyWorkflow: jest.fn().mockResolvedValue(undefined),
-      runClearOnlyWorkflow: jest.fn().mockResolvedValue(undefined),
-      runApplyLabelWorkflow: jest.fn().mockResolvedValue(undefined),
+      toggleInReviewForRow: jest.fn().mockResolvedValue(null),
+      toggleFlaggedForRow: jest.fn().mockResolvedValue(null),
+      runAckOnlyWorkflow: jest.fn().mockResolvedValue(null),
+      runClearOnlyWorkflow: jest.fn().mockResolvedValue(null),
+      runApplyLabelWorkflow: jest.fn().mockResolvedValue(null),
       updateReactTable: jest.fn(),
       stateGetters: {
-        getLatestStoredPayload: jest.fn().mockReturnValue({ byPrNumber: {} }),
         getLatestSelectedRepo: jest.fn().mockReturnValue(""),
       },
       ...overrides,
@@ -45,10 +50,7 @@ describe("react callbacks helpers", () => {
 
     test("given no repoOverride, when called, then falls back to getLatestSelectedRepo", async () => {
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue({}),
-          getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo"),
-        },
+        stateGetters: { getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo") },
       });
       await callbacks.handleCheckboxChange(101, "flagged", true);
       expect(deps.toggleFlaggedForRow.mock.calls[0][0].repo).toBe("fallback/repo");
@@ -56,25 +58,27 @@ describe("react callbacks helpers", () => {
 
     test("given a repoOverride, when called, then it takes priority over getLatestSelectedRepo", async () => {
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue({}),
-          getLatestSelectedRepo: jest.fn().mockReturnValue("should-not-be-used"),
-        },
+        stateGetters: { getLatestSelectedRepo: jest.fn().mockReturnValue("should-not-be-used") },
       });
       await callbacks.handleCheckboxChange(101, "flagged", true, "owner/repo");
       expect(deps.toggleFlaggedForRow.mock.calls[0][0].repo).toBe("owner/repo");
     });
 
-    test("given the toggle resolves, when it completes, then updates the React table with the latest payload and repo", async () => {
+    test("given the toggle resolves with a payload, when it completes, then updates the React table with that exact payload and repo", async () => {
       const payload = { byPrNumber: { 101: {} } };
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue(payload),
-          getLatestSelectedRepo: jest.fn().mockReturnValue(""),
-        },
+        toggleFlaggedForRow: jest.fn().mockResolvedValue({ payload, selectedRepo: "owner/repo" }),
       });
       await callbacks.handleCheckboxChange(101, "flagged", true, "owner/repo");
       expect(deps.updateReactTable).toHaveBeenCalledWith(payload, "owner/repo");
+    });
+
+    test("given the toggle resolves with null (its own internal failure), when it completes, then the table is not updated", async () => {
+      const { deps, callbacks } = makeHelpers({
+        toggleFlaggedForRow: jest.fn().mockResolvedValue(null),
+      });
+      await callbacks.handleCheckboxChange(101, "flagged", true, "owner/repo");
+      expect(deps.updateReactTable).not.toHaveBeenCalled();
     });
 
     test("given the toggle function rejects, when called, then the error is caught (does not throw) and the table is not updated", async () => {
@@ -107,10 +111,7 @@ describe("react callbacks helpers", () => {
 
     test("given a repoOverride, when called, then it takes priority over getLatestSelectedRepo", async () => {
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue({}),
-          getLatestSelectedRepo: jest.fn().mockReturnValue("should-not-be-used"),
-        },
+        stateGetters: { getLatestSelectedRepo: jest.fn().mockReturnValue("should-not-be-used") },
       });
       await callbacks.handleAckAction(101, false, "owner/repo");
       expect(deps.runAckOnlyWorkflow).toHaveBeenCalledWith("101", "owner/repo");
@@ -118,25 +119,27 @@ describe("react callbacks helpers", () => {
 
     test("given no repoOverride, when called, then falls back to getLatestSelectedRepo", async () => {
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue({}),
-          getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo"),
-        },
+        stateGetters: { getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo") },
       });
       await callbacks.handleAckAction(101, false);
       expect(deps.runAckOnlyWorkflow).toHaveBeenCalledWith("101", "fallback/repo");
     });
 
-    test("given the workflow resolves, when it completes, then updates the React table with the latest payload and repo", async () => {
+    test("given the workflow resolves with a payload, when it completes, then updates the React table with that exact payload and repo", async () => {
       const payload = { byPrNumber: { 101: {} } };
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue(payload),
-          getLatestSelectedRepo: jest.fn().mockReturnValue(""),
-        },
+        runAckOnlyWorkflow: jest.fn().mockResolvedValue({ payload, selectedRepo: "owner/repo" }),
       });
       await callbacks.handleAckAction(101, false, "owner/repo");
       expect(deps.updateReactTable).toHaveBeenCalledWith(payload, "owner/repo");
+    });
+
+    test("given the workflow resolves with null (its own internal failure), when it completes, then the table is not updated", async () => {
+      const { deps, callbacks } = makeHelpers({
+        runAckOnlyWorkflow: jest.fn().mockResolvedValue(null),
+      });
+      await callbacks.handleAckAction(101, false, "owner/repo");
+      expect(deps.updateReactTable).not.toHaveBeenCalled();
     });
 
     test("given the workflow rejects, when called, then the error is caught (does not throw) and the table is not updated", async () => {
@@ -174,25 +177,27 @@ describe("react callbacks helpers", () => {
 
     test("given no repoOverride, when called, then falls back to getLatestSelectedRepo", async () => {
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue({}),
-          getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo"),
-        },
+        stateGetters: { getLatestSelectedRepo: jest.fn().mockReturnValue("fallback/repo") },
       });
       await callbacks.handleApplyLabel(101, "bug");
       expect(deps.runApplyLabelWorkflow).toHaveBeenCalledWith("101", "bug", "fallback/repo");
     });
 
-    test("given the workflow resolves, when it completes, then updates the React table with the latest payload and repo", async () => {
+    test("given the workflow resolves with a payload, when it completes, then updates the React table with that exact payload and repo", async () => {
       const payload = { byPrNumber: { 101: {} } };
       const { deps, callbacks } = makeHelpers({
-        stateGetters: {
-          getLatestStoredPayload: jest.fn().mockReturnValue(payload),
-          getLatestSelectedRepo: jest.fn().mockReturnValue(""),
-        },
+        runApplyLabelWorkflow: jest.fn().mockResolvedValue({ payload, selectedRepo: "owner/repo" }),
       });
       await callbacks.handleApplyLabel(101, "bug", "owner/repo");
       expect(deps.updateReactTable).toHaveBeenCalledWith(payload, "owner/repo");
+    });
+
+    test("given the workflow resolves with null (its own internal failure), when it completes, then the table is not updated", async () => {
+      const { deps, callbacks } = makeHelpers({
+        runApplyLabelWorkflow: jest.fn().mockResolvedValue(null),
+      });
+      await callbacks.handleApplyLabel(101, "bug", "owner/repo");
+      expect(deps.updateReactTable).not.toHaveBeenCalled();
     });
 
     test("given the workflow rejects, when called, then the error is caught (does not throw) and the table is not updated", async () => {

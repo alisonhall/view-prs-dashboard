@@ -289,6 +289,47 @@ describe("PR Data Tab Orchestrator", () => {
         );
       });
     });
+
+    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): "repo" is
+    // read from PrDataProvider's Context (via a dedicated bridge) when
+    // available, same handled/fallback shape as getFilterStateValue above.
+    describe("Given getSelectedRepoOverride is provided", () => {
+      test("When it returns a string, Then that value is used instead of the DOM read", () => {
+        // Arrange
+        const orchestratorWithRepoOverride = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getSelectedRepoOverride: () => "override-repo",
+        });
+        orchestratorWithRepoOverride.initialize();
+        const mockPayload = { entries: [], meta: {} };
+
+        // Act
+        orchestratorWithRepoOverride.renderPrData(mockPayload, "test-repo");
+
+        // Assert (the "repo" DOM mock above returns { value: "test-repo" })
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ inputRepo: "override-repo" }),
+        );
+      });
+
+      test("When it returns undefined, Then the original DOM read is used", () => {
+        // Arrange
+        const orchestratorWithRepoOverride = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getSelectedRepoOverride: () => undefined,
+        });
+        orchestratorWithRepoOverride.initialize();
+        const mockPayload = { entries: [], meta: {} };
+
+        // Act
+        orchestratorWithRepoOverride.renderPrData(mockPayload, "test-repo");
+
+        // Assert (the "repo" DOM mock above returns { value: "test-repo" })
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ inputRepo: "test-repo" }),
+        );
+      });
+    });
   });
 
   describe("Given data refresh handling", () => {
