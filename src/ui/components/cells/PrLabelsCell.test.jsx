@@ -5,10 +5,6 @@ require('@testing-library/jest-dom');
 const { PrLabelsCell } = require('./PrLabelsCell');
 
 describe('PrLabelsCell', () => {
-  afterEach(() => {
-    delete window.getLabelName;
-  });
-
   test('given no labels, when rendering, then shows a dash', () => {
     render(
       <table>
@@ -50,8 +46,7 @@ describe('PrLabelsCell', () => {
     expect(chips[0].className).toBe(chips[1].className);
   });
 
-  test('given a { name } label object, when getLabelName is provided, then uses it to resolve the label text', () => {
-    window.getLabelName = (label) => label?.name || String(label);
+  test('given a { name } label object, when rendering, then resolves the label text via the real getLabelName', () => {
     render(
       <table>
         <tbody>

@@ -4,18 +4,7 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ActivityEventsSection } = require('./ActivityEventsSection');
 
-function installDefaultHelpers() {
-  window.asArray = (v) => (Array.isArray(v) ? v : []);
-}
-
-function clearHelpers() {
-  delete window.asArray;
-}
-
 describe('ActivityEventsSection', () => {
-  beforeEach(installDefaultHelpers);
-  afterEach(clearHelpers);
-
   test('given no activity events, when rendering, then renders nothing', () => {
     const { container } = render(<ActivityEventsSection pr={{}} actorsMap={{}} />);
     expect(container).toBeEmptyDOMElement();

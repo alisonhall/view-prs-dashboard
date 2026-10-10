@@ -22,12 +22,10 @@ describe('ReviewConversationsUiStateProvider + ReviewThreadsSection wiring', () 
   };
 
   beforeEach(() => {
-    window.asArray = (value) => (Array.isArray(value) ? value : []);
     window.getAuthorThreadResolutionPolicy = () => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() });
   });
 
   afterEach(() => {
-    delete window.asArray;
     delete window.getAuthorThreadResolutionPolicy;
   });
 

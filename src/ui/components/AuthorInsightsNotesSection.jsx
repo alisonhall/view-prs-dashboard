@@ -23,8 +23,7 @@ import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
-
-const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
+import { asArray } from '../helpers/pr-as-array.helpers.js';
 
 export function AuthorInsightsNotesSection() {
   const { payload, selectedAuthorLogin } = usePrData();

@@ -773,6 +773,43 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
   await expect(page.locator("#pr-numbers")).toHaveValue("1");
 });
 
+test("the PR JSON modal opens and renders real JSON for a real row", async ({ page }) => {
+  // Regression test for Phase 7's safeJsonStringify/getPerPrUserStateFromPayload/
+  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx
+  // used to read all 3 off window.*; it now imports them directly. jest
+  // coverage already exercises each piece in isolation with mocked
+  // payloads - this proves the real, wired-together button click still
+  // opens the modal and renders well-formed JSON in a real browser.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  await page.locator('.view-json[aria-label="View PR JSON details for #1"]').first().click();
+
+  const dataFileJson = page.locator("pre.pr-json-block").first();
+  await expect(dataFileJson).toBeVisible();
+  await expect(dataFileJson).not.toHaveText("Loading data file entry...");
+  const jsonText = await dataFileJson.textContent();
+  const parsed = JSON.parse(jsonText);
+  expect(parsed.file).toBe("check-open-pr-updates.data.json");
+  expect(parsed.entry).not.toBeNull();
+
+  const userStateJson = page.locator("pre.pr-json-block").nth(2);
+  const userStateParsed = JSON.parse(await userStateJson.textContent());
+  expect(userStateParsed.file).toBe("check-open-pr-updates.user-state.json");
+  expect(Object.keys(userStateParsed.entry).sort()).toEqual(
+    ["ackByRepo", "inReviewByRepo", "notesByPrNumber", "reverifyByRepo"].sort(),
+  );
+
+  await page.getByRole("button", { name: "Close PR JSON details" }).click();
+  await expect(dataFileJson).not.toBeVisible();
+});
+
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {
   // Regression test for the first (and so far only) converted multi-select
   // dropdown - a structurally different case from every other Phase 2

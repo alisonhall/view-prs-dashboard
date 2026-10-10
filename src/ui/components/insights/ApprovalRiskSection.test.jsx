@@ -17,18 +17,12 @@ function renderSection(props, displayOverrides = {}) {
 }
 
 describe('ApprovalRiskSection', () => {
-  afterEach(() => {
-    delete window.asArray;
-  });
-
   test('given no approvals, when rendering, then renders nothing', () => {
     const { container } = renderSection({ metrics: { approvals: [] }, actorsMap: {} });
     expect(container).toBeEmptyDOMElement();
   });
 
   test('given a risky approval, when rendering, then flags it and shows the after-approval counts', () => {
-    window.asArray = (v) => (Array.isArray(v) ? v : []);
-
     const metrics = {
       approvals: [
         {
@@ -52,8 +46,6 @@ describe('ApprovalRiskSection', () => {
   });
 
   test('given a non-risky approval with no merge lead, when rendering, then shows the safe label and a dash for merge lead', () => {
-    window.asArray = (v) => (Array.isArray(v) ? v : []);
-
     const metrics = { approvals: [{ login: 'bob', approvedAt: '-', riskyApproval: false, mergeLeadMinutes: null }] };
     renderSection({ metrics, actorsMap: {} });
     expect(screen.getByText(/no later issue signal/)).toBeInTheDocument();

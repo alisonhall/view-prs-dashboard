@@ -80,10 +80,12 @@ import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpe
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
+import { asArray } from "./helpers/pr-as-array.helpers.js";
+import { getPerPrUserStateFromPayload } from "./helpers/pr-per-pr-user-state.helpers.js";
+import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
 import {
   extractRowLabelNames,
   normalizeFilterToken,
-  getLabelName,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
 import { setPendingMultiSelectSelection } from "./helpers/pr-pending-multi-select-selections.helpers.js";
 import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
@@ -93,12 +95,9 @@ import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js
 import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
 import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
-// Deliberately empty - not a real repo any other user of this tool would
-// have access to (see src/server/config/app-config.js's own
-// defaultViewPrsRepo, which dropped the same hardcoded value for the same
-// reason). Every consumer below already treats a missing repo as "nothing
-// to do yet" rather than crashing (see each call site's own guard).
-const DEFAULT_REPO = "";
+// DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
+// 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/AuthorInsightsPrLink.jsx
+// import it directly instead of reading it off window.DEFAULT_REPO.
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
@@ -1408,7 +1407,10 @@ const { collectPrAuthors } =
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
   });
 
-const { parseMarkerState, safeJsonStringify } =
+// safeJsonStringify now a bare export from helpers/pr-ui-render-utils.helpers.js
+// (Phase 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/ExportTab.jsx
+// import it directly instead of reading it off window.safeJsonStringify.
+const { parseMarkerState } =
   prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
 
 const {
@@ -1750,7 +1752,11 @@ const {
   getDirtyNotesPrNumbers: () => window.getDirtyNotesPrNumbers?.() || [],
 });
 
-const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } =
+// Phase 7 (see REACT_MIGRATION_PLAN.md): noteAuthorMatchesSelection used
+// to also be destructured here for the now-deleted window.* bridge entry
+// below - NotesSection.jsx/AuthorInsightsNotesSection.jsx get their own
+// copy from AuthorInsightsContext/a local useMemo instead, not this one.
+const { getAuthorInsightsDisplayName } =
   prAuthorInsightsIdentityHelperFactory.createPrAuthorInsightsIdentityHelpers({
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
@@ -2635,30 +2641,10 @@ const { initManagementTabs } =
     loadActorNameCache,
   });
 
-const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => {
-  const byPrNumber = payload?.byPrNumber || {};
-  const payloadEntry = byPrNumber?.[prNumber];
-  const notes =
-    payloadEntry?.notes ||
-    entry?.notes ||
-    null;
-
-  const readRepoPrValue = (repoMap) => {
-    if (!repo || !repoMap || typeof repoMap !== "object") return null;
-    const perRepo = repoMap[repo];
-    if (!perRepo || typeof perRepo !== "object") return null;
-    const value = perRepo[prNumber];
-    return value === undefined ? null : value;
-  };
-
-  return {
-    notesByPrNumber: notes,
-    ackByRepo: readRepoPrValue(payload?.ackByRepo),
-    reverifyByRepo: readRepoPrValue(payload?.reverifyByRepo),
-    inReviewByRepo: readRepoPrValue(payload?.inReviewByRepo),
-  };
-};
-
+// getPerPrUserStateFromPayload now imported from
+// helpers/pr-per-pr-user-state.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx imports it directly instead
+// of reading it off window.getPerPrUserStateFromPayload.
 const {
   getFieldCatalog: getExportFieldCatalog,
   getVisiblePrNumbersFromSectionsHost,
@@ -2667,7 +2653,9 @@ const {
   getPerPrUserStateFromPayload,
 });
 
-const asArray = (value) => (Array.isArray(value) ? value : []);
+// asArray now imported from helpers/pr-as-array.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - every component below imports it directly
+// instead of reading it off window.asArray.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): formatDurationMinutes used to be
 // defined here for the window.* bridge below - ApprovalRiskSection.jsx
@@ -4027,8 +4015,13 @@ const initPage = () => {
     // updateSelectedPrNumbers used to be bridged here too -
     // PrSelectionCell.jsx now reads/writes "#pr-numbers"'s Context value
     // directly instead (see the comment at that field's old definition,
-    // above getUiOptionDefaults' call sites).
-    getLabelName,
+    // above getUiOptionDefaults' call sites). getLabelName used to be
+    // bridged here too - it had no other internal use in this file beyond
+    // that bridge (confirmed via grep, so the import above was removed
+    // entirely, not just the bridge entry); PrActionsCell.jsx/
+    // PrLabelsCell.jsx now import it directly from
+    // pr-filter-label-extraction.helpers.js instead of reading
+    // window.getLabelName.
     getAvailableRepoLabels,
     // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
     // isFlaggedEnabled used to also be bridged here - confirmed dead for
@@ -4060,17 +4053,31 @@ const initPage = () => {
     // concern (a DOM-scan dependency), deliberately out of scope.
     parseMarkerState,
     getAuthorThreadResolutionPolicy,
-    parseSortableTime,
-    noteAuthorMatchesSelection,
-    getNotesDifficultyLevelText,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): parseSortableTime/
+    // noteAuthorMatchesSelection/getAuthorInsightsDisplayName (further
+    // below) used to also be bridged here - confirmed dead for the React
+    // side (zero window.X reads anywhere outside this file): every actual
+    // consumer already gets its own copy via a direct import
+    // (parseSortableTime, ReviewThreadsSection.jsx/AuthorInsightsProvider.jsx)
+    // or a Context hook (noteAuthorMatchesSelection,
+    // AuthorInsightsContext/a local useMemo; getAuthorInsightsDisplayName,
+    // useAuthorInsights()). getNotesDifficultyLevelText had no window.X
+    // consumer at all, anywhere - only the bridge entry is removed; its
+    // definition stays, still used by this file's own internal
+    // getManualNotesFieldSummary.
     postJson,
-    asArray,
     autoResizeTextarea,
     recomputeDirtyPrSectionsFields,
-    // ---- PR JSON modal (see components/PrJsonModal.jsx) ----
-    safeJsonStringify,
-    getPerPrUserStateFromPayload,
-    DEFAULT_REPO,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): asArray/safeJsonStringify/
+    // getPerPrUserStateFromPayload/DEFAULT_REPO used to also be bridged
+    // here - every actual consumer (asArray: 8 components including
+    // AuthorInsightsPrDataMeta.jsx - independent of that file's own
+    // separately-deferred Track C cluster; safeJsonStringify/
+    // getPerPrUserStateFromPayload/DEFAULT_REPO: PrJsonModal.jsx, plus
+    // ExportTab.jsx for safeJsonStringify and AuthorInsightsPrLink.jsx for
+    // DEFAULT_REPO) now imports these directly instead (see each one's
+    // own new helper module / pr-ui-render-utils.helpers.js's own hoisted
+    // export).
     // ---- Export tab (see components/ExportTab.jsx) ----
     getExportFieldCatalog,
     getVisiblePrNumbersFromSectionsHost,
@@ -4085,7 +4092,6 @@ const initPage = () => {
     // components/AutoRenderBlockedLinks.jsx) ----
     navigateToPrInTable,
     navigateToAuthorInsights,
-    getAuthorInsightsDisplayName,
   });
 
   // The initial loadStoredData() fetch below often resolves before the

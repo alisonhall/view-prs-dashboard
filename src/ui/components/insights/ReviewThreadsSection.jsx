@@ -23,6 +23,7 @@ import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useReviewConversationsUiState } from '../../state/ReviewConversationsUiStateContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
 import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -33,7 +34,7 @@ function useHelpers() {
   const { getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
   const { renderMarkdownAsHtml } = usePrInsightsDisplay();
   return {
-    asArray: window.asArray || ((value) => (Array.isArray(value) ? value : [])),
+    asArray,
     getPreferredActorKey,
     resolveActorDisplayName,
     getAuthorThreadResolutionPolicy:

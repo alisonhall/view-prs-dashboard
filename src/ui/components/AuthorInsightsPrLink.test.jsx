@@ -7,7 +7,6 @@ const { AuthorInsightsPrLink } = require('./AuthorInsightsPrLink');
 describe('AuthorInsightsPrLink', () => {
   afterEach(() => {
     delete window.navigateToPrInTableFromAuthorInsights;
-    delete window.DEFAULT_REPO;
   });
 
   test('given a PR entry with a url, when rendering, then the external link uses it', () => {

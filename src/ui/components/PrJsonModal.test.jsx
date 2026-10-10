@@ -6,21 +6,6 @@ const { PrJsonModal } = require('./PrJsonModal');
 const { ActivityDrawer } = require('./ActivityDrawer');
 const { JobEventsContext } = require('../state/JobEventsContext');
 
-function installDefaultHelpers() {
-  window.safeJsonStringify = (value) => JSON.stringify(value ?? null, null, 2);
-  window.getPerPrUserStateFromPayload = (_payload, _entry, _prNumber, _repo) => ({
-    notesByPrNumber: null,
-    ackByRepo: null,
-    reverifyByRepo: null,
-    inReviewByRepo: null,
-  });
-  window.DEFAULT_REPO = 'owner/default-repo';
-}
-
-function clearHelpers() {
-  ['safeJsonStringify', 'getPerPrUserStateFromPayload', 'DEFAULT_REPO'].forEach((key) => delete window[key]);
-}
-
 function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old\n+new') {
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
@@ -38,11 +23,9 @@ function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old
 
 describe('PrJsonModal', () => {
   beforeEach(() => {
-    installDefaultHelpers();
     Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
   });
   afterEach(() => {
-    clearHelpers();
     jest.restoreAllMocks();
     delete global.fetch;
   });

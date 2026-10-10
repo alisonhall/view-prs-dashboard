@@ -11,6 +11,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.js';
+import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.js';
 
 function summarizeDiffText(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);
@@ -234,13 +237,6 @@ export function PrJsonModal({ target, payload, onClose }) {
   const [wrapped, setWrapped] = useState(false);
   const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
   const [copyDiffLabel, setCopyDiffLabel] = useState('Copy diff');
-
-  const safeJsonStringify =
-    window.safeJsonStringify || ((value) => JSON.stringify(value ?? null, null, 2));
-  const getPerPrUserStateFromPayload =
-    window.getPerPrUserStateFromPayload ||
-    (() => ({ notesByPrNumber: null, ackByRepo: null, reverifyByRepo: null, inReviewByRepo: null }));
-  const defaultRepo = window.DEFAULT_REPO || '';
 
   // Open/close lifecycle: build the JSON payload synchronously, fetch the
   // diff, manage focus + Escape/Tab handling + body scroll lock, matching

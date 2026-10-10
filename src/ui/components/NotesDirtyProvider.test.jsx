@@ -14,12 +14,7 @@ const { NotesSection } = require('./insights/NotesSection');
 // getBlockingAuthorInsightsLogins bare-shorthand-property bug, see
 // REACT_MIGRATION_PLAN.md's sub-phase 7.0 writeup) go unnoticed.
 describe('NotesDirtyProvider + NotesSection wiring', () => {
-  beforeEach(() => {
-    window.asArray = (v) => (Array.isArray(v) ? v : []);
-  });
-
   afterEach(() => {
-    delete window.asArray;
     delete window.postJson;
     delete window.getDirtyNotesPrNumbers;
     cleanup();

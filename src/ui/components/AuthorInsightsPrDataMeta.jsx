@@ -6,9 +6,12 @@
  * (Track B, REACT_MIGRATION_PLAN.md).
  *
  * Still reads some underlying formatting helpers off window (toCount,
- * parseMarkerState, formatChkDisplay, getViewedFilesSummary, asArray)
- * since those are pure data-shaping functions shared with the vanilla PR
- * table cells and orchestration-level concerns outside this cluster.
+ * parseMarkerState, formatChkDisplay, getViewedFilesSummary) since those
+ * are pure data-shaping functions shared with the vanilla PR table cells
+ * and orchestration-level concerns outside this cluster - deferred as one
+ * atomic unit ("Track C", see this file's own header comment history in
+ * REACT_MIGRATION_PLAN.md), unlike asArray below, which has no such
+ * entanglement and is a direct import.
  * getAuthorInsightsCreatedPrStatus/getAuthorInsightsStatusBadgeClassName/
  * getOpenConversationCount now come from useAuthorInsights() (Phase 7,
  * sub-phase 7.0 - see REACT_MIGRATION_PLAN.md).
@@ -21,9 +24,9 @@
  */
 
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { asArray } from '../helpers/pr-as-array.helpers.js';
 
 const toCount = (value) => (window.toCount ? window.toCount(value) : Number.parseInt(value, 10) || 0);
-const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
 
 export function AuthorInsightsPrDataMeta({ entry, children }) {
   const { getAuthorInsightsCreatedPrStatus, getAuthorInsightsStatusBadgeClassName, getOpenConversationCount } =

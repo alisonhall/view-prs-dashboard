@@ -5,12 +5,8 @@ require('@testing-library/jest-dom');
 const { NotesSection } = require('./NotesSection');
 const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
 
-function installDefaultHelpers() {
-  window.asArray = (v) => (Array.isArray(v) ? v : []);
-}
-
 function clearHelpers() {
-  ['asArray', 'postJson'].forEach((key) => delete window[key]);
+  delete window.postJson;
 }
 
 function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
@@ -22,7 +18,6 @@ function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
 }
 
 describe('NotesSection', () => {
-  beforeEach(installDefaultHelpers);
   afterEach(clearHelpers);
 
   test('given no existing notes, when rendering, then the Save button starts disabled', () => {

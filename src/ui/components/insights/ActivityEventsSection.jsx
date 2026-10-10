@@ -10,6 +10,7 @@ import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -33,8 +34,6 @@ function getEventKind(event) {
 }
 
 function buildActivityEvents(pr, { buildFallbackActivityEvents, buildActivityEventKey }) {
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-
   const timelineEvents = asArray(pr.activityTimeline).flatMap((bucket) => asArray(bucket?.events));
   const sourceEvents = timelineEvents.length ? timelineEvents : asArray(pr.activityEvents);
   const fallbackEvents = buildFallbackActivityEvents(pr);

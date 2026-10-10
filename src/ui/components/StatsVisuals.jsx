@@ -17,9 +17,9 @@ import { GraphCard } from './GraphCard';
 import { ReviewerActivityChart } from './ReviewerActivityChart';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import { asArray } from '../helpers/pr-as-array.helpers.js';
 
 const { toCount } = createPrFormattingHelpers();
-const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
 
 const sumReviewerMetric = (reviewerRows, key) => asArray(reviewerRows).reduce((total, reviewer) => total + toCount(reviewer?.[key]), 0);
 

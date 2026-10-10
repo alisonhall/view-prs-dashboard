@@ -11,12 +11,12 @@
  * @module components/cells/PrActionsCell
  */
 
+import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.js';
 
 export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
 
-  const getLabelName = window.getLabelName || ((label) => String(label?.name || label || '').trim());
   const existingLabels = new Set(
     (Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean),
   );

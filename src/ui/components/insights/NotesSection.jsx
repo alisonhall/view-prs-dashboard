@@ -20,6 +20,7 @@ import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },
@@ -87,7 +88,6 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
     [normalizeActorLogin, resolveActorDisplayName],
   );
   const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
   const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
   // untracked - a slow/hung notes save had no visibility anywhere outside
