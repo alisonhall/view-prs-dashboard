@@ -616,7 +616,9 @@ const readUiSessionOverrides = async () => {
     if (!response.ok) return {};
     const result = await response.json();
     const parsed = result?.overrides;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const safe = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    console.log("[DIAG] readUiSessionOverrides at", performance.now().toFixed(1), JSON.stringify(safe));
+    return safe;
   } catch (_error) {
     return {};
   }
@@ -945,8 +947,10 @@ const persistUiOptionOverrides = async (fieldIds = null) => {
 };
 
 const restoreUiOptionOverrides = async () => {
+  console.log("[DIAG] restoreUiOptionOverrides START at", performance.now().toFixed(1));
   const overrides = await readUiSessionOverrides();
   if (!overrides || Object.keys(overrides).length === 0) {
+    console.log("[DIAG] restoreUiOptionOverrides: no overrides, returning early at", performance.now().toFixed(1));
     return;
   }
 
@@ -985,7 +989,17 @@ const restoreUiOptionOverrides = async () => {
   // original DOM-mutating approach when the provider hasn't mounted yet.
   const setText = (id, value) => {
     if (value === undefined || value === null) return;
-    if (setFilterStateOverrideForFieldId(id, String(value))) return;
+    const viaContext = setFilterStateOverrideForFieldId(id, String(value));
+    console.log(
+      "[DIAG] setText",
+      id,
+      "=",
+      value,
+      "at",
+      performance.now().toFixed(1),
+      viaContext ? "(via Context)" : "(DOM fallback, window.setFilterStateValue=" + typeof window.setFilterStateValue + ")",
+    );
+    if (viaContext) return;
     const element = getOptionalElementById(id);
     if (!element) return;
     setNativeValueAndDispatch(element, String(value));
@@ -1165,6 +1179,7 @@ const restoreUiOptionOverrides = async () => {
   // PrDataContext, and react-app.jsx's MultiSelectListPortals effect
   // already re-seeds checked state whenever the pending-selection Context
   // values written just above change, with no manual trigger required.
+  console.log("[DIAG] restoreUiOptionOverrides END at", performance.now().toFixed(1));
 };
 
 const persistRunScriptOptionOverrides = async () => {
@@ -3597,7 +3612,9 @@ const initPage = () => {
   // user.click(...)` and assert immediately (no `waitFor`) only drain the
   // microtask queue, not macrotasks, and would see the pre-restore value;
   // a microtask still resolves within that same drain.
+  console.log("[DIAG] calling restoreUiOptionOverrides (1st, pre-react-ready) at", performance.now().toFixed(1));
   void restoreUiOptionOverrides().then(() => {
+    console.log("[DIAG] 1st restoreUiOptionOverrides.then() at", performance.now().toFixed(1), "window.setFilterStateValue=", typeof window.setFilterStateValue);
     if (latestStoredPayload) {
       queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
     }
@@ -3616,7 +3633,9 @@ const initPage = () => {
   window.addEventListener(
     "viewprs:react-ready",
     () => {
+      console.log("[DIAG] viewprs:react-ready fired, calling restoreUiOptionOverrides (2nd) at", performance.now().toFixed(1), "window.setFilterStateValue=", typeof window.setFilterStateValue);
       void restoreUiOptionOverrides().then(() => {
+        console.log("[DIAG] 2nd restoreUiOptionOverrides.then() at", performance.now().toFixed(1));
         // The "repo" field only actually restores here (see the comment
         // above): before React mounts it into #repo-root, it has no
         // Context and no DOM element to restore into, so the saved repo

@@ -79,7 +79,16 @@ const collectPageErrors = (page) => {
   return { consoleErrors, failedRequests };
 };
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  // TEMPORARY diagnostic logging (see REACT_MIGRATION_PLAN.md's CI
+  // investigation) - pipes every [DIAG]-prefixed browser console message
+  // to Node stdout, tagged with the test title, so they show up in the CI
+  // job log. Remove this block once the investigation is done.
+  page.on('console', (msg) => {
+    if (msg.text().startsWith('[DIAG]')) {
+      console.log(`[DIAG][${testInfo.title}]`, msg.text());
+    }
+  });
   await mockRepoLabelsRoute(page);
 });
 
