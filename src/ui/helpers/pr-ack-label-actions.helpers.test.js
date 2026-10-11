@@ -13,7 +13,7 @@ function buildHarness(overrides = {}) {
     setOutputMessage: [],
     showErrorNotification: [],
     showWarningNotification: [],
-    renderPrData: [],
+    applyFreshPrPayload: [],
     loadStoredData: [],
     markPrsBusy: [],
     clearPrsBusy: [],
@@ -45,7 +45,7 @@ function buildHarness(overrides = {}) {
     showErrorNotification: (...args) => calls.showErrorNotification.push(args),
     showWarningNotification: (...args) => calls.showWarningNotification.push(args),
     summarizeAckRefreshWarnings: overrides.summarizeAckRefreshWarnings || (() => null),
-    renderPrData: (...args) => calls.renderPrData.push(args),
+    applyFreshPrPayload: (...args) => calls.applyFreshPrPayload.push(args),
     loadStoredData: (...args) => {
       calls.loadStoredData.push(args);
       return Promise.resolve();
@@ -92,7 +92,7 @@ describe("pr ack label actions helpers", () => {
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/ack", { repo: "o/r", ack: "1" });
       expect(calls.setStatusMessage).toEqual([["Ack only..."], ["Ack only completed"]]);
-      expect(calls.renderPrData).toEqual([[{ byPrNumber: { 1: {} } }, "o/r"]]);
+      expect(calls.applyFreshPrPayload).toEqual([[{ byPrNumber: { 1: {} } }, "o/r"]]);
       expect(finishActivity).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ payload: { byPrNumber: { 1: {} } }, selectedRepo: "o/r" });
     });
@@ -397,7 +397,7 @@ describe("pr ack label actions helpers", () => {
 
       expect(postJson).toHaveBeenCalledWith("/view-prs/labels/apply", { repo: "o/r", label: "bug", prNumbers: "1,2" });
       expect(calls.setStatusMessage).toEqual([["Apply label..."], ["Applied to 2 PRs"]]);
-      expect(calls.renderPrData).toEqual([[{ byPrNumber: {} }, "o/r"]]);
+      expect(calls.applyFreshPrPayload).toEqual([[{ byPrNumber: {} }, "o/r"]]);
       expect(result).toEqual({ payload: { byPrNumber: {} }, selectedRepo: "o/r" });
     });
 

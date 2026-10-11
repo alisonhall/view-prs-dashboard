@@ -85,7 +85,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
     showErrorNotification,
     showWarningNotification,
     summarizeAckRefreshWarnings,
-    renderPrData,
+    applyFreshPrPayload,
     loadStoredData,
     getFormBody,
     defaultRepo,
@@ -132,7 +132,8 @@ export const { createPrAckLabelActionsHelpers } = (() => {
       typeof showWarningNotification === "function" ? showWarningNotification : () => {};
     const summarizeAckRefreshWarningsSafe =
       typeof summarizeAckRefreshWarnings === "function" ? summarizeAckRefreshWarnings : () => null;
-    const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
+    const applyFreshPrPayloadSafe =
+      typeof applyFreshPrPayload === "function" ? applyFreshPrPayload : () => {};
     const loadStoredDataSafe = typeof loadStoredData === "function" ? loadStoredData : async () => {};
     const getFormBodySafe = typeof getFormBody === "function" ? getFormBody : () => ({});
     const defaultRepoSafe = typeof defaultRepo === "string" ? defaultRepo : "";
@@ -216,7 +217,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
 
         const selectedRepo = payload.repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, selectedRepo);
+          applyFreshPrPayloadSafe(result.prData, selectedRepo);
           return { payload: result.prData, selectedRepo };
         } else {
           await loadStoredDataSafe(selectedRepo);
@@ -449,7 +450,7 @@ export const { createPrAckLabelActionsHelpers } = (() => {
 
         const selectedRepo = repo || defaultRepoSafe;
         if (result.prData) {
-          renderPrDataSafe(result.prData, selectedRepo);
+          applyFreshPrPayloadSafe(result.prData, selectedRepo);
           return { payload: result.prData, selectedRepo };
         } else {
           await loadStoredDataSafe(selectedRepo);

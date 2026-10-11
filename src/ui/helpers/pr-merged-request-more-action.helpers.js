@@ -11,9 +11,7 @@ export const { createPrMergedRequestMoreActionHelpers } = (() => {
     defaultRepo,
     beginRequestActivity,
     postJson,
-    setLatestStoredPayload,
-    setLatestSelectedRepo,
-    renderPrData,
+    applyFreshPrPayload,
     loadStoredData,
     setStatusMessage,
     notifyFailureSnackbar,
@@ -42,16 +40,8 @@ export const { createPrMergedRequestMoreActionHelpers } = (() => {
             response: { ok: false },
             result: { ok: false, error: "postJson is not available" },
           });
-    const setLatestStoredPayloadSafe =
-      typeof setLatestStoredPayload === "function"
-        ? setLatestStoredPayload
-        : () => {};
-    const setLatestSelectedRepoSafe =
-      typeof setLatestSelectedRepo === "function"
-        ? setLatestSelectedRepo
-        : () => {};
-    const renderPrDataSafe =
-      typeof renderPrData === "function" ? renderPrData : () => {};
+    const applyFreshPrPayloadSafe =
+      typeof applyFreshPrPayload === "function" ? applyFreshPrPayload : () => {};
     const loadStoredDataSafe =
       typeof loadStoredData === "function" ? loadStoredData : async () => {};
     const setStatusMessageSafe =
@@ -105,9 +95,7 @@ export const { createPrMergedRequestMoreActionHelpers } = (() => {
         }
 
         if (result?.prData) {
-          setLatestStoredPayloadSafe(result.prData);
-          setLatestSelectedRepoSafe(repo);
-          renderPrDataSafe(result.prData, repo, { useLastRunScope: false });
+          applyFreshPrPayloadSafe(result.prData, repo);
         } else {
           await loadStoredDataSafe(repo, { useLastRunScope: false });
         }

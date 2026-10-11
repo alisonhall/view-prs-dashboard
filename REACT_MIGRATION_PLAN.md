@@ -1940,6 +1940,20 @@ Asked to scope and start "the vanilla row-filtering/render pipeline becoming rea
 
 ---
 
+## 🚧 **Extended `applyFreshPrPayload` to the Ack/label/merged-request action helpers - and found the "4 other call sites" follow-up note was imprecise (2026-10-11)**
+
+The previous entry flagged 3 other helper files as sharing `runSinglePrUpdate`'s "render once, then unconditionally reload" shape. A fresh research pass (reading each file and the server routes behind them directly, not trusting that framing) found the real picture narrower:
+
+- **`pr-row-checkbox-actions.helpers.js` was never actually a candidate.** It never calls `renderPrData` at all (its own comment: "checkbox already updated, UI is correct"), and its two real callers (`toggleInReviewForRow`/`toggleFlaggedForRow`) always send `inReview`/`flagged` fields, never `ack`/`ackClear` - confirmed via the server route that this makes the server's `isCheckboxOnly` branch always true for them, so the response is always the minimal `{flaggedByRepo, inReviewByRepo}` shape, never a full `prData` payload. There's no authoritative payload here for `applyFreshPrPayload` to apply - the existing 2-key delta merge is already the cheapest-possible correct update. **Left untouched.**
+- **`pr-ack-label-actions.helpers.js`'s 2 chunked call sites are also not candidates, by original design, not oversight.** A multi-chunk batch deliberately does ONE `loadStoredData()` call after all chunks settle instead of merging N chunks' own partial `prData` responses - applying `applyFreshPrPayload` per-chunk would reintroduce exactly the inconsistent-intermediate-state risk that design already avoids. **Left untouched.**
+- **3 real call sites across 2 files did apply**, and none of them were actually double-fetch bugs the way `runSinglePrUpdate` was - both files already correctly gated their `loadStoredData()` call behind `else { }`. The simplification was "stop running the dead full `renderPrData` pipeline when a direct payload is already in hand," not a redundant-fetch fix:
+  - `pr-ack-label-actions.helpers.js`'s `runSingleAckRequest`/`runSingleApplyLabelRequest` (the non-chunked paths) - `renderPrDataSafe(result.prData, selectedRepo)` → `applyFreshPrPayloadSafe(result.prData, selectedRepo)`. `renderPrData` became fully unused in this file afterward - removed as a DI param entirely.
+  - `pr-merged-request-more-action.helpers.js`'s `handleRequestMoreMerged` - the `setLatestStoredPayload`/`setLatestSelectedRepo`/`renderPrData(..., { useLastRunScope: false })` trio collapsed into one `applyFreshPrPayload(result.prData, repo)` call. Dropping `{ useLastRunScope: false }` matches `runSinglePrUpdate`'s own already-shipped precedent exactly (that option only ever fed the orchestrator's scope-filtering computation, already confirmed dead for the table).
+
+**Verified:** full jest suite (unchanged test count, assertions updated in `pr-ack-label-actions.helpers.test.js`/`pr-merged-request-more-action.helpers.test.js` to match), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - specifically re-confirmed the bulk Ack/Apply-label and "Request more merged PRs" tests, the real user-facing paths this touches). Temporarily reverted one of the two production fixes and reran its test to confirm it actually catches a regression, before restoring.
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

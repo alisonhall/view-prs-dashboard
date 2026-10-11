@@ -1645,9 +1645,10 @@ const { handleRequestMoreMerged } =
     defaultRepo: DEFAULT_REPO,
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     postJson: (...args) => postJson(...args),
-    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
-    renderPrData: (...args) => renderPrData(...args),
+    // Lazy proxy (same pattern as runSinglePrUpdate's own wiring):
+    // applyFreshPrPayload is declared later in this file, safe since this
+    // closure is only ever invoked long after full module evaluation.
+    applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
     loadStoredData: (...args) => loadStoredData(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
@@ -3470,7 +3471,7 @@ const {
   showErrorNotification: (...args) => showErrorNotification(...args),
   showWarningNotification: (...args) => showWarningNotification(...args),
   summarizeAckRefreshWarnings: (...args) => summarizeAckRefreshWarnings(...args),
-  renderPrData: (...args) => renderPrData(...args),
+  applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
   loadStoredData: (...args) => loadStoredData(...args),
   getFormBody: (...args) => getFormBody(...args),
   defaultRepo: DEFAULT_REPO,
