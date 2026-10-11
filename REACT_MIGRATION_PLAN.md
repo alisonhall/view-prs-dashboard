@@ -1990,6 +1990,20 @@ Research (reading the server route directly, not assuming) confirmed the same fi
 
 ---
 
+## 🚧 **Fixed the `backfill-tab.orchestrator.js` wiring bug noticed during earlier research (2026-10-11)**
+
+A prior entry noted, as an unrelated aside, that `backfillTabOrchestrator.activateTab()`'s own `activateDataTab("backfill")` call was a no-op (`"backfill"` isn't one of `pr-data-tabs.helpers.js`'s 3 recognized keys). Asked to fix it; investigation found the real shape was different from that one-line note: `activateTab()` had **zero callers anywhere** (confirmed via grep) - not just a broken call, dead code. The real Backfill tab click handler lives entirely in `pr-management-tabs.helpers.js`'s own `activateTab("backfill")`, which already correctly switches panel visibility/aria-selected - but, unlike the Action Log/Actor Names tabs, never triggered a status/log refresh on activation, since the orchestrator method that was meant to do that was never wired in. Presented both findings (broken-and-dead vs. a real missing-refresh gap) and asked how to proceed - user chose to fix both.
+
+**Fix:** removed the broken `activateDataTab` call/DI param from `backfill-tab.orchestrator.js`'s tab-activation method entirely - tab-switching chrome was never this function's job, `pr-management-tabs.helpers.js` already owns it correctly. That method now does only what it should have: `if (isInitialized) { void loadStatus({ includeLog: true }); }` - and was renamed from `activateTab` to `onTabActivated` (matching `pr-data-tabs.helpers.js`'s own established naming for this exact "called when a tab becomes active" shape) since it no longer activates anything itself, only reacts to activation. New `onBackfillTabActivated` callback DI added to `createPrManagementTabsHelpers` (`pr-management-tabs.helpers.js`), called when the backfill tab is clicked, matching the existing `loadActionLog`/`loadActorNameCache` on-activation pattern exactly. `index.page.js` wires `onBackfillTabActivated: () => backfillTabOrchestrator.onTabActivated()` - no lazy-proxy indirection needed, `backfillTabOrchestrator` is already declared earlier in the file than this wiring.
+
+**New/updated coverage:** removed the stale `backfill-tab.orchestrator.test.js` test asserting the now-deleted broken `activateDataTab` call; its sibling "loadStatus is triggered" test is unaffected (updated to call `onTabActivated`). Added 3 new tests to `pr-management-tabs.helpers.test.js`: backfill tab click triggers `onBackfillTabActivated`, a non-backfill tab click doesn't, and a missing `onBackfillTabActivated` doesn't throw. Confirmed the first of these fails without the new wiring, before restoring.
+
+**Follow-up review caught one more thing:** a later pass over this same slice found the top-of-file JSDoc still described this method as `activateTab - Activate this tab`, even though it never did that - fixed alongside the rename above.
+
+**Verified:** full jest suite (2492 tests, +2 net), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged, including the 2 existing tests that click into the real Backfill tab).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

@@ -95,6 +95,40 @@ describe("pr-management-tabs helpers", () => {
     expect(loadActorNameCache).not.toHaveBeenCalled();
   });
 
+  // Bug fix (see REACT_MIGRATION_PLAN.md): the Backfill tab used to never
+  // refresh its status/log on activation at all - the orchestrator method
+  // meant to do that called a broken activateDataTab("backfill") (not one
+  // of that function's 3 recognized keys) and was never itself called
+  // from anywhere. Real tab-switching chrome stays owned here; this is
+  // the new wiring that actually triggers the refresh.
+  test("given the backfill tab is clicked, when activated, then onBackfillTabActivated is called", () => {
+    buildDom();
+    const onBackfillTabActivated = jest.fn();
+    createHelpers({ onBackfillTabActivated }).initManagementTabs();
+
+    document.getElementById("tab-backfill").onclick();
+
+    expect(onBackfillTabActivated).toHaveBeenCalledTimes(1);
+  });
+
+  test("given a non-backfill tab is clicked, when activated, then onBackfillTabActivated is not called", () => {
+    buildDom();
+    const onBackfillTabActivated = jest.fn();
+    createHelpers({ onBackfillTabActivated }).initManagementTabs();
+
+    document.getElementById("tab-script").onclick();
+
+    expect(onBackfillTabActivated).not.toHaveBeenCalled();
+  });
+
+  test("given onBackfillTabActivated is not provided, when the backfill tab is clicked, then it does not throw", () => {
+    buildDom();
+    const { initManagementTabs } = createHelpers({ onBackfillTabActivated: undefined });
+    initManagementTabs();
+
+    expect(() => document.getElementById("tab-backfill").onclick()).not.toThrow();
+  });
+
   test("given loadActorNameCache is not provided, when the actor-name-cache tab is clicked, then it does not throw", () => {
     buildDom();
     const { initManagementTabs } = createHelpers({ loadActorNameCache: undefined });

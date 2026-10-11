@@ -8,6 +8,7 @@ export const { createPrManagementTabsHelpers } = (() => {
     getOptionalElementById,
     loadActionLog,
     loadActorNameCache,
+    onBackfillTabActivated,
   }) => {
     const initManagementTabs = () => {
       const statusTab = getOptionalElementById("tab-status");
@@ -109,6 +110,9 @@ export const { createPrManagementTabsHelpers } = (() => {
         }
         if (showActorNameCache && typeof loadActorNameCache === "function") {
           void loadActorNameCache();
+        }
+        if (showBackfill && typeof onBackfillTabActivated === "function") {
+          onBackfillTabActivated();
         }
       };
 

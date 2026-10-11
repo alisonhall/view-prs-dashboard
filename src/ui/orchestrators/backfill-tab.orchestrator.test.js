@@ -14,7 +14,6 @@ describe("Backfill Tab Orchestrator", () => {
       handleBackfillAction: jest.fn().mockResolvedValue(undefined),
       renderBackfillStatus: jest.fn(),
       setBackfillLogMessage: jest.fn(),
-      activateDataTab: jest.fn(),
       getOptionalElementById: jest.fn(),
       beginRequestActivity: jest.fn(() => jest.fn()), // Returns cleanup function
       notifyFailureSnackbar: jest.fn(),
@@ -35,7 +34,7 @@ describe("Backfill Tab Orchestrator", () => {
       expect(orchestrator.initialize).toBeDefined();
       expect(orchestrator.loadStatus).toBeDefined();
       expect(orchestrator.handleAction).toBeDefined();
-      expect(orchestrator.activateTab).toBeDefined();
+      expect(orchestrator.onTabActivated).toBeDefined();
       expect(orchestrator.refreshStatus).toBeDefined();
       expect(orchestrator.cleanup).toBeDefined();
     });
@@ -44,7 +43,7 @@ describe("Backfill Tab Orchestrator", () => {
       expect(typeof orchestrator.initialize).toBe("function");
       expect(typeof orchestrator.loadStatus).toBe("function");
       expect(typeof orchestrator.handleAction).toBe("function");
-      expect(typeof orchestrator.activateTab).toBe("function");
+      expect(typeof orchestrator.onTabActivated).toBe("function");
       expect(typeof orchestrator.refreshStatus).toBe("function");
       expect(typeof orchestrator.cleanup).toBe("function");
     });
@@ -80,21 +79,12 @@ describe("Backfill Tab Orchestrator", () => {
       orchestrator.initialize();
     });
 
-    test("When activateTab called, Then activateDataTab helper called with backfill", () => {
-      // Act
-      orchestrator.activateTab();
-
-      // Assert
-      expect(mockDeps.activateDataTab).toHaveBeenCalledWith("backfill");
-      expect(mockDeps.activateDataTab).toHaveBeenCalledTimes(1);
-    });
-
-    test("When activateTab called, Then loadStatus is triggered", async () => {
+    test("When onTabActivated called, Then loadStatus is triggered", async () => {
       // Arrange
       mockDeps.loadBackfillStatus.mockClear();
 
       // Act
-      orchestrator.activateTab();
+      orchestrator.onTabActivated();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Assert

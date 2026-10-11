@@ -2473,7 +2473,6 @@ const backfillTabOrchestrator =
     handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
-    activateDataTab,
     getOptionalElementById,
     beginRequestActivity,
     notifyFailureSnackbar,
@@ -2506,6 +2505,17 @@ const { initManagementTabs } =
     getOptionalElementById,
     loadActionLog,
     loadActorNameCache,
+    // Bug fix (found during Phase 7 research, see REACT_MIGRATION_PLAN.md):
+    // backfillTabOrchestrator used to expose this as activateTab(), which
+    // called activateDataTab("backfill") itself - a no-op, since
+    // "backfill" isn't one of that function's 3 recognized keys
+    // (pr-data-tabs.helpers.js) - and was never actually called from
+    // anywhere besides that broken self-reference, so the Backfill tab
+    // never got its own refresh-on-activate the way Action Log/Actor
+    // Names already do. Real tab-switching chrome stays owned here
+    // (above); renamed to onTabActivated to reflect that this only
+    // refreshes status/log now, not tab-switching chrome.
+    onBackfillTabActivated: () => backfillTabOrchestrator.onTabActivated(),
   });
 
 // getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,

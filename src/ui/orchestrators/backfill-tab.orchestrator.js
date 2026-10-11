@@ -24,7 +24,6 @@ export const { createBackfillTabOrchestrator } = (function () {
    * @param {Function} deps.handleBackfillAction - Handles backfill actions
    * @param {Function} deps.renderBackfillStatus - Renders backfill status
    * @param {Function} deps.setBackfillLogMessage - Sets backfill log message
-   * @param {Function} deps.activateDataTab - Activates data tab UI
    * @param {Function} deps.getOptionalElementById - DOM helper
    * @param {Function} deps.beginRequestActivity - Begins request activity indicator
    * @param {Function} deps.notifyFailureSnackbar - Shows failure notification
@@ -36,7 +35,7 @@ export const { createBackfillTabOrchestrator } = (function () {
    * @returns {Function} returns.initialize - Initialize Backfill tab
    * @returns {Function} returns.loadStatus - Load backfill status
    * @returns {Function} returns.handleAction - Handle backfill action
-   * @returns {Function} returns.activateTab - Activate this tab
+   * @returns {Function} returns.onTabActivated - Refreshes status/log when this tab becomes active (tab-switching chrome itself lives in pr-management-tabs.helpers.js)
    * @returns {Function} returns.refreshStatus - Refresh backfill status
    * @returns {Function} returns.cleanup - Cleanup tab state
    */
@@ -47,7 +46,6 @@ export const { createBackfillTabOrchestrator } = (function () {
     handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
-    activateDataTab,
     getOptionalElementById: _getOptionalElementById,
     beginRequestActivity,
     notifyFailureSnackbar,
@@ -138,14 +136,14 @@ export const { createBackfillTabOrchestrator } = (function () {
     }
 
     /**
-     * Activates the Backfill tab.
-     * Makes this tab visible and active.
+     * Called when the Backfill tab becomes active. Tab-switching chrome
+     * itself (panel visibility/aria-selected) is owned entirely by
+     * pr-management-tabs.helpers.js's own activateTab, which calls this
+     * afterward (see index.page.js's onBackfillTabActivated wiring) -
+     * this orchestrator only owns refreshing status/log on activation,
+     * matching the Action Log/Actor Names tabs' own on-activation refresh.
      */
-    function activateTab() {
-      // Delegate to existing tab activation helper
-      activateDataTab("backfill");
-
-      // Refresh status when tab becomes active
+    function onTabActivated() {
       if (isInitialized) {
         void loadStatus({ includeLog: true });
       }
@@ -176,7 +174,7 @@ export const { createBackfillTabOrchestrator } = (function () {
       initialize,
       loadStatus,
       handleAction: performAction,
-      activateTab,
+      onTabActivated,
       refreshStatus,
       cleanup,
     };
