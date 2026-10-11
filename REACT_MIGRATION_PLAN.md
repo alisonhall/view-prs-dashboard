@@ -2069,6 +2069,28 @@ The scan did surface one more real gap along the way, just not asymmetric: `pr-a
 
 ---
 
+## 🚧 **Deleted `ensureDefaultFilterValues` - a mechanical leftover from the Phase 6 vanilla-table-build removal (2026-10-11)**
+
+With the orchestrator-dead-code and twin-test-gap veins both exhausted, looked for the same "superseded scaffolding left behind" shape directly inside `index.page.js` itself rather than in a separate orchestrator/helpers file. Found one genuine hit: `ensureDefaultFilterValues` (defined as a literal empty-body no-op, `() => {}`) with exactly one call site, inside `initPage()` - confirmed via a project-wide grep that both the definition and its sole call are the only 2 matches anywhere in the repo. The surrounding comment block (left in place, just above the old definition) explains the real history: this function used to matter for `renderPrData`'s vanilla-table-build fallback, which was deleted during Phase 6's cleanup - this call was evidently missed at the time and has been invoking a function that provably does nothing ever since.
+
+**Fix:** deleted the empty definition and its call in `initPage()`. Pure dead-code removal, zero behavior change - no new test coverage needed (there was never anything to cover; nothing this called did anything).
+
+**Verified:** full jest suite (2492 tests, unchanged), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged).
+
+---
+
+## 🚧 **Deleted `populateFilterOptions` - the permanent no-op shell sub-phase 7.4 had already flagged as a future removal candidate (2026-10-11)**
+
+Continuing the same scan one layer further than `ensureDefaultFilterValues`: `populateFilterOptions` (`pr-filter-options.helpers.js`) was a *deliberately* kept no-op - its own header comment said so explicitly: every real "populate" function it used to orchestrate moved to `FilterOptionsProvider.jsx` back in sub-phase 7.4, and it was left wired into `deriveViewerFilterSetup` (part of `renderPrData`'s still-vanilla pipeline) "as an inert call target... candidate for outright removal in sub-phase 7.7's final cleanup." That cleanup hadn't happened yet - this slice did it.
+
+**Fix:** removed the `populateFilterOptions` parameter/call from `pr-render-viewer-filter-setup.helpers.js`'s `deriveViewerFilterSetup` (it computed `entries`/`repoFilter`/`actorsMap` purely to hand to a function that did nothing with them); deleted `pr-filter-options.helpers.js` and its test outright (zero remaining callers anywhere, confirmed via grep); removed `index.page.js`'s import, factory instantiation, and DI pass-through for it; removed the now-stale filename entry from `eslint.config.mjs`'s ES-module `files` list. Updated a nearby comment (above the React-rendering-path's vanilla-pipeline call) that still described the filter dropdowns as one of this pipeline's side effects via `populateFilterOptions` - they haven't been since sub-phase 7.4, `FilterOptionsProvider.jsx` derives them reactively from Context instead; the comment was just never updated to say so.
+
+**Test updates:** `pr-render-viewer-filter-setup.helpers.test.js`'s 3 tests reduced to 2 (dropped the call-order assertion that only existed to prove `populateFilterOptions` ran after `commitViewerContext` - nothing left to order once it's gone); `pr-filter-options.helpers.test.js` deleted along with its subject.
+
+**Verified:** full jest suite (2489 tests, -3 as expected: 2 from the deleted file, 1 merged test reduction), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged) - pure dead-code removal, zero behavior change.
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

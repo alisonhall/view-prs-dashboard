@@ -184,7 +184,6 @@ export default defineConfig([
       "src/ui/helpers/pr-stored-data-load.helpers.js",
       "src/ui/helpers/pr-render-viewer-filter-setup.helpers.js",
       "src/ui/helpers/pr-viewer-context.helpers.js",
-      "src/ui/helpers/pr-filter-options.helpers.js",
       "src/ui/helpers/pr-scoped-rows.helpers.js",
       "src/ui/helpers/pr-render-summary.helpers.js",
       "src/ui/helpers/pr-render-apply.helpers.js",

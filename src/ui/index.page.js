@@ -29,7 +29,6 @@ import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.he
 import * as prRenderContextHelperFactory from "./helpers/pr-render-context.helpers.js";
 import * as prRowSourcesHelperFactory from "./helpers/pr-row-sources.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
-import * as prFilterOptionsHelperFactory from "./helpers/pr-filter-options.helpers.js";
 import * as prScopedRowsHelperFactory from "./helpers/pr-scoped-rows.helpers.js";
 import * as prRenderSummaryHelperFactory from "./helpers/pr-render-summary.helpers.js";
 import * as prRenderApplyHelperFactory from "./helpers/pr-render-apply.helpers.js";
@@ -1463,17 +1462,6 @@ const { deriveViewerContext } =
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
   });
 
-// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): populateFilterOptions
-// is now a permanent no-op shell - every populate function it used to
-// orchestrate moved to FilterOptionsProvider.jsx. Its caller
-// (deriveViewerFilterSetup, part of renderPrData's still-vanilla pipeline)
-// can't be deleted yet - see the sub-phase 7.2 writeup for why renderPrData
-// itself is still needed - so this stays wired in as an inert call target
-// rather than being ripped out of that pipeline, candidate for outright
-// removal in sub-phase 7.7's final cleanup.
-const { populateFilterOptions } =
-  prFilterOptionsHelperFactory.createPrFilterOptionsHelpers();
-
 const { deriveScopedRows } =
   prScopedRowsHelperFactory.createPrScopedRowsHelpers({
     resolveScopedRows: (...args) => resolveScopedRows(...args),
@@ -1661,7 +1649,6 @@ const { deriveViewerFilterSetup } =
       currentViewerLogin =
         typeof nextViewerLogin === "string" ? nextViewerLogin : "";
     },
-    populateFilterOptions: (...args) => populateFilterOptions(...args),
   });
 
 const { buildSelectedFiltersViewModel } =
@@ -2819,8 +2806,6 @@ const { rowMatchesUiFilters } =
     isInReviewEnabled,
   });
 
-const ensureDefaultFilterValues = () => {};
-
 // Phase 6 (see REACT_MIGRATION_PLAN.md): renderPrData's two genuine
 // mount-failure branches used to fall back to a full vanilla table build,
 // treating a real React failure the same as the merely-not-loaded-yet
@@ -3032,25 +3017,15 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // The React table renders the PR rows/sections itself, but everything
   // else the vanilla pipeline normally does as a side effect of building
   // that table — the data-meta summary line, filter chips, export field
-  // catalog, author insights panel, stats view, and the filter dropdown
-  // options (label/author/assigned/approver/thread-resolution/change-filter
-  // actor lists) — still needs to run. Run the full vanilla pipeline with
+  // catalog, author insights panel, and stats view — still needs to run.
+  // (The filter dropdown options themselves - label/author/assigned/
+  // approver/thread-resolution/change-filter actor lists - are no longer
+  // one of those side effects; they're owned by FilterOptionsProvider.jsx,
+  // deriving reactively from PrDataContext instead. See
+  // REACT_MIGRATION_PLAN.md, sub-phase 7.4 and the later "populateFilterOptions"
+  // deletion entry for that history.) Run the full vanilla pipeline with
   // skipTableRender so it performs those side effects without building or
   // appending its own <table> markup into #pr-sections (which React owns).
-  // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): this
-  // pipeline call already populates the filter dropdowns as one of those
-  // side effects (deriveViewerFilterSetup -> populateFilterOptions, inside
-  // deriveRenderPipelineState) - a second, separate
-  // populateFilterDropdownsForCurrentPayload() call used to run right
-  // after this one, re-deriving and re-populating the exact same 9 lists
-  // a second time. Its own doc comment explained it as covering a case
-  // where "the React render path... never runs that pipeline" - true of
-  // an earlier architecture where the React path bypassed the orchestrator
-  // entirely, no longer true now that it's called (with skipTableRender)
-  // right above. Removed as a confirmed duplicate, not a real second
-  // effect - verified via the full jest suite and 3 e2e runs (including
-  // the multi-select persisted-restore tests, the ones most likely to
-  // reveal a regression if this had been secretly load-bearing).
   const renderPipelineResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
     ...options,
     skipTableRender: true,
@@ -3623,7 +3598,6 @@ function createReactCallbacks() {
 
 const initPage = () => {
   renderRequestActivity();
-  ensureDefaultFilterValues();
   updateAuthorThreadResolutionRuleVisibility();
   // restoreUiOptionOverrides() and loadStoredData() below both fire their
   // own independent fetches ("/view-prs/user-defaults" and "/view-prs/data"

@@ -7,7 +7,6 @@ export const { createPrRenderViewerFilterSetupHelpers } = (() => {
   const createPrRenderViewerFilterSetupHelpers = ({
     deriveViewerContext,
     commitViewerContext,
-    populateFilterOptions,
   } = {}) => {
     const deriveViewerContextSafe =
       typeof deriveViewerContext === "function"
@@ -16,12 +15,10 @@ export const { createPrRenderViewerFilterSetupHelpers } = (() => {
             currentActorLoginAliases: {},
             currentViewerLogin: "",
           });
-    const populateFilterOptionsSafe =
-      typeof populateFilterOptions === "function" ? populateFilterOptions : () => {};
     const commitViewerContextSafe =
       typeof commitViewerContext === "function" ? commitViewerContext : () => {};
 
-    const deriveViewerFilterSetup = ({ payload, allEntries, repoFilter } = {}) => {
+    const deriveViewerFilterSetup = ({ payload, allEntries } = {}) => {
       const { currentActorLoginAliases, currentViewerLogin } =
         deriveViewerContextSafe({
           payload,
@@ -31,12 +28,6 @@ export const { createPrRenderViewerFilterSetupHelpers } = (() => {
       commitViewerContextSafe({
         currentActorLoginAliases,
         currentViewerLogin,
-      });
-
-      populateFilterOptionsSafe({
-        entries: allEntries,
-        repoFilter,
-        actorsMap: payload?.actorsMap || {},
       });
 
       return {
