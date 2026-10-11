@@ -3,16 +3,33 @@
 const {
   createPrAutoRenderNavigationHelpers,
 } = require("./pr-auto-render-navigation.helpers.js");
+const {
+  createPrAuthorInsightsDisplayHelpers,
+} = require("./pr-author-insights-display.helpers.js");
 
 describe("auto render navigation helpers", () => {
+  // Real buildAuthorInsightsEntries (not a stub) - navigateToAuthorInsights
+  // now validates a requested login against its actual output
+  // (resolveValidAuthorLogin, pr-author-insights-display.helpers.js), so a
+  // fixture-driven fake would risk masking a real wiring mistake. Minimal
+  // deps mirror pr-author-insights.component.test.js's own
+  // createBasicDependencies shape.
+  const { buildAuthorInsightsEntries } = createPrAuthorInsightsDisplayHelpers({
+    resolveActorDisplayName: (login, actorsMap, fallback) =>
+      actorsMap[login] || fallback || login,
+    getPreferredActorKey: (login, fallback) => String(login || fallback || "").trim(),
+  });
+
   const createHelpers = (overrides = {}) => {
-    const authorInsightsState = {
-      selectedAuthorLogin: "",
-      latestRows: [{ id: 1 }],
-      latestActorsMap: { alice: "Alice" },
-    };
     const {
-      authorInsightsState: overrideAuthorInsightsState = {},
+      // Used by reference, not spread-merged into a fresh default object -
+      // tests that pass this want to inspect mutations navigateToAuthorInsights
+      // makes on their own object afterward.
+      authorInsightsState = {
+        selectedAuthorLogin: "",
+        latestRows: [{ id: 1 }],
+        latestActorsMap: { alice: "Alice" },
+      },
       ...otherOverrides
     } = overrides;
 
@@ -33,11 +50,9 @@ describe("auto render navigation helpers", () => {
       getAuthorInsightsEditDraftMap: () => ({}),
       getAuthorManualCommentsForLogin: () => [],
       isAuthorInsightsEditDraftDirty: () => false,
-      authorInsightsState: {
-        ...authorInsightsState,
-        ...overrideAuthorInsightsState,
-      },
+      authorInsightsState,
       renderAuthorInsights: () => {},
+      buildAuthorInsightsEntries,
       documentRef: document,
       setTimeoutFn: (fn) => fn(),
       ...otherOverrides,
@@ -150,5 +165,26 @@ describe("auto render navigation helpers", () => {
 
     expect(navigateToAuthorInsights("Alice", { focusUnsaved: false })).toBe(true);
     expect(calls).toEqual(["author-insights", "render"]);
+    expect(state.selectedAuthorLogin).toBe("alice");
+  });
+
+  test("given an author login that no longer exists in the current rows, when navigating to author insights, then the selection falls back to the first real author instead of the invalid requested one", () => {
+    document.body.innerHTML = `
+      <section id="author-insights">
+        <select id="author-insights-select"></select>
+      </section>
+    `;
+
+    const state = {
+      selectedAuthorLogin: "",
+      latestRows: [{ id: 1 }],
+      latestActorsMap: { alice: "Alice" },
+    };
+    const { navigateToAuthorInsights } = createHelpers({
+      authorInsightsState: state,
+    });
+
+    expect(navigateToAuthorInsights("carol", { focusUnsaved: false })).toBe(true);
+    expect(state.selectedAuthorLogin).toBe("alice");
   });
 });

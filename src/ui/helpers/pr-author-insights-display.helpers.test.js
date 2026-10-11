@@ -8,6 +8,7 @@
 
 const {
   createPrAuthorInsightsDisplayHelpers,
+  resolveValidAuthorLogin,
 } = require("./pr-author-insights-display.helpers.js");
 const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.js");
 
@@ -255,6 +256,28 @@ describe("pr author insights display helpers", () => {
       expect(sorted[0].prNumber).toBe("2");
       expect(sorted[1].prNumber).toBe("3");
       expect(sorted[2].prNumber).toBe("1");
+    });
+  });
+
+  describe("resolveValidAuthorLogin", () => {
+    // Shared by renderAuthorInsights (pr-author-insights.component.js) and
+    // navigateToAuthorInsights (pr-auto-render-navigation.helpers.js) - see
+    // REACT_MIGRATION_PLAN.md's navigateToAuthorInsights entry.
+    const authorOptions = [
+      { login: "alice", name: "Alice" },
+      { login: "bob", name: "Bob" },
+    ];
+
+    test("given no author options, when resolving, then an empty login is returned", () => {
+      expect(resolveValidAuthorLogin([], "alice")).toBe("");
+    });
+
+    test("given a requested login that is still a valid option, when resolving, then it is kept unchanged", () => {
+      expect(resolveValidAuthorLogin(authorOptions, "bob")).toBe("bob");
+    });
+
+    test("given a requested login that is no longer a valid option, when resolving, then the first option's login is returned", () => {
+      expect(resolveValidAuthorLogin(authorOptions, "carol")).toBe("alice");
     });
   });
 });

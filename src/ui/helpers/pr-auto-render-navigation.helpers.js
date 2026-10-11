@@ -3,6 +3,8 @@
 // below is unchanged, only the export mechanism differs. index.page.js
 // imports this directly instead of using the
 // require()/globalThis.ViewPrsAutoRenderNavigationHelpers fallback.
+import { resolveValidAuthorLogin } from "./pr-author-insights-display.helpers.js";
+
 export const { createPrAutoRenderNavigationHelpers } = (() => {
   const createPrAutoRenderNavigationHelpers = ({
     normalizePrNumber,
@@ -20,6 +22,7 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
     isAuthorInsightsEditDraftDirty,
     authorInsightsState,
     renderAuthorInsights,
+    buildAuthorInsightsEntries,
     documentRef,
     setTimeoutFn,
     isReactTableMounted,
@@ -87,6 +90,10 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
           };
     const renderAuthorInsightsSafe =
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
+    const buildAuthorInsightsEntriesSafe =
+      typeof buildAuthorInsightsEntries === "function"
+        ? buildAuthorInsightsEntries
+        : () => [];
     const doc = documentRef || (typeof document !== "undefined" ? document : null);
     const schedule =
       typeof setTimeoutFn === "function"
@@ -237,17 +244,30 @@ export const { createPrAutoRenderNavigationHelpers } = (() => {
       }
 
       activateDataTabSafe("author-insights");
-      authorInsightsStateSafe.selectedAuthorLogin = normalizedAuthorLogin;
-      if (authorInsightsStateSafe.latestRows && authorInsightsStateSafe.latestActorsMap) {
-        renderAuthorInsightsSafe(
-          authorInsightsStateSafe.latestRows,
-          authorInsightsStateSafe.latestActorsMap,
-        );
+
+      // Validate the requested login against the real current options
+      // before writing it (same shared rule renderAuthorInsights itself
+      // uses - resolveValidAuthorLogin, pr-author-insights-display.helpers.js)
+      // instead of writing the raw request first and trusting the
+      // renderAuthorInsightsSafe call below to silently correct it. Only
+      // validated when cached data actually exists - falls back to
+      // trusting the raw request otherwise, matching this function's own
+      // prior behavior for that (never hit in production) edge case.
+      const rows = authorInsightsStateSafe.latestRows;
+      const actorsMap = authorInsightsStateSafe.latestActorsMap;
+      let finalAuthorLogin = normalizedAuthorLogin;
+      if (rows && actorsMap) {
+        const authorOptions = buildAuthorInsightsEntriesSafe(rows, actorsMap);
+        finalAuthorLogin = resolveValidAuthorLogin(authorOptions, normalizedAuthorLogin);
+        authorInsightsStateSafe.selectedAuthorLogin = finalAuthorLogin;
+        renderAuthorInsightsSafe(rows, actorsMap);
+      } else {
+        authorInsightsStateSafe.selectedAuthorLogin = finalAuthorLogin;
       }
 
       schedule(() => {
         const focusTarget = focusUnsaved
-          ? getFirstDirtyAuthorInsightsElement(normalizedAuthorLogin)
+          ? getFirstDirtyAuthorInsightsElement(finalAuthorLogin)
           : getOptionalElementByIdSafe("author-insights-select");
         if (!focusTarget) {
           return;

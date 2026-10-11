@@ -1850,6 +1850,12 @@ const {
   isAuthorInsightsEditDraftDirty,
   authorInsightsState,
   renderAuthorInsights: (...args) => renderAuthorInsights(...args),
+  // Same lazy-proxy reasoning as renderAuthorInsights above:
+  // prAuthorInsightsDisplayHelpers is declared later in this file - safe
+  // since this closure is only ever invoked long after full module
+  // evaluation, never at wiring time.
+  buildAuthorInsightsEntries: (...args) =>
+    prAuthorInsightsDisplayHelpers.buildAuthorInsightsEntries(...args),
   documentRef: typeof document !== "undefined" ? document : null,
   setTimeoutFn: (...args) => setTimeout(...args),
   // Deferred-items follow-up (full vanilla-to-React sweep, see

@@ -34,6 +34,8 @@
 // below is unchanged, only the export mechanism differs. index.page.js
 // imports this directly instead of using the
 // require()/globalThis.ViewPrsAuthorInsightsComponent fallback.
+import { resolveValidAuthorLogin } from "../helpers/pr-author-insights-display.helpers.js";
+
 export const { createPrAuthorInsightsComponent } = (() => {
   const createPrAuthorInsightsComponent = ({
     // Helper modules (focused contracts)
@@ -129,14 +131,15 @@ export const { createPrAuthorInsightsComponent } = (() => {
         return;
       }
 
-      // Ensure selected author is valid
-      if (
-        !authorOptions.some(
-          (author) => author.login === authorInsightsState.selectedAuthorLogin,
-        )
-      ) {
-        authorInsightsState.selectedAuthorLogin = authorOptions[0].login;
-      }
+      // Ensure selected author is valid - falls back to the first option
+      // if the previous selection no longer exists in the current rows.
+      // Shared with navigateToAuthorInsights (pr-auto-render-navigation.helpers.js),
+      // which validates a requested login against this same rule instead
+      // of reimplementing it.
+      authorInsightsState.selectedAuthorLogin = resolveValidAuthorLogin(
+        authorOptions,
+        authorInsightsState.selectedAuthorLogin,
+      );
 
       const selectedAuthor =
         authorOptions.find(

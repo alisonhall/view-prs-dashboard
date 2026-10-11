@@ -1902,6 +1902,20 @@ CI's `e2e` job failed twice in a row on the previous commit (same ~10 scattered 
 
 ---
 
+## 🚧 **`navigateToAuthorInsights`'s remaining objection removed - re-categorized alongside `navigateToPrInTable`, not "blocked" (2026-10-10)**
+
+Asked to continue the Author Insights work specifically. `navigateToAuthorInsights`'s draft-state blocker was already closed earlier this session (`AuthorInsightsDraftsProvider`); its other, smaller objection - that skipping straight to writing `authorInsightsState.selectedAuthorLogin` and leaning on a follow-up `renderAuthorInsights` call to silently re-validate it "would duplicate logic this function already owns correctly" if reimplemented - turned out to be fixable, not a true wall, now that `buildAuthorInsightsEntries` is already exposed via `useAuthorInsights()`/`AuthorInsightsProvider.jsx` for the React side.
+
+**Fix:** extracted the exact "ensure selected author is valid, falling back to the first option" rule out of `pr-author-insights.component.js`'s `renderAuthorInsights` into one shared, bare-exported pure function, `resolveValidAuthorLogin(authorOptions, requestedLogin)` (`pr-author-insights-display.helpers.js`, next to `buildAuthorInsightsEntries` - no `createXHelpers()` wrapper needed, same "zero-dependency pure function" precedent as `pr-row-sorting.helpers.js`). `renderAuthorInsights` now calls it instead of its own inline block (pure refactor, confirmed behavior-unchanged against its existing tests). `navigateToAuthorInsights` (`pr-auto-render-navigation.helpers.js`) now calls the same function to validate a requested login against the real current author options *before* writing `authorInsightsState.selectedAuthorLogin`, instead of writing the raw (possibly-stale) requested login first and trusting the follow-up `renderAuthorInsightsSafe` call to quietly correct it - a real, if minor, correctness improvement, not just a dedup. New `buildAuthorInsightsEntries` DI param wired via the same "fresh-reading proxy" pattern already used for `renderAuthorInsights` at this call site (`prAuthorInsightsDisplayHelpers` is declared later in `index.page.js` than this wiring).
+
+**What this explicitly does NOT do:** convert `activateDataTab`'s 3-way vanilla tab switcher (`pr-data-tabs.helpers.js`) into a React-owned concept. Confirmed via research that it's plain DOM mutation with no Context backing at all - `useIsTabPanelVisible.jsx` only *watches* the panel's `hidden` attribute via a `MutationObserver`, it doesn't drive it. `navigateToPrInTable` already establishes the precedent that calling `activateDataTab(...)` as a real DOM-navigation side effect through its existing bridge is accepted, not something every caller must avoid converting. **`navigateToAuthorInsights` is re-categorized to match that same precedent** - an accepted vanilla DOM-navigation-and-tab-activation operation, not a "blocked pending a bigger migration" item. Converting `activateDataTab` itself remains a separate, unstarted, much larger migration.
+
+**New coverage:** 3 new tests for `resolveValidAuthorLogin` (`pr-author-insights-display.helpers.test.js`); 1 new test for `navigateToAuthorInsights` confirming a requested login no longer present in the current rows now falls back to the first real author instead of being written (even transiently) as the invalid requested one - a case no existing test covered. `pr-auto-render-navigation.helpers.test.js`'s fixtures now build a real `buildAuthorInsightsEntries` (via `createPrAuthorInsightsDisplayHelpers`, same minimal-deps shape `pr-author-insights.component.test.js`'s `createBasicDependencies` already uses) instead of omitting it, since `navigateToAuthorInsights` now genuinely depends on its output.
+
+**Verified:** full jest suite (2473 tests, +4), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - internal refactor plus a defensive-only correctness fix for an edge case `AutoRenderBlockedLinks.jsx` can't actually trigger today, since its chips only ever list authors who already have real drafts against real current rows).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**
