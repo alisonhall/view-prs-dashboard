@@ -81,19 +81,18 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // react-app.jsx's real AppRoot now does, so those bridges and the resulting
 // activePrNumbers prop still behave exactly as before this lift.
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
-// is no longer read from PrDataProvider by PrTableApp (useVisiblePrNumbers()
-// derives it live from Context instead - see that hook's own comment), so
-// the `visiblePrNumbers` param here is now dead for actual filtering
-// (initialVisiblePrNumbers is still passed through harmlessly, matching
-// PrDataProvider's own "left wired, not ripped out" choice). FilterStateProvider/
-// RowFilterSelectionProvider are new required ancestors for useVisiblePrNumbers()
+// is no longer read from PrDataProvider by PrTableApp - useVisiblePrNumbers()
+// derives it live from Context instead (see that hook's own comment).
+// PrDataProvider itself stopped accepting an initial value for it once the
+// vanilla computation that used to feed it was confirmed dead and deleted
+// (see REACT_MIGRATION_PLAN.md's cleanup entry). FilterStateProvider/
+// RowFilterSelectionProvider are required ancestors for useVisiblePrNumbers()
 // - `filterStateValues` lets an individual test override the defaults
 // below (e.g. to exercise a specific scope/PR-number filter) without every
 // existing call site needing to pass a full values object.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
-  visiblePrNumbers,
   needsAttention,
   filterStateValues,
   ...tableProps
@@ -102,7 +101,6 @@ const renderPrTableApp = ({
     <PrDataProvider
       initialPayload={initialPayload}
       initialSelectedRepo={selectedRepo}
-      initialVisiblePrNumbers={visiblePrNumbers}
     >
       <FilterStateProvider
         initialValues={{

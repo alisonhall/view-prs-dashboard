@@ -2091,6 +2091,30 @@ Continuing the same scan one layer further than `ensureDefaultFilterValues`: `po
 
 ---
 
+## 🚧 **`pr-render-apply.helpers.js`'s merged-request-more-action plumbing retired - and a genuine false positive caught before it shipped (2026-10-11)**
+
+Scoped (via research) the next layer of `applyRenderResults`'s own comment-flagged dead calls: `window.updateReactDataMetaText`/`window.updateReactMergedRequestMoreAction`, both described as "now permanently-no-op... in the real app" since `react-app.jsx` no longer registers either - `AppliedFilterSummaryLive`/`MergedRequestMoreActionLive` derive both live from Context instead. Confirmed independently (not just trusting the comment): `MergedRequestMoreActionLive`'s backing hook (`useMergedRequestMoreActionOptions.jsx`) imports `pr-merged-request-more-config.helpers.js` directly, with zero dependency on anything `index.page.js` computes - genuinely dead there.
+
+**`window.updateReactDataMetaText` was NOT actually dead, despite reading that way.** Removed it first alongside the merged-request-more cleanup, ran the full jest suite, and got 7 failures - all `index.html.test.js` assertions on `#data-meta`'s text content. Root cause: that integration-test harness never mounts the real `AppliedFilterSummaryLive` component, so its own `wireTextBridge("updateReactDataMetaText", "data-meta")` stub is the *only* thing populating `#data-meta` anywhere in that whole suite. The comment's claim was true for the real app, but didn't account for this test harness's own simulation still depending on the old contract. Restored the call and its test coverage; left `updateReactMergedRequestMoreAction` removed (no test depended on it the same way - the regression was specific to `#data-meta`, confirmed by rerunning the full suite clean once only that one call was restored).
+
+**Fix (final scope):** deleted `buildMergedRequestMoreActionOptionsSafe`'s computation and the `window.updateReactMergedRequestMoreAction?.()` call from `applyRenderResults`; dropped the now-unused `buildMergedRequestMoreActionOptions` param/local; `index.page.js`: removed its `buildMergedRequestMoreActionOptions` instantiation (`pr-merged-request-more-config.helpers.js`'s own factory - confirmed its only other consumer, `useMergedRequestMoreActionOptions.jsx`, imports the module directly and never went through this bridge) and its now-dead import. Also deleted `index.page.js`'s own already-known-dead `visiblePrNumbers` computation inside `renderPrData` (lines computing it from `renderPipelineResult.filteredRows` and threading it into `updateReactTable`/`mountReactTable`) - a prior slice's own comment (the `applyFreshPrPayload` entry, 2026-10-10) had already identified this exact computation as dead ("each already superseded by a live Context derivation elsewhere"), and independently confirmed here: `PrTableApp.jsx` reads `visiblePrNumbers` from `useVisiblePrNumbers()` (a live Context-derived hook), never from `usePrData()`'s own `visiblePrNumbers` state field that this computation used to feed.
+
+**Updated a stale comment** (above `renderPrData`'s React-rendering-path pipeline call) that still described filter dropdowns as a side effect of this pipeline - corrected during the earlier `populateFilterOptions` entry, left as-is here.
+
+**Verified:** full jest suite (2488 tests, net -1: the merged-request-more test deleted, the data-meta test's coverage kept), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged).
+
+---
+
+## 🚧 **`PrDataProvider.jsx`'s dead `visiblePrNumbers` state field removed - the riskier follow-up from the previous entry, done carefully (2026-10-11)**
+
+The previous entry's research flagged this as a separate, slightly riskier follow-up (touches `react-app.jsx`, `PrDataProvider.jsx`, and 3 test files) rather than bundling it in - worth doing once its sole feeder (`index.page.js`'s `visiblePrNumbers` computation) was already confirmed dead and deleted. Re-verified independently before touching anything, given the near-miss the previous entry already had with a false "dead" claim: `react-app.jsx`'s real `<PrDataProvider>` mount hardcodes `initialVisiblePrNumbers={null}` (never a real value), and `PrTableApp.jsx` reads filtering exclusively from `useVisiblePrNumbers()` (a Context-derived hook with zero dependency on this Provider's state) - confirmed via direct reads, not just trusting the prior research. Also ruled out a false-positive match: `pr-export.helpers.test.js`'s own `visiblePrNumbers` references are `buildExportPayload`'s own unrelated parameter, not this state field.
+
+**Fix:** removed `visiblePrNumbers` entirely from `PrDataProvider.jsx` - the `initialVisiblePrNumbers` prop, the state field, and `window.updateReactPrTable`'s 3rd-argument handling; updated its header JSDoc. `react-app.jsx`: dropped `initialVisiblePrNumbers={null}` from the real mount and the 3rd argument from its own `window.updateReactPrTable?.()` call; updated a comment that cited the (now actually deleted, not just "left wired") `visiblePrNumbers` computation as a precedent for a different still-existing no-op bridge. `index.html.test.js`/`PrTableApp.test.jsx`: dropped the now-nonexistent prop from their own mount-bridge/render harnesses (confirmed first that no test in either file ever passed a meaningful value through it). `react-app.test.jsx`: deleted its 2 dedicated unit tests for this field's own undefined-vs-null merge semantics - that specific bug class is moot once the field doesn't exist - and updated a comment citing those tests as an example.
+
+**Verified:** full jest suite (2486 tests, -2 as expected), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

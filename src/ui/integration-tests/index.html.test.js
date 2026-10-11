@@ -501,7 +501,6 @@ const installReactTableMountBridge = () => {
         {
           initialPayload: props?.initialPayload,
           initialSelectedRepo: props?.selectedRepo,
-          initialVisiblePrNumbers: props?.visiblePrNumbers,
         },
         // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
         // RowFilterSelectionProvider wraps both sibling subtrees below,

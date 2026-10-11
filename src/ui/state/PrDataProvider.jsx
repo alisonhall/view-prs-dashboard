@@ -9,37 +9,44 @@ import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.h
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
- * owns the PR table's payload/selectedRepo/visiblePrNumbers as real React
- * state, replacing the "index.page.js calls window.updateReactPrTable,
- * which re-renders PrTableApp with fresh props via root.render()" pattern.
+ * owns the PR table's payload/selectedRepo as real React state, replacing
+ * the "index.page.js calls window.updateReactPrTable, which re-renders
+ * PrTableApp with fresh props via root.render()" pattern.
  *
  * Fixes a real latent bug found while designing this: PrTableApp used to
  * expose its own window.updateReactPrTable (a single-argument
  * `(newPayload) => setPayload(newPayload)`) via a useEffect that ran AFTER
  * mountReactPrTable's own multi-argument version was assigned, silently
- * clobbering it - so in the real running app, `selectedRepo`/
- * `visiblePrNumbers` updates from index.page.js's poll loop and
- * filter-apply pipeline were dropped after the initial mount; only
- * `payload` ever actually updated. Confirmed live (window.updateReactPrTable
- * .toString() showed the simplified single-arg version in production)
- * before this fix. Only react-app.test.jsx's isolated unit test (PrTableApp
- * mocked out, so its competing effect never ran) exercised the "real"
- * multi-argument merging logic - meaning it was tested but never actually
- * reachable end-to-end. This Provider is now the single place that assigns
- * window.updateReactPrTable, so there's no more competing assignment.
+ * clobbering it - so in the real running app, `selectedRepo` updates from
+ * index.page.js's poll loop and filter-apply pipeline were dropped after
+ * the initial mount; only `payload` ever actually updated. Confirmed live
+ * (window.updateReactPrTable.toString() showed the simplified single-arg
+ * version in production) before this fix. Only react-app.test.jsx's
+ * isolated unit test (PrTableApp mocked out, so its competing effect never
+ * ran) exercised the "real" multi-argument merging logic - meaning it was
+ * tested but never actually reachable end-to-end. This Provider is now the
+ * single place that assigns window.updateReactPrTable, so there's no more
+ * competing assignment.
  *
- * `initialPayload`/`initialSelectedRepo`/`initialVisiblePrNumbers` seed the
- * state once at mount (mountReactPrTable, react-app.jsx) - all updates
- * after that go through window.updateReactPrTable (index.page.js's
- * updateReactTable, Track C slice C2b) or the exposed `setPayload` (used by
- * descendants like NotesSection.jsx's onDataRefresh, which applies a fresh
- * payload from its own direct POST /view-prs/notes response, bypassing the
- * vanilla bridge entirely).
+ * `initialPayload`/`initialSelectedRepo` seed the state once at mount
+ * (mountReactPrTable, react-app.jsx) - all updates after that go through
+ * window.updateReactPrTable (index.page.js's updateReactTable, Track C
+ * slice C2b) or the exposed `setPayload` (used by descendants like
+ * NotesSection.jsx's onDataRefresh, which applies a fresh payload from its
+ * own direct POST /view-prs/notes response, bypassing the vanilla bridge
+ * entirely).
+ *
+ * Used to also own `visiblePrNumbers`, imperatively pushed by the vanilla
+ * filter-apply pipeline - removed (see REACT_MIGRATION_PLAN.md, "live
+ * filtering" follow-up and its later cleanup entry) once PrTableApp fully
+ * switched to useVisiblePrNumbers() (state/useVisiblePrNumbers.jsx), a
+ * reactive derivation with no dependency on this Provider's state, and the
+ * vanilla computation that used to feed it (index.page.js's renderPrData)
+ * was confirmed dead and deleted too.
  */
 export function PrDataProvider({
   initialPayload,
   initialSelectedRepo,
-  initialVisiblePrNumbers,
   initialSelectedAuthorLogin,
   initialStatsViewState,
   children,
@@ -47,18 +54,6 @@ export function PrDataProvider({
   const [state, setState] = useState({
     payload: initialPayload || {},
     selectedRepo: initialSelectedRepo || '',
-    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): this field
-    // (and window.updateReactPrTable's 3rd argument below, which still
-    // writes it) is now dead for the table specifically - PrTableApp reads
-    // useVisiblePrNumbers() instead (state/useVisiblePrNumbers.jsx), a
-    // reactive derivation that supersedes this imperatively-pushed value.
-    // Left wired rather than ripped out this round: payload/selectedRepo
-    // (the other 2 args) are still live, and removing the vanilla
-    // computation that feeds this one (index.page.js's renderPrData) is
-    // naturally scoped together with the runSinglePrUpdate/
-    // recomputeDirtyPrSectionsFields follow-up this change unblocks, not
-    // this slice.
-    visiblePrNumbers: initialVisiblePrNumbers ?? null,
     selectedAuthorLogin: initialSelectedAuthorLogin || '',
     statsViewState: initialStatsViewState || {},
   });
@@ -102,19 +97,11 @@ export function PrDataProvider({
   }, []);
 
   useEffect(() => {
-    window.updateReactPrTable = (newPayload, newSelectedRepo, newVisiblePrNumbers) => {
+    window.updateReactPrTable = (newPayload, newSelectedRepo) => {
       setState((previous) => ({
         ...previous,
         payload: newPayload !== undefined ? newPayload : previous.payload,
         selectedRepo: newSelectedRepo || previous.selectedRepo,
-        // undefined (param omitted) keeps the previous value; null/[] are
-        // meaningful ("no filter" / "everything filtered out") and must
-        // overwrite it - same semantics react-app.jsx's old updateTable
-        // closure had. Phase 7 (see REACT_MIGRATION_PLAN.md, "live
-        // filtering"): dead for the table now (see the state field's own
-        // comment above) - still written here harmlessly in case anything
-        // else reads it later, but PrTableApp no longer does.
-        visiblePrNumbers: newVisiblePrNumbers !== undefined ? newVisiblePrNumbers : previous.visiblePrNumbers,
       }));
     };
     return () => {

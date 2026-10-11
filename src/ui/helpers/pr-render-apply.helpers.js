@@ -7,7 +7,6 @@ export const { createPrRenderApplyHelpers } = (() => {
   const createPrRenderApplyHelpers = ({
     renderManagementFilterSummary,
     renderAuthorInsights,
-    buildMergedRequestMoreActionOptions,
     computePrDataFingerprint,
     computePrDataManifest,
     getOptionalElementById,
@@ -18,10 +17,6 @@ export const { createPrRenderApplyHelpers } = (() => {
         : () => {};
     const renderAuthorInsightsSafe =
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
-    const buildMergedRequestMoreActionOptionsSafe =
-      typeof buildMergedRequestMoreActionOptions === "function"
-        ? buildMergedRequestMoreActionOptions
-        : () => ({});
     const computePrDataFingerprintSafe =
       typeof computePrDataFingerprint === "function"
         ? computePrDataFingerprint
@@ -81,34 +76,31 @@ export const { createPrRenderApplyHelpers } = (() => {
     };
 
     // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now
-    // (window.updateReactDataMetaText) - the caller-supplied `meta` (the
-    // DOM element itself, threaded through from pr-render-context.
-    // helpers.js's getElementByIdSafe("data-meta")) is deliberately not
+    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now in the real
+    // app (AppliedFilterSummaryLive's dataMetaText, deriving live from
+    // Context) - the caller-supplied `meta` (the DOM element itself,
+    // threaded through from pr-render-context.helpers.js's
+    // getElementByIdSafe("data-meta")) is deliberately not
     // destructured/used here anymore; deriveRenderApplyInputs/
     // deriveRenderFinalizedState/the orchestrator still compute and pass
     // it through unchanged - not worth a wider refactor just to drop it
     // from that whole chain.
     //
-    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
-    // react-app.jsx no longer registers window.updateReactDataMetaText or
-    // window.updateReactMergedRequestMoreAction at all - DataMetaTextLive/
-    // MergedRequestMoreActionLive derive both live from Context instead
-    // (the exact same appliedSummaryText/buildMergedRequestMoreActionOptions
-    // inputs this function computes, just reactively). The two calls below
-    // are now permanently-no-op (optional-chained against an undefined
-    // function) in the real app - left wired rather than ripped out, same
-    // "don't rip out the vanilla computation mid-slice" choice as
-    // visiblePrNumbers' own now-dead vanilla computation.
+    // window.updateReactDataMetaText itself is NOT dead the way
+    // updateReactMergedRequestMoreAction turned out to be, despite reading
+    // that way at a glance - confirmed by a regression this exact removal
+    // caused (2026-10-11): index.html.test.js's own integration-test
+    // harness never mounts the real AppliedFilterSummaryLive component, so
+    // its wireTextBridge("updateReactDataMetaText", "data-meta") stub is
+    // the ONLY thing that populates #data-meta in that whole suite. Left
+    // wired in for that reason - removing it is a real test-harness
+    // rework, not a 2-line deletion.
     const applyRenderResults = ({
       payload,
       allStoredRows,
       filteredRows,
       appliedSummaryText,
       filterChips,
-      selectedScope,
-      repoFilter,
-      latestSelectedRepo,
     } = {}) => {
       const actorsMap = payload?.actorsMap || {};
       window.updateReactDataMetaText?.(appliedSummaryText || "");
@@ -146,22 +138,10 @@ export const { createPrRenderApplyHelpers } = (() => {
       // The "Request more" merged-PRs button is real JSX now
       // (components/MergedRequestMoreAction.jsx, mounted into its own
       // static #merged-request-more-action host - a sibling of #pr-sections
-      // in index.html, not inside it) - React owns its rendering, but this
-      // pipeline still computes and pushes the isVisible/repo options on
-      // every render, same as it always has.
-      const { isVisible: isMergedRequestMoreVisible, repo: mergedRequestMoreRepo } =
-        buildMergedRequestMoreActionOptionsSafe({
-          selectedScope,
-          repoFilter,
-          lastRunRepo: payload?.lastRun?.repo || "",
-          latestSelectedRepo,
-        });
-      if (typeof window !== "undefined") {
-        window.updateReactMergedRequestMoreAction?.(
-          isMergedRequestMoreVisible,
-          mergedRequestMoreRepo,
-        );
-      }
+      // in index.html, not inside it), and MergedRequestMoreActionLive
+      // derives its isVisible/repo options live from Context (Phase 7,
+      // "live filtering" follow-up) - this pipeline no longer needs to
+      // compute or push them itself.
 
       return {
         pendingAutoRenderPayload: null,

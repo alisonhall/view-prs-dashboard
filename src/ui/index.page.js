@@ -22,7 +22,6 @@ import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
 import * as prSectionOpenStateHelperFactory from "./helpers/pr-section-open-state.helpers.js";
 import * as prAppliedSummaryHelperFactory from "./helpers/pr-applied-summary.helpers.js";
-import * as prMergedRequestMoreConfigHelperFactory from "./helpers/pr-merged-request-more-config.helpers.js";
 import * as prScopeSelectionHelperFactory from "./helpers/pr-scope-selection.helpers.js";
 import * as prScopeSettingsHelperFactory from "./helpers/pr-scope-settings.helpers.js";
 import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
@@ -1420,9 +1419,6 @@ const { capturePrSectionOpenState } =
 const { buildAppliedSummaryViewModel } =
   prAppliedSummaryHelperFactory.createPrAppliedSummaryHelpers();
 
-const { buildMergedRequestMoreActionOptions } =
-  prMergedRequestMoreConfigHelperFactory.createPrMergedRequestMoreConfigHelpers();
-
 const { buildGroupedPrSections } =
   prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
     sortRowsByPrNumberDesc: (...args) => sortRowsByPrNumberDesc(...args),
@@ -1481,8 +1477,6 @@ const { applyRenderResults, renderAuthorInsightsIfVisible, applyFreshAuthorInsig
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
-    buildMergedRequestMoreActionOptions: (...args) =>
-      buildMergedRequestMoreActionOptions(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
     getOptionalElementById: (...args) => getOptionalElementById(...args),
@@ -1975,7 +1969,7 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
   // cells. This is also called from its own scheduler-status poll loop
   // (see renderSchedulerStatus), independent of the main data render, so it
   // needs its own live-update channel rather than piggybacking on
-  // updateReactTable()'s payload/visiblePrNumbers plumbing.
+  // updateReactTable()'s payload/selectedRepo plumbing.
   window.dispatchEvent(
     new CustomEvent("pr-active-progress-update", {
       detail: {
@@ -2849,7 +2843,6 @@ const mountReactTable = (container, initialData, callbacks) => {
     window.mountReactPrTable(container, {
       initialPayload: initialData.payload || {},
       selectedRepo: initialData.selectedRepo || "",
-      visiblePrNumbers: initialData.visiblePrNumbers || null,
       onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
       onAckAction: callbacks.onAckAction || (() => {}),
       onApplyLabel: callbacks.onApplyLabel || (() => {}),
@@ -2862,7 +2855,7 @@ const mountReactTable = (container, initialData, callbacks) => {
   }
 };
 
-const updateReactTable = (payload, selectedRepo, visiblePrNumbers) => {
+const updateReactTable = (payload, selectedRepo) => {
   if (!reactTableMounted || typeof window.updateReactPrTable !== "function") {
     console.warn(
       "[ReactBridge] Cannot update: React not mounted or update callback unavailable",
@@ -2871,7 +2864,7 @@ const updateReactTable = (payload, selectedRepo, visiblePrNumbers) => {
   }
 
   try {
-    window.updateReactPrTable(payload, selectedRepo, visiblePrNumbers);
+    window.updateReactPrTable(payload, selectedRepo);
   } catch (error) {
     console.error("[ReactBridge] Error updating React:", error);
   }
@@ -3032,23 +3025,13 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   });
   const resolvedRepo = renderPipelineResult?.repoFilter || selectedRepo || latestSelectedRepo || '';
   applyResolvedRepo(resolvedRepo);
-  // The filtered set the vanilla pipeline just computed (scope, PR-number,
-  // label, author, assigned, approver filters) - React must be told which
-  // PR numbers passed, or it falls back to showing every stored PR for the
-  // repo regardless of the active local filters.
-  const visiblePrNumbers = Array.isArray(renderPipelineResult?.filteredRows)
-    ? renderPipelineResult.filteredRows
-        .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
-        .filter(Boolean)
-    : null;
 
   // Check if already mounted
   if (isReactTableMounted()) {
     // Already mounted: just update data
     updateReactTable(
       latestStoredPayload || payload,
-      resolvedRepo,
-      visiblePrNumbers
+      resolvedRepo
     );
     return;
   }
@@ -3068,7 +3051,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     {
       payload: latestStoredPayload || payload || {},
       selectedRepo: resolvedRepo,
-      visiblePrNumbers,
     },
     {
       onCheckboxChange: callbacks.handleCheckboxChange,

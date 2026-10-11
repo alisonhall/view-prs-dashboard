@@ -557,9 +557,9 @@ function AppRoot() {
       // Seed the initial payload through the same path every later update
       // uses (window.updateReactPrTable, owned by <PrDataProvider />, which
       // is always mounted below - see its own file) rather than threading
-      // initialPayload/selectedRepo/visiblePrNumbers through this function
-      // as a second, parallel way to get data in.
-      window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo, props?.visiblePrNumbers);
+      // initialPayload/selectedRepo through this function as a second,
+      // parallel way to get data in.
+      window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo);
       return { unmount: () => setPrTable(null) };
     };
     return () => {
@@ -575,11 +575,12 @@ function AppRoot() {
   // (deriveRenderSummary's other callers depend on it) and still tries to
   // call this now-nonexistent bridge - that call site's own
   // `typeof window.renderReactFilterSummary === "function"` guard makes
-  // it a harmless no-op, left wired rather than ripped out for the same
-  // reason index.page.js's own dead visiblePrNumbers computation was
-  // (PrDataProvider.jsx's own comment) - removing it is naturally scoped
-  // together with a future deriveRenderSummary/renderSchedulerStatus
-  // decoupling pass, not this slice.
+  // it a harmless no-op, left wired rather than ripped out - removing it
+  // is naturally scoped together with a future deriveRenderSummary/
+  // renderSchedulerStatus decoupling pass, not this slice. (index.page.js's
+  // own analogous dead visiblePrNumbers computation, once cited here as
+  // the same kind of "left wired" precedent, has since been confirmed dead
+  // and deleted outright - see REACT_MIGRATION_PLAN.md's cleanup entry.)
 
   useEffect(() => {
     window.updateReactBackfillBadges = (badges) => {
@@ -699,7 +700,6 @@ function AppRoot() {
     <PrDataProvider
       initialPayload={{}}
       initialSelectedRepo=""
-      initialVisiblePrNumbers={null}
       initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
     >
       <FilterStateProvider initialValues={containers.filterFields.initialValues}>
