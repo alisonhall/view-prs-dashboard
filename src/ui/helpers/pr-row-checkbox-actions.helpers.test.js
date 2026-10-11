@@ -204,5 +204,36 @@ describe("pr row checkbox actions helpers", () => {
       expect(calls.applyLatestPrData).toEqual([{ payload: fullPrData, selectedRepo: "o/r" }]);
       expect(result).toEqual({ payload: fullPrData, selectedRepo: "o/r" });
     });
+
+    // Regression coverage: toggleInReviewForRow's twin failed-response/
+    // fetch-throws branches were already tested above, but toggleFlaggedForRow's
+    // own copies of those same branches (its own wording, its own checkbox
+    // revert) were never exercised by any test.
+    test("given a failed response, when toggling, then the checkbox reverts, a flagged-specific failure notification shows, and it returns null", async () => {
+      const fetchFn = jest.fn(async () => jsonResponse({ ok: false, error: "nope" }, { ok: false, status: 500 }));
+      const { helpers, calls } = buildHarness({ fetchFn, initialRepo: "o/r" });
+      const checkbox = buildCheckbox(false);
+
+      const result = await helpers.toggleFlaggedForRow({ repo: "o/r" }, { number: "9" }, true, checkbox);
+
+      expect(checkbox.checked).toBe(false);
+      expect(calls.notifyFailureSnackbar[0][0]).toBe("Flagged update failed for #9");
+      expect(result).toBeNull();
+    });
+
+    test("given fetch throws, when toggling, then the checkbox reverts, the catch-path notification shows, and it returns null", async () => {
+      const fetchFn = jest.fn(async () => {
+        throw new Error("network down");
+      });
+      const { helpers, calls } = buildHarness({ fetchFn, initialRepo: "o/r" });
+      const checkbox = buildCheckbox(false);
+
+      const result = await helpers.toggleFlaggedForRow({ repo: "o/r" }, { number: "9" }, true, checkbox);
+
+      expect(checkbox.checked).toBe(false);
+      expect(checkbox.disabled).toBe(false);
+      expect(calls.notifyFailureSnackbar[0][0]).toBe("Flagged update failed for #9");
+      expect(result).toBeNull();
+    });
   });
 });

@@ -2035,6 +2035,40 @@ The sweep that found `pr-data-tab.orchestrator.js`'s dead methods also turned up
 
 ---
 
+## 🚧 **`pr-row-checkbox-actions.helpers.js`'s `toggleFlaggedForRow` had the same "untested twin" gap as the backfill find (2026-10-11)**
+
+With the orchestrator-dead-code vein exhausted (checked: `src/ui/orchestrators/` only has the 2 files already fixed, nothing else matches that shape) and the window-bridge list down to the 4 already-accepted names, went looking for more of the same test-gap pattern that closed `pr-backfill-actions.helpers.js`'s gap - and found one real hit: `toggleFlaggedForRow` and `toggleInReviewForRow` (`pr-row-checkbox-actions.helpers.js`) are the file's own documented near-identical twins (see its header comment - deliberately not deduplicated due to wording differences), but only `toggleInReviewForRow` had tests for its failed-response branch and its `catch`-path network-failure branch. `toggleFlaggedForRow`'s own copies of those same two branches (own wording, own checkbox-revert) were never exercised. No production bug - pure missing coverage on a real twin.
+
+**Fix:** added 2 new tests to `pr-row-checkbox-actions.helpers.test.js`'s `toggleFlaggedForRow` describe block, mirroring `toggleInReviewForRow`'s existing "failed response" and "fetch throws" tests exactly (same assertions, flagged-specific wording/PR number). Confirmed the failed-response test actually catches a regression by temporarily stubbing out the failed-response branch's body (revert/notify calls) and rerunning - it failed with a clear assertion error - before restoring.
+
+**Verified:** full jest suite (2489 tests, +2), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - pure test-coverage addition, no production code changed).
+
+---
+
+## 🚧 **`pr-ack-label-actions.helpers.js`'s `runSingleApplyLabelRequest` had the same untested-catch gap as its `runSingleAckRequest` twin (2026-10-11)**
+
+A follow-up scan for more of the same test-gap pattern (same session as the `toggleFlaggedForRow` fix above) found one more hit: `runSingleAckRequest` has a dedicated "given postJson throws" test exercising its own `catch` block, but its structural twin `runSingleApplyLabelRequest` (same try/catch shape, same single-chunk code path) had no equivalent - every existing "fails" test for `runApplyLabelAction` only used a *resolved* `ok:false` response, which hits the `if (!response.ok...)` branch, never the `catch`. No production bug - pure missing coverage on a real twin, same shape as the last two finds in this arc.
+
+**Fix:** added 1 new test to `pr-ack-label-actions.helpers.test.js`'s `runApplyLabelAction`/`runApplyLabelWorkflow` describe block, mirroring `runAckAction`'s existing "postJson throws" test. Confirmed it actually catches a regression by temporarily stubbing out the catch block's body and rerunning - it failed with a clear assertion diff - before restoring.
+
+**Verified:** full jest suite (2490 tests, +1), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - pure test-coverage addition, no production code changed).
+
+---
+
+## 🚧 **The twin-asymmetry test-gap vein closed out - one more genuine (symmetric) gap found and fixed (2026-10-11)**
+
+A follow-up scan for more asymmetric twin-coverage gaps (same shape as the 3 prior finds) came back empty - confirmed via a project-wide check of every `src/ui/helpers/*.js` file for duplicate-flagging language and similarly-named function pairs: `react-callbacks.helpers.js`'s 3 catch blocks and `pr-quick-check-actions.helpers.js`'s 2 workflow functions are both already fully, symmetrically covered. That specific asymmetric pattern is exhausted.
+
+The scan did surface one more real gap along the way, just not asymmetric: `pr-ack-label-actions.helpers.js`'s own second twin pair - `runChunkedAckRequest`/`runChunkedApplyLabelRequest` (the multi-chunk aggregation paths, separate from the already-fixed single-request twins) - each has an inner per-chunk `try/catch` around its own `postJsonSafe` call, and **both** twins' catch blocks were untested (not one-covered-one-not; every existing "every chunk fails" test in both only used a *resolved* `ok:false` response, never a genuine rejection). This also left the "all chunks failed, no `response` object at all" branch of the post-loop status message (`first.response ? ... : "Failed (network/error)"`) unexercised in both functions, since every existing all-failed test had a `response`.
+
+**Fix:** added 1 new test each to `runAckAction (chunked)` and `runApplyLabelAction`'s describe blocks - every chunk's `postJson` call throws, confirming the thrown error is recorded via the catch (not left to propagate), `markBulkActionChunkDone` reports `ok: false` for every chunk, and the no-`response` branch of the final status message (`"Failed (network/error)"`) is hit correctly. Confirmed both tests actually catch a regression by temporarily stripping each catch block's body (`failedChunks.push`/`chunkOk = false`) in turn and rerunning - each failed with a clear assertion diff - before restoring both.
+
+**With this, the twin-coverage-gap cleanup arc (started with `pr-backfill-actions.helpers.js`) is done** - 4 real gaps found and closed in total (1 action-variant, 2 asymmetric-twin, 1 symmetric-twin), no production bugs, pure missing coverage throughout.
+
+**Verified:** full jest suite (2492 tests, +2), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - pure test-coverage addition, no production code changed).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

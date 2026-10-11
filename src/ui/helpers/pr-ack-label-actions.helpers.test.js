@@ -338,6 +338,26 @@ describe("pr ack label actions helpers", () => {
       expect(calls.clearPrsQueued).toHaveLength(0);
       expect(calls.markPrsBusy).toEqual([[["1", "2", "3", "4", "5"], "o/r"]]);
     });
+
+    // Regression coverage: every "chunk fails" test above only used a
+    // *resolved* ok:false response - runChunkedAckRequest's own inner
+    // try/catch (for a chunk's postJson call actually rejecting, not just
+    // resolving with a failure shape) was never exercised by any test.
+    test("given every chunk's postJson call throws, when running, then it's recorded as a failed chunk (not left unhandled) and the network-failure message shows", async () => {
+      const postJson = jest.fn(async () => {
+        throw new Error("offline");
+      });
+      const { helpers, calls } = buildHarness({ postJson });
+
+      const result = await helpers.runAckAction({ repo: "o/r", ack: "1,2,3,4,5,6,7" }, "Ack only");
+
+      expect(calls.showErrorNotification).toHaveLength(1);
+      expect(calls.showErrorNotification[0]).toEqual(["Ack only failed", "Error: offline", 0]);
+      expect(calls.setStatusMessage.at(-1)[0]).toBe("Failed (network/error)");
+      expect(calls.markBulkActionChunkDone.every((args) => args[0].ok === false)).toBe(true);
+      expect(calls.loadStoredData).toHaveLength(0);
+      expect(result).toBeNull();
+    });
   });
 
   describe("runAckOnlyWorkflow / runClearOnlyWorkflow", () => {
@@ -510,6 +530,26 @@ describe("pr ack label actions helpers", () => {
       expect(result).toBeNull();
     });
 
+    // Regression coverage: runChunkedApplyLabelRequest's own inner
+    // try/catch (its twin of runChunkedAckRequest's gap, above) was also
+    // never exercised by a genuine postJson rejection - every "chunk fails"
+    // test above only used a resolved ok:false response.
+    test("given every chunk's postJson call throws, when running, then it's recorded as a failed chunk (not left unhandled) and the network-failure message shows", async () => {
+      const postJson = jest.fn(async () => {
+        throw new Error("offline");
+      });
+      const { helpers, calls } = buildHarness({ postJson });
+
+      const result = await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2,3,4,5,6,7" }, "Apply label");
+
+      expect(calls.showErrorNotification).toHaveLength(1);
+      expect(calls.showErrorNotification[0]).toEqual(["Apply label failed", "Error: offline", 0]);
+      expect(calls.setStatusMessage.at(-1)[0]).toBe("Failed (network/error)");
+      expect(calls.markBulkActionChunkDone.every((args) => args[0].ok === false)).toBe(true);
+      expect(calls.loadStoredData).toHaveLength(0);
+      expect(result).toBeNull();
+    });
+
     test("given no prNumbers value or form value, when running the workflow, then it shows a validation message, never posts, and returns null", async () => {
       const postJson = jest.fn();
       const { helpers, calls } = buildHarness({ postJson, getFormBody: () => ({}) });
@@ -518,6 +558,24 @@ describe("pr ack label actions helpers", () => {
 
       expect(postJson).not.toHaveBeenCalled();
       expect(calls.setStatusMessage).toEqual([['Apply label requires numeric value(s) in "PR number(s)"']]);
+      expect(result).toBeNull();
+    });
+
+    // Regression coverage: runAckAction's single-request twin already had a
+    // "postJson throws" test (above) exercising its catch block - this one's
+    // own copy of that same branch (runSingleApplyLabelRequest's catch) was
+    // never exercised by any test; every "fails" test above only used a
+    // resolved ok:false response, never a rejection.
+    test("given postJson throws, when running the action (single-chunk), then the network-failure path runs and it returns null", async () => {
+      const postJson = jest.fn(async () => {
+        throw new Error("offline");
+      });
+      const { helpers, calls } = buildHarness({ postJson });
+
+      const result = await helpers.runApplyLabelAction({ repo: "o/r", label: "bug", prNumbers: "1,2" }, "Apply label");
+
+      expect(calls.setStatusMessage).toEqual([["Apply label..."], ["Failed (network/error)"]]);
+      expect(calls.showErrorNotification[0]).toEqual(["Apply label failed", "Error: offline", 0]);
       expect(result).toBeNull();
     });
 
