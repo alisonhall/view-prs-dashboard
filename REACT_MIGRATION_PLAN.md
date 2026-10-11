@@ -2127,6 +2127,37 @@ Researched whether the "More insights" cluster's old documented follow-up note (
 
 ---
 
+## 🗺️ **Full migration roadmap: what's left, including deferred work (2026-10-11)**
+
+Asked directly: what's remaining, including deferred work, and what's the plan to finish it. Three parallel research passes built a precise current-state inventory (not re-reading history and assuming it's still accurate - several entries above turned out stale). Net finding: **the migration is closer to done than `index.page.js`'s 4,239 lines vs. `react-app.jsx`'s 1,000 suggests.** Most of the remaining bulk is either real business logic with no DOM dependency that could run from a hook just as easily as a vanilla function, or bootstrap/bridge plumbing that only exists because the last few vanilla UI pieces haven't moved yet. No undiscovered "big missing feature."
+
+**What's actually left, verified:**
+
+1. **3 real `window.*` bridges**, each blocked on a specific still-vanilla subsystem: `recomputeDirtyPrSectionsFields` (the render-blocking pipeline, sub-phase 7.5's one unclosed piece), `navigateToPrInTable` (+2 sibling copies - vanilla tab-activation + a live-DOM anchor scan), `navigateToAuthorInsights` (its remaining half - `renderAuthorInsights`'s still-vanilla author-selection validation). `applyFreshPrPayload`/`beginRequestActivity`/`debouncedApplyFilters`/the action-handler bridges are a different category (vanilla primitives exposed *for* React, same as `postJson`) - not blockers.
+2. **2 genuinely vanilla-only UI pieces with zero React ownership:** both tab bars (management-tabs + data-tabs, raw `<button>`s toggled via `classList`/`aria-selected`/`hidden`), and the auto-render-blocked indicator panel's show/hide + "Discard unsaved" logic.
+3. **1 tab with no real JSX at all:** Backfill - buttons/orchestration are vanilla (status/log text panels are already React text-portals).
+4. **The Run Script form's 6 trigger buttons** - plain buttons calling still-vanilla handlers (`handleRunScript`/`handleAckOnly`/etc.); the fields they read are already fully React-owned, so this is about the buttons/handlers, not the fields.
+5. **UI option persistence** (~700 lines) - fetches/writes `/view-prs/user-defaults`, pushing into `FilterStateProvider` via `window.setFilterStateValue` rather than owning the fetch/persist itself.
+6. **Polling/activity-tracking function bodies** - scheduling already lives in React (`<PrDataPolling/>`/`<JobEventsProvider/>`); the function bodies they call are still vanilla.
+7. **A DI-forwarding pattern** in the ack-label/quick-check action factories (`markPrsBusy`/`clearPrsBusy`/etc., each a pure `window.X?.()` forward).
+
+**Explicitly NOT part of this migration, confirmed still-correctly-scoped-elsewhere:** virtual scrolling (`ROADMAP.md`, a real separate feature, "only if users have 200+ PRs regularly"); Phase 4/5's formal testing/perf passes (ongoing incremental improvement, not a blocking gap). One correction found along the way: the Review Stats chart's old "~900 lines of hand-rolled SVG, left vanilla" note is now **stale** - it was rewritten as real JSX (`StatsVisuals.jsx`/`ReviewerActivityChart.jsx`) in an earlier session.
+
+**The plan: 8 sequenced phases**, same bounded-slice-plus-full-verification discipline as every entry above, ordered by leverage (phases unblocking multiple downstream items first) and risk (proven Provider patterns before novel ones):
+
+- **Phase A - Tab-switching chrome → `TabStateProvider` Context.** Highest leverage: unblocks `navigateToPrInTable` (+2 siblings) and half of `navigateToAuthorInsights`'s blocker. Keep `pr-management-tabs.helpers.js`/`pr-data-tabs.helpers.js`'s pure "which tab should be active" logic, just change who calls it (Context setter instead of direct DOM mutation) - the same pattern this whole migration has used throughout.
+- **Phase B - Auto-render-blocking/dirty-field pipeline → `AutoRenderBlockingProvider`.** Closes `recomputeDirtyPrSectionsFields`. Mirrors `NotesDirtyProvider.jsx`/`AuthorInsightsDraftsProvider.jsx` exactly - those already proved this pattern for the *feeder* side; this is the same for the *consumer/enforcement* side.
+- **Phase C - Backfill tab → real JSX.** New `useBackfillActions()` hook over the already-pure `createPrBackfillActionHelpers`, same shape as `useSinglePrUpdate.jsx`.
+- **Phase D - Run Script form triggers → React.** Hooks over the already-pure ack-label/run-script DI factories; `getFormBody()`'s `FormData(form)` read goes away since every field is already Context-owned.
+- **Phase E - UI option persistence → Context-owned.** Debounced POST on change inside `FilterStateProvider` itself, replacing the push-based restore.
+- **Phase F - Polling/activity-tracking bodies → hooks.** Called directly by `<PrDataPolling/>`/`<JobEventsProvider/>`, removing the `window.*` indirection now that scheduling already lives there.
+- **Phase G - Retire the busy/queued/bulk-batch DI-forwarding params**, once D's hooks exist, via direct calls into `PrActivityQueueProvider`'s Context.
+- **Phase H - Final retirement.** With A-G done, `index.page.js` has no DOM to wire up and no bridge left to expose - `initPage()`/the `Object.assign(window,...)` block/`mountReactTable`/`updateReactTable` all become dead, deletable the same way `ensureDefaultFilterValues`/`populateFilterOptions` were earlier today. `react-app.jsx`'s own mount becomes the sole entry point. Sub-phase 7.7's original vision, finally reachable.
+
+**Scope note:** several of these phases (A, B, D especially) are themselves multi-session efforts at this session's own observed slice size - working through them one bounded slice at a time, verifying and documenting each, stopping between phases for redirection rather than barreling through unattended.
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**
