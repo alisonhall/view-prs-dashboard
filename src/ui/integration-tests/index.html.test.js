@@ -2058,6 +2058,261 @@ describe("index page rendering with Testing Library", () => {
     expect(bodies.some((b) => b.includes('"300"') || b.includes('"prNumber":"300"'))).toBe(true);
   });
 
+  // Regression coverage for closing out the "redundant render-then-reload"
+  // cleanup arc (see REACT_MIGRATION_PLAN.md, applyFreshPrPayload's own
+  // entries): handleRunScript used to always call loadStoredData() (a
+  // second GET /view-prs/data fetch) after its loop finished, regardless
+  // of outcome - confirmed via the server route that every failure mode
+  // of /view-prs/run leaves data genuinely unchanged, so that reload was
+  // either pure redundant overhead (success case) or a no-op (failure
+  // case). No existing test exercised this function's response/render
+  // handling at all before these were added - every pre-existing test
+  // above only asserted outgoing POST bodies.
+  describe("Run script response/render handling (applyFreshPrPayload)", () => {
+    const getRunCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/run" &&
+          String(init?.method || "GET").toUpperCase() === "POST"
+        );
+      });
+
+    const getDataGetCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/data" &&
+          String(init?.method || "GET").toUpperCase() === "GET"
+        );
+      });
+
+    test("given a single successful target, when Run script completes, then the fresh payload is applied directly with no redundant reload", async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Fresh after run script" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+          "Fresh after run script",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given multiple successful targets, when Run script completes, then the final rendered state reflects the last target's payload with no redundant reload", async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      let callCount = 0;
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          callCount += 1;
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: `Iteration ${callCount}` } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+          "Iteration 2",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given one target succeeds and one fails, when Run script completes, then the successful target's data still renders and the combined status/snackbar reflect the partial failure", async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          const body = JSON.parse(String(init?.body || "{}"));
+          if (body.prNumber === "43") {
+            return {
+              ok: false,
+              status: 500,
+              json: async () => ({ ok: false, error: "script failed" }),
+            };
+          }
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Target 42 succeeded" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+          "Target 42 succeeded",
+        );
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (1/2 successful)",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given every target fails, when Run script completes, then the failure status is shown, nothing throws, and nothing is rendered", async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({ ok: false, error: "script failed" }),
+          };
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      const payloadBefore = window.getReactPrTablePayload();
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (0/2 successful)",
+        );
+      });
+      expect(window.getReactPrTablePayload()).toBe(payloadBefore);
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given no PR numbers entered (an \"All PRs\" run), when Run script completes, then it behaves the same as a specific-PR-number target", async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "All PRs run" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      expect(JSON.parse(String(getRunCalls()[0][1]?.body || "{}")).prNumber).toBe("");
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+          "All PRs run",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+  });
+
   test("given no selected author and toggled checkboxes when Run script posts payload then author fallback and boolean flags are mapped", async () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Run & Filter" }));

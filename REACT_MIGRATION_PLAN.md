@@ -1974,6 +1974,22 @@ Research confirmed `runSinglePrUpdate`'s only real caller was already React (`Pr
 
 ---
 
+## 🚧 **`handleRunScript` - the 4th and final "redundant render-then-reload" call site fixed (2026-10-11)**
+
+Closed out the follow-up this whole cleanup arc started from: `handleRunScript` (the manual "Run script" button) loops over multiple PR targets (or a single `""` "all PRs" target), and - unlike the 3 already-fixed single-call sites - always called `loadStoredData()` once after the whole loop finished, regardless of how many iterations succeeded or failed.
+
+Research (reading the server route directly, not assuming) confirmed the same fix applies safely, with one new edge case reasoned through explicitly: **if every target fails, the loop never renders anything today, and the trailing `loadStoredData()` was the only refresh that happened.** Confirmed via the server's failure path (`buildRunFailureResult`/`buildBadRequestResult`/`buildRunMissingDependenciesResult`) that every failure mode of `/view-prs/run` leaves server-side data genuinely unchanged (none of those branches call `setLastManualRunNow`/`clearPendingForRepo`/`readViewPrsData`) - so skipping the render on an all-failure run is correct, not a regression; there's nothing new to show.
+
+**Fix:** the per-iteration `applyLatestPrData({...}); renderPrData(latestData, effectiveRepo);` pair became one `applyFreshPrPayload(latestData, effectiveRepo);` call; the trailing `await loadStoredData(effectiveRepo);` after the loop was removed entirely, with no replacement.
+
+**The one real gap, unlike the other 3 fixes:** `handleRunScript` had zero existing test coverage of its response/render-handling side - every prior test only asserted outgoing POST request bodies. Added 5 new integration tests (`index.html.test.js`) from scratch: single success, multiple successes (confirms the final state reflects the last target's payload), partial failure (successful target's data still renders, combined status message/snackbar correct), all-failure (status/snackbar correct, confirmed nothing renders and nothing throws), and the single `""` "all PRs" target (behaves identically to a specific PR number). All 5 assert zero extra `GET /view-prs/data` calls - direct regression coverage for the removed redundant reload. Confirmed 4 of the 5 fail without the `applyFreshPrPayload` fix (the all-failure test doesn't depend on it, as expected), before restoring.
+
+**With this, all 4 originally-flagged "render directly, then unconditionally reload" call sites are closed**: `runSinglePrUpdate`, `pr-ack-label-actions.helpers.js`'s 2 single-request paths, `pr-merged-request-more-action.helpers.js`, and now `handleRunScript`. The 2 chunked ack/label paths and `pr-row-checkbox-actions.helpers.js` remain deliberately untouched, per their own already-documented reasons.
+
+**Verified:** full jest suite (2490 tests, +5), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - no new Playwright test, matching the precedent already set for this exact class of internal-plumbing change; there's no existing "Run script" e2e test either).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

@@ -3338,8 +3338,7 @@ const handleRunScript = async () => {
 
       const latestData = result.prData || null;
       if (latestData) {
-        applyLatestPrData({ payload: latestData, selectedRepo: effectiveRepo });
-        renderPrData(latestData, effectiveRepo);
+        applyFreshPrPayload(latestData, effectiveRepo);
       }
     }
 
@@ -3373,7 +3372,6 @@ const handleRunScript = async () => {
     setOutputMessage(
       outputChunks.join("\n\n") || "Script completed with no output.",
     );
-    await loadStoredData(effectiveRepo);
   } catch (error) {
     setStatusMessage("Failed (network/error)");
     showErrorNotification(
