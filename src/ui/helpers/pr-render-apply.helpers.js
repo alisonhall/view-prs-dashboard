@@ -62,6 +62,24 @@ export const { createPrRenderApplyHelpers } = (() => {
       }
     };
 
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for
+    // fresh-payload renders"): for a caller with a direct, authoritative
+    // fresh payload that never goes through applyRenderResults (the only
+    // other place latestAllStoredRows/latestActorsMap get updated) -
+    // without this, renderAuthorInsightsIfVisible would render from
+    // whatever stale rows/actorsMap the full pipeline last left behind,
+    // silently missing the fresh payload. Same allEntries derivation
+    // (Object.values(payload.byPrNumber)) pr-render-context.helpers.js's
+    // captureRenderContext uses, so this stays a real cache update, not
+    // just a one-off render - a later tab switch's own catch-up render
+    // (renderAuthorInsightsIfVisible, triggered via onTabActivated) sees
+    // the same fresh data too.
+    const applyFreshAuthorInsightsIfVisible = (payload) => {
+      latestAllStoredRows = Object.values(payload?.byPrNumber || {});
+      latestActorsMap = payload?.actorsMap || {};
+      renderAuthorInsightsIfVisible();
+    };
+
     // Deferred-items follow-up (full vanilla-to-React sweep, see
     // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now
     // (window.updateReactDataMetaText) - the caller-supplied `meta` (the
@@ -158,6 +176,7 @@ export const { createPrRenderApplyHelpers } = (() => {
     return {
       applyRenderResults,
       renderAuthorInsightsIfVisible,
+      applyFreshAuthorInsightsIfVisible,
     };
   };
 

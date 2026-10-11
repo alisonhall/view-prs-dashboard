@@ -1503,7 +1503,7 @@ const { deriveRenderSummary } =
     renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
   });
 
-const { applyRenderResults, renderAuthorInsightsIfVisible } =
+const { applyRenderResults, renderAuthorInsightsIfVisible, applyFreshAuthorInsightsIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
@@ -1627,10 +1627,11 @@ const { runSinglePrUpdate } =
       formatCommandOutputWithAuthHint(...args),
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
     stripAnsi: (...args) => stripAnsi(...args),
-    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
-    renderPrData: (...args) => renderPrData(...args),
-    loadStoredData: (...args) => loadStoredData(...args),
+    // Lazy proxy (same pattern as renderAuthorInsights's own wiring
+    // elsewhere in this file): applyFreshPrPayload is declared later in
+    // this file, safe since this closure is only ever invoked long after
+    // full module evaluation, never at wiring time.
+    applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
     defaultRepo: DEFAULT_REPO,
   });
 
@@ -1915,7 +1916,17 @@ const flushPendingAutoRenderNow = () => {
   const payload = pendingAutoRenderPayload;
   pendingAutoRenderPayload = null;
   renderAutoRenderBlockedIndicator();
-  renderPrData(payload);
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for
+  // fresh-payload renders"): applyFreshPrPayload replaces the full
+  // renderPrData/orchestrator pipeline here - this payload already came
+  // from a real poll fetch, so the only things that still matter are the 3
+  // applyFreshPrPayload itself covers (fingerprint/manifest bookkeeping,
+  // repo resolution, Author Insights' live re-render), not the ~20 other
+  // now-dead computations that pipeline would otherwise also run. No
+  // explicit repo passed - matches this call's own prior no-repo-arg
+  // renderPrData(payload) call, so repo-resolution fallback behavior is
+  // unchanged.
+  applyFreshPrPayload(payload);
   return true;
 };
 
@@ -2930,6 +2941,73 @@ const applyResolvedRepo = (resolvedRepo) => {
     labelsFetchedForRepo = resolvedRepo;
     void refreshAvailableRepoLabels(resolvedRepo);
   }
+};
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
+// renders"): for a caller that already has a direct, authoritative fresh
+// payload in hand (no refetch needed) - a research pass confirmed almost
+// everything prDataTabOrchestrator.renderPrData's full pipeline computes
+// today is now dead (filter dropdowns, chip text, #data-meta text, the
+// merged-request-more-action push, visiblePrNumbers/filteredRows for the
+// table - each already superseded by a live Context derivation elsewhere).
+// Exactly 3 things are still genuinely live: fingerprint/manifest/version
+// bookkeeping the next poll tick's skip-render dedup depends on, repo
+// resolution + conditional label refresh, and Author Insights' own live
+// re-render if that tab is open. This is exactly those 3 things, reusing
+// every existing piece directly rather than reimplementing any of them -
+// used by runSinglePrUpdate (replacing its own redundant loadStoredData()
+// re-fetch) and flushPendingAutoRenderNow (replacing its renderPrData(...)
+// call, closing recomputeDirtyPrSectionsFields's own documented dependency
+// on the full pipeline).
+const applyFreshPrPayload = (payload, repo) => {
+  const resolvedRepo =
+    repo ||
+    deriveRepoRunContext({
+      selectedRepo: latestSelectedRepo,
+      inputRepo: getOptionalElementById("repo")?.value,
+      lastRun: payload?.lastRun,
+    }).repoFilter;
+
+  // selectedRepo deliberately omitted here (unlike applyResolvedRepo's own
+  // call below) - matching renderPrData's own applyLatestPrData({ payload })
+  // call exactly, so an empty resolvedRepo (no explicit repo, no #repo
+  // input value, no payload.lastRun.repo) can never clobber a
+  // previously-known-good latestSelectedRepo. applyResolvedRepo's own
+  // `if (!resolvedRepo) return;` guard is the sole gate for that write.
+  applyLatestPrData({ payload });
+  lastRenderedPrFingerprint = computePrDataFingerprint(payload);
+  lastRenderedMetaFingerprint = computePrDataMetaFingerprint(payload);
+  latestPrManifest = computePrDataManifest(payload);
+  pendingAutoRenderPayload = null;
+
+  // Same dataVersion/runStamp/backfill bookkeeping loadStoredData does with
+  // its own GET response (pr-stored-data-load.helpers.js) - needed because
+  // this primitive also replaces that function for runSinglePrUpdate's
+  // case, not just renderPrData. result.prData (POST /view-prs/run's
+  // response) doesn't include dataMeta - lastSeenDataVersion simply isn't
+  // updated from that path, which is self-correcting (the next poll's own
+  // meta/manifest check finds the real version mismatch and fetches
+  // normally), not a lasting staleness bug.
+  const dataVersion = String(payload?.dataMeta?.dataVersion || "").trim();
+  if (dataVersion) {
+    lastSeenDataVersion = dataVersion;
+  }
+  const updatedAt = String(payload?.lastRun?.updatedAt || "").trim();
+  if (updatedAt) {
+    lastRenderedRunStamp = payload.lastRun.updatedAt;
+    lastSuccessfulRenderedCheckAt = updatedAt;
+  }
+  updateBackfillStatusFromPayload(payload);
+
+  applyResolvedRepo(resolvedRepo);
+  // Not renderAuthorInsightsIfVisible() directly - that reads a private
+  // cache (latestAllStoredRows/latestActorsMap) only applyRenderResults
+  // (the full pipeline) updates. This variant refreshes that same cache
+  // from the fresh payload first, so both this render and any later
+  // tab-activation catch-up render see the fresh data, not stale leftovers.
+  applyFreshAuthorInsightsIfVisible(payload);
+  updateReactTable(payload, resolvedRepo);
+  renderAutoRenderBlockedIndicator();
 };
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {

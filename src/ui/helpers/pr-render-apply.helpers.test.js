@@ -158,6 +158,50 @@ describe("pr render apply helpers", () => {
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], actorsMap);
   });
 
+  test("given a caller with a fresh payload that never went through applyRenderResults, when applyFreshAuthorInsightsIfVisible runs with the tab visible, then it renders from that fresh payload, not a stale cache", () => {
+    // Regression coverage: a caller like index.page.js's applyFreshPrPayload
+    // (runSinglePrUpdate/flushPendingAutoRenderNow) never calls
+    // applyRenderResults, so renderAuthorInsightsIfVisible alone would
+    // render from whatever stale rows/actorsMap applyRenderResults last
+    // left behind - applyFreshAuthorInsightsIfVisible must refresh that
+    // same cache from the given payload first.
+    const renderAuthorInsights = jest.fn();
+    const panelsById = {
+      "tab-panel-author-insights": { hidden: false },
+    };
+    const getOptionalElementById = jest.fn((id) => panelsById[id] || null);
+
+    const { applyRenderResults, applyFreshAuthorInsightsIfVisible, renderAuthorInsightsIfVisible } =
+      createPrRenderApplyHelpers({
+        renderAuthorInsights,
+        getOptionalElementById,
+      });
+
+    const staleActorsMap = { user1: { displayName: "Stale User" } };
+    applyRenderResults({
+      payload: { actorsMap: staleActorsMap },
+      allStoredRows: [{ id: "stale" }],
+      sectionsHost: {},
+      meta: {},
+    });
+    expect(renderAuthorInsights).toHaveBeenLastCalledWith([{ id: "stale" }], staleActorsMap);
+
+    const freshActorsMap = { user2: { displayName: "Fresh User" } };
+    applyFreshAuthorInsightsIfVisible({
+      byPrNumber: { 7: { id: "fresh" } },
+      actorsMap: freshActorsMap,
+    });
+    expect(renderAuthorInsights).toHaveBeenLastCalledWith([{ id: "fresh" }], freshActorsMap);
+
+    // The cache itself was updated, not just this one render - a later
+    // tab-activation catch-up render (renderAuthorInsightsIfVisible, called
+    // independently of applyFreshAuthorInsightsIfVisible) must also see
+    // the fresh data, not fall back to the pre-fresh-update stale cache.
+    renderAuthorInsights.mockClear();
+    renderAuthorInsightsIfVisible();
+    expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: "fresh" }], freshActorsMap);
+  });
+
   test("given missing dependencies, when applying render results, then safe defaults are returned without throwing", () => {
     const { applyRenderResults } = createPrRenderApplyHelpers();
 

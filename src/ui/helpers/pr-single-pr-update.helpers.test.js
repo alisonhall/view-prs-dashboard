@@ -5,15 +5,12 @@ const {
 } = require("./pr-single-pr-update.helpers.js");
 
 describe("pr single pr update helpers", () => {
-  test("given a successful single-pr refresh with latest data, when running the update, then optimistic render and stored reload both run", async () => {
+  test("given a successful single-pr refresh with latest data, when running the update, then the fresh payload is applied directly with no redundant reload", async () => {
     const finishActivity = jest.fn();
     const beginRequestActivity = jest.fn(() => finishActivity);
     const setStatusMessage = jest.fn();
     const setOutputMessage = jest.fn();
-    const setLatestStoredPayload = jest.fn();
-    const setLatestSelectedRepo = jest.fn();
-    const renderPrData = jest.fn();
-    const loadStoredData = jest.fn(async () => {});
+    const applyFreshPrPayload = jest.fn();
     const postJson = jest.fn(async () => ({
       response: { ok: true },
       result: {
@@ -32,10 +29,7 @@ describe("pr single pr update helpers", () => {
       formatCommandOutputWithAuthHint: () => "",
       notifyFailureSnackbar: jest.fn(),
       stripAnsi: (value) => `clean:${value}`,
-      setLatestStoredPayload,
-      setLatestSelectedRepo,
-      renderPrData,
-      loadStoredData,
+      applyFreshPrPayload,
       defaultRepo: "fallback/repo",
     });
 
@@ -51,16 +45,15 @@ describe("pr single pr update helpers", () => {
     expect(setStatusMessage).toHaveBeenNthCalledWith(2, "PR #7 updated");
     expect(setOutputMessage).toHaveBeenNthCalledWith(1, "");
     expect(setOutputMessage).toHaveBeenNthCalledWith(2, "clean:ansi-output");
-    expect(setLatestStoredPayload).toHaveBeenCalledWith({ byPrNumber: { 7: {} } });
-    expect(setLatestSelectedRepo).toHaveBeenCalledWith("org/repo");
-    expect(renderPrData).toHaveBeenCalledWith(
+    // Regression coverage for the removed double-fetch/double-render: this
+    // used to also call a separate loadStoredData(repo, {...}) after its
+    // own direct render - now there's exactly one call, and nothing else
+    // this factory is given is capable of performing a second fetch.
+    expect(applyFreshPrPayload).toHaveBeenCalledTimes(1);
+    expect(applyFreshPrPayload).toHaveBeenCalledWith(
       { byPrNumber: { 7: {} } },
       "org/repo",
-      { useLastRunScope: false },
     );
-    expect(loadStoredData).toHaveBeenCalledWith("org/repo", {
-      useLastRunScope: false,
-    });
     expect(finishActivity).toHaveBeenCalledTimes(1);
   });
 
@@ -81,7 +74,6 @@ describe("pr single pr update helpers", () => {
       formatCommandOutputWithAuthHint: () => "formatted-output",
       notifyFailureSnackbar,
       stripAnsi: (value) => value,
-      loadStoredData: async () => {},
       defaultRepo: "fallback/repo",
     });
 
@@ -119,7 +111,6 @@ describe("pr single pr update helpers", () => {
       formatCommandOutputWithAuthHint: () => "",
       notifyFailureSnackbar,
       stripAnsi: (value) => value,
-      loadStoredData: async () => {},
       defaultRepo: "fallback/repo",
     });
 

@@ -13,10 +13,7 @@ export const { createPrSinglePrUpdateHelpers } = (() => {
     formatCommandOutputWithAuthHint,
     notifyFailureSnackbar,
     stripAnsi,
-    setLatestStoredPayload,
-    setLatestSelectedRepo,
-    renderPrData,
-    loadStoredData,
+    applyFreshPrPayload,
     defaultRepo,
   } = {}) => {
     const postJsonSafe = typeof postJson === "function" ? postJson : async () => ({
@@ -42,12 +39,8 @@ export const { createPrSinglePrUpdateHelpers } = (() => {
         ? notifyFailureSnackbar
         : () => {};
     const stripAnsiSafe = typeof stripAnsi === "function" ? stripAnsi : (value) => String(value || "");
-    const setLatestStoredPayloadSafe =
-      typeof setLatestStoredPayload === "function" ? setLatestStoredPayload : () => {};
-    const setLatestSelectedRepoSafe =
-      typeof setLatestSelectedRepo === "function" ? setLatestSelectedRepo : () => {};
-    const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
-    const loadStoredDataSafe = typeof loadStoredData === "function" ? loadStoredData : async () => {};
+    const applyFreshPrPayloadSafe =
+      typeof applyFreshPrPayload === "function" ? applyFreshPrPayload : () => {};
     const defaultRepoSafe = typeof defaultRepo === "string" ? defaultRepo : "";
 
     const runSinglePrUpdate = async (entry, row) => {
@@ -89,11 +82,8 @@ export const { createPrSinglePrUpdateHelpers } = (() => {
 
         const latestData = result.prData || null;
         if (latestData) {
-          setLatestStoredPayloadSafe(latestData);
-          setLatestSelectedRepoSafe(repo);
-          renderPrDataSafe(latestData, repo, { useLastRunScope: false });
+          applyFreshPrPayloadSafe(latestData, repo);
         }
-        await loadStoredDataSafe(repo, { useLastRunScope: false });
       } catch (error) {
         setStatusMessageSafe(`Failed to update PR #${prNumber}`);
         setOutputMessageSafe(String(error));

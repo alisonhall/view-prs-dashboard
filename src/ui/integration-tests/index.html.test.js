@@ -7297,6 +7297,123 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
+  test("a poll deferred by a dirty Notes field flushes once clean, applying the fresh payload without going through the full render pipeline", async () => {
+    // Regression coverage for a real gap found while closing out
+    // recomputeDirtyPrSectionsFields's own entanglement (see
+    // REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
+    // renders"): no existing test (jest or Playwright) exercised the full
+    // dirty -> queued -> clean -> flush cycle end to end - only the dirty
+    // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
+    // proves flushPendingAutoRenderNow's new applyFreshPrPayload call
+    // actually reaches the real, mounted React table.
+    try {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 101,
+                overrides: {
+                  data: {
+                    title: "Deferred poll seed",
+                    titleDisplay: "Deferred poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/101",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#101")).toBeInTheDocument();
+      });
+      expect(window.getReactPrTablePayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+
+      // Simulate a dirty Notes field the same way NotesDirtyProvider.jsx
+      // really reports one - that Provider never mounts in this harness,
+      // so this is the one legitimate way to drive
+      // getAutoRenderBlockingState's real "unsaved notes" input here.
+      window.getDirtyNotesPrNumbers = () => [101];
+      window.recomputeDirtyPrSectionsFields();
+
+      // The indicator only becomes visible once a poll actually has a
+      // payload queued (renderAutoRenderBlockedIndicator's own isBlocked
+      // check requires both pendingAutoRenderPayload and
+      // hasDirtyPrSectionsFields) - not from the dirty flag alone.
+      const indicator = document.getElementById("auto-render-blocked-indicator");
+      expect(indicator).toHaveAttribute("hidden");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "deferred-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 101,
+                  overrides: {
+                    data: {
+                      title: "Deferred poll applied",
+                      titleDisplay: "Deferred poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/101",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await window.pollForDataChanges();
+
+      // Still deferred - the dirty field hasn't cleared yet.
+      expect(window.getReactPrTablePayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+      expect(indicator).not.toHaveAttribute("hidden");
+
+      // Field becomes clean - recomputeDirtyPrSectionsFields notices
+      // !hasDirtyPrSectionsFields && pendingAutoRenderPayload and flushes.
+      window.getDirtyNotesPrNumbers = () => [];
+      window.recomputeDirtyPrSectionsFields();
+
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["101"]?.data?.title).toBe(
+          "Deferred poll applied",
+        );
+      });
+      expect(indicator).toHaveAttribute("hidden");
+    } finally {
+      delete window.getDirtyNotesPrNumbers;
+    }
+  });
+
   test("preserves expanded insights panel and open inner sections after polling rerenders", async () => {
     {
       initTestPage({
