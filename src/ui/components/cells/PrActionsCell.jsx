@@ -44,11 +44,10 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
 
   const handleUpdateClick = async (e) => {
     e.stopPropagation();
-    if (onUpdatePr) {
-      await onUpdatePr(pr.number, entry, pr);
-    } else {
-      await (window.runSinglePrUpdate || (async () => {}))(entry, pr);
-    }
+    // onUpdatePr is always wired by the real PrTableApp (useSinglePrUpdate,
+    // see REACT_MIGRATION_PLAN.md) - this no-op only covers isolated tests
+    // that render this cell without that wiring.
+    await onUpdatePr?.(pr.number, entry, pr);
   };
 
   const handleAckToggleClick = (e) => {

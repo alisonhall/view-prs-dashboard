@@ -6,10 +6,6 @@ const { PrActionsCell } = require('./PrActionsCell');
 const { RepoLabelsContext } = require('../../state/RepoLabelsContext');
 
 describe('PrActionsCell', () => {
-  afterEach(() => {
-    delete window.runSinglePrUpdate;
-  });
-
   // repoLabels comes from useRepoLabels() now (Phase 7, see
   // REACT_MIGRATION_PLAN.md) instead of window.getAvailableRepoLabels -
   // wraps in a RepoLabelsContext.Provider instead of stubbing window.
@@ -74,21 +70,16 @@ describe('PrActionsCell', () => {
     expect(onAckAction).toHaveBeenCalledWith('101', true, 'owner/repo');
   });
 
-  test('given the Update button and no onUpdatePr prop, when clicked, then falls back to window.runSinglePrUpdate with an entry carrying the repo', async () => {
-    const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
-    window.runSinglePrUpdate = runSinglePrUpdate;
+  test('given the Update button and no onUpdatePr prop, when clicked, then nothing throws (no crash)', async () => {
+    // onUpdatePr is always wired by the real PrTableApp (useSinglePrUpdate,
+    // see REACT_MIGRATION_PLAN.md) - this covers only the isolated-render
+    // case where it's omitted.
     renderCell({ pr: { number: '101' } });
     screen.getByRole('button', { name: '↻ Update' }).click();
     await Promise.resolve();
-    expect(runSinglePrUpdate).toHaveBeenCalledWith(
-      { prNumber: '101', repo: 'owner/repo' },
-      { number: '101' },
-    );
   });
 
-  test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr (not window.runSinglePrUpdate) with the PR number and entry', async () => {
-    const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
-    window.runSinglePrUpdate = runSinglePrUpdate;
+  test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr with the PR number and entry', async () => {
     const onUpdatePr = jest.fn().mockResolvedValue(undefined);
     renderCell({ pr: { number: '101' }, onUpdatePr });
     screen.getByRole('button', { name: '↻ Update' }).click();
@@ -98,7 +89,6 @@ describe('PrActionsCell', () => {
       { prNumber: '101', repo: 'owner/repo' },
       { number: '101' },
     );
-    expect(runSinglePrUpdate).not.toHaveBeenCalled();
   });
 
   test('given the {} button and no onViewJson prop, when clicked, then does nothing (no crash)', () => {

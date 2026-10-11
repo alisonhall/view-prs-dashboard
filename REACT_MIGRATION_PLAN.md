@@ -1954,6 +1954,26 @@ The previous entry flagged 3 other helper files as sharing `runSinglePrUpdate`'s
 
 ---
 
+## 🚧 **`runSinglePrUpdate` closed - converted into a real `useSinglePrUpdate()` hook (2026-10-11)**
+
+Research confirmed `runSinglePrUpdate`'s only real caller was already React (`PrTableApp.jsx`'s `handleUpdatePrBusy`) - but also found this wouldn't be a fully "clean" closure: status/output text, in-flight request-activity tracking, and the error snackbar have no Context/hook API today, only `window.*` bridges - the same already-accepted pattern `NotesSection.jsx` uses for its own direct network call (`window.beginRequestActivity`, bare-imported `postJson`). Asked the user explicitly whether to proceed given that honest tradeoff (moving *ownership* of the workflow from vanilla to React, not eliminating every `window.*` read) - they chose to proceed.
+
+**What moved:** new `state/useSinglePrUpdate.jsx`. Bare-imports `postJson`/`DEFAULT_REPO` (already clean, DI-free exports); builds `stripAnsi`/`getGithubAuthFailureHint`/`formatCommandOutputWithAuthHint` once at module scope (same "stable, zero-per-render-state" precedent `AuthorInsightsProvider.jsx`'s `stableDisplay` already established); reads `window.beginRequestActivity`/`window.updateReactStatusText`/`window.updateReactOutputText`/`window.showErrorNotification`/`window.applyFreshPrPayload` via safe optional calls, same shape `NotesSection.jsx` already uses for the first of those. One confirmed-safe simplification: the vanilla `setStatusMessage` wrapper also called a private `renderRequestActivity()` on every status update, but that function derives purely from `requestActivityCounters`/scheduler state (never the message text), and `beginRequestActivity`'s own start/finish calls already trigger it independently at the right moments - so the hook calling `window.updateReactStatusText` directly, without an equivalent extra call, is behaviorally identical.
+
+**`notifyFailureSnackbar`'s pure logic extracted** into a new bare-exported `buildFailureSnackbarNotification` (`pr-failure-snackbar.helpers.js`, alongside `isTimeoutFailureMessage` - both zero-dependency, matching `pr-row-sorting.helpers.js`'s "no factory wrapper" precedent). `index.page.js`'s own `notifyFailureSnackbar` now just calls this + `showErrorNotification`; the hook calls the same function + `window.showErrorNotification` directly - no duplicated logic between the vanilla and React paths.
+
+**Net bridge effect:** `runSinglePrUpdate` removed from `index.page.js`'s `Object.assign(window, {...})` block; `applyFreshPrPayload` gains its own entry there instead, since the hook needs to reach it the same way `NotesSection.jsx` reaches `beginRequestActivity`. Same category of bridge (a vanilla primitive exposed *for* a React consumer), not a new smell - an honest trade, not a "free" closure.
+
+**Deleted outright:** `pr-single-pr-update.helpers.js` and its test - fully superseded, zero remaining callers (confirmed via grep). `PrActionsCell.jsx`'s `window.runSinglePrUpdate || (async () => {})` fallback (used only when `onUpdatePr` isn't supplied, confirmed dead in production since the real `PrTableApp` always supplies it) simplified to a plain `onUpdatePr?.(...)` call, since the bridge it was falling back to no longer exists.
+
+**New coverage:** `pr-failure-snackbar.helpers.test.js` (10 tests - timeout detection, candidate-priority order, fallback message); `useSinglePrUpdate.test.jsx` (3 tests, using a small `Probe` component + `@testing-library/react`'s `render`/`act` - this codebase's actual hook-testing convention, confirmed via `useIsTabPanelVisible.test.jsx`, not `renderHook`) translating the 3 deleted helper-module tests (success-with-payload, auth-failure, thrown-exception) into the hook's shape. Confirmed the `applyFreshPrPayload` assertion actually catches a regression by temporarily disabling that call and rerunning, before restoring. `PrActionsCell.test.jsx`'s 2 tests referencing `window.runSinglePrUpdate` updated to match the simplified fallback.
+
+**With this, `recomputeDirtyPrSectionsFields`/`navigateToPrInTable`/`navigateToAuthorInsights` are the only 3 names left** on `index.page.js`'s bridge - all 3 already confirmed accepted-as-is in prior entries (shared vanilla/React entry point, or legitimate vanilla DOM-navigation operations), not candidates for further closure.
+
+**Verified:** full jest suite (2485 tests, +13), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged, including the Snackbar test).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

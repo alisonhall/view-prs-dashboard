@@ -43,7 +43,6 @@ import * as prRenderPipelineHelperFactory from "./helpers/pr-render-pipeline.hel
 import * as prRenderStateCommitHelperFactory from "./helpers/pr-render-state-commit.helpers.js";
 import * as prRunPrDataContextHelperFactory from "./helpers/pr-run-pr-data-context.helpers.js";
 import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
-import * as prSinglePrUpdateHelperFactory from "./helpers/pr-single-pr-update.helpers.js";
 import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
 import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-cache.helpers.js";
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
@@ -79,6 +78,10 @@ import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 import { asArray } from "./helpers/pr-as-array.helpers.js";
 import { getManualNotesFieldSummary } from "./helpers/pr-manual-notes-summary.helpers.js";
+import {
+  buildFailureSnackbarNotification,
+  isTimeoutFailureMessage,
+} from "./helpers/pr-failure-snackbar.helpers.js";
 import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
 import {
   extractRowLabelNames,
@@ -375,34 +378,16 @@ const showWarningNotification = (title, message, autoDismissMs = 12000) =>
 
 const hideErrorNotification = () => window.hideErrorNotification?.();
 
-const isTimeoutFailureMessage = (value) =>
-  /\b(timed?\s*out|timeout|deadline exceeded)\b/i.test(String(value || ""));
-
 const notifyFailureSnackbar = (
   title,
   errorSource,
   fallbackMessage = "Operation failed",
 ) => {
-  const messageCandidates =
-    errorSource && typeof errorSource === "object"
-      ? [
-          errorSource.error,
-          errorSource.summary,
-          errorSource.message,
-          errorSource.stderr,
-          errorSource.output,
-        ]
-      : [errorSource];
-
-  const normalizedCandidates = messageCandidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const detail = normalizedCandidates[0] || fallbackMessage;
-  const timeoutContext = normalizedCandidates.join("\n");
-  const isTimeout = isTimeoutFailureMessage(timeoutContext);
-  const finalTitle = isTimeout ? `${title} (timed out)` : title;
-
+  const { title: finalTitle, detail } = buildFailureSnackbarNotification(
+    title,
+    errorSource,
+    fallbackMessage,
+  );
   showErrorNotification(finalTitle, detail, 0);
 };
 
@@ -1614,25 +1599,6 @@ const { loadStoredData } =
     updateBackfillStatusFromPayload: (...args) =>
       updateBackfillStatusFromPayload(...args),
     renderPrData: (...args) => renderPrData(...args),
-  });
-
-const { runSinglePrUpdate } =
-  prSinglePrUpdateHelperFactory.createPrSinglePrUpdateHelpers({
-    postJson: (...args) => postJson(...args),
-    beginRequestActivity: (...args) => beginRequestActivity(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-    setOutputMessage: (...args) => setOutputMessage(...args),
-    getGithubAuthFailureHint: (...args) => getGithubAuthFailureHint(...args),
-    formatCommandOutputWithAuthHint: (...args) =>
-      formatCommandOutputWithAuthHint(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-    stripAnsi: (...args) => stripAnsi(...args),
-    // Lazy proxy (same pattern as renderAuthorInsights's own wiring
-    // elsewhere in this file): applyFreshPrPayload is declared later in
-    // this file, safe since this closure is only ever invoked long after
-    // full module evaluation, never at wiring time.
-    applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
-    defaultRepo: DEFAULT_REPO,
   });
 
 const { handleRequestMoreMerged } =
@@ -3910,7 +3876,13 @@ const initPage = () => {
     // entries are removed. isInReviewEnabled's definition stays (still
     // used by this file's own internal filtering); isFlaggedEnabled's
     // definition was deleted outright - it had no callers at all.
-    runSinglePrUpdate,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"):
+    // runSinglePrUpdate used to be bridged here too - PrTableApp.jsx now
+    // calls a real useSinglePrUpdate() hook instead (state/useSinglePrUpdate.jsx).
+    // That hook needs applyFreshPrPayload the same way NotesSection.jsx
+    // already reaches beginRequestActivity/postJson - a vanilla primitive
+    // exposed *for* a React consumer, not a bridge being closed.
+    applyFreshPrPayload,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
     // Phase 7 (see REACT_MIGRATION_PLAN.md): formatApproversDisplay/

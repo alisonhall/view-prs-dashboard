@@ -15,6 +15,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
+import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
@@ -126,17 +127,15 @@ export function PrTableApp({
     [withPrBusy, onApplyLabel],
   );
 
-  // Unlike onAckAction/onApplyLabel, the "↻ Update" button has no callback
-  // prop wired from index.page.js today - PrActionsCell calls
-  // window.runSinglePrUpdate directly. Reusing that same global here (like
-  // other PrTableApp/PrActionsCell code already reads window.* helpers set
-  // up by index.page.js, e.g. getAvailableRepoLabels) avoids adding a new
-  // prop all the way through the mount/callbacks wiring in index.page.js
-  // just for this one busy-tracking wrapper.
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"): the "↻
+  // Update" button used to call window.runSinglePrUpdate directly - that
+  // bridge is gone now, this hook is the real implementation (its only
+  // real caller was already this component).
+  const runSinglePrUpdate = useSinglePrUpdate();
   const handleUpdatePrBusy = useCallback(
     (prNumber, entry, pr) =>
-      withPrBusy(prNumber, entry?.repo, window.runSinglePrUpdate)(entry, pr),
-    [withPrBusy],
+      withPrBusy(prNumber, entry?.repo, runSinglePrUpdate)(entry, pr),
+    [withPrBusy, runSinglePrUpdate],
   );
 
   const combinedActivePrNumbers = useMemo(
