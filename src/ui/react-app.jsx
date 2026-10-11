@@ -40,6 +40,7 @@ import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { DataTabButton } from './components/DataTabButton';
+import { ManagementTabButton } from './components/ManagementTabButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
 import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
@@ -411,6 +412,12 @@ function computeStaticContainers() {
     tabPrData: document.getElementById('tab-pr-data-root'),
     tabReviewStats: document.getElementById('tab-review-stats-root'),
     tabAuthorInsights: document.getElementById('tab-author-insights-root'),
+    tabStatus: document.getElementById('tab-status-root'),
+    tabScript: document.getElementById('tab-script-root'),
+    tabBackfill: document.getElementById('tab-backfill-root'),
+    tabActionLog: document.getElementById('tab-action-log-root'),
+    tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
+    tabExport: document.getElementById('tab-export-root'),
   };
 }
 
@@ -823,6 +830,42 @@ function AppRoot() {
               <DataTabButton tabKey="author-insights" label="Author Insights" panelId="tab-panel-author-insights" />,
               containers.tabAuthorInsights,
               'tab-author-insights',
+            )}
+          {containers.tabStatus &&
+            createPortal(
+              <ManagementTabButton tabKey="status" label="Activity" panelId="tab-panel-status" />,
+              containers.tabStatus,
+              'tab-status',
+            )}
+          {containers.tabScript &&
+            createPortal(
+              <ManagementTabButton tabKey="script" label="Run & Filter" panelId="tab-panel-script" />,
+              containers.tabScript,
+              'tab-script',
+            )}
+          {containers.tabBackfill &&
+            createPortal(
+              <ManagementTabButton tabKey="backfill" label="Backfill" panelId="tab-panel-backfill" />,
+              containers.tabBackfill,
+              'tab-backfill',
+            )}
+          {containers.tabActionLog &&
+            createPortal(
+              <ManagementTabButton tabKey="action-log" label="Action Log" panelId="tab-panel-action-log" />,
+              containers.tabActionLog,
+              'tab-action-log',
+            )}
+          {containers.tabActorNameCache &&
+            createPortal(
+              <ManagementTabButton tabKey="actor-name-cache" label="Actor Names" panelId="tab-panel-actor-name-cache" />,
+              containers.tabActorNameCache,
+              'tab-actor-name-cache',
+            )}
+          {containers.tabExport &&
+            createPortal(
+              <ManagementTabButton tabKey="export" label="Export" panelId="tab-panel-export" />,
+              containers.tabExport,
+              'tab-export',
             )}
         </TabStateProvider>
 

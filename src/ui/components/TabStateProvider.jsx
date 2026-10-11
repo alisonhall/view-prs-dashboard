@@ -30,25 +30,42 @@ import { TabStateContext } from '../state/TabStateContext';
  * `useIsTabPanelVisible`'s MutationObserver (and `pr-render-apply.
  * helpers.js`'s own vanilla `isTabPanelVisible`) are untouched either way,
  * since `window.activateDataTab` still physically sets `panel.hidden`.
+ *
+ * Phase A, slice 2: the exact same shape, extended to the other tab bar
+ * (`pr-management-tabs.helpers.js`'s `activateTab`/`window.activateManagementTab`/
+ * `window.setActiveManagementTab`) - one Provider for both bars, not a
+ * second near-duplicate one, matching the original roadmap entry's own
+ * `{ activeManagementTab, activeDataTab }` shape. `activateTab` has no
+ * external vanilla callers today (unlike `activateDataTab`'s 4), so
+ * `window.setActiveManagementTab` is published for symmetry/future-proofing
+ * only - nothing calls it yet.
  */
 export function TabStateProvider({ children }) {
   const [activeDataTab, setActiveDataTabState] = useState('pr-data');
+  const [activeManagementTab, setActiveManagementTabState] = useState('status');
 
   const setActiveDataTab = useCallback((key) => {
     setActiveDataTabState(key);
     window.activateDataTab?.(key);
   }, []);
 
+  const setActiveManagementTab = useCallback((key) => {
+    setActiveManagementTabState(key);
+    window.activateManagementTab?.(key);
+  }, []);
+
   useEffect(() => {
     window.setActiveDataTab = (key) => setActiveDataTab(key);
+    window.setActiveManagementTab = (key) => setActiveManagementTab(key);
     return () => {
       delete window.setActiveDataTab;
+      delete window.setActiveManagementTab;
     };
-  }, [setActiveDataTab]);
+  }, [setActiveDataTab, setActiveManagementTab]);
 
   const value = useMemo(
-    () => ({ activeDataTab, setActiveDataTab }),
-    [activeDataTab, setActiveDataTab],
+    () => ({ activeDataTab, setActiveDataTab, activeManagementTab, setActiveManagementTab }),
+    [activeDataTab, setActiveDataTab, activeManagementTab, setActiveManagementTab],
   );
 
   return <TabStateContext.Provider value={value}>{children}</TabStateContext.Provider>;

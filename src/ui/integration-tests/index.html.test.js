@@ -773,20 +773,18 @@ describe("index page rendering with Testing Library", () => {
     window.setTimeout = realSetTimeout;
   });
 
-  // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
-  // roadmap"): the 3 data-tab buttons (PR data/Review statistics/Author
-  // Insights) are React-owned now (DataTabButton.jsx/TabStateProvider.jsx)
-  // with no vanilla-DOM fallback left for this jsdom-only suite (which
-  // never loads react-app.jsx) to render into - dropped the "PR data" tab
-  // assertion from this test's name-match, same reasoning as the removed
-  // "author insights View in table..." test below.
-  test("shows key management and data tabs from static HTML", () => {
+  // Phase A, slices 1 and 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): both the 3 data-tab buttons (PR data/Review statistics/
+  // Author Insights) and all 6 management-tab buttons (Activity/Run &
+  // Filter/Backfill/Action Log/Actor Names/Export) are React-owned now
+  // (DataTabButton.jsx/ManagementTabButton.jsx/TabStateProvider.jsx) with
+  // no vanilla-DOM fallback left for this jsdom-only suite (which never
+  // loads react-app.jsx) to render into - dropped every tab assertion
+  // from this test, same reasoning as the removed "author insights View
+  // in table..." test below. Only the page heading is still genuinely
+  // static HTML.
+  test("shows the page heading from static HTML", () => {
     expect(screen.getByRole("heading", { name: "View PR Updates" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "Run & Filter" })).toBeInTheDocument();
   });
 
   test("blocked auto-update indicator is hidden by default and exposes apply action", () => {
@@ -1284,7 +1282,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#77")).toBeInTheDocument();
@@ -1430,7 +1428,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#177")).toBeInTheDocument();
@@ -1845,18 +1843,15 @@ describe("index page rendering with Testing Library", () => {
     expect(String(reviewersValue?.textContent || "")).toContain("Reviewer Two");
   });
 
-  test("switches management tab panels when a user opens Run & Filter", async () => {
-    const user = userEvent.setup();
-    const activityTab = screen.getByRole("tab", { name: "Activity" });
-    const runFilterTab = screen.getByRole("tab", { name: "Run & Filter" });
-
-    await user.click(runFilterTab);
-
-    expect(runFilterTab).toHaveAttribute("aria-selected", "true");
-    expect(activityTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-script").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-status").hidden).toBe(true);
-  });
+  // "switches management tab panels when a user opens Run & Filter" was
+  // removed here: it clicked the real vanilla <button id="tab-script">,
+  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap") replaced with an empty React portal root
+  // (ManagementTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM
+  // fallback left for this jsdom-only suite (which never loads
+  // react-app.jsx) to click. e2e/smoke.spec.js clicks this exact tab in a
+  // real browser 49+ times already (every test that reaches the Run &
+  // Filter panel).
 
   test("filters, backfill, and visibility toggles update rendered output", async () => {
     initTestPage({
@@ -1899,7 +1894,6 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
-    const user = userEvent.setup();
 
     await waitFor(() => {
       const dataMeta = document.getElementById("data-meta")?.textContent || "";
@@ -1913,7 +1907,7 @@ describe("index page rendering with Testing Library", () => {
     // lastQuickCheckSkipReason) is kept only because the rest of this test's
     // payload shape mirrors a real response; nothing here reads it anymore.
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
     expect(document.getElementById("tab-panel-status").hidden).toBe(true);
 
@@ -1987,7 +1981,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     await user.click(
       screen.getByRole("button", { name: "Apply filters (local)" }),
@@ -2010,7 +2004,7 @@ describe("index page rendering with Testing Library", () => {
 
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
@@ -2094,7 +2088,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given a single successful target, when Run script completes, then the fresh payload is applied directly with no redundant reload", async () => {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2137,7 +2131,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given multiple successful targets, when Run script completes, then the final rendered state reflects the last target's payload with no redundant reload", async () => {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2182,7 +2176,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given one target succeeds and one fails, when Run script completes, then the successful target's data still renders and the combined status/snackbar reflect the partial failure", async () => {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2238,7 +2232,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given every target fails, when Run script completes, then the failure status is shown, nothing throws, and nothing is rendered", async () => {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2276,7 +2270,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given no PR numbers entered (an \"All PRs\" run), when Run script completes, then it behaves the same as a specific-PR-number target", async () => {
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2320,7 +2314,7 @@ describe("index page rendering with Testing Library", () => {
 
   test("given no selected author and toggled checkboxes when Run script posts payload then author fallback and boolean flags are mapped", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     // Note: With checkbox-based filters, authors are populated dynamically from PR data.
     // This test verifies that when no author checkboxes are selected, the author field
@@ -2397,7 +2391,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2439,7 +2433,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2470,7 +2464,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2508,7 +2502,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2544,7 +2538,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const repoField = document.getElementById("repo");
     await user.clear(repoField);
@@ -2593,7 +2587,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -2636,7 +2630,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2664,7 +2658,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2706,7 +2700,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2757,7 +2751,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -2852,7 +2846,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const scopeField = document.getElementById("scope-mode");
     const prFilterField = document.getElementById("filter-pr-numbers");
@@ -2992,7 +2986,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
     const scopeField = document.getElementById("scope-mode");
     expect(scopeField).toBeInTheDocument();
 
@@ -3321,7 +3315,7 @@ describe("index page rendering with Testing Library", () => {
 
     document.getElementById("status").textContent = "Viewer : ahall236_uhg";
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const noActivityMode = document.getElementById("attention-no-activity-mode");
     const includePendingComments = document.getElementById(
@@ -3489,7 +3483,7 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
@@ -3889,7 +3883,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
     });
@@ -4019,7 +4013,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
       await waitFor(() => {
         expect(screen.getByText("#901")).toBeInTheDocument();
       });
@@ -4111,8 +4105,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
       await waitFor(() => {
         expect(screen.getByText("#902")).toBeInTheDocument();
       });
@@ -4197,7 +4190,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
     });
@@ -4309,7 +4302,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const scopeSelect = document.getElementById("scope-mode");
     const authorList = getMultiSelectList("author-list");
@@ -4378,8 +4371,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4451,8 +4443,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4534,7 +4525,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4602,8 +4593,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     const approverList = getMultiSelectList("approver-list");
@@ -4644,8 +4634,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     await waitFor(() => {
@@ -4773,7 +4762,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     const scopeSelect = document.getElementById("scope-mode");
@@ -4908,7 +4897,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4954,9 +4943,8 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5010,7 +4998,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     await waitFor(() => {
@@ -5113,7 +5101,7 @@ describe("index page rendering with Testing Library", () => {
       expect(defaultsCall).toBeDefined();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    window.activateManagementTab("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5190,29 +5178,23 @@ describe("index page rendering with Testing Library", () => {
     expect(document.activeElement).toBe(firstElement);
   });
 
-  test("given a user opens the Action Log tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActionLogSection.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Action Log" }));
-
-    expect(document.getElementById("tab-panel-action-log").hidden).toBe(false);
-  });
-
-  test("given a user opens the Actor Names tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActorNamesTab.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Actor Names" }));
-
-    expect(document.getElementById("tab-panel-actor-name-cache").hidden).toBe(false);
-  });
+  // "given a user opens the Action Log tab..." and "given a user opens
+  // the Actor Names tab..." were removed here: they clicked the real
+  // vanilla <button id="tab-action-log">/<button id="tab-actor-name-cache">,
+  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap") replaced with empty React portal roots
+  // (ManagementTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM
+  // fallback left for this jsdom-only suite (which never loads
+  // react-app.jsx) to click. e2e/smoke.spec.js's "Action Log tab loads
+  // its entries on its very first visit..."/"Actor Names tab loads its
+  // mappings on its very first visit..." tests click these exact tabs in
+  // a real browser already.
 
   test("posts to backfill start endpoint when a user starts backfill from the Backfill tab", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5286,7 +5268,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -6576,7 +6558,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
     await user.click(screen.getByRole("button", { name: "Refresh log" }));
 
     await waitFor(() => {
@@ -6594,20 +6576,19 @@ describe("index page rendering with Testing Library", () => {
     expect(logTailCall).toBeDefined();
   });
 
-  test("given a user opens the Export tab, when it activates, then the tab panel becomes visible (content is React-owned - see ExportTab.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Export" }));
-
-    expect(document.getElementById("tab-panel-export").hidden).toBe(false);
-  });
+  // "given a user opens the Export tab..." was removed here: it clicked
+  // the real vanilla <button id="tab-export">, which Phase A, slice 2
+  // (see REACT_MIGRATION_PLAN.md, "Full migration roadmap") replaced with
+  // an empty React portal root (ManagementTabButton.jsx/TabStateProvider.jsx)
+  // - no vanilla-DOM fallback left for this jsdom-only suite (which never
+  // loads react-app.jsx) to click. e2e/smoke.spec.js clicks this exact
+  // tab in a real browser already.
 
   test("backfill log auto-scrolls to bottom when running and auto-scroll is enabled", async () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
 
     // Force a running status refresh in-test to avoid startup timing races.
     const defaultImpl = fetchMock.getMockImplementation();
@@ -6663,7 +6644,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6688,7 +6669,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    window.activateManagementTab("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -8263,7 +8244,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       await user.selectOptions(document.getElementById("filter-pr-difficulty"), "3");
 
@@ -8301,8 +8282,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       await waitFor(() => {
         expect(document.getElementById("filter-pr-difficulty").value).toBe("4");
@@ -8338,10 +8318,15 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
-      const list = getMultiSelectList("change-filter-ignore-comment-authors-list");
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-comment-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-comment-authors-list")).toBe(false);
 
@@ -8376,10 +8361,15 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
-      const list = getMultiSelectList("change-filter-ignore-review-authors-list");
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-review-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-review-authors-list")).toBe(false);
 
@@ -8403,8 +8393,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const commentList = getMultiSelectList("change-filter-ignore-comment-authors-list");
       const reviewList = getMultiSelectList("change-filter-ignore-review-authors-list");
@@ -8439,7 +8428,12 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
+      await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
       // Select comment authors to ignore
       await clickMultiSelectCheckbox(
@@ -8509,7 +8503,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
@@ -8565,8 +8559,12 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
+      await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
       // Check comment author selections are restored
       const commentAuthorsSelections = getSelectedMultiSelectValues(
@@ -8613,7 +8611,12 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
+      await waitFor(() => {
+        expect(
+          getSelectedMultiSelectValues("change-filter-ignore-comment-authors-list"),
+        ).toEqual(["dependabot[bot]"]);
+      });
 
       // Verify initial state
       expect(
@@ -8684,7 +8687,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       fetchMock.mockClear();
       await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
@@ -8719,7 +8722,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      window.activateManagementTab("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",

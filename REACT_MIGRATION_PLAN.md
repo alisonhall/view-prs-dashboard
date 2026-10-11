@@ -2180,6 +2180,28 @@ First concrete implementation slice of the roadmap above. Scoped to just the dat
 
 ---
 
+## 🚧 **Phase A, slice 2: management-tabs bar → React, extending `TabStateProvider` (2026-10-11)**
+
+Converts the other, bigger tab bar - management-tabs (Activity/Run & Filter/Backfill/Action Log/Actor Names/Export, 6 buttons) - same proven approach as slice 1. `pr-management-tabs.helpers.js`'s `activateTab` had zero external callers (unlike `activateDataTab`'s 4), so no caller-redirection step was needed here - the scope turned out to be elsewhere.
+
+**A real structural wrinkle found during implementation, not anticipated by the plan:** `activateTab` was nested *inside* `initManagementTabs()` as a closure capturing its element references once - not a top-level, re-querying function like `pr-data-tabs.helpers.js`'s `activateDataTab`. Since `initManagementTabs()` was about to stop being called in production, `activateTab` had to be extracted to the top level first (re-querying elements every call, matching the sibling file's shape) before it could be exposed to React at all - a real refactor, not just "export it unchanged" as planned. Behavior-preserving, confirmed via the file's own 11 existing tests passing unmodified.
+
+**The scope turned out much bigger than planned in one specific place, found only during implementation:** grepping `index.html.test.js` for the plan's anticipated "~2-3 affected tests" (slice 1's actual count) instead found the "Run & Filter" tab clicked as test setup in **55+ places**, plus 7 more for "Backfill" and 3 pure tab-switch tests to remove - that jsdom-only suite (which never loads `react-app.jsx`) uses these clicks throughout as routine navigation to reach panel content, not just to test the switch itself. Flagged this to the user before proceeding, given the material scope difference from what was approved - confirmed to proceed with the full bulk fix.
+
+**The bulk fix itself needed a second structural change, also found only empirically:** replacing each `await user.click(screen.getByRole("tab", {name: "Run & Filter"}))` with a direct `window.activateManagementTab("script")` call (the same new bridge, invoked directly instead of via a simulated click) seemed sufficient, but `activateTab`'s own guard required the 3 *button* elements to exist (not just the panels) before doing anything - and buttons no longer exist as plain elements in this suite (replaced by empty portal roots, since it never mounts `react-app.jsx`). Fixed by relaxing the guard to require only the 3 panels, with every button mutation made conditionally guarded - matching the conditional-guard pattern the 3 "optional" tabs (action-log/actor-name-cache/export) already used. Confirmed this relaxation is genuinely load-bearing (not just convenient) via temporary-revert-and-rerun: reverting to the button-requiring guard reproduced 45 failures.
+
+**A second, independent timing issue, also only found empirically:** 5 "change detection filters" tests still failed after the guard fix - not because of the tab switch, but because the PR table's own React mount is asynchronous (triggered by a data fetch), and the old `await user.click(...)` happened to provide enough of an async yield for that mount to complete before assertions ran; the bare synchronous bridge call doesn't. Fixed with a `waitFor(...)` immediately after each affected `window.activateManagementTab("script")` call, polling for the actual condition each test needed (list populated, or a specific restored selection) rather than an arbitrary delay.
+
+**Fix:** `activateTab` exported from `pr-management-tabs.helpers.js` (alongside the pre-existing `initManagementTabs`). `TabStateContext.jsx`/`TabStateProvider.jsx` extended with `activeManagementTab`/`setActiveManagementTab` (one shared Provider for both bars, not a second one - matching the original roadmap's own `{ activeManagementTab, activeDataTab }` shape) plus a `window.setActiveManagementTab` write bridge, published for symmetry even though nothing calls it yet. New `components/ManagementTabButton.jsx` (generic, mirrors `DataTabButton.jsx`). `index.html`: all 6 static `<button>`s replaced with empty `<span id="tab-*-root">` portal targets. `react-app.jsx`: 6 new container lookups + portals, inside the same `<TabStateProvider>` slice 1 already mounts. `index.page.js`: `window.activateManagementTab` bridge added next to the `activateTab` wiring; the `initManagementTabs();` call removed from `initPage()` entirely (a direct call, not a DI param like slice 1's `initDataTabs` swap-to-no-op).
+
+**New coverage:** `ManagementTabButton.test.jsx` (3 tests, mirrors `DataTabButton.test.jsx`) and 5 new tests extending `TabStateProvider.test.jsx` with the management-tab equivalents of its existing data-tab tests. `pr-management-tabs.helpers.test.js`'s 11 existing tests unmodified.
+
+**Not closed by this slice, as scoped from the start:** same as slice 1 - `recomputeDirtyPrSectionsFields`/`navigateToPrInTable`/`navigateToAuthorInsights` stay on `index.page.js`'s `window.*` bridge, unaffected by this tab bar's conversion.
+
+**Verified:** full jest suite (2497 tests, net +4 after the integration-suite fixes above), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - real existing coverage, including tests that click "Run & Filter"/"Backfill"/"Action Log"/"Actor Names"/"Export" in a real browser, already exercises this).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

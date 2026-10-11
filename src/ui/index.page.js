@@ -2499,7 +2499,7 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 // can keep calling `loadActorNameCache()` unchanged on tab activation.
 const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
 
-const { initManagementTabs } =
+const { activateTab } =
   prManagementTabsHelperFactory.createPrManagementTabsHelpers({
     getOptionalElementById,
     loadActionLog,
@@ -2516,6 +2516,16 @@ const { initManagementTabs } =
     // refreshes status/log now, not tab-switching chrome.
     onBackfillTabActivated: () => backfillTabOrchestrator.onTabActivated(),
   });
+
+// Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for TabStateProvider.jsx to call - same
+// category as window.activateDataTab above. activateTab itself is
+// completely unchanged (restructured to a top-level function, same
+// shape as activateDataTab, but behavior-preserving - see that file's
+// own comment).
+if (typeof window !== "undefined") {
+  window.activateManagementTab = (...args) => activateTab(...args);
+}
 
 // getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,
 // genuinely zero-dependency) used to be imported here too, to build this
@@ -3739,7 +3749,13 @@ const initPage = () => {
     { once: true },
   );
   registerUiOptionPersistenceHandlers();
-  initManagementTabs();
+  // Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): the 6 management-tab buttons are React-owned now
+  // (ManagementTabButton.jsx/TabStateProvider.jsx) - initManagementTabs'
+  // own button click-wiring would double-fire alongside React's own
+  // onClick if both ran, so this call is removed. initManagementTabs
+  // itself (and its own tests) are untouched - it's simply no longer
+  // called from here.
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
   // Initialize Backfill Tab orchestrator

@@ -40,30 +40,12 @@
     <h2>Management Tabs</h2>
     <div class="management-tabs" id="management-tabs">
         <div class="management-tab-list" role="tablist" aria-label="Management tabs">
-            <button type="button" id="tab-status" class="management-tab-button is-active" role="tab"
-                aria-selected="true" aria-controls="tab-panel-status">
-                Activity
-            </button>
-            <button type="button" id="tab-script" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-script">
-                Run & Filter
-            </button>
-            <button type="button" id="tab-backfill" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-backfill">
-                Backfill
-            </button>
-            <button type="button" id="tab-action-log" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-action-log">
-                Action Log
-            </button>
-            <button type="button" id="tab-actor-name-cache" class="management-tab-button" role="tab"
-                aria-selected="false" aria-controls="tab-panel-actor-name-cache">
-                Actor Names
-            </button>
-            <button type="button" id="tab-export" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-export">
-                Export
-            </button>
+            <span id="tab-status-root"></span>
+            <span id="tab-script-root"></span>
+            <span id="tab-backfill-root"></span>
+            <span id="tab-action-log-root"></span>
+            <span id="tab-actor-name-cache-root"></span>
+            <span id="tab-export-root"></span>
         </div>
 
         <section id="tab-panel-status" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-status">
