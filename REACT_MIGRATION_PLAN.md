@@ -2023,6 +2023,18 @@ A fresh sweep following the backfill fix found `pr-data-tab.orchestrator.js` - a
 
 ---
 
+## 🚧 **Cleaned up the 2 smaller findings from the same sweep (2026-10-11)**
+
+The sweep that found `pr-data-tab.orchestrator.js`'s dead methods also turned up 2 smaller items, both addressed now:
+
+**`ROADMAP.md`'s "Future Performance Opportunities" list was stale.** Confirmed via `PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md` that 2 of its 3 bullets (smart group count caching, filter result memoization) were already done - superseded by this migration's own Phase 5 "Performance Tuning" (`pr-entry-derived-cache.helpers.js`), per that doc's own `#7`/`#8` entries and its top-of-file note. Checked both off; only virtual scrolling remains genuinely open (and still correctly described there as large/deferred, "only if users have 200+ PRs regularly").
+
+**`pr-backfill-actions.helpers.js`'s `handleBackfillAction` had a real test-coverage gap**, same shape as `handleRunScript`'s pre-fix state - no production bug found, just untested branches: the outer `catch` when `postJson` itself rejects (vs. resolving with a failure shape, the only case tested before); the `finally` block's own inner `try/catch` around its trailing status refresh (the button-re-enable fallback when that refresh *also* fails); and the `"stop"` action path specifically (both existing tests only used `"start"`, so the `if (action === "start")`-gated extra refresh was never confirmed absent for `"stop"`). Added 3 new tests covering all three. Confirmed the button-re-enable test actually catches a regression by temporarily stripping the inner `catch`'s re-enable calls and rerunning, before restoring.
+
+**Verified:** full jest suite (2487 tests, +3), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - pure test-coverage addition, no production code changed for this half).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

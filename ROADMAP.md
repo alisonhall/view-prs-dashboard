@@ -85,8 +85,8 @@ For planned steps, see [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSA
 ### Future Performance Opportunities
 
 - [ ] Virtual scrolling for 200+ PR lists (10-50x faster initial render)
-- [ ] Smart group count caching (5-10% faster renders)
-- [ ] Filter result memoization (10-20% improvement when filters unchanged)
+- [x] ~~Smart group count caching~~ - superseded by the React migration's own Phase 5 ("Performance Tuning"), see `PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md` #7
+- [x] ~~Filter result memoization~~ - superseded by the React migration's own Phase 5, see `PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md` #8
 
 For detailed performance analysis, see [`PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md`](PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md).
 
