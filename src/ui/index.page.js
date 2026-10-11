@@ -1786,7 +1786,12 @@ const {
 } = prAutoRenderNavigationHelperFactory.createPrAutoRenderNavigationHelpers({
   normalizePrNumber,
   normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-  activateDataTab: (...args) => activateDataTab(...args),
+  // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): routed through TabStateProvider's own write bridge instead
+  // of calling the vanilla activateDataTab directly - the 3 data-tab
+  // buttons are React-rendered now, and would show stale active-state
+  // styling if a tab switch bypassed the Context that drives them.
+  activateDataTab: (...args) => window.setActiveDataTab?.(...args),
   collectNodesByTag: (...args) => collectNodesByTag(...args),
   expandAncestorDetailsElements,
   ensureInsightsRowVisibleForElement,
@@ -2339,7 +2344,7 @@ const {
   stripAnsi,
 });
 
-const { activateDataTab, initDataTabs } =
+const { activateDataTab } =
   prDataTabsHelperFactory.createPrDataTabsHelpers({
     getOptionalElementById,
     onTabActivated: () => {
@@ -2347,13 +2352,29 @@ const { activateDataTab, initDataTabs } =
     },
   });
 
+// Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for TabStateProvider.jsx (a React component) to
+// call - same category as applyFreshPrPayload/beginRequestActivity below,
+// not a new entanglement. activateDataTab itself is completely unchanged;
+// this just lets React become a second caller of it.
+if (typeof window !== "undefined") {
+  window.activateDataTab = (...args) => activateDataTab(...args);
+}
+
 // PR Data Tab Orchestrator
 const prDataTabOrchestrator =
   prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
     // Helper functions
     deriveRunPrDataContext,
     deriveRenderPipelineState,
-    initDataTabs,
+    // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+    // roadmap"): the 3 data-tab buttons are now React-owned
+    // (DataTabButton.jsx/TabStateProvider.jsx) - initDataTabs' own button
+    // click-wiring (`.onclick = ...`) would double-fire alongside React's
+    // own onClick if both ran, so this orchestrator's one-time
+    // initialize() call no longer wires them. initDataTabs itself (and its
+    // own tests) are untouched - only this one call site stops using it.
+    initDataTabs: () => {},
     getOptionalElementById,
     // State management via dependency injection
     stateGetters: {
@@ -2548,7 +2569,10 @@ if (typeof window !== "undefined") {
   // too.
   window.navigateToPrInTableFromStats = (prNumber, repo) =>
     prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      activateDataTab,
+      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): routed through TabStateProvider's write bridge - see
+      // the comment at this same swap above (createPrAutoRenderNavigationHelpers).
+      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
       collectNodesByTag,
     });
 }
@@ -2634,7 +2658,9 @@ if (typeof window !== "undefined") {
   // Stats (Track A).
   window.navigateToPrInTableFromAuthorInsights = (prNumber, repo) =>
     prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      activateDataTab,
+      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): same swap as navigateToPrInTableFromStats above.
+      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
       collectNodesByTag,
     });
   // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments

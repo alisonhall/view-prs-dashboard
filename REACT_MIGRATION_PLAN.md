@@ -2158,6 +2158,28 @@ Asked directly: what's remaining, including deferred work, and what's the plan t
 
 ---
 
+## 🚧 **Phase A, slice 1: data-tabs bar → React + `TabStateProvider` (2026-10-11)**
+
+First concrete implementation slice of the roadmap above. Scoped to just the data-tabs bar (PR Data/Review Stats/Author Insights) - 3 buttons, already fully exported/tested as a standalone module - not the 6-button management-tabs bar, which becomes a separate follow-up slice.
+
+**Hard constraint that shaped the whole approach:** `state/useIsTabPanelVisible.jsx` (used by several already-migrated components) is a `MutationObserver` watching each panel's `hidden` DOM attribute, not a Context read; `pr-render-apply.helpers.js`'s own vanilla `isTabPanelVisible` reads `panel.hidden` directly too. Neither could be touched, so the design reuses the real DOM-mutation logic rather than replacing it: `pr-data-tabs.helpers.js`'s exported `activateDataTab(key)` is completely unchanged - the new Context just becomes a second, React-visible "who's active" source of truth that calls into it as a side effect, the same "React decides, but still performs the real DOM write" pattern `AlwaysShowInReviewCheckbox.jsx` already established.
+
+**What moved:** new `state/TabStateContext.jsx`/`components/TabStateProvider.jsx` (plain `useState`, matching `NotesDirtyProvider.jsx`'s shape, not the ref+version-tick pattern - this state genuinely originates in React now). `setActiveDataTab(key)` updates React state and calls `window.activateDataTab?.(key)` - a new one-line bridge (`index.page.js`, right next to the real `activateDataTab` instance) exposing the existing vanilla function *for* this Provider, same category as `applyFreshPrPayload`/`beginRequestActivity`, not a new entanglement. A `window.setActiveDataTab` write bridge (same shape as `FilterStateProvider`'s `window.setFilterStateValue`) lets vanilla-only callers trigger a switch *through* Context instead of bypassing it. New `components/DataTabButton.jsx` - one generic component for all 3 buttons (matching `ContextFilterCheckbox.jsx`'s "no field-specific behavior" shape), rendering the exact same `<button>` markup/attributes the static HTML used to, same `id`s. `index.html`: the 3 static `<button>`s replaced with empty `<span id="tab-*-root">` portal targets (matching `#filter-pr-numbers-root`'s precedent exactly - confirmed by reading it first rather than guessing).
+
+**4 external callers redirected** from calling the vanilla `activateDataTab` directly to going through `window.setActiveDataTab` instead, so the React-rendered buttons' active-state styling never desyncs from the real active tab: `pr-auto-render-navigation.helpers.js`'s `navigateToPrInTable`/`navigateToAuthorInsights` DI wiring, and the two `window.navigateToPrInTableFromStats`/`FromAuthorInsights` bridges (all 3 in `index.page.js`).
+
+**`index.page.js`'s own button-wiring retired for this bar:** `prDataTabOrchestrator`'s `initDataTabs` DI param is now `() => {}` - the real `initDataTabs()`'s `.onclick` wiring would have double-fired alongside React's own `onClick` once the buttons became React-rendered. `initDataTabs` itself (and its own tests) are completely untouched, only this one call site stops using it; the now-unused `initDataTabs` destructure was removed too (caught by `eslint`'s `no-unused-vars`).
+
+**2 real test fixes in `index.html.test.js`** (confirmed via grep this is the ONLY test file referencing these 3 button ids by role/name - everywhere else was either untouched or already covered): "shows key management and data tabs from static HTML" dropped its now-inapplicable "PR data" tab assertion (that bar isn't static HTML anymore); "switches the active data tab when a user clicks Review statistics" was removed outright - this jsdom-only suite never loads `react-app.jsx`, so there's no vanilla fallback left to click, same precedent an already-existing comment in that file documents for a prior, similarly-shaped removal. Equivalent real coverage already exists in Playwright (`e2e/smoke.spec.js`'s "lifecycle section expand/collapse and tab switching work" already clicks all 3 data-tab buttons in a real browser) - confirmed this test actually catches a regression by temporarily stripping `TabStateProvider`'s `window.activateDataTab?.()` call and rerunning just that test (failed with a clear "expected visible, received hidden" diff) before restoring.
+
+**New coverage:** `TabStateProvider.test.jsx` (5 tests - bridge publish/cleanup, both read/write directions, no-throw without the vanilla bridge installed) and `DataTabButton.test.jsx` (3 tests - default active state, click switches tabs, the real `window.activateDataTab` call).
+
+**Not closed by this slice, as scoped from the start:** the management-tabs bar (6 buttons) stays fully vanilla - separate follow-up slice. `navigateToPrInTable`/`navigateToAuthorInsights` are NOT removed from `index.page.js`'s `window.*` bridge by this slice - they still do real DOM-anchor-scan/author-selection-validation work beyond the tab switch; only their internal `activateDataTab` call moved off the vanilla function.
+
+**Verified:** full jest suite (2493 tests, +8 new, net after the 1 removed/1 trimmed integration test), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged - real existing coverage already exercises this).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

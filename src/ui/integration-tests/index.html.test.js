@@ -773,6 +773,13 @@ describe("index page rendering with Testing Library", () => {
     window.setTimeout = realSetTimeout;
   });
 
+  // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): the 3 data-tab buttons (PR data/Review statistics/Author
+  // Insights) are React-owned now (DataTabButton.jsx/TabStateProvider.jsx)
+  // with no vanilla-DOM fallback left for this jsdom-only suite (which
+  // never loads react-app.jsx) to render into - dropped the "PR data" tab
+  // assertion from this test's name-match, same reasoning as the removed
+  // "author insights View in table..." test below.
   test("shows key management and data tabs from static HTML", () => {
     expect(screen.getByRole("heading", { name: "View PR Updates" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
@@ -780,7 +787,6 @@ describe("index page rendering with Testing Library", () => {
       "true",
     );
     expect(screen.getByRole("tab", { name: "Run & Filter" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "PR data" })).toBeInTheDocument();
   });
 
   test("blocked auto-update indicator is hidden by default and exposes apply action", () => {
@@ -791,18 +797,18 @@ describe("index page rendering with Testing Library", () => {
     expect(document.getElementById("auto-render-blocked-apply-btn")).toBeInTheDocument();
   });
 
-  test("switches the active data tab when a user clicks Review statistics", async () => {
-    const user = userEvent.setup();
-    const reviewStatsTab = screen.getByRole("tab", { name: "Review statistics" });
-    const prDataTab = screen.getByRole("tab", { name: "PR data" });
-
-    await user.click(reviewStatsTab);
-
-    expect(reviewStatsTab).toHaveAttribute("aria-selected", "true");
-    expect(prDataTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-review-stats").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-pr-data").hidden).toBe(true);
-  });
+  // "switches the active data tab when a user clicks Review statistics"
+  // was removed here: it clicked the real vanilla <button id="tab-review-
+  // stats">, which Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full
+  // migration roadmap") replaced with an empty React portal root
+  // (DataTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM fallback
+  // left for this jsdom-only suite (which never loads react-app.jsx) to
+  // click. Already covered in a real browser by e2e/smoke.spec.js's
+  // existing "lifecycle section expand/collapse and tab switching work"
+  // test, which clicks both the Review statistics and Author Insights
+  // buttons and asserts their panels become visible - confirmed it
+  // actually catches a regression here too (temporarily disabled
+  // TabStateProvider's DOM-sync call and reran just that test).
 
   // "author insights View in table switches to PR data tab and expands the
   // insights row" was removed here: it exercised Review Stats' "View in

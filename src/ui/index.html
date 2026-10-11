@@ -468,18 +468,9 @@
     <h2>Data Views</h2>
     <div class="data-tabs" id="data-tabs">
         <div class="data-tab-list" role="tablist" aria-label="PR data views">
-            <button type="button" id="tab-pr-data" class="data-tab-button is-active" role="tab" aria-selected="true"
-                aria-controls="tab-panel-pr-data">
-                PR data
-            </button>
-            <button type="button" id="tab-review-stats" class="data-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-review-stats">
-                Review statistics
-            </button>
-            <button type="button" id="tab-author-insights" class="data-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-author-insights">
-                Author Insights
-            </button>
+            <span id="tab-pr-data-root"></span>
+            <span id="tab-review-stats-root"></span>
+            <span id="tab-author-insights-root"></span>
         </div>
 
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">

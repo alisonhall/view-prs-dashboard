@@ -38,6 +38,8 @@ import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
+import { TabStateProvider } from './components/TabStateProvider';
+import { DataTabButton } from './components/DataTabButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
 import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
@@ -406,6 +408,9 @@ function computeStaticContainers() {
     autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
     activityDrawer: document.getElementById('activity-drawer-root'),
+    tabPrData: document.getElementById('tab-pr-data-root'),
+    tabReviewStats: document.getElementById('tab-review-stats-root'),
+    tabAuthorInsights: document.getElementById('tab-author-insights-root'),
   };
 }
 
@@ -799,6 +804,27 @@ function AppRoot() {
         />
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
+
+        <TabStateProvider>
+          {containers.tabPrData &&
+            createPortal(
+              <DataTabButton tabKey="pr-data" label="PR data" panelId="tab-panel-pr-data" />,
+              containers.tabPrData,
+              'tab-pr-data',
+            )}
+          {containers.tabReviewStats &&
+            createPortal(
+              <DataTabButton tabKey="review-stats" label="Review statistics" panelId="tab-panel-review-stats" />,
+              containers.tabReviewStats,
+              'tab-review-stats',
+            )}
+          {containers.tabAuthorInsights &&
+            createPortal(
+              <DataTabButton tabKey="author-insights" label="Author Insights" panelId="tab-panel-author-insights" />,
+              containers.tabAuthorInsights,
+              'tab-author-insights',
+            )}
+        </TabStateProvider>
 
         {containers.triggerAutoRunBtn &&
           createPortal(
