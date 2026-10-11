@@ -2004,6 +2004,25 @@ A prior entry noted, as an unrelated aside, that `backfillTabOrchestrator.activa
 
 ---
 
+## 🚧 **Deleted `pr-data-tab.orchestrator.js`'s 5 dead public methods - the second half of the sibling-orchestrator unused-API-surface pattern (2026-10-11)**
+
+A fresh sweep following the backfill fix found `pr-data-tab.orchestrator.js` - authored off the same "orchestrator" template (confirmed via git log: identical JSDoc structure, `isInitialized` pattern, IIFE module shape) - has the same issue, but worse: 5 dead public methods instead of 1 (`activateTab`, `handleDataRefresh`, `handleFilterChange`, `loadData`, `cleanup`), confirmed via grep to have zero real callers anywhere outside their own unit tests. `index.page.js` only ever calls this orchestrator's `initialize()`/`renderPrData()`.
+
+**Unlike the backfill fix, this one needed no new wiring** - research confirmed every one of the 5 is pure superseded duplicate scaffolding, not a missing-behavior gap:
+- `activateTab` just called `activateDataTab("pr-data")` - already called directly everywhere tab-switching for this tab actually happens (the real click handler inside `initDataTabs()`, itself called from this orchestrator's own `initialize()`; plus 3 other direct "jump to this tab" call sites in `index.page.js`). `onTabActivated` (the real "what happens on activation" hook) is already wired centrally inside `activateDataTab` itself - nothing missing, unlike backfill's genuine refresh-on-activate gap.
+- `handleDataRefresh` just called this orchestrator's own `renderPrData` - already called directly at the 2 real places a refresh happens.
+- `handleFilterChange` just called `applyFiltersFromCache()` - already called directly via the more capable debounced wrapper (`debouncedApplyFilters`) that's the actual production path.
+- `loadData` just called `loadStoredData(repo)` - already called directly at startup, with real error handling (`.catch(...)`) this wrapper never had.
+- `cleanup` only reset `isInitialized`, which had no externally observable effect once its only 2 "consumers" (the `isInitialized` guards inside `handleDataRefresh`/`handleFilterChange`) are also gone. The real polling/visibility lifecycle is fully owned by `<PrDataPolling />` in `react-app.jsx`, unrelated to this flag.
+
+**Fix:** deleted all 5 method definitions, their "Public API" return entries, and the 3 DI params (`applyFiltersFromCache`/`loadStoredData`/`activateDataTab`) that became unused once their one real consumer was gone (`initDataTabs` stays - `initialize()`, a real method, uses it). Updated the top-of-file JSDoc to match. `index.page.js`'s own wiring for this orchestrator dropped the same 3 now-redundant params - the underlying functions themselves are untouched and keep being called directly everywhere else in the file; only their pointless pass-through into this one orchestrator instance is gone.
+
+**Testing:** pure dead-code deletion with a confirmed-working real implementation already covering every case elsewhere - no new coverage needed. Deleted the 8 tests exercising the 5 removed methods (`pr-data-tab.orchestrator.test.js`), trimmed the "all methods defined"/"are functions" assertions to match. Confirmed no other test in the file referenced them even indirectly.
+
+**Verified:** full jest suite (2484 tests, -8 as expected), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged) - zero behavior change, exactly as intended for a pure dead-code removal.
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

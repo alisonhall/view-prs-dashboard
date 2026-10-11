@@ -2372,9 +2372,6 @@ const prDataTabOrchestrator =
     // Helper functions
     deriveRunPrDataContext,
     deriveRenderPipelineState,
-    applyFiltersFromCache,
-    loadStoredData,
-    activateDataTab,
     initDataTabs,
     getOptionalElementById,
     // State management via dependency injection

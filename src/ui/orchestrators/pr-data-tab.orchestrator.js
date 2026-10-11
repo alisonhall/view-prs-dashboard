@@ -20,9 +20,6 @@ export const { createPrDataTabOrchestrator } = (function () {
    * @param {Object} deps - Dependencies
    * @param {Function} deps.deriveRunPrDataContext - Derives PR data context
    * @param {Function} deps.deriveRenderPipelineState - Derives render pipeline state
-   * @param {Function} deps.applyFiltersFromCache - Applies cached filters
-   * @param {Function} deps.loadStoredData - Loads stored PR data
-   * @param {Function} deps.activateDataTab - Activates data tab UI
    * @param {Function} deps.initDataTabs - Initializes data tabs
    * @param {Function} deps.getOptionalElementById - DOM helper
    * @param {Object} deps.stateGetters - Getters for global state
@@ -39,18 +36,11 @@ export const { createPrDataTabOrchestrator } = (function () {
    * @returns {Object} Orchestrator API
    * @returns {Function} returns.initialize - Initialize PR data tab
    * @returns {Function} returns.renderPrData - Render PR data
-   * @returns {Function} returns.handleDataRefresh - Handle data refresh
-   * @returns {Function} returns.handleFilterChange - Handle filter change
-   * @returns {Function} returns.activateTab - Activate this tab
-   * @returns {Function} returns.cleanup - Cleanup tab state
    */
   function createPrDataTabOrchestrator({
     // Helper functions (already extracted)
     deriveRunPrDataContext,
     deriveRenderPipelineState,
-    applyFiltersFromCache,
-    loadStoredData,
-    activateDataTab,
     initDataTabs,
     getOptionalElementById,
     // State management (via dependency injection)
@@ -215,72 +205,10 @@ export const { createPrDataTabOrchestrator } = (function () {
       isInitialized = true;
     }
 
-    /**
-     * Handles data refresh events.
-     * Called when new PR data is available.
-     * 
-     * @param {Object} payload - New PR data payload
-     * @param {string} [repo=""] - Repository name
-     */
-    function handleDataRefresh(payload, repo = "") {
-      if (!isInitialized) {
-        return;
-      }
-
-      renderPrData(payload, repo);
-    }
-
-    /**
-     * Handles filter change events.
-     * Re-applies filters and re-renders data.
-     */
-    function handleFilterChange() {
-      if (!isInitialized) {
-        return;
-      }
-
-      // Delegate to existing filter helper
-      applyFiltersFromCache();
-    }
-
-    /**
-     * Activates the PR Data tab.
-     * Makes this tab visible and active.
-     */
-    function activateTab() {
-      // Delegate to existing tab activation helper
-      activateDataTab("pr-data");
-    }
-
-    /**
-     * Loads stored PR data for a repository.
-     * 
-     * @param {string} [repo=""] - Repository name
-     * @returns {Promise<void>}
-     */
-    async function loadData(repo = "") {
-      // Delegate to existing data loading helper
-      return loadStoredData(repo);
-    }
-
-    /**
-     * Cleans up tab state.
-     * Called when tab is deactivated or page unloads.
-     */
-    function cleanup() {
-      // No cleanup needed currently since helpers manage their own state
-      isInitialized = false;
-    }
-
     // Public API
     return {
       initialize,
       renderPrData,
-      handleDataRefresh,
-      handleFilterChange,
-      activateTab,
-      loadData,
-      cleanup,
     };
   }
 
