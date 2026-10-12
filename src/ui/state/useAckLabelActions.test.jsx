@@ -1,8 +1,11 @@
 /** @jest-environment jsdom */
 
+const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useAckLabelActions } = require('./useAckLabelActions.jsx');
+const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
+const { usePrActivityQueue } = require('./PrActivityQueueContext');
 
 function Probe({ onReady }) {
   const ackLabelActions = useAckLabelActions();
@@ -10,6 +13,13 @@ function Probe({ onReady }) {
   return null;
 }
 
+// Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// useAckLabelActions() now reads busy/queued/bulk-batch state via
+// usePrActivityQueue() (Context) instead of window.markPrsBusy/
+// beginBulkActionBatch/etc. - without a real Provider mounted, the
+// Context's own no-op defaults (PrActivityQueueContext.jsx) are used
+// automatically, so the 3 tests below (which don't exercise busy/queued
+// behavior directly) need no Provider wrapper to keep passing.
 const ACK_LABEL_WINDOW_BRIDGES = [
   'getFormBody',
   'setStatusMessage',
@@ -20,14 +30,6 @@ const ACK_LABEL_WINDOW_BRIDGES = [
   'summarizeAckRefreshWarnings',
   'applyFreshPrPayload',
   'loadStoredData',
-  'markPrsBusy',
-  'clearPrsBusy',
-  'markPrsQueued',
-  'clearPrsQueued',
-  'beginBulkActionBatch',
-  'markBulkActionChunkInFlight',
-  'markBulkActionChunkDone',
-  'finishBulkActionBatch',
   'getLatestStoredPayload',
 ];
 
@@ -116,5 +118,47 @@ describe('useAckLabelActions', () => {
     );
 
     document.body.removeChild(select);
+  });
+
+  test('given a real PrActivityQueueProvider, when calling handleAckOnly, then the PR is marked busy via Context during the request and cleared after it resolves', async () => {
+    window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
+    window.setStatusMessage = jest.fn();
+    window.updateReactOutputText = jest.fn();
+
+    let resolveFetch;
+    global.fetch = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    let ackLabelActions;
+    let activityQueue;
+    function ProbeWithActivityQueue() {
+      activityQueue = usePrActivityQueue();
+      ackLabelActions = useAckLabelActions();
+      return null;
+    }
+
+    render(
+      React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+    );
+
+    let ackPromise;
+    act(() => {
+      ackPromise = ackLabelActions.handleAckOnly();
+    });
+
+    // Mid-flight (fetch still pending): Context, not a dropped window.*
+    // no-op, is what marked this PR busy.
+    expect(activityQueue.busyPrNumbers.has('org/repo::42')).toBe(true);
+
+    await act(async () => {
+      resolveFetch({ ok: true, status: 200, json: async () => ({ ok: true, prData: null }) });
+      await ackPromise;
+    });
+
+    expect(activityQueue.busyPrNumbers.has('org/repo::42')).toBe(false);
   });
 });

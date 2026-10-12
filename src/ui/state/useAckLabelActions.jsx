@@ -5,6 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
+import { usePrActivityQueue } from './PrActivityQueueContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -28,18 +29,36 @@ const parseCsvTokens = (rawValue) =>
  * returned functions directly. Builds its own createPrAckLabelActionsHelpers
  * instance, same shape as useSinglePrUpdate.jsx and useBackfillActions.jsx.
  *
- * Several DI params here are themselves window.* bridges into
- * PrActivityQueueProvider.jsx (markPrsBusy/beginBulkActionBatch/etc.) -
- * read as window.* inside this hook, same as index.page.js's own
- * instantiation already does. That's intentional, not something D.2 is
- * meant to clean up - retiring those bridges in favor of direct Context
- * reads is Phase G's job.
+ * Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+ * busy/queued/bulk-batch DI params now come from usePrActivityQueue()
+ * directly instead of window.markPrsBusy/beginBulkActionBatch/etc. - valid
+ * now that <AppRoot /> (this hook's only caller) is a real descendant of
+ * PrActivityQueueProvider (react-app.jsx's mountAppRoot wraps it from
+ * outside - see that Provider's own header comment for why it has to be
+ * wrapped from there, not nested inside AppRoot's own JSX). The 4
+ * busy/queued Context functions are singular/per-PR
+ * (markPrBusy(prNumber, repo)) where the factory wants plural/array-taking
+ * (markPrsBusy(prNumbers, repo)) - wrapped in the same per-PR loop
+ * PrActivityQueueProvider.jsx's own window-bridge effect already uses, not
+ * forwarded 1:1. The 4 bulk-batch functions match the factory's expected
+ * shape exactly - direct passthrough.
  *
  * runAckAction/runApplyLabelAction stay internal to the factory, same as
  * index.page.js's own instantiation - only the 3 workflow entry points are
  * actually consumed by a trigger button.
  */
 export function useAckLabelActions() {
+  const {
+    markPrBusy,
+    clearPrBusy,
+    markPrQueued,
+    clearPrQueued,
+    beginBulkActionBatch,
+    markBulkActionChunkInFlight,
+    markBulkActionChunkDone,
+    finishBulkActionBatch,
+  } = usePrActivityQueue();
+
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
       createPrAckLabelActionsHelpers({
@@ -58,14 +77,18 @@ export function useAckLabelActions() {
         getFormBody: () => window.getFormBody?.(),
         defaultRepo: DEFAULT_REPO,
         parseCsvTokens,
-        markPrsBusy: (...args) => window.markPrsBusy?.(...args),
-        clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
-        markPrsQueued: (...args) => window.markPrsQueued?.(...args),
-        clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
-        beginBulkActionBatch: (...args) => window.beginBulkActionBatch?.(...args),
-        markBulkActionChunkInFlight: (...args) => window.markBulkActionChunkInFlight?.(...args),
-        markBulkActionChunkDone: (...args) => window.markBulkActionChunkDone?.(...args),
-        finishBulkActionBatch: (...args) => window.finishBulkActionBatch?.(...args),
+        markPrsBusy: (prNumbers, repo) =>
+          (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo)),
+        clearPrsBusy: (prNumbers, repo) =>
+          (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrBusy(prNumber, repo)),
+        markPrsQueued: (prNumbers, repo) =>
+          (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrQueued(prNumber, repo)),
+        clearPrsQueued: (prNumbers, repo) =>
+          (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrQueued(prNumber, repo)),
+        beginBulkActionBatch: (...args) => beginBulkActionBatch(...args),
+        markBulkActionChunkInFlight: (...args) => markBulkActionChunkInFlight(...args),
+        markBulkActionChunkDone: (...args) => markBulkActionChunkDone(...args),
+        finishBulkActionBatch: (...args) => finishBulkActionBatch(...args),
         runWithConcurrencyLimit,
         getLatestStoredPayload: () => window.getLatestStoredPayload?.(),
       });
@@ -82,5 +105,14 @@ export function useAckLabelActions() {
     };
 
     return { handleAckOnly, handleClearOnly, handleApplyLabelClick };
-  }, []);
+  }, [
+    markPrBusy,
+    clearPrBusy,
+    markPrQueued,
+    clearPrQueued,
+    beginBulkActionBatch,
+    markBulkActionChunkInFlight,
+    markBulkActionChunkDone,
+    finishBulkActionBatch,
+  ]);
 }

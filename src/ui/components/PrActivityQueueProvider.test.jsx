@@ -201,6 +201,45 @@ describe('PrActivityQueueProvider', () => {
     expect(ProbeLastValue.bulkBatches[0].failedCount).toBe(1);
   });
 
+  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // useAckLabelActions.jsx now calls these 4 directly via
+  // usePrActivityQueue() instead of the window.* bridges - confirms the
+  // Context-exposed path reaches the exact same underlying state as the
+  // window-bridge path the test above already covers.
+  test('a multi-chunk bulk batch flows through begin -> in-flight -> done -> finish via the Context-exposed functions directly, not window.*', () => {
+    render(
+      <PrActivityQueueProvider>
+        <Probe />
+      </PrActivityQueueProvider>,
+    );
+
+    act(() => {
+      ProbeLastValue.beginBulkActionBatch({
+        batchId: 'batch-2',
+        actionLabel: 'Apply label',
+        repo: 'owner/repo',
+        chunks: [['1', '2'], ['3', '4']],
+      });
+    });
+    expect(ProbeLastValue.bulkBatches).toHaveLength(1);
+    expect(ProbeLastValue.bulkBatches[0].totalChunks).toBe(2);
+
+    act(() => {
+      ProbeLastValue.markBulkActionChunkInFlight({ batchId: 'batch-2', chunkIndex: 0 });
+    });
+    expect(ProbeLastValue.bulkBatches[0].chunks[0].state).toBe('in-flight');
+
+    act(() => {
+      ProbeLastValue.markBulkActionChunkDone({ batchId: 'batch-2', chunkIndex: 0 });
+    });
+    expect(ProbeLastValue.bulkBatches[0].doneCount).toBe(1);
+
+    act(() => {
+      ProbeLastValue.finishBulkActionBatch({ batchId: 'batch-2' });
+    });
+    expect(ProbeLastValue.bulkBatches).toEqual([]);
+  });
+
   test('a single-chunk batch is never tracked (begin is a no-op)', () => {
     render(
       <PrActivityQueueProvider>

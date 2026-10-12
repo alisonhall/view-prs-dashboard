@@ -22,6 +22,19 @@ const {
  * clearPrsQueued bridges move here too - their real external callers
  * (pr-ack-label-actions.helpers.js, pr-quick-check-actions.helpers.js) are
  * unaffected by which component registers them.
+ *
+ * Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the 4
+ * bulk-batch mutators are also exposed via Context now, not just
+ * window.*, so state/useAckLabelActions.jsx's own instance can call them
+ * directly via usePrActivityQueue() instead of window.beginBulkActionBatch/
+ * etc. The window.* bridges themselves stay (index.page.js's own
+ * createPrAckLabelActionsHelpers instance and pr-quick-check-actions.helpers.js
+ * are vanilla JS, structurally unable to ever become Context consumers -
+ * that's Phase H's job, not this one's). Mounted wrapping <AppRoot />
+ * itself now (react-app.jsx's mountAppRoot), not nested inside its own
+ * returned JSX - AppRoot's own body calls useAckLabelActions() directly,
+ * so it has to be a real Context descendant, not an ancestor, for that to
+ * reach this Provider's live state.
  */
 export function PrActivityQueueProvider({ children }) {
   const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
@@ -129,26 +142,37 @@ export function PrActivityQueueProvider({ children }) {
   // chunk transition.
   const [bulkBatchesState, setBulkBatchesState] = useState(getInitialBatchesState);
 
+  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): these
+  // 4 used to be inlined directly in the window-bridge effect below, with
+  // no Context equivalent at all. Pulled out into their own stable
+  // useCallbacks (same shape as markPrBusy/clearPrBusy above) so
+  // useAckLabelActions.jsx can call them directly via usePrActivityQueue()
+  // instead of window.beginBulkActionBatch/etc.
+  const beginBulkActionBatch = useCallback(({ batchId, actionLabel, repo, chunks }) => {
+    setBulkBatchesState((prev) => beginBatch(prev, { batchId, actionLabel, repo, chunks }));
+  }, []);
+  const markBulkActionChunkInFlight = useCallback(({ batchId, chunkIndex }) => {
+    setBulkBatchesState((prev) => markChunkInFlight(prev, { batchId, chunkIndex }));
+  }, []);
+  const markBulkActionChunkDone = useCallback(({ batchId, chunkIndex, ok }) => {
+    setBulkBatchesState((prev) => markChunkDone(prev, { batchId, chunkIndex, ok }));
+  }, []);
+  const finishBulkActionBatch = useCallback(({ batchId }) => {
+    setBulkBatchesState((prev) => finishBatch(prev, { batchId }));
+  }, []);
+
   useEffect(() => {
-    window.beginBulkActionBatch = ({ batchId, actionLabel, repo, chunks }) => {
-      setBulkBatchesState((prev) => beginBatch(prev, { batchId, actionLabel, repo, chunks }));
-    };
-    window.markBulkActionChunkInFlight = ({ batchId, chunkIndex }) => {
-      setBulkBatchesState((prev) => markChunkInFlight(prev, { batchId, chunkIndex }));
-    };
-    window.markBulkActionChunkDone = ({ batchId, chunkIndex, ok }) => {
-      setBulkBatchesState((prev) => markChunkDone(prev, { batchId, chunkIndex, ok }));
-    };
-    window.finishBulkActionBatch = ({ batchId }) => {
-      setBulkBatchesState((prev) => finishBatch(prev, { batchId }));
-    };
+    window.beginBulkActionBatch = (...args) => beginBulkActionBatch(...args);
+    window.markBulkActionChunkInFlight = (...args) => markBulkActionChunkInFlight(...args);
+    window.markBulkActionChunkDone = (...args) => markBulkActionChunkDone(...args);
+    window.finishBulkActionBatch = (...args) => finishBulkActionBatch(...args);
     return () => {
       delete window.beginBulkActionBatch;
       delete window.markBulkActionChunkInFlight;
       delete window.markBulkActionChunkDone;
       delete window.finishBulkActionBatch;
     };
-  }, []);
+  }, [beginBulkActionBatch, markBulkActionChunkInFlight, markBulkActionChunkDone, finishBulkActionBatch]);
 
   const bulkBatches = useMemo(() => getBulkQueueViewModel(bulkBatchesState), [bulkBatchesState]);
 
@@ -161,8 +185,24 @@ export function PrActivityQueueProvider({ children }) {
       markPrQueued,
       clearPrQueued,
       bulkBatches,
+      beginBulkActionBatch,
+      markBulkActionChunkInFlight,
+      markBulkActionChunkDone,
+      finishBulkActionBatch,
     }),
-    [busyPrNumbers, queuedPrNumbers, markPrBusy, clearPrBusy, markPrQueued, clearPrQueued, bulkBatches],
+    [
+      busyPrNumbers,
+      queuedPrNumbers,
+      markPrBusy,
+      clearPrBusy,
+      markPrQueued,
+      clearPrQueued,
+      bulkBatches,
+      beginBulkActionBatch,
+      markBulkActionChunkInFlight,
+      markBulkActionChunkDone,
+      finishBulkActionBatch,
+    ],
   );
 
   return <PrActivityQueueContext.Provider value={value}>{children}</PrActivityQueueContext.Provider>;

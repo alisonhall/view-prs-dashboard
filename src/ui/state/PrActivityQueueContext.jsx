@@ -20,6 +20,14 @@ export const PrActivityQueueContext = createContext({
   markPrQueued: () => {},
   clearPrQueued: () => {},
   bulkBatches: [],
+  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): added
+  // so useAckLabelActions.jsx (and anything else reading this Context
+  // without a mounted Provider, e.g. a test) gets safe no-ops instead of
+  // crashing on a call to undefined.
+  beginBulkActionBatch: () => {},
+  markBulkActionChunkInFlight: () => {},
+  markBulkActionChunkDone: () => {},
+  finishBulkActionBatch: () => {},
 });
 
 export function usePrActivityQueue() {

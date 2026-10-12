@@ -822,13 +822,14 @@ function AppRoot() {
             cross-portal-sharing reason every other Provider at this level
             is already this wide. */}
         <JobEventsProvider>
-        {/* PrActivityQueueProvider wraps both the drawer's bulk-queue
-            section and PrTableApp below - they're sibling portals (not an
-            ancestor/descendant pair) that need to share the same
-            busyPrNumbers/queuedPrNumbers state, which is exactly why this
-            state was lifted out of PrTableApp itself (see
-            PrActivityQueueProvider.jsx's own comment). */}
-        <PrActivityQueueProvider>
+        {/* Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+            PrActivityQueueProvider used to wrap just the drawer's
+            bulk-queue section and PrTableApp below - it now wraps <AppRoot />
+            itself instead (mountAppRoot, above), so useAckLabelActions()
+            (called from this component's own body) can reach it via
+            usePrActivityQueue() directly. The drawer/PrTableApp portals
+            below still resolve to that same (now outer) Provider - no
+            change for them. */}
             {containers.activityDrawer &&
               createPortal(
                 <ActivityDrawer
@@ -863,7 +864,6 @@ function AppRoot() {
               prTable.container,
               'pr-table',
             )}
-        </PrActivityQueueProvider>
 
         {containers.filterFields.portals}
 
@@ -1236,7 +1236,22 @@ function mountAppRoot() {
   const anchor = document.createElement('div');
   anchor.hidden = true;
   document.body.appendChild(anchor);
-  ReactDOM.createRoot(anchor).render(<AppRoot />);
+  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // PrActivityQueueProvider wraps <AppRoot /> from here, outside its own
+  // returned JSX - AppRoot's own body calls useAckLabelActions() directly
+  // (a plain function call, not a descendant element), so a Provider
+  // nested *inside* AppRoot's returned tree can never be reached by
+  // AppRoot itself (a component can't be a descendant of something it
+  // renders). Wrapping from the root-mount call instead makes AppRoot a
+  // genuine Context descendant, so useAckLabelActions() can call
+  // usePrActivityQueue() directly. The old inner <PrActivityQueueProvider>
+  // (wrapping just the drawer/PrTableApp portals) is gone - removed below,
+  // its children now resolve to this single outer Provider instead.
+  ReactDOM.createRoot(anchor).render(
+    <PrActivityQueueProvider>
+      <AppRoot />
+    </PrActivityQueueProvider>,
+  );
 }
 
 if (typeof window !== 'undefined') {
