@@ -169,6 +169,7 @@ export default defineConfig([
       "src/ui/helpers/pr-author-insights-data.helpers.js",
       "src/ui/helpers/pr-needs-attention.helpers.js",
       "src/ui/helpers/pr-ui-option-scroll.helpers.js",
+      "src/ui/helpers/pr-ui-option-persistence.helpers.js",
       "src/ui/helpers/pr-dom-access.helpers.js",
       "src/ui/helpers/pr-dom-traversal.helpers.js",
       "src/ui/helpers/pr-section-open-state.helpers.js",

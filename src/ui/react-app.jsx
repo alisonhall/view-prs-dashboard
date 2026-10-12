@@ -120,12 +120,14 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * `<span id="…-root">` container.
  *
  * Initial Context values are the same hardcoded defaults
- * `getUiOptionDefaults()` (index.page.js) uses - there's no vanilla
- * fallback markup left to read a "currently showing" value from, since
- * React is the only thing that ever renders into these containers now.
- * `restoreUiOptionOverrides()` (a real async fetch) still overwrites these
- * via `window.setFilterStateValue` once it resolves, same as any other
- * Context update.
+ * `getUiOptionDefaults()` (helpers/pr-ui-option-persistence.helpers.js)
+ * uses - there's no vanilla fallback markup left to read a "currently
+ * showing" value from, since React is the only thing that ever renders
+ * into these containers now. FilterStateProvider's own mount effect (a
+ * real async fetch) still overwrites these with any saved overrides once
+ * it resolves - a direct `setValues` call from inside that effect, not a
+ * `window.setFilterStateValue` call reaching in from outside (see
+ * state/FilterStateProvider.jsx's own header comment).
  */
 // Context-backed checkboxes with no field-specific behavior (see
 // ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
@@ -208,8 +210,9 @@ function buildFilterStateFieldPortals() {
     container: document.getElementById(`${field.id}-root`),
   }));
 
-  // Same defaults as getUiOptionDefaults() (index.page.js) - no vanilla
-  // fallback markup is left to read a "currently showing" value from.
+  // Same defaults as getUiOptionDefaults()
+  // (helpers/pr-ui-option-persistence.helpers.js) - no vanilla fallback
+  // markup is left to read a "currently showing" value from.
   const initialValues = {
     scopeMode: 'all',
     alwaysShowInReview: false,

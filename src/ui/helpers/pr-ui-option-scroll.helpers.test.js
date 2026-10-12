@@ -29,8 +29,8 @@ describe("pr ui option scroll helpers", () => {
     const { registerUiOptionPersistenceHandlers } =
       createPrUiOptionScrollHelpers({
         getOptionalElementById: (id) => (id === "run-script-form" ? form : null),
-        persistUiOptionOverrides: async (keys) => {
-          persisted.push(keys);
+        persistViewFilterOptions: async () => {
+          persisted.push(true);
         },
       });
 
@@ -38,15 +38,16 @@ describe("pr ui option scroll helpers", () => {
     changeListeners[0]({ target: { id: "scope-mode" } });
     await jest.runAllTimersAsync();
 
-    expect(persisted).toEqual([["scope-mode"]]);
+    expect(persisted).toEqual([true]);
   });
 
   test("given two scope-mode change events firing in rapid succession, when the debounce elapses, then only the trailing persist call is made", async () => {
     // Regression coverage for the CI-only intermittent e2e failure: two
-    // overlapping GET-merge-PUT persist calls (persistUiOptionOverrides,
-    // index.page.js) racing against the same user-defaults.json could lose
-    // an update if the earlier PUT's write landed after the later one's.
-    // Debouncing collapses rapid changes into a single trailing call.
+    // overlapping GET-merge-PUT persist calls (persistViewFilterOptions,
+    // state/FilterStateProvider.jsx) racing against the same
+    // user-defaults.json could lose an update if the earlier PUT's write
+    // landed after the later one's. Debouncing collapses rapid changes
+    // into a single trailing call.
     const changeListeners = [];
     const form = {
       addEventListener: (_eventName, handler) => {
@@ -58,8 +59,8 @@ describe("pr ui option scroll helpers", () => {
     const { registerUiOptionPersistenceHandlers } =
       createPrUiOptionScrollHelpers({
         getOptionalElementById: (id) => (id === "run-script-form" ? form : null),
-        persistUiOptionOverrides: async (keys) => {
-          persisted.push(keys);
+        persistViewFilterOptions: async () => {
+          persisted.push(true);
         },
       });
 
@@ -68,7 +69,7 @@ describe("pr ui option scroll helpers", () => {
     changeListeners[0]({ target: { id: "scope-mode" } });
     await jest.runAllTimersAsync();
 
-    expect(persisted).toEqual([["scope-mode"]]);
+    expect(persisted).toEqual([true]);
   });
 
   test("given a change event for an unrelated field bubbling to the form, when firing change and letting the debounce elapse, then no persistence is requested", async () => {
@@ -83,8 +84,8 @@ describe("pr ui option scroll helpers", () => {
     const { registerUiOptionPersistenceHandlers } =
       createPrUiOptionScrollHelpers({
         getOptionalElementById: (id) => (id === "run-script-form" ? form : null),
-        persistUiOptionOverrides: async (keys) => {
-          persisted.push(keys);
+        persistViewFilterOptions: async () => {
+          persisted.push(true);
         },
       });
 

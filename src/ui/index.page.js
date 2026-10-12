@@ -64,6 +64,7 @@ import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpe
 import * as prDataTabsHelperFactory from "./helpers/pr-data-tabs.helpers.js";
 import * as prActivityBadgesHelperFactory from "./helpers/pr-activity-badges.helpers.js";
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
+import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
 import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
@@ -85,7 +86,6 @@ import {
   extractRowLabelNames,
   normalizeFilterToken,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
-import { setPendingMultiSelectSelection } from "./helpers/pr-pending-multi-select-selections.helpers.js";
 import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
@@ -556,125 +556,23 @@ const setBackfillLogMessage = (message) => {
   window.updateReactBackfillLogText?.(message);
 };
 
-const getUiOptionDefaults = () => ({
-  repo: "",
-  limit: "",
-  "merged-limit": "",
-  jobs: "",
-  "pr-numbers": "",
-  "open-mode": "none",
-  "ack-changed": false,
-  "show-reason": true,
-  quiet: false,
-  "scope-mode": "all",
-  "filter-pr-numbers": "",
-  label: "",
-  "exclude-label": "",
-  author: [],
-  assigned: [],
-  approver: [],
-  "always-show-in-review": false,
-  "attention-no-activity-mode": "all",
-  "attention-include-pending-comments": true,
-  "attention-ignore-merge-only-commits": false,
-  "attention-include-closed-merged": true,
-  "attention-include-draft-changed": true,
-  "attention-include-draft-no-activity": false,
-  "attention-author-thread-resolution-mode": "allow-all",
-  "attention-author-thread-resolution-allow": [],
-  "attention-author-thread-resolution-deny": [],
-  "change-filter-use-builtin-merge-pattern": true,
-  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): these 6 "Any
-  // (with/without)" metadata filters (FilterOptionSelect.jsx) were never
-  // included here - a real, undocumented persistence gap found while
-  // scoping this sub-phase, not a deliberate exclusion (unlike their
-  // separate, intentional exclusion from auto-apply-on-change - see
-  // react-app.jsx's FILTER_OPTION_SELECT_FIELDS comment). Default "" for
-  // all 6 matches each field's own first <option value="">Any...</option>.
-  "filter-custom-comments": "",
-  "filter-other-notes": "",
-  "filter-pr-difficulty": "",
-  "filter-rally-stories": "",
-  "filter-rally-links": "",
-  "filter-analysis-of-pr": "",
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// getUiOptionDefaults/readUiSessionOverrides/writeUiSessionOverrides/
+// persistUiOptionOverrides/restoreUiOptionOverrides/
+// persistRunScriptOptionOverrides/persistViewFilterOptionOverrides used to
+// live here - moved into FilterStateProvider.jsx (state/FilterStateProvider.jsx),
+// which now owns UI option persistence directly (a mount-only restore
+// effect, plus persistRunScriptOptions/persistViewFilterOptions exposed as
+// window.persistRunScriptOptionOverrides/window.persistViewFilterOptionOverrides
+// - the *same* bridge names, so every caller below is unchanged). Only
+// FILTER_STATE_FIELD_MAP stays here too (shared, not duplicated - imported
+// from the same pr-ui-option-persistence.helpers.js module
+// FilterStateProvider.jsx uses) since getFilterStateOverrideForFieldId
+// below and a few other readers (getNeedsAttentionConfig,
+// shouldAlwaysShowInReviewRows, getOpenModeFilter) still need it.
+const { FILTER_STATE_FIELD_MAP } = prUiOptionPersistenceHelperFactory.createPrUiOptionPersistenceHelpers({
+  fetch: (...args) => fetch(...args),
 });
-
-const readUiSessionOverrides = async () => {
-  try {
-    const response = await fetch("/view-prs/user-defaults");
-    if (!response.ok) return {};
-    const result = await response.json();
-    const parsed = result?.overrides;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch (_error) {
-    return {};
-  }
-};
-
-const writeUiSessionOverrides = async (
-  overrides,
-  { preserveEmptyArrayKeys = [] } = {},
-) => {
-  const preserveSet = new Set(
-    Array.isArray(preserveEmptyArrayKeys) ? preserveEmptyArrayKeys : [],
-  );
-  const entries = Object.entries(overrides || {}).filter(([key, value]) => {
-    if (Array.isArray(value)) {
-      return value.length > 0 || preserveSet.has(String(key));
-    }
-    return value !== undefined;
-  });
-
-  const data = Object.fromEntries(entries);
-
-  try {
-    await fetch("/view-prs/user-defaults", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  } catch (_error) {
-    // Best effort only.
-  }
-};
-
-// Phase 6 (see REACT_MIGRATION_PLAN.md): single source of truth mapping a
-// DOM field id to its FilterStateProvider Context key, for every field
-// migrated onto Context so far. Shared by persistUiOptionOverrides/
-// restoreUiOptionOverrides below, getNeedsAttentionConfig, and
-// shouldAlwaysShowInReviewRows - one map instead of one ad hoc copy per
-// call site, so a field's migration only needs to add one entry here.
-const FILTER_STATE_FIELD_MAP = {
-  "scope-mode": "scopeMode",
-  "always-show-in-review": "alwaysShowInReview",
-  "attention-no-activity-mode": "attentionNoActivityMode",
-  "attention-include-pending-comments": "attentionIncludePendingComments",
-  "attention-ignore-merge-only-commits": "attentionIgnoreMergeOnlyCommits",
-  "attention-include-closed-merged": "attentionIncludeClosedMerged",
-  "attention-include-draft-changed": "attentionIncludeDraftChanged",
-  "attention-include-draft-no-activity": "attentionIncludeDraftNoActivity",
-  "repo": "repo",
-  "limit": "limit",
-  "merged-limit": "mergedLimit",
-  "jobs": "jobs",
-  "pr-numbers": "prNumbersInput",
-  "open-mode": "openMode",
-  "ack-changed": "ackChanged",
-  "show-reason": "showReason",
-  "quiet": "quiet",
-  "filter-pr-numbers": "filterPrNumbers",
-  "attention-author-thread-resolution-mode": "attentionAuthorThreadResolutionMode",
-  "change-filter-use-builtin-merge-pattern": "changeFilterUseBuiltinMergePattern",
-  "change-filter-ignore-commit-patterns": "changeFilterIgnoreCommitPatterns",
-  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
-  // fix - see getUiOptionDefaults' matching comment above.
-  "filter-custom-comments": "filterCustomComments",
-  "filter-other-notes": "filterOtherNotes",
-  "filter-pr-difficulty": "filterPrDifficulty",
-  "filter-rally-stories": "filterRallyStories",
-  "filter-rally-links": "filterRallyLinks",
-  "filter-analysis-of-pr": "filterAnalysisOfPr",
-};
 
 // Reads a migrated field's current value from FilterStateProvider's
 // Context (via the window.getFilterStateValues bridge react-app.jsx's
@@ -687,523 +585,6 @@ const getFilterStateOverrideForFieldId = (id) => {
     return undefined;
   }
   return window.getFilterStateValues()?.[key];
-};
-
-// Writes a migrated field's value straight into Context (via
-// window.setFilterStateValue) instead of mutating the DOM - returns
-// whether it did (`false` for an unmigrated field id or before the
-// provider mounts, letting the caller fall back to its original
-// DOM-mutating approach).
-const setFilterStateOverrideForFieldId = (id, value) => {
-  const key = FILTER_STATE_FIELD_MAP[id];
-  if (!key || typeof window === "undefined" || typeof window.setFilterStateValue !== "function") {
-    return false;
-  }
-  window.setFilterStateValue(key, value);
-  return true;
-};
-
-// Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): the 9 multi-select lists'
-// "pending selections" (used only as a restore-time seed before any
-// checkbox exists yet) have no corresponding DOM element id, so they can't
-// go through FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId like
-// every other field.
-//
-// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): writes to a
-// dedicated window-level store (pr-pending-multi-select-selections.helpers.js)
-// instead of FilterStateProvider's generic Context bridge - the reader
-// (react-app.jsx's MultiSelectListPortals.jsx) now lives in a different ES
-// module than this write side, with no shared closure scope, and routing
-// through window.setFilterStateValue would have the side effect of
-// changing every OTHER migrated field's restore behavior too (see that
-// helper module's own comment for the full reasoning).
-const setPendingSelectionsValue = (contextKey, value) => {
-  setPendingMultiSelectSelection(contextKey, value);
-};
-
-const persistUiOptionOverrides = async (fieldIds = null) => {
-  const defaults = getUiOptionDefaults();
-  const existingOverrides = await readUiSessionOverrides();
-  const overrides = { ...existingOverrides };
-
-  const allowedFields =
-    Array.isArray(fieldIds) && fieldIds.length > 0 ? new Set(fieldIds) : null;
-  const includeField = (id) => !allowedFields || allowedFields.has(id);
-
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): prefer reading a migrated
-  // field's current value from Context (via getFilterStateOverrideForFieldId,
-  // FILTER_STATE_FIELD_MAP above) over the DOM, same handled/fallback
-  // shape as every other bridge.
-  const getText = (id) => {
-    const override = getFilterStateOverrideForFieldId(id);
-    if (typeof override === "string") {
-      return override.trim();
-    }
-    return String(getOptionalElementById(id)?.value || "").trim();
-  };
-  const getCheckbox = (id) => {
-    const override = getFilterStateOverrideForFieldId(id);
-    if (typeof override === "boolean") {
-      return override;
-    }
-    return Boolean(getOptionalElementById(id)?.checked);
-  };
-
-  const textIds = [
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "pr-numbers",
-    "open-mode",
-    "scope-mode",
-    "filter-pr-numbers",
-    "attention-no-activity-mode",
-    "attention-author-thread-resolution-mode",
-    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
-    // fix - see getUiOptionDefaults' matching comment above.
-    "filter-custom-comments",
-    "filter-other-notes",
-    "filter-pr-difficulty",
-    "filter-rally-stories",
-    "filter-rally-links",
-    "filter-analysis-of-pr",
-  ];
-
-  textIds.forEach((id) => {
-    if (!includeField(id)) return;
-    const value = getText(id);
-    if (value !== String(defaults[id] || "")) {
-      overrides[id] = value;
-    } else {
-      delete overrides[id];
-    }
-  });
-
-  const checkboxIds = [
-    "ack-changed",
-    "show-reason",
-    "quiet",
-    "always-show-in-review",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "change-filter-use-builtin-merge-pattern",
-  ];
-  checkboxIds.forEach((id) => {
-    if (!includeField(id)) return;
-    const value = getCheckbox(id);
-    if (value !== Boolean(defaults[id])) {
-      overrides[id] = value;
-    } else {
-      delete overrides[id];
-    }
-  });
-
-  if (includeField("author")) {
-    const selectedAuthors = getSelectedAuthorLogins();
-    if (selectedAuthors.length > 0) {
-      overrides.author = selectedAuthors;
-    } else {
-      delete overrides.author;
-    }
-  }
-
-  if (includeField("assigned")) {
-    const selectedAssignees = getSelectedAssignedLogins();
-    if (selectedAssignees.length > 0) {
-      overrides.assigned = selectedAssignees;
-    } else {
-      delete overrides.assigned;
-    }
-  }
-
-  if (includeField("approver")) {
-    const selectedApprovers = getSelectedApproverLogins();
-    if (selectedApprovers.length > 0) {
-      overrides.approver = selectedApprovers;
-    } else {
-      delete overrides.approver;
-    }
-  }
-
-  if (includeField("label")) {
-    const selectedIncludeLabels = getSelectedIncludeLabelNames();
-    if (selectedIncludeLabels.length > 0) {
-      overrides.label = selectedIncludeLabels.join(", ");
-    } else {
-      delete overrides.label;
-    }
-  }
-
-  if (includeField("exclude-label")) {
-    const selectedExcludeLabels = getSelectedExcludeLabelNames();
-    if (selectedExcludeLabels.length > 0) {
-      overrides["exclude-label"] = selectedExcludeLabels.join(", ");
-    } else {
-      delete overrides["exclude-label"];
-    }
-  }
-
-  if (includeField("attention-author-thread-resolution-allow")) {
-    const selectedAllowedLogins = getSelectedAuthorThreadResolutionAllowLogins();
-    if (selectedAllowedLogins.length > 0) {
-      overrides["attention-author-thread-resolution-allow"] =
-        selectedAllowedLogins;
-    } else {
-      delete overrides["attention-author-thread-resolution-allow"];
-    }
-  }
-
-  if (includeField("attention-author-thread-resolution-deny")) {
-    const selectedDeniedLogins = getSelectedAuthorThreadResolutionDenyLogins();
-    if (selectedDeniedLogins.length > 0) {
-      overrides["attention-author-thread-resolution-deny"] =
-        selectedDeniedLogins;
-    } else {
-      delete overrides["attention-author-thread-resolution-deny"];
-    }
-  }
-
-  // Change detection filters
-  if (
-    includeField("change-filter-use-builtin-merge-pattern") ||
-    includeField("change-filter-ignore-comment-authors") ||
-    includeField("change-filter-ignore-review-authors") ||
-    includeField("change-filter-ignore-commit-patterns")
-  ) {
-    const existingChangeFilters =
-      typeof existingOverrides.changeFilters === "object" &&
-      !Array.isArray(existingOverrides.changeFilters)
-        ? existingOverrides.changeFilters
-        : {};
-    const changeFilters = { ...existingChangeFilters };
-
-    if (includeField("change-filter-use-builtin-merge-pattern")) {
-      const useBuiltin = getCheckbox("change-filter-use-builtin-merge-pattern");
-      // Only save if different from default (true)
-      if (useBuiltin !== true) {
-        changeFilters.useBuiltinMergePattern = useBuiltin;
-      } else {
-        delete changeFilters.useBuiltinMergePattern;
-      }
-    }
-
-    if (includeField("change-filter-ignore-comment-authors")) {
-      const selectedLogins = getSelectedChangeFilterIgnoreCommentAuthors();
-      if (selectedLogins.length > 0) {
-        changeFilters.ignoreCommentsFromAuthors = selectedLogins;
-      } else {
-        delete changeFilters.ignoreCommentsFromAuthors;
-      }
-    }
-
-    if (includeField("change-filter-ignore-review-authors")) {
-      const selectedLogins = getSelectedChangeFilterIgnoreReviewAuthors();
-      if (selectedLogins.length > 0) {
-        changeFilters.ignoreReviewsFromAuthors = selectedLogins;
-      } else {
-        delete changeFilters.ignoreReviewsFromAuthors;
-      }
-    }
-
-    if (includeField("change-filter-ignore-commit-patterns")) {
-      const textarea = getOptionalElementById(
-        "change-filter-ignore-commit-patterns",
-      );
-      const patterns = formParsingHelpers?.parseCommitPatterns
-        ? formParsingHelpers.parseCommitPatterns(textarea)
-        : [];
-      if (patterns.length > 0) {
-        changeFilters.ignoreCommitPatterns = patterns;
-      } else {
-        delete changeFilters.ignoreCommitPatterns;
-      }
-    }
-
-    if (Object.keys(changeFilters).length > 0) {
-      overrides.changeFilters = changeFilters;
-    } else {
-      delete overrides.changeFilters;
-    }
-  }
-
-  await writeUiSessionOverrides(overrides);
-};
-
-const restoreUiOptionOverrides = async () => {
-  const overrides = await readUiSessionOverrides();
-  if (!overrides || Object.keys(overrides).length === 0) {
-    return;
-  }
-
-  // Plain `element.value = ...` silently desyncs a React-controlled input:
-  // React installs its own property setter on the native element to track
-  // value changes, and assigning through the DOM's original setter (which
-  // this uses instead, via the prototype descriptor) plus dispatching a
-  // real 'input'/'change' event is the standard, harmless-for-uncontrolled-
-  // elements-too way to make external mutations show up in React state as
-  // well. Needed as more of the Run & Filter form is converted to React
-  // (Phase 2) - vanilla restore logic like this one shouldn't need to know
-  // or care which fields are React-owned yet.
-  const setNativeValueAndDispatch = (element, value) => {
-    const prototype = Object.getPrototypeOf(element);
-    const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-    if (nativeSetter) {
-      nativeSetter.call(element, value);
-    } else {
-      element.value = value;
-    }
-    // <input> needs 'input' for React to notice; <select> (which this
-    // helper also restores, e.g. scope-mode) only reliably notifies React
-    // via 'change'. Dispatch both - a real user interaction fires both on
-    // either element type anyway, so this isn't adding any event a normal
-    // interaction wouldn't already produce.
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): a migrated field (per
-  // FILTER_STATE_FIELD_MAP above) restores straight into Context via
-  // window.setFilterStateValue (which itself triggers the provider's own
-  // debounced-apply effect, same as a real user change would) instead of
-  // going through setNativeValueAndDispatch/element.click() below, which
-  // only matters for fields still owned by the DOM. Falls back to the
-  // original DOM-mutating approach when the provider hasn't mounted yet.
-  const setText = (id, value) => {
-    if (value === undefined || value === null) return;
-    if (setFilterStateOverrideForFieldId(id, String(value))) return;
-    const element = getOptionalElementById(id);
-    if (!element) return;
-    setNativeValueAndDispatch(element, String(value));
-  };
-
-  const setCheckbox = (id, value) => {
-    if (typeof value !== "boolean") return;
-    if (setFilterStateOverrideForFieldId(id, value)) return;
-    const element = getOptionalElementById(id);
-    if (!element) return;
-    if (element.checked !== value) {
-      element.click();
-    }
-  };
-
-  [
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "pr-numbers",
-    "open-mode",
-    "scope-mode",
-    "filter-pr-numbers",
-    "attention-no-activity-mode",
-    "attention-author-thread-resolution-mode",
-    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
-    // fix - see getUiOptionDefaults' matching comment above.
-    "filter-custom-comments",
-    "filter-other-notes",
-    "filter-pr-difficulty",
-    "filter-rally-stories",
-    "filter-rally-links",
-    "filter-analysis-of-pr",
-  ].forEach((id) => {
-    if (Object.prototype.hasOwnProperty.call(overrides, id)) {
-      setText(id, overrides[id]);
-    }
-  });
-
-  [
-    "ack-changed",
-    "show-reason",
-    "quiet",
-    "always-show-in-review",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "change-filter-use-builtin-merge-pattern",
-  ].forEach((id) => {
-    if (Object.prototype.hasOwnProperty.call(overrides, id)) {
-      setCheckbox(id, overrides[id]);
-    }
-  });
-
-  if (Array.isArray(overrides.author)) {
-    setPendingSelectionsValue(
-      "pendingAuthorSelections",
-      overrides.author.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-  }
-
-  if (Array.isArray(overrides.assigned)) {
-    setPendingSelectionsValue(
-      "pendingAssignedSelections",
-      overrides.assigned.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-  }
-
-  if (Array.isArray(overrides.approver)) {
-    setPendingSelectionsValue(
-      "pendingApproverSelections",
-      overrides.approver.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-  }
-
-  if (Object.prototype.hasOwnProperty.call(overrides, "label")) {
-    const values = Array.isArray(overrides.label)
-      ? overrides.label
-      : parseCsvTokens(overrides.label);
-    setPendingSelectionsValue(
-      "pendingLabelSelections",
-      values.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-  }
-
-  if (Object.prototype.hasOwnProperty.call(overrides, "exclude-label")) {
-    const values = Array.isArray(overrides["exclude-label"])
-      ? overrides["exclude-label"]
-      : parseCsvTokens(overrides["exclude-label"]);
-    setPendingSelectionsValue(
-      "pendingExcludeLabelSelections",
-      values.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-  }
-
-  if (Array.isArray(overrides["attention-author-thread-resolution-allow"])) {
-    setPendingSelectionsValue(
-      "pendingAuthorThreadResolutionAllowSelections",
-      overrides["attention-author-thread-resolution-allow"]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-    );
-  }
-
-  if (Array.isArray(overrides["attention-author-thread-resolution-deny"])) {
-    setPendingSelectionsValue(
-      "pendingAuthorThreadResolutionDenySelections",
-      overrides["attention-author-thread-resolution-deny"]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-    );
-  }
-
-  // Restore change detection filters
-  if (
-    overrides.changeFilters &&
-    typeof overrides.changeFilters === "object" &&
-    !Array.isArray(overrides.changeFilters)
-  ) {
-    if (typeof overrides.changeFilters.useBuiltinMergePattern === "boolean") {
-      setCheckbox(
-        "change-filter-use-builtin-merge-pattern",
-        overrides.changeFilters.useBuiltinMergePattern,
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreCommentsFromAuthors)) {
-      setPendingSelectionsValue(
-        "pendingChangeFilterIgnoreCommentAuthors",
-        overrides.changeFilters.ignoreCommentsFromAuthors
-          .map((value) => String(value || "").trim())
-          .filter(Boolean),
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreReviewsFromAuthors)) {
-      setPendingSelectionsValue(
-        "pendingChangeFilterIgnoreReviewAuthors",
-        overrides.changeFilters.ignoreReviewsFromAuthors
-          .map((value) => String(value || "").trim())
-          .filter(Boolean),
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreCommitPatterns)) {
-      if (formParsingHelpers?.formatCommitPatternsForTextarea) {
-        // setText (native setter + dispatched events, see
-        // setNativeValueAndDispatch above) instead of a plain
-        // `textarea.value = ...` assignment - needed once this field is
-        // React-owned (Phase 2), same reasoning as every other restored
-        // field. HTMLTextAreaElement has its own "value" accessor
-        // property (distinct from HTMLInputElement's), so the same
-        // prototype-descriptor lookup works unchanged for a <textarea>.
-        // Note: this specific ordering (restore arriving *after*
-        // react-app.jsx has already mounted) is hard to force
-        // deterministically in the e2e suite - see
-        // IgnoreCommitPatternsTextarea.test.jsx's own "external native
-        // value change" test for the reliable, deterministic proof this
-        // technique is needed.
-        setText(
-          "change-filter-ignore-commit-patterns",
-          formParsingHelpers.formatCommitPatternsForTextarea(
-            overrides.changeFilters.ignoreCommitPatterns,
-          ),
-        );
-      }
-    }
-  }
-
-  updateAuthorThreadResolutionRuleVisibility();
-  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): no repopulate
-  // call needed here any more - the thread-resolution/change-filter actor
-  // lists are now derived reactively by FilterOptionsProvider.jsx from
-  // PrDataContext, and react-app.jsx's MultiSelectListPortals effect
-  // already re-seeds checked state whenever the pending-selection Context
-  // values written just above change, with no manual trigger required.
-};
-
-const persistRunScriptOptionOverrides = async () => {
-  await persistUiOptionOverrides([
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "pr-numbers",
-    "open-mode",
-    "ack-changed",
-    "show-reason",
-    "quiet",
-  ]);
-};
-
-const persistViewFilterOptionOverrides = async () => {
-  await persistUiOptionOverrides([
-    "scope-mode",
-    "filter-pr-numbers",
-    "label",
-    "exclude-label",
-    "author",
-    "assigned",
-    "approver",
-    "always-show-in-review",
-    "attention-no-activity-mode",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "attention-author-thread-resolution-mode",
-    "attention-author-thread-resolution-allow",
-    "attention-author-thread-resolution-deny",
-    "change-filter-use-builtin-merge-pattern",
-    "change-filter-ignore-comment-authors",
-    "change-filter-ignore-review-authors",
-    "change-filter-ignore-commit-patterns",
-    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): persistence-gap
-    // fix - see getUiOptionDefaults' matching comment above. This is the
-    // function "Apply filters (local)" actually invokes, so this is what
-    // makes these 6 fields' last-applied value survive a reload.
-    "filter-custom-comments",
-    "filter-other-notes",
-    "filter-pr-difficulty",
-    "filter-rally-stories",
-    "filter-rally-links",
-    "filter-analysis-of-pr",
-  ]);
 };
 
 const normalizeAuthorThreadResolutionMode = (value) => {
@@ -1246,8 +627,22 @@ const getSelectedChangeFilterIgnoreReviewAuthors = () =>
   );
 
 const updateAuthorThreadResolutionRuleVisibility = () => {
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // prefer Context (same handled/fallback shape every other migrated-field
+  // reader in this file uses) over the DOM - this function is also called
+  // from a React effect reacting to the Context value itself
+  // (FilterStateProvider.jsx), so it must see that same value even when
+  // nothing has written it back into a real DOM element (true for every
+  // production page load, where the real <select> is React-controlled and
+  // always in sync anyway - this only differs when a caller's DOM read
+  // would otherwise be stale).
+  const contextOverride = getFilterStateOverrideForFieldId(
+    "attention-author-thread-resolution-mode",
+  );
   const mode = normalizeAuthorThreadResolutionMode(
-    getOptionalElementById("attention-author-thread-resolution-mode")?.value,
+    typeof contextOverride === "string"
+      ? contextOverride
+      : getOptionalElementById("attention-author-thread-resolution-mode")?.value,
   );
   const allowOptions = getOptionalElementById(
     "attention-author-thread-resolution-allow-options",
@@ -1401,7 +796,7 @@ const {
   autoScrollBackfillLogToBottom,
 } = prUiOptionScrollHelperFactory.createPrUiOptionScrollHelpers({
   getOptionalElementById: (...args) => getOptionalElementById(...args),
-  persistUiOptionOverrides: (...args) => persistUiOptionOverrides(...args),
+  persistViewFilterOptions: (...args) => window.persistViewFilterOptionOverrides?.(...args),
   shouldAutoScrollBackfillLogByState: (...args) =>
     shouldAutoScrollBackfillLogByState(...args),
   getBackfillScrollTop: (...args) => getBackfillScrollTop(...args),
@@ -2117,6 +1512,30 @@ const {
     return values?.[key];
   },
 });
+
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider.jsx's persistRunScriptOptions/persistViewFilterOptions
+// call these directly - the 9 multi-select lists' current checked state
+// (DOM-truth by design, see that Provider's own header comment for why)
+// plus the thread-resolution visibility toggle, same exposure shape as
+// window.handleTriggerAutoRun above.
+if (typeof window !== "undefined") {
+  window.getSelectedAuthorLogins = (...args) => getSelectedAuthorLogins(...args);
+  window.getSelectedAssignedLogins = (...args) => getSelectedAssignedLogins(...args);
+  window.getSelectedApproverLogins = (...args) => getSelectedApproverLogins(...args);
+  window.getSelectedIncludeLabelNames = (...args) => getSelectedIncludeLabelNames(...args);
+  window.getSelectedExcludeLabelNames = (...args) => getSelectedExcludeLabelNames(...args);
+  window.getSelectedAuthorThreadResolutionAllowLogins = (...args) =>
+    getSelectedAuthorThreadResolutionAllowLogins(...args);
+  window.getSelectedAuthorThreadResolutionDenyLogins = (...args) =>
+    getSelectedAuthorThreadResolutionDenyLogins(...args);
+  window.getSelectedChangeFilterIgnoreCommentAuthors = (...args) =>
+    getSelectedChangeFilterIgnoreCommentAuthors(...args);
+  window.getSelectedChangeFilterIgnoreReviewAuthors = (...args) =>
+    getSelectedChangeFilterIgnoreReviewAuthors(...args);
+  window.updateAuthorThreadResolutionRuleVisibility = (...args) =>
+    updateAuthorThreadResolutionRuleVisibility(...args);
+}
 
 // Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
 // window.updateReactBackfillBadges actually exists - see that listener's
@@ -3523,22 +2942,23 @@ const handleApplyLabelClick = async () => {
 };
 
 // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// RunScriptActionButton.jsx's 6 instances (react-app.jsx) call these
+// RunScriptActionButton.jsx's instances (react-app.jsx) call these
 // directly as their onClick props - same exposure shape as
-// window.handleTriggerAutoRun above. None of these 6 functions change -
+// window.handleTriggerAutoRun above. None of these functions change -
 // every one was already fully self-contained; only their trigger (a
 // vanilla <button> click listener) moves to React.
+// window.persistRunScriptOptionOverrides/window.persistViewFilterOptionOverrides
+// used to also be bridged here - Phase E (see REACT_MIGRATION_PLAN.md,
+// "Full migration roadmap") moved persistence ownership into
+// state/FilterStateProvider.jsx, which now sets those same 2 bridge names
+// itself.
 if (typeof window !== "undefined") {
-  window.persistRunScriptOptionOverrides = (...args) =>
-    persistRunScriptOptionOverrides(...args);
   window.handleRunScript = (...args) => handleRunScript(...args);
   window.handleAckOnly = (...args) => handleAckOnly(...args);
   window.handleClearOnly = (...args) => handleClearOnly(...args);
   window.handleApplyLabelClick = (...args) => handleApplyLabelClick(...args);
   window.refreshAvailableRepoLabels = (...args) =>
     refreshAvailableRepoLabels(...args);
-  window.persistViewFilterOptionOverrides = (...args) =>
-    persistViewFilterOptionOverrides(...args);
   window.applyFiltersFromCache = (...args) => applyFiltersFromCache(...args);
 }
 
@@ -3615,88 +3035,14 @@ function createReactCallbacks() {
 const initPage = () => {
   renderRequestActivity();
   updateAuthorThreadResolutionRuleVisibility();
-  // restoreUiOptionOverrides() and loadStoredData() below both fire their
-  // own independent fetches ("/view-prs/user-defaults" and "/view-prs/data"
-  // respectively) with no ordering guarantee between them. The multi-select
-  // filter lists (label/exclude-label/author/assigned/approver/thread-
-  // resolution allow-deny/change-filter actor lists) seed their checked
-  // state from the pending*FilterSelections this call populates - if
-  // loadStoredData's renderPrData call runs first (a real, reproducible
-  // race, not just theoretical - confirmed locally and in CI), those lists
-  // render with nothing checked, restoreUiOptionOverrides() only ever runs
-  // once more (on 'viewprs:react-ready', below) and never re-triggers a
-  // populate, so the "restore a persisted selection" e2e tests saw a
-  // permanently unchecked box after every reload. Re-render with whatever
-  // payload has already loaded once overrides actually land, so the
-  // apply-then-reload sequence works regardless of which fetch wins.
-  //
-  // queueMicrotask, not a direct call: this .then() can run essentially
-  // immediately (a fast/local fetch resolving inside the same microtask
-  // flush React is still processing from its own initial-mount effects) -
-  // calling straight into React reentrantly mid-render/mid-effect-flush
-  // has repeatedly caused real "flushSync was called from inside a
-  // lifecycle method" warnings/errors elsewhere in this codebase (see
-  // MultiSelectListPortals.jsx's own comment for the most recent one,
-  // sub-phase 7.4). Queuing a fresh microtask guarantees React has fully
-  // finished whatever it was doing first - a plain setTimeout also works
-  // in a real browser, but jsdom integration tests that `await
-  // user.click(...)` and assert immediately (no `waitFor`) only drain the
-  // microtask queue, not macrotasks, and would see the pre-restore value;
-  // a microtask still resolves within that same drain.
-  void restoreUiOptionOverrides().then(() => {
-    if (latestStoredPayload) {
-      queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
-    }
-  });
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): restoreUiOptionOverrides' first
-  // call above almost always runs before react-app.jsx's deferred module
-  // has mounted FilterStateProvider, so every Context-migrated field's
-  // setFilterStateOverrideForFieldId call above is a no-op (no
-  // window.setFilterStateValue yet) - and, now that Phase 2 removed the
-  // vanilla fallback markup those fields' setText/setCheckbox used to fall
-  // back to, there's no DOM element left to mutate either, so the restore
-  // was silently dropped instead of merely falling back. Re-running once
-  // React signals it's mounted (same event/pattern the PR table's
-  // renderPrData retry above uses) picks the override values up for real;
-  // this is idempotent with the first call.
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => {
-      void restoreUiOptionOverrides().then(() => {
-        // The "repo" field only actually restores here (see the comment
-        // above): before React mounts it into #repo-root, it has no
-        // Context and no DOM element to restore into, so the saved repo
-        // isn't known yet on the first restoreUiOptionOverrides() call
-        // above. Only fetch labels once the real configured repo (not the
-        // placeholder DEFAULT_REPO) is available.
-        void refreshAvailableRepoLabels();
-        // The 9 multi-select lists' pending selections (label,
-        // exclude-label, author, assigned, approver, thread-resolution
-        // allow/deny, change-filter ignore-author) have no DOM id and so go
-        // through setPendingSelectionsValue instead of FILTER_STATE_FIELD_MAP
-        // (see that function's own comment). Every OTHER Context-migrated
-        // field restored above still needs this re-render to reach the
-        // vanilla-rendered UI (data-meta summary, filter chips, etc.) -
-        // the 9 multi-select lists specifically do not any more:
-        // setPendingSelectionsValue's write (just above, inside
-        // restoreUiOptionOverrides) notifies MultiSelectListPortals.jsx
-        // directly (see pr-pending-multi-select-selections.helpers.js's
-        // subscribeToPendingMultiSelectSelections), which re-seeds their
-        // checked state on its own, independent of whether this renderPrData
-        // call even changes anything a memo would notice.
-        //
-        // queueMicrotask: same flushSync-reentrancy/jsdom-await reasons as
-        // the first restoreUiOptionOverrides().then() above - this one is
-        // reachable even more directly, since it runs from inside a
-        // 'viewprs:react-ready' listener that dispatchEvent invoked
-        // synchronously from within a React effect.
-        if (latestStoredPayload) {
-          queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
-        }
-      });
-    },
-    { once: true },
-  );
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // restoreUiOptionOverrides() used to be called here (twice - once
+  // immediately, once on 'viewprs:react-ready' - see git history for the
+  // old dance this required). Restore now happens automatically inside
+  // FilterStateProvider's own mount effect (state/FilterStateProvider.jsx)
+  // - a plain "fetch then setState" running inside React's own lifecycle,
+  // not vanilla code reaching in, so none of the old queueMicrotask/
+  // dual-pass machinery is needed any more.
   // The Backfill tab's status badges (<BackfillBadges />, mounted via
   // window.updateReactBackfillBadges) have the exact same load-order race
   // as the PR table above: loadBackfillStatus() below often resolves
@@ -4064,7 +3410,7 @@ const initPage = () => {
       }
       if (targetId === "attention-author-thread-resolution-mode") {
         updateAuthorThreadResolutionRuleVisibility();
-        void persistViewFilterOptionOverrides();
+        void window.persistViewFilterOptionOverrides?.();
         debouncedApplyFilters();
         return;
       }
@@ -4072,7 +3418,7 @@ const initPage = () => {
         targetId === "change-filter-use-builtin-merge-pattern" ||
         targetId === "change-filter-ignore-commit-patterns"
       ) {
-        void persistViewFilterOptionOverrides();
+        void window.persistViewFilterOptionOverrides?.();
         debouncedApplyFilters();
         return;
       }
@@ -4110,7 +3456,7 @@ const initPage = () => {
             listId === "change-filter-ignore-comment-authors-list" ||
             listId === "change-filter-ignore-review-authors-list"
           ) {
-            void persistViewFilterOptionOverrides();
+            void window.persistViewFilterOptionOverrides?.();
           }
           debouncedApplyFilters(); // Use debounced version for multi-select changes
         }
