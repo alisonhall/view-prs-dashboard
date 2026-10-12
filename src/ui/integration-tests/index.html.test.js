@@ -7655,6 +7655,138 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
+  test("a poll that clears while a text field is focused waits for blur before applying, instead of clobbering the focused field", async () => {
+    // Regression coverage for a real gap found while investigating
+    // whether the auto-render-blocking pipeline could move into React
+    // (see REACT_MIGRATION_PLAN.md): getPendingAutoRenderAction's
+    // "wait-for-blur" branch (index.page.js's flushPendingAutoRender,
+    // via pr-data-polling.helpers.js) had a direct unit test for its own
+    // pure decision function, but nothing exercised the real mechanism -
+    // self-attaching a one-time native "blur" listener on
+    // document.activeElement - end to end. This proves that real
+    // mechanism actually works: a poll that becomes eligible to apply
+    // while a text field is focused does NOT apply immediately, and
+    // applies only once that field is blurred.
+    let focusedInput;
+    try {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 102,
+                overrides: {
+                  data: {
+                    title: "Blur-wait poll seed",
+                    titleDisplay: "Blur-wait poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/102",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#102")).toBeInTheDocument();
+      });
+
+      // A real, focused text-entry element - isTextEntryElement only
+      // checks tagName, so a plain throwaway <input> is a faithful
+      // stand-in for whichever real field the user was actually editing.
+      focusedInput = document.createElement("input");
+      document.body.appendChild(focusedInput);
+      focusedInput.focus();
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Same "simulate a dirty Notes field" trick the sibling test above
+      // uses - NotesDirtyProvider.jsx never mounts in this harness.
+      window.getDirtyNotesPrNumbers = () => [102];
+      window.recomputeDirtyPrSectionsFields();
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "blur-wait-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 102,
+                  overrides: {
+                    data: {
+                      title: "Blur-wait poll applied",
+                      titleDisplay: "Blur-wait poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/102",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await window.pollForDataChanges();
+
+      // Still deferred - the dirty field hasn't cleared yet.
+      expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+
+      // Field becomes clean - recomputeDirtyPrSectionsFields notices
+      // !hasDirtyPrSectionsFields && pendingAutoRenderPayload and calls
+      // flushPendingAutoRender, which (after its setTimeout(0)) finds
+      // document.activeElement is still our focused text input and
+      // chooses "wait-for-blur" instead of applying.
+      window.getDirtyNotesPrNumbers = () => [];
+      window.recomputeDirtyPrSectionsFields();
+
+      // Give the setTimeout(0) a chance to run, then confirm the payload
+      // is still NOT applied - the focused field must not be clobbered.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Blur the field - the self-attached one-time listener re-runs
+      // flushPendingAutoRender, which now sees no focused text element
+      // and applies the pending payload.
+      focusedInput.blur();
+
+      await waitFor(() => {
+        expect(window.getReactPrTablePayload().byPrNumber["102"]?.data?.title).toBe(
+          "Blur-wait poll applied",
+        );
+      });
+    } finally {
+      delete window.getDirtyNotesPrNumbers;
+      focusedInput?.remove();
+    }
+  });
+
   test("preserves expanded insights panel and open inner sections after polling rerenders", async () => {
     {
       initTestPage({

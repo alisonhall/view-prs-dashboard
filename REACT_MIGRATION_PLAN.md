@@ -2202,6 +2202,27 @@ Converts the other, bigger tab bar - management-tabs (Activity/Run & Filter/Back
 
 ---
 
+## 🔎 **Phase B scoped: `recomputeDirtyPrSectionsFields` is NOT closeable the way Phase A's tab bridges were - correction to the roadmap (2026-10-11)**
+
+Started Phase B (the roadmap's next item: the auto-render-blocking pipeline → Context, closing the last real `window.*` bridge). Research found the roadmap's own framing was wrong in one important way: Phase A's tab bridges were closeable because their *writes* originated from a React action (a button click). `pendingAutoRenderPayload`'s writes originate from the **vanilla polling orchestrator** (a background poll arriving), and the "when is it safe to apply" timing (debounce, wait-for-blur) is also vanilla - there is no React-originated write to relocate. Structurally, `window.recomputeDirtyPrSectionsFields` is the same legitimate bridge category as `window.applyFreshPrPayload`/`window.beginRequestActivity` (one side notifying the other of a state change), just in the reverse direction - not a blocker the way the tab bridges were.
+
+**What research actually found, confirmed via direct reads, not assumption:**
+- Of the 3 signals feeding `hasDirtyPrSectionsFields`, 2 (`unsavedNotesCount` via `NotesDirtyProvider.jsx`, `blockingAuthorInsightsLogins` via `AuthorInsightsDraftsProvider.jsx`) are already fully React-owned, reached only via a bridge read.
+- The 3rd (`dirtyFieldCount`, a `querySelectorAll('[data-original-value]')` DOM scan) is **confirmed dead in production** - grepped the entire `src/ui` tree; nothing anywhere writes `data-original-value`. Always zero. Not touched in this slice (no urgency), but worth knowing for whoever eventually cleans it up.
+- The indicator panel is already a mix: its "jump to this PR/author" links (`#auto-render-blocked-pr-links`) are already real JSX (`AutoRenderBlockedLinks.jsx`) - only the outer panel's show/hide, status text, and the "Discard unsaved" button remain vanilla.
+
+**Asked the user how to proceed given this correction** - offered the scaled-back version (convert just the indicator panel's rendering via a push bridge, the proven lower-risk pattern, leaving the bridge permanently in place) vs. investigating whether the bigger redesign (moving `pendingAutoRenderPayload`/flush-timing into React, which actually *would* close the bridge for real) is feasible anyway. Chose to investigate.
+
+**Investigation found the bigger redesign is architecturally sound but currently under-tested, not simply risky-and-therefore-off-the-table:** `getPendingAutoRenderAction` (`pr-data-polling.helpers.js`) - the pure decision function choosing apply-now/wait-for-blur/wait-for-clean/none - is DI-free and already directly unit-tested for all 4 branches, trivially portable. The real risk is concentrated entirely in `flushPendingAutoRender`'s imperative shell: a bare `setTimeout(0)` that self-attaches a one-time native `blur` listener on `document.activeElement`, with no cancellation path - and **this exact mechanism had zero test coverage anywhere** (jest or Playwright) before this entry; only the pure decision function and the sibling "wait-for-clean" path were tested. Moving this into a `useEffect` without first having a regression net would risk landing a behavior change (StrictMode double-invoke, listener timing) completely undetected.
+
+**Chose to add that test coverage first**, as its own bounded step, before attempting the bigger move. New integration test (`index.html.test.js`): "a poll that clears while a text field is focused waits for blur before applying, instead of clobbering the focused field" - exercises the real mechanism end-to-end (focuses a real `<input>`, defers a poll via the existing dirty-Notes-field trick, clears dirty while still focused to reach the wait-for-blur branch, confirms the payload does NOT apply while focused, fires a real `blur` event, confirms the self-attached listener re-fires and the payload then applies). Confirmed this test actually catches a regression by temporarily removing the blur-listener attachment and rerunning - it failed with a clear timeout waiting for the payload to apply - before restoring.
+
+**Verified:** full jest suite (2498 tests, +1), `npx eslint .` clean project-wide, full Playwright smoke suite (50 tests, unchanged) - pure test-coverage addition, no production code changed.
+
+**Next step for Phase B, not done in this slice:** with real coverage of the blur-wait mechanism now in place, the bigger redesign (moving `pendingAutoRenderPayload`/`hasDirtyPrSectionsFields`/the flush-timing decision into a new `AutoRenderBlockingProvider`, with the vanilla polling orchestrator reading/writing through bridges) can be attempted with an actual safety net. Not yet started.
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**
