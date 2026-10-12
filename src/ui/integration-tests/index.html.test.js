@@ -32,6 +32,19 @@ const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlocke
 const { BackfillControls } = require("../components/BackfillControls");
 const { BackfillLogControls } = require("../components/BackfillLogControls");
 const { RunScriptActionButton } = require("../components/RunScriptActionButton");
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
+// suite's own BackfillControlsTestHarness/installRunScriptActionButtonsBridge
+// below used to wire these components' onClick/onStart/etc. props straight
+// to window.handleBackfillAction/handleRunScript/handleAckOnly/etc. - a
+// hand-rolled duplicate of react-app.jsx's own wiring, needed only because
+// this suite never mounts react-app.jsx itself. Now that react-app.jsx
+// calls real hooks instead of those bridges, this harness calls the same
+// hooks too, so the bridges (and the window.*-poking that only existed for
+// this file) can be deleted outright instead of kept alive for a test.
+const { useBackfillActions } = require("../state/useBackfillActions");
+const { useRunScript } = require("../state/useRunScript");
+const { useAckLabelActions } = require("../state/useAckLabelActions");
+const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableRepoLabels");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
@@ -435,12 +448,16 @@ const installAutoRenderBlockingProviderBridge = () => {
 // simulation) into a detached container, same reasoning as
 // installAutoRenderBlockingProviderBridge above - this suite never mounts
 // react-app.jsx, so nothing else would publish
-// window.updateReactBackfillButtonState or wire the button/checkbox
-// callbacks to window.handleBackfillAction/refreshBackfillStatus/
-// refreshBackfillLogTail/autoScrollBackfillLogToBottom otherwise. A small
-// local wrapper component owns the buttonState useState - the same
-// "push bridge feeds local state, portal the real component" shape
-// react-app.jsx's own AppRoot uses for backfillButtonState.
+// window.updateReactBackfillButtonState otherwise. A small local wrapper
+// component owns the buttonState useState - the same "push bridge feeds
+// local state, portal the real component" shape react-app.jsx's own
+// AppRoot uses for backfillButtonState.
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// button/checkbox callbacks used to call window.handleBackfillAction/
+// refreshBackfillStatus/refreshBackfillLogTail/autoScrollBackfillLogToBottom
+// directly - this harness now calls useBackfillActions() itself, same as
+// react-app.jsx does, so those bridges have no remaining caller and were
+// deleted from index.page.js.
 const DEFAULT_BACKFILL_BUTTON_STATE = {
   startDisabled: false,
   stopDisabled: false,
@@ -450,6 +467,8 @@ const DEFAULT_BACKFILL_BUTTON_STATE = {
 
 function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
   const [buttonState, setButtonState] = React.useState(DEFAULT_BACKFILL_BUTTON_STATE);
+  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, autoScrollBackfillLogToBottom } =
+    useBackfillActions();
 
   React.useEffect(() => {
     window.updateReactBackfillButtonState = (state) => {
@@ -467,9 +486,9 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
       createPortal(
         React.createElement(BackfillControls, {
           buttonState,
-          onStart: () => window.handleBackfillAction?.("start"),
-          onStop: () => window.handleBackfillAction?.("stop"),
-          onRefreshStatus: () => window.refreshBackfillStatus?.(),
+          onStart: () => handleBackfillAction("start"),
+          onStop: () => handleBackfillAction("stop"),
+          onRefreshStatus: () => refreshBackfillStatus(),
         }),
         controlsRoot,
         "backfill-controls",
@@ -478,8 +497,8 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
       createPortal(
         React.createElement(BackfillLogControls, {
           refreshLogDisabled: buttonState.refreshLogDisabled,
-          onRefreshLog: () => window.refreshBackfillLogTail?.(),
-          onAutoscrollChange: () => window.autoScrollBackfillLogToBottom?.(),
+          onRefreshLog: () => refreshBackfillLogTail(),
+          onAutoscrollChange: () => autoScrollBackfillLogToBottom(),
         }),
         logControlsRoot,
         "backfill-log-controls",
@@ -535,11 +554,22 @@ const installBackfillControlsBridge = () => {
 // same reasoning as installBackfillControlsBridge above - this suite
 // never mounts react-app.jsx, so without this, "Apply filters (local)"/
 // "Run script" (43/8 existing role-based click tests) and the other 4
-// buttons would all become empty, unclickable portal roots. Simpler than
-// the Backfill harness - these buttons are fully stateless, so this is a
-// direct portal of 6 instances with no wrapper component/state needed.
-const installRunScriptActionButtonsBridge = () => {
-  const container = document.createElement("div");
+// buttons would all become empty, unclickable portal roots.
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): 4 of
+// these 6 onClick callbacks used to call window.handleRunScript/
+// handleAckOnly/handleClearOnly/handleApplyLabelClick directly - this is
+// now a real component calling the matching hooks itself, same as
+// react-app.jsx does, so those 4 bridges have no remaining caller and
+// were deleted from index.page.js. window.refreshAvailableRepoLabels and
+// window.persistViewFilterOptionOverrides/applyFiltersFromCache are the 2
+// deliberate exceptions still reached via window.* (see
+// useRefreshAvailableRepoLabels.jsx's own comment, and Phase E for the
+// persist bridges) - unchanged here.
+function RunScriptActionButtonsTestHarness() {
+  const runScript = useRunScript();
+  const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
+  const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();
+
   const buttons = [
     {
       id: "run-script-btn",
@@ -548,33 +578,33 @@ const installRunScriptActionButtonsBridge = () => {
       label: "Run script",
       onClick: () => {
         window.persistRunScriptOptionOverrides?.();
-        window.handleRunScript?.();
+        runScript();
       },
     },
     {
       id: "ack-only-btn",
       rootId: "ack-only-btn-root",
       label: "Apply ack only",
-      onClick: () => window.handleAckOnly?.(),
+      onClick: () => handleAckOnly(),
     },
     {
       id: "clear-only-btn",
       rootId: "clear-only-btn-root",
       label: "Apply clear only",
-      onClick: () => window.handleClearOnly?.(),
+      onClick: () => handleClearOnly(),
     },
     {
       id: "apply-label-btn",
       rootId: "apply-label-btn-root",
       label: "Apply label",
-      onClick: () => window.handleApplyLabelClick?.(),
+      onClick: () => handleApplyLabelClick(),
     },
     {
       id: "refresh-labels-btn",
       rootId: "refresh-labels-btn-root",
       title: "Reload labels for the current repo",
       label: "↻ Labels",
-      onClick: () => window.refreshAvailableRepoLabels?.(),
+      onClick: () => refreshAvailableRepoLabels(),
     },
     {
       id: "apply-filters-btn",
@@ -600,7 +630,12 @@ const installRunScriptActionButtonsBridge = () => {
       );
     })
     .filter(Boolean);
-  rtlRender(React.createElement(React.Fragment, null, ...portals), { container });
+  return React.createElement(React.Fragment, null, ...portals);
+}
+
+const installRunScriptActionButtonsBridge = () => {
+  const container = document.createElement("div");
+  rtlRender(React.createElement(RunScriptActionButtonsTestHarness), { container });
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see

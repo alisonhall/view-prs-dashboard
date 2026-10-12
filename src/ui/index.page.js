@@ -1592,6 +1592,30 @@ const updateBackfillStatusFromPayload = (
   }
 };
 
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// state/useBackfillActions.jsx builds its own createPrBackfillActionHelpers
+// instance - these reverse bridges let that instance read/write the exact
+// same module-level state this file's own instance uses (for the backfill
+// tab orchestrator / initial auto-load), instead of forking a second,
+// independently-drifting copy.
+if (typeof window !== "undefined") {
+  window.getBackfillTrackingState = () => ({
+    supportsBackfillLogPolling,
+    isBackfillRunning,
+    isBackfillActionPending,
+  });
+  window.setSupportsBackfillLogPolling = (value) => {
+    supportsBackfillLogPolling = Boolean(value);
+  };
+  window.setIsBackfillActionPending = (value) => {
+    isBackfillActionPending = Boolean(value);
+  };
+  window.updateBackfillStatusFromPayload = (...args) =>
+    updateBackfillStatusFromPayload(...args);
+  window.setBackfillLogMessage = (...args) => setBackfillLogMessage(...args);
+  window.renderBackfillStatus = (...args) => renderBackfillStatus(...args);
+}
+
 const loadSchedulerStatus = async () => {
   const response = await fetch("/view-prs/scheduler");
   if (response.status === 404) {
@@ -1798,10 +1822,15 @@ const {
   formatBackfillLogMessage,
 } = prBackfillHelperFactory.createPrBackfillHelpers();
 
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleBackfillAction itself is no longer destructured here -
+// state/useBackfillActions.jsx now owns the only real caller (the Start/
+// Stop buttons) via its own separate factory instance. loadBackfillStatus/
+// loadBackfillLogTail stay, since this file's own backfill tab orchestrator
+// and initial auto-load still call them directly.
 const {
   loadBackfillStatus,
   loadBackfillLogTail,
-  handleBackfillAction,
 } = prBackfillActionHelperFactory.createPrBackfillActionHelpers({
   fetch: (...args) => fetch(...args),
   postJson,
@@ -1833,60 +1862,16 @@ const {
   backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
 });
 
-// Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// extracted from the old backfill-refresh-btn/backfill-log-refresh-btn
-// vanilla click handlers (index.page.js's initPage, below) so
-// BackfillControls.jsx/BackfillLogControls.jsx can call the exact same
-// logic via a window.* bridge instead - preserves the beginRequestActivity/
-// error-render/notifyFailureSnackbar behavior unchanged, just made
-// callable instead of inline.
-const refreshBackfillStatus = async () => {
-  const finishActivity = beginRequestActivity("backfill");
-  try {
-    await loadBackfillStatus({ announce: true, includeLog: true });
-  } catch (error) {
-    renderBackfillStatus({
-      ok: false,
-      running: false,
-      summary: error?.result?.summary || "Failed to refresh backfill status",
-      error: error?.result?.error || error.message,
-    });
-    setBackfillLogMessage("Failed to load backfill log");
-    notifyFailureSnackbar(
-      "Failed to refresh backfill status",
-      error?.result || error,
-      "Unable to refresh backfill status",
-    );
-  } finally {
-    finishActivity();
-  }
-};
-
-const refreshBackfillLogTail = async () => {
-  const finishActivity = beginRequestActivity("backfill");
-  try {
-    await loadBackfillLogTail();
-  } catch (error) {
-    setBackfillLogMessage(
-      `Failed to load backfill log\n\n${error.message || String(error)}`,
-    );
-    notifyFailureSnackbar(
-      "Failed to refresh backfill log",
-      error,
-      "Unable to refresh backfill log",
-    );
-  } finally {
-    finishActivity();
-  }
-};
-
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// BackfillControls.jsx/BackfillLogControls.jsx used to reach
+// handleBackfillAction/a refreshBackfillStatus/refreshBackfillLogTail
+// wrapper pair/autoScrollBackfillLogToBottom via window.* bridges - they
+// now call state/useBackfillActions.jsx's own hook directly instead, which
+// builds its own instance of this same factory. window.autoScrollBackfillLogToBottom
+// stays bridged (that hook's own DI param reads it) - it's a genuine
+// "vanilla primitive exposed for React" case (real DOM scroll/checkbox
+// state), not a trigger duplication.
 if (typeof window !== "undefined") {
-  // BackfillControls.jsx/BackfillLogControls.jsx call these directly as
-  // their onStart/onStop/onRefreshStatus/onRefreshLog/onAutoscrollChange
-  // props - same exposure shape as window.handleTriggerAutoRun above.
-  window.handleBackfillAction = (...args) => handleBackfillAction(...args);
-  window.refreshBackfillStatus = (...args) => refreshBackfillStatus(...args);
-  window.refreshBackfillLogTail = (...args) => refreshBackfillLogTail(...args);
   window.autoScrollBackfillLogToBottom = (...args) =>
     autoScrollBackfillLogToBottom(...args);
 }
@@ -2657,106 +2642,16 @@ const getFormBody = () => {
   };
 };
 
-const handleRunScript = async () => {
-  const body = getFormBody();
-
-  if (body.prNumbersInput && !body.prNumber) {
-    setStatusMessage(
-      'Run script requires numeric PR number(s) in "PR number(s)"',
-    );
-    return;
-  }
-
-  setStatusMessage("Running...");
-  setOutputMessage("");
-  const finishActivity = beginRequestActivity("runScript");
-
-  try {
-    const runTargets =
-      Array.isArray(body.prNumberList) && body.prNumberList.length > 0
-        ? body.prNumberList
-        : [""];
-    const outputChunks = [];
-    const failures = [];
-    const effectiveRepo = body.repo || DEFAULT_REPO;
-
-    for (let index = 0; index < runTargets.length; index += 1) {
-      const runTarget = runTargets[index];
-      const runBody = {
-        ...body,
-        prNumber: runTarget || "",
-      };
-
-      const runLabel = runTarget ? `PR #${runTarget}` : "All PRs";
-      setStatusMessage(
-        `Running ${runLabel} (${index + 1}/${runTargets.length})...`,
-      );
-
-      const { response, result } = await postJson("/view-prs/run", runBody);
-
-      outputChunks.push(`=== ${runLabel} ===`);
-      outputChunks.push(
-        formatCommandOutputWithAuthHint(result, {
-          includeError: !response.ok || result?.ok === false,
-        }) || "Script completed with no output.",
-      );
-
-      if (!response.ok || result.ok === false) {
-        failures.push({
-          prNumber: runTarget || "all",
-          status: response.status,
-        });
-        continue;
-      }
-
-      const latestData = result.prData || null;
-      if (latestData) {
-        applyFreshPrPayload(latestData, effectiveRepo);
-      }
-    }
-
-    if (failures.length > 0) {
-      const successCount = runTargets.length - failures.length;
-      const hasAuthFailure = outputChunks.some((chunk) =>
-        chunk.toLowerCase().includes("auth hint:"),
-      );
-      setStatusMessage(
-        hasAuthFailure
-          ? `Completed with failures (${successCount}/${runTargets.length} successful) - GitHub auth/SSO required`
-          : `Completed with failures (${successCount}/${runTargets.length} successful)`,
-      );
-
-      // Show error snackbar for failures
-      const failureReason = hasAuthFailure
-        ? "GitHub authentication or SSO required. Check the output below for authorization link."
-        : "One or more requests failed. Check the output below for details.";
-      const failureDetails = failures
-        .map((f) => `${f.prNumber} (HTTP ${f.status})`)
-        .join(", ");
-      showErrorNotification(
-        `Request failed for: ${failureDetails}`,
-        failureReason,
-        0,
-      );
-    } else {
-      setStatusMessage("Completed");
-    }
-
-    setOutputMessage(
-      outputChunks.join("\n\n") || "Script completed with no output.",
-    );
-  } catch (error) {
-    setStatusMessage("Failed (network/error)");
-    showErrorNotification(
-      "Request failed",
-      String(error || "An unknown error occurred"),
-      0, // No auto-dismiss for errors
-    );
-    setOutputMessage(String(error));
-  } finally {
-    finishActivity();
-  }
-};
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleRunScript itself (this used to be its definition) moved into
+// state/useRunScript.jsx - it never had its own DI-factory, and its only
+// real caller was always the "Run script" button, so this file just
+// exposes getFormBody for the hook to read instead of re-implementing its
+// own copy of the form-read logic (which itself depends on several other
+// DOM-is-the-source-of-truth helpers below, like getSelectedIncludeLabelNames).
+if (typeof window !== "undefined") {
+  window.getFormBody = (...args) => getFormBody(...args);
+}
 
 const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
 
@@ -2837,13 +2732,11 @@ const {
   getLatestStoredPayload: () => latestStoredPayload,
 });
 
-const handleAckOnly = async () => {
-  await runAckOnlyWorkflow();
-};
-
-const handleClearOnly = async () => {
-  await runClearOnlyWorkflow();
-};
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleAckOnly/handleClearOnly's definitions (thin 1-line wrappers around
+// runAckOnlyWorkflow/runClearOnlyWorkflow) moved into
+// state/useAckLabelActions.jsx - their only caller was the "Apply ack
+// only"/"Apply clear only" buttons, now a hook instead of a window.* bridge.
 
 // ---- Apply existing GitHub labels to PRs (single-row select or bulk via
 // the "Run & Filter" tab's PR-number selection) ----
@@ -2912,27 +2805,34 @@ const refreshAvailableRepoLabels = async (repoOverride) => {
   }
 };
 
-const handleApplyLabelClick = async () => {
-  const select = getOptionalElementById("apply-label-select");
-  await runApplyLabelWorkflow("", select ? select.value : "", "");
-};
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleApplyLabelClick's definition moved into
+// state/useAckLabelActions.jsx - its only caller was the "Apply label"
+// button, now a hook instead of a window.* bridge.
 
-// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// RunScriptActionButton.jsx's instances (react-app.jsx) call these
-// directly as their onClick props - same exposure shape as
-// window.handleTriggerAutoRun above. None of these functions change -
-// every one was already fully self-contained; only their trigger (a
-// vanilla <button> click listener) moves to React.
-// window.persistRunScriptOptionOverrides/window.persistViewFilterOptionOverrides
-// used to also be bridged here - Phase E (see REACT_MIGRATION_PLAN.md,
-// "Full migration roadmap") moved persistence ownership into
-// state/FilterStateProvider.jsx, which now sets those same 2 bridge names
-// itself.
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// state/useAckLabelActions.jsx's own createPrAckLabelActionsHelpers
+// instance needs these 2 reverse bridges to reach this file's real
+// summarizeAckRefreshWarnings/loadStoredData, instead of forking its own
+// copy (loadStoredData especially: forking a second instance here would
+// mean a second independent dataVersion/runStamp tracker, duplicating
+// Phase F's own chicken-and-egg bug class).
 if (typeof window !== "undefined") {
-  window.handleRunScript = (...args) => handleRunScript(...args);
-  window.handleAckOnly = (...args) => handleAckOnly(...args);
-  window.handleClearOnly = (...args) => handleClearOnly(...args);
-  window.handleApplyLabelClick = (...args) => handleApplyLabelClick(...args);
+  window.summarizeAckRefreshWarnings = (...args) =>
+    summarizeAckRefreshWarnings(...args);
+  window.loadStoredData = (...args) => loadStoredData(...args);
+}
+
+// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap")/Phase D.2:
+// #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn are
+// React-owned (RunScriptActionButton.jsx, react-app.jsx) and now call real
+// hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) instead of a
+// window.* bridge. #refresh-labels-btn/#apply-filters-btn are the 2
+// deliberate exceptions still reached via window.* - see
+// useRefreshAvailableRepoLabels.jsx's own comment for why, and
+// window.persistViewFilterOptionOverrides/applyFiltersFromCache's own
+// Phase E history for the second.
+if (typeof window !== "undefined") {
   window.refreshAvailableRepoLabels = (...args) =>
     refreshAvailableRepoLabels(...args);
   window.applyFiltersFromCache = (...args) => applyFiltersFromCache(...args);
@@ -3462,18 +3362,21 @@ const initPage = () => {
   // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn/
   // #refresh-labels-btn/#apply-filters-btn are React-owned now
-  // (RunScriptActionButton.jsx, react-app.jsx) - their own onClick calls
-  // window.handleRunScript/handleAckOnly/handleClearOnly/
-  // handleApplyLabelClick/refreshAvailableRepoLabels/applyFiltersFromCache
-  // (plus the 2 persist* bridges for the first and last) directly, so
-  // this vanilla click-wiring is removed.
+  // (RunScriptActionButton.jsx, react-app.jsx) - no vanilla wiring needed
+  // here anymore. Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced 4 of
+  // their 5 window.* bridges with real hooks (useRunScript.jsx/
+  // useAckLabelActions.jsx, state/) - only window.applyFiltersFromCache
+  // and window.refreshAvailableRepoLabels (a deliberate exception, see
+  // useRefreshAvailableRepoLabels.jsx's own comment) are still reached via
+  // window.* from react-app.jsx.
   // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
   // 3 backfill action buttons, the log-refresh button, and the
   // auto-scroll checkbox are React-owned now (BackfillControls.jsx/
-  // BackfillLogControls.jsx) - their own onClick/onChange call
-  // window.handleBackfillAction/refreshBackfillStatus/
-  // refreshBackfillLogTail/autoScrollBackfillLogToBottom directly, so
-  // this vanilla click-wiring is removed.
+  // BackfillLogControls.jsx) - no vanilla wiring needed here anymore.
+  // Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced their window.* bridges
+  // with useBackfillActions.jsx (state/) - window.autoScrollBackfillLogToBottom
+  // stays bridged (that hook's own DI param reads it; a real DOM
+  // scroll/checkbox primitive, not a trigger duplication).
 
   const actionLogRefreshBtn = getOptionalElementById("action-log-refresh-btn");
   if (actionLogRefreshBtn) {

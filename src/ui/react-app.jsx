@@ -37,6 +37,10 @@ import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling } from './components/PrDataPolling';
+import { useBackfillActions } from './state/useBackfillActions';
+import { useRunScript } from './state/useRunScript';
+import { useAckLabelActions } from './state/useAckLabelActions';
+import { useRefreshAvailableRepoLabels } from './state/useRefreshAvailableRepoLabels';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
@@ -541,6 +545,20 @@ function MergedRequestMoreActionLive() {
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
+  // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls/BackfillLogControls/RunScriptActionButton's instances
+  // below used to call window.handleBackfillAction/refreshBackfillStatus/
+  // refreshBackfillLogTail/autoScrollBackfillLogToBottom/handleRunScript/
+  // handleAckOnly/handleClearOnly/handleApplyLabelClick/
+  // refreshAvailableRepoLabels directly - they now call these hooks'
+  // returned functions instead (refreshAvailableRepoLabels stays a
+  // deliberate pass-through to its own window.* bridge, see
+  // useRefreshAvailableRepoLabels.jsx's own comment).
+  const backfillActions = useBackfillActions();
+  const runScript = useRunScript();
+  const ackLabelActions = useAckLabelActions();
+  const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();
+
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): drives
   // which lazy-loaded tab chunks below have been requested yet.
   const hasReviewStatsBeenVisible = useHasTabPanelBeenVisible('tab-panel-review-stats');
@@ -947,7 +965,7 @@ function AppRoot() {
               label="Run script"
               onClick={() => {
                 window.persistRunScriptOptionOverrides?.();
-                window.handleRunScript?.();
+                runScript();
               }}
             />,
             containers.runScriptBtn,
@@ -959,7 +977,7 @@ function AppRoot() {
             <RunScriptActionButton
               id="ack-only-btn"
               label="Apply ack only"
-              onClick={() => window.handleAckOnly?.()}
+              onClick={() => ackLabelActions.handleAckOnly()}
             />,
             containers.ackOnlyBtn,
             'ack-only-btn',
@@ -970,7 +988,7 @@ function AppRoot() {
             <RunScriptActionButton
               id="clear-only-btn"
               label="Apply clear only"
-              onClick={() => window.handleClearOnly?.()}
+              onClick={() => ackLabelActions.handleClearOnly()}
             />,
             containers.clearOnlyBtn,
             'clear-only-btn',
@@ -981,7 +999,7 @@ function AppRoot() {
             <RunScriptActionButton
               id="apply-label-btn"
               label="Apply label"
-              onClick={() => window.handleApplyLabelClick?.()}
+              onClick={() => ackLabelActions.handleApplyLabelClick()}
             />,
             containers.applyLabelBtn,
             'apply-label-btn',
@@ -993,7 +1011,7 @@ function AppRoot() {
               id="refresh-labels-btn"
               title="Reload labels for the current repo"
               label={'↻ Labels'}
-              onClick={() => window.refreshAvailableRepoLabels?.()}
+              onClick={() => refreshAvailableRepoLabels()}
             />,
             containers.refreshLabelsBtn,
             'refresh-labels-btn',
@@ -1116,9 +1134,9 @@ function AppRoot() {
           createPortal(
             <BackfillControls
               buttonState={backfillButtonState}
-              onStart={() => window.handleBackfillAction?.('start')}
-              onStop={() => window.handleBackfillAction?.('stop')}
-              onRefreshStatus={() => window.refreshBackfillStatus?.()}
+              onStart={() => backfillActions.handleBackfillAction('start')}
+              onStop={() => backfillActions.handleBackfillAction('stop')}
+              onRefreshStatus={() => backfillActions.refreshBackfillStatus()}
             />,
             containers.backfillControls,
             'backfill-controls',
@@ -1135,8 +1153,8 @@ function AppRoot() {
           createPortal(
             <BackfillLogControls
               refreshLogDisabled={backfillButtonState.refreshLogDisabled}
-              onRefreshLog={() => window.refreshBackfillLogTail?.()}
-              onAutoscrollChange={() => window.autoScrollBackfillLogToBottom?.()}
+              onRefreshLog={() => backfillActions.refreshBackfillLogTail()}
+              onAutoscrollChange={() => backfillActions.autoScrollBackfillLogToBottom()}
             />,
             containers.backfillLogControls,
             'backfill-log-controls',
