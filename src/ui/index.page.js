@@ -86,7 +86,6 @@ import {
   extractRowLabelNames,
   normalizeFilterToken,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
-import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
 import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
@@ -100,15 +99,20 @@ const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
 
-let lastRenderedRunStamp = "";
-let lastSeenDataVersion = "";
-let lastRenderedPrFingerprint = "";
-let lastRenderedMetaFingerprint = "";
+// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// lastRenderedRunStamp/lastSeenDataVersion/lastRenderedPrFingerprint/
+// lastRenderedMetaFingerprint/latestPrManifest/supportsDataMetaPolling/
+// supportsDataManifestPolling used to be module `let`s here - moved into
+// PrDataProvider.jsx's own trackingRef, which now builds pollForDataChanges
+// itself. Every former write site redirects through the new
+// window.pushPrDataPollingTrackingState(partial) bridge instead.
+// lastSuccessfulRenderedCheckAt stays here - it's prDataTabOrchestrator's
+// own concern (tab-activation catch-up), not something pollForDataChanges
+// itself reads.
 let lastSuccessfulRenderedCheckAt = "";
 let lastSuccessfulPollCheckAt = "";
 let lastPollErrorAt = "";
 let hasActivePollWarning = false;
-let latestPrManifest = {};
 let latestStoredPayload = null;
 let latestSelectedRepo = "";
 
@@ -135,8 +139,6 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
 
 let currentViewerLogin = "";
 let currentActorLoginAliases = {};
-let supportsDataMetaPolling = true;
-let supportsDataManifestPolling = true;
 let supportsSchedulerPolling = true;
 let supportsBackfillLogPolling = true;
 let lastBackfillStateKey = "";
@@ -968,10 +970,10 @@ const { loadStoredData } =
     fetch: (...args) => fetch(...args),
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     setLastSeenDataVersion: (value) => {
-      lastSeenDataVersion = value;
+      window.pushPrDataPollingTrackingState?.({ lastSeenDataVersion: value });
     },
     setLastRenderedRunStamp: (value) => {
-      lastRenderedRunStamp = value;
+      window.pushPrDataPollingTrackingState?.({ lastRenderedRunStamp: value });
     },
     setLastSuccessfulRenderedCheckAt: (value) => {
       lastSuccessfulRenderedCheckAt = value;
@@ -1754,10 +1756,10 @@ const prDataTabOrchestrator =
         lastSuccessfulRenderedCheckAt = value;
       },
       setLastRenderedPrFingerprint: (value) => {
-        lastRenderedPrFingerprint = value;
+        window.pushPrDataPollingTrackingState?.({ lastRenderedPrFingerprint: value });
       },
       setLatestPrManifest: (value) => {
-        latestPrManifest = value;
+        window.pushPrDataPollingTrackingState?.({ latestPrManifest: value });
       },
       setPendingAutoRenderPayload: (value) => {
         window.setPendingAutoRenderPayload?.(value);
@@ -2388,9 +2390,16 @@ const applyFreshPrPayload = (payload, repo) => {
   // previously-known-good latestSelectedRepo. applyResolvedRepo's own
   // `if (!resolvedRepo) return;` guard is the sole gate for that write.
   applyLatestPrData({ payload });
-  lastRenderedPrFingerprint = computePrDataFingerprint(payload);
-  lastRenderedMetaFingerprint = computePrDataMetaFingerprint(payload);
-  latestPrManifest = computePrDataManifest(payload);
+  // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // fingerprint/manifest/version/run-stamp bookkeeping now lives in
+  // PrDataProvider.jsx's own trackingRef, pushed via this one combined
+  // bridge instead of direct module-variable assignment - same "who
+  // writes when" structure, only the storage location changed.
+  const trackingPatch = {
+    lastRenderedPrFingerprint: computePrDataFingerprint(payload),
+    lastRenderedMetaFingerprint: computePrDataMetaFingerprint(payload),
+    latestPrManifest: computePrDataManifest(payload),
+  };
   window.setPendingAutoRenderPayload?.(null);
 
   // Same dataVersion/runStamp/backfill bookkeeping loadStoredData does with
@@ -2403,13 +2412,14 @@ const applyFreshPrPayload = (payload, repo) => {
   // normally), not a lasting staleness bug.
   const dataVersion = String(payload?.dataMeta?.dataVersion || "").trim();
   if (dataVersion) {
-    lastSeenDataVersion = dataVersion;
+    trackingPatch.lastSeenDataVersion = dataVersion;
   }
   const updatedAt = String(payload?.lastRun?.updatedAt || "").trim();
   if (updatedAt) {
-    lastRenderedRunStamp = payload.lastRun.updatedAt;
+    trackingPatch.lastRenderedRunStamp = payload.lastRun.updatedAt;
     lastSuccessfulRenderedCheckAt = updatedAt;
   }
+  window.pushPrDataPollingTrackingState?.(trackingPatch);
   updateBackfillStatusFromPayload(payload);
 
   applyResolvedRepo(resolvedRepo);
@@ -2542,69 +2552,33 @@ const pushPayloadToReactTable = (payload, repo) => {
   }
 };
 
-// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md): a
-// thin wire-up around pr-data-polling-orchestration.helpers.js's extracted
-// factory - the actual fetch-cascade/fingerprint-diff/render-decision logic
-// lives there now (pure, DI-tested, zero window/DOM dependency of its own).
-// This function's own identity (a plain top-level function assigned to
-// window.pollForDataChanges the same way as before) is preserved
-// deliberately: index.html.test.js calls window.pollForDataChanges()
-// directly at 17 call sites and never mounts <PrDataPolling>, so removing
-// this wrapper (not just its body) would break that suite.
-const { pollForDataChanges } =
-  prDataPollingOrchestrationHelperFactory.createPrDataPollingOrchestrationHelpers({
-    fetchFn: (...args) => fetch(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-    computePrDataManifest: (...args) => computePrDataManifest(...args),
-    getManifestDelta: (...args) => getManifestDelta(...args),
-    mergeDataDeltaPayload: (...args) => mergeDataDeltaPayload(...args),
-    computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
-    computePrDataMetaFingerprint: (...args) => computePrDataMetaFingerprint(...args),
-    getDataPollRenderAction: (...args) => getDataPollRenderAction(...args),
-    getSupportsDataMetaPolling: () => supportsDataMetaPolling,
-    setSupportsDataMetaPolling: (value) => {
-      supportsDataMetaPolling = value;
-    },
-    getSupportsDataManifestPolling: () => supportsDataManifestPolling,
-    setSupportsDataManifestPolling: (value) => {
-      supportsDataManifestPolling = value;
-    },
-    getLastSeenDataVersion: () => lastSeenDataVersion,
-    setLastSeenDataVersion: (value) => {
-      lastSeenDataVersion = value;
-    },
-    getLatestPrManifest: () => latestPrManifest,
-    setLatestPrManifest: (value) => {
-      latestPrManifest = value;
-    },
-    getLatestStoredPayload: () => latestStoredPayload,
-    applyLatestPrData: (...args) => applyLatestPrData(...args),
-    getLastRenderedPrFingerprint: () => lastRenderedPrFingerprint,
-    setLastRenderedPrFingerprint: (value) => {
-      lastRenderedPrFingerprint = value;
-    },
-    getLastRenderedMetaFingerprint: () => lastRenderedMetaFingerprint,
-    setLastRenderedMetaFingerprint: (value) => {
-      lastRenderedMetaFingerprint = value;
-    },
-    getLastRenderedRunStamp: () => lastRenderedRunStamp,
-    setLastRenderedRunStamp: (value) => {
-      lastRenderedRunStamp = value;
-    },
-    // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // pendingAutoRenderPayload/hasDirtyPrSectionsFields now live in
-    // AutoRenderBlockingProvider.jsx - these 3 read/write through its
-    // published bridges instead of module variables.
-    getHasDirtyPrSectionsFields: () => window.getHasDirtyPrSectionsFields?.() ?? false,
-    getPendingAutoRenderPayload: () => window.getPendingAutoRenderPayload?.() ?? null,
-    setPendingAutoRenderPayload: (value) => {
-      window.setPendingAutoRenderPayload?.(value);
-    },
-    renderPrData: (...args) => renderPrData(...args),
-    markPollSuccess: (...args) => markPollSuccess(...args),
-    showPollFailureWarning: (...args) => showPollFailureWarning(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-  });
+// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollForDataChanges itself (the createPrDataPollingOrchestrationHelpers
+// instance) now lives in PrDataProvider.jsx, which owns the
+// fingerprint/manifest/version/polling-support tracking state this
+// factory needs - index.page.js just exposes the vanilla pieces that
+// Provider's own DI still needs to reach (the pure fingerprint/manifest
+// helpers below, already wired with the real getOrComputeEntryDerivedValue
+// cache; applyLatestPrData/renderPrData/markPollSuccess/
+// showPollFailureWarning - vanilla render-pipeline primitives exposed
+// *for* that Provider, same category as every other "vanilla primitive
+// exposed for React" bridge in this migration). window.pollForDataChanges
+// itself is now assigned by PrDataProvider.jsx instead, but stays the
+// same name/shape - index.html.test.js's 17 direct call sites still work
+// unchanged.
+if (typeof window !== "undefined") {
+  window.computePrDataManifest = (...args) => computePrDataManifest(...args);
+  window.getManifestDelta = (...args) => getManifestDelta(...args);
+  window.mergeDataDeltaPayload = (...args) => mergeDataDeltaPayload(...args);
+  window.computePrDataFingerprint = (...args) => computePrDataFingerprint(...args);
+  window.computePrDataMetaFingerprint = (...args) => computePrDataMetaFingerprint(...args);
+  window.getDataPollRenderAction = (...args) => getDataPollRenderAction(...args);
+  window.getLatestStoredPayload = () => latestStoredPayload;
+  window.applyLatestPrData = (...args) => applyLatestPrData(...args);
+  window.renderPrData = (...args) => renderPrData(...args);
+  window.markPollSuccess = (...args) => markPollSuccess(...args);
+  window.showPollFailureWarning = (...args) => showPollFailureWarning(...args);
+}
 
 const pollBackfillStatus = async () => {
   if (!isBackfillRunning || isBackfillActionPending) {
@@ -2638,8 +2612,10 @@ const pollSchedulerStatus = async () => {
 // (AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, also exposed here so the
 // interval timing has one source of truth). The functions themselves are
 // unchanged; only *what decides when they run* moved.
+// window.pollForDataChanges used to also be bridged here - Phase F (see
+// REACT_MIGRATION_PLAN.md, "Full migration roadmap") moved it into
+// PrDataProvider.jsx, which now sets that same bridge name itself.
 if (typeof window !== "undefined") {
-  window.pollForDataChanges = (...args) => pollForDataChanges(...args);
   window.pollSchedulerStatus = (...args) => pollSchedulerStatus(...args);
   window.pollBackfillStatus = (...args) => pollBackfillStatus(...args);
   window.renderRequestActivity = (...args) => renderRequestActivity(...args);

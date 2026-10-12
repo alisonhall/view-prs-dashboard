@@ -2307,6 +2307,26 @@ The biggest, riskiest slice in the roadmap - ~700 lines of `getUiOptionDefaults`
 
 ---
 
+## ✅ **Phase F: `pollForDataChanges`'s render-tracking state moves into `PrDataProvider` (2026-10-12)**
+
+Same scope-correction pattern as Phases B and E: the roadmap's one-line Phase F description ("polling/activity-tracking bodies → hooks") covered 4 functions with very different risk profiles. Research + a user check-in narrowed this slice to `pollForDataChanges`'s own state specifically - `pollBackfillStatus`/`pollSchedulerStatus` (tiny, self-contained; `pollSchedulerStatus` deliberately stays `window`-bridged since `index.html.test.js` calls it directly) and `renderRequestActivity`/`beginRequestActivity` (tied to a *different* shared-state cluster used by 10+ unrelated vanilla action handlers) are explicitly out of scope for this slice.
+
+**What moved:** the 7 module-scope `let`s `pollForDataChanges`'s factory depended on (`supportsDataMetaPolling`/`supportsDataManifestPolling`/`lastSeenDataVersion`/`latestPrManifest`/`lastRenderedPrFingerprint`/`lastRenderedMetaFingerprint`/`lastRenderedRunStamp`) moved into a plain `useRef` inside `PrDataProvider.jsx` (no version-tick/re-render needed - nothing ever renders from this state, it's pure diffing bookkeeping). `PrDataProvider.jsx` now builds `pollForDataChanges` itself via the same unchanged, pure `createPrDataPollingOrchestrationHelpers` factory, exposed to `<PrDataPolling />` **directly via Context** (no `window.*` indirection - the actual Phase F goal) and *also* still as `window.pollForDataChanges` (kept only because `index.html.test.js` calls it directly at 17+ call sites and never mounts `<PrDataPolling />` - same "stays callable for tests" precedent `window.pollSchedulerStatus` already established). `<PrDataPolling />` now calls it via `usePrData()` instead of the bridge.
+
+**A 4th consumer surfaced during implementation, beyond the 2 (`applyFreshPrPayload`, `prDataTabOrchestrator`) found during research:** `loadStoredData` (the initial-page-load GET handler) *also* writes `lastSeenDataVersion`/`lastRenderedRunStamp` directly. All 3 vanilla write sites now redirect through one new combined bridge, `window.pushPrDataPollingTrackingState(partial)` - same "who writes when" structure preserved, matching the Phase E precedent. `lastSuccessfulRenderedCheckAt` stays fully vanilla (it's `prDataTabOrchestrator`'s own tab-activation-catch-up concern, never actually read by `pollForDataChanges` itself - a scope narrowing, not an oversight).
+
+**A real chicken-and-egg bug found via the full suite, not assumed up front:** `loadStoredData` calls its 2 setters *before* calling `renderPrData` - but `renderPrData` is what eventually mounts `<PrDataProvider>` (via `mountReactTable`), so on every page's very first load, that write always races a bridge (`window.pushPrDataPollingTrackingState`) that doesn't exist yet, silently dropping the initial `dataVersion`/`runStamp` seed (confirmed by a real failing test: "skips full data fetch when polling sees an unchanged data version" - the dropped seed made the first poll always see a "changed" version and fetch unnecessarily). Fixed by seeding `trackingRef`'s initial value directly from `initialPayload` (the same prop `PrDataProvider` already receives and already uses to seed its own `payload` state) - the exact same `dataMeta.dataVersion`/`lastRun.updatedAt` extraction `pr-stored-data-load.helpers.js` itself uses, so the two stay equivalent without needing the race-prone bridge call for this specific case.
+
+**Also needed:** 2 existing jsdom test files that mounted `<PrDataPolling />` standalone (`PrDataPolling.test.jsx`, `index.page.memory-leak-prevention.test.jsx`) needed wrapping in a minimal `<PrDataContext.Provider>` now that `pollForDataChanges` comes from `usePrData()` instead of a bare `window.*` read; and 7 `index.html.test.js` assertions checking `typeof window.pollForDataChanges === "function"` synchronously right after page-init needed a `waitFor` wrapper, since that bridge is now set inside a React effect (async relative to `initTestPage`) instead of at vanilla module-load time (sync).
+
+**New reverse bridges** (vanilla primitives exposed *for* `PrDataProvider.jsx`, same category as every other one in this migration): `window.computePrDataManifest`/`getManifestDelta`/`mergeDataDeltaPayload`/`computePrDataFingerprint`/`computePrDataMetaFingerprint`/`getDataPollRenderAction` (the pure helpers, still wired with the real `getOrComputeEntryDerivedValue` cache - not duplicated), `window.getLatestStoredPayload`/`applyLatestPrData`/`renderPrData`/`markPollSuccess`/`showPollFailureWarning`.
+
+**Not closed by this slice, as scoped from the start:** `pollBackfillStatus`/`pollSchedulerStatus`/`renderRequestActivity`/`beginRequestActivity` remain vanilla, `window`-bridged functions - a deliberate scope correction, not an oversight (see this entry's own opening paragraph).
+
+**Verified:** full jest suite (266 suites, 2518 tests), `npx eslint .` clean project-wide, full Playwright smoke suite (50/50 passing).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

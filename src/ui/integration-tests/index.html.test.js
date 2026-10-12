@@ -6979,7 +6979,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       fetchMock.mockClear();
       let dataFallbackCalls = 0;
@@ -7096,7 +7098,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -7212,7 +7216,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -7296,7 +7302,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
       await waitFor(() => {
         const row = document.querySelector(
           "#pr-sections .pr-group-section-content table tbody tr",
@@ -7517,7 +7525,9 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       const user = userEvent.setup();
       await waitFor(() => {
@@ -7664,7 +7674,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -8091,7 +8103,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(typeof window.pollForDataChanges).toBe("function");
+      });
 
       const insightsToggle = await screen.findByRole("button", {
         name: "More insights",

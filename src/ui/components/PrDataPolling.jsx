@@ -7,14 +7,18 @@
  * this replaces index.page.js's own setInterval calls plus its
  * cleanupIntervals/restartIntervals functions and the visibilitychange/
  * beforeunload listeners that paused/resumed them - same behavior,
- * ported 1:1, just now owned by React instead of a classic script. The
- * polled functions themselves (pollForDataChanges/pollBackfillStatus/
- * renderRequestActivity) are unchanged and still live in index.page.js -
- * only *when* they run moved, via window.pollForDataChanges/
- * pollBackfillStatus/renderRequestActivity (and
- * window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS for the interval timing)
- * that index.page.js now exposes for this purpose. Moving the polled
- * functions' own logic into React is a later Track C slice, not this one.
+ * ported 1:1, just now owned by React instead of a classic script.
+ *
+ * Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * pollForDataChanges itself now lives in <PrDataProvider /> (this
+ * component's own parent), reached directly via usePrData() - no more
+ * window.pollForDataChanges indirection for this call site, the actual
+ * goal of that phase. pollBackfillStatus/renderRequestActivity stay
+ * window.* bridges (index.page.js) - deliberately out of scope for that
+ * same slice (see its own writeup for why: both are tied to shared
+ * vanilla state well beyond polling). window.AUTO_DATA_POLL_MS/
+ * AUTO_BACKFILL_POLL_MS (the interval timing) are still exposed by
+ * index.page.js the same way.
  *
  * The scheduler-status poll this component used to also own
  * (schedulerInterval, calling window.pollSchedulerStatus) was retired by
@@ -33,10 +37,20 @@
  */
 
 import { useEffect } from 'react';
+import { usePrData } from '../state/PrDataContext';
 
 const ACTIVITY_RENDER_MS = 1000;
 
 export function PrDataPolling() {
+  // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // pollForDataChanges is now built by <PrDataProvider /> itself (this
+  // component's own parent - see react-app.jsx) and reached directly via
+  // Context, not window.pollForDataChanges - the one piece of this
+  // component's own polling that moved. pollBackfillStatus/
+  // renderRequestActivity stay window.* bridges (out of scope for this
+  // slice - see REACT_MIGRATION_PLAN.md's own Phase F entry for why).
+  const { pollForDataChanges } = usePrData();
+
   useEffect(() => {
     const dataPollMs = window.AUTO_DATA_POLL_MS || 30000;
     const backfillPollMs = window.AUTO_BACKFILL_POLL_MS || 5000;
@@ -46,7 +60,7 @@ export function PrDataPolling() {
     let activityInterval = null;
 
     const startIntervals = () => {
-      dataInterval = setInterval(() => window.pollForDataChanges?.(), dataPollMs);
+      dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
       backfillInterval = setInterval(() => window.pollBackfillStatus?.(), backfillPollMs);
       activityInterval = setInterval(() => window.renderRequestActivity?.(), ACTIVITY_RENDER_MS);
     };
@@ -83,7 +97,7 @@ export function PrDataPolling() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', stopIntervals);
     };
-  }, []);
+  }, [pollForDataChanges]);
 
   return null;
 }
