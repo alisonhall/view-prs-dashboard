@@ -2265,6 +2265,24 @@ Converts the last remaining fully-vanilla tab control surface - the Backfill tab
 
 ---
 
+## ✅ **Phase D: Run Script form's 6 trigger buttons → React (2026-10-12)**
+
+Converts the 6 remaining vanilla buttons whose business logic was already fully self-contained and whose fields were already fully React-owned (Context-backed inputs/selects) - `run-script-btn`/`ack-only-btn`/`clear-only-btn`/`apply-label-btn`/`refresh-labels-btn` (all in the Run Script form) and `apply-filters-btn` (a separate Visibility Filters card).
+
+**A simplifying finding confirmed before implementing, not assumed:** a grep for `.disabled =`/`setButtonDisabled` against all 6 ids found zero matches anywhere - unlike Phase C's backfill buttons, none of these 6 have ever had disabled/pending visual state; clicking "Run script" again mid-run has always been possible (the business logic has its own internal guards where it matters, e.g. `refreshAvailableRepoLabels`'s `isFetchingRepoLabels` early-return, unchanged). This ruled out a `TriggerAutoRunButton.jsx`-style local disabled/label state machine as out-of-scope new behavior, and confirmed a single generic, fully stateless component (matching `DataTabButton.jsx`'s "no field-specific behavior" shape) was the correct, risk-minimized conversion for all 6.
+
+**New `components/RunScriptActionButton.jsx`** - `{ id, label, title, className, onClick }`, nothing else. **8 new one-line `window.*` bridges** in `index.page.js` (same "vanilla primitive exposed *for* React" pattern as `window.handleTriggerAutoRun`): `persistRunScriptOptionOverrides`/`handleRunScript`/`handleAckOnly`/`handleClearOnly`/`handleApplyLabelClick`/`refreshAvailableRepoLabels`/`persistViewFilterOptionOverrides`/`applyFiltersFromCache` - no business logic touched, every function was already fully self-contained. `index.html`: 6 one-to-one swaps of `<button id="X">Label</button>` for `<span id="X-root"></span>`, with every sibling/wrapper left untouched (several of these buttons share a `form-actions` div with already-React-portaled siblings like `#quick-check-btn-root` - no restructuring needed, matching `#trigger-auto-run-btn-root`'s own minimal-footprint precedent). `react-app.jsx`: 6 new container lookups + portals; `run-script-btn`'s and `apply-filters-btn`'s `onClick` each compose 2 bridge calls, matching their original inline handlers exactly.
+
+**Scope discovery, found via grep before writing any test code, not during cleanup afterward:** the jsdom `index.html.test.js` suite (which never mounts `react-app.jsx`) interacts with 2 of these 6 heavily by role/name - `{ name: "Apply filters (local)" }` appears **43 times**, `{ name: "Run script" }` **8 times** (51 total; the other 4 buttons have zero role-based references there). Addressed with a new `installRunScriptActionButtonsBridge()` (mirrors `installBackfillControlsBridge()`'s precedent, simpler here since these buttons are stateless - a direct array of 6 portals, no wrapper component/state needed). All 51 existing tests passed unmodified once the bridge existed, confirming they only ever depended on role/name, not raw DOM ids.
+
+**New coverage:** `RunScriptActionButton.test.jsx` (3 tests - props render correctly, click calls `onClick`, safe no-op without one).
+
+**Not closed by this slice, as scoped from the start:** none of the 8 underlying business-logic functions changed - this was purely a trigger-ownership move. Phase E (UI option persistence → Context-owned) and beyond remain separate, not-yet-started phases.
+
+**Verified:** full jest suite (265 suites, 2510 tests), `npx eslint .` clean project-wide, full Playwright smoke suite (50/50 passing).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

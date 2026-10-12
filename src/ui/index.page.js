@@ -3522,6 +3522,26 @@ const handleApplyLabelClick = async () => {
   await runApplyLabelWorkflow("", select ? select.value : "", "");
 };
 
+// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// RunScriptActionButton.jsx's 6 instances (react-app.jsx) call these
+// directly as their onClick props - same exposure shape as
+// window.handleTriggerAutoRun above. None of these 6 functions change -
+// every one was already fully self-contained; only their trigger (a
+// vanilla <button> click listener) moves to React.
+if (typeof window !== "undefined") {
+  window.persistRunScriptOptionOverrides = (...args) =>
+    persistRunScriptOptionOverrides(...args);
+  window.handleRunScript = (...args) => handleRunScript(...args);
+  window.handleAckOnly = (...args) => handleAckOnly(...args);
+  window.handleClearOnly = (...args) => handleClearOnly(...args);
+  window.handleApplyLabelClick = (...args) => handleApplyLabelClick(...args);
+  window.refreshAvailableRepoLabels = (...args) =>
+    refreshAvailableRepoLabels(...args);
+  window.persistViewFilterOptionOverrides = (...args) =>
+    persistViewFilterOptionOverrides(...args);
+  window.applyFiltersFromCache = (...args) => applyFiltersFromCache(...args);
+}
+
 /**
  * Create React callback helpers (lazy initialization)
  * This factory creates the callbacks that React uses to communicate with vanilla JS.
@@ -4107,10 +4127,6 @@ const initPage = () => {
 
   setupMultiSelectDropdownClosing();
 
-  document.getElementById("run-script-btn").addEventListener("click", () => {
-    void persistRunScriptOptionOverrides();
-    void handleRunScript();
-  });
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): #quick-check-btn/#trigger-auto-run-btn are
   // React-owned now (components/QuickCheckButton.jsx/
@@ -4121,28 +4137,14 @@ const initPage = () => {
   // REACT_MIGRATION_PLAN.md): #error-snackbar-close is React-owned now
   // (components/Snackbar.jsx), with its own onClick handler - no vanilla
   // wiring needed here anymore.
-  document.getElementById("ack-only-btn").addEventListener("click", () => {
-    void handleAckOnly();
-  });
-  document.getElementById("clear-only-btn").addEventListener("click", () => {
-    void handleClearOnly();
-  });
-  const applyLabelBtn = getOptionalElementById("apply-label-btn");
-  if (applyLabelBtn) {
-    applyLabelBtn.addEventListener("click", () => {
-      void handleApplyLabelClick();
-    });
-  }
-  const refreshLabelsBtn = getOptionalElementById("refresh-labels-btn");
-  if (refreshLabelsBtn) {
-    refreshLabelsBtn.addEventListener("click", () => {
-      void refreshAvailableRepoLabels();
-    });
-  }
-  document.getElementById("apply-filters-btn").addEventListener("click", () => {
-    void persistViewFilterOptionOverrides();
-    applyFiltersFromCache();
-  });
+  // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn/
+  // #refresh-labels-btn/#apply-filters-btn are React-owned now
+  // (RunScriptActionButton.jsx, react-app.jsx) - their own onClick calls
+  // window.handleRunScript/handleAckOnly/handleClearOnly/
+  // handleApplyLabelClick/refreshAvailableRepoLabels/applyFiltersFromCache
+  // (plus the 2 persist* bridges for the first and last) directly, so
+  // this vanilla click-wiring is removed.
   // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
   // 3 backfill action buttons, the log-refresh button, and the
   // auto-scroll checkbox are React-owned now (BackfillControls.jsx/

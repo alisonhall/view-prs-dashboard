@@ -33,6 +33,7 @@ import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
+import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling } from './components/PrDataPolling';
@@ -409,6 +410,12 @@ function computeStaticContainers() {
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
     quickCheckBtn: document.getElementById('quick-check-btn-root'),
     quickCheckAllBtn: document.getElementById('quick-check-all-btn-root'),
+    runScriptBtn: document.getElementById('run-script-btn-root'),
+    ackOnlyBtn: document.getElementById('ack-only-btn-root'),
+    clearOnlyBtn: document.getElementById('clear-only-btn-root'),
+    applyLabelBtn: document.getElementById('apply-label-btn-root'),
+    refreshLabelsBtn: document.getElementById('refresh-labels-btn-root'),
+    applyFiltersBtn: document.getElementById('apply-filters-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
@@ -927,6 +934,81 @@ function AppRoot() {
             <TriggerAutoRunButton onTrigger={() => window.handleTriggerAutoRun?.()} />,
             containers.triggerAutoRunBtn,
             'trigger-auto-run-btn',
+          )}
+
+        {containers.runScriptBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="run-script-btn"
+              className="primary-run-btn"
+              label="Run script"
+              onClick={() => {
+                window.persistRunScriptOptionOverrides?.();
+                window.handleRunScript?.();
+              }}
+            />,
+            containers.runScriptBtn,
+            'run-script-btn',
+          )}
+
+        {containers.ackOnlyBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="ack-only-btn"
+              label="Apply ack only"
+              onClick={() => window.handleAckOnly?.()}
+            />,
+            containers.ackOnlyBtn,
+            'ack-only-btn',
+          )}
+
+        {containers.clearOnlyBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="clear-only-btn"
+              label="Apply clear only"
+              onClick={() => window.handleClearOnly?.()}
+            />,
+            containers.clearOnlyBtn,
+            'clear-only-btn',
+          )}
+
+        {containers.applyLabelBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="apply-label-btn"
+              label="Apply label"
+              onClick={() => window.handleApplyLabelClick?.()}
+            />,
+            containers.applyLabelBtn,
+            'apply-label-btn',
+          )}
+
+        {containers.refreshLabelsBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="refresh-labels-btn"
+              title="Reload labels for the current repo"
+              label={'↻ Labels'}
+              onClick={() => window.refreshAvailableRepoLabels?.()}
+            />,
+            containers.refreshLabelsBtn,
+            'refresh-labels-btn',
+          )}
+
+        {containers.applyFiltersBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="apply-filters-btn"
+              className="apply-filters-btn"
+              label="Apply filters (local)"
+              onClick={() => {
+                window.persistViewFilterOptionOverrides?.();
+                window.applyFiltersFromCache?.();
+              }}
+            />,
+            containers.applyFiltersBtn,
+            'apply-filters-btn',
           )}
 
         {containers.quickCheckBtn &&

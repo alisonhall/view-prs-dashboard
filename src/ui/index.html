@@ -91,7 +91,9 @@
                             <span id="pr-numbers-root"></span>
                         </div>
                         <div class="form-actions primary-actions">
-                            <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
+                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                            <span id="run-script-btn-root"></span>
                             <!-- Rendered by React (QuickCheckButton.jsx, mounted in
                                  react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
                                  vanilla-to-React sweep. -->
@@ -100,8 +102,10 @@
                                  react-app.jsx) - checks every PR row already loaded,
                                  across every repo, instead of typed-in numbers. -->
                             <span id="quick-check-all-btn-root"></span>
-                            <button type="button" id="ack-only-btn">Apply ack only</button>
-                            <button type="button" id="clear-only-btn">Apply clear only</button>
+                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                            <span id="ack-only-btn-root"></span>
+                            <span id="clear-only-btn-root"></span>
                         </div>
                         <div class="form-grid single-field-grid">
                             <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
@@ -109,8 +113,10 @@
                                 <!-- Rendered by React (ApplyLabelSelect, mounted in react-app.jsx) as
                                      a <select id="apply-label-select">, same id/options shape as before. -->
                                 <span id="apply-label-select-root"></span>
-                                <button type="button" id="apply-label-btn">Apply label</button>
-                                <button type="button" id="refresh-labels-btn" title="Reload labels for the current repo">&#8635; Labels</button>
+                                <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                     react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                                <span id="apply-label-btn-root"></span>
+                                <span id="refresh-labels-btn-root"></span>
                             </div>
                         </div>
                     </section>
@@ -201,8 +207,9 @@
                         </div>
 
                         <div class="form-actions">
-                            <button type="button" id="apply-filters-btn" class="apply-filters-btn">Apply filters
-                                (local)</button>
+                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                            <span id="apply-filters-btn-root"></span>
                         </div>
 
                         <details class="advanced-options section-card low-emphasis-card">

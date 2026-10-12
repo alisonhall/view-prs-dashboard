@@ -30,6 +30,7 @@ const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlocked
 const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
 const { BackfillControls } = require("../components/BackfillControls");
 const { BackfillLogControls } = require("../components/BackfillLogControls");
+const { RunScriptActionButton } = require("../components/RunScriptActionButton");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
@@ -495,6 +496,79 @@ const installBackfillControlsBridge = () => {
   );
 };
 
+// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the 6 REAL RunScriptActionButton instances into a detached container,
+// same reasoning as installBackfillControlsBridge above - this suite
+// never mounts react-app.jsx, so without this, "Apply filters (local)"/
+// "Run script" (43/8 existing role-based click tests) and the other 4
+// buttons would all become empty, unclickable portal roots. Simpler than
+// the Backfill harness - these buttons are fully stateless, so this is a
+// direct portal of 6 instances with no wrapper component/state needed.
+const installRunScriptActionButtonsBridge = () => {
+  const container = document.createElement("div");
+  const buttons = [
+    {
+      id: "run-script-btn",
+      rootId: "run-script-btn-root",
+      className: "primary-run-btn",
+      label: "Run script",
+      onClick: () => {
+        window.persistRunScriptOptionOverrides?.();
+        window.handleRunScript?.();
+      },
+    },
+    {
+      id: "ack-only-btn",
+      rootId: "ack-only-btn-root",
+      label: "Apply ack only",
+      onClick: () => window.handleAckOnly?.(),
+    },
+    {
+      id: "clear-only-btn",
+      rootId: "clear-only-btn-root",
+      label: "Apply clear only",
+      onClick: () => window.handleClearOnly?.(),
+    },
+    {
+      id: "apply-label-btn",
+      rootId: "apply-label-btn-root",
+      label: "Apply label",
+      onClick: () => window.handleApplyLabelClick?.(),
+    },
+    {
+      id: "refresh-labels-btn",
+      rootId: "refresh-labels-btn-root",
+      title: "Reload labels for the current repo",
+      label: "↻ Labels",
+      onClick: () => window.refreshAvailableRepoLabels?.(),
+    },
+    {
+      id: "apply-filters-btn",
+      rootId: "apply-filters-btn-root",
+      className: "apply-filters-btn",
+      label: "Apply filters (local)",
+      onClick: () => {
+        window.persistViewFilterOptionOverrides?.();
+        window.applyFiltersFromCache?.();
+      },
+    },
+  ];
+  const portals = buttons
+    .map(({ id, rootId, className, title, label, onClick }) => {
+      const root = document.getElementById(rootId);
+      if (!root) {
+        return null;
+      }
+      return createPortal(
+        React.createElement(RunScriptActionButton, { id, className, title, label, onClick }),
+        root,
+        id,
+      );
+    })
+    .filter(Boolean);
+  rtlRender(React.createElement(React.Fragment, null, ...portals), { container });
+};
+
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
 // #output, #backfill-details, #backfill-log, #data-meta) are now
@@ -705,6 +779,7 @@ const initTestPage = ({
   installReactTableMountBridge();
   installAutoRenderBlockingProviderBridge();
   installBackfillControlsBridge();
+  installRunScriptActionButtonsBridge();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
