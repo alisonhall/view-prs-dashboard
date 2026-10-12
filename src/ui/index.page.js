@@ -1864,13 +1864,6 @@ const recomputeDirtyPrSectionsFields = () => {
   return hasDirtyPrSectionsFields;
 };
 
-const setButtonDisabled = (id, disabled) => {
-  const element = getOptionalElementById(id);
-  if (element) {
-    element.disabled = Boolean(disabled);
-  }
-};
-
 // buildPrLastCheckedIndicator (and its formatRelativeLastCheckedLabel/
 // parseIsoTimestampMs/OPEN_PR_LAST_CHECK_STALE_MS internals) now imported
 // from helpers/pr-last-checked-indicator.helpers.js (Phase 7, see
@@ -2136,10 +2129,6 @@ const renderBackfillStatus = (backfillRaw = {}) => {
   latestBackfillStatus = backfill;
   const badgeHost = getOptionalElementById("backfill-badges");
   const details = getOptionalElementById("backfill-details");
-  const startButton = getOptionalElementById("backfill-start-btn");
-  const stopButton = getOptionalElementById("backfill-stop-btn");
-  const refreshButton = getOptionalElementById("backfill-refresh-btn");
-  const refreshLogButton = getOptionalElementById("backfill-log-refresh-btn");
 
   if (!badgeHost || !details) {
     return;
@@ -2157,18 +2146,12 @@ const renderBackfillStatus = (backfillRaw = {}) => {
   window.updateReactBackfillDetailsText?.(viewModel.detailsText);
   isBackfillRunning = viewModel.isBackfillRunning;
 
-  if (startButton) {
-    startButton.disabled = viewModel.buttonState.startDisabled;
-  }
-  if (stopButton) {
-    stopButton.disabled = viewModel.buttonState.stopDisabled;
-  }
-  if (refreshButton) {
-    refreshButton.disabled = viewModel.buttonState.refreshDisabled;
-  }
-  if (refreshLogButton) {
-    refreshLogButton.disabled = viewModel.buttonState.refreshLogDisabled;
-  }
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
+  // buttons - this replaces the old direct startButton.disabled/etc.
+  // DOM writes with the same push-to-React-state bridge pattern the 2
+  // calls just above already use for badges/details text.
+  window.updateReactBackfillButtonState?.(viewModel.buttonState);
 
   lastBackfillStateKey = viewModel.stateKey;
 };
@@ -2404,7 +2387,13 @@ const {
   beginRequestActivity,
   setStatusMessage,
   setOutputMessage,
-  setButtonDisabled,
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
+  // buttons, fed by window.updateReactBackfillButtonState (same bridge
+  // renderBackfillStatus's own normal reload path already uses) - this
+  // replaces the old direct-by-id setButtonDisabled DI.
+  setBackfillButtonState: (state) =>
+    window.updateReactBackfillButtonState?.(state),
   notifyFailureSnackbar,
   formatCommandOutput,
   stripAnsi,
@@ -2423,17 +2412,73 @@ const {
   backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
 });
 
+// Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// extracted from the old backfill-refresh-btn/backfill-log-refresh-btn
+// vanilla click handlers (index.page.js's initPage, below) so
+// BackfillControls.jsx/BackfillLogControls.jsx can call the exact same
+// logic via a window.* bridge instead - preserves the beginRequestActivity/
+// error-render/notifyFailureSnackbar behavior unchanged, just made
+// callable instead of inline.
+const refreshBackfillStatus = async () => {
+  const finishActivity = beginRequestActivity("backfill");
+  try {
+    await loadBackfillStatus({ announce: true, includeLog: true });
+  } catch (error) {
+    renderBackfillStatus({
+      ok: false,
+      running: false,
+      summary: error?.result?.summary || "Failed to refresh backfill status",
+      error: error?.result?.error || error.message,
+    });
+    setBackfillLogMessage("Failed to load backfill log");
+    notifyFailureSnackbar(
+      "Failed to refresh backfill status",
+      error?.result || error,
+      "Unable to refresh backfill status",
+    );
+  } finally {
+    finishActivity();
+  }
+};
+
+const refreshBackfillLogTail = async () => {
+  const finishActivity = beginRequestActivity("backfill");
+  try {
+    await loadBackfillLogTail();
+  } catch (error) {
+    setBackfillLogMessage(
+      `Failed to load backfill log\n\n${error.message || String(error)}`,
+    );
+    notifyFailureSnackbar(
+      "Failed to refresh backfill log",
+      error,
+      "Unable to refresh backfill log",
+    );
+  } finally {
+    finishActivity();
+  }
+};
+
+if (typeof window !== "undefined") {
+  // BackfillControls.jsx/BackfillLogControls.jsx call these directly as
+  // their onStart/onStop/onRefreshStatus/onRefreshLog/onAutoscrollChange
+  // props - same exposure shape as window.handleTriggerAutoRun above.
+  window.handleBackfillAction = (...args) => handleBackfillAction(...args);
+  window.refreshBackfillStatus = (...args) => refreshBackfillStatus(...args);
+  window.refreshBackfillLogTail = (...args) => refreshBackfillLogTail(...args);
+  window.autoScrollBackfillLogToBottom = (...args) =>
+    autoScrollBackfillLogToBottom(...args);
+}
+
 // Backfill Tab Orchestrator
 const backfillTabOrchestrator =
   backfillTabOrchestratorFactory.createBackfillTabOrchestrator({
     // Helper functions
     loadBackfillStatus,
     loadBackfillLogTail,
-    handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
     getOptionalElementById,
-    beginRequestActivity,
     notifyFailureSnackbar,
     // State management via dependency injection
     stateGetters: {
@@ -4098,62 +4143,13 @@ const initPage = () => {
     void persistViewFilterOptionOverrides();
     applyFiltersFromCache();
   });
-  document
-    .getElementById("backfill-start-btn")
-    .addEventListener("click", () => {
-      void handleBackfillAction("start");
-    });
-  document.getElementById("backfill-stop-btn").addEventListener("click", () => {
-    void handleBackfillAction("stop");
-  });
-  document
-    .getElementById("backfill-refresh-btn")
-    .addEventListener("click", () => {
-      const finishActivity = beginRequestActivity("backfill");
-      void loadBackfillStatus({ announce: true, includeLog: true })
-        .catch((error) => {
-          renderBackfillStatus({
-            ok: false,
-            running: false,
-            summary:
-              error?.result?.summary || "Failed to refresh backfill status",
-            error: error?.result?.error || error.message,
-          });
-          setBackfillLogMessage("Failed to load backfill log");
-          notifyFailureSnackbar(
-            "Failed to refresh backfill status",
-            error?.result || error,
-            "Unable to refresh backfill status",
-          );
-        })
-        .finally(() => {
-          finishActivity();
-        });
-    });
-  document
-    .getElementById("backfill-log-refresh-btn")
-    .addEventListener("click", () => {
-      const finishActivity = beginRequestActivity("backfill");
-      void loadBackfillLogTail()
-        .catch((error) => {
-          setBackfillLogMessage(
-            `Failed to load backfill log\n\n${error.message || String(error)}`,
-          );
-          notifyFailureSnackbar(
-            "Failed to refresh backfill log",
-            error,
-            "Unable to refresh backfill log",
-          );
-        })
-        .finally(() => {
-          finishActivity();
-        });
-    });
-  document
-    .getElementById("backfill-log-autoscroll")
-    .addEventListener("change", () => {
-      autoScrollBackfillLogToBottom();
-    });
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // 3 backfill action buttons, the log-refresh button, and the
+  // auto-scroll checkbox are React-owned now (BackfillControls.jsx/
+  // BackfillLogControls.jsx) - their own onClick/onChange call
+  // window.handleBackfillAction/refreshBackfillStatus/
+  // refreshBackfillLogTail/autoScrollBackfillLogToBottom directly, so
+  // this vanilla click-wiring is removed.
 
   const actionLogRefreshBtn = getOptionalElementById("action-log-refresh-btn");
   if (actionLogRefreshBtn) {

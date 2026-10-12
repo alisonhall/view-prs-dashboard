@@ -28,6 +28,8 @@ const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
 const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlockedStatusText");
 const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
+const { BackfillControls } = require("../components/BackfillControls");
+const { BackfillLogControls } = require("../components/BackfillLogControls");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
@@ -426,6 +428,73 @@ const installAutoRenderBlockingProviderBridge = () => {
   );
 };
 
+// Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the REAL BackfillControls/BackfillLogControls (not a hand-rolled
+// simulation) into a detached container, same reasoning as
+// installAutoRenderBlockingProviderBridge above - this suite never mounts
+// react-app.jsx, so nothing else would publish
+// window.updateReactBackfillButtonState or wire the button/checkbox
+// callbacks to window.handleBackfillAction/refreshBackfillStatus/
+// refreshBackfillLogTail/autoScrollBackfillLogToBottom otherwise. A small
+// local wrapper component owns the buttonState useState - the same
+// "push bridge feeds local state, portal the real component" shape
+// react-app.jsx's own AppRoot uses for backfillButtonState.
+const DEFAULT_BACKFILL_BUTTON_STATE = {
+  startDisabled: false,
+  stopDisabled: false,
+  refreshDisabled: false,
+  refreshLogDisabled: false,
+};
+
+function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
+  const [buttonState, setButtonState] = React.useState(DEFAULT_BACKFILL_BUTTON_STATE);
+
+  React.useEffect(() => {
+    window.updateReactBackfillButtonState = (state) => {
+      setButtonState(state || DEFAULT_BACKFILL_BUTTON_STATE);
+    };
+    return () => {
+      delete window.updateReactBackfillButtonState;
+    };
+  }, []);
+
+  return React.createElement(
+    React.Fragment,
+    null,
+    controlsRoot &&
+      createPortal(
+        React.createElement(BackfillControls, {
+          buttonState,
+          onStart: () => window.handleBackfillAction?.("start"),
+          onStop: () => window.handleBackfillAction?.("stop"),
+          onRefreshStatus: () => window.refreshBackfillStatus?.(),
+        }),
+        controlsRoot,
+        "backfill-controls",
+      ),
+    logControlsRoot &&
+      createPortal(
+        React.createElement(BackfillLogControls, {
+          refreshLogDisabled: buttonState.refreshLogDisabled,
+          onRefreshLog: () => window.refreshBackfillLogTail?.(),
+          onAutoscrollChange: () => window.autoScrollBackfillLogToBottom?.(),
+        }),
+        logControlsRoot,
+        "backfill-log-controls",
+      ),
+  );
+}
+
+const installBackfillControlsBridge = () => {
+  const container = document.createElement("div");
+  const controlsRoot = document.getElementById("backfill-controls-root");
+  const logControlsRoot = document.getElementById("backfill-log-controls-root");
+  rtlRender(
+    React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot }),
+    { container },
+  );
+};
+
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
 // #output, #backfill-details, #backfill-log, #data-meta) are now
@@ -635,6 +704,7 @@ const initTestPage = ({
   injectRunFilterFieldElements();
   installReactTableMountBridge();
   installAutoRenderBlockingProviderBridge();
+  installBackfillControlsBridge();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,

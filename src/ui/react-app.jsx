@@ -26,6 +26,8 @@ import { ApplyLabelSelect } from './components/ApplyLabelSelect';
 import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
+import { BackfillControls } from './components/BackfillControls';
+import { BackfillLogControls } from './components/BackfillLogControls';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
@@ -399,6 +401,8 @@ function computeStaticContainers() {
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
+    backfillControls: document.getElementById('backfill-controls-root'),
+    backfillLogControls: document.getElementById('backfill-log-controls-root'),
     dataMeta: document.getElementById('data-meta'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
@@ -537,6 +541,19 @@ function AppRoot() {
 
   const [prTable, setPrTable] = useState(null);
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // mirrors backfillBadges/backfillDetailsText's own bridge shape below -
+  // getBackfillStatusViewModel (pr-backfill.helpers.js) already computes
+  // this from isBackfillActionPending + backfill.running, pushed here
+  // instead of index.page.js's old direct startButton.disabled=... writes.
+  // Default matches the static markup's own implicit initial state (no
+  // button starts out with a disabled attribute).
+  const [backfillButtonState, setBackfillButtonState] = useState({
+    startDisabled: false,
+    stopDisabled: false,
+    refreshDisabled: false,
+    refreshLogDisabled: false,
+  });
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
   // Activity" section's history of this tab's own finished requests - no
@@ -606,6 +623,22 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactBackfillBadges;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.updateReactBackfillButtonState = (state) => {
+      setBackfillButtonState(
+        state || {
+          startDisabled: false,
+          stopDisabled: false,
+          refreshDisabled: false,
+          refreshLogDisabled: false,
+        },
+      );
+    };
+    return () => {
+      delete window.updateReactBackfillButtonState;
     };
   }, []);
 
@@ -994,12 +1027,35 @@ function AppRoot() {
             'backfill-badges',
           )}
 
+        {containers.backfillControls &&
+          createPortal(
+            <BackfillControls
+              buttonState={backfillButtonState}
+              onStart={() => window.handleBackfillAction?.('start')}
+              onStop={() => window.handleBackfillAction?.('stop')}
+              onRefreshStatus={() => window.refreshBackfillStatus?.()}
+            />,
+            containers.backfillControls,
+            'backfill-controls',
+          )}
+
         {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
 
         {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 
         {containers.backfillDetails &&
           createPortal(backfillDetailsText, containers.backfillDetails, 'backfill-details')}
+
+        {containers.backfillLogControls &&
+          createPortal(
+            <BackfillLogControls
+              refreshLogDisabled={backfillButtonState.refreshLogDisabled}
+              onRefreshLog={() => window.refreshBackfillLogTail?.()}
+              onAutoscrollChange={() => window.autoScrollBackfillLogToBottom?.()}
+            />,
+            containers.backfillLogControls,
+            'backfill-log-controls',
+          )}
 
         {containers.backfillLog &&
           createPortal(backfillLogText, containers.backfillLog, 'backfill-log')}

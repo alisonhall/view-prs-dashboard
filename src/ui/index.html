@@ -392,23 +392,17 @@
                      vanilla-built <span> per badge if React fails to
                      load/mount. -->
                 <div id="backfill-badges" class="scheduler-badges"></div>
-                <div class="form-actions">
-                    <button type="button" id="backfill-start-btn">Start backfill</button>
-                    <button type="button" id="backfill-stop-btn">Stop backfill</button>
-                    <button type="button" id="backfill-refresh-btn">Refresh status</button>
-                </div>
+                <!-- Rendered by React (BackfillControls.jsx, react-app.jsx) -
+                     Phase C, see REACT_MIGRATION_PLAN.md. -->
+                <span id="backfill-controls-root"></span>
                 <!-- Rendered by React (react-app.jsx, plain-string portal) -
                      starts empty, see #request-activity-details above. -->
                 <pre id="backfill-details" class="scheduler-details"></pre>
                 <details class="advanced-options">
                     <summary>Log details</summary>
-                    <div class="backfill-log-options">
-                        <label>
-                            <input type="checkbox" id="backfill-log-autoscroll" checked />
-                            Auto-scroll log while running
-                        </label>
-                        <button type="button" id="backfill-log-refresh-btn">Refresh log</button>
-                    </div>
+                    <!-- Rendered by React (BackfillLogControls.jsx, react-app.jsx) -
+                         Phase C, see REACT_MIGRATION_PLAN.md. -->
+                    <span id="backfill-log-controls-root"></span>
                     <!-- Rendered by React (react-app.jsx, plain-string portal) -
                          starts empty, see #request-activity-details above. -->
                     <pre id="backfill-log" class="backfill-log"></pre>

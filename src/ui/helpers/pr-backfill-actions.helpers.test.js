@@ -12,7 +12,7 @@ const createDeps = (overrides = {}) => {
     beginRequestActivity: jest.fn(() => beginFinish),
     setStatusMessage: jest.fn(),
     setOutputMessage: jest.fn(),
-    setButtonDisabled: jest.fn(),
+    setBackfillButtonState: jest.fn(),
     notifyFailureSnackbar: jest.fn(),
     formatCommandOutput: jest.fn((value) => `formatted:${value?.summary || value?.error || ""}`),
     stripAnsi: jest.fn((value) => String(value || "")),
@@ -146,6 +146,12 @@ describe("pr backfill action helpers", () => {
     const helpers = createPrBackfillActionHelpers(deps);
     await helpers.handleBackfillAction("start");
 
+    expect(deps.setBackfillButtonState).toHaveBeenNthCalledWith(1, {
+      startDisabled: true,
+      stopDisabled: true,
+      refreshDisabled: true,
+      refreshLogDisabled: true,
+    });
     expect(deps.setStatusMessage).toHaveBeenCalledWith("started");
     expect(deps.setOutputMessage).toHaveBeenCalledWith("formatted:started");
     expect(deps.updateBackfillStatusFromPayload).toHaveBeenCalledWith({
@@ -202,10 +208,12 @@ describe("pr backfill action helpers", () => {
     const helpers = createPrBackfillActionHelpers(deps);
     await expect(helpers.handleBackfillAction("start")).resolves.toBeUndefined();
 
-    expect(deps.setButtonDisabled).toHaveBeenCalledWith("backfill-start-btn", false);
-    expect(deps.setButtonDisabled).toHaveBeenCalledWith("backfill-stop-btn", false);
-    expect(deps.setButtonDisabled).toHaveBeenCalledWith("backfill-refresh-btn", false);
-    expect(deps.setButtonDisabled).toHaveBeenCalledWith("backfill-log-refresh-btn", false);
+    expect(deps.setBackfillButtonState).toHaveBeenLastCalledWith({
+      startDisabled: false,
+      stopDisabled: false,
+      refreshDisabled: false,
+      refreshLogDisabled: false,
+    });
     expect(deps._finishSpy).toHaveBeenCalled();
   });
 
