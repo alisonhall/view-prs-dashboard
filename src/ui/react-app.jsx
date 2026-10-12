@@ -41,6 +41,9 @@ import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
+import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
+import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
+import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
 import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
@@ -418,6 +421,8 @@ function computeStaticContainers() {
     tabActionLog: document.getElementById('tab-action-log-root'),
     tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
     tabExport: document.getElementById('tab-export-root'),
+    autoRenderBlockedStatus: document.getElementById('auto-render-blocked-status-root'),
+    autoRenderBlockedApplyBtn: document.getElementById('auto-render-blocked-apply-btn-root'),
   };
 }
 
@@ -868,6 +873,21 @@ function AppRoot() {
               'tab-export',
             )}
         </TabStateProvider>
+
+        <AutoRenderBlockingProvider>
+          {containers.autoRenderBlockedStatus &&
+            createPortal(
+              <AutoRenderBlockedStatusText />,
+              containers.autoRenderBlockedStatus,
+              'auto-render-blocked-status',
+            )}
+          {containers.autoRenderBlockedApplyBtn &&
+            createPortal(
+              <AutoRenderBlockedApplyButton />,
+              containers.autoRenderBlockedApplyBtn,
+              'auto-render-blocked-apply-btn',
+            )}
+        </AutoRenderBlockingProvider>
 
         {containers.triggerAutoRunBtn &&
           createPortal(

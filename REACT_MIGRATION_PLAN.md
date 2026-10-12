@@ -2223,6 +2223,28 @@ Started Phase B (the roadmap's next item: the auto-render-blocking pipeline → 
 
 ---
 
+## ✅ **Phase B: `pendingAutoRenderPayload`/flush-timing moved into `AutoRenderBlockingProvider` (2026-10-11)**
+
+Did the bigger redesign the previous entry set up a safety net for. Kept the exact "who notifies whom" structure unchanged - `NotesDirtyProvider.jsx`/`AuthorInsightsDraftsProvider.jsx` still call `window.recomputeDirtyPrSectionsFields?.()` exactly as before. What changed is what that function does internally: instead of mutating vanilla module variables and writing DOM directly, `index.page.js`'s `recomputeDirtyPrSectionsFields` now computes blocking state via the unchanged `getAutoRenderBlockingState()`/`computeHasDirtyPrSectionsFields()` helpers and pushes it into a new Provider via `window.pushAutoRenderBlockingState?.(state)`.
+
+**New:** `state/AutoRenderBlockingContext.jsx` + `components/AutoRenderBlockingProvider.jsx` (owns `pendingAutoRenderPayload` + the derived blocking-state fields, runs the apply/wait-for-blur/wait-for-clean decision via the already-tested `getPendingAutoRenderAction`), `components/AutoRenderBlockedStatusText.jsx` + `components/AutoRenderBlockedApplyButton.jsx` (the two pieces of the indicator panel that became real JSX).
+
+**A portal-nesting conflict, found during implementation:** `AutoRenderBlockedLinks.jsx` was already portaled into `#auto-render-blocked-pr-links`, a static sibling child inside `#auto-render-blocked-indicator`. Making the whole panel React-owned would mean the new Provider's own `createPortal` destroying that sibling's target on every render. Resolved by leaving the outer panel wrapper and `#auto-render-blocked-pr-links` as static HTML, with the panel's `hidden` attribute toggled as a small, deliberate vanilla-DOM-write side effect inside the Provider's own `useEffect` - only the status text and "Discard unsaved" button became real portaled JSX, each into its own new root span in `index.html`.
+
+**Scope grew beyond the plan's file list, found only during implementation, not flagged separately since it was a natural extension of the approved design:** `applyFreshPrPayload`'s 2 call sites, `prDataTabOrchestrator`'s DI, and - most significantly - `pr-data-polling-orchestration.helpers.js` itself directly called the old `renderAutoRenderBlockedIndicator`/`flushPendingAutoRender` for its "queue-render-and-listen" case. Fixed by recognizing that once the Provider's own reactive effect handles the blur-wait decision uniformly, "queue-render" and "queue-render-and-listen" become equivalent at that call site - simplified to just queueing the payload either way, with `pr-data-polling-orchestration.helpers.test.js` updated accordingly (the renamed test now asserts the orchestrator itself does *not* attach a blur listener, since the Provider does).
+
+**A real regression, caught only by the full Playwright suite, not jest:** the first working version used plain `useState` + `flushSync` for the two write bridges (`window.setPendingAutoRenderPayload`/`window.pushAutoRenderBlockingState`), modeled after `FilterStateProvider.jsx`'s own precedent - needed because a write followed immediately, in the same synchronous call stack, by a bridge read (`pr-data-polling-orchestration.helpers.js`'s `pollForDataChanges()` reading `getHasDirtyPrSectionsFields` right after a push) would otherwise see a stale pre-write value. This passed the full jest suite (jsdom) cleanly, but the real-browser Playwright run hit `Warning: flushSync was called from inside a lifecycle method` on 4 of 50 tests - because `window.pushAutoRenderBlockingState` can also be invoked from *inside* `NotesDirtyProvider.jsx`'s own `useEffect` (via `window.recomputeDirtyPrSectionsFields?.()`), and React disallows `flushSync` from inside a lifecycle method; Playwright's harness fails any test whose console captures a warning. **Fixed** by recognizing this state doesn't genuinely originate inside this component's own React tree the way `NotesDirtyProvider`'s own dirty-count state does - it's pushed in from outside via a bridge, same category `AuthorInsightsDraftsProvider.jsx`'s own header comment already describes for its own state. Rewrote the Provider to use that exact precedent: a `useRef`-held plain object mutated directly (synchronous, no React commit required for a subsequent read to see it) plus a plain `setState` version-tick bump to trigger a re-render for UI purposes - no `flushSync` anywhere. Confirmed fixed by rerunning the full Playwright suite: 50/50 passing (was 46/50).
+
+**Dead code deleted in this slice:** `renderAutoRenderBlockedIndicator`, `flushPendingAutoRenderNow`, `forceApplyPendingAutoRender`, `flushPendingAutoRender`, the module-scope `pendingAutoRenderPayload`/`hasDirtyPrSectionsFields` variables, and the vanilla click-wiring for `#auto-render-blocked-apply-btn`.
+
+**Not closed by this slice, as scoped from the start:** `window.recomputeDirtyPrSectionsFields` itself stays a real, callable bridge - this was never going to close it (see the prior entry's correction). `getDirtyTrackedFields`'s dead DOM scan (confirmed dead, zero live writers of `data-original-value`) and extending `AuthorInsightsDraftsContext`'s own exposed shape to subscribe reactively instead of via a bridge read remain explicit follow-ups, not done here.
+
+**New coverage:** `AutoRenderBlockingProvider.test.jsx` (7 tests), `AutoRenderBlockedStatusText.test.jsx`/`AutoRenderBlockedApplyButton.test.jsx` (2 tests each).
+
+**Verified:** full jest suite (262 suites, 2509 tests), `npx eslint .` clean project-wide, full Playwright smoke suite (50/50 passing).
+
+---
+
 ## 📞 **Getting Help**
 
 **Resources:**

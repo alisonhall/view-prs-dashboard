@@ -13,6 +13,7 @@ const React = require("react");
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
 const { render: rtlRender, cleanup } = require("@testing-library/react");
+const { createPortal } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -24,6 +25,9 @@ const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataProvider } = require("../state/PrDataProvider");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
+const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlockedStatusText");
+const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
@@ -394,6 +398,34 @@ const installReactFilterPanelMountBridges = () => {
   };
 };
 
+// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the REAL AutoRenderBlockingProvider (not a hand-rolled simulation of its
+// bridges) into a detached container - this suite never mounts
+// react-app.jsx, so nothing else would publish window.setPendingAutoRenderPayload/
+// pushAutoRenderBlockingState/getHasDirtyPrSectionsFields/
+// getPendingAutoRenderPayload otherwise, leaving the whole auto-render-
+// blocking mechanism inert. The Provider itself only needs
+// #auto-render-blocked-indicator to exist in the real document (for its
+// own `hidden` toggle side effect) - already true, since that element is
+// part of index.html's own static markup. cleanup() (called at the top of
+// initTestPage(), before this runs) unmounts the previous generation's
+// instance the same way it does for installReactTableMountBridge()'s own
+// PrDataProvider mount.
+const installAutoRenderBlockingProviderBridge = () => {
+  const container = document.createElement("div");
+  const statusRoot = document.getElementById("auto-render-blocked-status-root");
+  const applyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
+  rtlRender(
+    React.createElement(
+      AutoRenderBlockingProvider,
+      null,
+      statusRoot && createPortal(React.createElement(AutoRenderBlockedStatusText), statusRoot, "auto-render-blocked-status"),
+      applyBtnRoot && createPortal(React.createElement(AutoRenderBlockedApplyButton), applyBtnRoot, "auto-render-blocked-apply-btn"),
+    ),
+    { container },
+  );
+};
+
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
 // #output, #backfill-details, #backfill-log, #data-meta) are now
@@ -602,6 +634,7 @@ const initTestPage = ({
   document.body.innerHTML = extractBodyHtml(indexHtml);
   injectRunFilterFieldElements();
   installReactTableMountBridge();
+  installAutoRenderBlockingProviderBridge();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
@@ -7633,11 +7666,17 @@ describe("index page rendering with Testing Library", () => {
 
       await window.pollForDataChanges();
 
-      // Still deferred - the dirty field hasn't cleared yet.
+      // Still deferred - the dirty field hasn't cleared yet. The indicator
+      // itself is now toggled by AutoRenderBlockingProvider.jsx's own
+      // effect (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"),
+      // one React commit after the bridge call above - waitFor accounts
+      // for that, where this used to be a synchronous vanilla DOM write.
       expect(window.getReactPrTablePayload().byPrNumber["101"].data.title).toBe(
         "Deferred poll seed",
       );
-      expect(indicator).not.toHaveAttribute("hidden");
+      await waitFor(() => {
+        expect(indicator).not.toHaveAttribute("hidden");
+      });
 
       // Field becomes clean - recomputeDirtyPrSectionsFields notices
       // !hasDirtyPrSectionsFields && pendingAutoRenderPayload and flushes.
@@ -7649,7 +7688,9 @@ describe("index page rendering with Testing Library", () => {
           "Deferred poll applied",
         );
       });
-      expect(indicator).toHaveAttribute("hidden");
+      await waitFor(() => {
+        expect(indicator).toHaveAttribute("hidden");
+      });
     } finally {
       delete window.getDirtyNotesPrNumbers;
     }

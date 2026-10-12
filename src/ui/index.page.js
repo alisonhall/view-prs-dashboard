@@ -109,8 +109,6 @@ let lastSuccessfulPollCheckAt = "";
 let lastPollErrorAt = "";
 let hasActivePollWarning = false;
 let latestPrManifest = {};
-let pendingAutoRenderPayload = null;
-let hasDirtyPrSectionsFields = false;
 let latestStoredPayload = null;
 let latestSelectedRepo = "";
 
@@ -234,6 +232,14 @@ const setStatusMessage = (message) => {
   setStatusTextOnly(message);
   renderRequestActivity();
 };
+
+// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for AutoRenderBlockingProvider.jsx's
+// discardAndApply to call, after applying a discarded-and-applied
+// payload - same category as applyFreshPrPayload/beginRequestActivity.
+if (typeof window !== "undefined") {
+  window.setStatusMessage = (...args) => setStatusMessage(...args);
+}
 
 const setOutputMessage = (message) => {
   window.updateReactOutputText?.(message);
@@ -1741,7 +1747,6 @@ const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
   });
 
 const {
-  buildAutoRenderBlockedStatusText,
   buildAutoRenderBlockedLinksAriaLabel,
 } = prAutoRenderIndicatorHelperFactory.createPrAutoRenderIndicatorHelpers({
   getAuthorInsightsDisplayName: (...args) => getAuthorInsightsDisplayName(...args),
@@ -1821,83 +1826,39 @@ const {
   isReactTableMounted: () => isReactTableMounted(),
 });
 
-const renderAutoRenderBlockedIndicator = () => {
-  const indicator = getOptionalElementById("auto-render-blocked-indicator");
-  if (!indicator) {
-    return;
-  }
+// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// AutoRenderBlockingProvider.jsx now owns pendingAutoRenderPayload/
+// hasDirtyPrSectionsFields and the whole apply/wait-for-blur/wait-for-clean
+// decision (renderAutoRenderBlockedIndicator/flushPendingAutoRenderNow/
+// forceApplyPendingAutoRender/flushPendingAutoRender are gone - this is
+// their replacement). NotesDirtyProvider.jsx/AuthorInsightsDraftsProvider.jsx
+// still call this function exactly as before - only its OWN body changed,
+// from mutating a vanilla module variable + manipulating the indicator DOM
+// directly, to computing the same blocking state (via the unchanged
+// getAutoRenderBlockingState) and pushing it into the Provider. Still
+// returns hasDirtyPrSectionsFields - NotesSection.jsx/other callers don't
+// use the return value, but preserving it costs nothing and avoids a
+// needless signature change.
+//
+// renderAutoRenderBlockedLinks (the #auto-render-blocked-pr-links sub-
+// portal's own hidden/aria-label toggle) stays exactly as it was - that
+// element is a sibling of the status-text/button content this Provider
+// now owns, not something AutoRenderBlockingProvider.jsx needs to
+// duplicate (see that file's own comment for why it isn't nested inside).
+const recomputeDirtyPrSectionsFields = () => {
+  const blockingState = getAutoRenderBlockingState();
+  const hasDirtyPrSectionsFields = computeHasDirtyPrSectionsFields(blockingState);
 
-  const isBlocked = Boolean(pendingAutoRenderPayload) && hasDirtyPrSectionsFields;
-  if (!isBlocked) {
-    indicator.setAttribute("hidden", "");
-    return;
-  }
+  window.pushAutoRenderBlockingState?.(blockingState);
 
-  const {
-    dirtyFieldCount,
-    unsavedNotesCount,
-    blockingPrNumbers,
-    blockingAuthorInsightsLogins,
-    blockingPrLabel,
-  } = getAutoRenderBlockingState();
   const linksHost = getOptionalElementById("auto-render-blocked-pr-links");
-  const statusNode = getOptionalElementById("auto-render-blocked-status");
-  if (statusNode) {
-    statusNode.textContent = buildAutoRenderBlockedStatusText({
-      dirtyFieldCount,
-      unsavedNotesCount,
-      blockingAuthorInsightsCount: blockingAuthorInsightsLogins.length,
-    });
-  }
-
   if (linksHost) {
     renderAutoRenderBlockedLinks({
       linksHost,
-      blockingPrNumbers,
-      blockingAuthorInsightsLogins,
-      blockingPrLabel,
+      blockingPrNumbers: blockingState.blockingPrNumbers,
+      blockingAuthorInsightsLogins: blockingState.blockingAuthorInsightsLogins,
+      blockingPrLabel: blockingState.blockingPrLabel,
     });
-  }
-
-  indicator.removeAttribute("hidden");
-};
-
-const flushPendingAutoRenderNow = () => {
-  if (!pendingAutoRenderPayload) {
-    return false;
-  }
-  const payload = pendingAutoRenderPayload;
-  pendingAutoRenderPayload = null;
-  renderAutoRenderBlockedIndicator();
-  // Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for
-  // fresh-payload renders"): applyFreshPrPayload replaces the full
-  // renderPrData/orchestrator pipeline here - this payload already came
-  // from a real poll fetch, so the only things that still matter are the 3
-  // applyFreshPrPayload itself covers (fingerprint/manifest bookkeeping,
-  // repo resolution, Author Insights' live re-render), not the ~20 other
-  // now-dead computations that pipeline would otherwise also run. No
-  // explicit repo passed - matches this call's own prior no-repo-arg
-  // renderPrData(payload) call, so repo-resolution fallback behavior is
-  // unchanged.
-  applyFreshPrPayload(payload);
-  return true;
-};
-
-const forceApplyPendingAutoRender = () => {
-  if (!pendingAutoRenderPayload) {
-    return;
-  }
-  flushPendingAutoRenderNow();
-  setStatusMessage("Applied latest updates and discarded unsaved edits.");
-};
-
-const recomputeDirtyPrSectionsFields = () => {
-  const blockingState = getAutoRenderBlockingState();
-  hasDirtyPrSectionsFields = computeHasDirtyPrSectionsFields(blockingState);
-  renderAutoRenderBlockedIndicator();
-
-  if (!hasDirtyPrSectionsFields && pendingAutoRenderPayload) {
-    flushPendingAutoRender();
   }
 
   return hasDirtyPrSectionsFields;
@@ -2319,7 +2280,6 @@ const {
   computePrDataManifest,
   getManifestDelta,
   mergeDataDeltaPayload,
-  getPendingAutoRenderAction,
   getDataPollRenderAction,
 } = prDataPollingHelperFactory.createPrDataPollingHelpers({
   getOrCompute: getOrComputeEntryDerivedValue,
@@ -2398,7 +2358,7 @@ const prDataTabOrchestrator =
         latestPrManifest = value;
       },
       setPendingAutoRenderPayload: (value) => {
-        pendingAutoRenderPayload = value;
+        window.setPendingAutoRenderPayload?.(value);
       },
     },
     // Phase 6 (see REACT_MIGRATION_PLAN.md): lets renderPrData prefer
@@ -2944,9 +2904,10 @@ const applyResolvedRepo = (resolvedRepo) => {
 // re-render if that tab is open. This is exactly those 3 things, reusing
 // every existing piece directly rather than reimplementing any of them -
 // used by runSinglePrUpdate (replacing its own redundant loadStoredData()
-// re-fetch) and flushPendingAutoRenderNow (replacing its renderPrData(...)
-// call, closing recomputeDirtyPrSectionsFields's own documented dependency
-// on the full pipeline).
+// re-fetch) and, via the window.applyFreshPrPayload bridge, by
+// AutoRenderBlockingProvider.jsx's own apply/discard paths (replacing the
+// old vanilla flushPendingAutoRenderNow's identical call, see
+// REACT_MIGRATION_PLAN.md's Phase B entry).
 const applyFreshPrPayload = (payload, repo) => {
   const resolvedRepo =
     repo ||
@@ -2966,7 +2927,7 @@ const applyFreshPrPayload = (payload, repo) => {
   lastRenderedPrFingerprint = computePrDataFingerprint(payload);
   lastRenderedMetaFingerprint = computePrDataMetaFingerprint(payload);
   latestPrManifest = computePrDataManifest(payload);
-  pendingAutoRenderPayload = null;
+  window.setPendingAutoRenderPayload?.(null);
 
   // Same dataVersion/runStamp/backfill bookkeeping loadStoredData does with
   // its own GET response (pr-stored-data-load.helpers.js) - needed because
@@ -2995,7 +2956,6 @@ const applyFreshPrPayload = (payload, repo) => {
   // tab-activation catch-up render see the fresh data, not stale leftovers.
   applyFreshAuthorInsightsIfVisible(payload);
   updateReactTable(payload, resolvedRepo);
-  renderAutoRenderBlockedIndicator();
 };
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
@@ -3118,34 +3078,6 @@ const pushPayloadToReactTable = (payload, repo) => {
   }
 };
 
-// Renders the pending auto-update payload once the user is no longer focused on an input/textarea.
-// Re-attaches itself as a blur listener if focus moves to another field.
-const flushPendingAutoRender = () => {
-  setTimeout(() => {
-    const action = getPendingAutoRenderAction({
-      pendingPayload: pendingAutoRenderPayload,
-      focusedElement: document.activeElement,
-      hasDirtyPrSectionsFields,
-    });
-    if (action.type === "none") {
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    if (action.type === "wait-for-blur") {
-      document.activeElement?.addEventListener?.("blur", flushPendingAutoRender, {
-        once: true,
-      });
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    if (action.type === "wait-for-clean") {
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    flushPendingAutoRenderNow();
-  }, 0);
-};
-
 // Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md): a
 // thin wire-up around pr-data-polling-orchestration.helpers.js's extracted
 // factory - the actual fetch-cascade/fingerprint-diff/render-decision logic
@@ -3195,15 +3127,16 @@ const { pollForDataChanges } =
     setLastRenderedRunStamp: (value) => {
       lastRenderedRunStamp = value;
     },
-    getHasDirtyPrSectionsFields: () => hasDirtyPrSectionsFields,
-    getPendingAutoRenderPayload: () => pendingAutoRenderPayload,
+    // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // pendingAutoRenderPayload/hasDirtyPrSectionsFields now live in
+    // AutoRenderBlockingProvider.jsx - these 3 read/write through its
+    // published bridges instead of module variables.
+    getHasDirtyPrSectionsFields: () => window.getHasDirtyPrSectionsFields?.() ?? false,
+    getPendingAutoRenderPayload: () => window.getPendingAutoRenderPayload?.() ?? null,
     setPendingAutoRenderPayload: (value) => {
-      pendingAutoRenderPayload = value;
+      window.setPendingAutoRenderPayload?.(value);
     },
     renderPrData: (...args) => renderPrData(...args),
-    renderAutoRenderBlockedIndicator: (...args) =>
-      renderAutoRenderBlockedIndicator(...args),
-    flushPendingAutoRender: (...args) => flushPendingAutoRender(...args),
     markPollSuccess: (...args) => markPollSuccess(...args),
     showPollFailureWarning: (...args) => showPollFailureWarning(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
@@ -3761,7 +3694,6 @@ const initPage = () => {
   // Initialize Backfill Tab orchestrator
   backfillTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
-  renderAutoRenderBlockedIndicator();
 
   const prSectionsHost = document.getElementById("pr-sections");
   
@@ -3806,12 +3738,12 @@ const initPage = () => {
   prSectionsHost.addEventListener("change", recomputeDirtyOnEvent);
   prSectionsHost.addEventListener("click", recomputeDirtyOnEvent);
 
-  const applyNowBtn = getOptionalElementById("auto-render-blocked-apply-btn");
-  if (applyNowBtn) {
-    applyNowBtn.addEventListener("click", () => {
-      forceApplyPendingAutoRender();
-    });
-  }
+  // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // "Discard unsaved" button is React-owned now
+  // (AutoRenderBlockedApplyButton.jsx/AutoRenderBlockingProvider.jsx) -
+  // its own onClick calls discardAndApply directly, so this vanilla
+  // click-wiring (which called the now-deleted forceApplyPendingAutoRender)
+  // is removed.
 
   // Expose the pure (non-DOM) row-rendering logic for the React hybrid
   // table (see components/PrRow.jsx and friends) so it can reproduce the
