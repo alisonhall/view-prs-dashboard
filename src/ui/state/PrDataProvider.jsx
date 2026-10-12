@@ -7,6 +7,7 @@ import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-
 import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpers.js';
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
+import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -20,6 +21,81 @@ const DEFAULT_POLLING_TRACKING_STATE = {
   lastRenderedMetaFingerprint: '',
   lastRenderedRunStamp: '',
 };
+
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// default state for the request-activity-counter/history/scheduler-state
+// bookkeeping below - matches index.page.js's old module-scope
+// requestActivityCounters/requestActivityStartedAtMs/
+// recentRequestActivityEntries/latestSchedulerState defaults exactly.
+const REQUEST_ACTIVITY_LABELS = {
+  runScript: 'Run script',
+  ackClear: 'Ack/Clear',
+  singlePr: 'Single PR update',
+  dataLoad: 'Data refresh',
+  backfill: 'Backfill request',
+  labelApply: 'Apply label',
+  checkboxToggle: 'Checkbox toggle',
+  notesSave: 'Notes save',
+  authorComment: 'Author comment',
+};
+const DEFAULT_REQUEST_ACTIVITY_STATE = {
+  counters: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
+  startedAtMs: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
+  recentEntries: [],
+  latestSchedulerState: {},
+};
+const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
+const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
+const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
+
+const formatElapsedLabel = (elapsedMs) => {
+  const totalSeconds = Math.max(
+    0,
+    Math.floor(Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) / 1000 : 0),
+  );
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+};
+
+const getElapsedFromStartMs = (startMs) => {
+  const parsedStart = Number(startMs || 0);
+  if (!Number.isFinite(parsedStart) || parsedStart <= 0) {
+    return null;
+  }
+  return Math.max(0, Date.now() - parsedStart);
+};
+
+const withElapsedSuffix = (label, elapsedMs) => {
+  if (!Number.isFinite(Number(elapsedMs)) || Number(elapsedMs) < 0) {
+    return label;
+  }
+  return `${label} (${formatElapsedLabel(elapsedMs)})`;
+};
+
+const getRequestActivitySeverityClass = (elapsedMs) => {
+  const safeElapsedMs = Number(elapsedMs);
+  if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
+    return '';
+  }
+  if (safeElapsedMs >= REQUEST_ACTIVITY_CRITICAL_MS) {
+    return 'scheduler-badge-critical';
+  }
+  if (safeElapsedMs >= REQUEST_ACTIVITY_WARN_MS) {
+    return 'scheduler-badge-warning';
+  }
+  return '';
+};
+
+// Built once, not per-render - same "stable, zero-per-render-state"
+// precedent as useSinglePrUpdate.jsx's own module-level instantiation.
+const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
+  withElapsedSuffix,
+  getRequestActivitySeverityClass,
+});
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -82,6 +158,30 @@ const DEFAULT_POLLING_TRACKING_STATE = {
  * vanilla, reached via new reverse bridges (index.page.js) - same
  * category as every other "vanilla primitive exposed for React" bridge
  * in this migration.
+ *
+ * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
+ * builds `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`/
+ * `pollSchedulerStatus` now (inlined directly - unlike `pollForDataChanges`,
+ * there was no pre-existing pure DI-factory to wrap), owning the
+ * counter/history/scheduler-state bookkeeping they depend on (`activityRef`
+ * below) - same plain-ref reasoning as `trackingRef`. `beginRequestActivity`
+ * stays bridged as `window.beginRequestActivity` (5 real React consumers -
+ * `useSinglePrUpdate.jsx`/`useRunScript.jsx`/`useBackfillActions.jsx`/
+ * `useAckLabelActions.jsx`/`NotesSection.jsx` - already read it that way,
+ * by design, same precedent as `applyFreshPrPayload`) and
+ * `window.pollSchedulerStatus` stays bridged too (`index.html.test.js`'s
+ * only remaining caller - same "stays callable for tests" precedent as
+ * `pollForDataChanges`). `window.pollBackfillStatus`/`window.renderRequestActivity`
+ * had no caller left besides `<PrDataPolling />` once it reads them from
+ * Context instead - both deleted outright from `index.page.js`, not kept.
+ * `index.page.js`'s own `beginRequestActivity`/`renderRequestActivity`
+ * consts become thin proxies to these same bridges, so their 9+ existing
+ * vanilla call sites keep working unchanged. `renderSchedulerStatus`
+ * (index.page.js, still vanilla) pushes into `activityRef` via a new
+ * `window.setLatestSchedulerStateAndRender(scheduler)` bridge instead of
+ * writing a bare module `let`. `loadBackfillStatus`/`loadSchedulerStatus`
+ * stay vanilla (other real callers beyond polling) - reached via 2 more new
+ * reverse bridges, same category as everything else in this paragraph.
  */
 export function PrDataProvider({
   initialPayload,
@@ -264,6 +364,154 @@ export function PrDataProvider({
     };
   }, [pollForDataChanges]);
 
+  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
+  // this file's own header comment. A plain ref, same reasoning as
+  // trackingRef above - nothing ever renders directly from this state;
+  // renderRequestActivity/recordRecentRequestActivity already push derived
+  // view-models out via their own window.updateReactRequestActivityBadges/
+  // window.updateReactRecentRequestActivity bridges.
+  const activityRef = useRef({ ...DEFAULT_REQUEST_ACTIVITY_STATE });
+
+  // useMemo, not useEffect - same reasoning as pollForDataChanges above:
+  // every piece here is a stable ref/bridge read, and the result needs to
+  // be in this Provider's own Context value during render.
+  const activityHelpers = useMemo(() => {
+    const setRequestActivityCounter = (key, delta = 0) => {
+      const activityState = activityRef.current;
+      if (!Object.prototype.hasOwnProperty.call(activityState.counters, key)) {
+        return;
+      }
+      const next =
+        Number(activityState.counters[key] || 0) +
+        (Number.isFinite(Number(delta)) ? Number(delta) : 0);
+      const safeNext = Math.max(0, next);
+      activityState.counters[key] = safeNext;
+      if (safeNext > 0 && Number(activityState.startedAtMs[key] || 0) <= 0) {
+        activityState.startedAtMs[key] = Date.now();
+      }
+      if (safeNext === 0) {
+        activityState.startedAtMs[key] = 0;
+      }
+    };
+
+    // Iterates REQUEST_ACTIVITY_LABELS generically rather than one
+    // hand-written branch per key - see index.page.js's git history for why
+    // (a hand-written-branch shape silently dropped the "labelApply" key
+    // for a while before this plan's own predecessor caught it).
+    const getActiveRequestActivityEntries = () => {
+      const activityState = activityRef.current;
+      return Object.keys(REQUEST_ACTIVITY_LABELS)
+        .filter((key) => activityState.counters[key] > 0)
+        .map((key) => ({
+          label: `${REQUEST_ACTIVITY_LABELS[key]} x${activityState.counters[key]}`,
+          elapsedMs: getElapsedFromStartMs(activityState.startedAtMs[key]),
+        }));
+    };
+
+    const renderRequestActivity = () => {
+      const activityState = activityRef.current;
+      const activeEntries = getActiveRequestActivityEntries();
+      const isAutoRunInProgress = Boolean(activityState.latestSchedulerState?.isAutoRunInProgress);
+      const autoRunElapsedMs = isAutoRunInProgress
+        ? getElapsedFromStartMs(
+            Date.parse(String(activityState.latestSchedulerState?.lastAutoAttemptAt || '')),
+          )
+        : null;
+      window.updateReactRequestActivityBadges?.(
+        getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
+      );
+    };
+
+    const recordRecentRequestActivity = (key) => {
+      const activityState = activityRef.current;
+      const label = REQUEST_ACTIVITY_LABELS[key] || key;
+      activityState.recentEntries = [
+        { key, label, finishedAt: new Date().toISOString() },
+        ...activityState.recentEntries,
+      ].slice(0, RECENT_REQUEST_ACTIVITY_LIMIT);
+      window.updateReactRecentRequestActivity?.(activityState.recentEntries);
+    };
+
+    const beginRequestActivity = (key) => {
+      setRequestActivityCounter(key, 1);
+      renderRequestActivity();
+      let ended = false;
+      return () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        setRequestActivityCounter(key, -1);
+        renderRequestActivity();
+        recordRecentRequestActivity(key);
+      };
+    };
+
+    // pollBackfillStatus/pollSchedulerStatus's own guard flags
+    // (isBackfillRunning/isBackfillActionPending/supportsSchedulerPolling)
+    // and the real fetch work they delegate to (loadBackfillStatus/
+    // loadSchedulerStatus) stay vanilla-owned (index.page.js) - both have
+    // other real vanilla callers (the backfill tab orchestrator/initial
+    // auto-load, the quick-check workflow's forced scheduler refresh) this
+    // phase doesn't touch. Reached via new reverse bridges, same "vanilla
+    // primitive exposed for React" shape as window.getBackfillTrackingState
+    // (Phase D.2, reused as-is here for the isBackfillRunning/
+    // isBackfillActionPending guard).
+    const pollBackfillStatus = async () => {
+      const tracking = window.getBackfillTrackingState?.() || {};
+      if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
+        return;
+      }
+      try {
+        await window.loadBackfillStatus?.({ announce: true, includeLog: true });
+      } catch (_error) {
+        // Ignore polling failures and wait for the next interval.
+      }
+    };
+
+    const pollSchedulerStatus = async () => {
+      if (!window.getSupportsSchedulerPolling?.()) {
+        return;
+      }
+      try {
+        await window.loadSchedulerStatus?.();
+      } catch (_error) {
+        // Ignore polling failures and wait for the next interval.
+      }
+    };
+
+    return { beginRequestActivity, renderRequestActivity, pollBackfillStatus, pollSchedulerStatus };
+  }, []);
+
+  useEffect(() => {
+    window.beginRequestActivity = (...args) => activityHelpers.beginRequestActivity(...args);
+    window.renderRequestActivity = (...args) => activityHelpers.renderRequestActivity(...args);
+    // Kept bridged - index.html.test.js is its only remaining caller (same
+    // "stays callable for tests" precedent as window.pollForDataChanges).
+    window.pollSchedulerStatus = (...args) => activityHelpers.pollSchedulerStatus(...args);
+    // Vanilla primitive exposed *for* this Provider: renderSchedulerStatus
+    // (index.page.js, still called by loadSchedulerStatus and by
+    // JobEventsProvider.jsx's real-time SSE path) pushes a fresh scheduler
+    // object here instead of writing a bare module `let` - combines the
+    // write + the re-render in one call, same "who writes when" structure
+    // renderSchedulerStatus already had.
+    window.setLatestSchedulerStateAndRender = (scheduler) => {
+      activityRef.current.latestSchedulerState = scheduler || {};
+      activityHelpers.renderRequestActivity();
+    };
+    // Read-side counterpart, for index.page.js's prDataTabOrchestrator
+    // (its own stateGetters.getLatestSchedulerState) - the only other
+    // vanilla reader of this state besides renderRequestActivity itself.
+    window.getLatestSchedulerState = () => activityRef.current.latestSchedulerState;
+    return () => {
+      delete window.beginRequestActivity;
+      delete window.renderRequestActivity;
+      delete window.pollSchedulerStatus;
+      delete window.setLatestSchedulerStateAndRender;
+      delete window.getLatestSchedulerState;
+    };
+  }, [activityHelpers]);
+
   const setPayload = useCallback((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));
   }, []);
@@ -279,7 +527,16 @@ export function PrDataProvider({
     setState((previous) => ({ ...previous, statsViewState: { ...previous.statsViewState, ...patch } }));
   }, []);
 
-  const value = { ...state, setPayload, setStatsViewState, pollForDataChanges };
+  const value = {
+    ...state,
+    setPayload,
+    setStatsViewState,
+    pollForDataChanges,
+    beginRequestActivity: activityHelpers.beginRequestActivity,
+    renderRequestActivity: activityHelpers.renderRequestActivity,
+    pollBackfillStatus: activityHelpers.pollBackfillStatus,
+    pollSchedulerStatus: activityHelpers.pollSchedulerStatus,
+  };
 
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): derives the same
   // { currentActorLoginAliases, currentViewerLogin } index.page.js's own

@@ -23,14 +23,21 @@ const { render } = require('@testing-library/react');
 const { PrDataPolling } = require('../components/PrDataPolling');
 const { PrDataContext } = require('../state/PrDataContext');
 
-// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// pollForDataChanges now comes from usePrData(), not window.pollForDataChanges
-// directly - see PrDataPolling.test.jsx's own identical harness comment.
+// Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollForDataChanges/pollBackfillStatus/renderRequestActivity now all come
+// from usePrData(), not window.* directly - see PrDataPolling.test.jsx's
+// own identical harness comment.
 const renderPrDataPolling = () =>
   render(
     React.createElement(
       PrDataContext.Provider,
-      { value: { pollForDataChanges: (...args) => window.pollForDataChanges?.(...args) } },
+      {
+        value: {
+          pollForDataChanges: (...args) => window.pollForDataChanges?.(...args),
+          pollBackfillStatus: (...args) => window.pollBackfillStatus?.(...args),
+          renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
+        },
+      },
       React.createElement(PrDataPolling),
     ),
   );

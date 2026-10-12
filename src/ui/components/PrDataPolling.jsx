@@ -12,13 +12,16 @@
  * Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * pollForDataChanges itself now lives in <PrDataProvider /> (this
  * component's own parent), reached directly via usePrData() - no more
- * window.pollForDataChanges indirection for this call site, the actual
- * goal of that phase. pollBackfillStatus/renderRequestActivity stay
- * window.* bridges (index.page.js) - deliberately out of scope for that
- * same slice (see its own writeup for why: both are tied to shared
- * vanilla state well beyond polling). window.AUTO_DATA_POLL_MS/
- * AUTO_BACKFILL_POLL_MS (the interval timing) are still exposed by
- * index.page.js the same way.
+ * window.pollForDataChanges indirection for this call site.
+ *
+ * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * pollBackfillStatus/renderRequestActivity now live in <PrDataProvider />
+ * too, reached the same way - window.pollBackfillStatus/
+ * window.renderRequestActivity had no caller left besides this component
+ * once that happened, so both bridges were deleted outright (not kept
+ * "for tests" - neither had a test dependency to begin with).
+ * window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS (the interval timing)
+ * are still exposed by index.page.js the same way.
  *
  * The scheduler-status poll this component used to also own
  * (schedulerInterval, calling window.pollSchedulerStatus) was retired by
@@ -42,14 +45,11 @@ import { usePrData } from '../state/PrDataContext';
 const ACTIVITY_RENDER_MS = 1000;
 
 export function PrDataPolling() {
-  // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // pollForDataChanges is now built by <PrDataProvider /> itself (this
-  // component's own parent - see react-app.jsx) and reached directly via
-  // Context, not window.pollForDataChanges - the one piece of this
-  // component's own polling that moved. pollBackfillStatus/
-  // renderRequestActivity stay window.* bridges (out of scope for this
-  // slice - see REACT_MIGRATION_PLAN.md's own Phase F entry for why).
-  const { pollForDataChanges } = usePrData();
+  // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
+  // built by <PrDataProvider /> itself (this component's own parent - see
+  // react-app.jsx) and reached directly via Context now, not window.*.
+  const { pollForDataChanges, pollBackfillStatus, renderRequestActivity } = usePrData();
 
   useEffect(() => {
     const dataPollMs = window.AUTO_DATA_POLL_MS || 30000;
@@ -61,8 +61,8 @@ export function PrDataPolling() {
 
     const startIntervals = () => {
       dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
-      backfillInterval = setInterval(() => window.pollBackfillStatus?.(), backfillPollMs);
-      activityInterval = setInterval(() => window.renderRequestActivity?.(), ACTIVITY_RENDER_MS);
+      backfillInterval = setInterval(() => pollBackfillStatus?.(), backfillPollMs);
+      activityInterval = setInterval(() => renderRequestActivity?.(), ACTIVITY_RENDER_MS);
     };
 
     const stopIntervals = () => {
@@ -97,7 +97,7 @@ export function PrDataPolling() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', stopIntervals);
     };
-  }, [pollForDataChanges]);
+  }, [pollForDataChanges, pollBackfillStatus, renderRequestActivity]);
 
   return null;
 }

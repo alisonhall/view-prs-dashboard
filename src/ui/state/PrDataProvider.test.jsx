@@ -2,6 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 const { PrDataProvider } = require('./PrDataProvider');
+const { usePrData } = require('./PrDataContext');
 
 describe('PrDataProvider', () => {
   afterEach(() => {
@@ -10,6 +11,17 @@ describe('PrDataProvider', () => {
     delete window.getReactPrTableSelectedRepo;
     delete window.updateReactSelectedAuthorLogin;
     delete window.updateReactStatsViewState;
+    delete window.beginRequestActivity;
+    delete window.renderRequestActivity;
+    delete window.pollSchedulerStatus;
+    delete window.setLatestSchedulerStateAndRender;
+    delete window.getLatestSchedulerState;
+    delete window.updateReactRequestActivityBadges;
+    delete window.updateReactRecentRequestActivity;
+    delete window.getBackfillTrackingState;
+    delete window.loadBackfillStatus;
+    delete window.getSupportsSchedulerPolling;
+    delete window.loadSchedulerStatus;
   });
 
   test('given an initial payload, when rendering, then window.getReactPrTablePayload returns it', () => {
@@ -98,5 +110,138 @@ describe('PrDataProvider', () => {
     unmount();
 
     expect(window.getReactPrTableSelectedRepo).toBeUndefined();
+  });
+
+  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // beginRequestActivity/renderRequestActivity/pollBackfillStatus/
+  // pollSchedulerStatus moved here from index.page.js.
+  describe('request activity', () => {
+    test('given a call to window.beginRequestActivity, when the returned finish function is called, then the badge bridge fires on begin and end, and the recent-activity bridge fires once on end', () => {
+      const badgeCalls = [];
+      const recentActivityCalls = [];
+      window.updateReactRequestActivityBadges = (badges) => badgeCalls.push(badges);
+      window.updateReactRecentRequestActivity = (entries) => recentActivityCalls.push(entries);
+
+      render(
+        <PrDataProvider>
+          <div />
+        </PrDataProvider>,
+      );
+
+      let finishActivity;
+      act(() => {
+        finishActivity = window.beginRequestActivity('runScript');
+      });
+      expect(badgeCalls).toHaveLength(1);
+      expect(recentActivityCalls).toHaveLength(0);
+
+      act(() => {
+        finishActivity();
+      });
+      expect(badgeCalls).toHaveLength(2);
+      expect(recentActivityCalls).toHaveLength(1);
+      expect(recentActivityCalls[0][0]).toEqual(
+        expect.objectContaining({ key: 'runScript', label: 'Run script' }),
+      );
+
+      // Calling the same finish function again is a no-op (same guard
+      // beginRequestActivity always had) - no extra badge/history pushes.
+      act(() => {
+        finishActivity();
+      });
+      expect(badgeCalls).toHaveLength(2);
+      expect(recentActivityCalls).toHaveLength(1);
+    });
+
+    test('given window.setLatestSchedulerStateAndRender pushes an in-progress auto-run, when renderRequestActivity next fires, then the badge view model reflects it', () => {
+      const badgeCalls = [];
+      window.updateReactRequestActivityBadges = (badges) => badgeCalls.push(badges);
+
+      render(
+        <PrDataProvider>
+          <div />
+        </PrDataProvider>,
+      );
+
+      act(() => {
+        window.setLatestSchedulerStateAndRender({
+          isAutoRunInProgress: true,
+          lastAutoAttemptAt: new Date().toISOString(),
+        });
+      });
+
+      expect(badgeCalls).toHaveLength(1);
+      expect(window.getLatestSchedulerState().isAutoRunInProgress).toBe(true);
+    });
+
+    test('given the backfill tracking state says a run is in progress, when pollBackfillStatus is called, then it calls the vanilla loadBackfillStatus bridge', async () => {
+      const loadBackfillStatus = jest.fn().mockResolvedValue({});
+      window.getBackfillTrackingState = () => ({
+        isBackfillRunning: true,
+        isBackfillActionPending: false,
+      });
+      window.loadBackfillStatus = loadBackfillStatus;
+
+      let pollBackfillStatus;
+      function Probe() {
+        pollBackfillStatus = usePrData().pollBackfillStatus;
+        return null;
+      }
+      render(
+        <PrDataProvider>
+          <Probe />
+        </PrDataProvider>,
+      );
+
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+
+      expect(loadBackfillStatus).toHaveBeenCalledWith({ announce: true, includeLog: true });
+    });
+
+    test('given the backfill tracking state says no run is in progress, when pollBackfillStatus is called, then it never calls loadBackfillStatus', async () => {
+      const loadBackfillStatus = jest.fn();
+      window.getBackfillTrackingState = () => ({
+        isBackfillRunning: false,
+        isBackfillActionPending: false,
+      });
+      window.loadBackfillStatus = loadBackfillStatus;
+
+      let pollBackfillStatus;
+      function Probe() {
+        pollBackfillStatus = usePrData().pollBackfillStatus;
+        return null;
+      }
+      render(
+        <PrDataProvider>
+          <Probe />
+        </PrDataProvider>,
+      );
+
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+
+      expect(loadBackfillStatus).not.toHaveBeenCalled();
+    });
+
+    test('given supportsSchedulerPolling is false, when pollSchedulerStatus is called (via the kept window bridge), then it never calls loadSchedulerStatus', async () => {
+      const loadSchedulerStatus = jest.fn();
+      window.getSupportsSchedulerPolling = () => false;
+      window.loadSchedulerStatus = loadSchedulerStatus;
+
+      render(
+        <PrDataProvider>
+          <div />
+        </PrDataProvider>,
+      );
+
+      await act(async () => {
+        await window.pollSchedulerStatus();
+      });
+
+      expect(loadSchedulerStatus).not.toHaveBeenCalled();
+    });
   });
 });

@@ -3430,7 +3430,14 @@ describe("index page rendering with Testing Library", () => {
 
       require("../index.page.js");
 
-      expect(typeof window.pollSchedulerStatus).toBe("function");
+      // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // window.pollSchedulerStatus is now set inside PrDataProvider.jsx's
+      // own mount effect (async, React) instead of at vanilla module-load
+      // time (sync) - same waitFor fix Phase F already needed for
+      // window.pollForDataChanges's own identical bridge-timing change.
+      await waitFor(() => {
+        expect(typeof window.pollSchedulerStatus).toBe("function");
+      });
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there

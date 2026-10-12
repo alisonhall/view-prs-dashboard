@@ -62,7 +62,6 @@ import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
 import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
 import * as prDataTabsHelperFactory from "./helpers/pr-data-tabs.helpers.js";
-import * as prActivityBadgesHelperFactory from "./helpers/pr-activity-badges.helpers.js";
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
 import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
@@ -145,67 +144,6 @@ let lastBackfillStateKey = "";
 let isBackfillActionPending = false;
 let isBackfillRunning = false;
 let isRequestMoreMergedPending = false;
-let latestSchedulerState = {};
-const requestActivityCounters = {
-  runScript: 0,
-  ackClear: 0,
-  singlePr: 0,
-  dataLoad: 0,
-  backfill: 0,
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): labelApply was
-  // already being passed to setRequestActivityCounter (from
-  // pr-ack-label-actions.helpers.js) before this key existed here - it
-  // silently no-opped every time (setRequestActivityCounter's own
-  // hasOwnProperty guard), so apply-label requests never showed up
-  // anywhere. checkboxToggle/notesSave/authorComment are newly tracked -
-  // see the "not all actions are shown" follow-up.
-  labelApply: 0,
-  checkboxToggle: 0,
-  notesSave: 0,
-  authorComment: 0,
-};
-const requestActivityStartedAtMs = {
-  runScript: 0,
-  ackClear: 0,
-  singlePr: 0,
-  dataLoad: 0,
-  backfill: 0,
-  labelApply: 0,
-  checkboxToggle: 0,
-  notesSave: 0,
-  authorComment: 0,
-};
-// Capped, in-memory, this-tab-only history of recently finished user
-// actions - "finished" just means the in-flight counter returned to 0, not
-// necessarily success (threading real success/failure through every one of
-// these call sites' own try/catch shapes would be a much larger change for
-// a history list - the live badge above already surfaces failures via its
-// own notification/snackbar path). Scheduler jobs get real ok/error in
-// their own recent-activity list (JobEventsContext's recentFinished,
-// SSE-driven) since that data already exists there for free.
-const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
-let recentRequestActivityEntries = [];
-const REQUEST_ACTIVITY_LABELS = {
-  runScript: "Run script",
-  ackClear: "Ack/Clear",
-  singlePr: "Single PR update",
-  dataLoad: "Data refresh",
-  backfill: "Backfill request",
-  labelApply: "Apply label",
-  checkboxToggle: "Checkbox toggle",
-  notesSave: "Notes save",
-  authorComment: "Author comment",
-};
-const recordRecentRequestActivity = (key) => {
-  const label = REQUEST_ACTIVITY_LABELS[key] || key;
-  recentRequestActivityEntries = [
-    { key, label, finishedAt: new Date().toISOString() },
-    ...recentRequestActivityEntries,
-  ].slice(0, RECENT_REQUEST_ACTIVITY_LIMIT);
-  window.updateReactRecentRequestActivity?.(recentRequestActivityEntries);
-};
-const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
-const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
 // Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
 // manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
 // manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin used
@@ -247,127 +185,22 @@ const setOutputMessage = (message) => {
   window.updateReactOutputText?.(message);
 };
 
-const setRequestActivityCounter = (key, delta = 0) => {
-  if (!Object.prototype.hasOwnProperty.call(requestActivityCounters, key)) {
-    return;
-  }
-  const next =
-    Number(requestActivityCounters[key] || 0) +
-    (Number.isFinite(Number(delta)) ? Number(delta) : 0);
-  const safeNext = Math.max(0, next);
-  requestActivityCounters[key] = safeNext;
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// beginRequestActivity/renderRequestActivity's real implementations (the
+// counter/history/scheduler-state bookkeeping, the badge-view-model
+// construction) moved into PrDataProvider.jsx (state/) - these 2 consts
+// become thin proxies to the window.* bridges that Provider now installs,
+// so every one of this file's own existing call sites (the "authorComment"/
+// "dataLoad"/"checkboxToggle"/"backfill" DI wirings below, setStatusMessage,
+// initPage's startup call) keeps working completely unchanged. Same
+// no-op-before-mount fallback shape useSinglePrUpdate.jsx/useRunScript.jsx/
+// etc. already use for this exact bridge.
+const beginRequestActivity = (key) =>
+  (window.beginRequestActivity || (() => () => {}))(key);
 
-  if (safeNext > 0 && Number(requestActivityStartedAtMs[key] || 0) <= 0) {
-    requestActivityStartedAtMs[key] = Date.now();
-  }
-  if (safeNext === 0) {
-    requestActivityStartedAtMs[key] = 0;
-  }
-};
-
-const formatElapsedLabel = (elapsedMs) => {
-  const totalSeconds = Math.max(
-    0,
-    Math.floor(
-      Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) / 1000 : 0,
-    ),
-  );
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-  }
-  return `${seconds}s`;
-};
-
-const getElapsedFromStartMs = (startMs) => {
-  const parsedStart = Number(startMs || 0);
-  if (!Number.isFinite(parsedStart) || parsedStart <= 0) {
-    return null;
-  }
-  return Math.max(0, Date.now() - parsedStart);
-};
-
-const withElapsedSuffix = (label, elapsedMs) => {
-  if (!Number.isFinite(Number(elapsedMs)) || Number(elapsedMs) < 0) {
-    return label;
-  }
-  return `${label} (${formatElapsedLabel(elapsedMs)})`;
-};
-
-const getRequestActivitySeverityClass = (elapsedMs) => {
-  const safeElapsedMs = Number(elapsedMs);
-  if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
-    return "";
-  }
-
-  if (safeElapsedMs >= REQUEST_ACTIVITY_CRITICAL_MS) {
-    return "scheduler-badge-critical";
-  }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_WARN_MS) {
-    return "scheduler-badge-warning";
-  }
-  return "";
-};
-
-// Iterates requestActivityCounters generically (keyed off
-// REQUEST_ACTIVITY_LABELS) rather than one hand-written `if` block per key -
-// this is exactly the shape that silently dropped labelApply before (a new
-// counter key existed, but no matching branch here ever read it). Order
-// matches REQUEST_ACTIVITY_LABELS' own declaration order, which mirrors the
-// original hand-written order for the first 5 keys.
-const getActiveRequestActivityEntries = () =>
-  Object.keys(REQUEST_ACTIVITY_LABELS)
-    .filter((key) => requestActivityCounters[key] > 0)
-    .map((key) => ({
-      label: `${REQUEST_ACTIVITY_LABELS[key]} x${requestActivityCounters[key]}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs[key]),
-    }));
-
-// Activity drawer feature (see REACT_MIGRATION_PLAN.md): #request-activity-details
-// (the Status tab's old "Current status/Active requests" text) was removed
-// as redundant with the drawer's own live "In-flight user actions" section -
-// this function's remaining job is just keeping #request-activity-badges
-// (still a real prop the drawer reads via AppRoot's requestActivityBadges
-// state) up to date.
 const renderRequestActivity = () => {
-  const activeEntries = getActiveRequestActivityEntries();
-  const isAutoRunInProgress = Boolean(
-    latestSchedulerState?.isAutoRunInProgress,
-  );
-  const autoRunElapsedMs = isAutoRunInProgress
-    ? getElapsedFromStartMs(
-        Date.parse(String(latestSchedulerState?.lastAutoAttemptAt || "")),
-      )
-    : null;
-
-  window.updateReactRequestActivityBadges?.(
-    getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
-  );
+  window.renderRequestActivity?.();
 };
-
-const beginRequestActivity = (key) => {
-  setRequestActivityCounter(key, 1);
-  renderRequestActivity();
-  let ended = false;
-  return () => {
-    if (ended) {
-      return;
-    }
-    ended = true;
-    setRequestActivityCounter(key, -1);
-    renderRequestActivity();
-    recordRecentRequestActivity(key);
-  };
-};
-
-// Activity drawer feature (see REACT_MIGRATION_PLAN.md): exposes
-// beginRequestActivity for React components that make their own network
-// call directly rather than through a vanilla helper factory (NotesSection.jsx
-// is the one case today - it already reads window.postJson the same way).
-if (typeof window !== "undefined") {
-  window.beginRequestActivity = (...args) => beginRequestActivity(...args);
-}
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the snackbar itself is fully React-owned now
@@ -1279,15 +1112,15 @@ const recomputeDirtyPrSectionsFields = () => {
 // #scheduler-details (the Status tab's old "Auto Refresh Scheduler" display)
 // were removed as redundant once the drawer's own live "Scheduled background
 // jobs" section covered the same ground - this function's only remaining
-// jobs are keeping latestSchedulerState current (read by
-// renderRequestActivity below) and driving the per-row progress indicator +
-// request-activity re-render, both independent of anything scheduler-status
-// text ever showed.
+// jobs are driving the per-row progress indicator and keeping
+// latestSchedulerState current (Phase F.2: now PrDataProvider.jsx's own
+// activityRef, pushed via window.setLatestSchedulerStateAndRender, which
+// also triggers the request-activity re-render that used to happen here
+// directly).
 const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
-  latestSchedulerState = scheduler;
   applyActivePrProgressIndicators(scheduler.activePrNumbers || []);
-  renderRequestActivity();
+  window.setLatestSchedulerStateAndRender?.(scheduler);
 };
 
 // The server (app.js's buildActivePrKey) sends activePrNumbers as
@@ -1632,6 +1465,17 @@ const loadSchedulerStatus = async () => {
   return result;
 };
 
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// PrDataProvider.jsx's own pollSchedulerStatus needs these 2 reverse
+// bridges - loadSchedulerStatus stays vanilla (the quick-check workflow's
+// forced scheduler refresh is another real caller beyond polling), and
+// supportsSchedulerPolling stays a vanilla-owned flag (loadSchedulerStatus
+// itself is the only writer, on a 404) rather than forking a second copy.
+if (typeof window !== "undefined") {
+  window.loadSchedulerStatus = (...args) => loadSchedulerStatus(...args);
+  window.getSupportsSchedulerPolling = () => supportsSchedulerPolling;
+}
+
 // getViewedFilesSummary (helpers/pr-viewed-files-summary.helpers.js) no
 // longer built here at all (Phase 7, see REACT_MIGRATION_PLAN.md) -
 // AuthorInsightsPrDataMeta.jsx builds its own copy directly now (the same
@@ -1772,7 +1616,7 @@ const prDataTabOrchestrator =
       getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
       getLatestSelectedRepo: () => latestSelectedRepo,
       getLastSuccessfulRenderedCheckAt: () => lastSuccessfulRenderedCheckAt,
-      getLatestSchedulerState: () => latestSchedulerState,
+      getLatestSchedulerState: () => window.getLatestSchedulerState?.() || {},
     },
     stateSetters: {
       setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
@@ -1806,12 +1650,6 @@ const prDataTabOrchestrator =
     // FilterStateProvider-migrated field, it's real PrDataProvider
     // Context state instead (state/PrDataProvider.jsx).
     getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
-  });
-
-const { getRequestActivityBadges } =
-  prActivityBadgesHelperFactory.createPrActivityBadgesHelpers({
-    withElapsedSuffix,
-    getRequestActivitySeverityClass,
   });
 
 const {
@@ -2565,29 +2403,18 @@ if (typeof window !== "undefined") {
   window.showPollFailureWarning = (...args) => showPollFailureWarning(...args);
 }
 
-const pollBackfillStatus = async () => {
-  if (!isBackfillRunning || isBackfillActionPending) {
-    return;
-  }
-
-  try {
-    await loadBackfillStatus({ announce: true, includeLog: true });
-  } catch (_error) {
-    // Ignore polling failures and wait for the next interval.
-  }
-};
-
-const pollSchedulerStatus = async () => {
-  if (!supportsSchedulerPolling) {
-    return;
-  }
-
-  try {
-    await loadSchedulerStatus();
-  } catch (_error) {
-    // Ignore polling failures and wait for the next interval.
-  }
-};
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollBackfillStatus/pollSchedulerStatus's own guard+wrapper moved into
+// PrDataProvider.jsx (state/), reached directly via <PrDataPolling />'s
+// usePrData() Context - window.pollBackfillStatus/window.renderRequestActivity
+// had no caller left besides that component, so both were deleted outright
+// (window.pollSchedulerStatus stays, see below). loadBackfillStatus stays
+// vanilla here (the backfill tab orchestrator/initial auto-load are other
+// real callers beyond polling) - exposed via a new reverse bridge for
+// PrDataProvider's own pollBackfillStatus to reach.
+if (typeof window !== "undefined") {
+  window.loadBackfillStatus = (...args) => loadBackfillStatus(...args);
+}
 
 // Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // <PrDataPolling /> (react-app.jsx) now owns the setInterval lifecycle for
@@ -2595,15 +2422,13 @@ const pollSchedulerStatus = async () => {
 // behavior that used to live in index.page.js's cleanupIntervals/
 // restartIntervals) - it calls them via these bridges on the same cadence
 // (AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, also exposed here so the
-// interval timing has one source of truth). The functions themselves are
-// unchanged; only *what decides when they run* moved.
-// window.pollForDataChanges used to also be bridged here - Phase F (see
-// REACT_MIGRATION_PLAN.md, "Full migration roadmap") moved it into
-// PrDataProvider.jsx, which now sets that same bridge name itself.
+// interval timing has one source of truth).
+// window.pollForDataChanges/pollBackfillStatus/renderRequestActivity used
+// to also be bridged here - Phase F/F.2 (see REACT_MIGRATION_PLAN.md,
+// "Full migration roadmap") moved them into PrDataProvider.jsx, which now
+// sets window.pollSchedulerStatus itself too (kept bridged - see that
+// file's own header comment for why).
 if (typeof window !== "undefined") {
-  window.pollSchedulerStatus = (...args) => pollSchedulerStatus(...args);
-  window.pollBackfillStatus = (...args) => pollBackfillStatus(...args);
-  window.renderRequestActivity = (...args) => renderRequestActivity(...args);
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
   // retirement" section): JobEventsProvider.jsx calls this directly with
   // the scheduler object bundled into every SSE frame, replacing the old
@@ -2966,6 +2791,17 @@ const initPage = () => {
   window.addEventListener(
     "viewprs:react-ready",
     () => applyNonCredentialFieldHints(),
+    { once: true },
+  );
+  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): same
+  // bridge-not-ready-yet race as the listeners above - initPage's own
+  // renderRequestActivity() call (below, this function's very first line)
+  // runs before PrDataProvider.jsx has necessarily mounted yet, so the
+  // initial "No request in progress" badge push can silently no-op. Re-push
+  // once React signals ready, same shape as the backfill-badges fix above.
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => renderRequestActivity(),
     { once: true },
   );
   registerUiOptionPersistenceHandlers();
@@ -3390,10 +3226,12 @@ const initPage = () => {
   // render) and their visibility-pause/beforeunload-cleanup lifecycle used
   // to be owned here (setInterval/cleanupIntervals/restartIntervals). That
   // ownership moved to <PrDataPolling /> (react-app.jsx, mounted as a
-  // headless React root with no visible UI) - it calls the same underlying
-  // functions via window.pollForDataChanges/pollSchedulerStatus/
-  // pollBackfillStatus/renderRequestActivity (exposed below), just with
-  // React now deciding *when* they run instead of index.page.js.
+  // headless React root with no visible UI) - Phase F/F.2 (see
+  // REACT_MIGRATION_PLAN.md) moved pollForDataChanges/pollBackfillStatus/
+  // renderRequestActivity themselves into PrDataProvider.jsx too, reached
+  // directly via usePrData() Context (no window.* indirection left for any
+  // of the 3). window.pollSchedulerStatus alone stays bridged - its only
+  // remaining caller is index.html.test.js, not <PrDataPolling />.
 };
 
 if (typeof window !== "undefined") {
