@@ -470,10 +470,13 @@ const installAutoRenderBlockingProviderBridge = () => {
 // AppRoot uses for backfillButtonState.
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // button/checkbox callbacks used to call window.handleBackfillAction/
-// refreshBackfillStatus/refreshBackfillLogTail/autoScrollBackfillLogToBottom
-// directly - this harness now calls useBackfillActions() itself, same as
-// react-app.jsx does, so those bridges have no remaining caller and were
-// deleted from index.page.js.
+// refreshBackfillStatus/refreshBackfillLogTail directly - this harness now
+// calls useBackfillActions() itself, same as react-app.jsx does, so those
+// 3 bridges have no remaining caller and were deleted from index.page.js.
+// (window.autoScrollBackfillLogToBottom stayed bridged even then, for
+// index.page.js's own vanilla caller - Phase G.4, see
+// REACT_MIGRATION_PLAN.md, closed this harness's/BackfillLogControls.jsx's
+// own need for it specifically, not that bridge itself.)
 const DEFAULT_BACKFILL_BUTTON_STATE = {
   startDisabled: false,
   stopDisabled: false,
@@ -481,17 +484,35 @@ const DEFAULT_BACKFILL_BUTTON_STATE = {
   refreshLogDisabled: false,
 };
 
-function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
+function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContainer }) {
   const [buttonState, setButtonState] = React.useState(DEFAULT_BACKFILL_BUTTON_STATE);
-  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, autoScrollBackfillLogToBottom } =
-    useBackfillActions();
+  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillLogControls now owns the #backfill-log content portal itself
+  // (matching react-app.jsx's real AppRoot), so this harness needs its own
+  // logText state - same "push bridge feeds local state, portal the real
+  // component" shape buttonState already uses above. Overrides the generic
+  // textContent-writer installReactStatusTextMountBridges() used to install
+  // for this one bridge name (mounted later, so this wins).
+  const [logText, setLogText] = React.useState("Loading backfill log...");
+  // Mirrors react-app.jsx's own backfillLogUpdateTick - BackfillLogControls'
+  // scroll-sync effect must fire on every refresh, including ones where
+  // the fetched text happens to equal what's already shown (useState bails
+  // out of re-rendering on a same-value update otherwise).
+  const [logUpdateTick, setLogUpdateTick] = React.useState(0);
+  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail } = useBackfillActions();
 
   React.useEffect(() => {
     window.updateReactBackfillButtonState = (state) => {
       setButtonState(state || DEFAULT_BACKFILL_BUTTON_STATE);
     };
+    window.updateReactBackfillLogText = (text) => {
+      setLogText(text);
+      setLogUpdateTick((tick) => tick + 1);
+      return true;
+    };
     return () => {
       delete window.updateReactBackfillButtonState;
+      delete window.updateReactBackfillLogText;
     };
   }, []);
 
@@ -514,7 +535,9 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
         React.createElement(BackfillLogControls, {
           refreshLogDisabled: buttonState.refreshLogDisabled,
           onRefreshLog: () => refreshBackfillLogTail(),
-          onAutoscrollChange: () => autoScrollBackfillLogToBottom(),
+          logText,
+          logUpdateTick,
+          logContainer,
         }),
         logControlsRoot,
         "backfill-log-controls",
@@ -646,8 +669,9 @@ const installBackfillControlsBridge = () => {
   const container = document.createElement("div");
   const controlsRoot = document.getElementById("backfill-controls-root");
   const logControlsRoot = document.getElementById("backfill-log-controls-root");
+  const logContainer = document.getElementById("backfill-log");
   rtlRender(
-    React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot }),
+    React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
     { container },
   );
 };
@@ -743,17 +767,20 @@ const installRunScriptActionButtonsBridge = () => {
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
-// #output, #backfill-details, #backfill-log, #data-meta) are now
-// React-portaled plain text (react-app.jsx's AppRoot), not written directly
-// by index.page.js. Since this test file exercises index.page.js without
-// react-app.jsx's real <AppRoot/> ever mounting, these bridges are
-// otherwise never assigned - a plain textContent write is a faithful
-// simulation here since the real bridges do nothing more than that
+// #output, #backfill-details, #data-meta) are now React-portaled plain
+// text (react-app.jsx's AppRoot), not written directly by index.page.js.
+// Since this test file exercises index.page.js without react-app.jsx's
+// real <AppRoot/> ever mounting, these bridges are otherwise never
+// assigned - a plain textContent write is a faithful simulation here
+// since the real bridges do nothing more than that
 // (createPortal(text, container, key)), unlike the multi-select/filter-
 // summary bridges above which mount real components. (#scheduler-details/
 // #request-activity-details - and their bridges - were removed as
 // redundant with the activity drawer's own live display, see
-// REACT_MIGRATION_PLAN.md.)
+// REACT_MIGRATION_PLAN.md.) #backfill-log is the one exception now (Phase
+// G.4) - BackfillControlsTestHarness below owns that bridge via real
+// React state instead, since BackfillLogControls.jsx renders that portal
+// itself and needs its own scroll-sync effect to see the text change.
 const installReactStatusTextMountBridges = () => {
   const wireTextBridge = (bridgeName, containerId) => {
     window[bridgeName] = (text) => {
@@ -766,7 +793,12 @@ const installReactStatusTextMountBridges = () => {
   wireTextBridge("updateReactStatusText", "status");
   wireTextBridge("updateReactOutputText", "output");
   wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
-  wireTextBridge("updateReactBackfillLogText", "backfill-log");
+  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // updateReactBackfillLogText no longer wired here as a plain
+  // textContent-writer - BackfillControlsTestHarness (installed later via
+  // installBackfillControlsBridge(), always called right after this) now
+  // owns it via real React state, matching react-app.jsx's own AppRoot
+  // (BackfillLogControls renders the #backfill-log portal itself now).
   wireTextBridge("updateReactDataMetaText", "data-meta");
 };
 

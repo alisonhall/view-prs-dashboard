@@ -17,7 +17,6 @@ const BACKFILL_WINDOW_BRIDGES = [
   'showErrorNotification',
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
-  'autoScrollBackfillLogToBottom',
   'getBackfillTrackingState',
   'setSupportsBackfillLogPolling',
   'setIsBackfillActionPending',
@@ -48,7 +47,6 @@ describe('useBackfillActions', () => {
     window.setSupportsBackfillLogPolling = jest.fn();
     window.setIsBackfillActionPending = jest.fn();
     window.setBackfillLogMessage = jest.fn();
-    window.autoScrollBackfillLogToBottom = jest.fn();
     window.beginRequestActivity = jest.fn(() => finishActivity);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

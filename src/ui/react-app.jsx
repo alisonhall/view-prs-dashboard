@@ -604,6 +604,17 @@ function AppRoot() {
   const [outputText, setOutputText] = useState('Run the script to see output');
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
+  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillLogControls.jsx's own scroll-sync effect needs to fire on
+  // every log refresh, not just ones where the fetched text happens to
+  // differ from what's already shown (a real, common case - polling an
+  // unchanged log returns identical text) - useState bails out of
+  // re-rendering on a same-value update, so a plain [backfillLogText]
+  // effect dependency would silently miss those. This tick increments on
+  // every update regardless of content, passed down alongside
+  // backfillLogText as a separate dependency BackfillLogControls actually
+  // keys its effect on.
+  const [backfillLogUpdateTick, setBackfillLogUpdateTick] = useState(0);
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -734,6 +745,7 @@ function AppRoot() {
   useEffect(() => {
     window.updateReactBackfillLogText = (text) => {
       setBackfillLogText(text);
+      setBackfillLogUpdateTick((tick) => tick + 1);
       return true;
     };
     return () => {
@@ -1178,17 +1190,22 @@ function AppRoot() {
 
         {containers.backfillLogControls &&
           createPortal(
+            // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration
+            // roadmap"): BackfillLogControls now also owns the #backfill-log
+            // content portal itself (logText/logContainer below), not just
+            // the checkbox/button - it needs both to sync scroll position
+            // via a ref instead of the old window.autoScrollBackfillLogToBottom
+            // DOM-query bridge.
             <BackfillLogControls
               refreshLogDisabled={backfillButtonState.refreshLogDisabled}
               onRefreshLog={() => backfillActions.refreshBackfillLogTail()}
-              onAutoscrollChange={() => backfillActions.autoScrollBackfillLogToBottom()}
+              logText={backfillLogText}
+              logUpdateTick={backfillLogUpdateTick}
+              logContainer={containers.backfillLog}
             />,
             containers.backfillLogControls,
             'backfill-log-controls',
           )}
-
-        {containers.backfillLog &&
-          createPortal(backfillLogText, containers.backfillLog, 'backfill-log')}
 
         {hasActionLogBeenVisible && containers.actionLog &&
           createPortal(

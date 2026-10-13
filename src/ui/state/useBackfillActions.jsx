@@ -20,11 +20,11 @@ const BACKFILL_LOG_TAIL_LINES = 120;
 /**
  * Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * BackfillControls.jsx/BackfillLogControls.jsx used to reach
- * handleBackfillAction/refreshBackfillStatus/refreshBackfillLogTail/
- * autoScrollBackfillLogToBottom via window.* bridges straight into
- * index.page.js's own createPrBackfillActionHelpers instance. This hook
- * builds its own instance of the same pure factory directly instead - same
- * shape as useSinglePrUpdate.jsx.
+ * handleBackfillAction/refreshBackfillStatus/refreshBackfillLogTail via
+ * window.* bridges straight into index.page.js's own
+ * createPrBackfillActionHelpers instance. This hook builds its own
+ * instance of the same pure factory directly instead - same shape as
+ * useSinglePrUpdate.jsx.
  *
  * A handful of DI params still read/write index.page.js's own module-level
  * state via new reverse bridges (window.getBackfillTrackingState/
@@ -36,6 +36,18 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  * here would silently drift from what the orchestrator sees (e.g. a 404'd
  * log endpoint staying "supported" in this hook's copy after index.page.js's
  * copy already disabled it).
+ *
+ * Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * autoScrollBackfillLogToBottom is no longer part of this hook's own
+ * returned value, and this hook's own factory instance passes a no-op for
+ * that DI param (see its own inline comment) - BackfillLogControls.jsx now
+ * syncs scroll position itself via a ref, reacting to its own
+ * logUpdateTick prop changing (bumped on every log refresh, see
+ * react-app.jsx's own comment), so this hook's React-rendering-path
+ * caller no longer needs the window.autoScrollBackfillLogToBottom bridge
+ * at all. index.page.js's own
+ * instance of this same factory still passes the real bridge, for its own
+ * vanilla (non-React) caller.
  */
 export function useBackfillActions() {
   return useMemo(() => {
@@ -63,8 +75,17 @@ export function useBackfillActions() {
         updateBackfillStatusFromPayload: (...args) =>
           window.updateBackfillStatusFromPayload?.(...args),
         setBackfillLogMessage: (...args) => window.setBackfillLogMessage?.(...args),
-        autoScrollBackfillLogToBottom: (...args) =>
-          window.autoScrollBackfillLogToBottom?.(...args),
+        // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration
+        // roadmap"): a no-op here now, not window.autoScrollBackfillLogToBottom -
+        // setBackfillLogMessage above already flows into
+        // BackfillLogControls.jsx's own logText prop (via
+        // window.updateReactBackfillLogText), which syncs scroll position
+        // itself via a ref in its own useEffect. Calling the real bridge
+        // here too would just be redundant for this hook's own (React)
+        // caller - index.page.js's own vanilla instance of this same
+        // factory still passes the real bridge, for its own non-React
+        // caller.
+        autoScrollBackfillLogToBottom: () => {},
         formatBackfillLogMessage,
         getSupportsBackfillLogPolling: () =>
           window.getBackfillTrackingState?.()?.supportsBackfillLogPolling ?? true,
@@ -124,8 +145,6 @@ export function useBackfillActions() {
       handleBackfillAction,
       refreshBackfillStatus,
       refreshBackfillLogTail,
-      autoScrollBackfillLogToBottom: (...args) =>
-        window.autoScrollBackfillLogToBottom?.(...args),
     };
   }, []);
 }
