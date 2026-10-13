@@ -47,7 +47,6 @@ import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-vie
 import * as prSelectedFiltersHelperFactory from "./helpers/pr-selected-filters.helpers.js";
 import * as prRowFilteringHelperFactory from "./helpers/pr-row-filtering.helpers.js";
 import * as prRowMatchFiltersHelperFactory from "./helpers/pr-row-match-filters.helpers.js";
-import * as prDomVisibilityHelperFactory from "./helpers/pr-dom-visibility.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
 import * as prAuthorInsightsDraftsHelperFactory from "./helpers/pr-author-insights-drafts.helpers.js";
@@ -55,7 +54,6 @@ import * as prAutoRenderBlockingHelperFactory from "./helpers/pr-auto-render-blo
 import * as prAutoRenderIndicatorHelperFactory from "./helpers/pr-auto-render-indicator.helpers.js";
 import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-render-indicator-links.helpers.js";
 import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
-import * as prAutoRenderNavigationHelperFactory from "./helpers/pr-auto-render-navigation.helpers.js";
 import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
 import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.js";
 import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
@@ -898,17 +896,17 @@ const { buildRowFilterCriteria, applyRowUiFilters } =
     getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
   });
 
-const { expandAncestorDetailsElements, ensureInsightsRowVisibleForElement } =
-  prDomVisibilityHelperFactory.createPrDomVisibilityHelpers({
-    readElementAttribute: (...args) => readElementAttribute(...args),
-  });
-
+// Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// expandAncestorDetailsElements/ensureInsightsRowVisibleForElement (this
+// factory's only 2 exports) and getFirstUnsavedElementForPrNumber (below)
+// had no caller left besides the now-deleted navigateToPrInTable/
+// navigateToAuthorInsights - createPrDomVisibilityHelpers's own
+// instantiation is removed entirely, not just its outputs.
 const {
   getDirtyTrackedFields,
   getUnsavedNotesPrNumbers,
   normalizePrNumber,
   getBlockingPrNumbers,
-  getFirstUnsavedElementForPrNumber,
 } = prAutoRenderUnsavedHelperFactory.createPrAutoRenderUnsavedHelpers({
   getOptionalElementById,
   readElementAttribute: (...args) => readElementAttribute(...args),
@@ -960,7 +958,6 @@ const {
 const getAuthorInsightsComposerDraft = (...args) => window.getAuthorInsightsComposerDraft?.(...args);
 const updateAuthorInsightsComposerDraft = (...args) => window.updateAuthorInsightsComposerDraft?.(...args);
 const resetAuthorInsightsComposerDraft = (...args) => window.resetAuthorInsightsComposerDraft?.(...args);
-const getAuthorInsightsEditDraftMap = (...args) => window.getAuthorInsightsEditDraftMap?.(...args);
 const getAuthorInsightsEditDraft = (...args) => window.getAuthorInsightsEditDraft?.(...args);
 const updateAuthorInsightsEditDraft = (...args) => window.updateAuthorInsightsEditDraft?.(...args);
 const resetAuthorInsightsEditDraft = (...args) => window.resetAuthorInsightsEditDraft?.(...args);
@@ -1015,46 +1012,15 @@ const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
     formatBlockingPrNumbersLabel,
   });
 
-const {
-  navigateToPrInTable,
-  navigateToAuthorInsights,
-} = prAutoRenderNavigationHelperFactory.createPrAutoRenderNavigationHelpers({
-  normalizePrNumber,
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-  // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
-  // roadmap"): routed through TabStateProvider's own write bridge instead
-  // of calling the vanilla activateDataTab directly - the 3 data-tab
-  // buttons are React-rendered now, and would show stale active-state
-  // styling if a tab switch bypassed the Context that drives them.
-  activateDataTab: (...args) => window.setActiveDataTab?.(...args),
-  collectNodesByTag: (...args) => collectNodesByTag(...args),
-  expandAncestorDetailsElements,
-  ensureInsightsRowVisibleForElement,
-  getFirstUnsavedElementForPrNumber,
-  getOptionalElementById,
-  getAuthorInsightsComposerDraft,
-  isAuthorInsightsComposerDraftDirty,
-  getAuthorInsightsEditDraftMap,
-  getAuthorManualCommentsForLogin,
-  isAuthorInsightsEditDraftDirty,
-  authorInsightsState,
-  renderAuthorInsights: (...args) => renderAuthorInsights(...args),
-  // Same lazy-proxy reasoning as renderAuthorInsights above:
-  // prAuthorInsightsDisplayHelpers is declared later in this file - safe
-  // since this closure is only ever invoked long after full module
-  // evaluation, never at wiring time.
-  buildAuthorInsightsEntries: (...args) =>
-    prAuthorInsightsDisplayHelpers.buildAuthorInsightsEntries(...args),
-  documentRef: typeof document !== "undefined" ? document : null,
-  setTimeoutFn: (...args) => setTimeout(...args),
-  // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): same guard pr-author-insights-pr-link.
-  // helpers.js's own navigateToPrInTable already has, at its own call
-  // site below (isReactTableMounted defined further down in this file,
-  // line ~4092 - safe to reference here since this closure is only
-  // ever called later, never during module initialization).
-  isReactTableMounted: () => isReactTableMounted(),
-});
+// Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// createPrAutoRenderNavigationHelpers's navigateToPrInTable/
+// navigateToAuthorInsights used to be instantiated here - retired
+// outright (helpers/pr-auto-render-navigation.helpers.js deleted) in
+// favor of state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx,
+// real hooks that reuse PrTableApp.jsx's existing pr-navigate-to-insights
+// listener (for the row scroll/focus) and PrDataProvider/AuthorInsightsContext
+// Context (for the author-selection validation+write), rather than a
+// vanilla DOM-scanning helper.
 
 // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // AutoRenderBlockingProvider.jsx now owns pendingAutoRenderPayload/
@@ -3000,10 +2966,13 @@ const initPage = () => {
     // PrTableApp.jsx now imports all 3 directly from
     // helpers/pr-row-sorting.helpers.js instead (genuinely
     // zero-dependency), and no other component read them off window.
-    // ---- Auto-render-blocked indicator links (see
-    // components/AutoRenderBlockedLinks.jsx) ----
-    navigateToPrInTable,
-    navigateToAuthorInsights,
+    // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // navigateToPrInTable/navigateToAuthorInsights used to be bridged here
+    // too (see components/AutoRenderBlockedLinks.jsx) -
+    // state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx
+    // replace them as real hooks; createPrAutoRenderNavigationHelpers
+    // itself (helpers/pr-auto-render-navigation.helpers.js) had no other
+    // caller, so it was deleted outright, not just un-bridged.
   });
 
   // The initial loadStoredData() fetch below often resolves before the

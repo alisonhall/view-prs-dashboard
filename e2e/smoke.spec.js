@@ -283,6 +283,94 @@ test("editing a PR Notes field in the real React-owned row reports dirty state t
   await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
 });
 
+test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
+  // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
+  // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/
+  // window.navigateToAuthorInsights directly - both are real hooks now
+  // (state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx). No
+  // existing e2e spec drove these chips directly before this test - the 2
+  // "View in table" specs elsewhere in this file exercise a different,
+  // untouched sibling implementation (pr-author-insights-pr-link.helpers.js).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // PR #1 may also render in a smart group (membership is non-exclusive -
+  // see the "non-exclusive membership" tests elsewhere in this suite/
+  // PrTableApp.test.jsx), but which smart groups it currently qualifies
+  // for can shift depending on what an earlier test in this shared-webServer
+  // suite left behind (e.g. an In Review toggle) - scope to its own
+  // lifecycle section specifically, which is stable, and open that
+  // section first (same pattern as the "lifecycle section expand/collapse"
+  // test elsewhere in this file - sections default to collapsed).
+  const openSection = page.locator('[data-pr-section="open"]');
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.locator("summary").click();
+  }
+  const insightsToggle = page.locator('[data-pr-section="open"] [data-pr-number="1"] .row-insights-toggle');
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  // Scoped to the "open" section specifically (not just [data-pr-number="1"])
+  // for the same non-exclusive-smart-group reason as insightsToggle above -
+  // PR #1's row (and its own Notes section) can render twice.
+  const notesTextarea = page
+    .locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"]')
+    .getByPlaceholder("Other notes...");
+  await expect(notesTextarea).toBeVisible();
+  const originalValue = await notesTextarea.inputValue();
+  await notesTextarea.fill(`${originalValue}a note left during this test`);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
+
+  // The "Auto update paused" indicator (and its chips) only shows once a
+  // real poll's fresh data has actually been deferred, not merely because
+  // a field is dirty (AutoRenderBlockingProvider.jsx's own `isBlocked` -
+  // `pendingAutoRenderPayload` AND dirty fields both have to be true) -
+  // this suite's webServer serves static fixture data, so there's no real
+  // "new" payload for a genuine poll to defer. window.setPendingAutoRenderPayload
+  // is the same bridge a real poll result would call - using it directly
+  // here is the same "call the real bridge instead of orchestrating the
+  // full organic flow" technique this suite already uses for
+  // window.markPrsBusy/clearPrsBusy elsewhere. Uses the REAL current
+  // payload (window.getReactPrTablePayload), not a fake stub - clicking
+  // the "Author Insights" tab below blurs the dirty textarea, which
+  // triggers AutoRenderBlockingProvider's own real "apply once blurred"
+  // behavior (confirmed via a standalone debug run) - a fake/empty
+  // payload would actually get applied at that point and wipe the whole
+  // table, which a harmless same-data "pending" payload avoids.
+  await page.evaluate(() => {
+    const payload = window.getReactPrTablePayload?.();
+    window.setPendingAutoRenderPayload?.(payload);
+  });
+  await expect(page.locator("#auto-render-blocked-indicator")).toBeVisible();
+
+  // Switch away from the PR data tab - the row/Notes section stay mounted
+  // underneath (only the panel's `hidden` attribute changes), so the dirty
+  // state survives. Proves the chip click actually switches back, not
+  // that the tab was already active.
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await expect(page.locator("#tab-panel-author-insights")).toBeVisible();
+
+  const chip = page.getByRole("button", { name: "#1", exact: true });
+  await expect(chip).toBeVisible();
+  await chip.click();
+
+  await expect(page.locator("#tab-panel-pr-data")).toBeVisible();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  const saveButton = page.locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"] .pr-notes-save');
+  await expect(saveButton).toBeFocused();
+
+  // Clear the simulated pending payload - this suite's webServer is one
+  // long-lived process shared by every test, so leaving this set would
+  // keep the indicator stuck visible for whichever test runs next.
+  await page.evaluate(() => window.setPendingAutoRenderPayload?.(null));
+
+  // Restore the exact original value - this suite's webServer is one
+  // long-lived process shared by every test, so leaving this field
+  // genuinely dirty would bleed into whichever test runs next.
+  await notesTextarea.fill(originalValue);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+});
+
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
   // runAckAction/runApplyLabelAction (bulk operations submitted via the

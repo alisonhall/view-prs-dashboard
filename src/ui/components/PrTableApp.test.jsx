@@ -1007,4 +1007,83 @@ describe('PrTableApp', () => {
       expect(openSection.section.prs).toHaveLength(2);
     });
   });
+
+  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // state/useNavigateToPrInTable.jsx (AutoRenderBlockedLinks.jsx) dispatches
+  // this same event with a focusUnsaved detail flag now - this suite's own
+  // PrSection mock (top of file) means the real .pr-link/.pr-notes-save
+  // markup these assertions target never actually renders through
+  // PrTableApp itself, so each test inserts a standalone element matching
+  // the same selectors the real row/Notes-section markup would produce
+  // (PrNumberCell.jsx/NotesSection.jsx), directly into document.body -
+  // this still exercises PrTableApp's own effect logic for real (a global
+  // document.querySelector, not scoped to its own container), just without
+  // needing the full unmocked render tree.
+  describe('pr-navigate-to-insights (scroll/focus after insights-row expansion)', () => {
+    afterEach(() => {
+      document.body.querySelectorAll('[data-test-standalone]').forEach((el) => el.remove());
+    });
+
+    test('given focusUnsaved and a real unsaved Notes save button in the DOM, when the event fires, then that button ends up focused', async () => {
+      const notesSection = document.createElement('div');
+      notesSection.className = 'pr-notes-section';
+      notesSection.setAttribute('data-pr-number', '1');
+      notesSection.setAttribute('data-test-standalone', 'true');
+      const saveButton = document.createElement('button');
+      saveButton.className = 'pr-notes-save';
+      notesSection.appendChild(saveButton);
+      document.body.appendChild(notesSection);
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+      });
+
+      fireEvent(
+        window,
+        new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1', focusUnsaved: true } }),
+      );
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(saveButton);
+      });
+    });
+
+    test('given no focusUnsaved, when the event fires, then the row-link element ends up focused instead', async () => {
+      const cell = document.createElement('div');
+      cell.setAttribute('data-pr-number', '1');
+      cell.setAttribute('data-repo', 'owner/repo');
+      cell.setAttribute('data-test-standalone', 'true');
+      const link = document.createElement('a');
+      link.className = 'pr-link';
+      link.href = 'https://github.com/owner/repo/pull/1';
+      cell.appendChild(link);
+      document.body.appendChild(cell);
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+      });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(link);
+      });
+    });
+  });
 });

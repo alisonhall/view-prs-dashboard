@@ -472,6 +472,15 @@ export function PrTableApp({
   // state never changed. See navigateToPrInTable in
   // pr-author-insights-pr-link.helpers.js, which dispatches this event
   // instead of mutating the DOM directly when React owns the table.
+  //
+  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // state/useNavigateToPrInTable.jsx (AutoRenderBlockedLinks.jsx's "jump to
+  // unsaved PR" chips) dispatches this same event too, now with an extra
+  // `focusUnsaved` detail flag - pendingNavigationRef tracks which
+  // composite key to scroll/focus once its insights row actually renders
+  // (setExpandedInsights is async), since the scroll/focus target doesn't
+  // exist in the DOM yet at the moment this listener runs.
+  const pendingNavigationRef = useRef(null);
   useEffect(() => {
     const handleNavigateToInsights = (event) => {
       const prNumber = String(event.detail?.prNumber ?? '').trim();
@@ -485,6 +494,7 @@ export function PrTableApp({
       // field yet) has it, in which case this falls back to the first
       // number match, same as before this parameter existed.
       const repo = event.detail?.repo ? String(event.detail.repo) : '';
+      const focusUnsaved = Boolean(event.detail?.focusUnsaved);
       let matchingSection = null;
       let matchingEntry = null;
       sectionsRef.current.some((section) => {
@@ -504,6 +514,7 @@ export function PrTableApp({
         return;
       }
       const compositeKey = buildExpandedInsightsKey(matchingSection.key, matchingEntry?.repo, prNumber);
+      pendingNavigationRef.current = { compositeKey, prNumber, repo: matchingEntry?.repo || '', focusUnsaved };
       setExpandedInsights((prev) => ({ ...prev, [compositeKey]: true }));
     };
 
@@ -512,6 +523,46 @@ export function PrTableApp({
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
   }, []);
+
+  // Runs after the insights row for a pending navigation target has
+  // actually committed to the DOM (expandedInsights flips synchronously in
+  // React terms, but the row's own markup - including the Notes section's
+  // save button - only exists once this effect's render has happened).
+  // Mirrors vanilla's own scrollIntoView/focus behavior
+  // (navigateToPrInTable/navigateToAuthorInsights,
+  // pr-auto-render-navigation.helpers.js, now retired) - same selectors,
+  // just run from inside the component that owns this markup instead of a
+  // cross-cutting DOM scan.
+  useEffect(() => {
+    const pending = pendingNavigationRef.current;
+    if (!pending || !expandedInsights[pending.compositeKey]) {
+      return;
+    }
+    pendingNavigationRef.current = null;
+
+    const rowSelector = pending.repo
+      ? `[data-pr-number="${pending.prNumber}"][data-repo="${pending.repo}"]`
+      : `[data-pr-number="${pending.prNumber}"]`;
+
+    let focusTarget = null;
+    if (pending.focusUnsaved) {
+      focusTarget = document.querySelector(
+        `.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`,
+      );
+    }
+    if (!focusTarget) {
+      focusTarget = document.querySelector(`${rowSelector} .pr-link`);
+    }
+    if (!focusTarget) {
+      return;
+    }
+    if (typeof focusTarget.scrollIntoView === 'function') {
+      focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  }, [expandedInsights]);
 
   // Handler: Toggle section open/closed
   const handleToggleSection = (sectionKey) => {

@@ -878,6 +878,17 @@ function AppRoot() {
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 
+        {/* Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration
+            roadmap"): widened to also wrap AutoRenderBlockedLinks.jsx's
+            portal (further down, inside JobEventsProvider) - its own
+            useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx
+            hooks call useTabState() directly now, which silently resolved
+            to this Context's no-op default (not the real Provider) when
+            that portal sat outside this boundary, same "a sibling portal
+            needs to be a real descendant, not just visually adjacent"
+            class of bug Phase G's own PrActivityQueueProvider move fixed.
+            Caught by a real end-to-end test, not jsdom - this Provider is
+            cheap/pure state, so widening its scope costs nothing. */}
         <TabStateProvider>
           {containers.tabPrData &&
             createPortal(
@@ -933,7 +944,6 @@ function AppRoot() {
               containers.tabExport,
               'tab-export',
             )}
-        </TabStateProvider>
 
         <AutoRenderBlockingProvider>
           {containers.autoRenderBlockedStatus &&
@@ -1215,6 +1225,7 @@ function AppRoot() {
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
+        </TabStateProvider>
         </JobEventsProvider>
         </AuthorThreadResolutionSelectionProvider>
         </RowFilterSelectionProvider>

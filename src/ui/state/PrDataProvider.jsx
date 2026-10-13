@@ -527,10 +527,21 @@ export function PrDataProvider({
     setState((previous) => ({ ...previous, statsViewState: { ...previous.statsViewState, ...patch } }));
   }, []);
 
+  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // same write target window.updateReactSelectedAuthorLogin already uses
+  // (above) - exposed directly via Context too now, so
+  // state/useNavigateToAuthorInsights.jsx can write the validated author
+  // login without going through a window.* bridge for a React-to-React
+  // call.
+  const setSelectedAuthorLogin = useCallback((login) => {
+    setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
+  }, []);
+
   const value = {
     ...state,
     setPayload,
     setStatsViewState,
+    setSelectedAuthorLogin,
     pollForDataChanges,
     beginRequestActivity: activityHelpers.beginRequestActivity,
     renderRequestActivity: activityHelpers.renderRequestActivity,

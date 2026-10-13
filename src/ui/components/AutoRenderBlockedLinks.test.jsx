@@ -1,65 +1,137 @@
 /** @jest-environment jsdom */
 
-const { render, screen, fireEvent } = require('@testing-library/react');
+const React = require('react');
+const { render, screen, fireEvent, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AutoRenderBlockedLinks } = require('./AutoRenderBlockedLinks');
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
+const { TabStateProvider } = require('./TabStateProvider');
+const { useTabState } = require('../state/TabStateContext');
+const { PrDataProvider } = require('../state/PrDataProvider');
+const { usePrData } = require('../state/PrDataContext');
 
-const renderWithOverrides = (ui, overrides = {}) =>
-  render(<AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...overrides }}>{ui}</AuthorInsightsContext.Provider>);
+// Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// AutoRenderBlockedLinks.jsx now calls real hooks (useNavigateToPrInTable/
+// useNavigateToAuthorInsights) instead of window.navigateToPrInTable/
+// navigateToAuthorInsights - this harness wraps real TabStateProvider/
+// PrDataProvider (the hooks' own real dependencies) and exposes their
+// current values via a Probe, same shape every other hook test in this
+// migration uses.
+let latestTabState;
+let latestPrData;
+function Probe() {
+  latestTabState = useTabState();
+  latestPrData = usePrData();
+  return null;
+}
+
+const renderWithOverrides = (ui, authorInsightsOverrides = {}, { initialPayload } = {}) =>
+  render(
+    React.createElement(
+      PrDataProvider,
+      { initialPayload },
+      React.createElement(
+        TabStateProvider,
+        null,
+        React.createElement(
+          AuthorInsightsContext.Provider,
+          { value: { ...defaultAuthorInsights, ...authorInsightsOverrides } },
+          React.createElement(Probe),
+          ui,
+        ),
+      ),
+    ),
+  );
 
 describe('AutoRenderBlockedLinks', () => {
   afterEach(() => {
-    delete window.navigateToPrInTable;
-    delete window.navigateToAuthorInsights;
+    latestTabState = undefined;
+    latestPrData = undefined;
+    delete window.activateDataTab;
   });
 
   test('given no PR numbers or author logins, when rendering, then nothing renders', () => {
-    const { container } = renderWithOverrides(<AutoRenderBlockedLinks prNumbers={[]} authorLogins={[]} />);
-    expect(container).toBeEmptyDOMElement();
+    const { container } = render(
+      React.createElement(
+        PrDataProvider,
+        null,
+        React.createElement(
+          TabStateProvider,
+          null,
+          React.createElement(
+            AuthorInsightsContext.Provider,
+            { value: defaultAuthorInsights },
+            React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: [] }),
+          ),
+        ),
+      ),
+    );
+    expect(container.querySelector('button')).toBeNull();
   });
 
   test('given PR numbers, when rendering, then a chip is shown per PR number', () => {
-    renderWithOverrides(<AutoRenderBlockedLinks prNumbers={['15', '22']} authorLogins={[]} />);
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: ['15', '22'], authorLogins: [] }));
     expect(screen.getByRole('button', { name: '#15' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '#22' })).toBeInTheDocument();
   });
 
-  test('given a PR number chip, when clicked, then window.navigateToPrInTable is called with focusUnsaved', () => {
-    const calls = [];
-    window.navigateToPrInTable = (...args) => calls.push(args);
-    renderWithOverrides(<AutoRenderBlockedLinks prNumbers={['15']} authorLogins={[]} />);
+  test('given a PR number chip, when clicked, then it switches to the pr-data tab and dispatches pr-navigate-to-insights with focusUnsaved', () => {
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
 
-    fireEvent.click(screen.getByRole('button', { name: '#15' }));
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: ['15'], authorLogins: [] }));
 
-    expect(calls).toEqual([['15', { focusUnsaved: true }]]);
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '#15' }));
+    });
+
+    expect(latestTabState.activeDataTab).toBe('pr-data');
+    expect(events).toEqual([{ prNumber: '15', focusUnsaved: true }]);
+
+    window.removeEventListener('pr-navigate-to-insights', handler);
   });
 
   test('given author logins, when rendering, then a chip using the resolved display name is shown per author', () => {
-    renderWithOverrides(<AutoRenderBlockedLinks prNumbers={[]} authorLogins={['alice']} />, {
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['alice'] }), {
       getAuthorInsightsDisplayName: (login) => ({ alice: 'Alice A' }[login] || login),
     });
 
     expect(screen.getByRole('button', { name: 'Author: Alice A' })).toBeInTheDocument();
   });
 
-  test('given an author chip, when clicked, then window.navigateToAuthorInsights is called with focusUnsaved', () => {
-    const calls = [];
-    window.navigateToAuthorInsights = (...args) => calls.push(args);
-    renderWithOverrides(<AutoRenderBlockedLinks prNumbers={[]} authorLogins={['alice']} />, {
-      getAuthorInsightsDisplayName: (login) => login,
+  test('given an author chip, when clicked, then it switches to the author-insights tab and writes the validated selected author', () => {
+    renderWithOverrides(
+      React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['alice'] }),
+      {
+        getAuthorInsightsDisplayName: (login) => login,
+        buildAuthorInsightsEntries: () => [{ login: 'alice' }],
+      },
+      { initialPayload: { byPrNumber: { 1: {} }, actorsMap: {} } },
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Author: alice' }));
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Author: alice' }));
-
-    expect(calls).toEqual([['alice', { focusUnsaved: true }]]);
+    expect(latestTabState.activeDataTab).toBe('author-insights');
+    expect(latestPrData.selectedAuthorLogin).toBe('alice');
   });
 
-  test('given no window bridges are installed, when rendering and clicking, then nothing throws', () => {
-    renderWithOverrides(<AutoRenderBlockedLinks prNumbers={['15']} authorLogins={['alice']} />);
-    expect(() => {
-      fireEvent.click(screen.getByRole('button', { name: '#15' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Author: alice' }));
-    }).not.toThrow();
+  test('given the requested author no longer exists in the current options, when clicked, then it falls back to the first valid option instead of writing the stale login', () => {
+    renderWithOverrides(
+      React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['stale-login'] }),
+      {
+        getAuthorInsightsDisplayName: (login) => login,
+        buildAuthorInsightsEntries: () => [{ login: 'alice' }],
+      },
+      { initialPayload: { byPrNumber: { 1: {} }, actorsMap: {} } },
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Author: stale-login' }));
+    });
+
+    expect(latestPrData.selectedAuthorLogin).toBe('alice');
   });
 });
