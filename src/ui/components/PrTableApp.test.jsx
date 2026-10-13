@@ -55,7 +55,26 @@ const { PrDataProvider } = require('../state/PrDataProvider');
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
 const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor) - the 3 selection Providers wrap PrDataProvider/
+// FilterStateProvider now, not the other way around, matching
+// react-app.jsx's real AppRoot order after this phase's reorder.
+function AllSelectionProviders({ children }) {
+  return (
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>{children}</ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
+  );
+}
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
@@ -98,33 +117,33 @@ const renderPrTableApp = ({
   ...tableProps
 } = {}) =>
   render(
-    <PrDataProvider
-      initialPayload={initialPayload}
-      initialSelectedRepo={selectedRepo}
-    >
-      <FilterStateProvider
-        initialValues={{
-          scopeMode: 'all',
-          filterPrNumbers: '',
-          alwaysShowInReview: false,
-          filterCustomComments: '',
-          filterOtherNotes: '',
-          filterPrDifficulty: '',
-          filterRallyStories: '',
-          filterRallyLinks: '',
-          filterAnalysisOfPr: '',
-          ...filterStateValues,
-        }}
+    <AllSelectionProviders>
+      <PrDataProvider
+        initialPayload={initialPayload}
+        initialSelectedRepo={selectedRepo}
       >
-        <RowFilterSelectionProvider>
+        <FilterStateProvider
+          initialValues={{
+            scopeMode: 'all',
+            filterPrNumbers: '',
+            alwaysShowInReview: false,
+            filterCustomComments: '',
+            filterOtherNotes: '',
+            filterPrDifficulty: '',
+            filterRallyStories: '',
+            filterRallyLinks: '',
+            filterAnalysisOfPr: '',
+            ...filterStateValues,
+          }}
+        >
           <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
             <PrActivityQueueProvider>
               <PrTableApp {...tableProps} />
             </PrActivityQueueProvider>
           </NeedsAttentionContext.Provider>
-        </RowFilterSelectionProvider>
-      </FilterStateProvider>
-    </PrDataProvider>,
+        </FilterStateProvider>
+      </PrDataProvider>
+    </AllSelectionProviders>,
   );
 
 function installSectionHelpers() {
@@ -492,15 +511,15 @@ describe('PrTableApp', () => {
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       const buildTree = (attentionFlag) => (
-        <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-          <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
-            <RowFilterSelectionProvider>
+        <AllSelectionProviders>
+          <PrDataProvider initialPayload={payload} initialSelectedRepo="">
+            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
               <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
                 <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
               </NeedsAttentionContext.Provider>
-            </RowFilterSelectionProvider>
-          </FilterStateProvider>
-        </PrDataProvider>
+            </FilterStateProvider>
+          </PrDataProvider>
+        </AllSelectionProviders>
       );
 
       const { rerender } = render(buildTree(false));

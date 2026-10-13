@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { FilterStateContext } from './FilterStateContext';
 import { useDebouncedEffect } from './useDebouncedCallback';
+import { useRowFilterSelection } from './RowFilterSelectionContext';
+import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSelectionContext';
+import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.js';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.js';
 import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.js';
@@ -89,15 +92,33 @@ const CHECKBOX_FIELD_IDS = [
  * (`setPendingMultiSelectSelection`, imported directly - that store is
  * deliberately `window`-level already, see its own file's comment, so
  * calling it from here is no different than index.page.js calling it).
- * Their *persist* side still reads real DOM checkboxes via injected
- * `window.*` bridges (`window.getSelectedAuthorLogins` etc.,
- * `index.page.js`) - those lists are React-rendered but DOM-is-the-
- * checked-truth by design, untouched by this phase.
+ *
+ * Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+ * 9 lists' *persist* side (`buildOverrides` below) now reads
+ * `useRowFilterSelection()`/`useAuthorThreadResolutionSelection()`/
+ * `useChangeFilterActorSelection()` directly, instead of the
+ * `window.getSelectedAuthorLogins` etc. DOM-scan bridges it used before -
+ * this Provider had to become a genuine descendant of all 3 Contexts for
+ * that (see react-app.jsx's own Provider-tree comment). `index.page.js`'s
+ * separate `getFormBody()` call (run-script form submission, not
+ * persistence) still reads those same DOM-scan bridges directly - that's
+ * genuinely vanilla with no render-tree position, out of this phase's
+ * scope.
  */
 export function FilterStateProvider({ initialValues, children }) {
   const [values, setValues] = useState(initialValues);
   const valuesRef = useRef(values);
   valuesRef.current = values;
+
+  // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // buildOverrides below reads these 3 Contexts directly instead of the
+  // window.getSelectedXxx DOM-scan bridges those lists used to be checked-
+  // state-only-in-the-DOM for - requires this Provider to be a genuine
+  // descendant of all 3 (see react-app.jsx's own Provider-tree comment for
+  // why that reorder was needed).
+  const rowFilterSelection = useRowFilterSelection();
+  const authorThreadResolutionSelection = useAuthorThreadResolutionSelection();
+  const changeFilterActorSelection = useChangeFilterActorSelection();
 
   const setValue = useCallback((key, value) => {
     setValues((previous) => ({ ...previous, [key]: value }));
@@ -257,18 +278,25 @@ export function FilterStateProvider({ initialValues, children }) {
         delete overrides[id];
       }
     };
-    setArrayField('author', () => window.getSelectedAuthorLogins?.());
-    setArrayField('assigned', () => window.getSelectedAssignedLogins?.());
-    setArrayField('approver', () => window.getSelectedApproverLogins?.());
+    const checkedList = (checkedByListId, listId) => Array.from(checkedByListId[listId] || []);
+    setArrayField('author', () => checkedList(rowFilterSelection.checkedByListId, 'author-list'));
+    setArrayField('assigned', () => checkedList(rowFilterSelection.checkedByListId, 'assigned-list'));
+    setArrayField('approver', () => checkedList(rowFilterSelection.checkedByListId, 'approver-list'));
     setArrayField('attention-author-thread-resolution-allow', () =>
-      window.getSelectedAuthorThreadResolutionAllowLogins?.(),
+      checkedList(
+        authorThreadResolutionSelection.checkedByListId,
+        'attention-author-thread-resolution-allow-list',
+      ),
     );
     setArrayField('attention-author-thread-resolution-deny', () =>
-      window.getSelectedAuthorThreadResolutionDenyLogins?.(),
+      checkedList(
+        authorThreadResolutionSelection.checkedByListId,
+        'attention-author-thread-resolution-deny-list',
+      ),
     );
 
     if (includeField('label')) {
-      const selected = window.getSelectedIncludeLabelNames?.() || [];
+      const selected = checkedList(rowFilterSelection.checkedByListId, 'label-list');
       if (selected.length > 0) {
         overrides.label = selected.join(', ');
       } else {
@@ -276,7 +304,7 @@ export function FilterStateProvider({ initialValues, children }) {
       }
     }
     if (includeField('exclude-label')) {
-      const selected = window.getSelectedExcludeLabelNames?.() || [];
+      const selected = checkedList(rowFilterSelection.checkedByListId, 'exclude-label-list');
       if (selected.length > 0) {
         overrides['exclude-label'] = selected.join(', ');
       } else {
@@ -307,7 +335,10 @@ export function FilterStateProvider({ initialValues, children }) {
         }
       }
       if (includeField('change-filter-ignore-comment-authors')) {
-        const selected = window.getSelectedChangeFilterIgnoreCommentAuthors?.() || [];
+        const selected = checkedList(
+          changeFilterActorSelection.checkedByListId,
+          'change-filter-ignore-comment-authors-list',
+        );
         if (selected.length > 0) {
           changeFilters.ignoreCommentsFromAuthors = selected;
         } else {
@@ -315,7 +346,10 @@ export function FilterStateProvider({ initialValues, children }) {
         }
       }
       if (includeField('change-filter-ignore-review-authors')) {
-        const selected = window.getSelectedChangeFilterIgnoreReviewAuthors?.() || [];
+        const selected = checkedList(
+          changeFilterActorSelection.checkedByListId,
+          'change-filter-ignore-review-authors-list',
+        );
         if (selected.length > 0) {
           changeFilters.ignoreReviewsFromAuthors = selected;
         } else {
@@ -342,7 +376,7 @@ export function FilterStateProvider({ initialValues, children }) {
     }
 
     return overrides;
-  }, []);
+  }, [rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection]);
 
   const persistRunScriptOptions = useCallback(async () => {
     const existingOverrides = await readUiSessionOverrides();

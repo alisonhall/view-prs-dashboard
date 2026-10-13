@@ -6,6 +6,27 @@ const { PrDataProvider } = require('./PrDataProvider');
 const { FilterStateProvider } = require('./FilterStateProvider');
 const { useFilterState } = require('./FilterStateContext');
 const { useMergedRequestMoreActionOptions } = require('./useMergedRequestMoreActionOptions');
+const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every FilterStateProvider render in this file
+// needs them too - matching react-app.jsx's real AppRoot order
+// (the 3 selection Providers wrap PrDataProvider/FilterStateProvider, not
+// the other way around).
+function AllSelectionProviders({ children }) {
+  return (
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>{children}</ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
+  );
+}
 
 function Probe() {
   const { isVisible, repo } = useMergedRequestMoreActionOptions();
@@ -19,11 +40,13 @@ function Probe() {
 
 const renderProbe = ({ payload, selectedRepo, filterStateValues } = {}) =>
   render(
-    <PrDataProvider initialPayload={payload} initialSelectedRepo={selectedRepo}>
-      <FilterStateProvider initialValues={{ scopeMode: 'all', ...filterStateValues }}>
-        <Probe />
-      </FilterStateProvider>
-    </PrDataProvider>,
+    <AllSelectionProviders>
+      <PrDataProvider initialPayload={payload} initialSelectedRepo={selectedRepo}>
+        <FilterStateProvider initialValues={{ scopeMode: 'all', ...filterStateValues }}>
+          <Probe />
+        </FilterStateProvider>
+      </PrDataProvider>
+    </AllSelectionProviders>,
   );
 
 describe('useMergedRequestMoreActionOptions', () => {
@@ -78,11 +101,13 @@ describe('useMergedRequestMoreActionOptions', () => {
     }
 
     render(
-      <PrDataProvider initialPayload={{ ok: true }} initialSelectedRepo="owner/repo">
-        <FilterStateProvider initialValues={{ scopeMode: 'all' }}>
-          <ToggleableProbe />
-        </FilterStateProvider>
-      </PrDataProvider>,
+      <AllSelectionProviders>
+        <PrDataProvider initialPayload={{ ok: true }} initialSelectedRepo="owner/repo">
+          <FilterStateProvider initialValues={{ scopeMode: 'all' }}>
+            <ToggleableProbe />
+          </FilterStateProvider>
+        </PrDataProvider>
+      </AllSelectionProviders>,
     );
     expect(screen.getByTestId('is-visible').textContent).toBe('true');
 

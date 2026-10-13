@@ -7,6 +7,8 @@ const { useRowFilterSelection } = require('./RowFilterSelectionContext');
 const { PrDataProvider } = require('./PrDataProvider');
 const { FilterStateProvider } = require('./FilterStateProvider');
 const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
 const { JobEventsContext } = require('./JobEventsContext');
 const { useAppliedFilterSummary } = require('./useAppliedFilterSummary');
 
@@ -48,23 +50,34 @@ const renderProbe = ({
   schedulerSummary = SCHEDULER_SUMMARY,
 } = {}) =>
   render(
-    <PrDataProvider initialPayload={payload} initialSelectedRepo={selectedRepo}>
-      <FilterStateProvider
-        initialValues={{
-          scopeMode: 'all',
-          filterPrNumbers: '',
-          alwaysShowInReview: false,
-          openMode: 'none',
-          ...filterStateValues,
-        }}
-      >
-        <RowFilterSelectionProvider>
-          <JobEventsContext.Provider value={{ schedulerSummary }}>
-            <Probe />
-          </JobEventsContext.Provider>
-        </RowFilterSelectionProvider>
-      </FilterStateProvider>
-    </PrDataProvider>,
+    // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
+    // ChangeFilterActorSelectionProvider now wrap PrDataProvider/
+    // FilterStateProvider, not the other way around - FilterStateProvider's
+    // own buildOverrides() calls all 3 Contexts' hooks directly now
+    // (they throw without a real Provider ancestor), matching
+    // react-app.jsx's real AppRoot order after this phase's reorder.
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <PrDataProvider initialPayload={payload} initialSelectedRepo={selectedRepo}>
+            <FilterStateProvider
+              initialValues={{
+                scopeMode: 'all',
+                filterPrNumbers: '',
+                alwaysShowInReview: false,
+                openMode: 'none',
+                ...filterStateValues,
+              }}
+            >
+              <JobEventsContext.Provider value={{ schedulerSummary }}>
+                <Probe />
+              </JobEventsContext.Provider>
+            </FilterStateProvider>
+          </PrDataProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('useAppliedFilterSummary', () => {
@@ -105,16 +118,20 @@ describe('useAppliedFilterSummary', () => {
     const payload = { byPrNumber: { 1: { prNumber: '1', data: { number: 1, labels: ['bug'] } } } };
 
     render(
-      <PrDataProvider initialPayload={payload} initialSelectedRepo="owner/repo">
-        <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
-          <RowFilterSelectionProvider>
-            <Seed listId="label-list" values={['bug', 'docs']} />
-            <JobEventsContext.Provider value={{ schedulerSummary: SCHEDULER_SUMMARY }}>
-              <Probe />
-            </JobEventsContext.Provider>
-          </RowFilterSelectionProvider>
-        </FilterStateProvider>
-      </PrDataProvider>,
+      <RowFilterSelectionProvider>
+        <AuthorThreadResolutionSelectionProvider>
+          <ChangeFilterActorSelectionProvider>
+            <PrDataProvider initialPayload={payload} initialSelectedRepo="owner/repo">
+              <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+                <Seed listId="label-list" values={['bug', 'docs']} />
+                <JobEventsContext.Provider value={{ schedulerSummary: SCHEDULER_SUMMARY }}>
+                  <Probe />
+                </JobEventsContext.Provider>
+              </FilterStateProvider>
+            </PrDataProvider>
+          </ChangeFilterActorSelectionProvider>
+        </AuthorThreadResolutionSelectionProvider>
+      </RowFilterSelectionProvider>,
     );
 
     expect(screen.getByTestId('summary-text').textContent).toContain('label=bug, docs');

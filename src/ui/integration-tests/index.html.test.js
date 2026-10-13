@@ -12,7 +12,7 @@ const React = require("react");
 // `screen`/`waitFor`/`within` below read from) with an eventWrapper that
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
-const { render: rtlRender, cleanup } = require("@testing-library/react");
+const { render: rtlRender, cleanup, act } = require("@testing-library/react");
 const { createPortal } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
@@ -49,6 +49,7 @@ const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../co
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
+const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
@@ -84,6 +85,21 @@ let actionLogEntries = [];
 let actorNameCacheEntries = {};
 let actorLoginAliasEntries = {};
 let fetchMock;
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// installFilterStateProviderBridge() and window.mountReactPrTable used to
+// be two independent rtlRender trees - harmless while FilterStateProvider
+// read the 9 multi-select lists' checked-state via window.* DOM-scan
+// bridges, but broken once it reads RowFilterSelectionContext/
+// AuthorThreadResolutionSelectionContext/ChangeFilterActorSelectionContext
+// directly (two separate React trees can never share a Context instance,
+// no matter how their DOM output is nested - Context flows through the
+// component tree, not the DOM). FilterStateTestRootHarness (below) is now
+// the single persistent root that owns all 3 selection Providers plus
+// FilterStateProvider; this holds the "mount a PR table into this
+// container" request so window.mountReactPrTable can trigger a
+// createPortal from *inside* that same tree instead of starting a second,
+// disconnected one.
+let mountReactPrTableSlotController = null;
 
 const createFetchMock = ({
   userDefaultsOverrides = {},
@@ -529,10 +545,97 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot }) {
 // without this, persistViewFilterOptions would see `undefined` (reads as
 // `false`) and incorrectly treat an untouched checkbox as a non-default
 // override.
+//
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// MountedPrTableTree is the same PrDataProvider > (NeedsAttentionProvider >
+// NotesDirtyProvider > PrTableApp) + (FilterOptionsProvider >
+// MultiSelectListPortals) tree window.mountReactPrTable used to rtlRender
+// as its own, separate top-level root - extracted here so it can instead
+// be the child of a createPortal called from inside
+// FilterStateTestRootHarness's single persistent tree (see that
+// component's own comment, and mountReactPrTableSlotController's).
+function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange, onAckAction, onApplyLabel }) {
+  return React.createElement(
+    PrDataProvider,
+    { initialPayload, initialSelectedRepo: selectedRepo },
+    React.createElement(
+      NeedsAttentionProvider,
+      null,
+      React.createElement(
+        NotesDirtyProvider,
+        null,
+        React.createElement(PrTableApp, { onCheckboxChange, onAckAction, onApplyLabel }),
+      ),
+    ),
+    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted inside
+    // the SAME <PrDataProvider /> instance as PrTableApp above - matching
+    // react-app.jsx's real AppRoot structure, so FilterOptionsProvider
+    // derives its 9 option lists from the exact payload/selectedRepo the
+    // table itself is showing, not a second, independently-fed copy.
+    React.createElement(
+      FilterOptionsProvider,
+      null,
+      React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+    ),
+  );
+}
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// single persistent root for both FilterStateProvider and (once
+// window.mountReactPrTable is actually called) MountedPrTableTree above,
+// replacing 2 previously-independent rtlRender trees - see
+// mountReactPrTableSlotController's own comment for why that merge was
+// necessary. Nesting order matches react-app.jsx's real AppRoot
+// (RowFilterSelectionProvider > AuthorThreadResolutionSelectionProvider >
+// ChangeFilterActorSelectionProvider > ... > FilterStateProvider) so
+// FilterStateProvider's buildOverrides() resolves the exact same Context
+// instances MultiSelectListPortals (inside the portaled MountedPrTableTree)
+// writes into.
+function FilterStateTestRootHarness({ initialValues }) {
+  const [mountRequest, setMountRequest] = React.useState(null);
+
+  React.useEffect(() => {
+    mountReactPrTableSlotController = {
+      mount: (containerElement, props) => setMountRequest({ containerElement, props }),
+    };
+    return () => {
+      mountReactPrTableSlotController = null;
+    };
+  }, []);
+
+  return React.createElement(
+    RowFilterSelectionProvider,
+    null,
+    React.createElement(
+      AuthorThreadResolutionSelectionProvider,
+      null,
+      React.createElement(
+        ChangeFilterActorSelectionProvider,
+        null,
+        React.createElement(
+          FilterStateProvider,
+          { initialValues },
+          mountRequest &&
+            createPortal(
+              React.createElement(MountedPrTableTree, {
+                initialPayload: mountRequest.props?.initialPayload,
+                selectedRepo: mountRequest.props?.selectedRepo,
+                onCheckboxChange: mountRequest.props?.onCheckboxChange,
+                onAckAction: mountRequest.props?.onAckAction,
+                onApplyLabel: mountRequest.props?.onApplyLabel,
+              }),
+              mountRequest.containerElement,
+            ),
+        ),
+      ),
+    ),
+  );
+}
+
 const installFilterStateProviderBridge = () => {
   const container = document.createElement("div");
   rtlRender(
-    React.createElement(FilterStateProvider, {
+    React.createElement(FilterStateTestRootHarness, {
       initialValues: { changeFilterUseBuiltinMergePattern: true },
     }),
     { container },
@@ -737,67 +840,24 @@ const installReactTableMountBridge = () => {
   installReactSnackbarMountBridge();
   installReactActionButtonMountBridges();
 
+  // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): no
+  // longer its own independent rtlRender tree - renders MountedPrTableTree
+  // (installFilterStateProviderBridge's own comment) via createPortal from
+  // *inside* FilterStateTestRootHarness's single persistent tree instead,
+  // so it shares one RowFilterSelectionProvider/
+  // AuthorThreadResolutionSelectionProvider/ChangeFilterActorSelectionProvider/
+  // FilterStateProvider instance with it (two separate rtlRender trees
+  // can never share a Context instance). act() flushes the resulting
+  // setState synchronously, matching this bridge's previous
+  // rtlRender-backed synchronous-mount contract. Every real call site
+  // calls installFilterStateProviderBridge() first (initTestPage(), and
+  // the one other installReactTableMountBridge() call site below) so
+  // mountReactPrTableSlotController is always set by the time this runs.
   window.mountReactPrTable = (containerElement, props) => {
     if (!containerElement) return null;
-    rtlRender(
-      React.createElement(
-        PrDataProvider,
-        {
-          initialPayload: props?.initialPayload,
-          initialSelectedRepo: props?.selectedRepo,
-        },
-        // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
-        // RowFilterSelectionProvider wraps both sibling subtrees below,
-        // matching react-app.jsx's own AppRoot structure - PrTableApp's
-        // useVisiblePrNumbers and MultiSelectListPortals' seeding both need
-        // the same Context. FilterStateProvider itself is NOT mounted here
-        // (it's mounted separately, once, via installFilterStateProviderBridge
-        // - see that function's own comment for why it's required now and
-        // how its DOM/Context gap for this reduced harness's unmounted
-        // filter-field inputs is handled). useVisiblePrNumbers itself
-        // tolerates a missing FilterStateProvider gracefully regardless
-        // (reads FilterStateContext directly with safe defaults, not the
-        // throwing useFilterState() hook).
-        React.createElement(
-          RowFilterSelectionProvider,
-          null,
-          // AuthorThreadResolutionSelectionProvider wraps the same scope as
-          // RowFilterSelectionProvider, same reasoning (Phase 7, see
-          // REACT_MIGRATION_PLAN.md) - MultiSelectListPortals' seeding needs
-          // it too, now that it also mirrors the 2 thread-resolution lists
-          // into Context (ReviewThreadsSection.jsx's own read).
-          React.createElement(
-            AuthorThreadResolutionSelectionProvider,
-            null,
-            React.createElement(
-              NeedsAttentionProvider,
-              null,
-              React.createElement(
-                NotesDirtyProvider,
-                null,
-                React.createElement(PrTableApp, {
-                  onCheckboxChange: props?.onCheckboxChange,
-                  onAckAction: props?.onAckAction,
-                  onApplyLabel: props?.onApplyLabel,
-                }),
-              ),
-            ),
-            // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted
-            // inside the SAME <PrDataProvider /> instance as PrTableApp above -
-            // matching react-app.jsx's real AppRoot structure, so
-            // FilterOptionsProvider derives its 9 option lists from the exact
-            // payload/selectedRepo the table itself is showing, not a second,
-            // independently-fed copy.
-            React.createElement(
-              FilterOptionsProvider,
-              null,
-              React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
-            ),
-          ),
-        ),
-      ),
-      { container: containerElement },
-    );
+    act(() => {
+      mountReactPrTableSlotController.mount(containerElement, props);
+    });
     return { unmount: () => {} };
   };
 };
@@ -3427,6 +3487,20 @@ describe("index page rendering with Testing Library", () => {
       window.marked = {
         parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
       };
+
+      // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // this standalone test (unlike the main initTestPage() flow) didn't
+      // previously need installFilterStateProviderBridge() at all, since
+      // window.mountReactPrTable used to be its own independent tree - now
+      // that it portals into FilterStateTestRootHarness's tree instead
+      // (see mountReactPrTableSlotController's own comment),
+      // window.mountReactPrTable requires this to have run first. Must
+      // come after the fetchMock assignment above, same ordering reason
+      // installFilterStateProviderBridge()'s own comment gives for the
+      // main flow (its restore effect fires a GET immediately on mount) -
+      // this test's fetchMock already falls through to baseFetch for
+      // /view-prs/user-defaults.
+      installFilterStateProviderBridge();
 
       require("../index.page.js");
 
@@ -9026,20 +9100,37 @@ describe("index page rendering with Testing Library", () => {
         }
       });
 
-      // Check comment author selections are restored
-      const commentAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-comment-authors-list",
-      );
-      expect(commentAuthorsSelections).toEqual(
-        expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
-      );
-      expect(commentAuthorsSelections.length).toBe(2);
+      // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // these 2 lists are now also Context-controlled
+      // (ChangeFilterActorSelectionContext) - the pending-selection restore
+      // path's own clear-after-consuming step (setPendingMultiSelectSelection
+      // (key, null), pr-pending-multi-select-selections.helpers.js) notifies
+      // this component's subscription again, re-running the seeding effect
+      // one more time before the checked-state Context write from the
+      // previous pass has committed to the DOM - same transient settling
+      // window the existing thread-resolution restore test above already
+      // wraps in waitFor (getSelectedMultiSelectValues reads the live DOM,
+      // which briefly lags the Context write). A plain synchronous
+      // assertion here was fine before these 2 lists had this extra
+      // Context-driven re-render step.
+      await waitFor(() => {
+        // Check comment author selections are restored
+        const commentAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-comment-authors-list",
+        );
+        expect(commentAuthorsSelections).toEqual(
+          expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
+        );
+        expect(commentAuthorsSelections.length).toBe(2);
+      });
 
       // Check review author selections are restored
-      const reviewAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-review-authors-list",
-      );
-      expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      await waitFor(() => {
+        const reviewAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-review-authors-list",
+        );
+        expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      });
 
       // Check commit patterns are restored - Phase E (see
       // REACT_MIGRATION_PLAN.md, "Full migration roadmap"): restore now

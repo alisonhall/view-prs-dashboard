@@ -63,6 +63,7 @@ import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
+import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
 import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
@@ -775,6 +776,37 @@ function AppRoot() {
   }, []);
 
   return (
+    <RowFilterSelectionProvider>
+    {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
+        RowFilterSelectionProvider wraps everything below for the same
+        cross-portal-sharing reason RepoLabelsProvider (further down) does -
+        MultiSelectListPortals (the filter-field portals further down)
+        and PrTableApp's own useVisiblePrNumbers (inside the prTable
+        portal) are sibling portals, not an ancestor/descendant pair,
+        that both need the same 5 row-filtering lists' checked-state.
+        Phase G.3 (see REACT_MIGRATION_PLAN.md) moved this Provider (and
+        AuthorThreadResolutionSelectionProvider/ChangeFilterActorSelectionProvider
+        below) to wrap PrDataProvider/FilterStateProvider, not the other
+        way around as before - FilterStateProvider's own buildOverrides()
+        now reads all 3 Contexts directly (useRowFilterSelection() etc.)
+        instead of a DOM-scan window.* bridge, which requires it to be a
+        genuine descendant, not an ancestor, of all 3 - the same
+        "component can't be descendant of what it renders" constraint
+        Phase G's own PrActivityQueueProvider move and Phase G.1's
+        TabStateProvider widening already ran into. */}
+    <AuthorThreadResolutionSelectionProvider>
+    {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorThreadResolutionSelectionProvider
+        wraps the same scope as RowFilterSelectionProvider, same reasoning,
+        just for the 2 thread-resolution allow/deny lists instead of the 5
+        row-filtering ones - MultiSelectListPortals (seeds it) and
+        ReviewThreadsSection (reads it, inside the prTable portal) are
+        sibling portals too. */}
+    <ChangeFilterActorSelectionProvider>
+    {/* Phase G.3 (see REACT_MIGRATION_PLAN.md): ChangeFilterActorSelectionProvider
+        wraps the same scope, same reasoning, for the last 2 of the 9
+        multi-select lists to get a Context mirror (the 2 change-filter
+        actor lists) - FilterStateProvider's buildOverrides() reads it
+        directly too. */}
     <PrDataProvider
       initialPayload={{}}
       initialSelectedRepo=""
@@ -796,21 +828,6 @@ function AppRoot() {
             every one of those remounts (author/tab switches), and nothing
             about it is specific to any single portal. */}
         <AuthorInsightsDraftsProvider>
-        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
-            RowFilterSelectionProvider wraps everything below for the same
-            cross-portal-sharing reason RepoLabelsProvider does -
-            MultiSelectListPortals (the filter-field portals further down)
-            and PrTableApp's own useVisiblePrNumbers (inside the prTable
-            portal) are sibling portals, not an ancestor/descendant pair,
-            that both need the same 5 row-filtering lists' checked-state. */}
-        <RowFilterSelectionProvider>
-        {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorThreadResolutionSelectionProvider
-            wraps everything below for the same cross-portal-sharing reason
-            RowFilterSelectionProvider does, just for the 2 thread-resolution
-            allow/deny lists instead of the 5 row-filtering ones -
-            MultiSelectListPortals (seeds it) and ReviewThreadsSection (reads
-            it, inside the prTable portal) are sibling portals too. */}
-        <AuthorThreadResolutionSelectionProvider>
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
             JobEventsProvider widened from "just the drawer portal" (its own
             prior comment here predicted this) to wrap everything
@@ -1227,13 +1244,14 @@ function AppRoot() {
           )}
         </TabStateProvider>
         </JobEventsProvider>
-        </AuthorThreadResolutionSelectionProvider>
-        </RowFilterSelectionProvider>
         </AuthorInsightsDraftsProvider>
         </RepoLabelsProvider>
       </FilterStateProvider>
       <PrDataPolling />
     </PrDataProvider>
+    </ChangeFilterActorSelectionProvider>
+    </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
   );
 }
 

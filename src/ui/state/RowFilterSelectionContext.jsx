@@ -7,9 +7,11 @@ import { createContext, useContext } from 'react';
  * no Context mirror at all before this (sub-phase 7.4 deliberately left
  * them DOM/local-component-state-only; see RowFilterSelectionProvider.jsx's
  * own comment for why that's revisited now). The other 4 multi-selects
- * (thread-resolution allow/deny, the 2 change-filter actor lists) don't
- * feed row filtering and stay exactly as they were - local state inside
- * MultiSelectCheckboxList, untouched by this Context.
+ * don't feed row filtering and have their own, separate Contexts instead
+ * (AuthorThreadResolutionSelectionContext for thread-resolution allow/deny,
+ * and, as of Phase G.3 - see REACT_MIGRATION_PLAN.md,
+ * ChangeFilterActorSelectionContext for the 2 change-filter actor lists)
+ * rather than widening this one for a different concern.
  *
  * `checkedByListId` is a plain object keyed by the 5 list ids
  * (MultiSelectListPortals.jsx's own `MULTI_SELECT_LIST_ID_PREFIXES` keys),
