@@ -2134,15 +2134,20 @@ const isReactTableMounted = () => reactTableMounted;
 // most recently refreshed - not necessarily the user's configured repo)
 // while the just-computed visiblePrNumbers filter still reflected the
 // correct repo, filtering every row out.
+// Phase G.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// "refetch labels when the selected repo changes" trigger this function
+// used to also own (comparing against labelsFetchedForRepo, now deleted)
+// moved into RepoLabelsProvider.jsx's own effect - it's a real descendant
+// of <PrDataProvider /> and reads selectedRepo via usePrData() directly,
+// instead of this vanilla code deciding it and calling
+// refreshAvailableRepoLabels imperatively. That function/its own
+// dedup/cache state and window.refreshAvailableRepoLabels bridge stay
+// unchanged - only the "when should I call it" decision moved.
 const applyResolvedRepo = (resolvedRepo) => {
   if (!resolvedRepo) {
     return;
   }
   applyLatestPrData({ selectedRepo: resolvedRepo });
-  if (shouldRefetchLabelsForRepo({ repo: resolvedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
-    labelsFetchedForRepo = resolvedRepo;
-    void refreshAvailableRepoLabels(resolvedRepo);
-  }
 };
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
@@ -2550,8 +2555,6 @@ const populateApplyLabelSelect = () => {
   window.setAvailableRepoLabels?.(availableRepoLabels);
 };
 
-let labelsFetchedForRepo = "";
-
 // Deliberately does NOT fall back to DEFAULT_REPO: that constant is only
 // ever a placeholder/example value (see the "repo" field's `placeholder`
 // in react-app.jsx) - it isn't guaranteed to be a repo this GitHub account
@@ -2561,12 +2564,6 @@ let labelsFetchedForRepo = "";
 // via __testables without needing a DOM/fetch harness.
 const resolveRepoForLabelsFetch = ({ repoOverride, currentRepo, repoInputValue } = {}) =>
   String(repoOverride || currentRepo || repoInputValue || "").trim();
-
-// Avoids re-fetching the same repo's labels on every render/poll tick -
-// only worth a network call when the resolved repo actually changed since
-// the last successful (or attempted) fetch.
-const shouldRefetchLabelsForRepo = ({ repo, lastFetchedRepo } = {}) =>
-  Boolean(repo) && repo !== lastFetchedRepo;
 
 const refreshAvailableRepoLabels = async (repoOverride) => {
   const repoInput = getOptionalElementById("repo");
@@ -3236,7 +3233,6 @@ if (typeof module !== "undefined" && module.exports) {
       isAuthorInsightsComposerDraftDirty,
       isAuthorInsightsEditDraftDirty,
       resolveRepoForLabelsFetch,
-      shouldRefetchLabelsForRepo,
     },
   };
 }

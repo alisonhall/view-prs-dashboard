@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RepoLabelsContext } from '../state/RepoLabelsContext';
+import { usePrData } from '../state/PrDataContext';
 
 /**
  * Phase 7 (see REACT_MIGRATION_PLAN.md): owns the current repo's
@@ -15,9 +16,24 @@ import { RepoLabelsContext } from '../state/RepoLabelsContext';
  * bridge rather than FilterStateProvider's generic one" reasoning - this
  * is genuinely new, distinct state, not an existing FILTER_STATE_FIELD_MAP
  * field.
+ *
+ * Phase G.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
+ * owns the "refetch labels when the selected repo changes" trigger -
+ * previously index.page.js's own applyResolvedRepo() decided this
+ * (comparing against its own labelsFetchedForRepo module variable, now
+ * deleted). This Provider is a real descendant of <PrDataProvider />
+ * (react-app.jsx), so it reads selectedRepo via usePrData() directly and
+ * calls window.refreshAvailableRepoLabels itself - that bridge (and the
+ * actual fetch/dedup state behind it) stays, since the manual "↻ Labels"
+ * button (useRefreshAvailableRepoLabels.jsx, called from AppRoot's own
+ * body - an ancestor, not a descendant, of this Provider) still needs
+ * it; lastTriggeredRepoRef below is this effect's own, separate
+ * bookkeeping, not a fork of that bridge's internal state.
  */
 export function RepoLabelsProvider({ children }) {
   const [labels, setLabels] = useState([]);
+  const { selectedRepo } = usePrData();
+  const lastTriggeredRepoRef = useRef('');
 
   useEffect(() => {
     window.setAvailableRepoLabels = (nextLabels) => {
@@ -28,6 +44,14 @@ export function RepoLabelsProvider({ children }) {
       delete window.setAvailableRepoLabels;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedRepo || selectedRepo === lastTriggeredRepoRef.current) {
+      return;
+    }
+    lastTriggeredRepoRef.current = selectedRepo;
+    void window.refreshAvailableRepoLabels?.(selectedRepo);
+  }, [selectedRepo]);
 
   return <RepoLabelsContext.Provider value={{ labels }}>{children}</RepoLabelsContext.Provider>;
 }
