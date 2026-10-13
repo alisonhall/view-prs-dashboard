@@ -9,15 +9,21 @@ import { createContext, useContext } from 'react';
  * manualCommentsErrorByAuthorLogin) + their 11 window.* bridges.
  *
  * Owned by AuthorInsightsDraftsProvider.jsx, which still publishes those
- * same 11 bridge names (now backed by this Context) because 2 vanilla
- * subsystems need to read "is there an unsaved author-comment draft" from
- * outside any single AuthorInsightsCommentsSection instance's own
- * lifetime: pr-auto-render-blocking.helpers.js's
- * getBlockingAuthorInsightsLogins (feeds the real auto-render-blocking/
- * data-loss-prevention check) and pr-auto-render-navigation.helpers.js's
- * getFirstDirtyAuthorInsightsElement (the "jump to unsaved draft" chip).
- * Converting those 2 vanilla subsystems themselves is a separate, later
- * step - not this one.
+ * same 11 bridge names (now backed by this Context) because
+ * pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
+ * (feeds the real auto-render-blocking/data-loss-prevention check) needs
+ * to read "is there an unsaved author-comment draft" from outside any
+ * single AuthorInsightsCommentsSection instance's own lifetime, and is
+ * itself fully vanilla with no render-tree position. Converting that
+ * subsystem is a separate, later step - not this one.
+ *
+ * Phase G.2 (see REACT_MIGRATION_PLAN.md): also exposes getDraftsSnapshot,
+ * the same snapshot the window.getAuthorInsightsDraftsSnapshot bridge
+ * already returns, so a future real React consumer can read the dirty-
+ * draft maps reactively via useAuthorInsightsDrafts() instead of reaching
+ * through window - the bridge itself stays, since
+ * getBlockingAuthorInsightsLogins's own caller is vanilla and out of
+ * scope here.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context
  * in this migration - AuthorInsightsCommentsSection rendered without a
@@ -42,6 +48,10 @@ export const AuthorInsightsDraftsContext = createContext({
   setManualComments: () => {},
   getManualCommentsLoadState: () => ({ loading: false, error: '' }),
   loadManualComments: () => {},
+  getDraftsSnapshot: () => ({
+    manualCommentDraftByAuthorLogin: {},
+    manualCommentEditDraftByAuthorLogin: {},
+  }),
 });
 
 export function useAuthorInsightsDrafts() {

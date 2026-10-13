@@ -937,9 +937,8 @@ const { getAuthorInsightsDisplayName } =
 // AuthorInsightsDraftsProvider.jsx (components/AuthorInsightsDraftsProvider.jsx),
 // which now owns that state as real React state and republishes the exact
 // same window.* bridge names, because pr-auto-render-blocking.helpers.js's
-// getBlockingAuthorInsightsLogins and pr-auto-render-navigation.helpers.js's
-// getFirstDirtyAuthorInsightsElement both still need to read it from here,
-// fully vanilla. Only the 3 genuinely pure functions below (confirmed via
+// getBlockingAuthorInsightsLogins still needs to read it from here, fully
+// vanilla. Only the 3 genuinely pure functions below (confirmed via
 // reading each body: no authorInsightsState reference at all, just the
 // draft/comment object passed directly to each call) are still built
 // locally, from a fresh no-args instance of the same factory.

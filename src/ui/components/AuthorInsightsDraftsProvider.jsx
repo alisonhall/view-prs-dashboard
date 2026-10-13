@@ -234,6 +234,7 @@ export function AuthorInsightsDraftsProvider({ children }) {
       setManualComments,
       getManualCommentsLoadState,
       loadManualComments,
+      getDraftsSnapshot,
     }),
     [
       getComposerDraft,
@@ -247,6 +248,7 @@ export function AuthorInsightsDraftsProvider({ children }) {
       setManualComments,
       getManualCommentsLoadState,
       loadManualComments,
+      getDraftsSnapshot,
     ],
   );
 

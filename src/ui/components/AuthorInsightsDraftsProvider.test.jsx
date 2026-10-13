@@ -10,9 +10,8 @@ const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render
 // the same class of bug flagged in NotesDirtyProvider.test.jsx's own
 // comment (the getBlockingAuthorInsightsLogins bare-shorthand-property
 // bug) - no existing test exercises the real wiring between a real
-// AuthorInsightsDraftsProvider instance and the window.* bridges
-// pr-auto-render-blocking.helpers.js/pr-auto-render-navigation.helpers.js
-// actually read.
+// AuthorInsightsDraftsProvider instance and the window.* bridge
+// pr-auto-render-blocking.helpers.js actually reads.
 let probeValue;
 function Probe() {
   probeValue = useAuthorInsightsDrafts();
@@ -106,6 +105,16 @@ describe('AuthorInsightsDraftsProvider', () => {
     });
 
     expect(getBlockingAuthorInsightsLogins(window.getAuthorInsightsDraftsSnapshot())).toEqual(['octocat']);
+  });
+
+  test('given a dirty composer draft, when read via Context getDraftsSnapshot, then it matches the window bridge', () => {
+    renderProbe();
+
+    act(() => {
+      probeValue.updateComposerDraft('octocat', { note: 'unsaved draft' });
+    });
+
+    expect(probeValue.getDraftsSnapshot()).toEqual(window.getAuthorInsightsDraftsSnapshot());
   });
 
   test('given the provider unmounts entirely, when checked, then every published bridge is removed', () => {

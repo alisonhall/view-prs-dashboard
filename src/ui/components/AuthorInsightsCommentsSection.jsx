@@ -13,8 +13,7 @@
  * instead of mirroring into local useState while also calling through
  * window.* bridges - that Context *is* the shared state other code outside
  * this component's own lifetime needs (pr-auto-render-blocking.helpers.js's
- * getBlockingAuthorInsightsLogins/pr-auto-render-navigation.helpers.js's
- * getFirstDirtyAuthorInsightsElement, both still vanilla, read it via the
+ * getBlockingAuthorInsightsLogins, still vanilla, reads it via the
  * window.* bridges AuthorInsightsDraftsProvider.jsx republishes), so no
  * local mirroring or explicit recomputeDirtyPrSectionsFields() calls are
  * needed here any more - every Context write already triggers that itself.
