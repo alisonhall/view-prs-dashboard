@@ -898,18 +898,18 @@ const { buildRowFilterCriteria, applyRowUiFilters } =
 
 // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // expandAncestorDetailsElements/ensureInsightsRowVisibleForElement (this
-// factory's only 2 exports) and getFirstUnsavedElementForPrNumber (below)
-// had no caller left besides the now-deleted navigateToPrInTable/
-// navigateToAuthorInsights - createPrDomVisibilityHelpers's own
-// instantiation is removed entirely, not just its outputs.
+// factory's only 2 exports) had no caller left besides the now-deleted
+// navigateToPrInTable/navigateToAuthorInsights - createPrDomVisibilityHelpers's
+// own instantiation is removed entirely, not just its outputs.
+// Phase H.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// getFirstUnsavedElementForPrNumber/getDirtyTrackedFields (and the
+// getOptionalElementById/readElementAttribute DI this factory only needed
+// for them) are deleted outright now too - confirmed dead.
 const {
-  getDirtyTrackedFields,
   getUnsavedNotesPrNumbers,
   normalizePrNumber,
   getBlockingPrNumbers,
 } = prAutoRenderUnsavedHelperFactory.createPrAutoRenderUnsavedHelpers({
-  getOptionalElementById,
-  readElementAttribute: (...args) => readElementAttribute(...args),
   // Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): PR Notes dirty
   // tracking is now NotesDirtyProvider.jsx's own React state, read here via
   // this dedicated bridge instead of scanning data-has-unsaved-notes DOM
@@ -987,7 +987,6 @@ const { renderAutoRenderBlockedLinks } =
 
 const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
   prAutoRenderStateHelperFactory.createPrAutoRenderStateHelpers({
-    getDirtyTrackedFields,
     getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     // Bug fix (found while auditing this cluster for Phase 7, sub-phase

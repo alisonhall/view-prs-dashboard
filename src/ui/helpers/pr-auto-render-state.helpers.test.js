@@ -7,7 +7,6 @@ const {
 describe("auto render state helpers", () => {
   const createHelpers = (overrides = {}) =>
     createPrAutoRenderStateHelpers({
-      getDirtyTrackedFields: () => [{ id: "a" }, { id: "b" }],
       getUnsavedNotesPrNumbers: () => ["7"],
       getBlockingPrNumbers: () => ["12", "15"],
       getBlockingAuthorInsightsLogins: () => ["alice"],
@@ -22,7 +21,7 @@ describe("auto render state helpers", () => {
     const { getAutoRenderBlockingState } = createHelpers();
 
     expect(getAutoRenderBlockingState()).toEqual({
-      dirtyFieldCount: 2,
+      dirtyFieldCount: 0,
       unsavedNotesCount: 1,
       blockingPrNumbers: ["12", "15"],
       blockingAuthorInsightsLogins: ["alice"],

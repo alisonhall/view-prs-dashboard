@@ -5,14 +5,11 @@
 // require()/globalThis.ViewPrsAutoRenderStateHelpers fallback.
 export const { createPrAutoRenderStateHelpers } = (() => {
   const createPrAutoRenderStateHelpers = ({
-    getDirtyTrackedFields,
     getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     getBlockingAuthorInsightsLogins,
     formatBlockingPrNumbersLabel,
   } = {}) => {
-    const getDirtyTrackedFieldsSafe =
-      typeof getDirtyTrackedFields === "function" ? getDirtyTrackedFields : () => [];
     const getUnsavedNotesPrNumbersSafe =
       typeof getUnsavedNotesPrNumbers === "function"
         ? getUnsavedNotesPrNumbers
@@ -29,15 +26,18 @@ export const { createPrAutoRenderStateHelpers } = (() => {
         : () => "";
 
     const getAutoRenderBlockingState = () => {
-      const dirtyTrackedFields = getDirtyTrackedFieldsSafe();
       const unsavedNotesPrNumbers = getUnsavedNotesPrNumbersSafe();
       const blockingPrNumbers = getBlockingPrNumbersSafe();
       const blockingAuthorInsightsLogins = getBlockingAuthorInsightsLoginsSafe();
 
       return {
-        dirtyFieldCount: Array.isArray(dirtyTrackedFields)
-          ? dirtyTrackedFields.length
-          : 0,
+        // Phase H.1 (see REACT_MIGRATION_PLAN.md, "Full migration
+        // roadmap"): used to come from getDirtyTrackedFields (a
+        // data-original-value DOM scan, confirmed dead - nothing ever set
+        // that attribute, so this was always 0 in production). Hardcoded
+        // rather than removed - AutoRenderBlockingProvider.jsx/
+        // pr-auto-render-indicator.helpers.js still read this field.
+        dirtyFieldCount: 0,
         unsavedNotesCount: Array.isArray(unsavedNotesPrNumbers)
           ? unsavedNotesPrNumbers.length
           : 0,
