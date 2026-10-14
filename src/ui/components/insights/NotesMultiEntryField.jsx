@@ -9,6 +9,23 @@
  */
 
 
+// Same attributes ReviewStatsControls.jsx's NON_CREDENTIAL_DATE_ATTRS/
+// form-parsing.helpers.js's applyCredentialHints set on other text inputs -
+// without them, Chrome's password-manager heuristics misclassify these
+// fields (e.g. "Rally links" looking like a credential field) and can
+// throw inside the browser's own autofill agent on focus, which blocks
+// typing in the field entirely.
+const NON_CREDENTIAL_ATTRS = {
+  autoComplete: 'off',
+  autoCapitalize: 'off',
+  autoCorrect: 'off',
+  spellCheck: false,
+  'data-lpignore': 'true',
+  'data-1p-ignore': 'true',
+  'data-bwignore': 'true',
+  'data-form-type': 'other',
+};
+
 export function NotesMultiEntryField({ title, placeholder, values, inputClassName, onChange }) {
   const safeValues = values.length ? values : [''];
 
@@ -47,6 +64,7 @@ export function NotesMultiEntryField({ title, placeholder, values, inputClassNam
               placeholder={placeholder}
               value={value}
               onChange={(e) => handleInputChange(index, e.target.value)}
+              {...NON_CREDENTIAL_ATTRS}
             />
             <button
               type="button"
