@@ -39,6 +39,12 @@
  * mountPrDataPolling) - it renders null, so it doesn't need a specific
  * DOM container the way every other Phase 1-3 conversion did.
  *
+ * Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * also mounted in index.html.test.js's own harness now (MountedPrTableTree),
+ * so that suite's data-polling tests can drive pollForDataChanges through
+ * this component's real setInterval (via fake timers) instead of calling
+ * window.pollForDataChanges directly.
+ *
  * @module components/PrDataPolling
  */
 

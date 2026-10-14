@@ -22,6 +22,7 @@ const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
+const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
@@ -590,6 +591,13 @@ function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange, on
         React.createElement(PrTableApp, { onCheckboxChange, onAckAction, onApplyLabel }),
       ),
     ),
+    // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // mounted the same way react-app.jsx's real AppRoot does (as a sibling
+    // of PrTableApp, inside the same PrDataProvider) so the "data polling
+    // (via real PrDataPolling interval)" tests below can drive
+    // pollForDataChanges via a real setInterval + fake timers, instead of
+    // calling the window.pollForDataChanges bridge directly.
+    React.createElement(PrDataPolling, null),
     // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted inside
     // the SAME <PrDataProvider /> instance as PrTableApp above - matching
     // react-app.jsx's real AppRoot structure, so FilterOptionsProvider
@@ -7096,7 +7104,24 @@ describe("index page rendering with Testing Library", () => {
     expect(backfillLog.scrollTop).toBe(0);
   });
 
-  test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
+  // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // 9 tests below used to call window.pollForDataChanges() directly -
+  // MountedPrTableTree now mounts a real <PrDataPolling />, so these drive
+  // the same real orchestration function through its actual setInterval
+  // instead, via fake timers scoped to just this describe block (doNotFake:
+  // ['Date'] - this suite's fixtures/assertions rely on real Date/ISO
+  // timestamps elsewhere and must not be affected).
+  describe("data polling (via real PrDataPolling interval)", () => {
+    const DATA_POLL_MS = 30000; // matches window.AUTO_DATA_POLL_MS (index.page.js's own init)
+
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ["Date"] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
     {
       initTestPage({
         dataPayload: {
@@ -7125,7 +7150,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
+        expect(document.querySelector(".pr-row")).toBeTruthy();
       });
 
       fetchMock.mockClear();
@@ -7192,8 +7217,12 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -7244,7 +7273,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
+        expect(document.querySelector(".pr-row")).toBeTruthy();
       });
 
       fetchMock.mockClear();
@@ -7270,7 +7299,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       fetchMock.mockImplementation(async (url, init = {}) => {
         const normalizedUrl = String(url || "");
@@ -7291,7 +7322,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const snackbar = document.getElementById("error-snackbar");
       const snackbarMessage = document.getElementById("error-snackbar-message");
@@ -7327,7 +7360,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       expect(snackbar).toHaveAttribute("hidden");
     }
@@ -7362,7 +7397,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
+        expect(document.querySelector(".pr-row")).toBeTruthy();
       });
 
       fetchMock.mockClear();
@@ -7396,7 +7431,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -7447,9 +7484,6 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
-      });
       await waitFor(() => {
         const row = document.querySelector(
           "#pr-sections .pr-group-section-content table tbody tr",
@@ -7524,7 +7558,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       let firstMainRowTextAfter = "";
       await waitFor(() => {
@@ -7670,11 +7706,10 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
-      });
-
-      const user = userEvent.setup();
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
       });
@@ -7752,7 +7787,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
@@ -7820,7 +7857,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
+        expect(document.querySelector(".pr-row")).toBeTruthy();
       });
 
       fetchMock.mockClear();
@@ -7910,7 +7947,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -8044,7 +8083,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       // Still deferred - the dirty field hasn't cleared yet. The indicator
       // itself is now toggled by AutoRenderBlockingProvider.jsx's own
@@ -8169,7 +8210,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       // Still deferred - the dirty field hasn't cleared yet.
       expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
@@ -8186,7 +8229,13 @@ describe("index page rendering with Testing Library", () => {
 
       // Give the setTimeout(0) a chance to run, then confirm the payload
       // is still NOT applied - the focused field must not be clobbered.
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): a real setTimeout wait
+      // here would hang forever now that this describe block's fake
+      // timers are active and nothing else advances them - advance them
+      // explicitly instead.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10);
+      });
       expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
         "Blur-wait poll seed",
       );
@@ -8248,14 +8297,13 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      await waitFor(() => {
-        expect(typeof window.pollForDataChanges).toBe("function");
-      });
-
       const insightsToggle = await screen.findByRole("button", {
         name: "More insights",
       });
-      const user = userEvent.setup();
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
       await user.click(insightsToggle);
 
       await waitFor(() => {
@@ -8347,7 +8395,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       await waitFor(() => {
         const toggle = document.querySelector(".row-insights-toggle");
@@ -8366,6 +8416,7 @@ describe("index page rendering with Testing Library", () => {
       expect(activityDetailsAfter).toBeTruthy();
       expect(activityDetailsAfter.open).toBe(true);
     }
+    });
   });
 
   test("closed or merged sections sort by timestamps", async () => {

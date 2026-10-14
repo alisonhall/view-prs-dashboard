@@ -144,10 +144,15 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * re-render on every write. Exposed to `<PrDataPolling />` directly via
  * this Provider's own Context value (no `window.*` indirection for that
  * call site - the actual Phase F goal), and *also* still as
- * `window.pollForDataChanges` (index.html.test.js calls it directly at 17
- * call sites and never mounts `<PrDataPolling />` - same "stays callable
- * for tests" shape `window.pollSchedulerStatus` used to have, before
- * Phase H.2 - see REACT_MIGRATION_PLAN.md - retired it outright).
+ * `window.pollForDataChanges` - unlike `window.pollSchedulerStatus`
+ * (retired outright in Phase H.2, see REACT_MIGRATION_PLAN.md, once its
+ * automatic trigger was long dead), this bridge has a genuine, live
+ * production caller: `JobEventsProvider.jsx`'s real SSE connection calls
+ * it directly for an immediate out-of-band poll on a "data changed"
+ * event, outside the interval. Phase H.3 (see REACT_MIGRATION_PLAN.md)
+ * converted `index.html.test.js`'s 9 tests to drive polls through a real
+ * `<PrDataPolling />` interval (fake timers) instead of calling this
+ * bridge directly, but the bridge itself stays - it's not test-only.
  * `applyFreshPrPayload`/`prDataTabOrchestrator`/`loadStoredData`
  * (index.page.js - 3 other vanilla call sites that write pieces of this
  * same tracking state directly) redirect through the new
