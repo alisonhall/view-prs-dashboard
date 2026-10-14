@@ -579,7 +579,7 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
 // be the child of a createPortal called from inside
 // FilterStateTestRootHarness's single persistent tree (see that
 // component's own comment, and mountReactPrTableSlotController's).
-function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange, onAckAction, onApplyLabel }) {
+function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange }) {
   return React.createElement(
     PrDataProvider,
     { initialPayload, initialSelectedRepo: selectedRepo },
@@ -589,7 +589,10 @@ function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange, on
       React.createElement(
         NotesDirtyProvider,
         null,
-        React.createElement(PrTableApp, { onCheckboxChange, onAckAction, onApplyLabel }),
+        // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+        // PrTableApp no longer accepts onAckAction/onApplyLabel as props -
+        // it builds its own real handlers via useAckLabelActions().
+        React.createElement(PrTableApp, { onCheckboxChange }),
       ),
     ),
     // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -653,8 +656,6 @@ function FilterStateTestRootHarness({ initialValues }) {
                 initialPayload: mountRequest.props?.initialPayload,
                 selectedRepo: mountRequest.props?.selectedRepo,
                 onCheckboxChange: mountRequest.props?.onCheckboxChange,
-                onAckAction: mountRequest.props?.onAckAction,
-                onApplyLabel: mountRequest.props?.onApplyLabel,
               }),
               mountRequest.containerElement,
             ),

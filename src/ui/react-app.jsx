@@ -622,11 +622,14 @@ function AppRoot() {
         console.error('[React Migration] Cannot mount: container element not found');
         return null;
       }
+      // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // onAckAction/onApplyLabel no longer threaded through here -
+      // PrTableApp.jsx now builds its own real handlers directly (see its
+      // own comment). props?.onAckAction/onApplyLabel, if still passed by
+      // a caller, are ignored.
       setPrTable({
         container: containerElement,
         onCheckboxChange: props?.onCheckboxChange,
-        onAckAction: props?.onAckAction,
-        onApplyLabel: props?.onApplyLabel,
       });
       // Seed the initial payload through the same path every later update
       // uses (window.updateReactPrTable, owned by <PrDataProvider />, which
@@ -883,8 +886,6 @@ function AppRoot() {
                     <ReviewConversationsUiStateProvider>
                       <PrTableApp
                         onCheckboxChange={prTable.onCheckboxChange}
-                        onAckAction={prTable.onAckAction}
-                        onApplyLabel={prTable.onApplyLabel}
                       />
                     </ReviewConversationsUiStateProvider>
                   </PrInsightsDisplayProvider>

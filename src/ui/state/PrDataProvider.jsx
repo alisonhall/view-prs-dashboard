@@ -516,6 +516,22 @@ export function PrDataProvider({
     setState((previous) => ({ ...previous, payload: newPayload }));
   }, []);
 
+  // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // same merge semantics as window.updateReactPrTable below (newPayload
+  // falls back to the previous payload if undefined, newSelectedRepo falls
+  // back to the previous selectedRepo if falsy) - PrTableApp.jsx's own
+  // per-row Ack/Apply-Label handlers need both fields updated together.
+  // Using bare setPayload here would silently drop a selectedRepo change,
+  // the same production bug this Provider's own header comment documents
+  // for window.updateReactPrTable's single-field predecessor.
+  const applyFreshTablePayload = useCallback((newPayload, newSelectedRepo) => {
+    setState((previous) => ({
+      ...previous,
+      payload: newPayload !== undefined ? newPayload : previous.payload,
+      selectedRepo: newSelectedRepo || previous.selectedRepo,
+    }));
+  }, []);
+
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
   // tab's sort/filter/topN/minComments/date-range settings - real state
   // now, written directly by ReviewStatsControls/StatsVisuals (see
@@ -540,6 +556,7 @@ export function PrDataProvider({
   const value = {
     ...state,
     setPayload,
+    applyFreshTablePayload,
     setStatsViewState,
     setSelectedAuthorLogin,
     pollForDataChanges,

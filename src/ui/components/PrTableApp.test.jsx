@@ -49,7 +49,19 @@ jest.mock('../helpers/pr-row-sorting.helpers.js', () => {
   return { ...actual, sortRowsByPrNumberDesc: jest.fn(actual.sortRowsByPrNumberDesc) };
 });
 
+// Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// PrTableApp.jsx no longer accepts onAckAction/onApplyLabel as props - it
+// builds its own real handlers via useAckLabelActions(), which reaches
+// the real pr-ack-label-actions.helpers.js factory and (through it) the
+// real postJson. Mocking postJson here is the new seam for the
+// "per-row busy spinner" tests below, replacing the old prop-injection
+// seam.
+jest.mock('../helpers/pr-http.helpers.js', () => ({
+  postJson: jest.fn(),
+}));
+
 const { PrTableApp } = require('./PrTableApp');
+const { postJson } = require('../helpers/pr-http.helpers.js');
 const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
@@ -221,6 +233,7 @@ function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
 describe('PrTableApp', () => {
   beforeEach(() => {
     capturedSectionProps.length = 0;
+    postJson.mockReset();
     installSectionHelpers();
     // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.jsx's
     // `if (prSmartGroupsHelperFactory)` guard is always true now (a real
@@ -702,42 +715,63 @@ describe('PrTableApp', () => {
   });
 
   describe('per-row busy spinner (Ack/Apply-Label/Update in flight)', () => {
-    // onAckAction/onApplyLabel/onUpdatePr reach PrSection as PrTableApp's
-    // own wrapper functions (not the raw props unchanged) so it can track
-    // which PR number is currently mid-request and light up that row's
-    // PrNumberCell spinner (activePrNumbers) - these tests call through the
-    // wrapper the same way PrActionsCell does, and assert both that the
-    // original callback still runs with the same arguments and that the
-    // row's busy state is set/cleared around it.
-    test('given onAckAction, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
-      const onAckAction = jest.fn().mockResolvedValue(undefined);
+    // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // onAckAction/onApplyLabel used to be test-injected props - PrTableApp
+    // now builds the real handlers itself (via useAckLabelActions(),
+    // reaching the real pr-ack-label-actions.helpers.js factory), so these
+    // tests drive the real postJson call instead of a mock prop. They
+    // still reach PrSection as PrTableApp's own wrapper functions so it can
+    // track which PR number is currently mid-request and light up that
+    // row's PrNumberCell spinner (activePrNumbers).
+    test('given onAckAction, when the wrapped handler is called, then it posts the real /view-prs/ack request', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
         await capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
       });
 
-      expect(onAckAction).toHaveBeenCalledWith('1', false, 'owner/repo');
+      expect(postJson).toHaveBeenCalledWith('/view-prs/ack', { repo: 'owner/repo', ack: '1' });
     });
 
-    test('given onApplyLabel, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
-      const onApplyLabel = jest.fn().mockResolvedValue(undefined);
+    // Guards against a real bug class: isAcked means "is this PR CURRENTLY
+    // acked" so onAckAction can decide ack vs. clear - a caller that
+    // instead passed the toggled target state would invert every request
+    // (clicking "Ack" on an unacked PR sending ackClear instead of ack).
+    test('given onAckAction with isAcked=true (currently acked), when called, then it posts an ackClear request, not ack', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: onApplyLabel });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      await React.act(async () => {
+        await capturedSectionProps[0].onAckAction('1', true, 'owner/repo');
+      });
+
+      expect(postJson).toHaveBeenCalledWith('/view-prs/ack', { repo: 'owner/repo', ackClear: '1' });
+    });
+
+    test('given onApplyLabel, when the wrapped handler is called, then it posts the real /view-prs/labels/apply request', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
         await capturedSectionProps[0].onApplyLabel('1', 'bug', 'owner/repo');
       });
 
-      expect(onApplyLabel).toHaveBeenCalledWith('1', 'bug', 'owner/repo');
+      expect(postJson).toHaveBeenCalledWith('/view-prs/labels/apply', {
+        repo: 'owner/repo',
+        label: 'bug',
+        prNumbers: '1',
+      });
     });
 
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
-      let resolveAck;
-      const onAckAction = jest.fn(() => new Promise((resolve) => { resolveAck = resolve; }));
+      let resolvePostJson;
+      postJson.mockImplementation(() => new Promise((resolve) => { resolvePostJson = resolve; }));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       let ackPromise;
       React.act(() => {
@@ -746,19 +780,23 @@ describe('PrTableApp', () => {
       expect(capturedSectionProps.at(-1).activePrNumbers).toContain('owner/repo::1');
 
       await React.act(async () => {
-        resolveAck();
+        resolvePostJson({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
         await ackPromise;
       });
       expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');
     });
 
-    test('given an Ack action that rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
-      const onAckAction = jest.fn().mockRejectedValue(new Error('boom'));
+    test('given an Ack action whose request rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
+      // runSingleAckRequest (pr-ack-label-actions.helpers.js) catches a
+      // rejected postJson internally and resolves to null - it never
+      // rejects itself. This confirms withPrBusy's own finally still
+      // clears the busy state for that real failure path.
+      postJson.mockRejectedValue(new Error('boom'));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
-        await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).rejects.toThrow('boom');
+        await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).resolves.toBeUndefined();
       });
 
       expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');

@@ -109,6 +109,68 @@ describe('PrDataProvider', () => {
     expect(window.getReactPrTableSelectedRepo).toBeUndefined();
   });
 
+  // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // same merge semantics window.updateReactPrTable already has (above) -
+  // PrTableApp.jsx's own per-row Ack/Apply-Label handlers call this
+  // directly via Context instead of the window bridge.
+  describe('applyFreshTablePayload', () => {
+    let applyFreshTablePayload;
+    function Probe() {
+      applyFreshTablePayload = usePrData().applyFreshTablePayload;
+      return null;
+    }
+
+    test('given a new payload and selectedRepo, when called, then both update together', () => {
+      const payloadA = { byPrNumber: { 1: {} } };
+      render(
+        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
+          <Probe />
+        </PrDataProvider>,
+      );
+
+      const payloadB = { byPrNumber: { 1: {}, 2: {} } };
+      act(() => {
+        applyFreshTablePayload(payloadB, 'owner/repo-b');
+      });
+
+      expect(window.getReactPrTablePayload()).toBe(payloadB);
+      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-b');
+    });
+
+    test('given newPayload is undefined, when called, then the previous payload is kept', () => {
+      const payloadA = { byPrNumber: { 1: {} } };
+      render(
+        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
+          <Probe />
+        </PrDataProvider>,
+      );
+
+      act(() => {
+        applyFreshTablePayload(undefined, 'owner/repo-b');
+      });
+
+      expect(window.getReactPrTablePayload()).toBe(payloadA);
+      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-b');
+    });
+
+    test('given newSelectedRepo is falsy, when called, then the previous selectedRepo is kept', () => {
+      const payloadA = { byPrNumber: { 1: {} } };
+      render(
+        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
+          <Probe />
+        </PrDataProvider>,
+      );
+
+      const payloadB = { byPrNumber: { 1: {}, 2: {} } };
+      act(() => {
+        applyFreshTablePayload(payloadB, '');
+      });
+
+      expect(window.getReactPrTablePayload()).toBe(payloadB);
+      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-a');
+    });
+  });
+
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // beginRequestActivity/renderRequestActivity/pollBackfillStatus moved
   // here from index.page.js (pollSchedulerStatus did too, but was deleted

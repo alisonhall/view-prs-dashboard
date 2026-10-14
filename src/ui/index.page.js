@@ -84,8 +84,6 @@ import {
   normalizeFilterToken,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
 import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
-import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
-import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
 import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
 import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
@@ -1537,8 +1535,6 @@ void statusIcon;
 
 const {
   formatCommandOutput,
-  getGithubAuthFailureHint,
-  formatCommandOutputWithAuthHint,
 } = prCommandOutputHelperFactory.createPrCommandOutputHelpers({
   stripAnsi,
 });
@@ -2319,8 +2315,6 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     },
     {
       onCheckboxChange: callbacks.handleCheckboxChange,
-      onAckAction: callbacks.handleAckAction,
-      onApplyLabel: callbacks.handleApplyLabel,
     }
   );
 
@@ -2451,8 +2445,6 @@ if (typeof window !== "undefined") {
   window.getFormBody = (...args) => getFormBody(...args);
 }
 
-const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
-
 const {
   runQuickCheckWorkflow,
   runQuickCheckAllWorkflow,
@@ -2478,57 +2470,13 @@ const { runTriggerAutoRunWorkflow } =
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
   });
 
-// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
-// wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same
-// names, same call sites elsewhere in this file (handleAckOnly/
-// handleClearOnly below, react-callbacks.helpers.js's createReactCallbacks()
-// wiring), unchanged. runAckAction/runApplyLabelAction are only ever called
-// internally by runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow
-// now that all five live inside the same factory instance, so they're not
-// destructured here - index.page.js has no other caller for them.
-const {
-  runAckOnlyWorkflow,
-  runClearOnlyWorkflow,
-  runApplyLabelWorkflow,
-} = prAckLabelActionsHelperFactory.createPrAckLabelActionsHelpers({
-  postJson: (...args) => postJson(...args),
-  setStatusMessage: (...args) => setStatusMessage(...args),
-  setOutputMessage: (...args) => setOutputMessage(...args),
-  beginRequestActivity: (...args) => beginRequestActivity(...args),
-  getGithubAuthFailureHint: (...args) => getGithubAuthFailureHint(...args),
-  formatCommandOutput: (...args) => formatCommandOutput(...args),
-  formatCommandOutputWithAuthHint: (...args) => formatCommandOutputWithAuthHint(...args),
-  showErrorNotification: (...args) => showErrorNotification(...args),
-  showWarningNotification: (...args) => showWarningNotification(...args),
-  summarizeAckRefreshWarnings: (...args) => summarizeAckRefreshWarnings(...args),
-  applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
-  loadStoredData: (...args) => loadStoredData(...args),
-  getFormBody: (...args) => getFormBody(...args),
-  defaultRepo: DEFAULT_REPO,
-  parseCsvTokens: (...args) => parseCsvTokens(...args),
-  // Bridges into PrTableApp.jsx's per-row busy/queued indicators - see
-  // that component's own comments. No-op (via
-  // createPrAckLabelActionsHelpers' own safe fallback) when React hasn't
-  // mounted the table yet.
-  markPrsBusy: (...args) => window.markPrsBusy?.(...args),
-  clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
-  markPrsQueued: (...args) => window.markPrsQueued?.(...args),
-  clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): bridges into
-  // PrActivityQueueProvider.jsx's bulk-batch manifest, the one place the
-  // drawer shows a real ordered queue. Same no-op-until-mounted fallback
-  // as the busy/queued bridges above.
-  beginBulkActionBatch: (...args) => window.beginBulkActionBatch?.(...args),
-  markBulkActionChunkInFlight: (...args) => window.markBulkActionChunkInFlight?.(...args),
-  markBulkActionChunkDone: (...args) => window.markBulkActionChunkDone?.(...args),
-  finishBulkActionBatch: (...args) => window.finishBulkActionBatch?.(...args),
-  runWithConcurrencyLimit: (...args) => runWithConcurrencyLimit(...args),
-  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): lets
-  // the loadStoredData-fallback branches return the freshly-loaded payload
-  // directly, instead of react-callbacks.helpers.js having to read it back
-  // itself afterward.
-  getLatestStoredPayload: () => latestStoredPayload,
-});
+// Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// index.page.js's own createPrAckLabelActionsHelpers instance (which used
+// to feed runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow
+// into createReactCallbacks() below) is deleted outright - confirmed its
+// only caller was createReactCallbacks(), and PrTableApp.jsx now builds
+// its own equivalent handlers directly via useAckLabelActions() (a real
+// Context-backed instance, not this window-bridge-fed vanilla one).
 
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // handleAckOnly/handleClearOnly's definitions (thin 1-line wrappers around
@@ -2649,9 +2597,6 @@ function createReactCallbacks() {
     // Pass vanilla JS functions
     toggleInReviewForRow: toggleInReviewForRow,
     toggleFlaggedForRow: toggleFlaggedForRow,
-    runAckOnlyWorkflow: runAckOnlyWorkflow,
-    runClearOnlyWorkflow: runClearOnlyWorkflow,
-    runApplyLabelWorkflow: runApplyLabelWorkflow,
 
     // Update React table function - see pushPayloadToReactTable's own
     // comment (Track C, slice C2a, REACT_MIGRATION_PLAN.md) for why this
@@ -2662,12 +2607,12 @@ function createReactCallbacks() {
     stateGetters: {
       // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md):
       // getLatestStoredPayload was removed from here because
-      // handleCheckboxChange/handleAckAction/handleApplyLabel
-      // (react-callbacks.helpers.js) used to mutate latestStoredPayload as
-      // a synchronous side effect (via toggleFlaggedForRow/
-      // toggleInReviewForRow/runAckOnlyWorkflow/etc.) and then immediately
-      // read it back via this getter, in the SAME call, to push the
-      // just-mutated value into React - a real, Playwright-confirmed
+      // handleCheckboxChange (react-callbacks.helpers.js - handleAckAction/
+      // handleApplyLabel were also here before Phase H.5 moved them to
+      // PrTableApp.jsx) used to mutate latestStoredPayload as a synchronous
+      // side effect (via toggleFlaggedForRow/toggleInReviewForRow/etc.) and
+      // then immediately read it back via this getter, in the SAME call,
+      // to push the just-mutated value into React - a real, Playwright-confirmed
       // hazard if this getter were ever switched to the
       // window.getReactPrTablePayload Context bridge (Context's payload
       // only updates *after* the getter's return value reaches

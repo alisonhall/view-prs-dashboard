@@ -16,6 +16,7 @@ import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
+import { useAckLabelActions } from '../state/useAckLabelActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
@@ -31,19 +32,16 @@ import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.
  * 
  * @param {Object} props
  * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
- * @param {Function} props.onAckAction - Callback for Ack button clicks
  * @returns {JSX.Element}
  */
 export function PrTableApp({
   onCheckboxChange,
-  onAckAction,
-  onApplyLabel,
 }) {
   // PR data payload/selectedRepo/visiblePrNumbers - owned by <PrDataProvider />
   // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
   // which also owns window.updateReactPrTable itself. Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
-  const { payload, selectedRepo, setPayload } = usePrData();
+  const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
@@ -96,13 +94,64 @@ export function PrTableApp({
   // local here. Semantics are unchanged; this is just where it lives now.
   const { busyPrNumbers, markPrBusy, clearPrBusy, queuedPrNumbers } = usePrActivityQueue();
 
+  // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onAckAction/onApplyLabel used to be props, built once by vanilla
+  // createReactCallbacks() (index.page.js) at table-mount time. That
+  // factory couldn't reach useAckLabelActions()'s own Context-backed
+  // instance (it's vanilla code, not a hook), so it built a second,
+  // window-bridge-fed instance of the same factory instead. This
+  // component already calls usePrData()/usePrActivityQueue() directly
+  // (unlike <AppRoot />, which is PrDataProvider's ancestor, not its
+  // descendant) - so it builds its own real handlers here, a second
+  // useAckLabelActions() instance alongside AppRoot's own (for the bulk
+  // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
+  // state in the hook, so two independent instances is harmless.
+  const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();
+
+  // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel
+  // exactly, including the try/catch - a thrown/rejected workflow is caught
+  // and logged here, not propagated to withPrBusy's caller (byte-for-byte
+  // behavior parity, not just the happy path).
+  const handleAckAction = useCallback(
+    async (prNumber, isAcked, repoOverride) => {
+      try {
+        const prNumberStr = String(prNumber);
+        const repo = repoOverride || selectedRepo;
+        const result = isAcked
+          ? await runClearOnlyWorkflow(prNumberStr, repo)
+          : await runAckOnlyWorkflow(prNumberStr, repo);
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling Ack action:', error);
+      }
+    },
+    [runAckOnlyWorkflow, runClearOnlyWorkflow, applyFreshTablePayload, selectedRepo],
+  );
+
+  const handleApplyLabel = useCallback(
+    async (prNumber, label, repoOverride) => {
+      try {
+        const repo = repoOverride || selectedRepo;
+        const result = await runApplyLabelWorkflow(String(prNumber), label, repo);
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling Apply Label action:', error);
+      }
+    },
+    [runApplyLabelWorkflow, applyFreshTablePayload, selectedRepo],
+  );
+
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
   // outcome (success, failure, or thrown error). useCallback keeps these
   // (and the wrapped handlers below) referentially stable across renders
-  // that don't touch onAckAction/onApplyLabel/busy state - PrRow is
-  // memoized, so a fresh function identity on every PrTableApp render would
-  // defeat that memoization for every row, not just the busy one.
+  // that don't touch busy state - PrRow is memoized, so a fresh function
+  // identity on every PrTableApp render would defeat that memoization for
+  // every row, not just the busy one.
   const withPrBusy = useCallback(
     (prNumber, repo, action) => async (...args) => {
       markPrBusy(prNumber, repo);
@@ -117,14 +166,14 @@ export function PrTableApp({
 
   const handleAckActionBusy = useCallback(
     (prNumber, isAcked, repoOverride) =>
-      withPrBusy(prNumber, repoOverride, onAckAction)(prNumber, isAcked, repoOverride),
-    [withPrBusy, onAckAction],
+      withPrBusy(prNumber, repoOverride, handleAckAction)(prNumber, isAcked, repoOverride),
+    [withPrBusy, handleAckAction],
   );
 
   const handleApplyLabelBusy = useCallback(
     (prNumber, label, repoOverride) =>
-      withPrBusy(prNumber, repoOverride, onApplyLabel)(prNumber, label, repoOverride),
-    [withPrBusy, onApplyLabel],
+      withPrBusy(prNumber, repoOverride, handleApplyLabel)(prNumber, label, repoOverride),
+    [withPrBusy, handleApplyLabel],
   );
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"): the "↻

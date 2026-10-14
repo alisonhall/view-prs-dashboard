@@ -104,7 +104,19 @@ export function useAckLabelActions() {
       await runApplyLabelWorkflow('', select ? select.value : '', '');
     };
 
-    return { handleAckOnly, handleClearOnly, handleApplyLabelClick };
+    return {
+      handleAckOnly,
+      handleClearOnly,
+      handleApplyLabelClick,
+      // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // the raw per-PR workflow functions, now also consumed directly by
+      // PrTableApp.jsx's own per-row Ack/Apply-Label handlers (a second
+      // instance of this hook) - previously only the bulk, no-arg forms
+      // above were returned.
+      runAckOnlyWorkflow,
+      runClearOnlyWorkflow,
+      runApplyLabelWorkflow,
+    };
   }, [
     markPrBusy,
     clearPrBusy,

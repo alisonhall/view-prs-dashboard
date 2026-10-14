@@ -26,8 +26,6 @@ export const { createReactCallbackHelpers } = (() => {
    * @param {Object} deps - Dependencies
    * @param {Function} deps.toggleInReviewForRow - Toggle in-review flag
    * @param {Function} deps.toggleFlaggedForRow - Toggle flagged flag
-   * @param {Function} deps.runAckOnlyWorkflow - Run Ack workflow
-   * @param {Function} deps.runClearOnlyWorkflow - Run Clear Ack workflow
    * @param {Function} deps.updateReactTable - Update React table (if mounted)
    * @param {Object} deps.stateGetters - State getters
    * @param {Function} deps.stateGetters.getLatestSelectedRepo - Get selected repo
@@ -36,9 +34,6 @@ export const { createReactCallbackHelpers } = (() => {
   const createReactCallbackHelpers = ({
     toggleInReviewForRow,
     toggleFlaggedForRow,
-    runAckOnlyWorkflow,
-    runClearOnlyWorkflow,
-    runApplyLabelWorkflow,
     updateReactTable,
     stateGetters,
   } = {}) => {
@@ -51,21 +46,6 @@ export const { createReactCallbackHelpers } = (() => {
     const toggleFlaggedForRowSafe =
       typeof toggleFlaggedForRow === 'function'
         ? toggleFlaggedForRow
-        : () => Promise.resolve();
-
-    const runAckOnlyWorkflowSafe =
-      typeof runAckOnlyWorkflow === 'function'
-        ? runAckOnlyWorkflow
-        : () => Promise.resolve();
-
-    const runClearOnlyWorkflowSafe =
-      typeof runClearOnlyWorkflow === 'function'
-        ? runClearOnlyWorkflow
-        : () => Promise.resolve();
-
-    const runApplyLabelWorkflowSafe =
-      typeof runApplyLabelWorkflow === 'function'
-        ? runApplyLabelWorkflow
         : () => Promise.resolve();
 
     const updateReactTableSafe =
@@ -122,59 +102,14 @@ export const { createReactCallbackHelpers } = (() => {
       }
     };
 
-    /**
-     * Handle Ack button click from React component
-     *
-     * @param {number} prNumber - PR number
-     * @param {boolean} isAcked - Current ack state
-     * @param {string} [repoOverride] - The PR's repo (see handleCheckboxChange)
-     * @returns {Promise<void>}
-     */
-    const handleAckAction = async (prNumber, isAcked, repoOverride) => {
-      try {
-        const prNumberStr = String(prNumber);
-        const repo = repoOverride || getLatestSelectedRepoSafe();
-
-        // PR is already acked -> clear it, otherwise ack it. Returns
-        // { payload, selectedRepo } on success, null on failure.
-        const result = isAcked
-          ? await runClearOnlyWorkflowSafe(prNumberStr, repo)
-          : await runAckOnlyWorkflowSafe(prNumberStr, repo);
-
-        if (result) {
-          updateReactTableSafe(result.payload, result.selectedRepo || repo);
-        }
-      } catch (error) {
-        console.error('[ReactCallbacks] Error handling Ack action:', error);
-      }
-    };
-
-    /**
-     * Handle "add label" selection from React component
-     *
-     * @param {number} prNumber - PR number
-     * @param {string} label - Label name to apply
-     * @param {string} [repoOverride] - The PR's repo (see handleCheckboxChange)
-     * @returns {Promise<void>}
-     */
-    const handleApplyLabel = async (prNumber, label, repoOverride) => {
-      try {
-        const repo = repoOverride || getLatestSelectedRepoSafe();
-
-        const result = await runApplyLabelWorkflowSafe(String(prNumber), label, repo);
-
-        if (result) {
-          updateReactTableSafe(result.payload, result.selectedRepo || repo);
-        }
-      } catch (error) {
-        console.error('[ReactCallbacks] Error handling Apply Label action:', error);
-      }
-    };
+    // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // handleAckAction/handleApplyLabel used to live here - deleted outright.
+    // PrTableApp.jsx now builds its own equivalent handlers directly via
+    // useAckLabelActions(), reaching the real Context-backed workflow
+    // functions instead of this vanilla factory's window-bridge-fed DI.
 
     return {
       handleCheckboxChange,
-      handleAckAction,
-      handleApplyLabel,
     };
   };
 
