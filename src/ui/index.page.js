@@ -6,7 +6,6 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as reactCallbackHelperFactory from "./helpers/react-callbacks.helpers.js";
 import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
 import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.orchestrator.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
@@ -83,7 +82,6 @@ import {
   extractRowLabelNames,
   normalizeFilterToken,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
-import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
 import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
 import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
@@ -1489,21 +1487,13 @@ const isInReviewEnabled = (row) => {
 // via grep) - unlike isInReviewEnabled, nothing internal ever called it
 // either (no "alwaysShowFlagged"-style filter exists).
 
-// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
-// wire-ups around pr-row-checkbox-actions.helpers.js's extracted factory -
-// same names, same window.*/DI call sites elsewhere in this file (notably
-// react-callbacks.helpers.js's createReactCallbacks() wiring), unchanged.
-const { toggleInReviewForRow, toggleFlaggedForRow } =
-  prRowCheckboxActionsHelperFactory.createPrRowCheckboxActionsHelpers({
-    fetchFn: (...args) => fetch(...args),
-    setStatusTextOnly: (...args) => setStatusTextOnly(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-    getLatestStoredPayload: () => latestStoredPayload,
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    applyLatestPrData: (...args) => applyLatestPrData(...args),
-    loadStoredData: (...args) => loadStoredData(...args),
-    beginRequestActivity: (...args) => beginRequestActivity(...args),
-  });
+// Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// index.page.js's own createPrRowCheckboxActionsHelpers instance (which
+// used to feed toggleInReviewForRow/toggleFlaggedForRow into
+// createReactCallbacks() below) is deleted outright - confirmed its only
+// caller was createReactCallbacks(), and PrTableApp.jsx now builds its
+// own equivalent handler directly via useRowCheckboxActions() (a real
+// hook wrapping the same pr-row-checkbox-actions.helpers.js factory).
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeNotesListForUi used to
 // be destructured here for the window.* bridge below - NotesSection.jsx
@@ -2074,7 +2064,7 @@ const renderPrTableMountError = () => {
 // anywhere in the app) and isn't ported.
 let reactTableMounted = false;
 
-const mountReactTable = (container, initialData, callbacks) => {
+const mountReactTable = (container, initialData) => {
   if (!container) {
     console.error("[ReactBridge] Cannot mount: no container element");
     return false;
@@ -2091,9 +2081,6 @@ const mountReactTable = (container, initialData, callbacks) => {
     window.mountReactPrTable(container, {
       initialPayload: initialData.payload || {},
       selectedRepo: initialData.selectedRepo || "",
-      onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
-      onAckAction: callbacks.onAckAction || (() => {}),
-      onApplyLabel: callbacks.onApplyLabel || (() => {}),
     });
     reactTableMounted = true;
     return true;
@@ -2298,25 +2285,10 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   }
 
   // First time: mount React
-  // Create callbacks
-  const callbacks = createReactCallbacks();
-  if (!callbacks) {
-    console.error('[renderPrData] Failed to create React callbacks - cannot mount table');
-    renderPrTableMountError();
-    return;
-  }
-
-  // Mount React
-  const success = mountReactTable(
-    container,
-    {
-      payload: latestStoredPayload || payload || {},
-      selectedRepo: resolvedRepo,
-    },
-    {
-      onCheckboxChange: callbacks.handleCheckboxChange,
-    }
-  );
+  const success = mountReactTable(container, {
+    payload: latestStoredPayload || payload || {},
+    selectedRepo: resolvedRepo,
+  });
 
   if (!success) {
     console.error('[renderPrData] React mount failed - cannot render table');
@@ -2577,71 +2549,14 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * Create React callback helpers (lazy initialization)
- * This factory creates the callbacks that React uses to communicate with vanilla JS.
+ * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * createReactCallbacks()/react-callbacks.helpers.js deleted outright -
+ * handleCheckboxChange (the last function that factory built) moved to
+ * PrTableApp.jsx in this phase, following handleAckAction/handleApplyLabel
+ * in Phase H.5. Nothing else ever called createReactCallbackHelpers(), so
+ * the factory itself, its own test file, and this lazy-init wrapper are
+ * all gone - confirmed via grep.
  */
-let reactCallbacks = null;
-
-function createReactCallbacks() {
-  if (reactCallbacks) {
-    return reactCallbacks;
-  }
-
-  // Check if React callbacks helper is available
-  if (!reactCallbackHelperFactory) {
-    console.warn('[ReactIntegration] React callbacks helper not available');
-    return null;
-  }
-
-  const helpers = reactCallbackHelperFactory.createReactCallbackHelpers({
-    // Pass vanilla JS functions
-    toggleInReviewForRow: toggleInReviewForRow,
-    toggleFlaggedForRow: toggleFlaggedForRow,
-
-    // Update React table function - see pushPayloadToReactTable's own
-    // comment (Track C, slice C2a, REACT_MIGRATION_PLAN.md) for why this
-    // is a deliberately separate fast path from renderPrData.
-    updateReactTable: pushPayloadToReactTable,
-
-    // State getters
-    stateGetters: {
-      // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md):
-      // getLatestStoredPayload was removed from here because
-      // handleCheckboxChange (react-callbacks.helpers.js - handleAckAction/
-      // handleApplyLabel were also here before Phase H.5 moved them to
-      // PrTableApp.jsx) used to mutate latestStoredPayload as a synchronous
-      // side effect (via toggleFlaggedForRow/toggleInReviewForRow/etc.) and
-      // then immediately read it back via this getter, in the SAME call,
-      // to push the just-mutated value into React - a real, Playwright-confirmed
-      // hazard if this getter were ever switched to the
-      // window.getReactPrTablePayload Context bridge (Context's payload
-      // only updates *after* the getter's return value reaches
-      // updateReactTableSafe, so reading it there would hand back the
-      // pre-mutation payload and undo the change). Resolved by having
-      // those vanilla functions return their freshly-computed
-      // { payload, selectedRepo } directly instead of writing it
-      // somewhere react-callbacks.helpers.js has to read back - see each
-      // function's own comment. getLatestSelectedRepo stays: it's used for
-      // an unrelated, pre-call repoOverride fallback, not a same-tick
-      // readback.
-      //
-      // ROADMAP.md's "checkbox's on-failure revert" item (re-investigated
-      // during this same follow-up review) turned out to already be
-      // stale: a failed toggle still calls setStatusTextOnly, which pushes
-      // to AppRoot's own local useState and re-renders PrTableApp (a
-      // non-memoized child) regardless of outcome - so the controlled
-      // checkbox already re-derives from the unchanged payload on every
-      // failure, with no extra re-push needed. Confirmed empirically: a
-      // Playwright regression test for this (e2e/smoke.spec.js) passes
-      // identically whether or not a getLatestStoredPayload-based re-push
-      // is wired in here. Left out again for that reason.
-      getLatestSelectedRepo: () => latestSelectedRepo,
-    },
-  });
-
-  reactCallbacks = helpers;
-  return helpers;
-}
 
 const initPage = () => {
   renderRequestActivity();

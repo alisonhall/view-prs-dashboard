@@ -1,0 +1,49 @@
+import { useMemo } from 'react';
+import { usePrData } from './PrDataContext';
+import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+
+/**
+ * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * replaces window.* indirection for PrTableApp.jsx's per-row checkbox
+ * (in-review/flagged) toggle - its only real caller was already React
+ * (PrTableApp.jsx's own handleCheckboxChange, built from
+ * react-callbacks.helpers.js's vanilla createReactCallbacks() until now).
+ * Same shape useSinglePrUpdate.jsx already established: wraps an
+ * existing, already-tested DI-factory (pr-row-checkbox-actions.helpers.js)
+ * with Context-sourced state where it's available (payload/selectedRepo,
+ * via usePrData()) and window.* bridges for the pieces that stay
+ * vanilla-owned for now (beginRequestActivity/loadStoredData/
+ * updateReactStatusText/showErrorNotification/applyLatestPrData - the
+ * last one only syncs index.page.js's own vanilla payload/repo mirror,
+ * it doesn't touch React at all, so the caller still needs to separately
+ * push into Context - see PrTableApp.jsx's own comment).
+ *
+ * Not a fully "clean" hook, by design, matching useSinglePrUpdate.jsx's
+ * own precedent exactly, not a new one.
+ */
+export function useRowCheckboxActions() {
+  const { payload, selectedRepo } = usePrData();
+
+  return useMemo(() => {
+    const { toggleInReviewForRow, toggleFlaggedForRow } = createPrRowCheckboxActionsHelpers({
+      fetchFn: (...args) => fetch(...args),
+      setStatusTextOnly: (message) => window.updateReactStatusText?.(message),
+      notifyFailureSnackbar: (title, errorSource, fallbackMessage) => {
+        const { title: finalTitle, detail } = buildFailureSnackbarNotification(
+          title,
+          errorSource,
+          fallbackMessage,
+        );
+        window.showErrorNotification?.(finalTitle, detail, 0);
+      },
+      getLatestStoredPayload: () => payload,
+      getLatestSelectedRepo: () => selectedRepo,
+      applyLatestPrData: (partial) => window.applyLatestPrData?.(partial),
+      loadStoredData: (...args) => window.loadStoredData?.(...args),
+      beginRequestActivity: window.beginRequestActivity || (() => () => {}),
+    });
+
+    return { toggleInReviewForRow, toggleFlaggedForRow };
+  }, [payload, selectedRepo]);
+}

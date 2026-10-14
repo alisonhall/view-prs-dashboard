@@ -17,6 +17,7 @@ import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useAckLabelActions } from '../state/useAckLabelActions';
+import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
@@ -30,13 +31,9 @@ import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.
  * Renders all PR sections (smart groups + lifecycle sections) with React.
  * Manages section open/closed state and expandable insights state.
  * 
- * @param {Object} props
- * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
  * @returns {JSX.Element}
  */
-export function PrTableApp({
-  onCheckboxChange,
-}) {
+export function PrTableApp() {
   // PR data payload/selectedRepo/visiblePrNumbers - owned by <PrDataProvider />
   // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
   // which also owns window.updateReactPrTable itself. Replaces this
@@ -107,6 +104,43 @@ export function PrTableApp({
   // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
   // state in the hook, so two independent instances is harmless.
   const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();
+
+  // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onCheckboxChange used to be the one remaining vanilla-fed prop (same
+  // createReactCallbacks() shape onAckAction/onApplyLabel came from) -
+  // this component builds its own real handler now too, the same way.
+  const { toggleInReviewForRow, toggleFlaggedForRow } = useRowCheckboxActions();
+
+  // Matches react-callbacks.helpers.js's old handleCheckboxChange exactly -
+  // toggleInReviewForRow/toggleFlaggedForRow's own applyLatestPrData DI
+  // only syncs index.page.js's vanilla payload/repo mirror (confirmed by
+  // reading its real definition), it doesn't touch React - this handler's
+  // own applyFreshTablePayload call afterward is the actual push into
+  // Context, same two-step shape handleAckAction/handleApplyLabel use.
+  const handleCheckboxChange = useCallback(
+    async (prNumber, type, checked, repoOverride) => {
+      try {
+        const repo = repoOverride || selectedRepo;
+        const entry = { prNumber: String(prNumber), repo };
+        const row = { number: prNumber };
+        const mockCheckbox = { checked };
+
+        const result =
+          type === 'flagged'
+            ? await toggleFlaggedForRow(entry, row, checked, mockCheckbox)
+            : type === 'inReview'
+              ? await toggleInReviewForRow(entry, row, checked, mockCheckbox)
+              : null;
+
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling checkbox change:', error);
+      }
+    },
+    [toggleFlaggedForRow, toggleInReviewForRow, applyFreshTablePayload, selectedRepo],
+  );
 
   // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel
   // exactly, including the try/catch - a thrown/rejected workflow is caught
@@ -678,7 +712,7 @@ export function PrTableApp({
           expandedInsights={expandedInsights}
           onToggleSection={handleToggleSection}
           onToggleInsights={handleToggleInsights}
-          onCheckboxChange={onCheckboxChange}
+          onCheckboxChange={handleCheckboxChange}
           onAckAction={handleAckActionBusy}
           onApplyLabel={handleApplyLabelBusy}
           onUpdatePr={handleUpdatePrBusy}

@@ -707,11 +707,33 @@ describe('PrTableApp', () => {
     expect(openSection.section.attentionCount).toBe(1);
   });
 
-  test('given an onCheckboxChange prop, when passed through, then the same function reaches PrSection unchanged', () => {
-    const onCheckboxChange = jest.fn();
+  // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onCheckboxChange used to be a test-injected prop - PrTableApp now
+  // builds the real handler itself (via useRowCheckboxActions(), reaching
+  // the real pr-row-checkbox-actions.helpers.js factory), so this drives
+  // the real fetch call instead of a mock prop - same seam shift H.5 did
+  // for onAckAction/onApplyLabel (there via postJson, here via fetch
+  // directly, matching toggleInReviewForRow/toggleFlaggedForRow's own
+  // fetchFn DI).
+  test('given a checkbox change, when the real handler is called, then it posts the real /view-prs/ack request', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, prData: {} }),
+    });
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: onCheckboxChange, onAckAction: () => {}, onApplyLabel: () => {} });
-    expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+    await React.act(async () => {
+      await capturedSectionProps[0].onCheckboxChange('1', 'inReview', true, 'owner/repo');
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/ack',
+      expect.objectContaining({
+        body: JSON.stringify({ repo: 'owner/repo', inReview: '1' }),
+      }),
+    );
+    delete global.fetch;
   });
 
   describe('per-row busy spinner (Ack/Apply-Label/Update in flight)', () => {

@@ -57,14 +57,18 @@ const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
 const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
-// Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
+// Phase 6 (see REACT_MIGRATION_PLAN.md): these two are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
 // own <script> tags, which this suite never loads) rather than importing
 // them - see the initTestPage() wiring below for where they get attached.
+// Phase H.6 (see REACT_MIGRATION_PLAN.md): react-callbacks.helpers.js
+// (formerly the third of these three) was deleted outright - its own
+// createReactCallbackHelpers factory had zero remaining callers once
+// handleCheckboxChange moved to PrTableApp.jsx, following
+// handleAckAction/handleApplyLabel in Phase H.5.
 const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.js");
 const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.js");
-const reactCallbacksHelpers = require("../helpers/react-callbacks.helpers.js");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
@@ -579,7 +583,7 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
 // be the child of a createPortal called from inside
 // FilterStateTestRootHarness's single persistent tree (see that
 // component's own comment, and mountReactPrTableSlotController's).
-function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange }) {
+function MountedPrTableTree({ initialPayload, selectedRepo }) {
   return React.createElement(
     PrDataProvider,
     { initialPayload, initialSelectedRepo: selectedRepo },
@@ -589,10 +593,11 @@ function MountedPrTableTree({ initialPayload, selectedRepo, onCheckboxChange }) 
       React.createElement(
         NotesDirtyProvider,
         null,
-        // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-        // PrTableApp no longer accepts onAckAction/onApplyLabel as props -
-        // it builds its own real handlers via useAckLabelActions().
-        React.createElement(PrTableApp, { onCheckboxChange }),
+        // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
+        // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
+        // onCheckboxChange as props - it builds its own real handlers via
+        // useAckLabelActions()/useRowCheckboxActions().
+        React.createElement(PrTableApp),
       ),
     ),
     // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -655,7 +660,6 @@ function FilterStateTestRootHarness({ initialValues }) {
               React.createElement(MountedPrTableTree, {
                 initialPayload: mountRequest.props?.initialPayload,
                 selectedRepo: mountRequest.props?.selectedRepo,
-                onCheckboxChange: mountRequest.props?.onCheckboxChange,
               }),
               mountRequest.containerElement,
             ),
@@ -876,7 +880,6 @@ const installReactTableMountBridge = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
-  window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
   installReactFilterPanelMountBridges();
   installReactStatusTextMountBridges();
   installReactSnackbarMountBridge();
