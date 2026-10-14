@@ -13,15 +13,12 @@ describe('PrDataProvider', () => {
     delete window.updateReactStatsViewState;
     delete window.beginRequestActivity;
     delete window.renderRequestActivity;
-    delete window.pollSchedulerStatus;
     delete window.setLatestSchedulerStateAndRender;
     delete window.getLatestSchedulerState;
     delete window.updateReactRequestActivityBadges;
     delete window.updateReactRecentRequestActivity;
     delete window.getBackfillTrackingState;
     delete window.loadBackfillStatus;
-    delete window.getSupportsSchedulerPolling;
-    delete window.loadSchedulerStatus;
   });
 
   test('given an initial payload, when rendering, then window.getReactPrTablePayload returns it', () => {
@@ -113,8 +110,11 @@ describe('PrDataProvider', () => {
   });
 
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // beginRequestActivity/renderRequestActivity/pollBackfillStatus/
-  // pollSchedulerStatus moved here from index.page.js.
+  // beginRequestActivity/renderRequestActivity/pollBackfillStatus moved
+  // here from index.page.js (pollSchedulerStatus did too, but was deleted
+  // outright in Phase H.2 - see REACT_MIGRATION_PLAN.md - once its own
+  // automatic interval had already been retired in favor of SSE and
+  // index.html.test.js's one direct call was its only remaining caller).
   describe('request activity', () => {
     test('given a call to window.beginRequestActivity, when the returned finish function is called, then the badge bridge fires on begin and end, and the recent-activity bridge fires once on end', () => {
       const badgeCalls = [];
@@ -224,24 +224,6 @@ describe('PrDataProvider', () => {
       });
 
       expect(loadBackfillStatus).not.toHaveBeenCalled();
-    });
-
-    test('given supportsSchedulerPolling is false, when pollSchedulerStatus is called (via the kept window bridge), then it never calls loadSchedulerStatus', async () => {
-      const loadSchedulerStatus = jest.fn();
-      window.getSupportsSchedulerPolling = () => false;
-      window.loadSchedulerStatus = loadSchedulerStatus;
-
-      render(
-        <PrDataProvider>
-          <div />
-        </PrDataProvider>,
-      );
-
-      await act(async () => {
-        await window.pollSchedulerStatus();
-      });
-
-      expect(loadSchedulerStatus).not.toHaveBeenCalled();
     });
   });
 });

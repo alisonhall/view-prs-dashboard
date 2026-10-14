@@ -146,7 +146,8 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * call site - the actual Phase F goal), and *also* still as
  * `window.pollForDataChanges` (index.html.test.js calls it directly at 17
  * call sites and never mounts `<PrDataPolling />` - same "stays callable
- * for tests" precedent `window.pollSchedulerStatus` already established).
+ * for tests" shape `window.pollSchedulerStatus` used to have, before
+ * Phase H.2 - see REACT_MIGRATION_PLAN.md - retired it outright).
  * `applyFreshPrPayload`/`prDataTabOrchestrator`/`loadStoredData`
  * (index.page.js - 3 other vanilla call sites that write pieces of this
  * same tracking state directly) redirect through the new
@@ -160,20 +161,18 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * in this migration.
  *
  * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
- * builds `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`/
- * `pollSchedulerStatus` now (inlined directly - unlike `pollForDataChanges`,
- * there was no pre-existing pure DI-factory to wrap), owning the
- * counter/history/scheduler-state bookkeeping they depend on (`activityRef`
- * below) - same plain-ref reasoning as `trackingRef`. `beginRequestActivity`
- * stays bridged as `window.beginRequestActivity` (5 real React consumers -
+ * builds `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`
+ * now (inlined directly - unlike `pollForDataChanges`, there was no
+ * pre-existing pure DI-factory to wrap), owning the counter/history/
+ * scheduler-state bookkeeping they depend on (`activityRef` below) - same
+ * plain-ref reasoning as `trackingRef`. `beginRequestActivity` stays
+ * bridged as `window.beginRequestActivity` (5 real React consumers -
  * `useSinglePrUpdate.jsx`/`useRunScript.jsx`/`useBackfillActions.jsx`/
  * `useAckLabelActions.jsx`/`NotesSection.jsx` - already read it that way,
- * by design, same precedent as `applyFreshPrPayload`) and
- * `window.pollSchedulerStatus` stays bridged too (`index.html.test.js`'s
- * only remaining caller - same "stays callable for tests" precedent as
- * `pollForDataChanges`). `window.pollBackfillStatus`/`window.renderRequestActivity`
- * had no caller left besides `<PrDataPolling />` once it reads them from
- * Context instead - both deleted outright from `index.page.js`, not kept.
+ * by design, same precedent as `applyFreshPrPayload`).
+ * `window.pollBackfillStatus`/`window.renderRequestActivity` had no
+ * caller left besides `<PrDataPolling />` once it reads them from Context
+ * instead - both deleted outright from `index.page.js`, not kept.
  * `index.page.js`'s own `beginRequestActivity`/`renderRequestActivity`
  * consts become thin proxies to these same bridges, so their 9+ existing
  * vanilla call sites keep working unchanged. `renderSchedulerStatus`
@@ -182,6 +181,18 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * writing a bare module `let`. `loadBackfillStatus`/`loadSchedulerStatus`
  * stay vanilla (other real callers beyond polling) - reached via 2 more new
  * reverse bridges, same category as everything else in this paragraph.
+ *
+ * Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * `pollSchedulerStatus` itself (this Provider's thin wrapper around
+ * `window.loadSchedulerStatus`) is deleted outright - its own automatic
+ * `setInterval` was already retired by the activity-drawer feature
+ * (`PrDataPolling.jsx`'s own comment), and `index.html.test.js`'s one
+ * remaining direct call was its only caller of any kind (confirmed:
+ * `<PrDataPolling />` never destructured it from this Context either).
+ * The real production behavior it exercised (the active-PR progress
+ * indicator) is unaffected - `window.renderSchedulerStatus`
+ * (`index.page.js`, still vanilla) is the one real remaining path,
+ * called directly by `JobEventsProvider.jsx`'s SSE connection.
  */
 export function PrDataProvider({
   initialPayload,
@@ -447,16 +458,15 @@ export function PrDataProvider({
       };
     };
 
-    // pollBackfillStatus/pollSchedulerStatus's own guard flags
-    // (isBackfillRunning/isBackfillActionPending/supportsSchedulerPolling)
-    // and the real fetch work they delegate to (loadBackfillStatus/
-    // loadSchedulerStatus) stay vanilla-owned (index.page.js) - both have
-    // other real vanilla callers (the backfill tab orchestrator/initial
-    // auto-load, the quick-check workflow's forced scheduler refresh) this
-    // phase doesn't touch. Reached via new reverse bridges, same "vanilla
-    // primitive exposed for React" shape as window.getBackfillTrackingState
-    // (Phase D.2, reused as-is here for the isBackfillRunning/
-    // isBackfillActionPending guard).
+    // pollBackfillStatus's own guard flags
+    // (isBackfillRunning/isBackfillActionPending) and the real fetch work
+    // it delegates to (loadBackfillStatus) stay vanilla-owned
+    // (index.page.js) - it has other real vanilla callers (the backfill
+    // tab orchestrator/initial auto-load) this phase doesn't touch.
+    // Reached via a new reverse bridge, same "vanilla primitive exposed
+    // for React" shape as window.getBackfillTrackingState (Phase D.2,
+    // reused as-is here for the isBackfillRunning/isBackfillActionPending
+    // guard).
     const pollBackfillStatus = async () => {
       const tracking = window.getBackfillTrackingState?.() || {};
       if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
@@ -469,26 +479,12 @@ export function PrDataProvider({
       }
     };
 
-    const pollSchedulerStatus = async () => {
-      if (!window.getSupportsSchedulerPolling?.()) {
-        return;
-      }
-      try {
-        await window.loadSchedulerStatus?.();
-      } catch (_error) {
-        // Ignore polling failures and wait for the next interval.
-      }
-    };
-
-    return { beginRequestActivity, renderRequestActivity, pollBackfillStatus, pollSchedulerStatus };
+    return { beginRequestActivity, renderRequestActivity, pollBackfillStatus };
   }, []);
 
   useEffect(() => {
     window.beginRequestActivity = (...args) => activityHelpers.beginRequestActivity(...args);
     window.renderRequestActivity = (...args) => activityHelpers.renderRequestActivity(...args);
-    // Kept bridged - index.html.test.js is its only remaining caller (same
-    // "stays callable for tests" precedent as window.pollForDataChanges).
-    window.pollSchedulerStatus = (...args) => activityHelpers.pollSchedulerStatus(...args);
     // Vanilla primitive exposed *for* this Provider: renderSchedulerStatus
     // (index.page.js, still called by loadSchedulerStatus and by
     // JobEventsProvider.jsx's real-time SSE path) pushes a fresh scheduler
@@ -506,7 +502,6 @@ export function PrDataProvider({
     return () => {
       delete window.beginRequestActivity;
       delete window.renderRequestActivity;
-      delete window.pollSchedulerStatus;
       delete window.setLatestSchedulerStateAndRender;
       delete window.getLatestSchedulerState;
     };
@@ -546,7 +541,6 @@ export function PrDataProvider({
     beginRequestActivity: activityHelpers.beginRequestActivity,
     renderRequestActivity: activityHelpers.renderRequestActivity,
     pollBackfillStatus: activityHelpers.pollBackfillStatus,
-    pollSchedulerStatus: activityHelpers.pollSchedulerStatus,
   };
 
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): derives the same

@@ -28,9 +28,12 @@
  * the activity-drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
  * retirement" section): JobEventsProvider.jsx's SSE connection now drives
  * the same window.renderSchedulerStatus rendering directly, so a separate
- * 30s fetch for it is no longer needed. window.pollSchedulerStatus itself
- * stays callable (index.html.test.js calls it directly) - only this
- * component's automatic interval was removed.
+ * 30s fetch for it is no longer needed. Phase H.2 (see
+ * REACT_MIGRATION_PLAN.md) deleted window.pollSchedulerStatus/
+ * PrDataProvider.jsx's own pollSchedulerStatus outright too, once
+ * index.html.test.js's one remaining direct call (its only caller left)
+ * was rewritten to call window.renderSchedulerStatus directly instead -
+ * the same real path SSE already uses.
  *
  * Mounted once as a headless React root (see react-app.jsx's
  * mountPrDataPolling) - it renders null, so it doesn't need a specific

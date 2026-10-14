@@ -3468,7 +3468,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("scheduler polling toggles active PR progress indicators without row rerender", async () => {
+  test("scheduler status push toggles active PR progress indicators without row rerender", async () => {
     {
       jest.resetModules();
       latestDataPayload = createMultiPrPayload({
@@ -3497,23 +3497,7 @@ describe("index page rendering with Testing Library", () => {
       installReactTableMountBridge();
 
       let schedulerActivePrNumbers = [];
-      const baseFetch = createFetchMock();
-      fetchMock = jest.fn(async (url, init = {}) => {
-        const normalizedUrl = String(url || "");
-        const method = String(init?.method || "GET").toUpperCase();
-        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
-          return createOkJsonResponse({
-            ok: true,
-            scheduler: {
-              intervalMinutes: 15,
-              manualCooldownMinutes: 15,
-              isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
-              activePrNumbers: schedulerActivePrNumbers,
-            },
-          });
-        }
-        return baseFetch(url, init);
-      });
+      fetchMock = createFetchMock();
       global.fetch = fetchMock;
       window.fetch = fetchMock;
       window.marked = {
@@ -3535,15 +3519,6 @@ describe("index page rendering with Testing Library", () => {
       installFilterStateProviderBridge();
 
       require("../index.page.js");
-
-      // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // window.pollSchedulerStatus is now set inside PrDataProvider.jsx's
-      // own mount effect (async, React) instead of at vanilla module-load
-      // time (sync) - same waitFor fix Phase F already needed for
-      // window.pollForDataChanges's own identical bridge-timing change.
-      await waitFor(() => {
-        expect(typeof window.pollSchedulerStatus).toBe("function");
-      });
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there
@@ -3567,8 +3542,23 @@ describe("index page rendering with Testing Library", () => {
       expect(initialIndicator).toBeTruthy();
       expect(initialIndicator?.hidden).toBe(true);
 
+      // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // window.pollSchedulerStatus (a poll wrapper around a now-retired
+      // setInterval, see PrDataPolling.jsx's own comment) is gone - the
+      // progress indicator is driven by window.renderSchedulerStatus in
+      // production too, called directly by JobEventsProvider.jsx's real
+      // SSE connection on every scheduler-status push. Calling it directly
+      // here with the same payload shape exercises that real remaining
+      // path instead of a bridge with no caller left.
       schedulerActivePrNumbers = [{ repo: "owner/repo", prNumber: "1" }];
-      await window.pollSchedulerStatus();
+      act(() => {
+        window.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();
@@ -3577,7 +3567,14 @@ describe("index page rendering with Testing Library", () => {
       });
 
       schedulerActivePrNumbers = [];
-      await window.pollSchedulerStatus();
+      act(() => {
+        window.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();

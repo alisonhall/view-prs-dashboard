@@ -1430,9 +1430,12 @@ const loadSchedulerStatus = async () => {
 };
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// PrDataProvider.jsx's own pollSchedulerStatus needs these 2 reverse
-// bridges - loadSchedulerStatus stays vanilla (the quick-check workflow's
-// forced scheduler refresh is another real caller beyond polling), and
+// these 2 reverse bridges used to also serve PrDataProvider.jsx's own
+// pollSchedulerStatus - deleted outright in Phase H.2 (see
+// REACT_MIGRATION_PLAN.md), once its automatic interval had already been
+// retired in favor of SSE and it had no caller left besides a test.
+// loadSchedulerStatus stays vanilla regardless (the quick-check workflow's
+// forced scheduler refresh is a real caller beyond that), and
 // supportsSchedulerPolling stays a vanilla-owned flag (loadSchedulerStatus
 // itself is the only writer, on a 404) rather than forking a second copy.
 if (typeof window !== "undefined") {
@@ -2377,10 +2380,11 @@ if (typeof window !== "undefined") {
 // PrDataProvider.jsx (state/), reached directly via <PrDataPolling />'s
 // usePrData() Context - window.pollBackfillStatus/window.renderRequestActivity
 // had no caller left besides that component, so both were deleted outright
-// (window.pollSchedulerStatus stays, see below). loadBackfillStatus stays
-// vanilla here (the backfill tab orchestrator/initial auto-load are other
-// real callers beyond polling) - exposed via a new reverse bridge for
-// PrDataProvider's own pollBackfillStatus to reach.
+// (pollSchedulerStatus itself was later deleted too, in Phase H.2 - see
+// REACT_MIGRATION_PLAN.md). loadBackfillStatus stays vanilla here (the
+// backfill tab orchestrator/initial auto-load are other real callers
+// beyond polling) - exposed via a new reverse bridge for PrDataProvider's
+// own pollBackfillStatus to reach.
 if (typeof window !== "undefined") {
   window.loadBackfillStatus = (...args) => loadBackfillStatus(...args);
 }
@@ -2394,9 +2398,9 @@ if (typeof window !== "undefined") {
 // interval timing has one source of truth).
 // window.pollForDataChanges/pollBackfillStatus/renderRequestActivity used
 // to also be bridged here - Phase F/F.2 (see REACT_MIGRATION_PLAN.md,
-// "Full migration roadmap") moved them into PrDataProvider.jsx, which now
-// sets window.pollSchedulerStatus itself too (kept bridged - see that
-// file's own header comment for why).
+// "Full migration roadmap") moved them into PrDataProvider.jsx, which
+// used to also set window.pollSchedulerStatus itself (deleted outright
+// in Phase H.2 - see that file's own header comment for why).
 if (typeof window !== "undefined") {
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
   // retirement" section): JobEventsProvider.jsx calls this directly with
@@ -3194,8 +3198,11 @@ const initPage = () => {
   // REACT_MIGRATION_PLAN.md) moved pollForDataChanges/pollBackfillStatus/
   // renderRequestActivity themselves into PrDataProvider.jsx too, reached
   // directly via usePrData() Context (no window.* indirection left for any
-  // of the 3). window.pollSchedulerStatus alone stays bridged - its only
-  // remaining caller is index.html.test.js, not <PrDataPolling />.
+  // of the 3). window.pollSchedulerStatus (its own automatic interval
+  // already retired, below) was deleted outright in Phase H.2 (see
+  // REACT_MIGRATION_PLAN.md) - index.html.test.js was its only remaining
+  // caller, and that test now calls window.renderSchedulerStatus
+  // directly instead, the same real path SSE uses.
 };
 
 if (typeof window !== "undefined") {
