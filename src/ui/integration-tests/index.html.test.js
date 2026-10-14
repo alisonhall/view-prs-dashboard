@@ -56,6 +56,7 @@ const { Snackbar } = require("../components/Snackbar");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
+const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
@@ -5742,12 +5743,20 @@ describe("index page rendering with Testing Library", () => {
 
     expect(document.getElementById("merged-request-more-action")).toBeInTheDocument();
 
-    // The button/status content is React-owned now (MergedRequestMoreAction.jsx,
-    // portaled into #merged-request-more-action - not mounted in this
-    // jsdom-only suite), but window.handleRequestMoreMerged (the vanilla
-    // orchestration it calls on click) is still real here, so the actual
-    // POST round-trip is still worth exercising directly.
-    await window.handleRequestMoreMerged("owner/repo");
+    // Phase H.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // mount the real MergedRequestMoreAction component and click its
+    // button, instead of calling window.handleRequestMoreMerged directly -
+    // same pattern installReactActionButtonMountBridges() already uses for
+    // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton. The
+    // button's own click handler still calls window.handleRequestMoreMerged
+    // (the vanilla orchestration, unchanged) - only how the test triggers
+    // it changed.
+    rtlRender(
+      React.createElement(MergedRequestMoreAction, { isVisible: true, repo: "owner/repo" }),
+      { container: document.getElementById("merged-request-more-action") },
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Request more" }));
 
     let requestMoreCall;
     await waitFor(() => {
