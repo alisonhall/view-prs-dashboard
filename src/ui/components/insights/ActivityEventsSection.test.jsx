@@ -31,6 +31,21 @@ describe('ActivityEventsSection', () => {
     expect(items[1]).toHaveTextContent('first comment');
   });
 
+  test("given a 'closed' event, when rendering, then it gets its own dedicated kind class (not the generic 'system' fallback)", () => {
+    const pr = {
+      activityTimeline: [
+        {
+          events: [
+            { sourceId: 'closed', occurredAt: '2026-01-05T00:00:00Z', actor: 'unknown', type: 'closed', channel: 'system' },
+          ],
+        },
+      ],
+    };
+    render(<ActivityEventsSection pr={pr} actorsMap={{}} />);
+    const item = document.querySelector('.insight-list-item');
+    expect(item).toHaveClass('insight-event-kind-closed');
+  });
+
   test('given a commit event with a long message body, when rendering, then truncates it past 280 characters', () => {
     const longBody = 'x'.repeat(300);
     const pr = {

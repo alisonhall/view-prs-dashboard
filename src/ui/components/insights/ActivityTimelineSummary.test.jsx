@@ -29,6 +29,16 @@ describe('ActivityTimelineSummary', () => {
     expect(screen.getByText(/comments \(2\)/)).toBeInTheDocument();
   });
 
+  test("given a 'closed' timeline entry, when rendering, then shows 'closed PR', not generic pluralization", () => {
+    const activityTimelineRaw = [
+      { date: '2026-01-06', actor: 'unknown', type: 'closed', count: 1 },
+    ];
+    render(<ActivityTimelineSummary activityTimelineRaw={activityTimelineRaw} fallbackSummary="" isOpen={false} pr={{}} actorsMap={{}} />);
+
+    expect(screen.getByText('2026-01-06')).toBeInTheDocument();
+    expect(screen.getByText(/closed PR/)).toBeInTheDocument();
+  });
+
   describe('consolidating no-activity weekday runs', () => {
     // 2026-01-05/06 are a Monday/Tuesday; 2026-01-12 is the following
     // Monday - a closed PR (isOpen=false) never extends past `newest`

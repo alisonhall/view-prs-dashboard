@@ -18,6 +18,7 @@ const SUFFIX_BY_TYPE = {
   commit: () => ' commit',
   opened: () => ' opened PR',
   merged: () => ' merged PR',
+  closed: () => ' closed PR',
 };
 
 export function ActivityEventDescription({ event, row, actorsMap }) {

@@ -2105,6 +2105,11 @@
             background: #ecfdf3;
             box-shadow: inset 3px 0 0 #2da44e;
         }
+        .insight-event-kind-closed {
+            border-color: #cf222e;
+            background: #fff0f0;
+            box-shadow: inset 3px 0 0 #cf222e;
+        }
         .insight-event-kind-system {
             border-color: #8c959f;
             background: #f6f8fa;

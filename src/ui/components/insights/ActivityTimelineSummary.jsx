@@ -33,6 +33,7 @@ function typeLabel(type, count) {
   if (type === 'commit') return count > 1 ? 'commits' : 'commit';
   if (type === 'opened') return 'opened PR';
   if (type === 'merged') return 'merged PR';
+  if (type === 'closed') return 'closed PR';
   return count > 1 ? `${type}s` : type;
 }
 

@@ -123,6 +123,18 @@ export const { createPrActivityEventsHelpers } = (() => {
         });
       }
 
+      const closedAt = String(row?.closedAt || "");
+      if (closedAt && !mergedAt) {
+        fallback.push({
+          sourceId: "closed",
+          occurredAt: closedAt,
+          actor: "unknown",
+          type: "closed",
+          channel: "system",
+          url: String(row?.url || ""),
+        });
+      }
+
       return fallback.filter((event) => String(event?.occurredAt || "").trim());
     };
 

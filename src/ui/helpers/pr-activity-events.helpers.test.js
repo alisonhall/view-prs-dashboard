@@ -101,6 +101,31 @@ describe("pr activity events helpers", () => {
       ]);
     });
 
+    test("given a closedAt with no mergedAt, when building fallback events, then a 'closed' system event is included", () => {
+      const { buildFallbackActivityEvents } = createPrActivityEventsHelpers();
+
+      const result = buildFallbackActivityEvents({
+        closedAt: "2026-01-05",
+        url: "https://example.com/pr/1",
+      });
+
+      expect(result).toEqual([
+        expect.objectContaining({ sourceId: "closed", type: "closed", actor: "unknown", channel: "system" }),
+      ]);
+    });
+
+    test("given both closedAt and mergedAt (a merged PR), when building fallback events, then no 'closed' event is added", () => {
+      const { buildFallbackActivityEvents } = createPrActivityEventsHelpers();
+
+      const result = buildFallbackActivityEvents({
+        closedAt: "2026-01-05",
+        mergedAt: "2026-01-05",
+      });
+
+      expect(result.filter((event) => event.type === "closed")).toHaveLength(0);
+      expect(result.filter((event) => event.type === "merged")).toHaveLength(1);
+    });
+
     test("given an event with no occurredAt, when building fallback events, then it is filtered out", () => {
       const { buildFallbackActivityEvents } = createPrActivityEventsHelpers();
 

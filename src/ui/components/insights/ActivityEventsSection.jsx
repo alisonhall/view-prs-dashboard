@@ -26,6 +26,7 @@ function getEventKind(event) {
   if (eventType === 'approval') return 'approval';
   if (eventType === 'merged') return 'merged';
   if (eventType === 'opened') return 'opened';
+  if (eventType === 'closed') return 'closed';
   if (eventChannel === 'commit' || eventType === 'commit') return 'commit';
   if (eventChannel === 'review' || eventType === 'review') return 'review';
   if (eventChannel === 'thread') return 'thread';
