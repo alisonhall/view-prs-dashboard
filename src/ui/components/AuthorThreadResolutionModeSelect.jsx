@@ -12,9 +12,13 @@
  * bound directly to this element's id, so it needed no changes for the
  * Context migration either: a React-rendered <select> is a real DOM node
  * with a real, always-current `.value` regardless of whether Context or
- * local state drives it. Only `getAuthorThreadResolutionPolicy`
- * (index.page.js), the canonical filtering-pipeline read site, was
- * updated to prefer Context.
+ * local state drives it. The one canonical read site, formerly
+ * `getAuthorThreadResolutionPolicy` (index.page.js), was updated to prefer
+ * Context then - and has since moved entirely into
+ * ReviewThreadsSection.jsx's own useAuthorThreadResolutionPolicy hook,
+ * which reads this same field from FilterStateContext directly (falling
+ * back to a DOM read only where no <FilterStateProvider> is mounted - see
+ * that hook's own comment).
  *
  * @module components/AuthorThreadResolutionModeSelect
  */

@@ -15,6 +15,7 @@ describe('ActivityEventDescription', () => {
     ['commit', {}, 'commit'],
     ['opened', {}, 'opened PR'],
     ['merged', {}, 'merged PR'],
+    ['closed', {}, 'closed PR'],
     ['something-else', {}, 'something-else'],
   ])('given a %s event, when rendering, then the suffix is "%s"', (type, extra, expectedSuffix) => {
     render(<ActivityEventDescription event={{ type, actor: 'alice', ...extra }} row={{}} actorsMap={{}} />);

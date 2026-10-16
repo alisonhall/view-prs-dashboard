@@ -17,6 +17,7 @@ import { LinesChangedInsight } from './insights/LinesChangedInsight';
 import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 import { CopyIconButton } from './CopyIconButton';
 import { useActorIdentity } from '../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
@@ -37,21 +38,22 @@ function InsightRow({ label, labelTitle, children, endAdornment }) {
 
 export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, compositeKey, onDataRefresh }) {
   const { buildRowActorsMap } = useActorIdentity();
-  const parseMarkerState = window.parseMarkerState || (() => '-');
-  const formatApproversDisplay = window.formatApproversDisplay || (() => '-');
-  const formatRequestedReviewersDisplay = window.formatRequestedReviewersDisplay || (() => '-');
-  const formatAssignedUsersDisplay = window.formatAssignedUsersDisplay || (() => '-');
-  const normalizeRowMetrics = window.normalizeRowMetrics || (() => ({}));
-  const getOpenConversationCountWithMe = window.getOpenConversationCountWithMe || (() => ({ count: 0, isViewerSpecific: false }));
-  const getViewedFilesSummary =
-    window.getViewedFilesSummary || ((row) => `${toCount(row?.viewedFilesCount)}/${toCount(row?.changedFilesCount)} viewed`);
-  const getBadgeClassForStatus = window.getBadgeClassForStatus || (() => '');
-  const getBadgeClassForCheck = window.getBadgeClassForCheck || (() => '');
-  const getBadgeClassForMerge = window.getBadgeClassForMerge || (() => '');
-  const formatReviewFootprint = window.formatReviewFootprint || (() => '-');
-  const formatConversationStatus = window.formatConversationStatus || (() => '-');
-  const formatApprovalRisk = window.formatApprovalRisk || (() => '-');
-  const formatCommentUsefulness = window.formatCommentUsefulness || (() => '-');
+  const {
+    parseMarkerState,
+    formatApproversDisplay,
+    formatRequestedReviewersDisplay,
+    formatAssignedUsersDisplay,
+    normalizeRowMetrics,
+    getOpenConversationCountWithMe,
+    getViewedFilesSummary,
+    getBadgeClassForStatus,
+    getBadgeClassForCheck,
+    getBadgeClassForMerge,
+    formatReviewFootprint,
+    formatConversationStatus,
+    formatApprovalRisk,
+    formatCommentUsefulness,
+  } = usePrInsightsDisplay();
 
   const checkState = String(pr.checkState || parseMarkerState(pr.titleDisplay, 'CHK') || '-');
   const mergeState = String(pr.mergeState || parseMarkerState(pr.titleDisplay, 'MRG') || '-');
@@ -60,7 +62,14 @@ export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, comp
   const metrics = normalizeRowMetrics(pr);
   const openConversationResult = getOpenConversationCountWithMe(pr);
   const openConversationCount = String(toCount(openConversationResult?.count));
-  const isOpen = !String(pr.mergedAt || '').trim();
+  // A PR closed without merging (closedAt set, mergedAt empty) is not
+  // "open" either - same mergedAt-wins-else-closedAt precedence
+  // PrDateCell.jsx already uses for "when did this PR stop being live".
+  // Feeds ActivityTimelineSummary's own end-date decision (isOpen ?
+  // today : newest-activity-date) - without this, a closed-not-merged
+  // PR kept generating "No activity" rows all the way to today instead
+  // of stopping at its close date.
+  const isOpen = !String(pr.mergedAt || pr.closedAt || '').trim();
 
   return (
     <div className="row-insights-content" data-insights-key={compositeKey} data-pr-number={String(pr?.number || '')}>

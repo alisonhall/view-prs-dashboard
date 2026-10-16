@@ -10,7 +10,7 @@ describe("pr activity badges helpers", () => {
     return "";
   };
 
-  const { getRequestActivityBadges, getSchedulerBadges } = createPrActivityBadgesHelpers({
+  const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
     withElapsedSuffix,
     getRequestActivitySeverityClass,
   });
@@ -59,61 +59,6 @@ describe("pr activity badges helpers", () => {
       expect(badges[1]).toEqual({
         text: "Backfill request x1 (150000ms)",
         className: "scheduler-badge-running scheduler-badge-warning",
-      });
-    });
-  });
-
-  describe("getSchedulerBadges", () => {
-    test("given a minimal scheduler payload, when computing badges, then interval/quick-check/cooldown badges use defaults and auto run is idle", () => {
-      expect(getSchedulerBadges({})).toEqual([
-        { text: "Every 15m" },
-        { text: "Quick check: every 5m" },
-        { text: "Manual cooldown 15m" },
-        { text: "Auto run: idle", className: "scheduler-badge-idle" },
-      ]);
-    });
-
-    test("given a scheduler with custom intervals and pending work, when computing badges, then a queued-update badge is included", () => {
-      const badges = getSchedulerBadges({
-        intervalMinutes: 30,
-        quickCheckIntervalMinutes: 10,
-        manualCooldownMinutes: 20,
-        pendingOpenCount: 2,
-        pendingMergedClosedCount: 1,
-      });
-
-      expect(badges).toEqual([
-        { text: "Every 30m" },
-        { text: "Quick check: every 10m" },
-        { text: "Manual cooldown 20m" },
-        { text: "Update queued: 2 open, 1 merged/closed", className: "scheduler-badge-running" },
-        { text: "Auto run: idle", className: "scheduler-badge-idle" },
-      ]);
-    });
-
-    test("given an auto run in progress, when computing badges, then the auto run badge reflects that", () => {
-      const badges = getSchedulerBadges({ isAutoRunInProgress: true });
-      expect(badges[badges.length - 1]).toEqual({
-        text: "Auto run: in progress",
-        className: "scheduler-badge-running",
-      });
-    });
-
-    test("given a timed-out auto error, when computing badges, then the auto run badge says timed out", () => {
-      const badges = getSchedulerBadges({
-        lastAutoError: "owner/repo: Auto refresh timed out after 900s",
-      });
-      expect(badges[badges.length - 1]).toEqual({
-        text: "Auto run: timed out",
-        className: "scheduler-badge-error",
-      });
-    });
-
-    test("given a non-timeout auto error, when computing badges, then the auto run badge says error", () => {
-      const badges = getSchedulerBadges({ lastAutoError: "boom" });
-      expect(badges[badges.length - 1]).toEqual({
-        text: "Auto run: error",
-        className: "scheduler-badge-error",
       });
     });
   });

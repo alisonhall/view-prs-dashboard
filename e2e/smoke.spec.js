@@ -250,6 +250,207 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
 });
 
+test("editing a PR Notes field in the real React-owned row reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+  // Regression test for Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md):
+  // NotesSection.jsx used to report an unsaved edit via a
+  // data-has-unsaved-notes DOM attribute, scanned by vanilla
+  // pr-auto-render-unsaved.helpers.js. It's now reported through
+  // NotesDirtyProvider's own React state, read back by vanilla via
+  // window.getDirtyNotesPrNumbers() - this is the one piece of the auto-
+  // render-blocking feature with no other e2e coverage, so it's verified
+  // in a real browser rather than only via jsdom (NotesDirtyProvider.test.jsx
+  // already covers the same wiring at the component level).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const notesTextarea = page.locator(".pr-notes-section").first().getByPlaceholder("Other notes...");
+  await expect(notesTextarea).toBeVisible();
+  const originalValue = await notesTextarea.inputValue();
+
+  expect(await page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+
+  await notesTextarea.fill(`${originalValue}a note left during this test`);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
+
+  // Restore the exact original value (not just "clear it") - this suite's
+  // webServer is one long-lived process shared by every test, so leaving
+  // this field genuinely dirty would bleed into whichever test runs next.
+  await notesTextarea.fill(originalValue);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+});
+
+test("typing character-by-character into the Rally stories/links inputs keeps every keystroke", async ({ page }) => {
+  // Regression coverage for a real bug only a real browser could catch:
+  // index.page.js's recomputeDirtyOnEvent is attached directly to
+  // #pr-sections - the same DOM node React's own table root mounts into -
+  // and was registered in initPage(), before React ever mounts, so it
+  // fired *before* React's own delegated listener for the same native
+  // "input" event (same-node listeners fire in registration order).
+  // Calling recomputeDirtyPrSectionsFields() synchronously from there (as
+  // it used to, for every INPUT keystroke - TEXTAREA was already
+  // debounced) triggers a React state update (AutoRenderBlockingProvider's
+  // bump()) *before* React's own event handling for that same native
+  // event starts, so React doesn't batch it - it flushes synchronously,
+  // reconciling the controlled Rally stories/links input back to its
+  // pre-keystroke value before React's own onChange ever runs. Each
+  // keystroke was silently dropped - .fill() didn't catch this (jsdom's
+  // event delegation model doesn't reproduce the real listener-ordering
+  // race either), only real per-keystroke typing in a real browser does.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const rallyStoryInput = page.locator(".pr-notes-rally-story-input:visible").first();
+  await expect(rallyStoryInput).toBeVisible();
+  await rallyStoryInput.click();
+  await rallyStoryInput.pressSequentially("US12345");
+  await expect(rallyStoryInput).toHaveValue("US12345");
+  await rallyStoryInput.fill("");
+
+  const rallyLinkInput = page.locator(".pr-notes-rally-link-input:visible").first();
+  await rallyLinkInput.click();
+  await rallyLinkInput.pressSequentially("https://rally.example/US12345");
+  await expect(rallyLinkInput).toHaveValue("https://rally.example/US12345");
+  await rallyLinkInput.fill("");
+});
+
+test("selecting an option in the Notes section's author/tone/difficulty dropdowns actually applies it", async ({ page }) => {
+  // Regression coverage for the same root cause as the Rally stories/
+  // links keystroke bug above, on recomputeDirtyOnEvent's "change"/"click"
+  // branches instead of "input" - a native <select> fires only "change"
+  // (no "input"), and clicking the closed <select> to open its dropdown
+  // is itself a "click" on a .pr-notes-* element, both of which this
+  // listener used to handle synchronously, before React's own delegated
+  // listener on the same #pr-sections node got a chance to run.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const notesSection = page.locator(".pr-notes-section:visible").first();
+
+  const difficultySelect = notesSection.locator("select.pr-notes-input");
+  await expect(difficultySelect).toBeVisible();
+  const originalDifficulty = await difficultySelect.inputValue();
+  const targetDifficulty = originalDifficulty === "4" ? "2" : "4";
+  await difficultySelect.selectOption(targetDifficulty);
+  await expect(difficultySelect).toHaveValue(targetDifficulty);
+  await difficultySelect.selectOption(originalDifficulty);
+  await expect(difficultySelect).toHaveValue(originalDifficulty);
+
+  await notesSection.getByRole("button", { name: "+ Add comment" }).click();
+  const toneSelect = notesSection.locator("select.pr-notes-comment-tone").first();
+  await expect(toneSelect).toHaveValue("Neutral");
+  await toneSelect.selectOption("Negative");
+  await expect(toneSelect).toHaveValue("Negative");
+
+  const authorSelect = notesSection.locator("select.pr-notes-comment-author").first();
+  const authorOptionCount = await authorSelect.locator("option").count();
+  if (authorOptionCount > 1) {
+    const secondOptionValue = await authorSelect.locator("option").nth(1).getAttribute("value");
+    await authorSelect.selectOption(secondOptionValue);
+    await expect(authorSelect).toHaveValue(secondOptionValue);
+  }
+  await notesSection.getByRole("button", { name: "✕ Remove" }).first().click();
+});
+
+test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
+  // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
+  // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/
+  // window.navigateToAuthorInsights directly - both are real hooks now
+  // (state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx). No
+  // existing e2e spec drove these chips directly before this test - the 2
+  // "View in table" specs elsewhere in this file exercise a different,
+  // untouched sibling implementation (pr-author-insights-pr-link.helpers.js).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // PR #1 may also render in a smart group (membership is non-exclusive -
+  // see the "non-exclusive membership" tests elsewhere in this suite/
+  // PrTableApp.test.jsx), but which smart groups it currently qualifies
+  // for can shift depending on what an earlier test in this shared-webServer
+  // suite left behind (e.g. an In Review toggle) - scope to its own
+  // lifecycle section specifically, which is stable, and open that
+  // section first (same pattern as the "lifecycle section expand/collapse"
+  // test elsewhere in this file - sections default to collapsed).
+  const openSection = page.locator('[data-pr-section="open"]');
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.locator("summary").click();
+  }
+  const insightsToggle = page.locator('[data-pr-section="open"] [data-pr-number="1"] .row-insights-toggle');
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  // Scoped to the "open" section specifically (not just [data-pr-number="1"])
+  // for the same non-exclusive-smart-group reason as insightsToggle above -
+  // PR #1's row (and its own Notes section) can render twice.
+  const notesTextarea = page
+    .locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"]')
+    .getByPlaceholder("Other notes...");
+  await expect(notesTextarea).toBeVisible();
+  const originalValue = await notesTextarea.inputValue();
+  await notesTextarea.fill(`${originalValue}a note left during this test`);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
+
+  // The "Auto update paused" indicator (and its chips) only shows once a
+  // real poll's fresh data has actually been deferred, not merely because
+  // a field is dirty (AutoRenderBlockingProvider.jsx's own `isBlocked` -
+  // `pendingAutoRenderPayload` AND dirty fields both have to be true) -
+  // this suite's webServer serves static fixture data, so there's no real
+  // "new" payload for a genuine poll to defer. window.setPendingAutoRenderPayload
+  // is the same bridge a real poll result would call - using it directly
+  // here is the same "call the real bridge instead of orchestrating the
+  // full organic flow" technique this suite already uses for
+  // window.markPrsBusy/clearPrsBusy elsewhere. Uses the REAL current
+  // payload (window.getReactPrTablePayload), not a fake stub - clicking
+  // the "Author Insights" tab below blurs the dirty textarea, which
+  // triggers AutoRenderBlockingProvider's own real "apply once blurred"
+  // behavior (confirmed via a standalone debug run) - a fake/empty
+  // payload would actually get applied at that point and wipe the whole
+  // table, which a harmless same-data "pending" payload avoids.
+  await page.evaluate(() => {
+    const payload = window.getReactPrTablePayload?.();
+    window.setPendingAutoRenderPayload?.(payload);
+  });
+  await expect(page.locator("#auto-render-blocked-indicator")).toBeVisible();
+
+  // Switch away from the PR data tab - the row/Notes section stay mounted
+  // underneath (only the panel's `hidden` attribute changes), so the dirty
+  // state survives. Proves the chip click actually switches back, not
+  // that the tab was already active.
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await expect(page.locator("#tab-panel-author-insights")).toBeVisible();
+
+  const chip = page.getByRole("button", { name: "#1", exact: true });
+  await expect(chip).toBeVisible();
+  await chip.click();
+
+  await expect(page.locator("#tab-panel-pr-data")).toBeVisible();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  const saveButton = page.locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"] .pr-notes-save');
+  await expect(saveButton).toBeFocused();
+
+  // Clear the simulated pending payload - this suite's webServer is one
+  // long-lived process shared by every test, so leaving this set would
+  // keep the indicator stuck visible for whichever test runs next.
+  await page.evaluate(() => window.setPendingAutoRenderPayload?.(null));
+
+  // Restore the exact original value - this suite's webServer is one
+  // long-lived process shared by every test, so leaving this field
+  // genuinely dirty would bleed into whichever test runs next.
+  await notesTextarea.fill(originalValue);
+  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+});
+
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
   // runAckAction/runApplyLabelAction (bulk operations submitted via the
@@ -501,9 +702,169 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await page.selectOption("#scope-mode", "last-run");
   await expect(page.locator("#data-meta")).toContainText("scope=last run rows");
 
-  // Reset so this test's change doesn't affect whatever loads next.
-  await page.selectOption("#scope-mode", "all");
+  // Reset so this test's change doesn't affect whatever loads next. This
+  // change also fires its own auto-persist PUT (registerUiOptionPersistenceHandlers,
+  // pr-ui-option-scroll.helpers.js) debounced 150ms behind the one from
+  // "last-run" above - wait for it to actually land (same reasoning as
+  // clickApplyFiltersAndWaitForPersist above) so this test can't leak a
+  // stale scope-mode value into whatever unrelated test loads next against
+  // this suite's one shared webServer.
+  const [persistResponse] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
+    ),
+    page.selectOption("#scope-mode", "all"),
+  ]);
+  expect(persistResponse.ok()).toBe(true);
   await expect(page.locator("#data-meta")).toContainText("scope=all stored rows");
+});
+
+test("typing a PR-number filter updates the rendered React table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): filterPrNumbers
+  // was already Context-backed (FilterStateProvider) before this change,
+  // but only the data-meta summary and a 150ms-debounced vanilla
+  // re-render ever reflected it - the React table itself only updated via
+  // the vanilla pipeline's imperatively-pushed visiblePrNumbers, on the
+  // SAME debounce. This proves useVisiblePrNumbers() now reads
+  // filterPrNumbers reactively too, same as the multi-select test above.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer -
+  // clearing is ALSO live, same as filling above.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+});
+
+test("checking a row-filtering multi-select (label) filters the rendered table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the 5
+  // row-filtering multi-selects (include/exclude label, author, assigned,
+  // approver) used to only take effect once "Apply filters (local)" was
+  // explicitly clicked - their checked-state lived purely in
+  // MultiSelectCheckboxList's own local component state, with no Context
+  // mirror for a reactive derivation to read. Now mirrored into
+  // RowFilterSelectionContext, feeding useVisiblePrNumbers() directly -
+  // this test proves the table updates the instant a checkbox is checked,
+  // never clicking Apply filters at all (contrast with the test above this
+  // one, and "Apply filters (local) actually filters the rendered table",
+  // which both still use the click for their own unrelated fields).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+
+  const labelList = page.locator("#label-list");
+  await labelList.getByLabel("enhancement", { exact: true }).check();
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer -
+  // uncheck is ALSO live, same as the check above, so the table should
+  // show every PR again immediately too.
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await labelDropdownSummary.click();
+  await labelList.getByLabel("enhancement", { exact: true }).uncheck();
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+});
+
+test("the \"Applied filters\" chip/summary text updates live too, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
+  // chip/summary text used to only update via index.page.js's vanilla
+  // pipeline, pushed into React through a window.renderReactFilterSummary
+  // bridge - <AppliedFilterSummaryLive> (react-app.jsx) now derives this
+  // text itself, reactively, via useAppliedFilterSummary(). This test
+  // proves both the PR-number filter and a multi-select update the chip
+  // text immediately, matching the table itself (see the two tests above).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+
+  const summary = page.locator("#management-filter-summary");
+  await expect(summary).toContainText("repo=");
+  await expect(summary).toContainText("scope=all stored rows");
+
+  await page.locator("#filter-pr-numbers").fill("1");
+  await expect(summary).toContainText("pr-numbers=1");
+  await expect(summary).toContainText("Rows: 1");
+
+  await page.locator("#filter-pr-numbers").fill("");
+
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await expect(summary).toContainText("label=enhancement");
+
+  // Reset so this test's filter doesn't hide PRs from whatever unrelated
+  // test happens to load next against this suite's one shared webServer.
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).uncheck();
+});
+
+test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
+  // Regression coverage for TableFilterChips.jsx/useTableFilterChips.jsx:
+  // unlike the "Applied filters" summary (Run & Filter tab, tested above),
+  // these chips live above the table itself (Data Views tab) and are each
+  // individually removable - clicking a chip's "x" must clear just that
+  // filter, both in the originating control and in the table's own live
+  // rendering, without a page reload or an "Apply filters" click.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const chips = page.locator("#table-filter-chips-root");
+  await expect(chips).toBeEmpty();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(chips).toContainText("PR #: 1");
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  await chips.getByRole("button", { name: "Remove filter: PR #: 1" }).click();
+
+  await expect(chips).toBeEmpty();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await expect(page.locator("#filter-pr-numbers")).toHaveValue("");
+
+  // A checked label filter gets its own chip too, removable the same way.
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(chips).toContainText("Label: enhancement");
+
+  await chips.getByRole("button", { name: "Remove filter: Label: enhancement" }).click();
+  await expect(chips).toBeEmpty();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await labelDropdownSummary.click();
+  await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
 });
 
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
@@ -600,7 +961,8 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
 test("React-owned Run Script options (text inputs, select, checkboxes) survive a persisted restore together", async ({ page }) => {
   // Same restore-race class as the "Needs Attention rules" batch test
   // above, this time for the "Run Script options (rarely changed)" fields
-  // (RunScriptTextInput x4, OpenModeSelect, FilterCheckbox x3). These
+  // (ContextRunScriptTextInput x5 - repo/limit/merged-limit/jobs/pr-numbers,
+  // OpenModeSelect, FilterCheckbox x3). These
   // fields have no "change" listener of their own - they're only ever read
   // via .value/.checked when the real "Run script" button is clicked (see
   // persistRunScriptOptionOverrides in index.page.js) - so unlike the
@@ -630,6 +992,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
         limit: "50",
         "merged-limit": "10",
         jobs: "3",
+        "pr-numbers": "912,921",
         "open-mode": "changed",
         "ack-changed": true,
         "show-reason": false,
@@ -647,6 +1010,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   await expect(page.locator("#limit")).toHaveValue("50");
   await expect(page.locator("#merged-limit")).toHaveValue("10");
   await expect(page.locator("#jobs")).toHaveValue("3");
+  await expect(page.locator("#pr-numbers")).toHaveValue("912,921");
   await expect(page.locator("#open-mode")).toHaveValue("changed");
   await expect(page.locator("#ack-changed")).toBeChecked();
   await expect(page.locator("#show-reason")).not.toBeChecked();
@@ -658,7 +1022,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     const overrides = { ...(current?.overrides || {}) };
-    for (const key of ["repo", "limit", "merged-limit", "jobs", "open-mode", "ack-changed", "show-reason", "quiet"]) {
+    for (const key of ["repo", "limit", "merged-limit", "jobs", "pr-numbers", "open-mode", "ack-changed", "show-reason", "quiet"]) {
       delete overrides[key];
     }
     await fetch("/view-prs/user-defaults", {
@@ -667,6 +1031,193 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
       body: JSON.stringify(overrides),
     });
   });
+});
+
+test("all 6 React-portaled non-credential-hint fields get their credential-manager-suppressing attributes applied, despite mounting after initPage()'s own first pass", async ({ page }) => {
+  // Regression test for a real race: applyNonCredentialFieldHints()
+  // (index.page.js) is called once, synchronously, from initPage() -
+  // which runs to completion before react-app.jsx's own module graph has
+  // necessarily finished loading, so these fields (all React-portaled -
+  // repo/limit/merged-limit/jobs/pr-numbers via
+  // ContextRunScriptTextInput.jsx, filter-pr-numbers via
+  // PrNumberFilterInput.jsx) may not exist in the DOM yet on that first
+  // pass. jest's own integration suite (index.html.test.js) can't catch a
+  // regression here - its test harness injects the equivalent markup
+  // synchronously, before initPage() ever runs, so the race never
+  // manifests there. Only a real browser load exercises the actual
+  // timing. Fixed by re-running applyNonCredentialFieldHints() once more
+  // on 'viewprs:react-ready', same pattern already used for the backfill
+  // status badges/log text bridges. Covers every id in
+  // NON_CREDENTIAL_HINT_FIELD_IDS, not just the "Run Script options"
+  // group, since the fix re-runs the whole function, not a per-field list.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByText("Run Script options (rarely changed)").click();
+
+  for (const id of ["repo", "limit", "merged-limit", "jobs", "pr-numbers", "filter-pr-numbers"]) {
+    const field = page.locator(`#${id}`);
+    await expect(field).toHaveAttribute("autocomplete", "off");
+    await expect(field).toHaveAttribute("data-lpignore", "true");
+  }
+});
+
+test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers input", async ({ page }) => {
+  // Regression test for Phase 7's "#pr-numbers" migration (see
+  // REACT_MIGRATION_PLAN.md) - PrSelectionCell.jsx's checkbox used to read/
+  // write this field through its own one-off window.getSelectedPrNumbers/
+  // updateSelectedPrNumbers bridge; it now reads/writes the exact same
+  // FilterStateProvider Context value the "PR number(s)" text input itself
+  // is backed by (ContextRunScriptTextInput.jsx). Exercises the real
+  // entanglement that deferred this migration for several prior sessions:
+  // a checkbox click must land in the real "#pr-numbers" <input> (not just
+  // an in-memory value disconnected from it), since a subsequent "Run
+  // script" submission reads it via native FormData, not React.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // PR #1 can legitimately be sitting inside one or more currently-
+  // collapsed lifecycle/smart-group sections (collapsed by default, and
+  // it can appear in more than one - e.g. "open" and "in-review" - at
+  // once; its exact membership can shift as other tests in this
+  // shared-webServer suite toggle its flagged/in-review state) - force
+  // every matching ancestor <details> open directly rather than hunting
+  // for the right summary to click, same reasoning the other "PR #1 might
+  // be collapsed" tests in this file document.
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  const selectCheckbox = page.locator('.row-select-checkbox[data-pr-number="1"]').first();
+  await expect(selectCheckbox).not.toBeChecked();
+
+  await selectCheckbox.check();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByText("Run Script options (rarely changed)").click();
+  await expect(page.locator("#pr-numbers")).toHaveValue("1");
+});
+
+test("the PR JSON modal opens and renders real JSON for a real row", async ({ page }) => {
+  // Regression test for Phase 7's safeJsonStringify/getPerPrUserStateFromPayload/
+  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx
+  // used to read all 3 off window.*; it now imports them directly. jest
+  // coverage already exercises each piece in isolation with mocked
+  // payloads - this proves the real, wired-together button click still
+  // opens the modal and renders well-formed JSON in a real browser.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  await page.locator('.view-json[aria-label="View PR JSON details for #1"]').first().click();
+
+  const dataFileJson = page.locator("pre.pr-json-block").first();
+  await expect(dataFileJson).toBeVisible();
+  await expect(dataFileJson).not.toHaveText("Loading data file entry...");
+  const jsonText = await dataFileJson.textContent();
+  const parsed = JSON.parse(jsonText);
+  expect(parsed.file).toBe("check-open-pr-updates.data.json");
+  expect(parsed.entry).not.toBeNull();
+
+  const userStateJson = page.locator("pre.pr-json-block").nth(2);
+  const userStateParsed = JSON.parse(await userStateJson.textContent());
+  expect(userStateParsed.file).toBe("check-open-pr-updates.user-state.json");
+  expect(Object.keys(userStateParsed.entry).sort()).toEqual(
+    ["ackByRepo", "inReviewByRepo", "notesByPrNumber", "reverifyByRepo"].sort(),
+  );
+
+  await page.getByRole("button", { name: "Close PR JSON details" }).click();
+  await expect(dataFileJson).not.toBeVisible();
+});
+
+test("the Run tab's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
+  // Regression test for Phase 7's RepoLabelsProvider migration (see
+  // REACT_MIGRATION_PLAN.md) - window.updateReactApplyLabelOptions (a push
+  // into AppRoot's own local state, feeding only the Run tab's dropdown)
+  // and window.getAvailableRepoLabels (a pull PrActionsCell.jsx read on
+  // every render) used to be two entirely separate bridges for the same
+  // underlying list; this proves one real fetch now reaches both real,
+  // already-mounted consumers through the one new Context.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  // Override the suite-wide empty-labels mock (test.beforeEach, above)
+  // just for this test - Playwright matches the most recently registered
+  // handler for an overlapping pattern first.
+  await page.route("**/view-prs/labels?*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, repo: "octocat/hello-world", labels: [{ name: "bug" }, { name: "enhancement" }] }),
+    }),
+  );
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#refresh-labels-btn").click();
+
+  const runFilterSelect = page.locator("#apply-label-select");
+  await expect(runFilterSelect.locator("option")).toHaveCount(3);
+  await expect(runFilterSelect.locator('option[value="bug"]')).toHaveCount(1);
+
+  // PR #1's own fixture already carries the "enhancement" label (see
+  // e2e/fixtures/data.json) - its row select correctly excludes that one
+  // (PrActionsCell.jsx's own existing-label filter), leaving just "bug" +
+  // the placeholder, proving both the shared-Context wiring and the
+  // per-row exclusion logic together.
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+  const rowSelect = page.locator('select[aria-label="Add label to PR #1"]').first();
+  await expect(rowSelect.locator("option")).toHaveCount(2);
+  await expect(rowSelect.locator('option[value="bug"]')).toHaveCount(1);
+  await expect(rowSelect.locator('option[value="enhancement"]')).toHaveCount(0);
+});
+
+test("a failed In Review toggle reverts the checkbox back to its real state, instead of leaving it stuck on the click", async ({ page }) => {
+  // Regression test for ROADMAP.md's documented bug ("checkbox's on-failure
+  // revert ... currently dead code in the React path", fixed in
+  // react-callbacks.helpers.js's handleCheckboxChange) - PrActionsCell.jsx's
+  // checkbox is a fully controlled input with no local optimistic state, so
+  // a failed toggle used to leave it showing the user's clicked (wrong)
+  // state until some unrelated future re-render. Forces the real
+  // POST /view-prs/ack call to fail, confirming the checkbox now snaps back
+  // on its own right away.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+
+  const checkbox = page.locator('input[aria-label="In Review for PR #1"]').first();
+  const before = await checkbox.isChecked();
+
+  await page.route("**/view-prs/ack", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "simulated failure for this test" }),
+    }),
+  );
+
+  await checkbox.click();
+  // The click's own native DOM toggle happens immediately; the app's async
+  // round-trip (even against a mocked route) still takes a tick - wait for
+  // it to settle back to the pre-click value rather than asserting
+  // immediately, which would just catch the transient optimistic state.
+  await expect(checkbox).toHaveJSProperty("checked", before);
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {
@@ -1436,6 +1987,79 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await clickApplyFiltersAndWaitForPersist(page);
 });
 
+test("typing in the Author Insights manual comment composer isn't blocked by a synchronous dirty-fields recompute", async ({ page }) => {
+  // Regression coverage for a real lag bug: AuthorInsightsDraftsProvider's
+  // bump() used to call window.recomputeDirtyPrSectionsFields?.() -  a real
+  // scan plus a DOM re-render of #auto-render-blocked-pr-links - directly
+  // inside updateComposerDraft/updateEditDraft, the same synchronous call
+  // stack as the composer textarea's own per-keystroke local setState.
+  // React batches both into one commit, so it couldn't paint the typed
+  // character until that whole handler (including the recompute) finished -
+  // every keystroke was visibly delayed. Deferred to a useEffect instead
+  // (same pattern NotesDirtyProvider.jsx's own write path already used
+  // correctly), so the recompute runs after React has already painted.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await expect(page.locator("#tab-panel-author-insights")).toBeVisible();
+
+  const composer = page.locator('.author-insights-comment-textarea[data-draft-kind="composer"]');
+  await expect(composer).toBeVisible();
+  await composer.click();
+
+  const start = Date.now();
+  await composer.pressSequentially("regression check", { delay: 0 });
+  const elapsedMs = Date.now() - start;
+  await expect(composer).toHaveValue("regression check");
+  // Generous ceiling (not a tight perf assertion) - this is here to catch
+  // a reintroduced synchronous-recompute-in-the-hot-path regression, which
+  // was ~2.4x slower than the fixed version even against this suite's tiny
+  // fixture dataset, not to pin down exact timing.
+  expect(elapsedMs).toBeLessThan(2000);
+
+  await composer.fill("");
+});
+
+test("typing an unsaved Author Insights comment draft reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+  // Regression test for Phase 7 (see REACT_MIGRATION_PLAN.md): the Author
+  // Insights manual-comment composer/edit drafts used to live only in a
+  // vanilla module-scope object, read by pr-auto-render-blocking.helpers.js's
+  // getBlockingAuthorInsightsLogins to decide whether a background poll
+  // must be deferred instead of silently discarding an unsaved comment
+  // draft. They're real AuthorInsightsDraftsProvider Context state now,
+  // republished via window.getAuthorInsightsDraftsSnapshot - same scope
+  // and reasoning as the sibling "editing a PR Notes field..." test above
+  // (checks the real bridge a real browser actually exercises, not a
+  // full simulated poll-block - AuthorInsightsDraftsProvider.test.jsx
+  // already covers the Context-to-bridge wiring itself at the component
+  // level; this is the one piece with no other e2e coverage at all).
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+
+  const select = page.locator("#author-insights-selector-root select");
+  await select.selectOption({ label: "The Octocat" });
+
+  const isBlocking = () =>
+    page.evaluate(() => {
+      const snapshot = window.getAuthorInsightsDraftsSnapshot?.() || {};
+      const draft = snapshot.manualCommentDraftByAuthorLogin?.octocat;
+      return Boolean(String(draft?.note || "").trim());
+    });
+
+  expect(await isBlocking()).toBe(false);
+
+  const textarea = page.locator("#author-insights-content-root .author-insights-comment-textarea");
+  await textarea.fill("an unsaved draft left during this test");
+  await expect.poll(isBlocking).toBe(true);
+
+  // Clear it back out - this suite's webServer is one long-lived process
+  // shared by every test, so leaving this draft dirty would bleed into
+  // whichever test runs next (and would itself start blocking real polls).
+  await textarea.fill("");
+  await expect.poll(isBlocking).toBe(false);
+});
+
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
   // Phase 3 (see REACT_MIGRATION_PLAN.md): the Backfill tab's status badges
   // converted to React (<BackfillBadges />, mounted directly into the
@@ -1528,8 +2152,6 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   await assertNoStalePrefix(page.locator("#data-meta"), "Loading...");
   await assertNoStalePrefix(page.locator("#status"), "Not run");
   await assertNoStalePrefix(page.locator("#output"), "Run the script to see output");
-  await assertNoStalePrefix(page.locator("#scheduler-details"), "Loading scheduler status...");
-  await assertNoStalePrefix(page.locator("#request-activity-details"), "Monitoring request activity...");
 
   await page.getByRole("tab", { name: "Backfill" }).click();
   await assertNoStalePrefix(page.locator("#backfill-details"), "Loading backfill status...");
@@ -1575,6 +2197,34 @@ test("Actor Names tab loads its mappings on its very first visit, not just on a 
   expect(aliasResponse.ok()).toBe(true);
 });
 
+test("Export tab's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
+  // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
+  // exposed on window by index.page.js - ExportTab.jsx now builds and
+  // calls all 3 directly (pr-export.helpers.js). This tab had zero prior
+  // e2e coverage of any kind (confirmed by grep) - this is the only real-
+  // browser check that the catalog/preview actually work end-to-end
+  // against real page data, not a mocked window.* bridge.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Export" }).click();
+  const fieldList = page.locator("#export-field-list");
+  await expect(fieldList.locator('input[type="checkbox"]')).not.toHaveCount(0);
+
+  await page.getByRole("button", { name: "Preview JSON" }).click();
+
+  const statusText = page.locator("#tab-panel-export pre.scheduler-details");
+  await expect(statusText).toHaveText(/Prepared export JSON for \d+ visible PRs?\./);
+
+  const previewText = await page.locator("#export-preview").textContent();
+  const exportPayload = JSON.parse(previewText);
+  expect(exportPayload.prCount).toBeGreaterThan(0);
+  expect(Array.isArray(exportPayload.prs)).toBe(true);
+  expect(exportPayload.prs).toHaveLength(exportPayload.prCount);
+  expect(exportPayload.prs[0]).toHaveProperty("prNumber");
+});
+
 test("Snackbar (error/warning notifications) shows, has the right variant class, closes, and auto-dismisses", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the snackbar is now fully React-owned
@@ -1602,6 +2252,88 @@ test("Snackbar (error/warning notifications) shows, has the right variant class,
   await page.evaluate(() => window.showErrorNotification("Auto dismiss test", "", 300));
   await expect(page.locator("#error-snackbar")).toBeVisible();
   await expect(page.locator("#error-snackbar")).toBeHidden({ timeout: 2000 });
+});
+
+test("the activity drawer opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md) - a real gap this
+  // closes: every other test for this feature (JobEventsProvider.test.jsx,
+  // ActivityDrawer.test.jsx, etc.) runs under jsdom with a hand-rolled fake
+  // EventSource - none of them prove a real browser's actual EventSource
+  // can open GET /view-prs/events through the real server, let alone
+  // through Vite's dev proxy (vite.config.js forwards /view-prs to
+  // localhost:9000 - never previously exercised for a streaming response
+  // in this suite, only ordinary fetch/JSON routes).
+  //
+  // Placed deliberately BEFORE "Trigger auto run and Quick check..." below:
+  // every test in this suite shares one long-lived server process
+  // (playwright.config.js), and that test's own "Trigger auto run" click
+  // starts a real auto-refresh that - with no real GitHub network/auth in
+  // whatever environment runs this suite - can stay "in progress" for a
+  // long time afterward (the button itself only waits for the fire-and-
+  // forget POST to respond, not for the job to finish). Running this test
+  // first guarantees a clean, idle scheduler state to assert against.
+  const { consoleErrors, failedRequests } = collectPageErrors(page);
+
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("button", { name: /Activity/ }).click();
+  const activityPanel = page.locator(".activity-drawer-panel-content");
+  await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
+  await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
+  await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
+
+  // No "connecting/reconnecting/offline/unsupported" banner should still be
+  // showing a few seconds after open - the real EventSource must have
+  // actually reached `open`, not be stuck retrying or unsupported.
+  await expect(page.locator(".activity-drawer-connection-banner")).toHaveCount(0, { timeout: 10000 });
+
+  // Matched by each row's own label specifically (not the row's full text
+  // content) - the Quick check row's "Waiting on auto refresh..." copy
+  // would otherwise ambiguously match a loose "Auto refresh" text filter.
+  for (const jobLabel of ["Auto refresh", "Quick check", "Merged/closed drain"]) {
+    await expect(
+      page.locator(".activity-drawer-job-row").filter({ has: page.locator(".activity-drawer-job-label", { hasText: jobLabel }) }),
+    ).toBeVisible();
+  }
+
+  // Closing via Escape (not just the close button) - see ActivityDrawer.jsx.
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Scheduled background jobs")).toBeHidden();
+
+  expect(failedRequests.filter((entry) => entry.includes("/view-prs/events"))).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("clicking Quick check pushes a real 'running' state into the drawer over SSE, not a poll", async ({ page }) => {
+  // Also placed before "Trigger auto run and Quick check..." below, for
+  // the same shared-server reason as the test above - this one would
+  // otherwise see quickCheck immediately skipped (isAutoRunInProgress
+  // already true from that other test), never reaching "Running" at all.
+  //
+  // Deliberately does NOT wait for the quick check to actually finish -
+  // the underlying script shells out to `gh`, which can hang for a long
+  // time (or indefinitely) with no real GitHub network/auth available in
+  // whatever environment runs this suite. runViewPrsQuickCheck's own
+  // "start" SSE emit fires synchronously, right after its in-memory guards
+  // pass and before any of that network work begins (see app.js) - waiting
+  // only for "Running" to appear proves the same real push end-to-end
+  // without depending on how long (or whether) the job itself completes.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("button", { name: /Activity/ }).click();
+  const quickCheckRow = page
+    .locator(".activity-drawer-job-row")
+    .filter({ has: page.locator(".activity-drawer-job-label", { hasText: "Quick check" }) });
+  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Idle");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#quick-check-btn").click();
+
+  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Running", {
+    timeout: 10000,
+  });
 });
 
 test("Trigger auto run and Quick check buttons click, show a transient state, and settle back to enabled", async ({ page }) => {

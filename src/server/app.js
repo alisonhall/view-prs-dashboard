@@ -10,6 +10,16 @@ const {
   createViewPrsSchedulerHelpers,
 } = require("./helpers/view-prs-scheduler-helpers");
 const {
+  createViewPrsDispatcherHelpers,
+  TASK_TYPES: DISPATCHER_TASK_TYPES,
+} = require("./helpers/view-prs-dispatcher-helpers");
+const {
+  createViewPrsJobEventsHelpers,
+} = require("./helpers/view-prs-job-events-helpers");
+const {
+  registerViewPrsEventsRoutes,
+} = require("./routes/view-prs-events-routes");
+const {
   createViewPrsPrDiffCache,
 } = require("./helpers/view-prs-pr-diff-cache");
 const {
@@ -108,9 +118,14 @@ const {
   viewPrsBackfillActionTimeoutMs,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
+  viewPrsDispatcherGhProcessBudget,
+  viewPrsDispatcherTickIntervalMs,
   viewPrsViewerLoginCacheTtlMs,
   viewPrsInsightsHookTimeoutMs,
   viewPrsBackupRetention,
+  viewPrsEventsHeartbeatIntervalMs,
+  viewPrsEventsMaxClients,
+  viewPrsSchedulerStateThrottleMs,
 } = config;
 
 // Note: getViewPrsAutoRepoConcurrency is now a constant, not a function
@@ -128,25 +143,61 @@ const viewPrsSchedulerState = {
   lastAutoSkipReason: null,
   lastAutoError: null,
   isAutoRunInProgress: false,
+  // The specific repos the current in-flight auto refresh targets (empty
+  // when none is running) - additive alongside isAutoRunInProgress, which
+  // stays a plain boolean for backward compat. Lets runViewPrsQuickCheck
+  // defer only the repos that actually overlap with a running refresh,
+  // instead of blocking on auto refresh globally regardless of which repos
+  // either call actually targets (see runViewPrsQuickCheck's own guard).
+  autoRefreshInProgressRepos: new Set(),
   activePrNumbers: [],
+  // Back-compat aggregates derived from autoCircuitByRepo below (worst
+  // case across every repo) - kept for existing consumers
+  // (getViewPrsSchedulerPublicState, pr-applied-summary.helpers.js's "Last
+  // auto skip" text). Not written to directly - see
+  // recomputeAutoCircuitAggregates in view-prs-scheduler-helpers.js.
   consecutiveAutoFailures: 0,
   autoCircuitOpenUntil: null,
   lastAutoCircuitOpenedAt: null,
+  // Per-repo circuit breaker - { [repo]: { consecutiveFailures,
+  // circuitOpenUntil, lastCircuitOpenedAt } }. Deliberately separate from
+  // the dispatcher's own per-(repo,taskType) consecutiveFailureCount/backoff
+  // (view-prs-dispatcher-helpers.js) - see
+  // view-prs-scheduler-helpers.js's own comment on this mechanism for why.
+  autoCircuitByRepo: {},
   isQuickCheckInProgress: false,
+  // The specific repos the current in-flight quick check call(s) actually
+  // target (empty when none running) - additive alongside
+  // isQuickCheckInProgress, which stays a plain boolean (true whenever this
+  // Set is non-empty) for backward compat. Lets a quick check for repo B
+  // proceed while a DIFFERENT quick check call is still running for repo A,
+  // instead of blocking on quick check globally regardless of repo overlap
+  // (see runViewPrsQuickCheck's own guard) - same reasoning as
+  // autoRefreshInProgressRepos above, just for quick-check-vs-itself instead
+  // of quick-check-vs-auto-refresh.
+  quickCheckInProgressRepos: new Set(),
   lastQuickCheckAt: null,
   lastQuickCheckAttemptAt: null,
   lastQuickCheckSkipReason: null,
   lastQuickCheckError: null,
-  // Set when a quick check is skipped specifically because a full auto
-  // refresh was already running (see runViewPrsQuickCheck's own guard) -
-  // consumed by runViewPrsAutoRefresh's finally block to fire an immediate
-  // catch-up quick check as soon as that blocking refresh finishes, instead
-  // of leaving detection of anything that changed in the meantime (e.g. a
+  // True whenever quickCheckSkippedRepos (below) is non-empty - kept as a
+  // plain boolean (rather than removed) since it's part of the public
+  // scheduler state surfaced to the UI (see getViewPrsSchedulerPublicState/
+  // pr-job-events.helpers.js's "waitingOn" display) - consumed by
+  // runViewPrsAutoRefresh's finally block to fire an immediate catch-up
+  // quick check as soon as the blocking refresh finishes, instead of
+  // leaving detection of anything that changed in the meantime (e.g. a
   // brand-new PR) to wait for the next periodic quick-check tick, which for
   // a slow multi-repo sweep could be a much longer wait than the quick
   // check's ~5 minute interval would suggest.
   quickCheckSkippedWhileAutoRunInProgress: false,
+  // The specific repos skipped for the reason above - additive alongside
+  // the boolean flag, which stays unchanged for every existing reader. Lets
+  // the catch-up fast-follow re-check only the repos that were actually
+  // starved, instead of blindly re-checking every configured repo.
+  quickCheckSkippedRepos: new Set(),
   lastMergedDrainAt: null,
+  isMergedDrainInProgress: false,
   pendingByRepo: {},
 };
 
@@ -207,6 +258,11 @@ const syncSchedulerActivePrNumbers = () => {
       }
       return Number(left.prNumber) - Number(right.prNumber);
     });
+  // Pushes the same per-PR progress signal the 30s scheduler poll used to
+  // surface, just live - see the "Polling retirement" section of the
+  // activity-drawer plan for why this isn't tied to a specific job's
+  // start/finish lifecycle (manual single-PR refreshes drive it too).
+  callEmitSchedulerStateChanged();
 };
 
 const incrementActivePrNumber = (prNumber, repo) => {
@@ -870,6 +926,16 @@ const readViewPrsDataRef = (...args) => readViewPrsData(...args);
 const callReadViewPrsData = (...args) =>
   (module.exports.readViewPrsData || readViewPrsDataRef)(...args);
 
+// Breaks a circular construction order: createViewPrsDispatcherHelpers (below)
+// needs getViewPrsAutoRefreshRepos FROM createViewPrsSchedulerHelpers, but
+// createViewPrsSchedulerHelpers's own getViewPrsSchedulerPublicState needs
+// the dispatcher's getPublicStateFields - a plain mutable box, assigned
+// once dispatcherHelpers actually exists a few lines down, read lazily (by
+// closure, not by value) so the order of construction doesn't matter by
+// the time either function is actually CALLED (always well after both
+// factories have run, since this is all synchronous module-load-time code).
+let dispatcherHelpersRef = null;
+
 const {
   getManualCooldownSkipReason,
   readViewPrsSchedulerState,
@@ -880,6 +946,9 @@ const {
   buildAckRefreshBudgetSkipErrors,
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
+  resetAutoCircuitFailuresForRepos,
+  resetAutoCircuitBreaker,
+  getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
   setPendingForRepo,
   clearPendingForRepo,
@@ -893,6 +962,7 @@ const {
   toTrimmedString,
   isRepoSlug,
   parseRepoCsv,
+  getDispatcherDerivedFields: () => dispatcherHelpersRef?.getPublicStateFields() || {},
   // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
   // below (the only consumer) reads via this as a lazy default parameter
   // (`data = readViewPrsData()`) - using the plain ref bypassed the
@@ -916,6 +986,90 @@ const {
   viewPrsSchedulerFile,
   viewPrsLegacySchedulerFile,
 });
+
+// Per-repo-aware priority dispatcher (see REACT_MIGRATION_PLAN.md's
+// dispatcher plan) - replaces the three flat setIntervals + flat
+// in-progress booleans below with one registry of (repo, taskType) entries
+// and one concurrency-budget-aware tick loop. Constructed after
+// createViewPrsSchedulerHelpers specifically because it needs
+// getViewPrsAutoRefreshRepos from it.
+const dispatcherGhCostByTaskType = { quickCheck: 1, autoRefresh: 4, mergedDrain: 4 };
+
+// Guards against a real footgun: VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET has
+// no upper-bound relationship enforced against dispatcherGhCostByTaskType
+// at the config layer (app-config.js just floors it at 1) - set it below
+// the highest per-task cost (4, for autoRefresh/mergedDrain) and
+// pickNextBatch would NEVER select those task types again: `cost <=
+// remaining` is permanently false for every entry of that type, silently,
+// forever, with nothing anywhere surfacing why background refresh/drain
+// just stopped. Clamping up to the minimum viable budget (with a loud
+// warning when clamping actually happens) makes that starvation
+// impossible by construction instead of just documenting the risk.
+const minViableDispatcherGhProcessBudget = Math.max(
+  ...Object.values(dispatcherGhCostByTaskType),
+);
+const effectiveDispatcherGhProcessBudget = Math.max(
+  viewPrsDispatcherGhProcessBudget,
+  minViableDispatcherGhProcessBudget,
+);
+if (effectiveDispatcherGhProcessBudget !== viewPrsDispatcherGhProcessBudget) {
+  console.warn(
+    `[view-prs] VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET=${viewPrsDispatcherGhProcessBudget} is below ` +
+      `the highest per-task-type cost (${minViableDispatcherGhProcessBudget}) - that task type would ` +
+      `never be scheduled. Using ${effectiveDispatcherGhProcessBudget} instead.`,
+  );
+}
+
+const dispatcherHelpers = createViewPrsDispatcherHelpers({
+  console,
+  parseTimestamp,
+  viewPrsSchedulerState,
+  getViewPrsAutoRefreshRepos,
+  getOpenAutoCircuitRepos,
+  // Read fresh (not cached) on every call so a PUT to /view-prs/user-defaults
+  // takes effect on the next dispatch tick without a restart.
+  getSchedulerRepoConfig: () => readUserDefaults()?.schedulerRepoConfig || {},
+  defaultIntervalsByTaskType: {
+    quickCheck: viewPrsQuickCheckIntervalMs,
+    autoRefresh: viewPrsAutoIntervalMs,
+    mergedDrain: viewPrsMergedFullSweepIntervalMs,
+  },
+  ghCostByTaskType: dispatcherGhCostByTaskType,
+});
+// Same override-checking pattern as every other call site in this file -
+// lets tests spy on/replace dispatcherHelpers via module.exports before
+// createViewPrsApp() runs.
+const callDispatcherHelpers = () => module.exports.dispatcherHelpers || dispatcherHelpers;
+// Fulfills the forward reference createViewPrsSchedulerHelpers was given
+// above (getDispatcherDerivedFields) - see dispatcherHelpersRef's own
+// comment there. Uses the override-aware callDispatcherHelpers, not the
+// bare dispatcherHelpers, so a test monkeypatching module.exports.dispatcherHelpers
+// is reflected in getViewPrsSchedulerPublicState() too.
+dispatcherHelpersRef = { getPublicStateFields: () => callDispatcherHelpers().getPublicStateFields() };
+
+const {
+  JOB_NAMES,
+  JOB_PHASES,
+  emitJobEvent,
+  emitSchedulerStateChanged,
+  emitDataChanged,
+  subscribeToJobEvents,
+  getJobEventsSubscriberCount,
+} = createViewPrsJobEventsHelpers({
+  console,
+  getViewPrsSchedulerPublicState,
+  schedulerStateThrottleMs: viewPrsSchedulerStateThrottleMs,
+});
+
+// Same override-checking pattern as callRunViewPrsScript etc. - lets tests
+// spy on/replace emitJobEvent via module.exports before createViewPrsApp()
+// without needing a live SSE connection.
+const callEmitJobEvent = (...args) =>
+  (module.exports.emitJobEvent || emitJobEvent)(...args);
+const callEmitSchedulerStateChanged = (...args) =>
+  (module.exports.emitSchedulerStateChanged || emitSchedulerStateChanged)(...args);
+const callEmitDataChanged = (...args) =>
+  (module.exports.emitDataChanged || emitDataChanged)(...args);
 
 // Use command execution helpers
 const formatScriptFailureMessage = (failure, fallbackMessage) =>
@@ -1501,19 +1655,77 @@ const runViewPrsAutoRefresh = async ({
   skipCooldownChecks = false,
   reposOverride = null,
 } = {}) => {
-  if (viewPrsSchedulerState.isAutoRunInProgress) {
-    return;
+  // Resolved up front (same reasoning as runViewPrsQuickCheck's own
+  // quickCheckTargetRepos) so a call whose entire target set overlaps an
+  // ALREADY-running auto refresh can defer immediately, preserving today's
+  // exact "fully blocked" shape - while a call whose targets only PARTIALLY
+  // overlap proceeds with just the free repos instead of being blocked
+  // entirely by an unrelated repo's refresh (see autoRefreshInProgressRepos's
+  // own comment near viewPrsSchedulerState's definition - this is the same
+  // Set, now also used for this self-exclusion check, not just the
+  // cross-task one runViewPrsQuickCheck reads).
+  const requestedAutoRefreshRepos =
+    Array.isArray(reposOverride) && reposOverride.length > 0
+      ? reposOverride
+      : getViewPrsAutoRefreshRepos();
+  // Tracked separately (not just the survivors below) so a caller grouping
+  // several repos into one call - like the dispatcher's own per-task-type
+  // batching - can tell exactly which of ITS repos were silently excluded
+  // from this run, instead of only knowing whether the call as a WHOLE
+  // skipped or not (see runTaskGroup's own per-repo resultsByRepo).
+  const reposExcludedForAlreadyInProgress = requestedAutoRefreshRepos.filter(
+    (repo) => viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo),
+  );
+  let reposToRefresh = requestedAutoRefreshRepos.filter(
+    (repo) => !viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo),
+  );
+  if (requestedAutoRefreshRepos.length > 0 && reposToRefresh.length === 0) {
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "already-in-progress" },
+    });
+    return { skipped: true, skipReason: "already-in-progress" };
   }
 
   const nowMs = Date.now();
+  // Hoisted out of the `if` block below (not just declared inside it) so
+  // the final return can report it too - same reasoning as
+  // reposExcludedForAlreadyInProgress above.
+  let reposExcludedForCircuitOpen = [];
 
   if (!skipCooldownChecks) {
-    const circuitState = getViewPrsAutoCircuitOpenState({ nowMs });
-    if (circuitState.isOpen) {
-      viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
-      viewPrsSchedulerState.lastAutoSkipReason = `auto refresh circuit open until ${circuitState.openUntilIso}`;
-      viewPrsSchedulerState.lastAutoError = null;
-      return;
+    // Per-repo, same partial-skip shape as the in-progress check above: one
+    // repo's open circuit no longer blocks a DIFFERENT repo's refresh (see
+    // autoCircuitByRepo's own comment near viewPrsSchedulerState's
+    // definition).
+    const reposWithOpenCircuit = reposToRefresh.filter(
+      (repo) => getViewPrsAutoCircuitOpenState({ nowMs, repo }).isOpen,
+    );
+    reposExcludedForCircuitOpen = reposWithOpenCircuit;
+    if (reposWithOpenCircuit.length > 0) {
+      const firstOpenState = getViewPrsAutoCircuitOpenState({
+        nowMs,
+        repo: reposWithOpenCircuit[0],
+      });
+      if (reposWithOpenCircuit.length === reposToRefresh.length) {
+        viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
+        viewPrsSchedulerState.lastAutoSkipReason = `auto refresh circuit open for ${reposWithOpenCircuit.join(", ")} until ${firstOpenState.openUntilIso}`;
+        viewPrsSchedulerState.lastAutoError = null;
+        callEmitJobEvent({
+          job: JOB_NAMES.AUTO_REFRESH,
+          phase: JOB_PHASES.SKIPPED,
+          detail: {
+            reason: "circuit-open",
+            message: viewPrsSchedulerState.lastAutoSkipReason,
+            repos: reposWithOpenCircuit,
+          },
+        });
+        return { skipped: true, skipReason: "circuit-open" };
+      }
+      reposToRefresh = reposToRefresh.filter(
+        (repo) => !reposWithOpenCircuit.includes(repo),
+      );
     }
   }
 
@@ -1524,7 +1736,15 @@ const runViewPrsAutoRefresh = async ({
       ", ",
     )}`;
     viewPrsSchedulerState.lastAutoError = null;
-    return;
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.SKIPPED,
+      detail: {
+        reason: "missing-dependencies",
+        missing: dependencyStatus.missing,
+      },
+    });
+    return { skipped: true, skipReason: "missing-dependencies" };
   }
 
   if (!skipCooldownChecks) {
@@ -1537,25 +1757,48 @@ const runViewPrsAutoRefresh = async ({
       viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
       viewPrsSchedulerState.lastAutoSkipReason = skipReason;
       viewPrsSchedulerState.lastAutoError = null;
-      return;
+      callEmitJobEvent({
+        job: JOB_NAMES.AUTO_REFRESH,
+        phase: JOB_PHASES.SKIPPED,
+        detail: { reason: "manual-cooldown", message: skipReason },
+      });
+      return { skipped: true, skipReason: "manual-cooldown" };
     }
   }
 
+  // Only ADD this call's own repos to the shared Set - don't replace it -
+  // a DIFFERENT, concurrently-running auto refresh call (for other repos)
+  // may already have its own entries in it (same reasoning as
+  // quickCheckInProgressRepos's own finally-block comment). Cleared back
+  // out (not reset to empty) in this function's own finally below.
+  reposToRefresh.forEach((repo) =>
+    viewPrsSchedulerState.autoRefreshInProgressRepos.add(repo),
+  );
   viewPrsSchedulerState.isAutoRunInProgress = true;
   viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
   viewPrsSchedulerState.lastAutoSkipReason = null;
 
   const autoStartedAt = viewPrsSchedulerState.lastAutoAttemptAt;
   const autoTriggerMs = Date.now();
+  let emittedAutoRefreshStart = false;
+  let finishSuccessCount = 0;
+  let finishFailureCount = 0;
+  let finishRepos = [];
 
   try {
-    const reposToRefresh =
-      Array.isArray(reposOverride) && reposOverride.length > 0
-        ? reposOverride
-        : getViewPrsAutoRefreshRepos();
+    // reposToRefresh already resolved and filtered up front - reused here,
+    // not recomputed (the earlier resolution already excluded repos busy
+    // with another in-flight auto refresh).
     console.log(
       `[view-prs] auto refresh repos (${reposToRefresh.length}): ${reposToRefresh.join(", ") || "(none)"}`,
     );
+    finishRepos = reposToRefresh;
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.START,
+      detail: { repos: reposToRefresh, repoCount: reposToRefresh.length },
+    });
+    emittedAutoRefreshStart = true;
     const refreshResults = new Array(reposToRefresh.length);
     const repoConcurrency = Math.min(
       reposToRefresh.length,
@@ -1676,9 +1919,27 @@ const runViewPrsAutoRefresh = async ({
     const failures = refreshResults
       .filter((result) => result && result.ok === false)
       .map((result) => result.errorMessage);
-    const successCount = refreshResults.filter(
-      (result) => result && result.ok === true,
-    ).length;
+    // Repo names (not just counts/messages) so the circuit breaker below
+    // can be scoped to exactly the repos that actually failed/succeeded in
+    // THIS batch, not the whole batch indiscriminately.
+    const failedRepos = refreshResults
+      .filter((result) => result && result.ok === false)
+      .map((result) => result.repo);
+    // Per-repo error text (not just the repo-name list above) - consumed by
+    // runTaskGroup's own resultsByRepo so each dispatcher entry records its
+    // OWN failure message, not a shared one across the whole batch.
+    const failedRepoErrors = {};
+    refreshResults
+      .filter((result) => result && result.ok === false)
+      .forEach((result) => {
+        failedRepoErrors[result.repo] = result.errorMessage;
+      });
+    const succeededRepos = refreshResults
+      .filter((result) => result && result.ok === true)
+      .map((result) => result.repo);
+    const successCount = succeededRepos.length;
+    finishSuccessCount = successCount;
+    finishFailureCount = failures.length;
     const repoMetrics = refreshResults
       .filter((result) => result && result.metrics)
       .map((result) => result.metrics);
@@ -1707,9 +1968,11 @@ const runViewPrsAutoRefresh = async ({
       }
     }
 
-    if (failures.length === 0 && successCount > 0) {
-      resetViewPrsAutoRefreshFailureState();
-    }
+    // Scoped to exactly the repos that succeeded/failed in THIS batch, not
+    // the whole batch indiscriminately - a 3-repo batch where 1 fails no
+    // longer resets/trips every repo's breaker, only that one's (see
+    // autoCircuitByRepo's own comment).
+    resetAutoCircuitFailuresForRepos(succeededRepos);
 
     viewPrsSchedulerState.lastAutoError =
       failures.length > 0
@@ -1718,8 +1981,8 @@ const runViewPrsAutoRefresh = async ({
           ? null
           : "Auto refresh did not run for any repo";
 
-    if (failures.length > 0) {
-      recordViewPrsAutoRefreshFailure();
+    if (failedRepos.length > 0) {
+      recordViewPrsAutoRefreshFailure(failedRepos);
     }
 
     appendActionLogEntry({
@@ -1744,10 +2007,27 @@ const runViewPrsAutoRefresh = async ({
         `[view-prs] auto refresh had failures: ${viewPrsSchedulerState.lastAutoError}`,
       );
     }
+
+    // Per-repo outcome, not just an aggregate - a caller grouping several
+    // repos into one call (the dispatcher's own per-task-type batching)
+    // needs to know exactly which of ITS repos actually ran vs. were
+    // silently excluded, instead of treating the whole batch as one
+    // verdict (see runTaskGroup's own resultsByRepo).
+    return {
+      skipped: false,
+      succeededRepos,
+      failedRepos,
+      failedRepoErrors,
+      reposExcludedForAlreadyInProgress,
+      reposExcludedForCircuitOpen,
+    };
   } catch (failure) {
     viewPrsSchedulerState.lastAutoError =
       failure?.error?.message || "Auto refresh failed";
-    recordViewPrsAutoRefreshFailure();
+    // The whole call threw before any individual repo's own result was
+    // known (e.g. a setup error) - attribute the failure to every repo
+    // this call was attempting, since there's no finer-grained info here.
+    recordViewPrsAutoRefreshFailure(reposToRefresh);
     appendActionLogEntry({
       action: "auto-refresh",
       triggeredAt: autoStartedAt,
@@ -1758,17 +2038,52 @@ const runViewPrsAutoRefresh = async ({
     console.error(
       `[view-prs] auto refresh failed: ${viewPrsSchedulerState.lastAutoError}`,
     );
+    return {
+      skipped: false,
+      succeededRepos: [],
+      failedRepos: reposToRefresh,
+      reposExcludedForAlreadyInProgress,
+      reposExcludedForCircuitOpen,
+      error: viewPrsSchedulerState.lastAutoError,
+    };
   } finally {
-    viewPrsSchedulerState.isAutoRunInProgress = false;
-    if (viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress) {
-      // See the flag's own comment (near viewPrsSchedulerState's
-      // definition) - a quick check was starved by this exact refresh being
-      // in progress, so catch up immediately rather than leaving it to the
-      // next periodic tick. Fire-and-forget, same as the interval-driven
-      // caller: this function's own caller (a full sweep's setInterval, or
-      // quick-check's own fast-follow) isn't waiting on this.
+    // Remove only THIS call's own repos, not the whole Set - a different,
+    // concurrently-running auto refresh call (for other repos) may still
+    // have its own entries in it.
+    reposToRefresh.forEach((repo) =>
+      viewPrsSchedulerState.autoRefreshInProgressRepos.delete(repo),
+    );
+    viewPrsSchedulerState.isAutoRunInProgress =
+      viewPrsSchedulerState.autoRefreshInProgressRepos.size > 0;
+    if (emittedAutoRefreshStart) {
+      callEmitJobEvent({
+        job: JOB_NAMES.AUTO_REFRESH,
+        phase: JOB_PHASES.FINISH,
+        ok: finishFailureCount === 0 && finishSuccessCount > 0,
+        detail: {
+          successCount: finishSuccessCount,
+          failureCount: finishFailureCount,
+          repos: finishRepos,
+          durationMs: Date.now() - autoTriggerMs,
+          error: viewPrsSchedulerState.lastAutoError || null,
+        },
+      });
+    }
+    if (viewPrsSchedulerState.quickCheckSkippedRepos.size > 0) {
+      // See quickCheckSkippedRepos's own comment (near viewPrsSchedulerState's
+      // definition) - these specific repos were starved by this exact
+      // refresh being in progress, so catch up immediately rather than
+      // leaving it to the next periodic tick - scoped to just these repos,
+      // not every configured one, since only these were actually skipped.
+      // Fire-and-forget, same as the interval-driven caller: this
+      // function's own caller (a full sweep's setInterval, or quick-check's
+      // own fast-follow) isn't waiting on this.
+      const skippedRepos = Array.from(viewPrsSchedulerState.quickCheckSkippedRepos);
       viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = false;
-      void callRunViewPrsQuickCheck();
+      viewPrsSchedulerState.quickCheckSkippedRepos = new Set();
+      void callRunViewPrsQuickCheck({
+        repoRequests: skippedRepos.map((repo) => ({ repo })),
+      });
     }
   }
 };
@@ -1793,19 +2108,67 @@ const callRunViewPrsAutoRefresh = (...args) =>
 // didn't actually run" (every repo failing used to look identical to a
 // clean, all-quiet run - see the CHANGELOG-worthy bug this fixed).
 const runViewPrsQuickCheck = async ({
-  awaitTargetedRefresh = false,
   repo: targetRepo,
   prNumbers,
   repoRequests,
 } = {}) => {
-  if (
-    viewPrsSchedulerState.isQuickCheckInProgress ||
-    viewPrsSchedulerState.isAutoRunInProgress
-  ) {
+  // Resolved up front (mirroring the same repo-resolution the 3 branches
+  // further down each do independently) so a quick check whose entire
+  // target set overlaps an in-progress auto refresh OR another in-progress
+  // quick check can defer immediately, before emitting a START event -
+  // preserving today's single-event "fully blocked" shape. A call whose
+  // targets only PARTIALLY overlap falls through to the normal path below,
+  // where runQuickCheckForRepo skips just the busy repos instead of the
+  // whole call being blocked by an unrelated repo (see
+  // autoRefreshInProgressRepos's and quickCheckInProgressRepos's own
+  // comments near viewPrsSchedulerState's definition).
+  const quickCheckTargetRepos = prNumbers
+    ? [targetRepo]
+    : Array.isArray(repoRequests) && repoRequests.length > 0
+      ? repoRequests.map((entry) => entry.repo)
+      : getViewPrsAutoRefreshRepos();
+  // Checked in this order (auto-refresh overlap first) because only that
+  // reason has a catch-up fast-follow to arm - a repo busy for both reasons
+  // at once is classified by whichever it's actually waiting longer on.
+  const reposBusyWithAutoRefresh = quickCheckTargetRepos.filter((repo) =>
+    viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo),
+  );
+  const reposBusyWithQuickCheck = quickCheckTargetRepos.filter(
+    (repo) =>
+      !viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo) &&
+      viewPrsSchedulerState.quickCheckInProgressRepos.has(repo),
+  );
+  const allTargetsBusy =
+    quickCheckTargetRepos.length > 0 &&
+    reposBusyWithAutoRefresh.length + reposBusyWithQuickCheck.length ===
+      quickCheckTargetRepos.length;
+  if (allTargetsBusy) {
     viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckSkipReason = "already-in-progress";
-    if (viewPrsSchedulerState.isAutoRunInProgress) {
+    if (reposBusyWithAutoRefresh.length > 0) {
+      // Only the auto-refresh-overlap reason gets a catch-up fast-follow -
+      // a quick-check-vs-quick-check collision is short-lived and
+      // self-resolves (the other call is, itself, a cheap listing pass),
+      // unlike waiting out a potentially slow full auto refresh.
       viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+      reposBusyWithAutoRefresh.forEach((repo) =>
+        viewPrsSchedulerState.quickCheckSkippedRepos.add(repo),
+      );
+      callEmitJobEvent({
+        job: JOB_NAMES.QUICK_CHECK,
+        phase: JOB_PHASES.DEFERRED,
+        detail: {
+          waitingOn: "autoRefresh",
+          reason: "auto-refresh-in-progress",
+          willRunAfter: true,
+        },
+      });
+    } else {
+      callEmitJobEvent({
+        job: JOB_NAMES.QUICK_CHECK,
+        phase: JOB_PHASES.SKIPPED,
+        detail: { reason: "already-in-progress", willRunAfter: false },
+      });
     }
     return { skipped: true, skipReason: "already-in-progress" };
   }
@@ -1814,23 +2177,84 @@ const runViewPrsQuickCheck = async ({
   if (!dependencyStatus.ok) {
     viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckSkipReason = `missing dependencies: ${dependencyStatus.missing.join(", ")}`;
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.SKIPPED,
+      detail: {
+        reason: "missing-dependencies",
+        missing: dependencyStatus.missing,
+        willRunAfter: false,
+      },
+    });
     return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
   }
 
-  if (getViewPrsAutoCircuitOpenState({ nowMs: Date.now() }).isOpen) {
+  // Per-repo circuit check (same shape as the busy-overlap check above): a
+  // repo whose own circuit is open is excluded, but it no longer blocks a
+  // DIFFERENT, healthy repo's quick check (see autoCircuitByRepo's own
+  // comment near viewPrsSchedulerState's definition).
+  const reposPassedBusyFilter = quickCheckTargetRepos.filter(
+    (repo) =>
+      !reposBusyWithAutoRefresh.includes(repo) &&
+      !reposBusyWithQuickCheck.includes(repo),
+  );
+  const reposWithOpenCircuit = reposPassedBusyFilter.filter(
+    (repo) => getViewPrsAutoCircuitOpenState({ nowMs: Date.now(), repo }).isOpen,
+  );
+  if (
+    reposPassedBusyFilter.length > 0 &&
+    reposWithOpenCircuit.length === reposPassedBusyFilter.length
+  ) {
     viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckSkipReason = "circuit-open";
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "circuit-open", willRunAfter: false, repos: reposWithOpenCircuit },
+    });
     return { skipped: true, skipReason: "circuit-open" };
   }
 
+  // Only the repos actually about to be checked (not the full target list -
+  // reposBusyWithAutoRefresh/reposBusyWithQuickCheck/reposWithOpenCircuit
+  // are excluded here and, for the first two, get their own per-repo skip
+  // inside runQuickCheckForRepo below, same reasoning as that function's
+  // own re-check comment: this call may still span several repos processed
+  // one at a time, so this Set is what a DIFFERENT concurrent quick check
+  // call sees as "busy" for the duration).
+  const reposAboutToBeChecked = reposPassedBusyFilter.filter(
+    (repo) => !reposWithOpenCircuit.includes(repo),
+  );
+  reposAboutToBeChecked.forEach((repo) =>
+    viewPrsSchedulerState.quickCheckInProgressRepos.add(repo),
+  );
   viewPrsSchedulerState.isQuickCheckInProgress = true;
   viewPrsSchedulerState.lastQuickCheckAttemptAt = new Date().toISOString();
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
 
+  const quickCheckStartedMs = Date.now();
+  const quickCheckScope = prNumbers
+    ? "entered-numbers"
+    : Array.isArray(repoRequests) && repoRequests.length > 0
+      ? "loaded-prs"
+      : "all-repos";
+  callEmitJobEvent({
+    job: JOB_NAMES.QUICK_CHECK,
+    phase: JOB_PHASES.START,
+    detail: { scope: quickCheckScope },
+  });
+  let finishReposCheckedCount = 0;
+  let finishReposFailedCount = 0;
+  let finishNewPendingOpenCount = 0;
+  let finishNewPendingMergedClosedCount = 0;
+  let finishPendingOpenRepos = [];
+
   try {
     const reposWithPendingOpen = new Set();
+    const reposWithNewPendingMergedClosed = new Set();
     const reposChecked = [];
     const reposFailed = [];
+    const reposSkippedForAutoRefresh = [];
     let newPendingOpenCount = 0;
     let newPendingMergedClosedCount = 0;
 
@@ -1843,6 +2267,15 @@ const runViewPrsQuickCheck = async ({
       extraArgs = [],
       scriptTimeoutMs = viewPrsQuickCheckScriptTimeoutMs,
     ) => {
+      // Re-checked per repo, not just once up front: a multi-repo call
+      // (repoRequests/"all repos" below) awaits one repo at a time, so
+      // autoRefreshInProgressRepos can change between iterations (a refresh
+      // starting or finishing) - see that Set's own comment. Skips just
+      // this one repo rather than failing it or blocking the whole call.
+      if (viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo)) {
+        reposSkippedForAutoRefresh.push(repo);
+        return;
+      }
       try {
         const result = await callRunViewPrsScript(
           [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo, ...extraArgs],
@@ -1872,6 +2305,9 @@ const runViewPrsQuickCheck = async ({
         if (pendingOpen.length > 0) {
           reposWithPendingOpen.add(repo);
         }
+        if (pendingMergedClosed.length > 0) {
+          reposWithNewPendingMergedClosed.add(repo);
+        }
       } catch (repoError) {
         const message = repoError?.message || String(repoError);
         reposFailed.push({ repo, error: message });
@@ -1880,6 +2316,10 @@ const runViewPrsQuickCheck = async ({
     };
 
     if (prNumbers) {
+      // allTargetsBusy and the circuit-open full-skip above would already
+      // have fully early-returned if this single target repo were busy or
+      // circuit-open, so reaching here means it's free of every skip
+      // reason - no extra filtering needed for this one-repo branch.
       await runQuickCheckForRepo(targetRepo, ["--quick-check-numbers", prNumbers]);
     } else if (Array.isArray(repoRequests) && repoRequests.length > 0) {
       // Sequential, not Promise.all: each repo's own script call already
@@ -1887,7 +2327,17 @@ const runViewPrsQuickCheck = async ({
       // every repo at once here would multiply that with no cap (e.g. 5
       // repos x 12 jobs = 60 concurrent gh processes). One repo at a time
       // keeps total concurrent load bounded to a single repo's worth.
+      //
+      // Only pre-filters reposBusyWithQuickCheck/reposWithOpenCircuit here -
+      // NOT reposBusyWithAutoRefresh, which deliberately still reaches
+      // runQuickCheckForRepo below so ITS OWN live re-check can detect and
+      // record it in reposSkippedForAutoRefresh (that reason, unlike these
+      // two, can genuinely change mid-loop - see that function's own
+      // comment).
       for (const { repo, prNumbers: repoPrNumbers } of repoRequests) {
+        if (reposBusyWithQuickCheck.includes(repo) || reposWithOpenCircuit.includes(repo)) {
+          continue;
+        }
         const extraArgs = ["--jobs", String(viewPrsQuickCheckAllJobs)];
         if (repoPrNumbers) {
           extraArgs.push("--quick-check-numbers", repoPrNumbers);
@@ -1895,36 +2345,106 @@ const runViewPrsQuickCheck = async ({
         await runQuickCheckForRepo(repo, extraArgs, viewPrsQuickCheckAllScriptTimeoutMs);
       }
     } else {
-      const repos = getViewPrsAutoRefreshRepos();
-      await Promise.all(repos.map((repo) => runQuickCheckForRepo(repo)));
+      // Excludes quickCheck-busy/circuit-open repos up front, but
+      // deliberately NOT autoRefresh-busy ones - see the repoRequests
+      // branch's own comment just above for why those still need to reach
+      // runQuickCheckForRepo so its own live re-check can detect and
+      // record them.
+      const reposForUnscopedSweep = quickCheckTargetRepos.filter(
+        (repo) => !reposBusyWithQuickCheck.includes(repo) && !reposWithOpenCircuit.includes(repo),
+      );
+      await Promise.all(reposForUnscopedSweep.map((repo) => runQuickCheckForRepo(repo)));
     }
 
     viewPrsSchedulerState.lastQuickCheckAt = new Date().toISOString();
     viewPrsSchedulerState.lastQuickCheckError = null;
     persistViewPrsSchedulerState();
 
-    if (reposWithPendingOpen.size > 0) {
-      // Fast-follow: don't wait for the next full-sweep timer once an open
-      // PR is known to have actually changed. `awaitTargetedRefresh` lets
-      // the startup sequence (initializeScheduler) wait for this priority
-      // refresh to actually finish before it moves on to the full,
-      // every-repo update - the periodic setInterval caller never passes
-      // it, since blocking the quick-check timer on a potentially slow
-      // refresh would defeat the point of checking quickly.
-      const targetedRefresh = callRunViewPrsAutoRefresh({
-        reposOverride: Array.from(reposWithPendingOpen),
+    // Repos skipped mid-call because that specific repo's auto refresh
+    // started/was-still-running when its turn came up (as opposed to the
+    // up-front allTargetsBusyWithAutoRefresh case above, which never
+    // reaches here at all) - scoped catch-up, same mechanism as that
+    // earlier case, just reached via a different path.
+    if (reposSkippedForAutoRefresh.length > 0) {
+      viewPrsSchedulerState.quickCheckSkippedWhileAutoRunInProgress = true;
+      reposSkippedForAutoRefresh.forEach((repo) =>
+        viewPrsSchedulerState.quickCheckSkippedRepos.add(repo),
+      );
+      callEmitJobEvent({
+        job: JOB_NAMES.QUICK_CHECK,
+        phase: JOB_PHASES.DEFERRED,
+        detail: {
+          waitingOn: "autoRefresh",
+          reason: "auto-refresh-in-progress",
+          willRunAfter: true,
+          repos: reposSkippedForAutoRefresh,
+        },
       });
-      if (awaitTargetedRefresh) {
-        await targetedRefresh;
-      } else {
-        void targetedRefresh;
-      }
     }
+
+    // Fast-follow via the dispatcher: don't wait for either task type's own
+    // next due-time once a change is actually known. Bumping the entry
+    // (making it immediately due) and then ticking the dispatcher right
+    // away - rather than calling runViewPrsAutoRefresh/runViewPrsMergedQueueDrain
+    // directly - keeps the registry as the single source of truth for
+    // "is this entry currently running / when did it last run", so the next
+    // regular tick doesn't redundantly re-run something this fast-follow
+    // just covered.
+    //
+    // The mergedDrain bump is the fix for a real priority-inversion bug:
+    // open-PR changes have always fast-followed immediately, but
+    // closed/merged changes previously only sat flagged until
+    // mergedQueueDrain's own fixed (and, at the default config, actually
+    // *longer* than autoRefresh's) interval - see REACT_MIGRATION_PLAN.md.
+    //
+    // getOrInitRegistry() first: a manual single-repo/single-PR quick check
+    // (from a user-triggered route) can reach here for a repo the
+    // dispatcher has never seen yet, with no periodic tick having run to
+    // register it - without this, bumpEntryUrgent would silently no-op
+    // against a nonexistent entry.
+    if (reposWithPendingOpen.size > 0 || reposWithNewPendingMergedClosed.size > 0) {
+      callDispatcherHelpers().getOrInitRegistry();
+    }
+    reposWithPendingOpen.forEach((repo) => {
+      callDispatcherHelpers().bumpEntryUrgent(repo, "autoRefresh", {
+        reason: "quick-check-pending-open",
+      });
+    });
+    reposWithNewPendingMergedClosed.forEach((repo) => {
+      callDispatcherHelpers().bumpEntryUrgent(repo, "mergedDrain", {
+        reason: "quick-check-pending-merged-closed",
+      });
+    });
+    if (reposWithPendingOpen.size > 0 || reposWithNewPendingMergedClosed.size > 0) {
+      void callRunDispatcherTick();
+    }
+
+    finishReposCheckedCount = reposChecked.length;
+    finishReposFailedCount = reposFailed.length;
+    finishNewPendingOpenCount = newPendingOpenCount;
+    finishNewPendingMergedClosedCount = newPendingMergedClosedCount;
+    finishPendingOpenRepos = Array.from(reposWithPendingOpen);
 
     return {
       skipped: false,
       reposChecked,
       reposFailed,
+      // Repos this call targeted but didn't actually check because that
+      // repo's auto refresh was in progress at the time (see
+      // autoRefreshInProgressRepos's own comment) - distinct from
+      // reposFailed (which did run but errored). Empty in the common case.
+      reposSkippedForAutoRefresh,
+      // Repos this call targeted but didn't actually check because a
+      // DIFFERENT, concurrently-running quick check call was already
+      // covering them (see quickCheckInProgressRepos's own comment).
+      // Resolved up front (reposBusyWithQuickCheck), not per-iteration -
+      // see reposAboutToBeChecked's own comment for why that's correct
+      // here, unlike the auto-refresh-overlap case above.
+      reposSkippedForQuickCheckInProgress: reposBusyWithQuickCheck,
+      // Repos this call targeted but didn't actually check because that
+      // repo's own circuit breaker is currently open (see
+      // autoCircuitByRepo's own comment).
+      reposSkippedForCircuitOpen: reposWithOpenCircuit,
       newPendingOpenCount,
       newPendingMergedClosedCount,
       // Consumed by initializeScheduler to skip re-refreshing these same
@@ -1937,7 +2457,29 @@ const runViewPrsQuickCheck = async ({
     console.error(`[view-prs] quick check failed: ${viewPrsSchedulerState.lastQuickCheckError}`);
     return { skipped: false, fatalError: viewPrsSchedulerState.lastQuickCheckError };
   } finally {
-    viewPrsSchedulerState.isQuickCheckInProgress = false;
+    // Remove only THIS call's own repos, not the whole Set - a different,
+    // concurrently-running quick check call (for different repos) may still
+    // have its own entries in it (see quickCheckInProgressRepos's own
+    // comment near viewPrsSchedulerState's definition).
+    reposAboutToBeChecked.forEach((repo) =>
+      viewPrsSchedulerState.quickCheckInProgressRepos.delete(repo),
+    );
+    viewPrsSchedulerState.isQuickCheckInProgress =
+      viewPrsSchedulerState.quickCheckInProgressRepos.size > 0;
+    callEmitJobEvent({
+      job: JOB_NAMES.QUICK_CHECK,
+      phase: JOB_PHASES.FINISH,
+      ok: !viewPrsSchedulerState.lastQuickCheckError,
+      detail: {
+        reposCheckedCount: finishReposCheckedCount,
+        reposFailedCount: finishReposFailedCount,
+        newPendingOpenCount: finishNewPendingOpenCount,
+        newPendingMergedClosedCount: finishNewPendingMergedClosedCount,
+        pendingOpenRepos: finishPendingOpenRepos,
+        durationMs: Date.now() - quickCheckStartedMs,
+        error: viewPrsSchedulerState.lastQuickCheckError || null,
+      },
+    });
   }
 };
 
@@ -1951,19 +2493,87 @@ const callRunViewPrsQuickCheck = (...args) =>
 // Batches up closed/merged PRs flagged by the quick-check into a full fetch.
 // Runs on a much longer interval than the quick-check itself, and does
 // nothing at all when nothing has actually changed (see viewPrsMergedFullSweepIntervalMs).
-const runViewPrsMergedQueueDrain = async () => {
-  const reposToDrain = getReposWithPendingMergedClosed().filter(
-    (repo) => !getReposWithPendingOpen().includes(repo),
+const runViewPrsMergedQueueDrain = async ({ reposOverride } = {}) => {
+  // reposOverride (new): the dispatcher calls this scoped to one repo at a
+  // time (see runTaskForEntry) - no manual route calls this function at
+  // all, so narrowing to a single repo here has no effect on anything
+  // other than the periodic path. A direct call with no args (every
+  // existing test, and the pre-dispatcher periodic timer) keeps today's
+  // exact behavior: every repo with pending merged/closed changes, minus
+  // any also pending-open (that repo's open-PR fast-follow autoRefresh
+  // already covers it).
+  const candidateRepos = Array.isArray(reposOverride)
+    ? reposOverride
+    : getReposWithPendingMergedClosed();
+  const reposToDrain = candidateRepos.filter(
+    (repo) =>
+      getReposWithPendingMergedClosed().includes(repo) &&
+      !getReposWithPendingOpen().includes(repo),
   );
 
   viewPrsSchedulerState.lastMergedDrainAt = new Date().toISOString();
   persistViewPrsSchedulerState();
 
   if (reposToDrain.length === 0) {
+    // Not a "blocked" skip - genuinely checked and found nothing to drain,
+    // same cadence-wise as a successful run that happened to find nothing.
+    // No { skipped: true } here - see runTaskGroup's own comment for why
+    // that distinction matters (short retry vs. normal full-interval wait).
+    callEmitJobEvent({
+      job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "nothing-pending" },
+    });
     return;
   }
 
-  await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+  viewPrsSchedulerState.isMergedDrainInProgress = true;
+  const drainStartedMs = Date.now();
+  callEmitJobEvent({
+    job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+    phase: JOB_PHASES.START,
+    detail: { repos: reposToDrain, repoCount: reposToDrain.length },
+  });
+  // Propagate the inner call's own skip signal (e.g. the drained repos'
+  // circuit is open, or they're busy with another in-flight auto refresh) -
+  // this function has no guard of its own, it relies entirely on
+  // runViewPrsAutoRefresh's. Captured outside the try so the finally below
+  // can tell a genuine finish from a no-op skip and emit the matching
+  // event - otherwise a skip would be followed by a "finish" event implying
+  // the drain actually ran, misleading anything (like the Activity drawer)
+  // watching the job event stream.
+  let innerResult;
+  try {
+    innerResult = await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+  } finally {
+    viewPrsSchedulerState.isMergedDrainInProgress = false;
+    if (innerResult?.skipped) {
+      callEmitJobEvent({
+        job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+        phase: JOB_PHASES.SKIPPED,
+        detail: {
+          reason: innerResult.skipReason,
+          repos: reposToDrain,
+          repoCount: reposToDrain.length,
+        },
+      });
+    } else {
+      callEmitJobEvent({
+        job: JOB_NAMES.MERGED_QUEUE_DRAIN,
+        phase: JOB_PHASES.FINISH,
+        detail: {
+          repos: reposToDrain,
+          repoCount: reposToDrain.length,
+          durationMs: Date.now() - drainStartedMs,
+        },
+      });
+    }
+  }
+  // Always propagate, not just when fully skipped - innerResult now also
+  // carries autoRefresh's own per-repo detail (succeededRepos/failedRepos/
+  // reposExcludedFor...) even on a run that only PARTIALLY skipped, which
+  // runTaskGroup's own resultsByRepo for mergedDrain depends on.
+  return innerResult;
 };
 
 // Same override-checking pattern as callRunViewPrsAutoRefresh/callRunViewPrsQuickCheck
@@ -1972,6 +2582,343 @@ const runViewPrsMergedQueueDrain = async () => {
 // (below) can be verified without waiting on a real timer/drain.
 const callRunViewPrsMergedQueueDrain = (...args) =>
   (module.exports.runViewPrsMergedQueueDrain || runViewPrsMergedQueueDrain)(...args);
+
+// Runs every due entry of ONE task type together, in a single call -
+// never one call per repo. This matters beyond efficiency: runViewPrsQuickCheck/
+// runViewPrsAutoRefresh are single-flight by design (their own
+// isQuickCheckInProgress/isAutoRunInProgress guards assume at most one call
+// of that function runs at a time, process-wide) - calling either of them
+// twice concurrently (once per repo) would make the second call's guard
+// trip and silently skip, exactly the kind of "known work silently
+// dropped" bug this whole feature exists to close. Each function already
+// accepts multiple repos in one call (reposOverride/repoRequests), which is
+// the existing, safe way to cover several due repos of the same task type
+// at once - see view-prs-dispatcher-helpers.js for the per-repo
+// priority/budget selection this group is built from.
+// Builds a { [repo]: {skipped,skipReason} | {ok,error} } map for every repo
+// in the group - a shared, uniform outcome across the whole batch (the
+// pre-existing shape) silently mis-records any repo a job function's own
+// PARTIAL skip filtered out of a multi-repo call: that repo never actually
+// ran, but without per-repo detail it inherits whatever the REST of the
+// batch did. See the plan this closes: a repo excluded by an
+// already-in-progress/circuit-open overlap with just SOME of a batch's
+// repos used to get marked ok:true anyway once a different repo in the
+// same batch genuinely succeeded.
+const buildUniformResultsByRepo = (repos, outcome) =>
+  Object.fromEntries(repos.map((repo) => [repo, outcome]));
+
+const runTaskGroup = async (taskType, entries) => {
+  const repos = entries.map((entry) => entry.repo);
+
+  if (taskType === "quickCheck") {
+    const result = await callRunViewPrsQuickCheck({
+      repoRequests: repos.map((repo) => ({ repo })),
+    });
+    if (result?.skipped) {
+      return {
+        resultsByRepo: buildUniformResultsByRepo(repos, {
+          skipped: true,
+          skipReason: result.skipReason,
+        }),
+      };
+    }
+    if (result?.fatalError) {
+      // Thrown before any individual repo's own result was known - no
+      // finer-grained info than the shared error.
+      return {
+        resultsByRepo: buildUniformResultsByRepo(repos, {
+          ok: false,
+          error: result.fatalError,
+        }),
+      };
+    }
+    const resultsByRepo = {};
+    (result?.reposChecked || []).forEach((repo) => {
+      resultsByRepo[repo] = { ok: true, error: null };
+    });
+    (result?.reposFailed || []).forEach(({ repo, error }) => {
+      resultsByRepo[repo] = { ok: false, error };
+    });
+    (result?.reposSkippedForAutoRefresh || []).forEach((repo) => {
+      resultsByRepo[repo] = { skipped: true, skipReason: "already-in-progress" };
+    });
+    (result?.reposSkippedForQuickCheckInProgress || []).forEach((repo) => {
+      resultsByRepo[repo] = { skipped: true, skipReason: "already-in-progress" };
+    });
+    (result?.reposSkippedForCircuitOpen || []).forEach((repo) => {
+      resultsByRepo[repo] = { skipped: true, skipReason: "circuit-open" };
+    });
+    // Defensive fallback (see the autoRefresh/mergedDrain branch's own
+    // comment below for why this matters) - every repo here SHOULD already
+    // be accounted for by one of the arrays above, but defaulting to a
+    // success protects against ever turning an unrecognized gap into a
+    // false failure.
+    repos.forEach((repo) => {
+      if (!resultsByRepo[repo]) {
+        resultsByRepo[repo] = { ok: true, error: null };
+      }
+    });
+    return { resultsByRepo };
+  }
+
+  const callForTaskType =
+    taskType === "autoRefresh" ? callRunViewPrsAutoRefresh : callRunViewPrsMergedQueueDrain;
+  const result = await callForTaskType({ reposOverride: repos });
+  if (result?.skipped) {
+    return {
+      resultsByRepo: buildUniformResultsByRepo(repos, {
+        skipped: true,
+        skipReason: result.skipReason,
+      }),
+    };
+  }
+  const resultsByRepo = {};
+  (result?.succeededRepos || []).forEach((repo) => {
+    resultsByRepo[repo] = { ok: true, error: null };
+  });
+  (result?.failedRepos || []).forEach((repo) => {
+    resultsByRepo[repo] = {
+      ok: false,
+      error: result?.failedRepoErrors?.[repo] || result?.error || null,
+    };
+  });
+  (result?.reposExcludedForAlreadyInProgress || []).forEach((repo) => {
+    resultsByRepo[repo] = { skipped: true, skipReason: "already-in-progress" };
+  });
+  (result?.reposExcludedForCircuitOpen || []).forEach((repo) => {
+    resultsByRepo[repo] = { skipped: true, skipReason: "circuit-open" };
+  });
+  // Any repo in THIS group not otherwise accounted for defaults to a
+  // genuine success, not a failure - covers mergedDrain's own
+  // "nothing-pending" early return (bare `return;`, no result object at
+  // all: a routine "checked, nothing to do", deliberately not a skip - see
+  // that function's own comment) and any other call shape that doesn't
+  // (yet) report every repo explicitly. Without this, an unaccounted-for
+  // repo would otherwise fall through to executeTaskTypeGroup's own
+  // "No per-repo result reported" fallback, which is a FAILURE outcome -
+  // appropriate for a truly unexpected gap, wrong for an expected one.
+  repos.forEach((repo) => {
+    if (!resultsByRepo[repo]) {
+      resultsByRepo[repo] = { ok: true, error: null };
+    }
+  });
+  return { resultsByRepo };
+};
+
+// Runs one task-type group's call (runTaskGroup) and records the outcome
+// back onto every entry in it, fully independently of the claim phase below
+// - this is the part that's allowed to take a while (real `gh` calls in
+// production) without holding up the next tick.
+const executeTaskTypeGroup = async (dispatcher, taskType, entries) => {
+  try {
+    const { resultsByRepo } = await runTaskGroup(taskType, entries);
+    const finishedAtMs = Date.now();
+    entries.forEach((entry) => {
+      // Falls back to a genuine failure, not a silent "ok:true", if a repo
+      // somehow has no entry at all in resultsByRepo - the whole point of
+      // this per-repo map is that nothing should fall through unnoticed.
+      const result = resultsByRepo?.[entry.repo] || {
+        ok: false,
+        error: "No per-repo result reported for this entry",
+      };
+      if (result.skipped) {
+        dispatcher.markEntryDeferred(entry, {
+          nowMs: finishedAtMs,
+          skipReason: result.skipReason,
+        });
+      } else {
+        dispatcher.markEntryFinished(entry, {
+          nowMs: finishedAtMs,
+          ok: result.ok,
+          error: result.error,
+        });
+      }
+    });
+  } catch (error) {
+    const finishedAtMs = Date.now();
+    entries.forEach((entry) =>
+      dispatcher.markEntryFinished(entry, {
+        nowMs: finishedAtMs,
+        ok: false,
+        error: error?.message || String(error),
+      }),
+    );
+  }
+};
+
+// The dispatcher's single periodic driver, replacing the three independent
+// setIntervals below it (see REACT_MIGRATION_PLAN.md's dispatcher plan).
+// Picks every entry that's both due and affordable within the shared
+// gh-process budget (manual routes' own reserveGhSlots calls - see
+// view-prs-mutation-routes.js - count against the same budget, so the
+// background dispatcher throttles around manual work without ever making
+// a manual action wait), groups them by task type (see runTaskGroup for
+// why), and kicks off each group's execution without waiting for it.
+//
+// Claim phase vs. execution phase: everything up through marking every
+// selected entry `isRunning` is synchronous (no `await`), so two
+// back-to-back invocations of this function can never interleave mid-claim
+// - by the time either call's synchronous prefix yields control back to the
+// event loop, every entry it selected is already marked running, so the
+// other invocation's own pickNextBatch (which filters on !isRunning)
+// correctly excludes them. isDispatcherTickInFlight is kept as a cheap,
+// defensive guard around just this claim phase anyway (documents the
+// invariant, costs nothing) - but it's released BEFORE any group's
+// execution starts, not after every group finishes. This is what lets a
+// newly-due quickCheck (e.g. for an unrelated repo) get claimed and run by
+// the very next periodic tick while a previous tick's slow, multi-repo
+// autoRefresh group is still executing in the background - previously the
+// whole tick (every selected group, run sequentially) had to finish before
+// isDispatcherTickInFlight released and a new tick could even look.
+// quickCheck's group no longer needs to run sequentially relative to the
+// others: that was only to avoid tripping its old *global*
+// isAutoRunInProgress guard, now per-repo (see autoRefreshInProgressRepos).
+// autoRefresh and mergedDrain still run sequentially RELATIVE TO EACH
+// OTHER (not to quickCheck, and not blocking this tick's own return) - see
+// their own sequencing comment further down, where groupsByTaskType is
+// split up.
+let isDispatcherTickInFlight = false;
+
+const runDispatcherTick = async () => {
+  if (isDispatcherTickInFlight) {
+    return;
+  }
+  isDispatcherTickInFlight = true;
+  let selected;
+  let dispatcher;
+  try {
+    dispatcher = callDispatcherHelpers();
+    dispatcher.getOrInitRegistry();
+    const nowMs = Date.now();
+    const availableGhSlots = Math.max(
+      0,
+      effectiveDispatcherGhProcessBudget -
+        dispatcher.getReservedGhSlots() -
+        dispatcher.getRunningGhCost(),
+    );
+    ({ selected } = dispatcher.pickNextBatch({ nowMs, availableGhSlots }));
+    if (selected.length === 0) {
+      return;
+    }
+
+    const startedAtMs = Date.now();
+    selected.forEach((entry) => dispatcher.markEntryRunning(entry, { nowMs: startedAtMs }));
+  } finally {
+    isDispatcherTickInFlight = false;
+  }
+
+  const groupsByTaskType = new Map();
+  selected.forEach((entry) => {
+    if (!groupsByTaskType.has(entry.taskType)) {
+      groupsByTaskType.set(entry.taskType, []);
+    }
+    groupsByTaskType.get(entry.taskType).push(entry);
+  });
+
+  // quickCheck is fully decoupled - its own guard is per-repo now (see
+  // autoRefreshInProgressRepos), so it never needs to wait on the other two.
+  const quickCheckGroup = groupsByTaskType.get("quickCheck");
+  if (quickCheckGroup) {
+    void executeTaskTypeGroup(dispatcher, "quickCheck", quickCheckGroup);
+  }
+
+  // autoRefresh and mergedDrain are NOT independent the same way:
+  // runViewPrsMergedQueueDrain calls callRunViewPrsAutoRefresh internally
+  // (to refresh the repos it just drained), sharing runViewPrsAutoRefresh's
+  // own single-flight isAutoRunInProgress guard - which stays global/
+  // unchanged by design (see autoRefreshInProgressRepos's own comment:
+  // only the cross-task quickCheck-vs-autoRefresh guard became per-repo).
+  // Firing both groups fire-and-forget independently here would let one
+  // group's direct autoRefresh call (e.g. for repo A) trip while the
+  // OTHER group's internal autoRefresh call (e.g. mergedDrain refreshing
+  // repo B after draining it) is concurrently starting - both paths hit
+  // the very first line of runViewPrsAutoRefresh synchronously, before
+  // either yields control, so whichever started first wins the guard and
+  // the other silently defers. Sequencing these two relative to EACH
+  // OTHER (not to quickCheck, and not to this tick's own return) restores
+  // the guarantee the old fully-sequential tick gave them for free.
+  const autoRefreshGroup = groupsByTaskType.get("autoRefresh");
+  const mergedDrainGroup = groupsByTaskType.get("mergedDrain");
+  if (autoRefreshGroup || mergedDrainGroup) {
+    void (async () => {
+      if (autoRefreshGroup) {
+        await executeTaskTypeGroup(dispatcher, "autoRefresh", autoRefreshGroup);
+      }
+      if (mergedDrainGroup) {
+        await executeTaskTypeGroup(dispatcher, "mergedDrain", mergedDrainGroup);
+      }
+    })();
+  }
+};
+
+// Same override-checking pattern as every other call site in this file -
+// lets the two urgency-bump call sites above (in runViewPrsQuickCheck) and
+// initializeScheduler's own setInterval be verified without waiting on a
+// real timer.
+const callRunDispatcherTick = (...args) =>
+  (module.exports.runDispatcherTick || runDispatcherTick)(...args);
+
+// Manual "run this sooner" reprioritization from the Activity drawer (see
+// REACT_MIGRATION_PLAN.md's dispatcher plan) - the exact same
+// bump-then-tick mechanism the two automatic fast-follow call sites above
+// already use, just triggered by a person instead of a quick-check result.
+// getOrInitRegistry() first for the same reason the fast-follow call sites
+// need it: the target entry might not exist yet if no tick has run since
+// this repo was added. Fire-and-forget on the tick, same as every other
+// bump call site - the caller doesn't wait on the actual task to finish.
+//
+// Returns { entry, applied } rather than just the entry: `applied` is false
+// when the entry was already "due" or "running" *before* this call, so the
+// bump had no real effect (nextDueAt was already <= now, or it's mid-flight)
+// - without this, the route would report ok:true for a no-op bump with no
+// way for the caller to tell the difference from a real reprioritization.
+const bumpDispatcherEntry = (repo, taskType, opts) => {
+  callDispatcherHelpers().getOrInitRegistry();
+  const previousStatus = callDispatcherHelpers()
+    .getDispatcherQueueSnapshot({ limit: Infinity })
+    .find((item) => item.repo === repo && item.taskType === taskType)?.status;
+  const entry = callDispatcherHelpers().bumpEntryUrgent(repo, taskType, opts);
+  if (!entry) {
+    return null;
+  }
+  void callRunDispatcherTick();
+  return { entry, applied: previousStatus !== "due" && previousStatus !== "running" };
+};
+
+// Manual "Reset circuit breaker" action from the Activity drawer - plain
+// resetAutoCircuitBreaker (view-prs-scheduler-helpers.js) only clears the
+// breaker's own bookkeeping, it doesn't touch the dispatcher at all. Left
+// alone, the affected repo's dispatcher entries could still be up to a
+// full task interval away from their next natural attempt (silently
+// pushed out earlier by runTaskGroup's unconditional "ok:true" on what was
+// actually a silent circuit-open no-op) - defeating the whole point of a
+// manual "try again now" action. Reuses the exact bump-then-tick mechanism
+// bumpDispatcherEntry above already uses, applied to every task type for
+// each affected repo (a circuit-open repo blocks quickCheck too, not just
+// autoRefresh/mergedDrain - see getDueEntries's own comment in
+// view-prs-dispatcher-helpers.js).
+const resetAutoCircuitBreakerAndRetry = (opts = {}) => {
+  // Snapshot BEFORE resetting - getOpenAutoCircuitRepos() would already be
+  // empty by the time resetAutoCircuitBreaker returns.
+  const reposToRetry = opts.repo
+    ? [opts.repo]
+    : Array.isArray(opts.repos)
+      ? opts.repos
+      : getOpenAutoCircuitRepos();
+  const result = resetAutoCircuitBreaker(opts);
+  if (reposToRetry.length > 0) {
+    callDispatcherHelpers().getOrInitRegistry();
+    reposToRetry.forEach((repo) => {
+      DISPATCHER_TASK_TYPES.forEach((taskType) => {
+        callDispatcherHelpers().bumpEntryUrgent(repo, taskType, {
+          reason: "circuit-breaker-reset",
+        });
+      });
+    });
+    void callRunDispatcherTick();
+  }
+  return result;
+};
 
 // Vite dev middleware (React/JSX transform)
 //
@@ -2146,6 +3093,8 @@ const createViewPrsApp = () => {
     formatScriptFailureMessage,
     viewPrsSchedulerState,
     resetViewPrsAutoRefreshFailureState,
+    resetAutoCircuitBreaker,
+    getViewPrsAutoRefreshRepos,
     runViewPrsAutoRefresh,
     runViewPrsQuickCheck,
     buildAckRefreshBudgetSkipErrors,
@@ -2155,6 +3104,23 @@ const createViewPrsApp = () => {
     applyLabelToPr,
     fetchGithubPrLabels,
     patchStoredPrLabels,
+    emitDataChanged: callEmitDataChanged,
+    // Non-blocking budget reservation (see view-prs-dispatcher-helpers.js) -
+    // manual routes never wait on the dispatcher's own gh-process budget,
+    // they just occupy a slot of it for their own duration so the
+    // background dispatcher's next tick sees fewer availableGhSlots while a
+    // manual action is in flight.
+    reserveGhSlots: (...args) => callDispatcherHelpers().reserveGhSlots(...args),
+    releaseGhSlots: (...args) => callDispatcherHelpers().releaseGhSlots(...args),
+    // /run-auto is the one manual route that triggers runViewPrsAutoRefresh
+    // with no repo scope, fanning out across up to viewPrsPrDiffConcurrency
+    // repos *in parallel* (the same multi-repo worker pool the dispatcher's
+    // own autoRefresh entries use) - every other manual route is a single
+    // script/gh invocation, correctly represented by the default
+    // reservation of 1. Reusing the dispatcher's own autoRefresh cost
+    // estimate keeps this consistent with how the dispatcher accounts for
+    // that same kind of work, rather than a second, disconnected guess.
+    runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
   });
 
   registerViewPrsPrRoutes({
@@ -2198,6 +3164,10 @@ const createViewPrsApp = () => {
     viewPrsActorLoginAliasesFile,
     viewPrsBackfillLogFile,
     viewPrsBackfillPidFile,
+    bumpDispatcherEntry,
+    dispatcherTaskTypes: DISPATCHER_TASK_TYPES,
+    resetAutoCircuitBreaker: resetAutoCircuitBreakerAndRetry,
+    emitSchedulerStateChanged: callEmitSchedulerStateChanged,
   });
 
   registerViewPrsBackfillRoutes({
@@ -2214,44 +3184,81 @@ const createViewPrsApp = () => {
     readActionLog,
   });
 
+  registerViewPrsEventsRoutes({
+    app,
+    subscribeToJobEvents,
+    getJobEventsSubscriberCount,
+    getViewPrsSchedulerPublicState,
+    console,
+    heartbeatIntervalMs: viewPrsEventsHeartbeatIntervalMs,
+    maxClients: viewPrsEventsMaxClients,
+  });
+
   return app;
+};
+
+// Migrates today's flat { lastManualRunAt, lastAutoRunAt, lastQuickCheckAt,
+// lastMergedDrainAt, pendingByRepo } persisted shape into the dispatcher's
+// per-(repo, taskType) registry the first time it's loaded after upgrading -
+// readViewPrsSchedulerState itself only does a plain data copy when the
+// persisted file already has the new shape (dispatcherVersion: 2); it
+// deliberately does NOT call into dispatcherHelpers (that would create a
+// circular dependency between the two helper factories, since
+// dispatcherHelpers itself depends on getViewPrsAutoRefreshRepos from
+// createViewPrsSchedulerHelpers) - so this one-time migration glue lives
+// here instead, in the orchestration layer that already constructs both.
+const migrateDispatcherStateIfNeeded = () => {
+  if (viewPrsSchedulerState.dispatcher) {
+    return;
+  }
+  const legacyShape = {
+    lastManualRunAt: viewPrsSchedulerState.lastManualRunAt,
+    lastAutoRunAt: viewPrsSchedulerState.lastAutoRunAt,
+    lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt,
+    lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt,
+    pendingByRepo: viewPrsSchedulerState.pendingByRepo,
+  };
+  const { entries, pendingByRepo } = callDispatcherHelpers().migrateLegacyPersistedState(
+    legacyShape,
+    { repos: getViewPrsAutoRefreshRepos(), nowMs: Date.now() },
+  );
+  viewPrsSchedulerState.dispatcher = { entries, reservedGhSlots: 0 };
+  viewPrsSchedulerState.pendingByRepo = pendingByRepo;
+  persistViewPrsSchedulerState();
 };
 
 // Scheduler management functions for external use
 const initializeScheduler = () => {
   readViewPrsSchedulerState();
-  // On startup, check what's actually changed before spending time on a
-  // full every-repo update: run the quick check first, let its own
-  // fast-follow targeted refresh for repos with pending open changes
-  // actually finish (awaitTargetedRefresh - see runViewPrsQuickCheck's own
-  // comment), and only then fall back to a full update - excluding
-  // whichever repos the targeted refresh JUST covered, so a repo with
-  // pending changes doesn't get a full check-open-pr-updates.sh pass
-  // (real GitHub API calls) twice within moments of each other for no
-  // benefit. Not awaited here - initializeScheduler's own callers
-  // (server.js) don't wait on startup work finishing, and the periodic
-  // intervals below are scheduled immediately regardless.
-  void (async () => {
-    const quickCheckResult = await callRunViewPrsQuickCheck({ awaitTargetedRefresh: true });
-    const alreadyRefreshedRepos = new Set(quickCheckResult?.reposWithPendingOpen || []);
-    const remainingRepos = getViewPrsAutoRefreshRepos().filter(
-      (repo) => !alreadyRefreshedRepos.has(repo),
-    );
-    if (remainingRepos.length > 0) {
-      await callRunViewPrsAutoRefresh({ reposOverride: remainingRepos });
-    }
-    // else: every repo the scheduler would otherwise have refreshed was
-    // already just covered by the targeted pass above - nothing left to do.
-  })();
-  // Wrapped in arrow functions (rather than passing the bare function
-  // references) so each tick re-checks module.exports.X fresh, same as
-  // every other overridable call site in this file - a bare reference here
-  // would permanently bind to whichever function was in scope when
-  // initializeScheduler ran, making it un-mockable by tests that
-  // monkeypatch module.exports.X afterward.
-  setInterval(() => callRunViewPrsQuickCheck(), viewPrsQuickCheckIntervalMs);
-  setInterval(() => callRunViewPrsMergedQueueDrain(), viewPrsMergedFullSweepIntervalMs);
-  return setInterval(() => callRunViewPrsAutoRefresh(), viewPrsAutoIntervalMs);
+  migrateDispatcherStateIfNeeded();
+  // getOrInitRegistry's own job (beyond the one-time migration above):
+  // register any repo newly discovered since the persisted file was last
+  // written, and refresh every entry's priority/interval from the current
+  // schedulerRepoConfig - safe/cheap to call once here even before the
+  // dispatcher is wired into the live tick (next step).
+  callDispatcherHelpers().getOrInitRegistry();
+  // No bespoke "check everything once" startup burst needed anymore: every
+  // registry entry defaults to immediately-due on a fresh install, and any
+  // entry restored from a migrated/existing persisted file keeps whatever
+  // real nextDueAt its own run history already implies - so the very first
+  // dispatch tick below naturally reproduces "check everything once at
+  // startup" through the same generic mechanism every later tick uses,
+  // without the old dedicated code path's risk of double-checking a repo
+  // (that code existed specifically to avoid running autoRefresh twice for
+  // the same repo across its two startup passes - moot now, since
+  // autoRefresh-for-a-repo is one registry entry that pickNextBatch can
+  // only select once per tick).
+  //
+  // Not awaited here - initializeScheduler's own callers (server.js) don't
+  // wait on startup work finishing.
+  void callRunDispatcherTick();
+  // Wrapped in an arrow function (rather than passing the bare function
+  // reference) so each tick re-checks module.exports.runDispatcherTick
+  // fresh, same as every other overridable call site in this file - a bare
+  // reference here would permanently bind to whichever function was in
+  // scope when initializeScheduler ran, making it un-mockable by tests that
+  // monkeypatch module.exports.runDispatcherTick afterward.
+  return setInterval(() => callRunDispatcherTick(), viewPrsDispatcherTickIntervalMs);
 };
 
 module.exports = {
@@ -2261,6 +3268,13 @@ module.exports = {
   runViewPrsAutoRefresh,
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
+  runDispatcherTick,
+  emitJobEvent,
+  emitSchedulerStateChanged,
+  emitDataChanged,
+  subscribeToJobEvents,
+  getJobEventsSubscriberCount,
+  dispatcherHelpers,
   // Core config/constants
   viewPrsDir,
   viewPrsUiIndexFile,
@@ -2363,6 +3377,9 @@ module.exports = {
   buildAckRefreshBudgetSkipErrors,
   recordViewPrsAutoRefreshFailure,
   resetViewPrsAutoRefreshFailureState,
+  resetAutoCircuitFailuresForRepos,
+  resetAutoCircuitBreaker,
+  getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
   setPendingForRepo,
   clearPendingForRepo,

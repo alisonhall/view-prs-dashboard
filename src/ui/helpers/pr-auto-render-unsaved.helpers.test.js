@@ -5,58 +5,32 @@ const {
 } = require("./pr-auto-render-unsaved.helpers.js");
 
 describe("auto render unsaved helpers", () => {
-  const createHelpers = () =>
+  const createHelpers = ({ getDirtyNotesPrNumbers } = {}) =>
     createPrAutoRenderUnsavedHelpers({
-      getOptionalElementById: (id) => document.getElementById(id),
-      readElementAttribute: (element, attributeName) =>
-        element && typeof element.getAttribute === "function"
-          ? String(element.getAttribute(attributeName) || "").trim()
-          : "",
+      getDirtyNotesPrNumbers,
     });
 
-  test("given tracked fields and notes sections, when collecting blocking PR numbers, then unique sorted PR numbers are returned", () => {
-    document.body.innerHTML = `
-      <section id="pr-sections">
-        <div class="row-insights-content" data-pr-number="12">
-          <input id="dirty-12" data-original-value="a" value="b" />
-        </div>
-        <div class="row-insights-content" data-pr-number="5">
-          <input id="clean-5" data-original-value="x" value="x" />
-        </div>
-        <div class="pr-notes-section" data-pr-number="7" data-has-unsaved-notes="true"></div>
-        <div class="pr-notes-section" data-pr-number="12" data-has-unsaved-notes="true"></div>
-      </section>
-    `;
+  test("given dirty notes PR numbers with a duplicate, when collecting blocking PR numbers, then unique sorted PR numbers are returned", () => {
+    const { getUnsavedNotesPrNumbers, getBlockingPrNumbers } = createHelpers({
+      getDirtyNotesPrNumbers: () => ["12", "7", "12"],
+    });
 
-    const {
-      getDirtyTrackedFields,
-      getUnsavedNotesSections,
-      getBlockingPrNumbers,
-    } = createHelpers();
-
-    expect(getDirtyTrackedFields().map((item) => item.id)).toEqual(["dirty-12"]);
-    expect(getUnsavedNotesSections()).toHaveLength(2);
+    expect(getUnsavedNotesPrNumbers()).toEqual(["12", "7", "12"]);
     expect(getBlockingPrNumbers()).toEqual(["7", "12"]);
   });
 
-  test("given a PR with dirty field and notes controls, when resolving first unsaved element, then dirty field wins then save button fallback is used", () => {
-    document.body.innerHTML = `
-      <section id="pr-sections">
-        <div class="row-insights-content" data-pr-number="12">
-          <input id="dirty-target" data-original-value="a" value="b" />
-        </div>
-        <div class="pr-notes-section" data-pr-number="13" data-has-unsaved-notes="true">
-          <button class="pr-notes-save" id="save-13">Save</button>
-          <textarea id="notes-13"></textarea>
-        </div>
-      </section>
-    `;
+  test("given no getDirtyNotesPrNumbers hook, when reading unsaved notes PR numbers, then it is a safe empty default", () => {
+    const { getUnsavedNotesPrNumbers } = createHelpers();
 
-    const { getFirstUnsavedElementForPrNumber } = createHelpers();
+    expect(getUnsavedNotesPrNumbers()).toEqual([]);
+  });
 
-    expect(getFirstUnsavedElementForPrNumber("12")?.id).toBe("dirty-target");
-    expect(getFirstUnsavedElementForPrNumber("13")?.id).toBe("save-13");
-    expect(getFirstUnsavedElementForPrNumber("999")).toBeNull();
+  test("given malformed values from getDirtyNotesPrNumbers, when reading unsaved notes PR numbers, then only digit-only values are kept", () => {
+    const { getUnsavedNotesPrNumbers } = createHelpers({
+      getDirtyNotesPrNumbers: () => ["12", "abc", " 7 ", ""],
+    });
+
+    expect(getUnsavedNotesPrNumbers()).toEqual(["12", "7"]);
   });
 
   test("given malformed PR values, when normalizing PR numbers, then only digits are accepted", () => {

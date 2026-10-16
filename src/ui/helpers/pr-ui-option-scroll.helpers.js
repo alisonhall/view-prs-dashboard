@@ -6,7 +6,7 @@
 export const { createPrUiOptionScrollHelpers } = (() => {
   const createPrUiOptionScrollHelpers = ({
     getOptionalElementById,
-    persistUiOptionOverrides,
+    persistViewFilterOptions,
     shouldAutoScrollBackfillLogByState,
     getBackfillScrollTop,
     getIsBackfillRunning,
@@ -15,9 +15,9 @@ export const { createPrUiOptionScrollHelpers } = (() => {
       typeof getOptionalElementById === "function"
         ? getOptionalElementById
         : () => null;
-    const persistUiOptionOverridesSafe =
-      typeof persistUiOptionOverrides === "function"
-        ? persistUiOptionOverrides
+    const persistViewFilterOptionsSafe =
+      typeof persistViewFilterOptions === "function"
+        ? persistViewFilterOptions
         : async () => {};
     const shouldAutoScrollBackfillLogByStateSafe =
       typeof shouldAutoScrollBackfillLogByState === "function"
@@ -33,6 +33,30 @@ export const { createPrUiOptionScrollHelpers } = (() => {
         ? getIsBackfillRunning
         : () => false;
 
+    // Two rapid "change" events (e.g. a test or user flipping scope-mode
+    // twice quickly) must not fire two overlapping persist calls: each one
+    // is a non-atomic GET-merge-PUT against user-defaults.json
+    // (persistViewFilterOptions, state/FilterStateProvider.jsx), so
+    // overlapping calls can lose an update if the earlier PUT's write
+    // lands after the later one's. Debouncing (same 150ms pattern as
+    // debouncedApplyFilters, index.page.js) collapses them into a single
+    // trailing call instead. Phase E (see REACT_MIGRATION_PLAN.md, "Full
+    // migration roadmap"): used to call persistUiOptionOverrides(["scope-mode"]),
+    // persisting just that one field - FilterStateProvider's
+    // persistViewFilterOptions persists the whole view-filter set instead
+    // (no per-field subsetting any more), which is harmless here since
+    // every other field in that set already persists on its own change,
+    // not as a side effect of this debounce.
+    let scopeModePersistDebounceTimer = null;
+    const debouncedPersistScopeMode = () => {
+      if (scopeModePersistDebounceTimer) {
+        clearTimeout(scopeModePersistDebounceTimer);
+      }
+      scopeModePersistDebounceTimer = setTimeout(() => {
+        void persistViewFilterOptionsSafe();
+      }, 150);
+    };
+
     const registerUiOptionPersistenceHandlers = () => {
       // Delegated on the form (a stable ancestor never replaced by React),
       // not attached directly to #scope-mode: that element may be a
@@ -46,7 +70,7 @@ export const { createPrUiOptionScrollHelpers } = (() => {
       if (form) {
         form.addEventListener("change", (event) => {
           if (event.target?.id === "scope-mode") {
-            void persistUiOptionOverridesSafe(["scope-mode"]);
+            debouncedPersistScopeMode();
           }
         });
       }

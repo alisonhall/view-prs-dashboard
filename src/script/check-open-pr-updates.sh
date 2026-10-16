@@ -1461,6 +1461,7 @@ build_activity_events_json() {
   local author_login="$5"
   local merged_at="$6"
   local merged_by_login="$7"
+  local closed_at="${8:-}"
 
   jq -cn \
     --argjson commentEvents "$comment_events_json" \
@@ -1469,7 +1470,8 @@ build_activity_events_json() {
     --arg createdAt "$created_at" \
     --arg actor "$author_login" \
     --arg mergedAt "$merged_at" \
-    --arg mergedBy "$merged_by_login" '
+    --arg mergedBy "$merged_by_login" \
+    --arg closedAt "$closed_at" '
     [
       ($commentEvents[]?),
       ($reviews[]? | {
@@ -1516,6 +1518,15 @@ build_activity_events_json() {
         date: ($mergedAt | split("T") | .[0]),
         actor: (if ($mergedBy // "") != "" then $mergedBy else "unknown" end),
         type: "merged",
+        channel: "system"
+      } else empty end),
+      (if $closedAt != "" and $mergedAt == "" then {
+        sourceId: "closed",
+        threadId: "",
+        occurredAt: $closedAt,
+        date: ($closedAt | split("T") | .[0]),
+        actor: "unknown",
+        type: "closed",
         channel: "system"
       } else empty end)
     ]
@@ -1579,6 +1590,7 @@ build_activity_timeline_summary() {
       elif $type == "commit" then (if $count > 1 then "commits" else "commit" end)
       elif $type == "opened" then "opened PR"
       elif $type == "merged" then "merged PR"
+      elif $type == "closed" then "closed PR"
       else (if $count > 1 then ($type + "s") else $type end)
       end;
 
@@ -2177,7 +2189,7 @@ compute_pr_state_json() {
   ')
 
   comment_events_json=$(build_comment_events_json "$comments_json" "$threads_json" "$review_comments_json")
-  activity_events_json=$(build_activity_events_json "$comment_events_json" "$reviews_json" "$commits_json" "$created_at" "$author_login" "$merged_at" "$merged_by_login")
+  activity_events_json=$(build_activity_events_json "$comment_events_json" "$reviews_json" "$commits_json" "$created_at" "$author_login" "$merged_at" "$merged_by_login" "$closed_at")
   activity_timeline_json=$(build_activity_timeline_json "$activity_events_json")
   activity_timeline_summary=$(build_activity_timeline_summary "$activity_timeline_json")
   metrics_json=$(build_pr_metrics_json "$comments_json" "$reviews_json" "$commits_json" "$threads_json" "$comment_events_json" "$activity_events_json" "$author_login" "$merged_at")

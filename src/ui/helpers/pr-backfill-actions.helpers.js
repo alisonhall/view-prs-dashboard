@@ -10,7 +10,7 @@ export const { createPrBackfillActionHelpers } = (() => {
     beginRequestActivity,
     setStatusMessage,
     setOutputMessage,
-    setButtonDisabled,
+    setBackfillButtonState,
     notifyFailureSnackbar,
     formatCommandOutput,
     stripAnsi,
@@ -92,10 +92,16 @@ export const { createPrBackfillActionHelpers } = (() => {
       const actionLabel = action === "start" ? "Starting" : "Stopping";
       const finishActivity = beginRequestActivity("backfill");
       setIsBackfillActionPending(true);
-      setButtonDisabled("backfill-start-btn", true);
-      setButtonDisabled("backfill-stop-btn", true);
-      setButtonDisabled("backfill-refresh-btn", true);
-      setButtonDisabled("backfill-log-refresh-btn", true);
+      // Disable all 4 immediately, synchronously - the first status push
+      // below (updateBackfillStatusFromPayload, after the POST resolves)
+      // would otherwise leave a short window where a second click could
+      // fire before the UI reflects the in-flight action.
+      setBackfillButtonState({
+        startDisabled: true,
+        stopDisabled: true,
+        refreshDisabled: true,
+        refreshLogDisabled: true,
+      });
       setStatusMessage(`${actionLabel} backfill...`);
 
       try {
@@ -138,10 +144,19 @@ export const { createPrBackfillActionHelpers } = (() => {
         try {
           await loadBackfillStatus({ includeLog: getIsBackfillRunning() });
         } catch (_error) {
-          setButtonDisabled("backfill-start-btn", false);
-          setButtonDisabled("backfill-stop-btn", false);
-          setButtonDisabled("backfill-refresh-btn", false);
-          setButtonDisabled("backfill-log-refresh-btn", false);
+          // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration
+          // roadmap"): the reload above normally pushes a fresh
+          // buttonState (via renderBackfillStatus's own
+          // window.updateReactBackfillButtonState call) that un-disables
+          // whatever this action disabled - if that reload itself fails,
+          // there's no fresh view model to push, so force every button
+          // back to enabled directly instead of leaving the UI stuck.
+          setBackfillButtonState({
+            startDisabled: false,
+            stopDisabled: false,
+            refreshDisabled: false,
+            refreshLogDisabled: false,
+          });
         }
         finishActivity();
       }

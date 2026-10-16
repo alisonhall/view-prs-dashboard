@@ -15,15 +15,24 @@
  * unlike Action Log's container-split), this tab's buttons/status/preview
  * are ALL React-owned now - there's no vanilla chrome left to bridge to.
  *
- * The field catalog and export payload building stay pure vanilla
- * functions (getExportFieldCatalog/buildExportPayload, from
- * pr-export.helpers.js, exposed on window by index.page.js) - genuine
- * data-shaping logic with no DOM dependency, the same "leaf components read
- * window.* for pure helpers" pattern established throughout this
- * migration. getVisiblePrNumbersFromSectionsHost (same file) is a real,
+ * Phase 7 (see REACT_MIGRATION_PLAN.md): the field catalog, export payload
+ * building, and visible-PR-numbers-from-DOM read all used to be exposed on
+ * window by index.page.js (getExportFieldCatalog/buildExportPayload/
+ * getVisiblePrNumbersFromSectionsHost) - re-investigated rather than
+ * trusting that framing (this migration's own track record of finding
+ * "deliberate" window.* bridges that were actually just unexamined
+ * defaults) and found all 3 are genuinely zero-dependency given what this
+ * component already has: pr-export.helpers.js's createPrExportHelpers only
+ * needs getPerPrUserStateFromPayload (already a bare, directly-importable
+ * export - see helpers/pr-per-pr-user-state.helpers.js), and
+ * getVisiblePrNumbersFromSectionsHost is pure given a DOM node as its own
+ * argument - it doesn't need to be *exposed* via window to read live DOM,
+ * it only needs the node passed in, which this component already queries
+ * itself (document.getElementById('pr-sections'), below). Still a real,
  * necessary DOM read, not a fallback: the tab's own description says it
  * exports "only sections currently expanded", which is `<details open>`
- * UI state PrDataContext doesn't (and shouldn't) track.
+ * UI state PrDataContext doesn't (and shouldn't) track - just no longer a
+ * reason for the *function* itself to go through window.*.
  *
  * Field selection is real React state, not the vanilla version's
  * DOM-checkbox scraping - which existed only because the vanilla catalog
@@ -38,6 +47,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
+import { createPrExportHelpers } from '../helpers/pr-export.helpers.js';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.js';
+
+const { getFieldCatalog, getVisiblePrNumbersFromSectionsHost, buildExportPayload } =
+  createPrExportHelpers({ getPerPrUserStateFromPayload });
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
@@ -93,10 +108,7 @@ export function ExportTab() {
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
   const initializedRef = useRef(false);
 
-  const catalog = useMemo(
-    () => (window.getExportFieldCatalog ? window.getExportFieldCatalog(payload) : { dataPaths: [], userStatePaths: [] }),
-    [payload],
-  );
+  const catalog = useMemo(() => getFieldCatalog(payload), [payload]);
 
   // Initialize the selection exactly once, from saved user-defaults if
   // present, otherwise "everything selected" (the same default the vanilla
@@ -204,20 +216,14 @@ export function ExportTab() {
       throw new Error('Select at least one field before exporting.');
     }
 
-    const visiblePrNumbers = window.getVisiblePrNumbersFromSectionsHost
-      ? window.getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections'))
-      : [];
-    const exportPayload = window.buildExportPayload
-      ? window.buildExportPayload({
-          payload,
-          visiblePrNumbers,
-          selectedDataPaths: selected.dataPaths,
-          selectedUserStatePaths: selected.userStatePaths,
-        })
-      : { prCount: 0, prs: [] };
-    const jsonText = window.safeJsonStringify
-      ? window.safeJsonStringify(exportPayload)
-      : JSON.stringify(exportPayload, null, 2);
+    const visiblePrNumbers = getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections'));
+    const exportPayload = buildExportPayload({
+      payload,
+      visiblePrNumbers,
+      selectedDataPaths: selected.dataPaths,
+      selectedUserStatePaths: selected.userStatePaths,
+    });
+    const jsonText = safeJsonStringify(exportPayload);
 
     return { jsonText, exportPayload };
   };
@@ -276,9 +282,7 @@ export function ExportTab() {
   };
 
   const selected = getSelectedPaths();
-  const visibleCount = window.getVisiblePrNumbersFromSectionsHost
-    ? window.getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections')).length
-    : 0;
+  const visibleCount = getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections')).length;
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,

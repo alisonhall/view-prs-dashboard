@@ -3,8 +3,32 @@
 const { render, screen, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
-const { FilterStateProvider } = require('./FilterStateProvider');
+const { FilterStateProvider: RealFilterStateProvider } = require('./FilterStateProvider');
 const { useFilterState } = require('./FilterStateContext');
+const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
+const { useRowFilterSelection } = require('./RowFilterSelectionContext');
+const { useAuthorThreadResolutionSelection } = require('./AuthorThreadResolutionSelectionContext');
+const { useChangeFilterActorSelection } = require('./ChangeFilterActorSelectionContext');
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor) - every render() in this file needs these 3
+// ancestors now, not just the persistence-focused tests further down.
+function FilterStateProviderWithSelectionContexts({ initialValues, children }) {
+  return (
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <RealFilterStateProvider initialValues={initialValues}>{children}</RealFilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
+  );
+}
 
 function Probe() {
   const { values, setValue } = useFilterState();
@@ -13,6 +37,42 @@ function Probe() {
       <span data-testid="scope-mode-value">{values.scopeMode}</span>
       <span data-testid="always-show-value">{String(values.alwaysShowInReview)}</span>
       <button onClick={() => setValue('scopeMode', 'last-run')}>change scope</button>
+    </div>
+  );
+}
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mimics
+// MultiSelectListPortals' own setChecked calls for the 3 Contexts
+// buildOverrides() now reads directly, for the regression test below.
+function MultiSelectSelectionProbe() {
+  const rowFilterSelection = useRowFilterSelection();
+  const authorThreadResolutionSelection = useAuthorThreadResolutionSelection();
+  const changeFilterActorSelection = useChangeFilterActorSelection();
+  return (
+    <div>
+      <button onClick={() => rowFilterSelection.setChecked('author-list', ['zuser'])}>
+        check zuser (author)
+      </button>
+      <button
+        onClick={() =>
+          authorThreadResolutionSelection.setChecked(
+            'attention-author-thread-resolution-allow-list',
+            ['allowed-user'],
+          )
+        }
+      >
+        check allowed-user (thread resolution)
+      </button>
+      <button
+        onClick={() =>
+          changeFilterActorSelection.setChecked(
+            'change-filter-ignore-comment-authors-list',
+            ['ignored-user'],
+          )
+        }
+      >
+        check ignored-user (change filter)
+      </button>
     </div>
   );
 }
@@ -31,9 +91,9 @@ describe('FilterStateProvider', () => {
 
   test('given initialValues, when rendering, then children see them via useFilterState()', () => {
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'needs-attention', alwaysShowInReview: true }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'needs-attention', alwaysShowInReview: true }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     expect(screen.getByTestId('scope-mode-value')).toHaveTextContent('needs-attention');
@@ -43,9 +103,9 @@ describe('FilterStateProvider', () => {
   test('given a value change, when it happens, then window.getFilterStateValues() reflects it', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     await user.click(screen.getByText('change scope'));
@@ -55,9 +115,9 @@ describe('FilterStateProvider', () => {
 
   test('given window.setFilterStateValue is called, when called, then it updates the shared state', () => {
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     act(() => {
@@ -77,9 +137,9 @@ describe('FilterStateProvider', () => {
     // wrapper, no awaited tick. Without flushSync-wrapping
     // window.setFilterStateValue, this would read stale (pre-update) state.
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     window.setFilterStateValue('scopeMode', 'needs-attention');
@@ -90,9 +150,9 @@ describe('FilterStateProvider', () => {
     window.debouncedApplyFilters = jest.fn();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     await user.click(screen.getByText('change scope'));
@@ -106,7 +166,7 @@ describe('FilterStateProvider', () => {
   test('given a change to one of the Slice 2 attention fields, when 150ms pass, then window.debouncedApplyFilters is called', () => {
     window.debouncedApplyFilters = jest.fn();
     render(
-      <FilterStateProvider
+      <FilterStateProviderWithSelectionContexts
         initialValues={{
           scopeMode: 'all',
           alwaysShowInReview: false,
@@ -115,7 +175,7 @@ describe('FilterStateProvider', () => {
         }}
       >
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     act(() => {
@@ -131,7 +191,7 @@ describe('FilterStateProvider', () => {
   test('given a change to filterPrNumbers or attentionAuthorThreadResolutionMode (Slice 5), when 150ms pass, then window.debouncedApplyFilters is called', () => {
     window.debouncedApplyFilters = jest.fn();
     render(
-      <FilterStateProvider
+      <FilterStateProviderWithSelectionContexts
         initialValues={{
           scopeMode: 'all',
           alwaysShowInReview: false,
@@ -140,7 +200,7 @@ describe('FilterStateProvider', () => {
         }}
       >
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     act(() => {
@@ -156,9 +216,9 @@ describe('FilterStateProvider', () => {
   test('given no value change, when mounting, then window.debouncedApplyFilters is never called', () => {
     window.debouncedApplyFilters = jest.fn();
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     act(() => {
@@ -171,9 +231,9 @@ describe('FilterStateProvider', () => {
   test('given rapid successive changes, when they happen within 150ms of each other, then window.debouncedApplyFilters is called only once (debounced)', () => {
     window.debouncedApplyFilters = jest.fn();
     render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     // Each setFilterStateValue call is its own act() (its own commit +
@@ -199,14 +259,69 @@ describe('FilterStateProvider', () => {
 
   test('given unmount, when the component unmounts, then the window bridges are removed', () => {
     const { unmount } = render(
-      <FilterStateProvider initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
-      </FilterStateProvider>,
+      </FilterStateProviderWithSelectionContexts>,
     );
 
     expect(typeof window.getFilterStateValues).toBe('function');
     unmount();
     expect(window.getFilterStateValues).toBeUndefined();
     expect(window.setFilterStateValue).toBeUndefined();
+  });
+
+  // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // real regression this phase fixes - buildOverrides() used to read these
+  // 3 lists via window.getSelectedXxx DOM-scan bridges (agnostic to
+  // whether any Context existed); now it reads
+  // RowFilterSelectionContext/AuthorThreadResolutionSelectionContext/
+  // ChangeFilterActorSelectionContext directly, which only resolves
+  // correctly if MultiSelectListPortals (simulated here by
+  // MultiSelectSelectionProbe) and FilterStateProvider are real siblings
+  // under the same Provider instances - exactly the tree
+  // FilterStateProviderWithSelectionContexts (and react-app.jsx's real
+  // AppRoot, after this phase's Provider-tree reorder) now provides.
+  describe('persisted overrides reflect the 3 selection Contexts directly', () => {
+    let putBody;
+
+    beforeEach(() => {
+      putBody = null;
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides: {} }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+          return { ok: true, json: async () => ({ ok: true }) };
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    });
+
+    afterEach(() => {
+      delete global.fetch;
+      delete window.persistViewFilterOptionOverrides;
+    });
+
+    test('given checked values set via each selection Context, when persistViewFilterOptionOverrides runs, then all 3 are included in the persisted overrides', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+          <MultiSelectSelectionProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+      await user.click(screen.getByText('check zuser (author)'));
+      await user.click(screen.getByText('check allowed-user (thread resolution)'));
+      await user.click(screen.getByText('check ignored-user (change filter)'));
+
+      await act(async () => {
+        await window.persistViewFilterOptionOverrides();
+      });
+
+      expect(putBody.author).toEqual(['zuser']);
+      expect(putBody['attention-author-thread-resolution-allow']).toEqual(['allowed-user']);
+      expect(putBody.changeFilters.ignoreCommentsFromAuthors).toEqual(['ignored-user']);
+    });
   });
 });

@@ -8,15 +8,24 @@
  * @module components/cells/PrAuthorCell
  */
 
+import { useMemo } from 'react';
 import { ActorIdentity } from '../ActorIdentity';
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.js';
+import { getManualNotesSummary } from '../../helpers/pr-manual-notes-summary.helpers.js';
 
 export function PrAuthorCell({ entry, pr, actorsMap = {} }) {
-  const collectPrAuthors = window.collectPrAuthors || ((row) => {
-    const key = String(row?.authorLogin || row?.author || '').trim();
-    return key ? [{ key, name: row?.author || '', isPrimary: true }] : [];
-  });
-  const getManualNotesSummary =
-    window.getManualNotesSummary || (() => ({ hasNotes: false, commentsCount: 0, hasOtherNotes: false }));
+  const { getPreferredActorKey } = useActorIdentity();
+  // createPrAuthorCellHelpers is threaded with the real, alias-resolving
+  // getPreferredActorKey (rather than its own viewer-unaware fallback) so
+  // a co-author who's also an alias of the PR author is correctly deduped
+  // the same way every other actor-identity-aware cluster in this app
+  // already resolves aliases - same reasoning as insights/NotesSection.jsx's
+  // own noteAuthorMatchesSelection wiring.
+  const { collectPrAuthors } = useMemo(
+    () => createPrAuthorCellHelpers({ getPreferredActorKey }),
+    [getPreferredActorKey],
+  );
 
   const authors = collectPrAuthors(pr);
   const notesSummary = getManualNotesSummary(entry, pr);

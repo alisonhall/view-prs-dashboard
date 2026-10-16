@@ -182,6 +182,59 @@ describe("App Configuration", () => {
       expect(config.viewPrsPrDiffConcurrency).toBe(4); // Clamped to max
     });
 
+    test("When dispatcher env vars are unset, Then falls back to sane defaults", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env: {} });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(8);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(5000);
+      expect(config.viewPrsAutoIntervalMs).toBe(15 * 60 * 1000);
+    });
+
+    test("When dispatcher env vars are provided, Then they override the defaults", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET: "12",
+        VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS: "10000",
+        VIEW_PRS_AUTO_INTERVAL_MS: "600000",
+      };
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(12);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(10000);
+      expect(config.viewPrsAutoIntervalMs).toBe(600000);
+    });
+
+    test("When dispatcher env vars are below their minimums, Then they clamp rather than go lower", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        // "0" is deliberately avoided here: like every other `Number.parseInt(env.X || default) || default`
+        // config in this file, a parsed 0 is falsy and falls through to the
+        // default rather than reaching the Math.max floor - a negative
+        // value is what actually exercises the floor.
+        VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET: "-5",
+        VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS: "10",
+        VIEW_PRS_AUTO_INTERVAL_MS: "10",
+      };
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(1);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(1000);
+      expect(config.viewPrsAutoIntervalMs).toBe(60 * 1000);
+    });
+
     test("When creating paths, Then uses path.join correctly", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";

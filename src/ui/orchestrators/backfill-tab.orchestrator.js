@@ -21,12 +21,9 @@ export const { createBackfillTabOrchestrator } = (function () {
    * @param {Object} deps - Dependencies
    * @param {Function} deps.loadBackfillStatus - Loads backfill status from server
    * @param {Function} deps.loadBackfillLogTail - Loads backfill log tail
-   * @param {Function} deps.handleBackfillAction - Handles backfill actions
    * @param {Function} deps.renderBackfillStatus - Renders backfill status
    * @param {Function} deps.setBackfillLogMessage - Sets backfill log message
-   * @param {Function} deps.activateDataTab - Activates data tab UI
    * @param {Function} deps.getOptionalElementById - DOM helper
-   * @param {Function} deps.beginRequestActivity - Begins request activity indicator
    * @param {Function} deps.notifyFailureSnackbar - Shows failure notification
    * @param {Object} deps.stateGetters - Getters for global state
    * @param {Function} deps.stateGetters.getLastBackfillStateKey - Get last state key
@@ -35,21 +32,16 @@ export const { createBackfillTabOrchestrator } = (function () {
    * @returns {Object} Orchestrator API
    * @returns {Function} returns.initialize - Initialize Backfill tab
    * @returns {Function} returns.loadStatus - Load backfill status
-   * @returns {Function} returns.handleAction - Handle backfill action
-   * @returns {Function} returns.activateTab - Activate this tab
-   * @returns {Function} returns.refreshStatus - Refresh backfill status
+   * @returns {Function} returns.onTabActivated - Refreshes status/log when this tab becomes active (tab-switching chrome itself lives in pr-management-tabs.helpers.js)
    * @returns {Function} returns.cleanup - Cleanup tab state
    */
   function createBackfillTabOrchestrator({
     // Helper functions (already extracted)
     loadBackfillStatus,
     loadBackfillLogTail: _loadBackfillLogTail,
-    handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
-    activateDataTab,
     getOptionalElementById: _getOptionalElementById,
-    beginRequestActivity,
     notifyFailureSnackbar,
     // State management (via dependency injection)
     stateGetters: _stateGetters,
@@ -104,63 +96,17 @@ export const { createBackfillTabOrchestrator } = (function () {
     }
 
     /**
-     * Handles backfill actions (start, stop, clear).
-     * 
-     * @param {string} action - Action to perform ("start", "stop", "clear")
-     * @param {Object} [options={}] - Action options
+     * Called when the Backfill tab becomes active. Tab-switching chrome
+     * itself (panel visibility/aria-selected) is owned entirely by
+     * pr-management-tabs.helpers.js's own activateTab, which calls this
+     * afterward (see index.page.js's onBackfillTabActivated wiring) -
+     * this orchestrator only owns refreshing status/log on activation,
+     * matching the Action Log/Actor Names tabs' own on-activation refresh.
      */
-    async function performAction(action, options = {}) {
-      if (!isInitialized) {
-        return;
-      }
-
-      const finishActivity = beginRequestActivity("backfill");
-
-      try {
-        await handleBackfillAction(action, options);
-        // Reload status after action
-        await loadStatus({ announce: true, includeLog: true });
-      } catch (error) {
-        renderBackfillStatus({
-          ok: false,
-          running: false,
-          summary: error?.result?.summary || `Failed to ${action} backfill`,
-          error: error?.result?.error || error.message,
-        });
-        notifyFailureSnackbar(
-          `Failed to ${action} backfill`,
-          error?.result || error,
-          `Unable to ${action} backfill`,
-        );
-      } finally {
-        finishActivity();
-      }
-    }
-
-    /**
-     * Activates the Backfill tab.
-     * Makes this tab visible and active.
-     */
-    function activateTab() {
-      // Delegate to existing tab activation helper
-      activateDataTab("backfill");
-
-      // Refresh status when tab becomes active
+    function onTabActivated() {
       if (isInitialized) {
         void loadStatus({ includeLog: true });
       }
-    }
-
-    /**
-     * Refreshes backfill status.
-     * Called by refresh button or polling.
-     * 
-     * @param {Object} [options={}] - Refresh options
-     * @param {boolean} [options.announce=true] - Whether to announce changes
-     */
-    async function refreshStatus(options = {}) {
-      const opts = { announce: true, includeLog: true, ...options };
-      return loadStatus(opts);
     }
 
     /**
@@ -171,13 +117,18 @@ export const { createBackfillTabOrchestrator } = (function () {
       isInitialized = false;
     }
 
-    // Public API
+    // Public API. loadStatus/handleAction/refreshStatus used to also be
+    // exposed here, but Phase C (see REACT_MIGRATION_PLAN.md, "Full
+    // migration roadmap") found they had zero real callers - the vanilla
+    // button click handlers always called loadBackfillStatus/
+    // handleBackfillAction/loadBackfillLogTail directly, bypassing this
+    // orchestrator entirely (same "dead public API surface" pattern
+    // already found and cleaned up for pr-data-tab.orchestrator.js).
+    // loadStatus stays as an internal function - initialize/onTabActivated
+    // still call it directly - it's just no longer part of the public API.
     return {
       initialize,
-      loadStatus,
-      handleAction: performAction,
-      activateTab,
-      refreshStatus,
+      onTabActivated,
       cleanup,
     };
   }

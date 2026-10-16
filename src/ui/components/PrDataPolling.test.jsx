@@ -1,7 +1,31 @@
 /** @jest-environment jsdom */
 
+const React = require('react');
 const { render } = require('@testing-library/react');
 const { PrDataPolling } = require('./PrDataPolling');
+const { PrDataContext } = require('../state/PrDataContext');
+
+// Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollForDataChanges/pollBackfillStatus/renderRequestActivity now all come
+// from usePrData() (<PrDataProvider />'s own Context value), not
+// window.pollForDataChanges/pollBackfillStatus/renderRequestActivity
+// directly - this harness provides a minimal Context whose 3 functions
+// each delegate to the matching window.* mock every assertion below
+// already checks, so the rest of this file's tests need no other changes.
+const renderPrDataPolling = () =>
+  render(
+    React.createElement(
+      PrDataContext.Provider,
+      {
+        value: {
+          pollForDataChanges: (...args) => window.pollForDataChanges?.(...args),
+          pollBackfillStatus: (...args) => window.pollBackfillStatus?.(...args),
+          renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
+        },
+      },
+      React.createElement(PrDataPolling),
+    ),
+  );
 
 describe('PrDataPolling', () => {
   beforeEach(() => {
@@ -24,17 +48,24 @@ describe('PrDataPolling', () => {
     delete window.AUTO_BACKFILL_POLL_MS;
   });
 
-  test('given the component mounts, when the data/scheduler poll interval elapses, then both bridges fire', () => {
-    render(<PrDataPolling />);
+  test('given the component mounts, when the data poll interval elapses, then the bridge fires', () => {
+    renderPrDataPolling();
 
     jest.advanceTimersByTime(30000);
 
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
-    expect(window.pollSchedulerStatus).toHaveBeenCalledTimes(1);
+  });
+
+  test('given the component mounts, then it never fires window.pollSchedulerStatus itself - that poll was retired in favor of SSE (see JobEventsProvider)', () => {
+    renderPrDataPolling();
+
+    jest.advanceTimersByTime(60000);
+
+    expect(window.pollSchedulerStatus).not.toHaveBeenCalled();
   });
 
   test('given the component mounts, when the backfill poll interval elapses, then the backfill bridge fires on its own faster cadence', () => {
-    render(<PrDataPolling />);
+    renderPrDataPolling();
 
     jest.advanceTimersByTime(5000);
     expect(window.pollBackfillStatus).toHaveBeenCalledTimes(1);
@@ -46,14 +77,14 @@ describe('PrDataPolling', () => {
   });
 
   test('given the component mounts, when 1 second elapses, then the activity-render bridge fires every second', () => {
-    render(<PrDataPolling />);
+    renderPrDataPolling();
 
     jest.advanceTimersByTime(3000);
     expect(window.renderRequestActivity).toHaveBeenCalledTimes(3);
   });
 
   test('given the tab becomes hidden, when the poll interval would have elapsed, then nothing fires; when visible again, polling resumes', () => {
-    render(<PrDataPolling />);
+    renderPrDataPolling();
 
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -69,7 +100,7 @@ describe('PrDataPolling', () => {
   });
 
   test('given beforeunload fires, when the poll interval would have elapsed, then nothing fires', () => {
-    render(<PrDataPolling />);
+    renderPrDataPolling();
 
     window.dispatchEvent(new Event('beforeunload'));
 
@@ -78,7 +109,7 @@ describe('PrDataPolling', () => {
   });
 
   test('given the component unmounts, when the poll interval would have elapsed, then nothing fires (no leaked interval)', () => {
-    const { unmount } = render(<PrDataPolling />);
+    const { unmount } = renderPrDataPolling();
     unmount();
 
     jest.advanceTimersByTime(30000);
@@ -89,7 +120,7 @@ describe('PrDataPolling', () => {
     delete window.AUTO_DATA_POLL_MS;
     delete window.AUTO_BACKFILL_POLL_MS;
 
-    render(<PrDataPolling />);
+    renderPrDataPolling();
 
     jest.advanceTimersByTime(30000);
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);

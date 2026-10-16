@@ -5,6 +5,9 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterOptionSelect } = require('./FilterOptionSelect');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
 const OPTIONS = [
   { value: '', label: 'Any (with or without)' },
@@ -12,11 +15,22 @@ const OPTIONS = [
   { value: 'without', label: 'Without custom comments' },
 ];
 
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (initialValues, props) =>
   render(
-    <FilterStateProvider initialValues={initialValues}>
-      <FilterOptionSelect {...props} />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={initialValues}>
+            <FilterOptionSelect {...props} />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('FilterOptionSelect', () => {

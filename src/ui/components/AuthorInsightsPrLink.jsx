@@ -16,12 +16,12 @@
  * @module components/AuthorInsightsPrLink
  */
 
+import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 
 export function AuthorInsightsPrLink({ entry }) {
   const row = entry?.data || {};
   const prNumber = String(row.number || entry?.prNumber || '').trim();
-  const defaultRepo = window.DEFAULT_REPO || '';
-  const href = row.url || `https://github.com/${entry?.repo || defaultRepo}/pull/${prNumber}`;
+  const href = row.url || `https://github.com/${entry?.repo || DEFAULT_REPO}/pull/${prNumber}`;
   const label = `#${prNumber} ${String(row.title || row.titleDisplay || '').trim()}`;
 
   return (

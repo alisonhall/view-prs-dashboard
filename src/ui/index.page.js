@@ -6,35 +6,27 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as reactCallbackHelperFactory from "./helpers/react-callbacks.helpers.js";
 import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
 import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.orchestrator.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
-import * as prMultiSelectRenderCacheHelperFactory from "./helpers/pr-multi-select-render-cache.helpers.js";
 import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
 import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity-render.helpers.js";
 import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
 import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
 import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
-import * as prInsightBadgeClassHelperFactory from "./helpers/pr-insight-badge-class.helpers.js";
-import * as prInsightMetricsSummaryHelperFactory from "./helpers/pr-insight-metrics-summary.helpers.js";
-import * as prAuthorCellHelperFactory from "./helpers/pr-author-cell.helpers.js";
-import * as prUiRenderUtilsHelperFactory from "./helpers/pr-ui-render-utils.helpers.js";
 import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
 import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
 import * as prSectionOpenStateHelperFactory from "./helpers/pr-section-open-state.helpers.js";
 import * as prAppliedSummaryHelperFactory from "./helpers/pr-applied-summary.helpers.js";
-import * as prMergedRequestMoreConfigHelperFactory from "./helpers/pr-merged-request-more-config.helpers.js";
 import * as prScopeSelectionHelperFactory from "./helpers/pr-scope-selection.helpers.js";
 import * as prScopeSettingsHelperFactory from "./helpers/pr-scope-settings.helpers.js";
 import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
 import * as prRenderContextHelperFactory from "./helpers/pr-render-context.helpers.js";
 import * as prRowSourcesHelperFactory from "./helpers/pr-row-sources.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
-import * as prFilterOptionsHelperFactory from "./helpers/pr-filter-options.helpers.js";
 import * as prScopedRowsHelperFactory from "./helpers/pr-scoped-rows.helpers.js";
 import * as prRenderSummaryHelperFactory from "./helpers/pr-render-summary.helpers.js";
 import * as prRenderApplyHelperFactory from "./helpers/pr-render-apply.helpers.js";
@@ -48,13 +40,12 @@ import * as prRenderPipelineHelperFactory from "./helpers/pr-render-pipeline.hel
 import * as prRenderStateCommitHelperFactory from "./helpers/pr-render-state-commit.helpers.js";
 import * as prRunPrDataContextHelperFactory from "./helpers/pr-run-pr-data-context.helpers.js";
 import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
-import * as prSinglePrUpdateHelperFactory from "./helpers/pr-single-pr-update.helpers.js";
 import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
 import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-cache.helpers.js";
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
 import * as prSelectedFiltersHelperFactory from "./helpers/pr-selected-filters.helpers.js";
 import * as prRowFilteringHelperFactory from "./helpers/pr-row-filtering.helpers.js";
-import * as prDomVisibilityHelperFactory from "./helpers/pr-dom-visibility.helpers.js";
+import * as prRowMatchFiltersHelperFactory from "./helpers/pr-row-match-filters.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
 import * as prAuthorInsightsDraftsHelperFactory from "./helpers/pr-author-insights-drafts.helpers.js";
@@ -62,20 +53,16 @@ import * as prAutoRenderBlockingHelperFactory from "./helpers/pr-auto-render-blo
 import * as prAutoRenderIndicatorHelperFactory from "./helpers/pr-auto-render-indicator.helpers.js";
 import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-render-indicator-links.helpers.js";
 import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
-import * as prAutoRenderNavigationHelperFactory from "./helpers/pr-auto-render-navigation.helpers.js";
 import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
-import * as prNotesHelperFactory from "./helpers/pr-notes.helpers.js";
 import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.js";
 import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
 import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
 import * as prDataTabsHelperFactory from "./helpers/pr-data-tabs.helpers.js";
-import * as prActivityBadgesHelperFactory from "./helpers/pr-activity-badges.helpers.js";
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
+import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
-import * as prExportHelperFactory from "./helpers/pr-export.helpers.js";
-import * as prReviewStatsAggregationHelperFactory from "./helpers/pr-review-stats-aggregation.helpers.js";
 import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
 import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
 import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
@@ -84,33 +71,41 @@ import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpe
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
 import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
-import * as prDataPollingOrchestrationHelperFactory from "./helpers/pr-data-polling-orchestration.helpers.js";
-import * as prRowCheckboxActionsHelperFactory from "./helpers/pr-row-checkbox-actions.helpers.js";
-import * as prAckLabelActionsHelperFactory from "./helpers/pr-ack-label-actions.helpers.js";
-import * as prConcurrencyHelperFactory from "./helpers/pr-concurrency.helpers.js";
+import { asArray } from "./helpers/pr-as-array.helpers.js";
+import { getManualNotesFieldSummary } from "./helpers/pr-manual-notes-summary.helpers.js";
+import {
+  buildFailureSnackbarNotification,
+  isTimeoutFailureMessage,
+} from "./helpers/pr-failure-snackbar.helpers.js";
+import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
+import {
+  extractRowLabelNames,
+  normalizeFilterToken,
+} from "./helpers/pr-filter-label-extraction.helpers.js";
 import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
+import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
-// Deliberately empty - not a real repo any other user of this tool would
-// have access to (see src/server/config/app-config.js's own
-// defaultViewPrsRepo, which dropped the same hardcoded value for the same
-// reason). Every consumer below already treats a missing repo as "nothing
-// to do yet" rather than crashing (see each call site's own guard).
-const DEFAULT_REPO = "";
+// DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
+// 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/AuthorInsightsPrLink.jsx
+// import it directly instead of reading it off window.DEFAULT_REPO.
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
 
-let lastRenderedRunStamp = "";
-let lastSeenDataVersion = "";
-let lastRenderedPrFingerprint = "";
-let lastRenderedMetaFingerprint = "";
+// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// lastRenderedRunStamp/lastSeenDataVersion/lastRenderedPrFingerprint/
+// lastRenderedMetaFingerprint/latestPrManifest/supportsDataMetaPolling/
+// supportsDataManifestPolling used to be module `let`s here - moved into
+// PrDataProvider.jsx's own trackingRef, which now builds pollForDataChanges
+// itself. Every former write site redirects through the new
+// window.pushPrDataPollingTrackingState(partial) bridge instead.
+// lastSuccessfulRenderedCheckAt stays here - it's prDataTabOrchestrator's
+// own concern (tab-activation catch-up), not something pollForDataChanges
+// itself reads.
 let lastSuccessfulRenderedCheckAt = "";
 let lastSuccessfulPollCheckAt = "";
 let lastPollErrorAt = "";
 let hasActivePollWarning = false;
-let latestPrManifest = {};
-let pendingAutoRenderPayload = null;
-let hasDirtyPrSectionsFields = false;
 let latestStoredPayload = null;
 let latestSelectedRepo = "";
 
@@ -135,53 +130,25 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
   }
 };
 
-let pendingAuthorFilterSelections = null;
-let pendingAssignedFilterSelections = null;
-let pendingApproverFilterSelections = null;
-let pendingLabelFilterSelections = null;
-let pendingExcludeLabelFilterSelections = null;
-let pendingAuthorThreadResolutionAllowSelections = null;
-let pendingAuthorThreadResolutionDenySelections = null;
-let _pendingChangeFilterIgnoreCommentAuthors = null;
-let _pendingChangeFilterIgnoreReviewAuthors = null;
 let currentViewerLogin = "";
 let currentActorLoginAliases = {};
-let supportsDataMetaPolling = true;
-let supportsDataManifestPolling = true;
 let supportsSchedulerPolling = true;
 let supportsBackfillLogPolling = true;
 let lastBackfillStateKey = "";
 let isBackfillActionPending = false;
 let isBackfillRunning = false;
 let isRequestMoreMergedPending = false;
-let latestSchedulerState = {};
-const requestActivityCounters = {
-  runScript: 0,
-  ackClear: 0,
-  singlePr: 0,
-  dataLoad: 0,
-  backfill: 0,
-};
-const requestActivityStartedAtMs = {
-  runScript: 0,
-  ackClear: 0,
-  singlePr: 0,
-  dataLoad: 0,
-  backfill: 0,
-};
-const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
-const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
+// Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
+// manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
+// manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin used
+// to live here too - moved to AuthorInsightsDraftsProvider.jsx's own
+// useRef-held state (confirmed via grep no other read/write of any of
+// those 5 fields remains on this object anywhere in this file).
 const authorInsightsState = {
   selectedAuthorLogin: "",
-  manualCommentsByAuthorLogin: {},
-  manualCommentsLoadingByAuthorLogin: {},
-  manualCommentsErrorByAuthorLogin: {},
-  manualCommentDraftByAuthorLogin: {},
-  manualCommentEditDraftByAuthorLogin: {},
   latestRows: null,
   latestActorsMap: null,
 };
-const reviewConversationsUiStateByKey = new Map();
 const formParsingHelpers = formParsingHelpersModule;
 const toBoolean =
   formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
@@ -189,24 +156,9 @@ const toBoolean =
 const {
   stripAnsi,
   formatIsoDatetime,
-  toCount,
 } = prFormattingHelperFactory.createPrFormattingHelpers();
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #status's text is React-owned now
-// (window.updateReactStatusText), so renderRequestActivity (below) can no
-// longer read document.getElementById("status").textContent to embed the
-// current status in its own "Current status: ..." line - React's state
-// commit is asynchronous, so that DOM read would be stale right after this
-// same function calls window.updateReactStatusText and then immediately
-// calls renderRequestActivity(). Tracked here instead, matching this
-// codebase's established "vanilla variable is the source of truth"
-// pattern (e.g. latestStoredPayload) rather than relying on DOM commit
-// timing.
-let latestStatusText = "Not run";
-
 const setStatusTextOnly = (message) => {
-  latestStatusText = message;
   window.updateReactStatusText?.(message);
 };
 
@@ -215,165 +167,33 @@ const setStatusMessage = (message) => {
   renderRequestActivity();
 };
 
+// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for AutoRenderBlockingProvider.jsx's
+// discardAndApply to call, after applying a discarded-and-applied
+// payload - same category as applyFreshPrPayload/beginRequestActivity.
+if (typeof window !== "undefined") {
+  window.setStatusMessage = (...args) => setStatusMessage(...args);
+}
+
 const setOutputMessage = (message) => {
   window.updateReactOutputText?.(message);
 };
 
-const setRequestActivityCounter = (key, delta = 0) => {
-  if (!Object.prototype.hasOwnProperty.call(requestActivityCounters, key)) {
-    return;
-  }
-  const next =
-    Number(requestActivityCounters[key] || 0) +
-    (Number.isFinite(Number(delta)) ? Number(delta) : 0);
-  const safeNext = Math.max(0, next);
-  requestActivityCounters[key] = safeNext;
-
-  if (safeNext > 0 && Number(requestActivityStartedAtMs[key] || 0) <= 0) {
-    requestActivityStartedAtMs[key] = Date.now();
-  }
-  if (safeNext === 0) {
-    requestActivityStartedAtMs[key] = 0;
-  }
-};
-
-const formatElapsedLabel = (elapsedMs) => {
-  const totalSeconds = Math.max(
-    0,
-    Math.floor(
-      Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) / 1000 : 0,
-    ),
-  );
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-  }
-  return `${seconds}s`;
-};
-
-const getElapsedFromStartMs = (startMs) => {
-  const parsedStart = Number(startMs || 0);
-  if (!Number.isFinite(parsedStart) || parsedStart <= 0) {
-    return null;
-  }
-  return Math.max(0, Date.now() - parsedStart);
-};
-
-const withElapsedSuffix = (label, elapsedMs) => {
-  if (!Number.isFinite(Number(elapsedMs)) || Number(elapsedMs) < 0) {
-    return label;
-  }
-  return `${label} (${formatElapsedLabel(elapsedMs)})`;
-};
-
-const getRequestActivitySeverityClass = (elapsedMs) => {
-  const safeElapsedMs = Number(elapsedMs);
-  if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
-    return "";
-  }
-
-  if (safeElapsedMs >= REQUEST_ACTIVITY_CRITICAL_MS) {
-    return "scheduler-badge-critical";
-  }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_WARN_MS) {
-    return "scheduler-badge-warning";
-  }
-  return "";
-};
-
-const getActiveRequestActivityEntries = () => {
-  const entries = [];
-
-  if (requestActivityCounters.runScript > 0) {
-    entries.push({
-      label: `Run script x${requestActivityCounters.runScript}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.runScript),
-    });
-  }
-  if (requestActivityCounters.ackClear > 0) {
-    entries.push({
-      label: `Ack/Clear x${requestActivityCounters.ackClear}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.ackClear),
-    });
-  }
-  if (requestActivityCounters.singlePr > 0) {
-    entries.push({
-      label: `Single PR update x${requestActivityCounters.singlePr}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.singlePr),
-    });
-  }
-  if (requestActivityCounters.dataLoad > 0) {
-    entries.push({
-      label: `Data refresh x${requestActivityCounters.dataLoad}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.dataLoad),
-    });
-  }
-  if (requestActivityCounters.backfill > 0) {
-    entries.push({
-      label: `Backfill request x${requestActivityCounters.backfill}`,
-      elapsedMs: getElapsedFromStartMs(requestActivityStartedAtMs.backfill),
-    });
-  }
-
-  return entries;
-};
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// beginRequestActivity/renderRequestActivity's real implementations (the
+// counter/history/scheduler-state bookkeeping, the badge-view-model
+// construction) moved into PrDataProvider.jsx (state/) - these 2 consts
+// become thin proxies to the window.* bridges that Provider now installs,
+// so every one of this file's own existing call sites (the "authorComment"/
+// "dataLoad"/"checkboxToggle"/"backfill" DI wirings below, setStatusMessage,
+// initPage's startup call) keeps working completely unchanged. Same
+// no-op-before-mount fallback shape useSinglePrUpdate.jsx/useRunScript.jsx/
+// etc. already use for this exact bridge.
+const beginRequestActivity = (key) =>
+  (window.beginRequestActivity || (() => () => {}))(key);
 
 const renderRequestActivity = () => {
-  const activeEntries = getActiveRequestActivityEntries();
-  const isAutoRunInProgress = Boolean(
-    latestSchedulerState?.isAutoRunInProgress,
-  );
-  const autoRunElapsedMs = isAutoRunInProgress
-    ? getElapsedFromStartMs(
-        Date.parse(String(latestSchedulerState?.lastAutoAttemptAt || "")),
-      )
-    : null;
-
-  const totalActive = activeEntries.length + (isAutoRunInProgress ? 1 : 0);
-
-  // Renders the badge list into #request-activity-badges via React (see
-  // mountRequestActivityBadges in react-app.jsx) - same
-  // compute-a-badges-array-then-hand-it-to-React shape renderBackfillStatus
-  // and renderSchedulerStatus already use.
-  window.updateReactRequestActivityBadges?.(
-    getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
-  );
-
-  const statusLine = String(latestStatusText || "-");
-  window.updateReactRequestActivityDetailsText?.(
-    [
-      `Current status: ${statusLine}`,
-      `Active requests: ${
-        totalActive > 0
-          ? [
-              isAutoRunInProgress
-                ? withElapsedSuffix("Auto run", autoRunElapsedMs)
-                : "",
-              ...activeEntries.map((entry) =>
-                withElapsedSuffix(entry.label, entry.elapsedMs),
-              ),
-            ]
-              .filter(Boolean)
-              .join(" | ")
-          : "none"
-      }`,
-    ].join("\n"),
-  );
-};
-
-const beginRequestActivity = (key) => {
-  setRequestActivityCounter(key, 1);
-  renderRequestActivity();
-  let ended = false;
-  return () => {
-    if (ended) {
-      return;
-    }
-    ended = true;
-    setRequestActivityCounter(key, -1);
-    renderRequestActivity();
-  };
+  window.renderRequestActivity?.();
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
@@ -391,34 +211,16 @@ const showWarningNotification = (title, message, autoDismissMs = 12000) =>
 
 const hideErrorNotification = () => window.hideErrorNotification?.();
 
-const isTimeoutFailureMessage = (value) =>
-  /\b(timed?\s*out|timeout|deadline exceeded)\b/i.test(String(value || ""));
-
 const notifyFailureSnackbar = (
   title,
   errorSource,
   fallbackMessage = "Operation failed",
 ) => {
-  const messageCandidates =
-    errorSource && typeof errorSource === "object"
-      ? [
-          errorSource.error,
-          errorSource.summary,
-          errorSource.message,
-          errorSource.stderr,
-          errorSource.output,
-        ]
-      : [errorSource];
-
-  const normalizedCandidates = messageCandidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const detail = normalizedCandidates[0] || fallbackMessage;
-  const timeoutContext = normalizedCandidates.join("\n");
-  const isTimeout = isTimeoutFailureMessage(timeoutContext);
-  const finalTitle = isTimeout ? `${title} (timed out)` : title;
-
+  const { title: finalTitle, detail } = buildFailureSnackbarNotification(
+    title,
+    errorSource,
+    fallbackMessage,
+  );
   showErrorNotification(finalTitle, detail, 0);
 };
 
@@ -583,102 +385,23 @@ const setBackfillLogMessage = (message) => {
   window.updateReactBackfillLogText?.(message);
 };
 
-const getUiOptionDefaults = () => ({
-  repo: "",
-  limit: "",
-  "merged-limit": "",
-  jobs: "",
-  "open-mode": "none",
-  "ack-changed": false,
-  "show-reason": true,
-  quiet: false,
-  "scope-mode": "all",
-  "filter-pr-numbers": "",
-  label: "",
-  "exclude-label": "",
-  author: [],
-  assigned: [],
-  approver: [],
-  "always-show-in-review": false,
-  "attention-no-activity-mode": "all",
-  "attention-include-pending-comments": true,
-  "attention-ignore-merge-only-commits": false,
-  "attention-include-closed-merged": true,
-  "attention-include-draft-changed": true,
-  "attention-include-draft-no-activity": false,
-  "attention-author-thread-resolution-mode": "allow-all",
-  "attention-author-thread-resolution-allow": [],
-  "attention-author-thread-resolution-deny": [],
-  "change-filter-use-builtin-merge-pattern": true,
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// getUiOptionDefaults/readUiSessionOverrides/writeUiSessionOverrides/
+// persistUiOptionOverrides/restoreUiOptionOverrides/
+// persistRunScriptOptionOverrides/persistViewFilterOptionOverrides used to
+// live here - moved into FilterStateProvider.jsx (state/FilterStateProvider.jsx),
+// which now owns UI option persistence directly (a mount-only restore
+// effect, plus persistRunScriptOptions/persistViewFilterOptions exposed as
+// window.persistRunScriptOptionOverrides/window.persistViewFilterOptionOverrides
+// - the *same* bridge names, so every caller below is unchanged). Only
+// FILTER_STATE_FIELD_MAP stays here too (shared, not duplicated - imported
+// from the same pr-ui-option-persistence.helpers.js module
+// FilterStateProvider.jsx uses) since getFilterStateOverrideForFieldId
+// below and a few other readers (getNeedsAttentionConfig,
+// shouldAlwaysShowInReviewRows, getOpenModeFilter) still need it.
+const { FILTER_STATE_FIELD_MAP } = prUiOptionPersistenceHelperFactory.createPrUiOptionPersistenceHelpers({
+  fetch: (...args) => fetch(...args),
 });
-
-const readUiSessionOverrides = async () => {
-  try {
-    const response = await fetch("/view-prs/user-defaults");
-    if (!response.ok) return {};
-    const result = await response.json();
-    const parsed = result?.overrides;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch (_error) {
-    return {};
-  }
-};
-
-const writeUiSessionOverrides = async (
-  overrides,
-  { preserveEmptyArrayKeys = [] } = {},
-) => {
-  const preserveSet = new Set(
-    Array.isArray(preserveEmptyArrayKeys) ? preserveEmptyArrayKeys : [],
-  );
-  const entries = Object.entries(overrides || {}).filter(([key, value]) => {
-    if (Array.isArray(value)) {
-      return value.length > 0 || preserveSet.has(String(key));
-    }
-    return value !== undefined;
-  });
-
-  const data = Object.fromEntries(entries);
-
-  try {
-    await fetch("/view-prs/user-defaults", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  } catch (_error) {
-    // Best effort only.
-  }
-};
-
-// Phase 6 (see REACT_MIGRATION_PLAN.md): single source of truth mapping a
-// DOM field id to its FilterStateProvider Context key, for every field
-// migrated onto Context so far. Shared by persistUiOptionOverrides/
-// restoreUiOptionOverrides below, getNeedsAttentionConfig, and
-// shouldAlwaysShowInReviewRows - one map instead of one ad hoc copy per
-// call site, so a field's migration only needs to add one entry here.
-const FILTER_STATE_FIELD_MAP = {
-  "scope-mode": "scopeMode",
-  "always-show-in-review": "alwaysShowInReview",
-  "attention-no-activity-mode": "attentionNoActivityMode",
-  "attention-include-pending-comments": "attentionIncludePendingComments",
-  "attention-ignore-merge-only-commits": "attentionIgnoreMergeOnlyCommits",
-  "attention-include-closed-merged": "attentionIncludeClosedMerged",
-  "attention-include-draft-changed": "attentionIncludeDraftChanged",
-  "attention-include-draft-no-activity": "attentionIncludeDraftNoActivity",
-  "repo": "repo",
-  "limit": "limit",
-  "merged-limit": "mergedLimit",
-  "jobs": "jobs",
-  "open-mode": "openMode",
-  "ack-changed": "ackChanged",
-  "show-reason": "showReason",
-  "quiet": "quiet",
-  "filter-pr-numbers": "filterPrNumbers",
-  "attention-author-thread-resolution-mode": "attentionAuthorThreadResolutionMode",
-  "change-filter-use-builtin-merge-pattern": "changeFilterUseBuiltinMergePattern",
-  "change-filter-ignore-commit-patterns": "changeFilterIgnoreCommitPatterns",
-};
 
 // Reads a migrated field's current value from FilterStateProvider's
 // Context (via the window.getFilterStateValues bridge react-app.jsx's
@@ -691,531 +414,6 @@ const getFilterStateOverrideForFieldId = (id) => {
     return undefined;
   }
   return window.getFilterStateValues()?.[key];
-};
-
-// Writes a migrated field's value straight into Context (via
-// window.setFilterStateValue) instead of mutating the DOM - returns
-// whether it did (`false` for an unmigrated field id or before the
-// provider mounts, letting the caller fall back to its original
-// DOM-mutating approach).
-const setFilterStateOverrideForFieldId = (id, value) => {
-  const key = FILTER_STATE_FIELD_MAP[id];
-  if (!key || typeof window === "undefined" || typeof window.setFilterStateValue !== "function") {
-    return false;
-  }
-  window.setFilterStateValue(key, value);
-  return true;
-};
-
-// Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): the 9 multi-select lists'
-// "pending selections" (used only as a restore-time seed before any
-// checkbox exists yet - see the 9 `let pendingXxx`/`_pendingChangeFilterIgnoreXAuthors`
-// declarations below) have no corresponding DOM element id, so they can't
-// go through FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId like
-// every other field - these two helpers are the same handled/fallback
-// shape, just keyed directly by Context key instead of DOM id.
-// `getPendingSelectionsValue` uses `hasOwnProperty` rather than a falsy/
-// undefined check, since the module-scope fallback variable's own valid
-// values include `null` (its initial/cleared state) and arrays.
-const getPendingSelectionsValue = (contextKey, fallbackValue) => {
-  const values =
-    typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
-      ? window.getFilterStateValues()
-      : undefined;
-  return values && Object.prototype.hasOwnProperty.call(values, contextKey)
-    ? values[contextKey]
-    : fallbackValue;
-};
-const setPendingSelectionsValue = (contextKey, value, setFallback) => {
-  // Always keep the module-scope variable in sync too, regardless of
-  // whether Context has mounted - it's the fallback storage the vanilla
-  // DOM-building path (and any bare-fixture unit test) still reads/writes
-  // directly.
-  setFallback(value);
-  if (typeof window !== "undefined" && typeof window.setFilterStateValue === "function") {
-    window.setFilterStateValue(contextKey, value);
-  }
-};
-
-const persistUiOptionOverrides = async (fieldIds = null) => {
-  const defaults = getUiOptionDefaults();
-  const existingOverrides = await readUiSessionOverrides();
-  const overrides = { ...existingOverrides };
-
-  const allowedFields =
-    Array.isArray(fieldIds) && fieldIds.length > 0 ? new Set(fieldIds) : null;
-  const includeField = (id) => !allowedFields || allowedFields.has(id);
-
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): prefer reading a migrated
-  // field's current value from Context (via getFilterStateOverrideForFieldId,
-  // FILTER_STATE_FIELD_MAP above) over the DOM, same handled/fallback
-  // shape as every other bridge.
-  const getText = (id) => {
-    const override = getFilterStateOverrideForFieldId(id);
-    if (typeof override === "string") {
-      return override.trim();
-    }
-    return String(getOptionalElementById(id)?.value || "").trim();
-  };
-  const getCheckbox = (id) => {
-    const override = getFilterStateOverrideForFieldId(id);
-    if (typeof override === "boolean") {
-      return override;
-    }
-    return Boolean(getOptionalElementById(id)?.checked);
-  };
-
-  const textIds = [
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "open-mode",
-    "scope-mode",
-    "filter-pr-numbers",
-    "attention-no-activity-mode",
-    "attention-author-thread-resolution-mode",
-  ];
-
-  textIds.forEach((id) => {
-    if (!includeField(id)) return;
-    const value = getText(id);
-    if (value !== String(defaults[id] || "")) {
-      overrides[id] = value;
-    } else {
-      delete overrides[id];
-    }
-  });
-
-  const checkboxIds = [
-    "ack-changed",
-    "show-reason",
-    "quiet",
-    "always-show-in-review",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "change-filter-use-builtin-merge-pattern",
-  ];
-  checkboxIds.forEach((id) => {
-    if (!includeField(id)) return;
-    const value = getCheckbox(id);
-    if (value !== Boolean(defaults[id])) {
-      overrides[id] = value;
-    } else {
-      delete overrides[id];
-    }
-  });
-
-  if (includeField("author")) {
-    const selectedAuthors = getSelectedAuthorLogins();
-    if (selectedAuthors.length > 0) {
-      overrides.author = selectedAuthors;
-    } else {
-      delete overrides.author;
-    }
-  }
-
-  if (includeField("assigned")) {
-    const selectedAssignees = getSelectedAssignedLogins();
-    if (selectedAssignees.length > 0) {
-      overrides.assigned = selectedAssignees;
-    } else {
-      delete overrides.assigned;
-    }
-  }
-
-  if (includeField("approver")) {
-    const selectedApprovers = getSelectedApproverLogins();
-    if (selectedApprovers.length > 0) {
-      overrides.approver = selectedApprovers;
-    } else {
-      delete overrides.approver;
-    }
-  }
-
-  if (includeField("label")) {
-    const selectedIncludeLabels = getSelectedIncludeLabelNames();
-    if (selectedIncludeLabels.length > 0) {
-      overrides.label = selectedIncludeLabels.join(", ");
-    } else {
-      delete overrides.label;
-    }
-  }
-
-  if (includeField("exclude-label")) {
-    const selectedExcludeLabels = getSelectedExcludeLabelNames();
-    if (selectedExcludeLabels.length > 0) {
-      overrides["exclude-label"] = selectedExcludeLabels.join(", ");
-    } else {
-      delete overrides["exclude-label"];
-    }
-  }
-
-  if (includeField("attention-author-thread-resolution-allow")) {
-    const selectedAllowedLogins = getSelectedAuthorThreadResolutionAllowLogins();
-    if (selectedAllowedLogins.length > 0) {
-      overrides["attention-author-thread-resolution-allow"] =
-        selectedAllowedLogins;
-    } else {
-      delete overrides["attention-author-thread-resolution-allow"];
-    }
-  }
-
-  if (includeField("attention-author-thread-resolution-deny")) {
-    const selectedDeniedLogins = getSelectedAuthorThreadResolutionDenyLogins();
-    if (selectedDeniedLogins.length > 0) {
-      overrides["attention-author-thread-resolution-deny"] =
-        selectedDeniedLogins;
-    } else {
-      delete overrides["attention-author-thread-resolution-deny"];
-    }
-  }
-
-  // Change detection filters
-  if (
-    includeField("change-filter-use-builtin-merge-pattern") ||
-    includeField("change-filter-ignore-comment-authors") ||
-    includeField("change-filter-ignore-review-authors") ||
-    includeField("change-filter-ignore-commit-patterns")
-  ) {
-    const existingChangeFilters =
-      typeof existingOverrides.changeFilters === "object" &&
-      !Array.isArray(existingOverrides.changeFilters)
-        ? existingOverrides.changeFilters
-        : {};
-    const changeFilters = { ...existingChangeFilters };
-
-    if (includeField("change-filter-use-builtin-merge-pattern")) {
-      const useBuiltin = getCheckbox("change-filter-use-builtin-merge-pattern");
-      // Only save if different from default (true)
-      if (useBuiltin !== true) {
-        changeFilters.useBuiltinMergePattern = useBuiltin;
-      } else {
-        delete changeFilters.useBuiltinMergePattern;
-      }
-    }
-
-    if (includeField("change-filter-ignore-comment-authors")) {
-      const selectedLogins = getSelectedChangeFilterIgnoreCommentAuthors();
-      if (selectedLogins.length > 0) {
-        changeFilters.ignoreCommentsFromAuthors = selectedLogins;
-      } else {
-        delete changeFilters.ignoreCommentsFromAuthors;
-      }
-    }
-
-    if (includeField("change-filter-ignore-review-authors")) {
-      const selectedLogins = getSelectedChangeFilterIgnoreReviewAuthors();
-      if (selectedLogins.length > 0) {
-        changeFilters.ignoreReviewsFromAuthors = selectedLogins;
-      } else {
-        delete changeFilters.ignoreReviewsFromAuthors;
-      }
-    }
-
-    if (includeField("change-filter-ignore-commit-patterns")) {
-      const textarea = getOptionalElementById(
-        "change-filter-ignore-commit-patterns",
-      );
-      const patterns = formParsingHelpers?.parseCommitPatterns
-        ? formParsingHelpers.parseCommitPatterns(textarea)
-        : [];
-      if (patterns.length > 0) {
-        changeFilters.ignoreCommitPatterns = patterns;
-      } else {
-        delete changeFilters.ignoreCommitPatterns;
-      }
-    }
-
-    if (Object.keys(changeFilters).length > 0) {
-      overrides.changeFilters = changeFilters;
-    } else {
-      delete overrides.changeFilters;
-    }
-  }
-
-  await writeUiSessionOverrides(overrides);
-};
-
-const restoreUiOptionOverrides = async () => {
-  const overrides = await readUiSessionOverrides();
-  if (!overrides || Object.keys(overrides).length === 0) {
-    return;
-  }
-
-  // Plain `element.value = ...` silently desyncs a React-controlled input:
-  // React installs its own property setter on the native element to track
-  // value changes, and assigning through the DOM's original setter (which
-  // this uses instead, via the prototype descriptor) plus dispatching a
-  // real 'input'/'change' event is the standard, harmless-for-uncontrolled-
-  // elements-too way to make external mutations show up in React state as
-  // well. Needed as more of the Run & Filter form is converted to React
-  // (Phase 2) - vanilla restore logic like this one shouldn't need to know
-  // or care which fields are React-owned yet.
-  const setNativeValueAndDispatch = (element, value) => {
-    const prototype = Object.getPrototypeOf(element);
-    const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-    if (nativeSetter) {
-      nativeSetter.call(element, value);
-    } else {
-      element.value = value;
-    }
-    // <input> needs 'input' for React to notice; <select> (which this
-    // helper also restores, e.g. scope-mode) only reliably notifies React
-    // via 'change'. Dispatch both - a real user interaction fires both on
-    // either element type anyway, so this isn't adding any event a normal
-    // interaction wouldn't already produce.
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): a migrated field (per
-  // FILTER_STATE_FIELD_MAP above) restores straight into Context via
-  // window.setFilterStateValue (which itself triggers the provider's own
-  // debounced-apply effect, same as a real user change would) instead of
-  // going through setNativeValueAndDispatch/element.click() below, which
-  // only matters for fields still owned by the DOM. Falls back to the
-  // original DOM-mutating approach when the provider hasn't mounted yet.
-  const setText = (id, value) => {
-    if (value === undefined || value === null) return;
-    if (setFilterStateOverrideForFieldId(id, String(value))) return;
-    const element = getOptionalElementById(id);
-    if (!element) return;
-    setNativeValueAndDispatch(element, String(value));
-  };
-
-  const setCheckbox = (id, value) => {
-    if (typeof value !== "boolean") return;
-    if (setFilterStateOverrideForFieldId(id, value)) return;
-    const element = getOptionalElementById(id);
-    if (!element) return;
-    if (element.checked !== value) {
-      element.click();
-    }
-  };
-
-  [
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "open-mode",
-    "scope-mode",
-    "filter-pr-numbers",
-    "attention-no-activity-mode",
-    "attention-author-thread-resolution-mode",
-  ].forEach((id) => {
-    if (Object.prototype.hasOwnProperty.call(overrides, id)) {
-      setText(id, overrides[id]);
-    }
-  });
-
-  [
-    "ack-changed",
-    "show-reason",
-    "quiet",
-    "always-show-in-review",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "change-filter-use-builtin-merge-pattern",
-  ].forEach((id) => {
-    if (Object.prototype.hasOwnProperty.call(overrides, id)) {
-      setCheckbox(id, overrides[id]);
-    }
-  });
-
-  if (Array.isArray(overrides.author)) {
-    setPendingSelectionsValue(
-      "pendingAuthorSelections",
-      overrides.author.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingAuthorFilterSelections = v;
-      },
-    );
-  }
-
-  if (Array.isArray(overrides.assigned)) {
-    setPendingSelectionsValue(
-      "pendingAssignedSelections",
-      overrides.assigned.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingAssignedFilterSelections = v;
-      },
-    );
-  }
-
-  if (Array.isArray(overrides.approver)) {
-    setPendingSelectionsValue(
-      "pendingApproverSelections",
-      overrides.approver.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingApproverFilterSelections = v;
-      },
-    );
-  }
-
-  if (Object.prototype.hasOwnProperty.call(overrides, "label")) {
-    const values = Array.isArray(overrides.label)
-      ? overrides.label
-      : parseCsvTokens(overrides.label);
-    setPendingSelectionsValue(
-      "pendingLabelSelections",
-      values.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingLabelFilterSelections = v;
-      },
-    );
-  }
-
-  if (Object.prototype.hasOwnProperty.call(overrides, "exclude-label")) {
-    const values = Array.isArray(overrides["exclude-label"])
-      ? overrides["exclude-label"]
-      : parseCsvTokens(overrides["exclude-label"]);
-    setPendingSelectionsValue(
-      "pendingExcludeLabelSelections",
-      values.map((value) => String(value || "").trim()).filter(Boolean),
-      (v) => {
-        pendingExcludeLabelFilterSelections = v;
-      },
-    );
-  }
-
-  if (Array.isArray(overrides["attention-author-thread-resolution-allow"])) {
-    setPendingSelectionsValue(
-      "pendingAuthorThreadResolutionAllowSelections",
-      overrides["attention-author-thread-resolution-allow"]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-      (v) => {
-        pendingAuthorThreadResolutionAllowSelections = v;
-      },
-    );
-  }
-
-  if (Array.isArray(overrides["attention-author-thread-resolution-deny"])) {
-    setPendingSelectionsValue(
-      "pendingAuthorThreadResolutionDenySelections",
-      overrides["attention-author-thread-resolution-deny"]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-      (v) => {
-        pendingAuthorThreadResolutionDenySelections = v;
-      },
-    );
-  }
-
-  // Restore change detection filters
-  if (
-    overrides.changeFilters &&
-    typeof overrides.changeFilters === "object" &&
-    !Array.isArray(overrides.changeFilters)
-  ) {
-    if (typeof overrides.changeFilters.useBuiltinMergePattern === "boolean") {
-      setCheckbox(
-        "change-filter-use-builtin-merge-pattern",
-        overrides.changeFilters.useBuiltinMergePattern,
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreCommentsFromAuthors)) {
-      setPendingSelectionsValue(
-        "pendingChangeFilterIgnoreCommentAuthors",
-        overrides.changeFilters.ignoreCommentsFromAuthors
-          .map((value) => String(value || "").trim())
-          .filter(Boolean),
-        (v) => {
-          _pendingChangeFilterIgnoreCommentAuthors = v;
-        },
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreReviewsFromAuthors)) {
-      setPendingSelectionsValue(
-        "pendingChangeFilterIgnoreReviewAuthors",
-        overrides.changeFilters.ignoreReviewsFromAuthors
-          .map((value) => String(value || "").trim())
-          .filter(Boolean),
-        (v) => {
-          _pendingChangeFilterIgnoreReviewAuthors = v;
-        },
-      );
-    }
-
-    if (Array.isArray(overrides.changeFilters.ignoreCommitPatterns)) {
-      if (formParsingHelpers?.formatCommitPatternsForTextarea) {
-        // setText (native setter + dispatched events, see
-        // setNativeValueAndDispatch above) instead of a plain
-        // `textarea.value = ...` assignment - needed once this field is
-        // React-owned (Phase 2), same reasoning as every other restored
-        // field. HTMLTextAreaElement has its own "value" accessor
-        // property (distinct from HTMLInputElement's), so the same
-        // prototype-descriptor lookup works unchanged for a <textarea>.
-        // Note: this specific ordering (restore arriving *after*
-        // react-app.jsx has already mounted) is hard to force
-        // deterministically in the e2e suite - see
-        // IgnoreCommitPatternsTextarea.test.jsx's own "external native
-        // value change" test for the reliable, deterministic proof this
-        // technique is needed.
-        setText(
-          "change-filter-ignore-commit-patterns",
-          formParsingHelpers.formatCommitPatternsForTextarea(
-            overrides.changeFilters.ignoreCommitPatterns,
-          ),
-        );
-      }
-    }
-  }
-
-  updateAuthorThreadResolutionRuleVisibility();
-  if (latestStoredPayload?.actorsMap) {
-    populateAuthorThreadResolutionActorOptions(latestStoredPayload.actorsMap);
-    populateChangeFilterActorOptions(latestStoredPayload.actorsMap);
-  }
-};
-
-const persistRunScriptOptionOverrides = async () => {
-  await persistUiOptionOverrides([
-    "repo",
-    "limit",
-    "merged-limit",
-    "jobs",
-    "open-mode",
-    "ack-changed",
-    "show-reason",
-    "quiet",
-  ]);
-};
-
-const persistViewFilterOptionOverrides = async () => {
-  await persistUiOptionOverrides([
-    "scope-mode",
-    "filter-pr-numbers",
-    "label",
-    "exclude-label",
-    "author",
-    "assigned",
-    "approver",
-    "always-show-in-review",
-    "attention-no-activity-mode",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "attention-author-thread-resolution-mode",
-    "attention-author-thread-resolution-allow",
-    "attention-author-thread-resolution-deny",
-    "change-filter-use-builtin-merge-pattern",
-    "change-filter-ignore-comment-authors",
-    "change-filter-ignore-review-authors",
-    "change-filter-ignore-commit-patterns",
-  ]);
 };
 
 const normalizeAuthorThreadResolutionMode = (value) => {
@@ -1258,8 +456,22 @@ const getSelectedChangeFilterIgnoreReviewAuthors = () =>
   );
 
 const updateAuthorThreadResolutionRuleVisibility = () => {
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // prefer Context (same handled/fallback shape every other migrated-field
+  // reader in this file uses) over the DOM - this function is also called
+  // from a React effect reacting to the Context value itself
+  // (FilterStateProvider.jsx), so it must see that same value even when
+  // nothing has written it back into a real DOM element (true for every
+  // production page load, where the real <select> is React-controlled and
+  // always in sync anyway - this only differs when a caller's DOM read
+  // would otherwise be stale).
+  const contextOverride = getFilterStateOverrideForFieldId(
+    "attention-author-thread-resolution-mode",
+  );
   const mode = normalizeAuthorThreadResolutionMode(
-    getOptionalElementById("attention-author-thread-resolution-mode")?.value,
+    typeof contextOverride === "string"
+      ? contextOverride
+      : getOptionalElementById("attention-author-thread-resolution-mode")?.value,
   );
   const allowOptions = getOptionalElementById(
     "attention-author-thread-resolution-allow-options",
@@ -1322,37 +534,19 @@ const getNeedsAttentionConfig = () => ({
   ),
 });
 
-// Phase 6 (see REACT_MIGRATION_PLAN.md): "attention-author-thread-resolution-mode"
-// is migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
-// prefer it via getFilterStateOverrideForFieldId when mounted, falling
-// back to the original DOM read otherwise. Note
-// updateAuthorThreadResolutionRuleVisibility's own read of this same field
-// (for its show/hide UI) is left as a plain DOM read - the real
-// `<select>` element's `.value` always reflects whatever React (Context
-// or local state) currently renders there, so it's already correct
-// either way; only this canonical pipeline read site needed updating.
-const getAuthorThreadResolutionPolicy = () => {
-  const override = getFilterStateOverrideForFieldId(
-    "attention-author-thread-resolution-mode",
-  );
-  const rawMode =
-    typeof override === "string"
-      ? override
-      : getOptionalElementById("attention-author-thread-resolution-mode")?.value;
-  return {
-    mode: normalizeAuthorThreadResolutionMode(rawMode),
-    allowLoginKeys: new Set(
-      getSelectedAuthorThreadResolutionAllowLogins().map((value) =>
-        String(value || "").trim().toLowerCase(),
-      ),
-    ),
-    denyLoginKeys: new Set(
-      getSelectedAuthorThreadResolutionDenyLogins().map((value) =>
-        String(value || "").trim().toLowerCase(),
-      ),
-    ),
-  };
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getAuthorThreadResolutionPolicy
+// used to live here (combining "attention-author-thread-resolution-mode"'s
+// Context/DOM value with getSelectedAuthorThreadResolutionAllowLogins/
+// DenyLogins' own DOM scans) for ReviewThreadsSection.jsx's window.*
+// bridge read - re-investigated an earlier "genuinely separate concern (a
+// DOM-scan dependency)" deferral and found the DOM-scan dependency was
+// real only because the 2 allow/deny lists' checked-state had nowhere
+// else to live; moved to a dedicated useAuthorThreadResolutionPolicy hook
+// in ReviewThreadsSection.jsx itself, now that
+// AuthorThreadResolutionSelectionContext exists for exactly those 2 lists
+// (same fix RowFilterSelectionContext was for the 5 row-filtering lists).
+// getSelectedAuthorThreadResolutionAllowLogins/DenyLogins stay - still
+// used by persistUiOptionOverrides' own override-persistence logic below.
 
 const {
   getEffectiveViewerLogin,
@@ -1362,20 +556,30 @@ const {
   inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
 });
 
-const { collectRequestedReviewers, formatRequestedReviewersDisplay } =
+// Phase 7 (see REACT_MIGRATION_PLAN.md): formatRequestedReviewersDisplay/
+// formatAssignedUsersDisplay/formatApproversDisplay used to also be
+// destructured here for the window.* bridge below - PrInsightsRow.jsx now
+// gets them from PrInsightsDisplayProvider/usePrInsightsDisplay() instead
+// (state/PrInsightsDisplayContext.jsx builds its own separate instance of
+// each factory, same "call the zero-dependency factory again rather than
+// import index.page.js's own instance" pattern every other Context in
+// this migration already uses). collectRequestedReviewers/
+// collectAssignedUsers/collectApproversFromRow stay - still used by other
+// vanilla code in this file.
+const { collectRequestedReviewers } =
   prRequestedReviewersHelperFactory.createPrRequestedReviewersHelpers({
     asArray: (...args) => asArray(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
 
-const { collectAssignedUsers, formatAssignedUsersDisplay } =
+const { collectAssignedUsers } =
   prAssignedUsersHelperFactory.createPrAssignedUsersHelpers({
     asArray: (...args) => asArray(...args),
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
   });
 
-const { collectApproversFromRow, formatApproversDisplay } =
+const { collectApproversFromRow } =
   prApproversHelperFactory.createPrApproversHelpers({
     asArray: (...args) => asArray(...args),
     getPreferredActorKey: (...args) => getPreferredActorKey(...args),
@@ -1383,29 +587,26 @@ const { collectApproversFromRow, formatApproversDisplay } =
     formatIsoDatetime: (...args) => formatIsoDatetime(...args),
   });
 
-const {
-  getBadgeClassForStatus,
-  getBadgeClassForCheck,
-  getBadgeClassForMerge,
-} = prInsightBadgeClassHelperFactory.createPrInsightBadgeClassHelpers({
-  isChangedStatus: (...args) => isChangedStatus(...args),
-});
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getBadgeClassForStatus/Check/Merge
+// and formatReviewFootprint/ConversationStatus/ApprovalRisk/
+// CommentUsefulness used to be destructured here for the window.* bridge
+// below - PrInsightsRow.jsx now gets them from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead, and nothing else in this file calls
+// either factory's output directly.
 
-const {
-  formatReviewFootprint,
-  formatConversationStatus,
-  formatApprovalRisk,
-  formatCommentUsefulness,
-} =
-  prInsightMetricsSummaryHelperFactory.createPrInsightMetricsSummaryHelpers();
+// collectPrAuthors now built in PrAuthorCell.jsx itself, via
+// createPrAuthorCellHelpers (helpers/pr-author-cell.helpers.js) threaded
+// with the real useActorIdentity().getPreferredActorKey (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - no window.* bridge needed any more, and
+// nothing else in this file called this factory's output directly.
 
-const { collectPrAuthors } =
-  prAuthorCellHelperFactory.createPrAuthorCellHelpers({
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-  });
-
-const { parseMarkerState, safeJsonStringify } =
-  prUiRenderUtilsHelperFactory.createPrUiRenderUtilsHelpers();
+// safeJsonStringify now a bare export from helpers/pr-ui-render-utils.helpers.js
+// (Phase 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/ExportTab.jsx
+// import it directly instead of reading it off window.safeJsonStringify.
+// parseMarkerState (this module's other export) is no longer used here at
+// all - AuthorInsightsPrDataMeta.jsx (its one remaining consumer) builds
+// formatChkDisplay directly now instead of parseMarkerState + a buggy
+// formatChkDisplay call (see that file's own comment for the fix).
 
 const {
   entryNeedsAttention,
@@ -1424,7 +625,7 @@ const {
   autoScrollBackfillLogToBottom,
 } = prUiOptionScrollHelperFactory.createPrUiOptionScrollHelpers({
   getOptionalElementById: (...args) => getOptionalElementById(...args),
-  persistUiOptionOverrides: (...args) => persistUiOptionOverrides(...args),
+  persistViewFilterOptions: (...args) => window.persistViewFilterOptionOverrides?.(...args),
   shouldAutoScrollBackfillLogByState: (...args) =>
     shouldAutoScrollBackfillLogByState(...args),
   getBackfillScrollTop: (...args) => getBackfillScrollTop(...args),
@@ -1447,9 +648,6 @@ const { capturePrSectionOpenState } =
 
 const { buildAppliedSummaryViewModel } =
   prAppliedSummaryHelperFactory.createPrAppliedSummaryHelpers();
-
-const { buildMergedRequestMoreActionOptions } =
-  prMergedRequestMoreConfigHelperFactory.createPrMergedRequestMoreConfigHelpers();
 
 const { buildGroupedPrSections } =
   prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
@@ -1490,19 +688,6 @@ const { deriveViewerContext } =
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
   });
 
-const { populateFilterOptions } =
-  prFilterOptionsHelperFactory.createPrFilterOptionsHelpers({
-    populateIncludeLabelOptions: (...args) => populateIncludeLabelOptions(...args),
-    populateExcludeLabelOptions: (...args) => populateExcludeLabelOptions(...args),
-    populateAuthorOptions: (...args) => populateAuthorOptions(...args),
-    populateAssignedOptions: (...args) => populateAssignedOptions(...args),
-    populateApproverOptions: (...args) => populateApproverOptions(...args),
-    populateAuthorThreadResolutionActorOptions: (...args) =>
-      populateAuthorThreadResolutionActorOptions(...args),
-    populateChangeFilterActorOptions: (...args) =>
-      populateChangeFilterActorOptions(...args),
-  });
-
 const { deriveScopedRows } =
   prScopedRowsHelperFactory.createPrScopedRowsHelpers({
     resolveScopedRows: (...args) => resolveScopedRows(...args),
@@ -1517,13 +702,11 @@ const { deriveRenderSummary } =
     renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
   });
 
-const { applyRenderResults, renderAuthorInsightsIfVisible } =
+const { applyRenderResults, renderAuthorInsightsIfVisible, applyFreshAuthorInsightsIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
     renderManagementFilterSummary: (...args) =>
       renderManagementFilterSummary(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
-    buildMergedRequestMoreActionOptions: (...args) =>
-      buildMergedRequestMoreActionOptions(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
     getOptionalElementById: (...args) => getOptionalElementById(...args),
@@ -1614,10 +797,10 @@ const { loadStoredData } =
     fetch: (...args) => fetch(...args),
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     setLastSeenDataVersion: (value) => {
-      lastSeenDataVersion = value;
+      window.pushPrDataPollingTrackingState?.({ lastSeenDataVersion: value });
     },
     setLastRenderedRunStamp: (value) => {
-      lastRenderedRunStamp = value;
+      window.pushPrDataPollingTrackingState?.({ lastRenderedRunStamp: value });
     },
     setLastSuccessfulRenderedCheckAt: (value) => {
       lastSuccessfulRenderedCheckAt = value;
@@ -1630,24 +813,6 @@ const { loadStoredData } =
     renderPrData: (...args) => renderPrData(...args),
   });
 
-const { runSinglePrUpdate } =
-  prSinglePrUpdateHelperFactory.createPrSinglePrUpdateHelpers({
-    postJson: (...args) => postJson(...args),
-    beginRequestActivity: (...args) => beginRequestActivity(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-    setOutputMessage: (...args) => setOutputMessage(...args),
-    getGithubAuthFailureHint: (...args) => getGithubAuthFailureHint(...args),
-    formatCommandOutputWithAuthHint: (...args) =>
-      formatCommandOutputWithAuthHint(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-    stripAnsi: (...args) => stripAnsi(...args),
-    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
-    renderPrData: (...args) => renderPrData(...args),
-    loadStoredData: (...args) => loadStoredData(...args),
-    defaultRepo: DEFAULT_REPO,
-  });
-
 const { handleRequestMoreMerged } =
   prMergedRequestMoreActionHelperFactory.createPrMergedRequestMoreActionHelpers({
     getIsRequestMoreMergedPending: () => isRequestMoreMergedPending,
@@ -1658,9 +823,10 @@ const { handleRequestMoreMerged } =
     defaultRepo: DEFAULT_REPO,
     beginRequestActivity: (...args) => beginRequestActivity(...args),
     postJson: (...args) => postJson(...args),
-    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
-    renderPrData: (...args) => renderPrData(...args),
+    // Lazy proxy (same pattern as runSinglePrUpdate's own wiring):
+    // applyFreshPrPayload is declared later in this file, safe since this
+    // closure is only ever invoked long after full module evaluation.
+    applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
     loadStoredData: (...args) => loadStoredData(...args),
     setStatusMessage: (...args) => setStatusMessage(...args),
     notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
@@ -1707,7 +873,6 @@ const { deriveViewerFilterSetup } =
       currentViewerLogin =
         typeof nextViewerLogin === "string" ? nextViewerLogin : "";
     },
-    populateFilterOptions: (...args) => populateFilterOptions(...args),
   });
 
 const { buildSelectedFiltersViewModel } =
@@ -1721,72 +886,77 @@ const { buildSelectedFiltersViewModel } =
 const { getOrCompute: getOrComputeEntryDerivedValue } =
   prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
 
-// Phase 5 residual (see REACT_MIGRATION_PLAN.md): the 9 filter-dropdown
-// populate functions (5 in pr-filter-panel.helpers.js, 2 shared-shape ones
-// below covering 4 more) already read cheap, cached per-entry values (see
-// getOrComputeEntryDerivedValue above), but every one of them still
-// unconditionally called window.renderReactMultiSelectList on every render
-// - which react-app.jsx answers by bumping an incrementing `key`, forcing
-// MultiSelectCheckboxList to fully remount even when the resulting option
-// list is identical to last time. Wrapped once here (not in each populate
-// function) so every call site benefits without individual changes - see
-// pr-multi-select-render-cache.helpers.js's own comment for why `checked`
-// has to be part of the skip signature, not just `value`/`label`.
-const renderMultiSelectListSkipUnchanged =
-  prMultiSelectRenderCacheHelperFactory
-    .createMultiSelectRenderCache()
-    .wrapRenderMultiSelectList((listId, items) =>
-      typeof window !== "undefined" &&
-      typeof window.renderReactMultiSelectList === "function"
-        ? window.renderReactMultiSelectList(listId, items)
-        : false,
-    );
-
 const { buildRowFilterCriteria, applyRowUiFilters } =
   prRowFilteringHelperFactory.createPrRowFilteringHelpers({
     rowMatchesUiFilters: (...args) => rowMatchesUiFilters(...args),
     getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
   });
 
-const { expandAncestorDetailsElements, ensureInsightsRowVisibleForElement } =
-  prDomVisibilityHelperFactory.createPrDomVisibilityHelpers({
-    readElementAttribute: (...args) => readElementAttribute(...args),
-  });
-
+// Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// expandAncestorDetailsElements/ensureInsightsRowVisibleForElement (this
+// factory's only 2 exports) had no caller left besides the now-deleted
+// navigateToPrInTable/navigateToAuthorInsights - createPrDomVisibilityHelpers's
+// own instantiation is removed entirely, not just its outputs.
+// Phase H.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// getFirstUnsavedElementForPrNumber/getDirtyTrackedFields (and the
+// getOptionalElementById/readElementAttribute DI this factory only needed
+// for them) are deleted outright now too - confirmed dead.
 const {
-  getDirtyTrackedFields,
-  getUnsavedNotesSections,
+  getUnsavedNotesPrNumbers,
   normalizePrNumber,
   getBlockingPrNumbers,
-  getFirstUnsavedElementForPrNumber,
 } = prAutoRenderUnsavedHelperFactory.createPrAutoRenderUnsavedHelpers({
-  getOptionalElementById,
-  readElementAttribute: (...args) => readElementAttribute(...args),
+  // Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): PR Notes dirty
+  // tracking is now NotesDirtyProvider.jsx's own React state, read here via
+  // this dedicated bridge instead of scanning data-has-unsaved-notes DOM
+  // attributes.
+  getDirtyNotesPrNumbers: () => window.getDirtyNotesPrNumbers?.() || [],
 });
 
-const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } =
+// Phase 7 (see REACT_MIGRATION_PLAN.md): noteAuthorMatchesSelection used
+// to also be destructured here for the now-deleted window.* bridge entry
+// below - NotesSection.jsx/AuthorInsightsNotesSection.jsx get their own
+// copy from AuthorInsightsContext/a local useMemo instead, not this one.
+const { getAuthorInsightsDisplayName } =
   prAuthorInsightsIdentityHelperFactory.createPrAuthorInsightsIdentityHelpers({
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
     getLatestActorsMap: () => authorInsightsState.latestActorsMap || {},
   });
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the draft/comment-cache CRUD
+// functions (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
+// resetAuthorInsightsComposerDraft/getAuthorInsightsEditDraftMap/
+// getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
+// resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin) used to be
+// built here directly from authorInsightsState - moved to
+// AuthorInsightsDraftsProvider.jsx (components/AuthorInsightsDraftsProvider.jsx),
+// which now owns that state as real React state and republishes the exact
+// same window.* bridge names, because pr-auto-render-blocking.helpers.js's
+// getBlockingAuthorInsightsLogins still needs to read it from here, fully
+// vanilla. Only the 3 genuinely pure functions below (confirmed via
+// reading each body: no authorInsightsState reference at all, just the
+// draft/comment object passed directly to each call) are still built
+// locally, from a fresh no-args instance of the same factory.
 const {
   normalizeAuthorInsightsSentiment,
-  getAuthorInsightsComposerDraft,
-  updateAuthorInsightsComposerDraft,
-  resetAuthorInsightsComposerDraft,
   isAuthorInsightsComposerDraftDirty,
-  getAuthorInsightsEditDraftMap,
-  getAuthorInsightsEditDraft,
-  updateAuthorInsightsEditDraft,
-  resetAuthorInsightsEditDraft,
   isAuthorInsightsEditDraftDirty,
-  getAuthorManualCommentsForLogin,
-} = prAuthorInsightsDraftsHelperFactory.createPrAuthorInsightsDraftsHelpers({
-  authorInsightsState,
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-});
+} = prAuthorInsightsDraftsHelperFactory.createPrAuthorInsightsDraftsHelpers();
+
+// Fresh-reading proxies, not direct references to a local implementation -
+// AuthorInsightsDraftsProvider (a React component) only publishes these on
+// window once it mounts, which happens after this module-level wiring runs;
+// a direct reference captured now would freeze on undefined. Same
+// indirection this file already uses for activateDataTab/collectNodesByTag
+// above.
+const getAuthorInsightsComposerDraft = (...args) => window.getAuthorInsightsComposerDraft?.(...args);
+const updateAuthorInsightsComposerDraft = (...args) => window.updateAuthorInsightsComposerDraft?.(...args);
+const resetAuthorInsightsComposerDraft = (...args) => window.resetAuthorInsightsComposerDraft?.(...args);
+const getAuthorInsightsEditDraft = (...args) => window.getAuthorInsightsEditDraft?.(...args);
+const updateAuthorInsightsEditDraft = (...args) => window.updateAuthorInsightsEditDraft?.(...args);
+const resetAuthorInsightsEditDraft = (...args) => window.resetAuthorInsightsEditDraft?.(...args);
+const getAuthorManualCommentsForLogin = (...args) => window.getAuthorManualCommentsForLogin?.(...args);
 
 const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
   prAutoRenderBlockingHelperFactory.createPrAutoRenderBlockingHelpers({
@@ -1799,7 +969,6 @@ const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
   });
 
 const {
-  buildAutoRenderBlockedStatusText,
   buildAutoRenderBlockedLinksAriaLabel,
 } = prAutoRenderIndicatorHelperFactory.createPrAutoRenderIndicatorHelpers({
   getAuthorInsightsDisplayName: (...args) => getAuthorInsightsDisplayName(...args),
@@ -1814,8 +983,7 @@ const { renderAutoRenderBlockedLinks } =
 
 const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
   prAutoRenderStateHelperFactory.createPrAutoRenderStateHelpers({
-    getDirtyTrackedFields,
-    getUnsavedNotesSections,
+    getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     // Bug fix (found while auditing this cluster for Phase 7, sub-phase
     // 7.0 - see REACT_MIGRATION_PLAN.md): getAutoRenderBlockingState calls
@@ -1828,239 +996,91 @@ const { getAutoRenderBlockingState, computeHasDirtyPrSectionsFields } =
     // integration test exercised this specific case end-to-end - only
     // pr-auto-render-blocking.helpers.test.js's isolated unit tests, which
     // pass a real authorInsightsState explicitly and so never caught it.
-    getBlockingAuthorInsightsLogins: () => getBlockingAuthorInsightsLogins(authorInsightsState),
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): authorInsightsState's 5
+    // draft/comment-cache fields moved to AuthorInsightsDraftsProvider.jsx
+    // - window.getAuthorInsightsDraftsSnapshot is the dedicated read
+    // bridge it publishes for exactly this call (see that file's own
+    // comment for why a snapshot, not individual getters).
+    getBlockingAuthorInsightsLogins: () =>
+      getBlockingAuthorInsightsLogins(window.getAuthorInsightsDraftsSnapshot?.() || {}),
     formatBlockingPrNumbersLabel,
   });
 
-const {
-  navigateToPrInTable,
-  navigateToAuthorInsights,
-} = prAutoRenderNavigationHelperFactory.createPrAutoRenderNavigationHelpers({
-  normalizePrNumber,
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-  activateDataTab: (...args) => activateDataTab(...args),
-  collectNodesByTag: (...args) => collectNodesByTag(...args),
-  expandAncestorDetailsElements,
-  ensureInsightsRowVisibleForElement,
-  getFirstUnsavedElementForPrNumber,
-  getOptionalElementById,
-  getAuthorInsightsComposerDraft,
-  isAuthorInsightsComposerDraftDirty,
-  getAuthorInsightsEditDraftMap,
-  getAuthorManualCommentsForLogin,
-  isAuthorInsightsEditDraftDirty,
-  authorInsightsState,
-  renderAuthorInsights: (...args) => renderAuthorInsights(...args),
-  documentRef: typeof document !== "undefined" ? document : null,
-  setTimeoutFn: (...args) => setTimeout(...args),
-  // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): same guard pr-author-insights-pr-link.
-  // helpers.js's own navigateToPrInTable already has, at its own call
-  // site below (isReactTableMounted defined further down in this file,
-  // line ~4092 - safe to reference here since this closure is only
-  // ever called later, never during module initialization).
-  isReactTableMounted: () => isReactTableMounted(),
-});
+// Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// createPrAutoRenderNavigationHelpers's navigateToPrInTable/
+// navigateToAuthorInsights used to be instantiated here - retired
+// outright (helpers/pr-auto-render-navigation.helpers.js deleted) in
+// favor of state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx,
+// real hooks that reuse PrTableApp.jsx's existing pr-navigate-to-insights
+// listener (for the row scroll/focus) and PrDataProvider/AuthorInsightsContext
+// Context (for the author-selection validation+write), rather than a
+// vanilla DOM-scanning helper.
 
-const renderAutoRenderBlockedIndicator = () => {
-  const indicator = getOptionalElementById("auto-render-blocked-indicator");
-  if (!indicator) {
-    return;
-  }
+// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// AutoRenderBlockingProvider.jsx now owns pendingAutoRenderPayload/
+// hasDirtyPrSectionsFields and the whole apply/wait-for-blur/wait-for-clean
+// decision (renderAutoRenderBlockedIndicator/flushPendingAutoRenderNow/
+// forceApplyPendingAutoRender/flushPendingAutoRender are gone - this is
+// their replacement). NotesDirtyProvider.jsx/AuthorInsightsDraftsProvider.jsx
+// still call this function exactly as before - only its OWN body changed,
+// from mutating a vanilla module variable + manipulating the indicator DOM
+// directly, to computing the same blocking state (via the unchanged
+// getAutoRenderBlockingState) and pushing it into the Provider. Still
+// returns hasDirtyPrSectionsFields - NotesSection.jsx/other callers don't
+// use the return value, but preserving it costs nothing and avoids a
+// needless signature change.
+//
+// renderAutoRenderBlockedLinks (the #auto-render-blocked-pr-links sub-
+// portal's own hidden/aria-label toggle) stays exactly as it was - that
+// element is a sibling of the status-text/button content this Provider
+// now owns, not something AutoRenderBlockingProvider.jsx needs to
+// duplicate (see that file's own comment for why it isn't nested inside).
+const recomputeDirtyPrSectionsFields = () => {
+  const blockingState = getAutoRenderBlockingState();
+  const hasDirtyPrSectionsFields = computeHasDirtyPrSectionsFields(blockingState);
 
-  const isBlocked = Boolean(pendingAutoRenderPayload) && hasDirtyPrSectionsFields;
-  if (!isBlocked) {
-    indicator.setAttribute("hidden", "");
-    return;
-  }
+  window.pushAutoRenderBlockingState?.(blockingState);
 
-  const {
-    dirtyFieldCount,
-    unsavedNotesCount,
-    blockingPrNumbers,
-    blockingAuthorInsightsLogins,
-    blockingPrLabel,
-  } = getAutoRenderBlockingState();
   const linksHost = getOptionalElementById("auto-render-blocked-pr-links");
-  const statusNode = getOptionalElementById("auto-render-blocked-status");
-  if (statusNode) {
-    statusNode.textContent = buildAutoRenderBlockedStatusText({
-      dirtyFieldCount,
-      unsavedNotesCount,
-      blockingAuthorInsightsCount: blockingAuthorInsightsLogins.length,
-    });
-  }
-
   if (linksHost) {
     renderAutoRenderBlockedLinks({
       linksHost,
-      blockingPrNumbers,
-      blockingAuthorInsightsLogins,
-      blockingPrLabel,
+      blockingPrNumbers: blockingState.blockingPrNumbers,
+      blockingAuthorInsightsLogins: blockingState.blockingAuthorInsightsLogins,
+      blockingPrLabel: blockingState.blockingPrLabel,
     });
-  }
-
-  indicator.removeAttribute("hidden");
-};
-
-const flushPendingAutoRenderNow = () => {
-  if (!pendingAutoRenderPayload) {
-    return false;
-  }
-  const payload = pendingAutoRenderPayload;
-  pendingAutoRenderPayload = null;
-  renderAutoRenderBlockedIndicator();
-  renderPrData(payload);
-  return true;
-};
-
-const forceApplyPendingAutoRender = () => {
-  if (!pendingAutoRenderPayload) {
-    return;
-  }
-  flushPendingAutoRenderNow();
-  setStatusMessage("Applied latest updates and discarded unsaved edits.");
-};
-
-const recomputeDirtyPrSectionsFields = () => {
-  const blockingState = getAutoRenderBlockingState();
-  hasDirtyPrSectionsFields = computeHasDirtyPrSectionsFields(blockingState);
-  renderAutoRenderBlockedIndicator();
-
-  if (!hasDirtyPrSectionsFields && pendingAutoRenderPayload) {
-    flushPendingAutoRender();
   }
 
   return hasDirtyPrSectionsFields;
 };
 
-const setButtonDisabled = (id, disabled) => {
-  const element = getOptionalElementById(id);
-  if (element) {
-    element.disabled = Boolean(disabled);
-  }
-};
+// buildPrLastCheckedIndicator (and its formatRelativeLastCheckedLabel/
+// parseIsoTimestampMs/OPEN_PR_LAST_CHECK_STALE_MS internals) now imported
+// from helpers/pr-last-checked-indicator.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - PrStatusCell.jsx imports it directly instead
+// of reading it off window.buildPrLastCheckedIndicator.
 
-const OPEN_PR_LAST_CHECK_STALE_MS = 15 * 60 * 1000;
+// Phase 7 (see REACT_MIGRATION_PLAN.md): this file's former
+// renderMarkdownAsHtml/replaceExpiredGithubImages bodies moved to
+// helpers/pr-markdown-render.helpers.js - ReviewThreadsSection.jsx now
+// gets renderMarkdownAsHtml from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead of the window.* bridge this used to
+// populate, and nothing else in this file calls it, so it's not
+// re-instantiated here at all.
 
-const parseIsoTimestampMs = (isoValue) => {
-  const raw = String(isoValue ?? "").trim();
-  if (!raw || raw === "-") {
-    return Number.NaN;
-  }
-
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
-};
-
-const formatRelativeLastCheckedLabel = (updatedAt, nowMs = Date.now()) => {
-  const updatedAtMs = parseIsoTimestampMs(updatedAt);
-  if (!Number.isFinite(updatedAtMs)) {
-    return {
-      label: "↻ unknown",
-      elapsedMs: Number.NaN,
-      title: "Last checked for updates timestamp is unavailable.",
-    };
-  }
-
-  const elapsedMs = Math.max(0, Number(nowMs) - updatedAtMs);
-  const elapsedSeconds = Math.floor(elapsedMs / 1000);
-  if (elapsedSeconds < 60) {
-    return {
-      label: "↻ just now",
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) {
-    return {
-      label: `↻ ${elapsedMinutes}m ago`,
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) {
-    return {
-      label: `↻ ${elapsedHours}h ago`,
-      elapsedMs,
-      title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-    };
-  }
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return {
-    label: `↻ ${elapsedDays}d ago`,
-    elapsedMs,
-    title: `Last checked for updates at ${formatIsoDatetime(updatedAt)}.`,
-  };
-};
-
-const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
-  const relative = formatRelativeLastCheckedLabel(updatedAt);
-  const isOpenSection = sectionKey === "open";
-  const isStale =
-    isOpenSection &&
-    Number.isFinite(relative.elapsedMs) &&
-    relative.elapsedMs > OPEN_PR_LAST_CHECK_STALE_MS;
-
-  return {
-    ...relative,
-    isStale,
-  };
-};
-
-const EXPIRED_GITHUB_IMAGE_PLACEHOLDER = `<span class="md-image-expired" title="Image unavailable (expired GitHub URL)">[image unavailable]</span>`;
-
-// Replaces <img> tags whose src points to GitHub-hosted attachment URLs
-// that are commonly inaccessible/expired in local environments.
-const replaceExpiredGithubImages = (html) => {
-  // Replace entire <img ...> tags where src is from known expiring/private GitHub attachment hosts.
-  return html.replace(
-    /<img\b[^>]*\bsrc=["']https:\/\/(?:private-user-images\.githubusercontent\.com|github\.com\/user-attachments)\/[^"']*["'][^>]*>/gi,
-    EXPIRED_GITHUB_IMAGE_PLACEHOLDER,
-  );
-};
-
-const renderMarkdownAsHtml = (markdownText) => {
-  if (!markdownText || !window.marked) return String(markdownText || "").trim();
-  try {
-    const html = window.marked.parse(String(markdownText).trim());
-    return replaceExpiredGithubImages(html);
-  } catch (error) {
-    console.warn("Failed to render markdown", error);
-    return String(markdownText).trim();
-  }
-};
-
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): #scheduler-badges/
+// #scheduler-details (the Status tab's old "Auto Refresh Scheduler" display)
+// were removed as redundant once the drawer's own live "Scheduled background
+// jobs" section covered the same ground - this function's only remaining
+// jobs are driving the per-row progress indicator and keeping
+// latestSchedulerState current (Phase F.2: now PrDataProvider.jsx's own
+// activityRef, pushed via window.setLatestSchedulerStateAndRender, which
+// also triggers the request-activity re-render that used to happen here
+// directly).
 const renderSchedulerStatus = (schedulerRaw = {}) => {
   const scheduler = schedulerRaw || {};
-  latestSchedulerState = scheduler;
-
-  // Renders the badge list into #scheduler-badges via React (see
-  // mountSchedulerBadges in react-app.jsx) - same shape renderBackfillStatus
-  // already uses for #backfill-badges.
-  window.updateReactSchedulerBadges?.(getSchedulerBadges(scheduler));
-
-  const lines = [
-    `Last manual run: ${formatIsoDatetime(scheduler.lastManualRunAt || "-")}`,
-    `Last auto attempt: ${formatIsoDatetime(scheduler.lastAutoAttemptAt || "-")}`,
-    `Last auto success: ${formatIsoDatetime(scheduler.lastAutoRunAt || "-")}`,
-    `Last auto skip: ${scheduler.lastAutoSkipReason || "-"}`,
-    `Last auto error: ${scheduler.lastAutoError || "-"}`,
-    `Last quick check: ${formatIsoDatetime(scheduler.lastQuickCheckAt || "-")}`,
-    `Last quick check attempt: ${formatIsoDatetime(scheduler.lastQuickCheckAttemptAt || "-")}`,
-    `Last quick check skip: ${scheduler.lastQuickCheckSkipReason || "-"}`,
-    `Last quick check error: ${scheduler.lastQuickCheckError || "-"}`,
-    `Last merged/closed drain: ${formatIsoDatetime(scheduler.lastMergedDrainAt || "-")}`,
-  ];
-
-  window.updateReactSchedulerDetailsText?.(lines.join("\n"));
   applyActivePrProgressIndicators(scheduler.activePrNumbers || []);
-  renderRequestActivity();
+  window.setLatestSchedulerStateAndRender?.(scheduler);
 };
 
 // The server (app.js's buildActivePrKey) sends activePrNumbers as
@@ -2098,7 +1118,7 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
   // cells. This is also called from its own scheduler-status poll loop
   // (see renderSchedulerStatus), independent of the main data render, so it
   // needs its own live-update channel rather than piggybacking on
-  // updateReactTable()'s payload/visiblePrNumbers plumbing.
+  // updateReactTable()'s payload/selectedRepo plumbing.
   window.dispatchEvent(
     new CustomEvent("pr-active-progress-update", {
       detail: {
@@ -2128,35 +1148,14 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned
 // (components/TriggerAutoRunButton.jsx), which manages disabled/label
-// state around this call as its injected onTrigger callback - this
-// function no longer touches the DOM at all, only the fetch/branching
-// business logic remains here.
-const handleTriggerAutoRun = async () => {
-  try {
-    const { response, result } = await postJson("/view-prs/run-auto", {});
-    if (response.status === 409) {
-      showErrorNotification(
-        "Auto run already in progress",
-        "An auto run is already running. It will complete shortly.",
-        6000,
-      );
-    } else if (!response.ok || result.ok === false) {
-      notifyFailureSnackbar(
-        "Failed to trigger auto run",
-        result,
-        result?.error || "Unexpected error triggering auto run",
-      );
-    }
-  } catch (error) {
-    notifyFailureSnackbar(
-      "Failed to trigger auto run",
-      error,
-      "Unable to reach the server",
-    );
-  }
-};
+// state around this call as its injected onTrigger callback. Phase 7,
+// sub-phase 7.6: the fetch/branching logic itself now lives in
+// pr-trigger-auto-run-action.helpers.js's runTriggerAutoRunWorkflow (pure
+// extraction, zero behavior change) - this is a thin wrapper so the
+// window.handleTriggerAutoRun bridge below stays unchanged.
+const handleTriggerAutoRun = () => runTriggerAutoRunWorkflow();
 
 const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 
@@ -2167,91 +1166,89 @@ const QUICK_CHECK_BUTTON_LABEL = "Quick check";
 // firing-and-forgetting like "Trigger auto run" does for the full refresh.
 //
 // Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned now
+// REACT_MIGRATION_PLAN.md): the button itself is React-owned
 // (components/QuickCheckButton.jsx). Unlike handleTriggerAutoRun above,
 // this one's final label depends on the outcome, so rather than touching
 // the DOM directly, this returns a `{ label, resetAfterMs? }` descriptor
-// for that component's own onCheck callback to apply.
+// for that component's own onCheck callback to apply. Phase 7, sub-phase
+// 7.6: the fetch/branching logic itself now lives in
+// pr-quick-check-actions.helpers.js's runQuickCheckWorkflow.
 const buildQuickCheckCountLabel = (pendingTotal) =>
   pendingTotal > 0
     ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
     : "No changes found";
 
-const handleQuickCheck = async () => {
-  try {
-    // Scope to the Run & Filter tab's entered PR numbers when present, so an
-    // older merged PR typed in there is still checked (bypassing the day-
-    // window server-side) - an empty field sends {}, identical to before.
-    const { repo, prNumbers } = getFormBody();
-    const payload = prNumbers ? { repo, prNumbers } : {};
-    const { response, result } = await postJson("/view-prs/quick-check", payload);
-    return buildQuickCheckOutcome({
-      response,
-      result,
-      fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
-      buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
-    });
-  } catch (error) {
-    notifyFailureSnackbar(
-      "Quick check failed",
-      error,
-      "Unable to reach the server",
-    );
-    return { label: QUICK_CHECK_BUTTON_LABEL };
-  }
-};
+const handleQuickCheck = () =>
+  runQuickCheckWorkflow({
+    fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
+    buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
+  });
 
 const QUICK_CHECK_ALL_BUTTON_LABEL = "Quick check all";
 
 // "Quick check all existing PRs" - checks every PR number already loaded in
 // the app (across every repo represented in the loaded rows, not just the
-// selected one - see collectAllLoadedPrsByRepo's own comment), instead of
-// requiring the user to type numbers into the Run & Filter tab's field.
-const handleQuickCheckAll = async () => {
-  const repoRequests = toRepoRequests(
-    collectAllLoadedPrsByRepo(latestStoredPayload?.byPrNumber),
-  );
+// selected one), instead of requiring the user to type numbers into the Run
+// & Filter tab's field. Phase 7, sub-phase 7.6: the fetch/branching logic
+// itself now lives in pr-quick-check-actions.helpers.js's
+// runQuickCheckAllWorkflow (which also owns collectAllLoadedPrsByRepo).
+const handleQuickCheckAll = () =>
+  runQuickCheckAllWorkflow({
+    fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
+    buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
+      pendingTotal > 0
+        ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
+            reposChecked.length === 1 ? "" : "s"
+          }`
+        : "No changes found",
+  });
 
-  if (repoRequests.length === 0) {
-    // Unlike the 409/503/failure branches below (which return the button's
-    // own default label, so no revert timer is needed), this label differs
-    // from the default - without resetAfterMs the button would get stuck
-    // showing "Nothing to check" forever instead of settling back.
-    return { label: "Nothing to check", resetAfterMs: 2500 };
-  }
-
-  // markPrsBusy/clearPrsBusy take one repo per call (busy state is keyed by
-  // repo+number, see PrTableApp.jsx's buildActivePrKey), so each repo in the
-  // sweep needs its own call rather than one call spanning every repo.
+// Manual "run sooner" reprioritization from the Activity drawer's
+// dispatcher queue (see REACT_MIGRATION_PLAN.md's dispatcher plan) - POSTs
+// to /view-prs/dispatcher/bump, which makes that one (repo, taskType)
+// dispatcher entry immediately due and kicks an immediate tick server-side.
+// The drawer's own queue re-renders from the next SSE frame (JobEventsContext),
+// so this doesn't need to apply any result to the UI itself - just report
+// failure if the request didn't succeed. ActivityDrawerDispatcherSection.jsx
+// calls this as its onBump prop.
+const handleDispatcherBump = async (repo, taskType) => {
   try {
-    repoRequests.forEach(({ repo, prNumbers }) => {
-      window.markPrsBusy?.(prNumbers.split(","), repo);
+    const { response, result } = await postJson("/view-prs/dispatcher/bump", {
+      repo,
+      taskType,
     });
-    const { response, result } = await postJson("/view-prs/quick-check-all", {
-      repos: repoRequests,
-    });
-    return buildQuickCheckOutcome({
-      response,
-      result,
-      fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
-      buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
-        pendingTotal > 0
-          ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
-              reposChecked.length === 1 ? "" : "s"
-            }`
-          : "No changes found",
-    });
+    if (!response.ok || result.ok === false) {
+      notifyFailureSnackbar("Reprioritize failed", result, "Unable to reprioritize this task");
+      return false;
+    }
+    return true;
   } catch (error) {
-    notifyFailureSnackbar(
-      "Quick check failed",
-      error,
-      "Unable to reach the server",
-    );
-    return { label: QUICK_CHECK_ALL_BUTTON_LABEL };
-  } finally {
-    repoRequests.forEach(({ repo, prNumbers }) => {
-      window.clearPrsBusy?.(prNumbers.split(","), repo);
-    });
+    notifyFailureSnackbar("Reprioritize failed", error, "Unable to reach the server");
+    return false;
+  }
+};
+
+// Manual "Reset circuit breaker" action from the Activity drawer's
+// circuit-breaker section - POSTs to /view-prs/circuit-breaker/reset with
+// no body, resetting every repo's breaker at once (the section only shows
+// up when at least one is open, and resetting "everything" matches the
+// person's actual intent in the motivating case - coming back after the
+// computer was asleep/locked, where the fix is "let auto refresh try
+// again", not "pick which repo"). The section's own queue/state re-renders
+// from the next SSE frame, so this doesn't need to apply any result to the
+// UI itself - just report failure if the request didn't succeed.
+// ActivityDrawerCircuitBreakerSection.jsx calls this as its onReset prop.
+const handleResetCircuitBreaker = async () => {
+  try {
+    const { response, result } = await postJson("/view-prs/circuit-breaker/reset", {});
+    if (!response.ok || result.ok === false) {
+      notifyFailureSnackbar("Reset failed", result, "Unable to reset the circuit breaker");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    notifyFailureSnackbar("Reset failed", error, "Unable to reach the server");
+    return false;
   }
 };
 
@@ -2262,8 +1259,17 @@ if (typeof window !== "undefined") {
   window.handleTriggerAutoRun = (...args) => handleTriggerAutoRun(...args);
   window.handleQuickCheck = (...args) => handleQuickCheck(...args);
   window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
+  window.handleDispatcherBump = (...args) => handleDispatcherBump(...args);
+  window.handleResetCircuitBreaker = (...args) => handleResetCircuitBreaker(...args);
 }
 
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5
+// populateXOptions functions this factory used to also provide have moved
+// to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals,
+// which derive the same option lists reactively from PrDataContext instead
+// of being pushed imperatively through here - trimmed DI surface down to
+// just what's still used (selection readers, the 6 "Any" filter getters,
+// the applied-filter summary, and the dropdown-closing listener).
 const {
   getSelectedAuthorLogins,
   getSelectedAssignedLogins,
@@ -2276,68 +1282,12 @@ const {
   getRallyStoriesFilter,
   getRallyLinksFilter,
   getAnalysisOfPrFilter,
-  populateIncludeLabelOptions,
-  populateExcludeLabelOptions,
-  populateAuthorOptions,
-  populateAssignedOptions,
-  populateApproverOptions,
   renderManagementFilterSummary,
   setupMultiSelectDropdownClosing,
 } = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
-  getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-  resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  collectAssignedUsers: (...args) => collectAssignedUsers(...args),
-  collectApproversFromRow: (...args) => collectApproversFromRow(...args),
-  extractRowLabelNames: (...args) => extractRowLabelNames(...args),
-  normalizeFilterToken: (...args) => normalizeFilterToken(...args),
-  getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
-  // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): these 5 getter/setter
-  // pairs now prefer FilterStateProvider's Context (via
-  // getPendingSelectionsValue/setPendingSelectionsValue) over the plain
-  // module variable, falling back to it when Context hasn't mounted -
-  // pr-filter-panel.helpers.js itself is unchanged, since it only ever
-  // calls these as opaque functions.
-  getPendingAuthorFilterSelections: () =>
-    getPendingSelectionsValue("pendingAuthorSelections", pendingAuthorFilterSelections),
-  setPendingAuthorFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingAuthorSelections", value, (v) => {
-      pendingAuthorFilterSelections = v;
-    }),
-  getPendingAssignedFilterSelections: () =>
-    getPendingSelectionsValue("pendingAssignedSelections", pendingAssignedFilterSelections),
-  setPendingAssignedFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingAssignedSelections", value, (v) => {
-      pendingAssignedFilterSelections = v;
-    }),
-  getPendingApproverFilterSelections: () =>
-    getPendingSelectionsValue("pendingApproverSelections", pendingApproverFilterSelections),
-  setPendingApproverFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingApproverSelections", value, (v) => {
-      pendingApproverFilterSelections = v;
-    }),
-  getPendingLabelFilterSelections: () =>
-    getPendingSelectionsValue("pendingLabelSelections", pendingLabelFilterSelections),
-  setPendingLabelFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingLabelSelections", value, (v) => {
-      pendingLabelFilterSelections = v;
-    }),
-  getPendingExcludeLabelFilterSelections: () =>
-    getPendingSelectionsValue("pendingExcludeLabelSelections", pendingExcludeLabelFilterSelections),
-  setPendingExcludeLabelFilterSelections: (value) =>
-    setPendingSelectionsValue("pendingExcludeLabelSelections", value, (v) => {
-      pendingExcludeLabelFilterSelections = v;
-    }),
-  // Phase 2 React migration hook (see REACT_MIGRATION_PLAN.md): delegates
-  // to react-app.jsx's bridge when it has mounted a given list id; a no-op
-  // (React hasn't finished loading/mounting yet) when this returns false -
-  // pr-filter-panel.helpers.js no longer has any DOM-building of its own to
-  // fall back to. Phase 5 residual: routed through
-  // renderMultiSelectListSkipUnchanged so an unchanged list doesn't force a
-  // remount.
-  renderMultiSelectList: (listId, items) => renderMultiSelectListSkipUnchanged(listId, items),
   // Delegates the "Applied filters: ..." summary/chips to react-app.jsx's
   // bridge (AppliedFilterSummary.jsx) - same handled/fallback-to-no-op
-  // shape as renderMultiSelectList above.
+  // shape every Phase 2 bridge in this file uses.
   renderFilterSummary: (summaryText, filterChips) =>
     typeof window !== "undefined" && typeof window.renderReactFilterSummary === "function"
       ? window.renderReactFilterSummary(summaryText, filterChips)
@@ -2358,194 +1308,29 @@ const {
   },
 });
 
-const populateAuthorThreadResolutionActorOptions = (actorsMap = {}) => {
-  const actorEntries = Object.entries(
-    actorsMap && typeof actorsMap === "object" ? actorsMap : {},
-  )
-    .map(([login, displayName]) => {
-      const loginValue = String(login || "").trim();
-      if (!loginValue) {
-        return null;
-      }
-      return {
-        login: loginValue,
-        displayName: resolveActorDisplayName(loginValue, actorsMap, displayName),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = String(a.displayName || a.login).toLowerCase();
-      const right = String(b.displayName || b.login).toLowerCase();
-      return left.localeCompare(right);
-    });
-
-  const renderActorOptionsList = ({
-    listId,
-    pendingSelections,
-    setPendingSelections,
-  }) => {
-    const listNode = getOptionalElementById(listId);
-    if (!listNode) {
-      return;
-    }
-
-    const existingSelections = getSelectedMultiSelectValuesFromList(listId);
-    const seedSelections =
-      existingSelections.length > 0
-        ? existingSelections
-        : Array.isArray(pendingSelections)
-          ? pendingSelections
-          : [];
-    const selectedSet = new Set(seedSelections);
-
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
-    // fallback here any more - same always-available assumption (and same
-    // typeof guard, only for the brief pre-mount race, never a real
-    // fallback path) the pr-filter-panel/pr-json-modal cleanup slice
-    // already relied on to delete that file's 5 equivalent fallback
-    // blocks. This one (and renderChangeFilterActorList's identical twin
-    // below) were missed in that slice; removed here the same way. Phase 5
-    // residual: routed through renderMultiSelectListSkipUnchanged (see its
-    // own comment above) so an unchanged list doesn't force a remount.
-    // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): this used to also toggle
-    // listNode.classList "empty" and call updateMultiSelectSummary(listId)
-    // (both deleted) - MultiSelectCheckboxList.jsx now owns both directly
-    // from the `options` it's given below.
-    renderMultiSelectListSkipUnchanged(
-      listId,
-      actorEntries.map(({ login, displayName }) => ({
-        value: login,
-        label: displayName,
-        checked: selectedSet.has(login),
-      })),
-    );
-
-    if (Array.isArray(pendingSelections)) {
-      const appliedCount = actorEntries.filter(({ login }) =>
-        selectedSet.has(login),
-      ).length;
-      if (appliedCount > 0 || existingSelections.length > 0) {
-        setPendingSelections(null);
-      }
-    }
-  };
-
-  renderActorOptionsList({
-    listId: "attention-author-thread-resolution-allow-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingAuthorThreadResolutionAllowSelections",
-      pendingAuthorThreadResolutionAllowSelections,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingAuthorThreadResolutionAllowSelections", value, (v) => {
-        pendingAuthorThreadResolutionAllowSelections = v;
-      }),
-  });
-  renderActorOptionsList({
-    listId: "attention-author-thread-resolution-deny-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingAuthorThreadResolutionDenySelections",
-      pendingAuthorThreadResolutionDenySelections,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingAuthorThreadResolutionDenySelections", value, (v) => {
-        pendingAuthorThreadResolutionDenySelections = v;
-      }),
-  });
-};
-
-const populateChangeFilterActorOptions = (actorsMap = {}) => {
-  const actorEntries = Object.entries(
-    actorsMap && typeof actorsMap === "object" ? actorsMap : {},
-  )
-    .map(([login, displayName]) => {
-      const loginValue = String(login || "").trim();
-      if (!loginValue) {
-        return null;
-      }
-      return {
-        login: loginValue,
-        displayName: resolveActorDisplayName(loginValue, actorsMap, displayName),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const left = String(a.displayName || a.login).toLowerCase();
-      const right = String(b.displayName || b.login).toLowerCase();
-      return left.localeCompare(right);
-    });
-
-  const renderChangeFilterActorList = ({
-    listId,
-    pendingSelections,
-    setPendingSelections,
-  }) => {
-    const listNode = getOptionalElementById(listId);
-    if (!listNode) {
-      return;
-    }
-
-    const existingSelections = getSelectedMultiSelectValuesFromList(listId);
-    const seedSelections =
-      existingSelections.length > 0
-        ? existingSelections
-        : Array.isArray(pendingSelections)
-          ? pendingSelections
-          : [];
-    const selectedSet = new Set(seedSelections);
-
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): no vanilla DOM-building
-    // fallback here any more - see renderActorOptionsList's identical twin
-    // above for why (this one was missed in the pr-filter-panel/
-    // pr-json-modal cleanup slice; removed here the same way). Phase 5
-    // residual: routed through renderMultiSelectListSkipUnchanged too.
-    // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): this used to also toggle listNode.classList
-    // "empty" and call updateMultiSelectSummary(listId) (both deleted) -
-    // MultiSelectCheckboxList.jsx now owns both directly.
-    renderMultiSelectListSkipUnchanged(
-      listId,
-      actorEntries.map(({ login, displayName }) => ({
-        value: login,
-        label: displayName,
-        checked: selectedSet.has(login),
-      })),
-    );
-
-    if (Array.isArray(pendingSelections)) {
-      const appliedCount = actorEntries.filter(({ login }) =>
-        selectedSet.has(login),
-      ).length;
-      if (appliedCount > 0 || existingSelections.length > 0) {
-        setPendingSelections(null);
-      }
-    }
-  };
-
-  renderChangeFilterActorList({
-    listId: "change-filter-ignore-comment-authors-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingChangeFilterIgnoreCommentAuthors",
-      _pendingChangeFilterIgnoreCommentAuthors,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingChangeFilterIgnoreCommentAuthors", value, (v) => {
-        _pendingChangeFilterIgnoreCommentAuthors = v;
-      }),
-  });
-  renderChangeFilterActorList({
-    listId: "change-filter-ignore-review-authors-list",
-    pendingSelections: getPendingSelectionsValue(
-      "pendingChangeFilterIgnoreReviewAuthors",
-      _pendingChangeFilterIgnoreReviewAuthors,
-    ),
-    setPendingSelections: (value) =>
-      setPendingSelectionsValue("pendingChangeFilterIgnoreReviewAuthors", value, (v) => {
-        _pendingChangeFilterIgnoreReviewAuthors = v;
-      }),
-  });
-};
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider.jsx's persistRunScriptOptions/persistViewFilterOptions
+// call these directly - the 9 multi-select lists' current checked state
+// (DOM-truth by design, see that Provider's own header comment for why)
+// plus the thread-resolution visibility toggle, same exposure shape as
+// window.handleTriggerAutoRun above.
+if (typeof window !== "undefined") {
+  window.getSelectedAuthorLogins = (...args) => getSelectedAuthorLogins(...args);
+  window.getSelectedAssignedLogins = (...args) => getSelectedAssignedLogins(...args);
+  window.getSelectedApproverLogins = (...args) => getSelectedApproverLogins(...args);
+  window.getSelectedIncludeLabelNames = (...args) => getSelectedIncludeLabelNames(...args);
+  window.getSelectedExcludeLabelNames = (...args) => getSelectedExcludeLabelNames(...args);
+  window.getSelectedAuthorThreadResolutionAllowLogins = (...args) =>
+    getSelectedAuthorThreadResolutionAllowLogins(...args);
+  window.getSelectedAuthorThreadResolutionDenyLogins = (...args) =>
+    getSelectedAuthorThreadResolutionDenyLogins(...args);
+  window.getSelectedChangeFilterIgnoreCommentAuthors = (...args) =>
+    getSelectedChangeFilterIgnoreCommentAuthors(...args);
+  window.getSelectedChangeFilterIgnoreReviewAuthors = (...args) =>
+    getSelectedChangeFilterIgnoreReviewAuthors(...args);
+  window.updateAuthorThreadResolutionRuleVisibility = (...args) =>
+    updateAuthorThreadResolutionRuleVisibility(...args);
+}
 
 // Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
 // window.updateReactBackfillBadges actually exists - see that listener's
@@ -2558,10 +1343,6 @@ const renderBackfillStatus = (backfillRaw = {}) => {
   latestBackfillStatus = backfill;
   const badgeHost = getOptionalElementById("backfill-badges");
   const details = getOptionalElementById("backfill-details");
-  const startButton = getOptionalElementById("backfill-start-btn");
-  const stopButton = getOptionalElementById("backfill-stop-btn");
-  const refreshButton = getOptionalElementById("backfill-refresh-btn");
-  const refreshLogButton = getOptionalElementById("backfill-log-refresh-btn");
 
   if (!badgeHost || !details) {
     return;
@@ -2579,18 +1360,12 @@ const renderBackfillStatus = (backfillRaw = {}) => {
   window.updateReactBackfillDetailsText?.(viewModel.detailsText);
   isBackfillRunning = viewModel.isBackfillRunning;
 
-  if (startButton) {
-    startButton.disabled = viewModel.buttonState.startDisabled;
-  }
-  if (stopButton) {
-    stopButton.disabled = viewModel.buttonState.stopDisabled;
-  }
-  if (refreshButton) {
-    refreshButton.disabled = viewModel.buttonState.refreshDisabled;
-  }
-  if (refreshLogButton) {
-    refreshLogButton.disabled = viewModel.buttonState.refreshLogDisabled;
-  }
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
+  // buttons - this replaces the old direct startButton.disabled/etc.
+  // DOM writes with the same push-to-React-state bridge pattern the 2
+  // calls just above already use for badges/details text.
+  window.updateReactBackfillButtonState?.(viewModel.buttonState);
 
   lastBackfillStateKey = viewModel.stateKey;
 };
@@ -2610,6 +1385,30 @@ const updateBackfillStatusFromPayload = (
   }
 };
 
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// state/useBackfillActions.jsx builds its own createPrBackfillActionHelpers
+// instance - these reverse bridges let that instance read/write the exact
+// same module-level state this file's own instance uses (for the backfill
+// tab orchestrator / initial auto-load), instead of forking a second,
+// independently-drifting copy.
+if (typeof window !== "undefined") {
+  window.getBackfillTrackingState = () => ({
+    supportsBackfillLogPolling,
+    isBackfillRunning,
+    isBackfillActionPending,
+  });
+  window.setSupportsBackfillLogPolling = (value) => {
+    supportsBackfillLogPolling = Boolean(value);
+  };
+  window.setIsBackfillActionPending = (value) => {
+    isBackfillActionPending = Boolean(value);
+  };
+  window.updateBackfillStatusFromPayload = (...args) =>
+    updateBackfillStatusFromPayload(...args);
+  window.setBackfillLogMessage = (...args) => setBackfillLogMessage(...args);
+  window.renderBackfillStatus = (...args) => renderBackfillStatus(...args);
+}
+
 const loadSchedulerStatus = async () => {
   const response = await fetch("/view-prs/scheduler");
   if (response.status === 404) {
@@ -2626,220 +1425,81 @@ const loadSchedulerStatus = async () => {
   return result;
 };
 
-const getViewedFilesSummary = (row) =>
-  String(
-    row?.viewedFilesSummary ||
-      `${toCount(row?.viewedFilesCount)}/${toCount(row?.changedFilesCount)} viewed`,
-  );
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// these 2 reverse bridges used to also serve PrDataProvider.jsx's own
+// pollSchedulerStatus - deleted outright in Phase H.2 (see
+// REACT_MIGRATION_PLAN.md), once its automatic interval had already been
+// retired in favor of SSE and it had no caller left besides a test.
+// loadSchedulerStatus stays vanilla regardless (the quick-check workflow's
+// forced scheduler refresh is a real caller beyond that), and
+// supportsSchedulerPolling stays a vanilla-owned flag (loadSchedulerStatus
+// itself is the only writer, on a 404) rather than forking a second copy.
+if (typeof window !== "undefined") {
+  window.loadSchedulerStatus = (...args) => loadSchedulerStatus(...args);
+  window.getSupportsSchedulerPolling = () => supportsSchedulerPolling;
+}
 
-const getViewedFilesState = (row) => {
-  const viewedFilesCount = toCount(row?.viewedFilesCount);
-  const changedFilesCount = toCount(row?.changedFilesCount);
+// getViewedFilesSummary (helpers/pr-viewed-files-summary.helpers.js) no
+// longer built here at all (Phase 7, see REACT_MIGRATION_PLAN.md) -
+// AuthorInsightsPrDataMeta.jsx builds its own copy directly now (the same
+// zero-dependency composition PrInsightsDisplayProvider.jsx already uses),
+// instead of reading window.getViewedFilesSummary.
 
-  return {
-    viewedFilesCount,
-    changedFilesCount,
-    isComplete: viewedFilesCount === changedFilesCount,
-    hasUnviewedFiles: viewedFilesCount < changedFilesCount,
-  };
-};
+// getViewedFilesState now imported from helpers/pr-viewed-files-state.helpers.js
+// (Phase 7, see REACT_MIGRATION_PLAN.md) - PrStatusCell.jsx imports it
+// directly instead of reading it off window.getViewedFilesState.
 
-const getOpenConversationCount = (row) => {
-  const openConversationCountRaw = row?.openConversationCount;
-  const metrics = normalizeRowMetrics(row);
-  const fallbackOpenConversations =
-    metrics.conversationSummary.estimatedOpenConversations ||
-    metrics.counts.openConversations ||
-    metrics.conversationSummary.openThreads;
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getOpenConversationCountWithMe
+// used to be wired here for the window.* bridge below - PrApprovedCell.jsx
+// (like PrInsightsRow.jsx before it) now gets it from
+// PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and nothing
+// else in this file calls it or getOpenConversationCount.
 
-  return Number.isFinite(Number(openConversationCountRaw))
-    ? Number(openConversationCountRaw)
-    : toCount(fallbackOpenConversations);
-};
+// getManualNotesSummary/getManualNotesFieldSummary (and their shared
+// getNotesDifficultyLevelText internal) now imported from
+// helpers/pr-manual-notes-summary.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - PrAuthorCell.jsx/PrDateCell.jsx import them
+// directly instead of reading them off window.*.
 
-const getOpenConversationCountWithMe = (row) => {
-  const viewerLogin = String(
-    currentViewerLogin || row?.viewerLogin || inferViewerLoginFromPage() || "",
-  )
-    .trim()
-    .toLowerCase();
-
-  if (!viewerLogin) {
-    return {
-      count: getOpenConversationCount(row),
-      isViewerSpecific: false,
-    };
-  }
-
-  const openThreads = asArray(row?.reviewThreads).filter(
-    (thread) => thread && thread.isResolved !== true,
-  );
-
-  return {
-    count: openThreads.filter((thread) => {
-      const participants = asArray(thread?.participants).map((p) =>
-        String(p || "")
-          .trim()
-          .toLowerCase(),
-      );
-      if (participants.includes(viewerLogin)) {
-        return true;
-      }
-
-      return asArray(thread?.comments).some(
-        (comment) =>
-          String(comment?.authorLogin || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-    }).length,
-    isViewerSpecific: true,
-  };
-};
-
-const getManualNotesSummary = (entry = {}, row = {}) => {
-  const notes = entry?.notes || row?.notes || {};
-  const comments = asArray(notes?.comments).filter((comment) => {
-    const noteText = String(comment?.note || "").trim();
-    const authorText = String(comment?.author || "").trim();
-    return Boolean(noteText || authorText);
-  });
-  const otherNotes = String(notes?.otherNotes || "").trim();
-
-  return {
-    hasNotes: comments.length > 0 || Boolean(otherNotes),
-    commentsCount: comments.length,
-    hasOtherNotes: Boolean(otherNotes),
-  };
-};
-
-const getNotesDifficultyLevelText = (difficultyValue) => {
-  const text = String(difficultyValue || "").trim();
-  if (!text) return "";
-
-  const matchedDigits = text.match(/\d+/);
-  return matchedDigits ? matchedDigits[0] : "";
-};
-
-const getManualNotesFieldSummary = (entry = {}, row = {}) => {
-  const notes = entry?.notes || row?.notes || {};
-  const comments = asArray(notes?.comments).filter((comment) => {
-    const noteText = String(comment?.note || "").trim();
-    const authorText = String(comment?.author || "").trim();
-    return Boolean(noteText || authorText);
-  });
-  const otherNotes = String(notes?.otherNotes || "").trim();
-  const difficultyRaw = String(notes?.prDifficulty || "").trim();
-  const rallyStories = asArray(notes?.rallyStories).filter((story) =>
-    Boolean(String(story || "").trim()),
-  );
-  const rallyLinks = asArray(notes?.rallyLinks).filter((link) =>
-    Boolean(String(link || "").trim()),
-  );
-  const analysisOfPr = String(notes?.analysisOfPr || "").trim();
-
-  return {
-    hasCustomComments: comments.length > 0,
-    hasOtherNotes: Boolean(otherNotes),
-    hasDifficulty: Boolean(difficultyRaw),
-    difficultyLevelText: getNotesDifficultyLevelText(difficultyRaw),
-    hasRallyStories: rallyStories.length > 0,
-    hasRallyLinks: rallyLinks.length > 0,
-    hasAnalysisOfPr: Boolean(analysisOfPr),
-  };
-};
-
-const normalizeNameForInitials = (value) => {
-  const raw = String(value || "")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!raw) return "";
-
-  if (raw.includes(",")) {
-    const [lastNameRaw, firstNameRaw] = raw.split(",", 2);
-    const firstName = String(firstNameRaw || "").trim();
-    const lastName = String(lastNameRaw || "").trim();
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`.trim();
-    }
-  }
-
-  return raw;
-};
-
-const getUserInitials = (displayName, fallbackLogin = "") => {
-  const cleanedName = normalizeNameForInitials(displayName);
-  const words = cleanedName.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
-  }
-  if (words.length === 1 && words[0].length >= 2) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-
-  const login = String(fallbackLogin || "")
-    .replace(/[_-]+/g, " ")
-    .trim();
-  const loginWords = login.split(/\s+/).filter(Boolean);
-  if (loginWords.length >= 2) {
-    return `${loginWords[0][0] || ""}${loginWords[1][0] || ""}`.toUpperCase();
-  }
-  return login.slice(0, 2).toUpperCase() || "--";
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getUserInitials/
+// normalizeNameForInitials moved to helpers/pr-user-initials.helpers.js -
+// PrApprovedCell.jsx now gets getUserInitials from PrInsightsDisplayProvider/
+// usePrInsightsDisplay() instead of the window.* bridge this used to
+// populate, and nothing else in this file calls it.
 
 const isInReviewEnabled = (row) => {
   const value = row?.inReview;
   return value === true || String(value || "").toLowerCase() === "true";
 };
 
-// Expose for the React hybrid table bridge (see components/PrTableApp.jsx),
-// same reasoning as window.entryNeedsAttention/window.getNeedsAttentionConfig
-// above - PrTableApp's needs-attention icon should show for the same two
-// reasons vanilla's attention-cell did (components/pr-section-table.component.js,
-// before it was deleted): shouldShowNeedsAttention() OR isInReviewEnabled().
-if (typeof window !== "undefined") {
-  window.isInReviewEnabled = isInReviewEnabled;
-}
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the window.isInReviewEnabled
+// bridge this used to also populate (for components/PrTableApp.jsx) was
+// confirmed dead - PrTableApp.jsx's own checkNeedsAttention delegates to
+// window.entryNeedsAttention only, never isInReviewEnabled (a past bug,
+// already fixed - PrTableApp.test.jsx/index.html.test.js's own regression
+// tests prove this value is never read). isInReviewEnabled's real,
+// legitimate consumer is this file's own "alwaysShowInReview" filter
+// below, which calls it directly, not through window.
 
-const isFlaggedEnabled = (entry, row) => {
-  const rowValue = row?.flagged;
-  if (rowValue === true || String(rowValue || "").toLowerCase() === "true") {
-    return true;
-  }
+// Phase 7 (see REACT_MIGRATION_PLAN.md): isFlaggedEnabled (the sibling of
+// isInReviewEnabled above) used to live here - deleted entirely, not just
+// its window.* bridge, since it had zero callers of any kind (confirmed
+// via grep) - unlike isInReviewEnabled, nothing internal ever called it
+// either (no "alwaysShowFlagged"-style filter exists).
 
-  const repo =
-    String(entry?.repo || "").trim() ||
-    String(latestSelectedRepo || "").trim() ||
-    DEFAULT_REPO;
-  const prNumber = String(row?.number || entry?.prNumber || "").trim();
-  if (!repo || !prNumber) {
-    return false;
-  }
+// Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// index.page.js's own createPrRowCheckboxActionsHelpers instance (which
+// used to feed toggleInReviewForRow/toggleFlaggedForRow into
+// createReactCallbacks() below) is deleted outright - confirmed its only
+// caller was createReactCallbacks(), and PrTableApp.jsx now builds its
+// own equivalent handler directly via useRowCheckboxActions() (a real
+// hook wrapping the same pr-row-checkbox-actions.helpers.js factory).
 
-  const flaggedByRepo = latestStoredPayload?.flaggedByRepo;
-  const value = flaggedByRepo?.[repo]?.[prNumber];
-  return value === true || String(value || "").toLowerCase() === "true";
-};
-
-// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
-// wire-ups around pr-row-checkbox-actions.helpers.js's extracted factory -
-// same names, same window.*/DI call sites elsewhere in this file (notably
-// react-callbacks.helpers.js's createReactCallbacks() wiring), unchanged.
-const { toggleInReviewForRow, toggleFlaggedForRow } =
-  prRowCheckboxActionsHelperFactory.createPrRowCheckboxActionsHelpers({
-    fetchFn: (...args) => fetch(...args),
-    setStatusTextOnly: (...args) => setStatusTextOnly(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-    getLatestStoredPayload: () => latestStoredPayload,
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    applyLatestPrData: (...args) => applyLatestPrData(...args),
-    loadStoredData: (...args) => loadStoredData(...args),
-  });
-
-const { normalizeNotesListForUi } = prNotesHelperFactory.createPrNotesHelpers();
+// Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeNotesListForUi used to
+// be destructured here for the window.* bridge below - NotesSection.jsx
+// now gets it from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead, and nothing else in this file calls this factory's output
+// directly.
 
 const {
   computePrDataFingerprint,
@@ -2847,7 +1507,6 @@ const {
   computePrDataManifest,
   getManifestDelta,
   mergeDataDeltaPayload,
-  getPendingAutoRenderAction,
   getDataPollRenderAction,
 } = prDataPollingHelperFactory.createPrDataPollingHelpers({
   getOrCompute: getOrComputeEntryDerivedValue,
@@ -2860,20 +1519,17 @@ const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
 const {
   isChangedStatus,
   statusIcon,
-  formatChkDisplay,
 } = prStatusDisplayHelperFactory.createPrStatusDisplayHelpers();
 
 void statusIcon;
 
 const {
   formatCommandOutput,
-  getGithubAuthFailureHint,
-  formatCommandOutputWithAuthHint,
 } = prCommandOutputHelperFactory.createPrCommandOutputHelpers({
   stripAnsi,
 });
 
-const { activateDataTab, initDataTabs } =
+const { activateDataTab } =
   prDataTabsHelperFactory.createPrDataTabsHelpers({
     getOptionalElementById,
     onTabActivated: () => {
@@ -2881,16 +1537,29 @@ const { activateDataTab, initDataTabs } =
     },
   });
 
+// Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for TabStateProvider.jsx (a React component) to
+// call - same category as applyFreshPrPayload/beginRequestActivity below,
+// not a new entanglement. activateDataTab itself is completely unchanged;
+// this just lets React become a second caller of it.
+if (typeof window !== "undefined") {
+  window.activateDataTab = (...args) => activateDataTab(...args);
+}
+
 // PR Data Tab Orchestrator
 const prDataTabOrchestrator =
   prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
     // Helper functions
     deriveRunPrDataContext,
     deriveRenderPipelineState,
-    applyFiltersFromCache,
-    loadStoredData,
-    activateDataTab,
-    initDataTabs,
+    // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+    // roadmap"): the 3 data-tab buttons are now React-owned
+    // (DataTabButton.jsx/TabStateProvider.jsx) - initDataTabs' own button
+    // click-wiring (`.onclick = ...`) would double-fire alongside React's
+    // own onClick if both ran, so this orchestrator's one-time
+    // initialize() call no longer wires them. initDataTabs itself (and its
+    // own tests) are untouched - only this one call site stops using it.
+    initDataTabs: () => {},
     getOptionalElementById,
     // State management via dependency injection
     stateGetters: {
@@ -2900,7 +1569,7 @@ const prDataTabOrchestrator =
       getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
       getLatestSelectedRepo: () => latestSelectedRepo,
       getLastSuccessfulRenderedCheckAt: () => lastSuccessfulRenderedCheckAt,
-      getLatestSchedulerState: () => latestSchedulerState,
+      getLatestSchedulerState: () => window.getLatestSchedulerState?.() || {},
     },
     stateSetters: {
       setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
@@ -2908,13 +1577,13 @@ const prDataTabOrchestrator =
         lastSuccessfulRenderedCheckAt = value;
       },
       setLastRenderedPrFingerprint: (value) => {
-        lastRenderedPrFingerprint = value;
+        window.pushPrDataPollingTrackingState?.({ lastRenderedPrFingerprint: value });
       },
       setLatestPrManifest: (value) => {
-        latestPrManifest = value;
+        window.pushPrDataPollingTrackingState?.({ latestPrManifest: value });
       },
       setPendingAutoRenderPayload: (value) => {
-        pendingAutoRenderPayload = value;
+        window.setPendingAutoRenderPayload?.(value);
       },
     },
     // Phase 6 (see REACT_MIGRATION_PLAN.md): lets renderPrData prefer
@@ -2928,12 +1597,12 @@ const prDataTabOrchestrator =
           : undefined;
       return values?.[key];
     },
-  });
-
-const { getRequestActivityBadges, getSchedulerBadges } =
-  prActivityBadgesHelperFactory.createPrActivityBadgesHelpers({
-    withElapsedSuffix,
-    getRequestActivitySeverityClass,
+    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): lets
+    // renderPrData prefer "repo"'s Context value over the DOM read. A
+    // separate bridge from getFilterStateValue above - "repo" isn't a
+    // FilterStateProvider-migrated field, it's real PrDataProvider
+    // Context state instead (state/PrDataProvider.jsx).
+    getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
   });
 
 const {
@@ -2944,17 +1613,28 @@ const {
   formatBackfillLogMessage,
 } = prBackfillHelperFactory.createPrBackfillHelpers();
 
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleBackfillAction itself is no longer destructured here -
+// state/useBackfillActions.jsx now owns the only real caller (the Start/
+// Stop buttons) via its own separate factory instance. loadBackfillStatus/
+// loadBackfillLogTail stay, since this file's own backfill tab orchestrator
+// and initial auto-load still call them directly.
 const {
   loadBackfillStatus,
   loadBackfillLogTail,
-  handleBackfillAction,
 } = prBackfillActionHelperFactory.createPrBackfillActionHelpers({
   fetch: (...args) => fetch(...args),
   postJson,
   beginRequestActivity,
   setStatusMessage,
   setOutputMessage,
-  setButtonDisabled,
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
+  // buttons, fed by window.updateReactBackfillButtonState (same bridge
+  // renderBackfillStatus's own normal reload path already uses) - this
+  // replaces the old direct-by-id setButtonDisabled DI.
+  setBackfillButtonState: (state) =>
+    window.updateReactBackfillButtonState?.(state),
   notifyFailureSnackbar,
   formatCommandOutput,
   stripAnsi,
@@ -2973,18 +1653,29 @@ const {
   backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
 });
 
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// BackfillControls.jsx/BackfillLogControls.jsx used to reach
+// handleBackfillAction/a refreshBackfillStatus/refreshBackfillLogTail
+// wrapper pair/autoScrollBackfillLogToBottom via window.* bridges - they
+// now call state/useBackfillActions.jsx's own hook directly instead, which
+// builds its own instance of this same factory. window.autoScrollBackfillLogToBottom
+// stays bridged (that hook's own DI param reads it) - it's a genuine
+// "vanilla primitive exposed for React" case (real DOM scroll/checkbox
+// state), not a trigger duplication.
+if (typeof window !== "undefined") {
+  window.autoScrollBackfillLogToBottom = (...args) =>
+    autoScrollBackfillLogToBottom(...args);
+}
+
 // Backfill Tab Orchestrator
 const backfillTabOrchestrator =
   backfillTabOrchestratorFactory.createBackfillTabOrchestrator({
     // Helper functions
     loadBackfillStatus,
     loadBackfillLogTail,
-    handleBackfillAction,
     renderBackfillStatus,
     setBackfillLogMessage,
-    activateDataTab,
     getOptionalElementById,
-    beginRequestActivity,
     notifyFailureSnackbar,
     // State management via dependency injection
     stateGetters: {
@@ -3010,56 +1701,54 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 // can keep calling `loadActorNameCache()` unchanged on tab activation.
 const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
 
-const { initManagementTabs } =
+const { activateTab } =
   prManagementTabsHelperFactory.createPrManagementTabsHelpers({
     getOptionalElementById,
     loadActionLog,
     loadActorNameCache,
+    // Bug fix (found during Phase 7 research, see REACT_MIGRATION_PLAN.md):
+    // backfillTabOrchestrator used to expose this as activateTab(), which
+    // called activateDataTab("backfill") itself - a no-op, since
+    // "backfill" isn't one of that function's 3 recognized keys
+    // (pr-data-tabs.helpers.js) - and was never actually called from
+    // anywhere besides that broken self-reference, so the Backfill tab
+    // never got its own refresh-on-activate the way Action Log/Actor
+    // Names already do. Real tab-switching chrome stays owned here
+    // (above); renamed to onTabActivated to reflect that this only
+    // refreshes status/log now, not tab-switching chrome.
+    onBackfillTabActivated: () => backfillTabOrchestrator.onTabActivated(),
   });
 
-const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => {
-  const byPrNumber = payload?.byPrNumber || {};
-  const payloadEntry = byPrNumber?.[prNumber];
-  const notes =
-    payloadEntry?.notes ||
-    entry?.notes ||
-    null;
+// Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// vanilla primitive exposed for TabStateProvider.jsx to call - same
+// category as window.activateDataTab above. activateTab itself is
+// completely unchanged (restructured to a top-level function, same
+// shape as activateDataTab, but behavior-preserving - see that file's
+// own comment).
+if (typeof window !== "undefined") {
+  window.activateManagementTab = (...args) => activateTab(...args);
+}
 
-  const readRepoPrValue = (repoMap) => {
-    if (!repo || !repoMap || typeof repoMap !== "object") return null;
-    const perRepo = repoMap[repo];
-    if (!perRepo || typeof perRepo !== "object") return null;
-    const value = perRepo[prNumber];
-    return value === undefined ? null : value;
-  };
+// getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,
+// genuinely zero-dependency) used to be imported here too, to build this
+// file's own createPrExportHelpers({ getPerPrUserStateFromPayload }) call
+// for the window.getExportFieldCatalog/window.getVisiblePrNumbersFromSectionsHost/
+// window.buildExportPayload bridge below (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - re-investigated (all 3 pr-export.helpers.js
+// exports confirmed genuinely zero-dependency given a direct
+// getPerPrUserStateFromPayload import) and moved entirely to ExportTab.jsx
+// itself, its one real consumer, which now builds that same call directly.
+// PrJsonModal.jsx (the other consumer of getPerPrUserStateFromPayload
+// alone) already imported it directly rather than through this file.
 
-  return {
-    notesByPrNumber: notes,
-    ackByRepo: readRepoPrValue(payload?.ackByRepo),
-    reverifyByRepo: readRepoPrValue(payload?.reverifyByRepo),
-    inReviewByRepo: readRepoPrValue(payload?.inReviewByRepo),
-  };
-};
+// asArray now imported from helpers/pr-as-array.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - every component below imports it directly
+// instead of reading it off window.asArray.
 
-const {
-  getFieldCatalog: getExportFieldCatalog,
-  getVisiblePrNumbersFromSectionsHost,
-  buildExportPayload,
-} = prExportHelperFactory.createPrExportHelpers({
-  getPerPrUserStateFromPayload,
-});
-
-const asArray = (value) => (Array.isArray(value) ? value : []);
-
-const formatDurationMinutes = (value) => {
-  const totalMinutes = toCount(value);
-  if (totalMinutes <= 0) return "0m";
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): formatDurationMinutes used to be
+// defined here for the window.* bridge below - ApprovalRiskSection.jsx
+// now gets it from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead, and nothing else in this file calls it.
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
 // tab's whole aggregation cluster (statsViewState, getNormalizedStatsDateRange,
@@ -3069,16 +1758,11 @@ const formatDurationMinutes = (value) => {
 // state/ReviewStatsContext.jsx and components/ReviewStatsProvider.jsx,
 // which derive all of it fresh from PrDataContext's statsViewState (now
 // real state, owned by ReviewStatsControls) instead of a vanilla-closure
-// snapshot. normalizeRowMetrics is the one export from this factory still
-// needed here - getOpenConversationCount (below) uses it for the "More
-// insights" panel, unrelated to review stats - so the factory call stays,
-// just without any of the review-stats-specific DI params (none of which
-// normalizeRowMetrics itself reads).
-const { normalizeRowMetrics } =
-  prReviewStatsAggregationHelperFactory.createPrReviewStatsAggregationHelpers({
-    toCount,
-    asArray,
-  });
+// snapshot. normalizeRowMetrics used to also be destructured here for
+// getOpenConversationCount's sake (the "More insights" panel) - that's
+// now PrInsightsDisplayProvider's own separate instance of this same
+// factory (helpers/pr-open-conversation-count.helpers.js), so nothing in
+// this file needs it any more.
 
 if (typeof window !== "undefined") {
   // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
@@ -3097,7 +1781,10 @@ if (typeof window !== "undefined") {
   // too.
   window.navigateToPrInTableFromStats = (prNumber, repo) =>
     prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      activateDataTab,
+      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): routed through TabStateProvider's write bridge - see
+      // the comment at this same swap above (createPrAutoRenderNavigationHelpers).
+      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
       collectNodesByTag,
     });
 }
@@ -3183,7 +1870,9 @@ if (typeof window !== "undefined") {
   // Stats (Track A).
   window.navigateToPrInTableFromAuthorInsights = (prNumber, repo) =>
     prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      activateDataTab,
+      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): same swap as navigateToPrInTableFromStats above.
+      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
       collectNodesByTag,
     });
   // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
@@ -3191,44 +1880,42 @@ if (typeof window !== "undefined") {
   // instead of wrapping buildManualCommentsSection via a ref - that builder
   // (and its renderComposerForm/renderManualCommentList/
   // renderManualCommentItem/renderEditForm helpers) has been deleted.
-  // These bridges expose the draft-state/data helpers that section needs.
-  // Important: draft mutations still write through
-  // getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/etc
-  // into authorInsightsState - NOT local-only React state - because
-  // pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
-  // reads authorInsightsState.manualCommentDraftByAuthorLogin/
-  // manualCommentEditDraftByAuthorLogin/manualCommentsByAuthorLogin
-  // directly to decide whether an incoming poll should be blocked because
-  // the user has unsaved author comment edits. Moving that shared-state
-  // concern into React itself (so this bridge surface can eventually go
-  // away) is Track C's job, not this one.
-  window.getAuthorInsightsComposerDraft = (...args) => getAuthorInsightsComposerDraft(...args);
-  window.updateAuthorInsightsComposerDraft = (...args) => updateAuthorInsightsComposerDraft(...args);
-  window.resetAuthorInsightsComposerDraft = (...args) => resetAuthorInsightsComposerDraft(...args);
-  window.getAuthorInsightsEditDraft = (...args) => getAuthorInsightsEditDraft(...args);
-  window.updateAuthorInsightsEditDraft = (...args) => updateAuthorInsightsEditDraft(...args);
-  window.resetAuthorInsightsEditDraft = (...args) => resetAuthorInsightsEditDraft(...args);
-  window.getAuthorManualCommentsForLogin = (...args) => getAuthorManualCommentsForLogin(...args);
-  window.getAuthorInsightsManualCommentsLoadState = (login) => ({
-    loading: Boolean(authorInsightsState.manualCommentsLoadingByAuthorLogin[login]),
-    error: authorInsightsState.manualCommentsErrorByAuthorLogin[login] || "",
-  });
-  window.setAuthorInsightsManualComments = (login, comments) => {
-    authorInsightsState.manualCommentsByAuthorLogin[login] = Array.isArray(comments)
-      ? comments
-      : [];
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft-state/data CRUD
+  // bridges that section needs (getAuthorInsightsComposerDraft/
+  // updateAuthorInsightsComposerDraft/resetAuthorInsightsComposerDraft/
+  // getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
+  // resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin/
+  // getAuthorInsightsManualCommentsLoadState/setAuthorInsightsManualComments/
+  // loadAuthorManualComments) used to be assigned here directly - now
+  // published by AuthorInsightsDraftsProvider.jsx instead (mounted in
+  // react-app.jsx), which owns the underlying state as real React state.
+  // Assigning them here too would create direct recursion with this
+  // file's own fresh-reading proxy consts of the same names (see those
+  // consts' own comment, above) - this file is no longer their source.
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
+  // untracked - wrapped the same way every other tracked action is, so a
+  // genuinely slow save becomes visible instead of just sitting silent.
+  window.saveAuthorManualComment = async ({ authorLogin, note, sentiment }) => {
+    const finishActivity = beginRequestActivity("authorComment");
+    try {
+      return await prAuthorInsightsDataHelpers.saveAuthorManualComment({
+        authorLogin,
+        note,
+        sentiment,
+        postJson: (...args) => postJson(...args),
+      });
+    } finally {
+      finishActivity();
+    }
   };
-  window.loadAuthorManualComments = (login, onComplete) =>
-    prAuthorInsightsDataHelpers.loadAuthorManualComments(login, authorInsightsState, onComplete);
-  window.saveAuthorManualComment = ({ authorLogin, note, sentiment }) =>
-    prAuthorInsightsDataHelpers.saveAuthorManualComment({
-      authorLogin,
-      note,
-      sentiment,
-      postJson: (...args) => postJson(...args),
-    });
-  window.updateAuthorManualComment = (args) =>
-    prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
+  window.updateAuthorManualComment = async (args) => {
+    const finishActivity = beginRequestActivity("authorComment");
+    try {
+      return await prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
+    } finally {
+      finishActivity();
+    }
+  };
 }
 
 const {
@@ -3241,196 +1928,32 @@ const {
   getActorLoginAliases: () => currentActorLoginAliases,
 });
 
-const buildActivityEventKey = (event = {}) =>
-  [
-    String(event?.sourceId || ""),
-    String(event?.occurredAt || ""),
-    String(event?.actor || ""),
-    String(event?.type || ""),
-    String(event?.channel || ""),
-  ].join("|");
+// Phase 7 (see REACT_MIGRATION_PLAN.md): buildActivityEventKey/
+// normalizePrRootUrl/buildFallbackActivityEvents moved to
+// helpers/pr-activity-events.helpers.js - ActivityEventsSection.jsx now
+// gets them from PrInsightsDisplayProvider/usePrInsightsDisplay()
+// instead of the window.* bridge these used to populate, and nothing
+// else in this file calls them.
 
-const normalizePrRootUrl = (url) => {
-  const raw = String(url || "").trim();
-  if (!raw) return "";
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getReviewConversationsStateKey/
+// readReviewConversationsUiState/writeReviewConversationsUiState (and the
+// reviewConversationsUiStateByKey Map they read/wrote) moved to
+// helpers/pr-review-conversations-ui-state.helpers.js +
+// components/ReviewConversationsUiStateProvider.jsx -
+// ReviewThreadsSection.jsx now owns this entirely in React (no outward
+// consumer ever needed it), and nothing else in this file calls any of
+// the above.
 
-  try {
-    const parsed = new URL(raw);
-    parsed.hash = "";
-    parsed.search = "";
-    return parsed.toString().replace(/\/$/, "");
-  } catch (_error) {
-    return raw.split("#")[0].split("?")[0].replace(/\/$/, "");
-  }
-};
+// Phase 7 (see REACT_MIGRATION_PLAN.md): buildPrPeopleOptions moved to
+// helpers/pr-notes-people-options.helpers.js - NotesSection.jsx now gets
+// it from PrInsightsDisplayProvider/usePrInsightsDisplay() instead of
+// the window.* bridge this used to populate, and nothing else in this
+// file calls it.
 
-const buildFallbackActivityEvents = (row = {}) => {
-  const fallback = [];
-  const explicitCommentEvents = asArray(row.commentEvents);
-
-  explicitCommentEvents.forEach((event) => {
-    fallback.push({
-      ...event,
-      type: String(event?.type || "comment"),
-      channel: String(event?.channel || "top-level"),
-      sourceId: String(event?.sourceId || ""),
-      occurredAt: String(event?.occurredAt || ""),
-      actor: String(event?.actor || "unknown"),
-      body: String(event?.body || ""),
-      url: String(event?.url || ""),
-    });
-  });
-
-  if (!explicitCommentEvents.length) {
-    asArray(row.comments).forEach((comment) => {
-      fallback.push({
-        sourceId: String(comment?.id || ""),
-        occurredAt: String(comment?.createdAt || ""),
-        actor: String(comment?.authorLogin || "unknown"),
-        type: "comment",
-        channel: "top-level",
-        body: String(comment?.body || ""),
-        url: String(comment?.url || ""),
-      });
-    });
-
-    asArray(row.reviewThreads).forEach((thread) => {
-      asArray(thread?.comments).forEach((comment) => {
-        fallback.push({
-          sourceId: String(comment?.id || ""),
-          threadId: String(thread?.id || ""),
-          occurredAt: String(comment?.createdAt || ""),
-          actor: String(comment?.authorLogin || "unknown"),
-          type: "comment",
-          channel: "thread",
-          body: String(comment?.body || ""),
-          url: String(comment?.url || ""),
-          conversationResolved: thread?.isResolved,
-        });
-      });
-    });
-  }
-
-  asArray(row.reviews).forEach((review) => {
-    const state = String(review?.state || "");
-    fallback.push({
-      sourceId: String(review?.id || ""),
-      occurredAt: String(review?.submittedAt || ""),
-      actor: String(review?.authorLogin || "unknown"),
-      type: state === "APPROVED" ? "approval" : "review",
-      channel: "review",
-      state,
-      body: String(review?.body || ""),
-      url: String(review?.url || ""),
-      commitOid: String(review?.commitOid || ""),
-    });
-  });
-
-  asArray(row.commits).forEach((commit) => {
-    asArray(commit?.authors).forEach((author) => {
-      const authorLogin = String(author?.login || "");
-      if (!authorLogin) return;
-      fallback.push({
-        sourceId: String(commit?.oid || ""),
-        occurredAt: String(commit?.committedAt || ""),
-        actor: authorLogin,
-        type: "commit",
-        channel: "commit",
-        messageHeadline: String(commit?.messageHeadline || ""),
-        messageBody: String(commit?.messageBody || ""),
-      });
-    });
-  });
-
-  const mergedAt = String(row?.mergedAt || "");
-  if (mergedAt) {
-    fallback.push({
-      sourceId: "merged",
-      occurredAt: mergedAt,
-      actor: "unknown",
-      type: "merged",
-      channel: "system",
-      url: String(row?.url || ""),
-    });
-  }
-
-  return fallback.filter((event) => String(event?.occurredAt || "").trim());
-};
-
-const getReviewConversationsStateKey = (row) => {
-  const urlKey = String(row?.url || "").trim();
-  if (urlKey) {
-    return urlKey;
-  }
-
-  const repoKey = String(row?.repo || "").trim();
-  const prNumberKey = String(row?.number || "").trim();
-  if (!repoKey && !prNumberKey) {
-    return "";
-  }
-
-  return `${repoKey}#${prNumberKey}`;
-};
-
-const readReviewConversationsUiState = (row) => {
-  const stateKey = getReviewConversationsStateKey(row);
-  const savedState = stateKey
-    ? reviewConversationsUiStateByKey.get(stateKey) || null
-    : null;
-  const mode = String(savedState?.conversationFilterMode || "")
-    .trim()
-    .toLowerCase();
-
-  return {
-    stateKey,
-    conversationFilterMode: ["all", "unresolved", "resolved"].includes(mode)
-      ? mode
-      : "unresolved",
-    showSummaryCards:
-      typeof savedState?.showSummaryCards === "boolean"
-        ? savedState.showSummaryCards
-        : true,
-  };
-};
-
-const writeReviewConversationsUiState = (
-  stateKey,
-  conversationFilterMode,
-  showSummaryCards,
-) => {
-  if (!stateKey) {
-    return;
-  }
-  reviewConversationsUiStateByKey.set(stateKey, {
-    conversationFilterMode,
-    showSummaryCards,
-  });
-};
-
-const buildPrPeopleOptions = (row, actorsMap = {}) => {
-  const people = new Map();
-  const addPerson = (login, name) => {
-    const l = String(login || "").trim();
-    if (!l) return;
-    if (!people.has(l)) {
-      people.set(l, resolveActorDisplayName(l, actorsMap, name));
-    }
-  };
-  addPerson(row?.authorLogin, row?.author);
-  asArray(row?.metrics?.commentsByActor).forEach((p) =>
-    addPerson(p.login, p.name),
-  );
-  asArray(row?.metrics?.reviewsByActor).forEach((p) =>
-    addPerson(p.login, p.name),
-  );
-  asArray(row?.approvers).forEach((p) => addPerson(p.login, p.name));
-  return Array.from(people.entries()).map(([login, name]) => ({ login, name }));
-};
-
-const autoResizeTextarea = (el) => {
-  el.style.height = "auto";
-  el.style.height = el.scrollHeight + "px";
-};
+// autoResizeTextarea now imported from
+// helpers/pr-textarea-autoresize.helpers.js (Phase 7, see
+// REACT_MIGRATION_PLAN.md) - NotesSection.jsx imports it directly instead
+// of reading it off window.autoResizeTextarea.
 
 const normalizeRows = (rows) =>
   rows.sort((a, b) => {
@@ -3465,69 +1988,22 @@ const parseCsvTokens = (rawValue) =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-const getLabelName = (label) => {
-  if (typeof label === "string") {
-    return String(label || "").trim();
-  }
-  if (label && typeof label === "object") {
-    return String(label.name || "").trim();
-  }
-  return "";
-};
-
-const extractRowLabelNames = (row = {}) =>
-  (Array.isArray(row?.labels) ? row.labels : [])
-    .map((label) => getLabelName(label))
-    .filter(Boolean);
-
 const parsePrNumbersInput = (rawValue) =>
   formParsingHelpers?.parsePrNumbersInput
     ? formParsingHelpers.parsePrNumbersInput(rawValue)
     : parseCsvTokens(rawValue).filter((value) => /^\d+$/.test(String(value)));
 
-const getPrNumbersInput = () => document.getElementById("pr-numbers");
-
-const getSelectedPrNumbers = () =>
-  parsePrNumbersInput(getPrNumbersInput().value);
-
-const setSelectedPrNumbers = (prNumbers) => {
-  getPrNumbersInput().value = prNumbers.join(",");
-};
-
-const handlePrNumbersInputChange = () => {
-  const prNumbersInput = getPrNumbersInput();
-  if (!String(prNumbersInput?.value || "").trim()) {
-    prNumbersInput.value = "";
-  }
-};
-
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): this used to also call
-// syncSelectionCheckboxesWithInput() (deleted) - a tree-walk over
-// #pr-sections toggling `.checked` on any `.row-select-checkbox` node.
-// That class doesn't exist anywhere in the current React-rendered table
-// or any component, so it was inert dead code, not a live sync.
-const updateSelectedPrNumbers = (prNumber, shouldSelect) => {
-  const current = getSelectedPrNumbers();
-  const normalizedPrNumber = String(prNumber || "").trim();
-  if (!/^\d+$/.test(normalizedPrNumber)) {
-    return;
-  }
-
-  const next = shouldSelect
-    ? current.includes(normalizedPrNumber)
-      ? current
-      : [...current, normalizedPrNumber]
-    : current.filter((value) => value !== normalizedPrNumber);
-
-  setSelectedPrNumbers(next);
-};
-
-const normalizeFilterToken = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/[\u2018\u2019]/g, "'")
-    .toLowerCase();
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getPrNumbersInput/getSelectedPrNumbers/
+// setSelectedPrNumbers/handlePrNumbersInputChange/updateSelectedPrNumbers used
+// to live here, reading/writing the "#pr-numbers" DOM input directly and
+// bridged onto window for PrSelectionCell.jsx. "#pr-numbers" is now
+// Context-backed (FilterStateProvider, via ContextRunScriptTextInput.jsx -
+// see FILTER_STATE_FIELD_MAP's "pr-numbers" entry above) and
+// PrSelectionCell.jsx reads/writes the same Context value directly via
+// window.getFilterStateValues()/setFilterStateValue() (helpers/
+// pr-selected-pr-numbers.helpers.js holds the pure toggle logic that used
+// to live in updateSelectedPrNumbers) - no window.* bridge needed for
+// this cluster at all anymore.
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): "always-show-in-review" is
 // migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
@@ -3543,119 +2019,24 @@ const shouldAlwaysShowInReviewRows = () => {
   return Boolean(getOptionalElementById("always-show-in-review")?.checked);
 };
 
-const rowMatchesUiFilters = (entry, filters) => {
-  const row = entry?.data || {};
-  const labels = extractRowLabelNames(row)
-    .map((label) => normalizeFilterToken(label))
-    .filter(Boolean);
-  const prNumber = String(row.number || entry?.prNumber || "").trim();
-  const authorLogin = getPreferredActorKey(row.authorLogin, row.author);
-  const assignedLogins = collectAssignedUsers(row).map((user) => user.login);
-  const approverLogins = collectApproversFromRow(row).map((user) => user.login);
-
-  if (filters.alwaysShowInReview && isInReviewEnabled(row)) {
-    return true;
-  }
-
-  if (filters.prNumbers.length > 0 && !filters.prNumbers.includes(prNumber)) {
-    return false;
-  }
-
-  if (filters.prNumbers.length > 0) {
-    return true;
-  }
-
-  if (
-    filters.includeLabels.length > 0 &&
-    !filters.includeLabels.some((label) =>
-      labels.includes(normalizeFilterToken(label)),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    filters.excludeLabels.length > 0 &&
-    filters.excludeLabels.some((label) =>
-      labels.includes(normalizeFilterToken(label)),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    filters.authorLogins.length > 0 &&
-    !filters.authorLogins.includes(authorLogin)
-  ) {
-    return false;
-  }
-
-  if (
-    filters.assignedLogins.length > 0 &&
-    !filters.assignedLogins.some((login) => assignedLogins.includes(login))
-  ) {
-    return false;
-  }
-
-  if (
-    filters.approverLogins.length > 0 &&
-    !filters.approverLogins.some((login) => approverLogins.includes(login))
-  ) {
-    return false;
-  }
-
-  const notesSummary = getManualNotesFieldSummary(entry, row);
-
-  if (filters.customComments === "with" && !notesSummary.hasCustomComments) {
-    return false;
-  }
-  if (filters.customComments === "without" && notesSummary.hasCustomComments) {
-    return false;
-  }
-
-  if (filters.otherNotes === "with" && !notesSummary.hasOtherNotes) {
-    return false;
-  }
-  if (filters.otherNotes === "without" && notesSummary.hasOtherNotes) {
-    return false;
-  }
-
-  if (filters.prDifficulty === "not-set" && notesSummary.hasDifficulty) {
-    return false;
-  }
-  if (
-    filters.prDifficulty &&
-    filters.prDifficulty !== "not-set" &&
-    notesSummary.difficultyLevelText !== filters.prDifficulty
-  ) {
-    return false;
-  }
-
-  if (filters.rallyStories === "with" && !notesSummary.hasRallyStories) {
-    return false;
-  }
-  if (filters.rallyStories === "without" && notesSummary.hasRallyStories) {
-    return false;
-  }
-
-  if (filters.rallyLinks === "with" && !notesSummary.hasRallyLinks) {
-    return false;
-  }
-  if (filters.rallyLinks === "without" && notesSummary.hasRallyLinks) {
-    return false;
-  }
-
-  if (filters.analysisOfPr === "with" && !notesSummary.hasAnalysisOfPr) {
-    return false;
-  }
-  if (filters.analysisOfPr === "without" && notesSummary.hasAnalysisOfPr) {
-    return false;
-  }
-
-  return true;
-};
-
-const ensureDefaultFilterValues = () => {};
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): extracted into
+// its own module, pr-row-match-filters.helpers.js, matching the sibling
+// pr-scope-selection.helpers.js/pr-row-filtering.helpers.js factory
+// pattern - the new reactive useVisiblePrNumbers derivation
+// (state/useVisiblePrNumbers.jsx) needs the same logic callable with
+// Context-derived actor-identity functions instead of this file's own
+// closures. Same closures wired in here as before the extraction, so this
+// is a zero-behavior-change move on the vanilla side.
+const { rowMatchesUiFilters } =
+  prRowMatchFiltersHelperFactory.createPrRowMatchFiltersHelpers({
+    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
+    collectAssignedUsers: (...args) => collectAssignedUsers(...args),
+    collectApproversFromRow: (...args) => collectApproversFromRow(...args),
+    extractRowLabelNames,
+    normalizeFilterToken,
+    getManualNotesFieldSummary,
+    isInReviewEnabled,
+  });
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): renderPrData's two genuine
 // mount-failure branches used to fall back to a full vanilla table build,
@@ -3683,7 +2064,7 @@ const renderPrTableMountError = () => {
 // anywhere in the app) and isn't ported.
 let reactTableMounted = false;
 
-const mountReactTable = (container, initialData, callbacks) => {
+const mountReactTable = (container, initialData) => {
   if (!container) {
     console.error("[ReactBridge] Cannot mount: no container element");
     return false;
@@ -3700,10 +2081,6 @@ const mountReactTable = (container, initialData, callbacks) => {
     window.mountReactPrTable(container, {
       initialPayload: initialData.payload || {},
       selectedRepo: initialData.selectedRepo || "",
-      visiblePrNumbers: initialData.visiblePrNumbers || null,
-      onCheckboxChange: callbacks.onCheckboxChange || (() => {}),
-      onAckAction: callbacks.onAckAction || (() => {}),
-      onApplyLabel: callbacks.onApplyLabel || (() => {}),
     });
     reactTableMounted = true;
     return true;
@@ -3713,7 +2090,7 @@ const mountReactTable = (container, initialData, callbacks) => {
   }
 };
 
-const updateReactTable = (payload, selectedRepo, visiblePrNumbers) => {
+const updateReactTable = (payload, selectedRepo) => {
   if (!reactTableMounted || typeof window.updateReactPrTable !== "function") {
     console.warn(
       "[ReactBridge] Cannot update: React not mounted or update callback unavailable",
@@ -3722,7 +2099,7 @@ const updateReactTable = (payload, selectedRepo, visiblePrNumbers) => {
   }
 
   try {
-    window.updateReactPrTable(payload, selectedRepo, visiblePrNumbers);
+    window.updateReactPrTable(payload, selectedRepo);
   } catch (error) {
     console.error("[ReactBridge] Error updating React:", error);
   }
@@ -3742,15 +2119,95 @@ const isReactTableMounted = () => reactTableMounted;
 // most recently refreshed - not necessarily the user's configured repo)
 // while the just-computed visiblePrNumbers filter still reflected the
 // correct repo, filtering every row out.
+// Phase G.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// "refetch labels when the selected repo changes" trigger this function
+// used to also own (comparing against labelsFetchedForRepo, now deleted)
+// moved into RepoLabelsProvider.jsx's own effect - it's a real descendant
+// of <PrDataProvider /> and reads selectedRepo via usePrData() directly,
+// instead of this vanilla code deciding it and calling
+// refreshAvailableRepoLabels imperatively. That function/its own
+// dedup/cache state and window.refreshAvailableRepoLabels bridge stay
+// unchanged - only the "when should I call it" decision moved.
 const applyResolvedRepo = (resolvedRepo) => {
   if (!resolvedRepo) {
     return;
   }
   applyLatestPrData({ selectedRepo: resolvedRepo });
-  if (shouldRefetchLabelsForRepo({ repo: resolvedRepo, lastFetchedRepo: labelsFetchedForRepo })) {
-    labelsFetchedForRepo = resolvedRepo;
-    void refreshAvailableRepoLabels(resolvedRepo);
+};
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
+// renders"): for a caller that already has a direct, authoritative fresh
+// payload in hand (no refetch needed) - a research pass confirmed almost
+// everything prDataTabOrchestrator.renderPrData's full pipeline computes
+// today is now dead (filter dropdowns, chip text, #data-meta text, the
+// merged-request-more-action push, visiblePrNumbers/filteredRows for the
+// table - each already superseded by a live Context derivation elsewhere).
+// Exactly 3 things are still genuinely live: fingerprint/manifest/version
+// bookkeeping the next poll tick's skip-render dedup depends on, repo
+// resolution + conditional label refresh, and Author Insights' own live
+// re-render if that tab is open. This is exactly those 3 things, reusing
+// every existing piece directly rather than reimplementing any of them -
+// used by runSinglePrUpdate (replacing its own redundant loadStoredData()
+// re-fetch) and, via the window.applyFreshPrPayload bridge, by
+// AutoRenderBlockingProvider.jsx's own apply/discard paths (replacing the
+// old vanilla flushPendingAutoRenderNow's identical call, see
+// REACT_MIGRATION_PLAN.md's Phase B entry).
+const applyFreshPrPayload = (payload, repo) => {
+  const resolvedRepo =
+    repo ||
+    deriveRepoRunContext({
+      selectedRepo: latestSelectedRepo,
+      inputRepo: getOptionalElementById("repo")?.value,
+      lastRun: payload?.lastRun,
+    }).repoFilter;
+
+  // selectedRepo deliberately omitted here (unlike applyResolvedRepo's own
+  // call below) - matching renderPrData's own applyLatestPrData({ payload })
+  // call exactly, so an empty resolvedRepo (no explicit repo, no #repo
+  // input value, no payload.lastRun.repo) can never clobber a
+  // previously-known-good latestSelectedRepo. applyResolvedRepo's own
+  // `if (!resolvedRepo) return;` guard is the sole gate for that write.
+  applyLatestPrData({ payload });
+  // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // fingerprint/manifest/version/run-stamp bookkeeping now lives in
+  // PrDataProvider.jsx's own trackingRef, pushed via this one combined
+  // bridge instead of direct module-variable assignment - same "who
+  // writes when" structure, only the storage location changed.
+  const trackingPatch = {
+    lastRenderedPrFingerprint: computePrDataFingerprint(payload),
+    lastRenderedMetaFingerprint: computePrDataMetaFingerprint(payload),
+    latestPrManifest: computePrDataManifest(payload),
+  };
+  window.setPendingAutoRenderPayload?.(null);
+
+  // Same dataVersion/runStamp/backfill bookkeeping loadStoredData does with
+  // its own GET response (pr-stored-data-load.helpers.js) - needed because
+  // this primitive also replaces that function for runSinglePrUpdate's
+  // case, not just renderPrData. result.prData (POST /view-prs/run's
+  // response) doesn't include dataMeta - lastSeenDataVersion simply isn't
+  // updated from that path, which is self-correcting (the next poll's own
+  // meta/manifest check finds the real version mismatch and fetches
+  // normally), not a lasting staleness bug.
+  const dataVersion = String(payload?.dataMeta?.dataVersion || "").trim();
+  if (dataVersion) {
+    trackingPatch.lastSeenDataVersion = dataVersion;
   }
+  const updatedAt = String(payload?.lastRun?.updatedAt || "").trim();
+  if (updatedAt) {
+    trackingPatch.lastRenderedRunStamp = payload.lastRun.updatedAt;
+    lastSuccessfulRenderedCheckAt = updatedAt;
+  }
+  window.pushPrDataPollingTrackingState?.(trackingPatch);
+  updateBackfillStatusFromPayload(payload);
+
+  applyResolvedRepo(resolvedRepo);
+  // Not renderAuthorInsightsIfVisible() directly - that reads a private
+  // cache (latestAllStoredRows/latestActorsMap) only applyRenderResults
+  // (the full pipeline) updates. This variant refreshes that same cache
+  // from the fresh payload first, so both this render and any later
+  // tab-activation catch-up render see the fresh data, not stale leftovers.
+  applyFreshAuthorInsightsIfVisible(payload);
+  updateReactTable(payload, resolvedRepo);
 };
 
 const renderPrData = (payload, selectedRepo = "", options = {}) => {
@@ -3801,75 +2258,37 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // The React table renders the PR rows/sections itself, but everything
   // else the vanilla pipeline normally does as a side effect of building
   // that table — the data-meta summary line, filter chips, export field
-  // catalog, author insights panel, stats view, and the filter dropdown
-  // options (label/author/assigned/approver/thread-resolution/change-filter
-  // actor lists) — still needs to run. Run the full vanilla pipeline with
+  // catalog, author insights panel, and stats view — still needs to run.
+  // (The filter dropdown options themselves - label/author/assigned/
+  // approver/thread-resolution/change-filter actor lists - are no longer
+  // one of those side effects; they're owned by FilterOptionsProvider.jsx,
+  // deriving reactively from PrDataContext instead. See
+  // REACT_MIGRATION_PLAN.md, sub-phase 7.4 and the later "populateFilterOptions"
+  // deletion entry for that history.) Run the full vanilla pipeline with
   // skipTableRender so it performs those side effects without building or
   // appending its own <table> markup into #pr-sections (which React owns).
-  // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): this
-  // pipeline call already populates the filter dropdowns as one of those
-  // side effects (deriveViewerFilterSetup -> populateFilterOptions, inside
-  // deriveRenderPipelineState) - a second, separate
-  // populateFilterDropdownsForCurrentPayload() call used to run right
-  // after this one, re-deriving and re-populating the exact same 9 lists
-  // a second time. Its own doc comment explained it as covering a case
-  // where "the React render path... never runs that pipeline" - true of
-  // an earlier architecture where the React path bypassed the orchestrator
-  // entirely, no longer true now that it's called (with skipTableRender)
-  // right above. Removed as a confirmed duplicate, not a real second
-  // effect - verified via the full jest suite and 3 e2e runs (including
-  // the multi-select persisted-restore tests, the ones most likely to
-  // reveal a regression if this had been secretly load-bearing).
   const renderPipelineResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
     ...options,
     skipTableRender: true,
   });
   const resolvedRepo = renderPipelineResult?.repoFilter || selectedRepo || latestSelectedRepo || '';
   applyResolvedRepo(resolvedRepo);
-  // The filtered set the vanilla pipeline just computed (scope, PR-number,
-  // label, author, assigned, approver filters) - React must be told which
-  // PR numbers passed, or it falls back to showing every stored PR for the
-  // repo regardless of the active local filters.
-  const visiblePrNumbers = Array.isArray(renderPipelineResult?.filteredRows)
-    ? renderPipelineResult.filteredRows
-        .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
-        .filter(Boolean)
-    : null;
 
   // Check if already mounted
   if (isReactTableMounted()) {
     // Already mounted: just update data
     updateReactTable(
       latestStoredPayload || payload,
-      resolvedRepo,
-      visiblePrNumbers
+      resolvedRepo
     );
     return;
   }
 
   // First time: mount React
-  // Create callbacks
-  const callbacks = createReactCallbacks();
-  if (!callbacks) {
-    console.error('[renderPrData] Failed to create React callbacks - cannot mount table');
-    renderPrTableMountError();
-    return;
-  }
-
-  // Mount React
-  const success = mountReactTable(
-    container,
-    {
-      payload: latestStoredPayload || payload || {},
-      selectedRepo: resolvedRepo,
-      visiblePrNumbers,
-    },
-    {
-      onCheckboxChange: callbacks.handleCheckboxChange,
-      onAckAction: callbacks.handleAckAction,
-      onApplyLabel: callbacks.handleApplyLabel,
-    }
-  );
+  const success = mountReactTable(container, {
+    payload: latestStoredPayload || payload || {},
+    selectedRepo: resolvedRepo,
+  });
 
   if (!success) {
     console.error('[renderPrData] React mount failed - cannot render table');
@@ -3894,120 +2313,47 @@ const pushPayloadToReactTable = (payload, repo) => {
   }
 };
 
-// Renders the pending auto-update payload once the user is no longer focused on an input/textarea.
-// Re-attaches itself as a blur listener if focus moves to another field.
-const flushPendingAutoRender = () => {
-  setTimeout(() => {
-    const action = getPendingAutoRenderAction({
-      pendingPayload: pendingAutoRenderPayload,
-      focusedElement: document.activeElement,
-      hasDirtyPrSectionsFields,
-    });
-    if (action.type === "none") {
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    if (action.type === "wait-for-blur") {
-      document.activeElement?.addEventListener?.("blur", flushPendingAutoRender, {
-        once: true,
-      });
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    if (action.type === "wait-for-clean") {
-      renderAutoRenderBlockedIndicator();
-      return;
-    }
-    flushPendingAutoRenderNow();
-  }, 0);
-};
+// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollForDataChanges itself (the createPrDataPollingOrchestrationHelpers
+// instance) now lives in PrDataProvider.jsx, which owns the
+// fingerprint/manifest/version/polling-support tracking state this
+// factory needs - index.page.js just exposes the vanilla pieces that
+// Provider's own DI still needs to reach (the pure fingerprint/manifest
+// helpers below, already wired with the real getOrComputeEntryDerivedValue
+// cache; applyLatestPrData/renderPrData/markPollSuccess/
+// showPollFailureWarning - vanilla render-pipeline primitives exposed
+// *for* that Provider, same category as every other "vanilla primitive
+// exposed for React" bridge in this migration). window.pollForDataChanges
+// itself is now assigned by PrDataProvider.jsx instead, but stays the
+// same name/shape - index.html.test.js's 17 direct call sites still work
+// unchanged.
+if (typeof window !== "undefined") {
+  window.computePrDataManifest = (...args) => computePrDataManifest(...args);
+  window.getManifestDelta = (...args) => getManifestDelta(...args);
+  window.mergeDataDeltaPayload = (...args) => mergeDataDeltaPayload(...args);
+  window.computePrDataFingerprint = (...args) => computePrDataFingerprint(...args);
+  window.computePrDataMetaFingerprint = (...args) => computePrDataMetaFingerprint(...args);
+  window.getDataPollRenderAction = (...args) => getDataPollRenderAction(...args);
+  window.getLatestStoredPayload = () => latestStoredPayload;
+  window.applyLatestPrData = (...args) => applyLatestPrData(...args);
+  window.renderPrData = (...args) => renderPrData(...args);
+  window.markPollSuccess = (...args) => markPollSuccess(...args);
+  window.showPollFailureWarning = (...args) => showPollFailureWarning(...args);
+}
 
-// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md): a
-// thin wire-up around pr-data-polling-orchestration.helpers.js's extracted
-// factory - the actual fetch-cascade/fingerprint-diff/render-decision logic
-// lives there now (pure, DI-tested, zero window/DOM dependency of its own).
-// This function's own identity (a plain top-level function assigned to
-// window.pollForDataChanges the same way as before) is preserved
-// deliberately: index.html.test.js calls window.pollForDataChanges()
-// directly at 17 call sites and never mounts <PrDataPolling>, so removing
-// this wrapper (not just its body) would break that suite.
-const { pollForDataChanges } =
-  prDataPollingOrchestrationHelperFactory.createPrDataPollingOrchestrationHelpers({
-    fetchFn: (...args) => fetch(...args),
-    documentRef: typeof document !== "undefined" ? document : null,
-    computePrDataManifest: (...args) => computePrDataManifest(...args),
-    getManifestDelta: (...args) => getManifestDelta(...args),
-    mergeDataDeltaPayload: (...args) => mergeDataDeltaPayload(...args),
-    computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
-    computePrDataMetaFingerprint: (...args) => computePrDataMetaFingerprint(...args),
-    getDataPollRenderAction: (...args) => getDataPollRenderAction(...args),
-    getSupportsDataMetaPolling: () => supportsDataMetaPolling,
-    setSupportsDataMetaPolling: (value) => {
-      supportsDataMetaPolling = value;
-    },
-    getSupportsDataManifestPolling: () => supportsDataManifestPolling,
-    setSupportsDataManifestPolling: (value) => {
-      supportsDataManifestPolling = value;
-    },
-    getLastSeenDataVersion: () => lastSeenDataVersion,
-    setLastSeenDataVersion: (value) => {
-      lastSeenDataVersion = value;
-    },
-    getLatestPrManifest: () => latestPrManifest,
-    setLatestPrManifest: (value) => {
-      latestPrManifest = value;
-    },
-    getLatestStoredPayload: () => latestStoredPayload,
-    applyLatestPrData: (...args) => applyLatestPrData(...args),
-    getLastRenderedPrFingerprint: () => lastRenderedPrFingerprint,
-    setLastRenderedPrFingerprint: (value) => {
-      lastRenderedPrFingerprint = value;
-    },
-    getLastRenderedMetaFingerprint: () => lastRenderedMetaFingerprint,
-    setLastRenderedMetaFingerprint: (value) => {
-      lastRenderedMetaFingerprint = value;
-    },
-    getLastRenderedRunStamp: () => lastRenderedRunStamp,
-    setLastRenderedRunStamp: (value) => {
-      lastRenderedRunStamp = value;
-    },
-    getHasDirtyPrSectionsFields: () => hasDirtyPrSectionsFields,
-    getPendingAutoRenderPayload: () => pendingAutoRenderPayload,
-    setPendingAutoRenderPayload: (value) => {
-      pendingAutoRenderPayload = value;
-    },
-    renderPrData: (...args) => renderPrData(...args),
-    renderAutoRenderBlockedIndicator: (...args) =>
-      renderAutoRenderBlockedIndicator(...args),
-    flushPendingAutoRender: (...args) => flushPendingAutoRender(...args),
-    markPollSuccess: (...args) => markPollSuccess(...args),
-    showPollFailureWarning: (...args) => showPollFailureWarning(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-  });
-
-const pollBackfillStatus = async () => {
-  if (!isBackfillRunning || isBackfillActionPending) {
-    return;
-  }
-
-  try {
-    await loadBackfillStatus({ announce: true, includeLog: true });
-  } catch (_error) {
-    // Ignore polling failures and wait for the next interval.
-  }
-};
-
-const pollSchedulerStatus = async () => {
-  if (!supportsSchedulerPolling) {
-    return;
-  }
-
-  try {
-    await loadSchedulerStatus();
-  } catch (_error) {
-    // Ignore polling failures and wait for the next interval.
-  }
-};
+// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// pollBackfillStatus/pollSchedulerStatus's own guard+wrapper moved into
+// PrDataProvider.jsx (state/), reached directly via <PrDataPolling />'s
+// usePrData() Context - window.pollBackfillStatus/window.renderRequestActivity
+// had no caller left besides that component, so both were deleted outright
+// (pollSchedulerStatus itself was later deleted too, in Phase H.2 - see
+// REACT_MIGRATION_PLAN.md). loadBackfillStatus stays vanilla here (the
+// backfill tab orchestrator/initial auto-load are other real callers
+// beyond polling) - exposed via a new reverse bridge for PrDataProvider's
+// own pollBackfillStatus to reach.
+if (typeof window !== "undefined") {
+  window.loadBackfillStatus = (...args) => loadBackfillStatus(...args);
+}
 
 // Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // <PrDataPolling /> (react-app.jsx) now owns the setInterval lifecycle for
@@ -4015,13 +2361,20 @@ const pollSchedulerStatus = async () => {
 // behavior that used to live in index.page.js's cleanupIntervals/
 // restartIntervals) - it calls them via these bridges on the same cadence
 // (AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, also exposed here so the
-// interval timing has one source of truth). The functions themselves are
-// unchanged; only *what decides when they run* moved.
+// interval timing has one source of truth).
+// window.pollForDataChanges/pollBackfillStatus/renderRequestActivity used
+// to also be bridged here - Phase F/F.2 (see REACT_MIGRATION_PLAN.md,
+// "Full migration roadmap") moved them into PrDataProvider.jsx, which
+// used to also set window.pollSchedulerStatus itself (deleted outright
+// in Phase H.2 - see that file's own header comment for why).
 if (typeof window !== "undefined") {
-  window.pollForDataChanges = (...args) => pollForDataChanges(...args);
-  window.pollSchedulerStatus = (...args) => pollSchedulerStatus(...args);
-  window.pollBackfillStatus = (...args) => pollBackfillStatus(...args);
-  window.renderRequestActivity = (...args) => renderRequestActivity(...args);
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
+  // retirement" section): JobEventsProvider.jsx calls this directly with
+  // the scheduler object bundled into every SSE frame, replacing the old
+  // schedulerInterval poll (removed from PrDataPolling.jsx) as the trigger
+  // for this same rendering - the function itself (badges, details text,
+  // the pr-active-progress-update dispatch) is unchanged.
+  window.renderSchedulerStatus = (...args) => renderSchedulerStatus(...args);
   window.AUTO_DATA_POLL_MS = AUTO_DATA_POLL_MS;
   window.AUTO_BACKFILL_POLL_MS = AUTO_BACKFILL_POLL_MS;
 }
@@ -4053,168 +2406,55 @@ const getFormBody = () => {
   };
 };
 
-const handleRunScript = async () => {
-  const body = getFormBody();
-
-  if (body.prNumbersInput && !body.prNumber) {
-    setStatusMessage(
-      'Run script requires numeric PR number(s) in "PR number(s)"',
-    );
-    return;
-  }
-
-  setStatusMessage("Running...");
-  setOutputMessage("");
-  const finishActivity = beginRequestActivity("runScript");
-
-  try {
-    const runTargets =
-      Array.isArray(body.prNumberList) && body.prNumberList.length > 0
-        ? body.prNumberList
-        : [""];
-    const outputChunks = [];
-    const failures = [];
-    const effectiveRepo = body.repo || DEFAULT_REPO;
-
-    for (let index = 0; index < runTargets.length; index += 1) {
-      const runTarget = runTargets[index];
-      const runBody = {
-        ...body,
-        prNumber: runTarget || "",
-      };
-
-      const runLabel = runTarget ? `PR #${runTarget}` : "All PRs";
-      setStatusMessage(
-        `Running ${runLabel} (${index + 1}/${runTargets.length})...`,
-      );
-
-      const { response, result } = await postJson("/view-prs/run", runBody);
-
-      outputChunks.push(`=== ${runLabel} ===`);
-      outputChunks.push(
-        formatCommandOutputWithAuthHint(result, {
-          includeError: !response.ok || result?.ok === false,
-        }) || "Script completed with no output.",
-      );
-
-      if (!response.ok || result.ok === false) {
-        failures.push({
-          prNumber: runTarget || "all",
-          status: response.status,
-        });
-        continue;
-      }
-
-      const latestData = result.prData || null;
-      if (latestData) {
-        applyLatestPrData({ payload: latestData, selectedRepo: effectiveRepo });
-        renderPrData(latestData, effectiveRepo);
-      }
-    }
-
-    if (failures.length > 0) {
-      const successCount = runTargets.length - failures.length;
-      const hasAuthFailure = outputChunks.some((chunk) =>
-        chunk.toLowerCase().includes("auth hint:"),
-      );
-      setStatusMessage(
-        hasAuthFailure
-          ? `Completed with failures (${successCount}/${runTargets.length} successful) - GitHub auth/SSO required`
-          : `Completed with failures (${successCount}/${runTargets.length} successful)`,
-      );
-
-      // Show error snackbar for failures
-      const failureReason = hasAuthFailure
-        ? "GitHub authentication or SSO required. Check the output below for authorization link."
-        : "One or more requests failed. Check the output below for details.";
-      const failureDetails = failures
-        .map((f) => `${f.prNumber} (HTTP ${f.status})`)
-        .join(", ");
-      showErrorNotification(
-        `Request failed for: ${failureDetails}`,
-        failureReason,
-        0,
-      );
-    } else {
-      setStatusMessage("Completed");
-    }
-
-    setOutputMessage(
-      outputChunks.join("\n\n") || "Script completed with no output.",
-    );
-    await loadStoredData(effectiveRepo);
-  } catch (error) {
-    setStatusMessage("Failed (network/error)");
-    showErrorNotification(
-      "Request failed",
-      String(error || "An unknown error occurred"),
-      0, // No auto-dismiss for errors
-    );
-    setOutputMessage(String(error));
-  } finally {
-    finishActivity();
-  }
-};
-
-const { runWithConcurrencyLimit } = prConcurrencyHelperFactory.createPrConcurrencyHelpers();
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleRunScript itself (this used to be its definition) moved into
+// state/useRunScript.jsx - it never had its own DI-factory, and its only
+// real caller was always the "Run script" button, so this file just
+// exposes getFormBody for the hook to read instead of re-implementing its
+// own copy of the form-read logic (which itself depends on several other
+// DOM-is-the-source-of-truth helpers below, like getSelectedIncludeLabelNames).
+if (typeof window !== "undefined") {
+  window.getFormBody = (...args) => getFormBody(...args);
+}
 
 const {
-  collectAllLoadedPrsByRepo,
-  toRepoRequests,
-  buildQuickCheckOutcome,
+  runQuickCheckWorkflow,
+  runQuickCheckAllWorkflow,
 } = prQuickCheckActionsHelperFactory.createPrQuickCheckActionsHelpers({
   showErrorNotification: (...args) => showErrorNotification(...args),
   showWarningNotification: (...args) => showWarningNotification(...args),
   notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
   loadSchedulerStatus: (...args) => loadSchedulerStatus(...args),
-});
-
-// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): thin
-// wire-ups around pr-ack-label-actions.helpers.js's extracted factory - same
-// names, same call sites elsewhere in this file (handleAckOnly/
-// handleClearOnly below, react-callbacks.helpers.js's createReactCallbacks()
-// wiring), unchanged. runAckAction/runApplyLabelAction are only ever called
-// internally by runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow
-// now that all five live inside the same factory instance, so they're not
-// destructured here - index.page.js has no other caller for them.
-const {
-  runAckOnlyWorkflow,
-  runClearOnlyWorkflow,
-  runApplyLabelWorkflow,
-} = prAckLabelActionsHelperFactory.createPrAckLabelActionsHelpers({
   postJson: (...args) => postJson(...args),
-  setStatusMessage: (...args) => setStatusMessage(...args),
-  setOutputMessage: (...args) => setOutputMessage(...args),
-  beginRequestActivity: (...args) => beginRequestActivity(...args),
-  getGithubAuthFailureHint: (...args) => getGithubAuthFailureHint(...args),
-  formatCommandOutput: (...args) => formatCommandOutput(...args),
-  formatCommandOutputWithAuthHint: (...args) => formatCommandOutputWithAuthHint(...args),
-  showErrorNotification: (...args) => showErrorNotification(...args),
-  showWarningNotification: (...args) => showWarningNotification(...args),
-  summarizeAckRefreshWarnings: (...args) => summarizeAckRefreshWarnings(...args),
-  renderPrData: (...args) => renderPrData(...args),
-  loadStoredData: (...args) => loadStoredData(...args),
-  getFormBody: (...args) => getFormBody(...args),
-  defaultRepo: DEFAULT_REPO,
-  parseCsvTokens: (...args) => parseCsvTokens(...args),
-  // Bridges into PrTableApp.jsx's per-row busy/queued indicators - see
-  // that component's own comments. No-op (via
-  // createPrAckLabelActionsHelpers' own safe fallback) when React hasn't
-  // mounted the table yet.
+  getFormBody: () => getFormBody(),
+  getLatestStoredPayload: () => latestStoredPayload,
   markPrsBusy: (...args) => window.markPrsBusy?.(...args),
   clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
-  markPrsQueued: (...args) => window.markPrsQueued?.(...args),
-  clearPrsQueued: (...args) => window.clearPrsQueued?.(...args),
-  runWithConcurrencyLimit: (...args) => runWithConcurrencyLimit(...args),
 });
 
-const handleAckOnly = async () => {
-  await runAckOnlyWorkflow();
-};
+// Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): see that function's
+// own module for why this is a separate, single-action helper file rather
+// than folded into pr-quick-check-actions.helpers.js above.
+const { runTriggerAutoRunWorkflow } =
+  prTriggerAutoRunActionHelperFactory.createPrTriggerAutoRunActionHelpers({
+    postJson: (...args) => postJson(...args),
+    showErrorNotification: (...args) => showErrorNotification(...args),
+    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
+  });
 
-const handleClearOnly = async () => {
-  await runClearOnlyWorkflow();
-};
+// Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// index.page.js's own createPrAckLabelActionsHelpers instance (which used
+// to feed runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow
+// into createReactCallbacks() below) is deleted outright - confirmed its
+// only caller was createReactCallbacks(), and PrTableApp.jsx now builds
+// its own equivalent handlers directly via useAckLabelActions() (a real
+// Context-backed instance, not this window-bridge-fed vanilla one).
+
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleAckOnly/handleClearOnly's definitions (thin 1-line wrappers around
+// runAckOnlyWorkflow/runClearOnlyWorkflow) moved into
+// state/useAckLabelActions.jsx - their only caller was the "Apply ack
+// only"/"Apply clear only" buttons, now a hook instead of a window.* bridge.
 
 // ---- Apply existing GitHub labels to PRs (single-row select or bulk via
 // the "Run & Filter" tab's PR-number selection) ----
@@ -4222,18 +2462,21 @@ const handleClearOnly = async () => {
 let availableRepoLabels = [];
 let isFetchingRepoLabels = false;
 
-const getAvailableRepoLabels = () => availableRepoLabels;
-
-// Renders the dropdown into #apply-label-select-root via React (see
-// ApplyLabelSelect.jsx, mounted in react-app.jsx) - a native <select>'s own
-// selection-preservation behavior on re-render replaces the vanilla
+// Phase 7 (see REACT_MIGRATION_PLAN.md): getAvailableRepoLabels (a plain
+// pull of this module variable) used to be bridged on window for
+// PrActionsCell.jsx to read directly - both it and ApplyLabelSelect.jsx
+// (Run & Filter tab dropdown, below) now read the same RepoLabelsContext
+// instead, fed by the one write point below, consolidating what used to
+// be two separate window.* bridges for this one list.
+//
+// Renders into both React consumers via RepoLabelsContext
+// (RepoLabelsProvider.jsx, mounted in react-app.jsx) - a native <select>'s
+// own selection-preservation behavior on re-render replaces the vanilla
 // version's manual "restore previous value if still valid" logic, so no
 // bridge return value or key remount is needed here.
 const populateApplyLabelSelect = () => {
-  window.updateReactApplyLabelOptions?.(availableRepoLabels);
+  window.setAvailableRepoLabels?.(availableRepoLabels);
 };
-
-let labelsFetchedForRepo = "";
 
 // Deliberately does NOT fall back to DEFAULT_REPO: that constant is only
 // ever a placeholder/example value (see the "repo" field's `placeholder`
@@ -4244,12 +2487,6 @@ let labelsFetchedForRepo = "";
 // via __testables without needing a DOM/fetch harness.
 const resolveRepoForLabelsFetch = ({ repoOverride, currentRepo, repoInputValue } = {}) =>
   String(repoOverride || currentRepo || repoInputValue || "").trim();
-
-// Avoids re-fetching the same repo's labels on every render/poll tick -
-// only worth a network call when the resolved repo actually changed since
-// the last successful (or attempted) fetch.
-const shouldRefetchLabelsForRepo = ({ repo, lastFetchedRepo } = {}) =>
-  Boolean(repo) && repo !== lastFetchedRepo;
 
 const refreshAvailableRepoLabels = async (repoOverride) => {
   const repoInput = getOptionalElementById("repo");
@@ -4278,157 +2515,60 @@ const refreshAvailableRepoLabels = async (repoOverride) => {
   }
 };
 
-const handleApplyLabelClick = async () => {
-  const select = getOptionalElementById("apply-label-select");
-  await runApplyLabelWorkflow("", select ? select.value : "", "");
-};
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// handleApplyLabelClick's definition moved into
+// state/useAckLabelActions.jsx - its only caller was the "Apply label"
+// button, now a hook instead of a window.* bridge.
+
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// state/useAckLabelActions.jsx's own createPrAckLabelActionsHelpers
+// instance needs these 2 reverse bridges to reach this file's real
+// summarizeAckRefreshWarnings/loadStoredData, instead of forking its own
+// copy (loadStoredData especially: forking a second instance here would
+// mean a second independent dataVersion/runStamp tracker, duplicating
+// Phase F's own chicken-and-egg bug class).
+if (typeof window !== "undefined") {
+  window.summarizeAckRefreshWarnings = (...args) =>
+    summarizeAckRefreshWarnings(...args);
+  window.loadStoredData = (...args) => loadStoredData(...args);
+}
+
+// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap")/Phase D.2:
+// #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn are
+// React-owned (RunScriptActionButton.jsx, react-app.jsx) and now call real
+// hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) instead of a
+// window.* bridge. #refresh-labels-btn/#apply-filters-btn are the 2
+// deliberate exceptions still reached via window.* - see
+// useRefreshAvailableRepoLabels.jsx's own comment for why, and
+// window.persistViewFilterOptionOverrides/applyFiltersFromCache's own
+// Phase E history for the second.
+if (typeof window !== "undefined") {
+  window.refreshAvailableRepoLabels = (...args) =>
+    refreshAvailableRepoLabels(...args);
+  window.applyFiltersFromCache = (...args) => applyFiltersFromCache(...args);
+}
 
 /**
- * Create React callback helpers (lazy initialization)
- * This factory creates the callbacks that React uses to communicate with vanilla JS.
+ * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * createReactCallbacks()/react-callbacks.helpers.js deleted outright -
+ * handleCheckboxChange (the last function that factory built) moved to
+ * PrTableApp.jsx in this phase, following handleAckAction/handleApplyLabel
+ * in Phase H.5. Nothing else ever called createReactCallbackHelpers(), so
+ * the factory itself, its own test file, and this lazy-init wrapper are
+ * all gone - confirmed via grep.
  */
-let reactCallbacks = null;
-
-function createReactCallbacks() {
-  if (reactCallbacks) {
-    return reactCallbacks;
-  }
-
-  // Check if React callbacks helper is available
-  if (!reactCallbackHelperFactory) {
-    console.warn('[ReactIntegration] React callbacks helper not available');
-    return null;
-  }
-
-  const helpers = reactCallbackHelperFactory.createReactCallbackHelpers({
-    // Pass vanilla JS functions
-    toggleInReviewForRow: toggleInReviewForRow,
-    toggleFlaggedForRow: toggleFlaggedForRow,
-    runAckOnlyWorkflow: runAckOnlyWorkflow,
-    runClearOnlyWorkflow: runClearOnlyWorkflow,
-    runApplyLabelWorkflow: runApplyLabelWorkflow,
-
-    // Update React table function - see pushPayloadToReactTable's own
-    // comment (Track C, slice C2a, REACT_MIGRATION_PLAN.md) for why this
-    // is a deliberately separate fast path from renderPrData.
-    updateReactTable: pushPayloadToReactTable,
-
-    // State getters
-    stateGetters: {
-      // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md):
-      // deliberately NOT switched to the window.getReactPrTablePayload
-      // read bridge, unlike the other two DI wirings above/nearby - this
-      // one is different in a way the original design missed.
-      // handleCheckboxChange/handleAckAction/handleApplyLabel (below) all
-      // mutate latestStoredPayload as a synchronous side effect (via
-      // toggleFlaggedForRow/toggleInReviewForRow/runAckOnlyWorkflow/etc.)
-      // and then immediately read it back via this getter, in the SAME
-      // call, specifically to push the just-mutated value into React. The
-      // Context bridge can't satisfy that: Context's payload only updates
-      // *after* this getter's return value reaches updateReactTableSafe,
-      // so reading it here would hand back the pre-mutation payload and
-      // silently undo the very change this handler just made (confirmed
-      // via a real Playwright regression - the checkbox-toggle smoke test
-      // failed with the checked state reverting right after the click).
-      getLatestStoredPayload: () => latestStoredPayload,
-      getLatestSelectedRepo: () => latestSelectedRepo,
-    },
-  });
-
-  reactCallbacks = helpers;
-  return helpers;
-}
 
 const initPage = () => {
   renderRequestActivity();
-  ensureDefaultFilterValues();
   updateAuthorThreadResolutionRuleVisibility();
-  // restoreUiOptionOverrides() and loadStoredData() below both fire their
-  // own independent fetches ("/view-prs/user-defaults" and "/view-prs/data"
-  // respectively) with no ordering guarantee between them. The multi-select
-  // filter lists (label/exclude-label/author/assigned/approver/thread-
-  // resolution allow-deny/change-filter actor lists) seed their checked
-  // state from the pending*FilterSelections this call populates - if
-  // loadStoredData's renderPrData call runs first (a real, reproducible
-  // race, not just theoretical - confirmed locally and in CI), those lists
-  // render with nothing checked, restoreUiOptionOverrides() only ever runs
-  // once more (on 'viewprs:react-ready', below) and never re-triggers a
-  // populate, so the "restore a persisted selection" e2e tests saw a
-  // permanently unchecked box after every reload. Re-render with whatever
-  // payload has already loaded once overrides actually land, so the
-  // apply-then-reload sequence works regardless of which fetch wins.
-  //
-  // queueMicrotask, not a direct call: this .then() can run essentially
-  // immediately (a fast/local fetch resolving inside the same microtask
-  // flush React is still processing from its own initial-mount effects),
-  // and renderPrData()'s multi-select repopulate calls
-  // window.renderReactMultiSelectList, which is flushSync-wrapped -
-  // calling that reentrantly mid-render throws "flushSync was called from
-  // inside a lifecycle method" (confirmed via this exact warning in a CI
-  // run). Queuing a fresh microtask guarantees React has fully finished
-  // whatever it was doing first, exactly as that warning's own message
-  // suggests ("Consider moving this call to a scheduler task or micro
-  // task") - a plain setTimeout also works in a real browser, but jsdom
-  // integration tests that `await user.click(...)` and assert immediately
-  // (no `waitFor`) only drain the microtask queue, not macrotasks, and
-  // would see the pre-restore value; a microtask still resolves within
-  // that same drain.
-  void restoreUiOptionOverrides().then(() => {
-    if (latestStoredPayload) {
-      queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
-    }
-  });
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): restoreUiOptionOverrides' first
-  // call above almost always runs before react-app.jsx's deferred module
-  // has mounted FilterStateProvider, so every Context-migrated field's
-  // setFilterStateOverrideForFieldId call above is a no-op (no
-  // window.setFilterStateValue yet) - and, now that Phase 2 removed the
-  // vanilla fallback markup those fields' setText/setCheckbox used to fall
-  // back to, there's no DOM element left to mutate either, so the restore
-  // was silently dropped instead of merely falling back. Re-running once
-  // React signals it's mounted (same event/pattern the PR table's
-  // renderPrData retry above uses) picks the override values up for real;
-  // this is idempotent with the first call.
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => {
-      void restoreUiOptionOverrides().then(() => {
-        // The "repo" field only actually restores here (see the comment
-        // above): before React mounts it into #repo-root, it has no
-        // Context and no DOM element to restore into, so the saved repo
-        // isn't known yet on the first restoreUiOptionOverrides() call
-        // above. Only fetch labels once the real configured repo (not the
-        // placeholder DEFAULT_REPO) is available.
-        void refreshAvailableRepoLabels();
-        // The 9 multi-select lists' pending selections (label,
-        // exclude-label, author, assigned, approver, thread-resolution
-        // allow/deny, change-filter ignore-author) have no DOM id and so go
-        // through getPendingSelectionsValue/setPendingSelectionsValue
-        // instead of FILTER_STATE_FIELD_MAP (see that helper's own
-        // comment) - this restore call is what actually syncs them into
-        // Context for real (the first call above almost always predates
-        // FilterStateProvider mounting, so it only ever reaches the
-        // module-scope fallback var). But nothing was re-reading that fresh
-        // Context value afterward: if loadStoredData's own renderPrData
-        // call had already populated these lists (raced ahead of both
-        // restoreUiOptionOverrides calls), their checkboxes were seeded
-        // from whatever was visible at that time and never revisited,
-        // leaving a persisted selection unchecked after every reload even
-        // though Context now genuinely has it. Re-render so the just-synced
-        // pending selections actually reach the checkboxes.
-        //
-        // queueMicrotask: same flushSync-reentrancy/jsdom-await reasons as
-        // the first restoreUiOptionOverrides().then() above - this one is
-        // reachable even more directly, since it runs from inside a
-        // 'viewprs:react-ready' listener that dispatchEvent invoked
-        // synchronously from within a React effect.
-        if (latestStoredPayload) {
-          queueMicrotask(() => renderPrData(latestStoredPayload, latestSelectedRepo));
-        }
-      });
-    },
-    { once: true },
-  );
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // restoreUiOptionOverrides() used to be called here (twice - once
+  // immediately, once on 'viewprs:react-ready' - see git history for the
+  // old dance this required). Restore now happens automatically inside
+  // FilterStateProvider's own mount effect (state/FilterStateProvider.jsx)
+  // - a plain "fetch then setState" running inside React's own lifecycle,
+  // not vanilla code reaching in, so none of the old queueMicrotask/
+  // dual-pass machinery is needed any more.
   // The Backfill tab's status badges (<BackfillBadges />, mounted via
   // window.updateReactBackfillBadges) have the exact same load-order race
   // as the PR table above: loadBackfillStatus() below often resolves
@@ -4462,39 +2602,91 @@ const initPage = () => {
     },
     { once: true },
   );
+  // Same bridge-not-ready-yet race as the two listeners above, for
+  // applyNonCredentialFieldHints() below: it reaches for the 5 "Run Script
+  // options" fields (repo/limit/merged-limit/jobs/pr-numbers) by DOM id,
+  // but all 5 are React-portaled (FilterStateProvider, see
+  // ContextRunScriptTextInput.jsx) and don't exist in the DOM yet at this
+  // point in a real page load - react-app.jsx's own module graph is still
+  // loading, same race the other listeners in this block exist for. The
+  // initial call below is harmless-but-ineffective until this fires (finds
+  // nothing, silently no-ops via getOptionalElementById) - kept anyway for
+  // any environment where React happens to already be mounted (e.g. a test
+  // harness that injects the markup synchronously up front).
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => applyNonCredentialFieldHints(),
+    { once: true },
+  );
+  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): same
+  // bridge-not-ready-yet race as the listeners above - initPage's own
+  // renderRequestActivity() call (below, this function's very first line)
+  // runs before PrDataProvider.jsx has necessarily mounted yet, so the
+  // initial "No request in progress" badge push can silently no-op. Re-push
+  // once React signals ready, same shape as the backfill-badges fix above.
+  window.addEventListener(
+    "viewprs:react-ready",
+    () => renderRequestActivity(),
+    { once: true },
+  );
   registerUiOptionPersistenceHandlers();
-  initManagementTabs();
+  // Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): the 6 management-tab buttons are React-owned now
+  // (ManagementTabButton.jsx/TabStateProvider.jsx) - initManagementTabs'
+  // own button click-wiring would double-fire alongside React's own
+  // onClick if both ran, so this call is removed. initManagementTabs
+  // itself (and its own tests) are untouched - it's simply no longer
+  // called from here.
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
   // Initialize Backfill Tab orchestrator
   backfillTabOrchestrator.initialize();
   applyNonCredentialFieldHints();
-  renderAutoRenderBlockedIndicator();
 
   const prSectionsHost = document.getElementById("pr-sections");
-  
-  // Debounce timer for input events to improve textarea performance
+
+  // Debounce timer for input events - see recomputeDirtyOnEvent's own
+  // comment for why this now applies to INPUT, not just TEXTAREA.
   let recomputeDirtyDebounceTimer = null;
-  
+
   const recomputeDirtyOnEvent = (event) => {
     const tagName = String(event?.target?.tagName || "").toUpperCase();
     const isInputEvent = event?.type === "input";
     const isTextarea = tagName === "TEXTAREA";
-    
+
     if (isInputEvent) {
       if (tagName !== "INPUT" && tagName !== "TEXTAREA") {
         return;
       }
-      // Debounce input events for textareas to reduce lag while typing
-      if (isTextarea) {
-        if (recomputeDirtyDebounceTimer) {
-          clearTimeout(recomputeDirtyDebounceTimer);
-        }
-        recomputeDirtyDebounceTimer = setTimeout(() => {
-          recomputeDirtyPrSectionsFields();
-        }, 300); // 300ms debounce - feels responsive but reduces computation
-        return;
+      // This listener is attached directly to #pr-sections - the exact
+      // same DOM node React's own table root mounts into - and it was
+      // registered here in initPage(), before React ever mounts, so it
+      // fires BEFORE React's own delegated listener for the same native
+      // "input" event (listeners on one node fire in registration order).
+      // Calling recomputeDirtyPrSectionsFields() synchronously from here
+      // (as this used to do for INPUT elements, deferring only TEXTAREA)
+      // calls window.pushAutoRenderBlockingState -> AutoRenderBlockingProvider's
+      // bump(), a React state update - but since this runs *before*
+      // React's own event handling for this same native event even
+      // starts, React doesn't recognize it as happening "inside" one of
+      // its own events, and flushes it synchronously right here. That
+      // out-of-band re-render reconciles the controlled React-owned text
+      // input (e.g. the Notes section's Rally stories/links fields) back
+      // to its pre-keystroke value *before* React's own listener (second
+      // in the queue on this node) gets to process the onChange for the
+      // key just typed - the keystroke is silently lost, confirmed via a
+      // real-browser repro: the DOM's native "input" event fires with the
+      // typed value present, but the controlled input ends up reverted
+      // and the component's own onChange handler never runs at all.
+      // Deferring (even 0ms) moves this off the synchronous dispatch
+      // stack, letting React's own onChange committing happen first.
+      if (recomputeDirtyDebounceTimer) {
+        clearTimeout(recomputeDirtyDebounceTimer);
       }
+      recomputeDirtyDebounceTimer = setTimeout(() => {
+        recomputeDirtyPrSectionsFields();
+      }, isTextarea ? 300 : 0);
+      return;
     }
     if (event?.type === "change") {
       if (tagName !== "INPUT" && tagName !== "TEXTAREA" && tagName !== "SELECT") {
@@ -4507,19 +2699,31 @@ const initPage = () => {
         return;
       }
     }
-    recomputeDirtyPrSectionsFields();
+    // Same listener-ordering race as the "input" branch above (this
+    // function's own comment there has the full explanation) - a native
+    // "change" (select/checkbox/radio) or "click" event reaching here
+    // synchronously, before React's own delegated listener for the same
+    // event gets a chance to run, can revert a just-changed controlled
+    // value (e.g. the Notes section's author/tone/difficulty selects)
+    // before React's own onChange ever fires. Deferred the same way.
+    if (recomputeDirtyDebounceTimer) {
+      clearTimeout(recomputeDirtyDebounceTimer);
+    }
+    recomputeDirtyDebounceTimer = setTimeout(() => {
+      recomputeDirtyPrSectionsFields();
+    }, 0);
   };
 
   prSectionsHost.addEventListener("input", recomputeDirtyOnEvent);
   prSectionsHost.addEventListener("change", recomputeDirtyOnEvent);
   prSectionsHost.addEventListener("click", recomputeDirtyOnEvent);
 
-  const applyNowBtn = getOptionalElementById("auto-render-blocked-apply-btn");
-  if (applyNowBtn) {
-    applyNowBtn.addEventListener("click", () => {
-      forceApplyPendingAutoRender();
-    });
-  }
+  // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // "Discard unsaved" button is React-owned now
+  // (AutoRenderBlockedApplyButton.jsx/AutoRenderBlockingProvider.jsx) -
+  // its own onClick calls discardAndApply directly, so this vanilla
+  // click-wiring (which called the now-deleted forceApplyPendingAutoRender)
+  // is removed.
 
   // Expose the pure (non-DOM) row-rendering logic for the React hybrid
   // table (see components/PrRow.jsx and friends) so it can reproduce the
@@ -4538,10 +2742,14 @@ const initPage = () => {
   // consuming components now import it directly), escapeHtml/
   // formatIsoDatetime (createPrFormattingHelpers(), same reasoning), and
   // countPendingThreadComments (extracted from an inline index.page.js
-  // function into helpers/pr-thread-comments.helpers.js). formatChkDisplay
-  // and toCount stay - AuthorInsightsPrDataMeta.jsx still reads them off
-  // window (see that file's own comment for why it's deliberately deferred
-  // as one atomic unit, not cherry-picked here). shouldShowNeedsAttention/
+  // function into helpers/pr-thread-comments.helpers.js). formatChkDisplay/
+  // toCount/parseMarkerState/getViewedFilesSummary ("Track C" - see
+  // AuthorInsightsPrDataMeta.jsx's own comment) used to stay bridged here
+  // too - re-investigated and found all 4 are genuinely zero-dependency,
+  // the same as every other name in this comment; that file now builds
+  // its own copies directly (also fixing a real, previously-masked
+  // formatChkDisplay call-signature bug along the way - see its own
+  // comment). shouldShowNeedsAttention/
   // entryNeedsAttention/getNeedsAttentionConfig also moved off (both the
   // separate window.entryNeedsAttention/window.getNeedsAttentionConfig
   // assignment above and shouldShowNeedsAttention here) - PrTableApp.jsx
@@ -4551,73 +2759,111 @@ const initPage = () => {
   // Context-native (Phase 6, FilterStateProvider) and the classification
   // helpers only need actor-identity, itself already Context-native.
   Object.assign(window, {
-    formatChkDisplay,
-    collectPrAuthors,
-    collectAssignedUsers,
-    collectRequestedReviewers,
-    getUserInitials,
-    getOpenConversationCountWithMe,
-    getManualNotesSummary,
-    getManualNotesFieldSummary,
-    buildPrLastCheckedIndicator,
-    getViewedFilesState,
-    getViewedFilesSummary,
-    getSelectedPrNumbers,
-    updateSelectedPrNumbers,
-    getLabelName,
-    getAvailableRepoLabels,
-    isInReviewEnabled,
-    isFlaggedEnabled,
-    toCount,
-    runSinglePrUpdate,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): collectAssignedUsers/
+    // collectRequestedReviewers/getUserInitials/getOpenConversationCountWithMe
+    // used to be bridged here too - PrApprovedCell.jsx now gets all 4 from
+    // PrInsightsDisplayProvider/usePrInsightsDisplay() instead, and no
+    // other component reads any of these 4 names off window.
+    // collectPrAuthors/getManualNotesSummary/getManualNotesFieldSummary/
+    // buildPrLastCheckedIndicator/getViewedFilesState used to be bridged
+    // here too - PrAuthorCell.jsx/PrDateCell.jsx/PrStatusCell.jsx now
+    // import/build these directly instead (collectPrAuthors via
+    // createPrAuthorCellHelpers + useActorIdentity(); the other 4 from
+    // their own new/existing helper modules).
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): getSelectedPrNumbers/
+    // updateSelectedPrNumbers used to be bridged here too -
+    // PrSelectionCell.jsx now reads/writes "#pr-numbers"'s Context value
+    // directly instead (see the comment at that field's old definition,
+    // above getUiOptionDefaults' call sites). getLabelName used to be
+    // bridged here too - it had no other internal use in this file beyond
+    // that bridge (confirmed via grep, so the import above was removed
+    // entirely, not just the bridge entry); PrActionsCell.jsx/
+    // PrLabelsCell.jsx now import it directly from
+    // pr-filter-label-extraction.helpers.js instead of reading
+    // window.getLabelName. getAvailableRepoLabels used to be bridged here
+    // too - PrActionsCell.jsx now reads RepoLabelsContext directly instead
+    // (see populateApplyLabelSelect's own comment, above
+    // getAvailableRepoLabels' old definition).
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
+    // isFlaggedEnabled used to also be bridged here - confirmed dead for
+    // the React/component side (see the comments at isInReviewEnabled's
+    // definition and isFlaggedEnabled's old location above), so both
+    // entries are removed. isInReviewEnabled's definition stays (still
+    // used by this file's own internal filtering); isFlaggedEnabled's
+    // definition was deleted outright - it had no callers at all.
+    // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"):
+    // runSinglePrUpdate used to be bridged here too - PrTableApp.jsx now
+    // calls a real useSinglePrUpdate() hook instead (state/useSinglePrUpdate.jsx).
+    // That hook needs applyFreshPrPayload the same way NotesSection.jsx
+    // already reaches beginRequestActivity/postJson - a vanilla primitive
+    // exposed *for* a React consumer, not a bridge being closed.
+    applyFreshPrPayload,
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
-    parseMarkerState,
-    formatApproversDisplay,
-    formatRequestedReviewersDisplay,
-    formatAssignedUsersDisplay,
-    normalizeRowMetrics,
-    getBadgeClassForStatus,
-    getBadgeClassForCheck,
-    getBadgeClassForMerge,
-    formatReviewFootprint,
-    formatConversationStatus,
-    formatApprovalRisk,
-    formatCommentUsefulness,
-    buildFallbackActivityEvents,
-    buildActivityEventKey,
-    normalizePrRootUrl,
-    getAuthorThreadResolutionPolicy,
-    parseSortableTime,
-    readReviewConversationsUiState,
-    writeReviewConversationsUiState,
-    renderMarkdownAsHtml,
-    buildPrPeopleOptions,
-    noteAuthorMatchesSelection,
-    normalizeNotesListForUi,
-    getNotesDifficultyLevelText,
-    formatDurationMinutes,
-    postJson,
-    asArray,
-    autoResizeTextarea,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): formatApproversDisplay/
+    // formatRequestedReviewersDisplay/formatAssignedUsersDisplay/
+    // normalizeRowMetrics/getBadgeClassForStatus/Check/Merge/
+    // formatReviewFootprint/ConversationStatus/ApprovalRisk/
+    // CommentUsefulness/buildFallbackActivityEvents/buildActivityEventKey/
+    // normalizePrRootUrl/renderMarkdownAsHtml/buildPrPeopleOptions/
+    // normalizeNotesListForUi/formatDurationMinutes all moved off this
+    // bridge onto PrInsightsDisplayProvider/usePrInsightsDisplay()
+    // (state/PrInsightsDisplayContext.jsx), and so did
+    // readReviewConversationsUiState/writeReviewConversationsUiState (onto
+    // ReviewConversationsUiStateProvider - no window.* bridge needed at
+    // all there, nothing outside ReviewThreadsSection.jsx ever read them).
+    // getAuthorThreadResolutionPolicy used to also be bridged here -
+    // re-investigated (see this file's own comment above
+    // getSelectedAuthorThreadResolutionAllowLogins) and moved to a
+    // dedicated hook in ReviewThreadsSection.jsx instead.
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): parseSortableTime/
+    // noteAuthorMatchesSelection/getAuthorInsightsDisplayName (further
+    // below) used to also be bridged here - confirmed dead for the React
+    // side (zero window.X reads anywhere outside this file): every actual
+    // consumer already gets its own copy via a direct import
+    // (parseSortableTime, ReviewThreadsSection.jsx/AuthorInsightsProvider.jsx)
+    // or a Context hook (noteAuthorMatchesSelection,
+    // AuthorInsightsContext/a local useMemo; getAuthorInsightsDisplayName,
+    // useAuthorInsights()). getNotesDifficultyLevelText had no window.X
+    // consumer at all, anywhere, even before this round - it moved along
+    // with getManualNotesFieldSummary (its only remaining caller) into
+    // helpers/pr-manual-notes-summary.helpers.js. postJson/
+    // autoResizeTextarea used to be bridged here too - NotesSection.jsx
+    // (their one shared consumer) now imports both directly instead
+    // (postJson via a new bare export alongside pr-http.helpers.js's
+    // existing, still test-mockable factory; autoResizeTextarea via new
+    // helpers/pr-textarea-autoresize.helpers.js).
     recomputeDirtyPrSectionsFields,
-    // ---- PR JSON modal (see components/PrJsonModal.jsx) ----
-    safeJsonStringify,
-    getPerPrUserStateFromPayload,
-    DEFAULT_REPO,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): asArray/safeJsonStringify/
+    // getPerPrUserStateFromPayload/DEFAULT_REPO used to also be bridged
+    // here - every actual consumer (asArray: 8 components including
+    // AuthorInsightsPrDataMeta.jsx - independent of that file's own
+    // separately-deferred Track C cluster; safeJsonStringify/
+    // getPerPrUserStateFromPayload/DEFAULT_REPO: PrJsonModal.jsx, plus
+    // ExportTab.jsx for safeJsonStringify and AuthorInsightsPrLink.jsx for
+    // DEFAULT_REPO) now imports these directly instead (see each one's
+    // own new helper module / pr-ui-render-utils.helpers.js's own hoisted
+    // export).
     // ---- Export tab (see components/ExportTab.jsx) ----
-    getExportFieldCatalog,
-    getVisiblePrNumbersFromSectionsHost,
-    buildExportPayload,
-    // ---- Row sorting (see components/PrTableApp.jsx) ----
-    normalizeRows,
-    sortRowsByPrNumberDesc,
-    sortRowsByDateFieldDesc,
-    // ---- Auto-render-blocked indicator links (see
-    // components/AutoRenderBlockedLinks.jsx) ----
-    navigateToPrInTable,
-    navigateToAuthorInsights,
-    getAuthorInsightsDisplayName,
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
+    // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
+    // bridged here too - ExportTab.jsx now builds its own
+    // createPrExportHelpers({ getPerPrUserStateFromPayload }) directly
+    // instead (confirmed genuinely zero-dependency - see that file's own
+    // comment).
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): normalizeRows/
+    // sortRowsByPrNumberDesc/sortRowsByDateFieldDesc ("Row sorting", see
+    // components/PrTableApp.jsx) used to be bridged here too -
+    // PrTableApp.jsx now imports all 3 directly from
+    // helpers/pr-row-sorting.helpers.js instead (genuinely
+    // zero-dependency), and no other component read them off window.
+    // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // navigateToPrInTable/navigateToAuthorInsights used to be bridged here
+    // too (see components/AutoRenderBlockedLinks.jsx) -
+    // state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx
+    // replace them as real hooks; createPrAutoRenderNavigationHelpers
+    // itself (helpers/pr-auto-render-navigation.helpers.js) had no other
+    // caller, so it was deleted outright, not just un-bridged.
   });
 
   // The initial loadStoredData() fetch below often resolves before the
@@ -4636,11 +2882,12 @@ const initPage = () => {
   // call would then see "already mounted" and skip straight to
   // updateReactTable, re-running the vanilla filter-dropdown population a
   // second time in the process (once for this empty mount, once for the
-  // real update) - exactly the stale-DOM-read double-populate race
-  // flushSync (see renderReactMultiSelectList in react-app.jsx) exists to
-  // guard against, just one extra time. Only re-render here once real data
-  // has actually loaded; otherwise loadStoredData()'s own renderPrData call
-  // below already lands on the correct (mount, not update) path unaided.
+  // real update) - exactly the stale-DOM-read double-populate race the
+  // multi-select lists' own render-cache (createMultiSelectRenderCache,
+  // MultiSelectListPortals.jsx) exists to guard against, just one extra
+  // time. Only re-render here once real data has actually loaded;
+  // otherwise loadStoredData()'s own renderPrData call below already
+  // lands on the correct (mount, not update) path unaided.
   window.addEventListener(
     "viewprs:react-ready",
     () => {
@@ -4698,9 +2945,6 @@ const initPage = () => {
   // *what triggers it* for those fields has moved off the vanilla
   // delegated "change" listener.
   window.debouncedApplyFilters = debouncedApplyFilters;
-  
-  getPrNumbersInput().addEventListener("input", handlePrNumbersInputChange);
-  getPrNumbersInput().addEventListener("change", handlePrNumbersInputChange);
 
   // Delegated on the form (a stable ancestor never replaced by React) for
   // every field below rather than attached to each field directly:
@@ -4738,7 +2982,7 @@ const initPage = () => {
       }
       if (targetId === "attention-author-thread-resolution-mode") {
         updateAuthorThreadResolutionRuleVisibility();
-        void persistViewFilterOptionOverrides();
+        void window.persistViewFilterOptionOverrides?.();
         debouncedApplyFilters();
         return;
       }
@@ -4746,7 +2990,7 @@ const initPage = () => {
         targetId === "change-filter-use-builtin-merge-pattern" ||
         targetId === "change-filter-ignore-commit-patterns"
       ) {
-        void persistViewFilterOptionOverrides();
+        void window.persistViewFilterOptionOverrides?.();
         debouncedApplyFilters();
         return;
       }
@@ -4784,7 +3028,7 @@ const initPage = () => {
             listId === "change-filter-ignore-comment-authors-list" ||
             listId === "change-filter-ignore-review-authors-list"
           ) {
-            void persistViewFilterOptionOverrides();
+            void window.persistViewFilterOptionOverrides?.();
           }
           debouncedApplyFilters(); // Use debounced version for multi-select changes
         }
@@ -4801,10 +3045,6 @@ const initPage = () => {
 
   setupMultiSelectDropdownClosing();
 
-  document.getElementById("run-script-btn").addEventListener("click", () => {
-    void persistRunScriptOptionOverrides();
-    void handleRunScript();
-  });
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): #quick-check-btn/#trigger-auto-run-btn are
   // React-owned now (components/QuickCheckButton.jsx/
@@ -4815,84 +3055,24 @@ const initPage = () => {
   // REACT_MIGRATION_PLAN.md): #error-snackbar-close is React-owned now
   // (components/Snackbar.jsx), with its own onClick handler - no vanilla
   // wiring needed here anymore.
-  document.getElementById("ack-only-btn").addEventListener("click", () => {
-    void handleAckOnly();
-  });
-  document.getElementById("clear-only-btn").addEventListener("click", () => {
-    void handleClearOnly();
-  });
-  const applyLabelBtn = getOptionalElementById("apply-label-btn");
-  if (applyLabelBtn) {
-    applyLabelBtn.addEventListener("click", () => {
-      void handleApplyLabelClick();
-    });
-  }
-  const refreshLabelsBtn = getOptionalElementById("refresh-labels-btn");
-  if (refreshLabelsBtn) {
-    refreshLabelsBtn.addEventListener("click", () => {
-      void refreshAvailableRepoLabels();
-    });
-  }
-  document.getElementById("apply-filters-btn").addEventListener("click", () => {
-    void persistViewFilterOptionOverrides();
-    applyFiltersFromCache();
-  });
-  document
-    .getElementById("backfill-start-btn")
-    .addEventListener("click", () => {
-      void handleBackfillAction("start");
-    });
-  document.getElementById("backfill-stop-btn").addEventListener("click", () => {
-    void handleBackfillAction("stop");
-  });
-  document
-    .getElementById("backfill-refresh-btn")
-    .addEventListener("click", () => {
-      const finishActivity = beginRequestActivity("backfill");
-      void loadBackfillStatus({ announce: true, includeLog: true })
-        .catch((error) => {
-          renderBackfillStatus({
-            ok: false,
-            running: false,
-            summary:
-              error?.result?.summary || "Failed to refresh backfill status",
-            error: error?.result?.error || error.message,
-          });
-          setBackfillLogMessage("Failed to load backfill log");
-          notifyFailureSnackbar(
-            "Failed to refresh backfill status",
-            error?.result || error,
-            "Unable to refresh backfill status",
-          );
-        })
-        .finally(() => {
-          finishActivity();
-        });
-    });
-  document
-    .getElementById("backfill-log-refresh-btn")
-    .addEventListener("click", () => {
-      const finishActivity = beginRequestActivity("backfill");
-      void loadBackfillLogTail()
-        .catch((error) => {
-          setBackfillLogMessage(
-            `Failed to load backfill log\n\n${error.message || String(error)}`,
-          );
-          notifyFailureSnackbar(
-            "Failed to refresh backfill log",
-            error,
-            "Unable to refresh backfill log",
-          );
-        })
-        .finally(() => {
-          finishActivity();
-        });
-    });
-  document
-    .getElementById("backfill-log-autoscroll")
-    .addEventListener("change", () => {
-      autoScrollBackfillLogToBottom();
-    });
+  // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn/
+  // #refresh-labels-btn/#apply-filters-btn are React-owned now
+  // (RunScriptActionButton.jsx, react-app.jsx) - no vanilla wiring needed
+  // here anymore. Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced 4 of
+  // their 5 window.* bridges with real hooks (useRunScript.jsx/
+  // useAckLabelActions.jsx, state/) - only window.applyFiltersFromCache
+  // and window.refreshAvailableRepoLabels (a deliberate exception, see
+  // useRefreshAvailableRepoLabels.jsx's own comment) are still reached via
+  // window.* from react-app.jsx.
+  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // 3 backfill action buttons, the log-refresh button, and the
+  // auto-scroll checkbox are React-owned now (BackfillControls.jsx/
+  // BackfillLogControls.jsx) - no vanilla wiring needed here anymore.
+  // Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced their window.* bridges
+  // with useBackfillActions.jsx (state/) - window.autoScrollBackfillLogToBottom
+  // stays bridged (that hook's own DI param reads it; a real DOM
+  // scroll/checkbox primitive, not a trigger duplication).
 
   const actionLogRefreshBtn = getOptionalElementById("action-log-refresh-btn");
   if (actionLogRefreshBtn) {
@@ -4906,10 +3086,15 @@ const initPage = () => {
   // render) and their visibility-pause/beforeunload-cleanup lifecycle used
   // to be owned here (setInterval/cleanupIntervals/restartIntervals). That
   // ownership moved to <PrDataPolling /> (react-app.jsx, mounted as a
-  // headless React root with no visible UI) - it calls the same underlying
-  // functions via window.pollForDataChanges/pollSchedulerStatus/
-  // pollBackfillStatus/renderRequestActivity (exposed below), just with
-  // React now deciding *when* they run instead of index.page.js.
+  // headless React root with no visible UI) - Phase F/F.2 (see
+  // REACT_MIGRATION_PLAN.md) moved pollForDataChanges/pollBackfillStatus/
+  // renderRequestActivity themselves into PrDataProvider.jsx too, reached
+  // directly via usePrData() Context (no window.* indirection left for any
+  // of the 3). window.pollSchedulerStatus (its own automatic interval
+  // already retired, below) was deleted outright in Phase H.2 (see
+  // REACT_MIGRATION_PLAN.md) - index.html.test.js was its only remaining
+  // caller, and that test now calls window.renderSchedulerStatus
+  // directly instead, the same real path SSE uses.
 };
 
 if (typeof window !== "undefined") {
@@ -4946,7 +3131,6 @@ if (typeof module !== "undefined" && module.exports) {
       isAuthorInsightsComposerDraftDirty,
       isAuthorInsightsEditDraftDirty,
       resolveRepoForLabelsFetch,
-      shouldRefetchLabelsForRepo,
     },
   };
 }

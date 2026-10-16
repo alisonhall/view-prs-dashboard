@@ -268,3 +268,21 @@ export const { createPrAuthorInsightsDisplayHelpers } = (() => {
     createPrAuthorInsightsDisplayHelpers,
   };
 })();
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, navigateToAuthorInsights's own
+// entry): zero-dependency pure function - bare export, no createXHelpers()
+// wrapper needed (same precedent as pr-row-sorting.helpers.js). Shared by
+// pr-author-insights.component.js's renderAuthorInsights (the vanilla
+// render path) and pr-auto-render-navigation.helpers.js's
+// navigateToAuthorInsights (the navigation path), so both validate a
+// requested author login against the same current options the same way
+// instead of one reimplementing the other's rule.
+export const resolveValidAuthorLogin = (authorOptions, requestedLogin) => {
+  if (!Array.isArray(authorOptions) || authorOptions.length === 0) {
+    return "";
+  }
+  if (authorOptions.some((option) => option.login === requestedLogin)) {
+    return requestedLogin;
+  }
+  return authorOptions[0].login;
+};

@@ -15,9 +15,9 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 // are still the real external contract index.page.js calls - these tests
 // exercise them the same way as before, just reached via window instead of
 // an imported function. PrTableApp is mocked so these tests exercise
-// AppRoot's own mounting/update-bridge logic (the visiblePrNumbers
-// undefined-vs-null distinction, etc.) without depending on PrTableApp's
-// own render tree - that's covered by PrTableApp.test.jsx. Mocked to call
+// AppRoot's own mounting/update-bridge logic without depending on
+// PrTableApp's own render tree - that's covered by PrTableApp.test.jsx.
+// Mocked to call
 // the *real* usePrData() and capture its result, so this still exercises
 // the real <PrDataProvider />'s merge semantics.
 const capturedContext = [];
@@ -114,43 +114,5 @@ describe('react-app.jsx: window.mountReactPrTable / window.updateReactPrTable br
 
     expect(capturedContext.at(-1).payload).toBe(nextPayload);
     expect(capturedContext.at(-1).selectedRepo).toBe('owner/repo');
-  });
-
-  test('given visiblePrNumbers is omitted on an update call, when re-rendering, then the previous visiblePrNumbers is preserved (not wiped to undefined)', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    React.act(() => {
-      window.mountReactPrTable(container, {
-        initialPayload: {},
-        selectedRepo: 'owner/repo',
-        visiblePrNumbers: ['1', '2'],
-      });
-    });
-    capturedContext.length = 0;
-
-    React.act(() => {
-      window.updateReactPrTable({ byPrNumber: {} }, 'owner/repo');
-    });
-
-    expect(capturedContext.at(-1).visiblePrNumbers).toEqual(['1', '2']);
-  });
-
-  test('given null is explicitly passed as visiblePrNumbers on an update call, when re-rendering, then it overwrites the previous value to null ("everything filtered out")', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    React.act(() => {
-      window.mountReactPrTable(container, {
-        initialPayload: {},
-        selectedRepo: 'owner/repo',
-        visiblePrNumbers: ['1', '2'],
-      });
-    });
-    capturedContext.length = 0;
-
-    React.act(() => {
-      window.updateReactPrTable({ byPrNumber: {} }, 'owner/repo', null);
-    });
-
-    expect(capturedContext.at(-1).visiblePrNumbers).toBeNull();
   });
 });

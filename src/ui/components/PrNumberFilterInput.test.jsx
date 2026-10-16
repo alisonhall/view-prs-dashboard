@@ -5,12 +5,26 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { PrNumberFilterInput } = require('./PrNumberFilterInput');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (filterPrNumbers = '') =>
   render(
-    <FilterStateProvider initialValues={{ filterPrNumbers }}>
-      <PrNumberFilterInput />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={{ filterPrNumbers }}>
+            <PrNumberFilterInput />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('PrNumberFilterInput', () => {

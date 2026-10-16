@@ -11,9 +11,6 @@ describe("PR Data Tab Orchestrator", () => {
     mockDeps = {
       deriveRunPrDataContext: jest.fn(),
       deriveRenderPipelineState: jest.fn(),
-      applyFiltersFromCache: jest.fn(),
-      loadStoredData: jest.fn(),
-      activateDataTab: jest.fn(),
       initDataTabs: jest.fn(),
       getOptionalElementById: jest.fn(),
       stateGetters: {
@@ -39,21 +36,11 @@ describe("PR Data Tab Orchestrator", () => {
     test("When checking API, Then all methods are defined", () => {
       expect(orchestrator.initialize).toBeDefined();
       expect(orchestrator.renderPrData).toBeDefined();
-      expect(orchestrator.handleDataRefresh).toBeDefined();
-      expect(orchestrator.handleFilterChange).toBeDefined();
-      expect(orchestrator.activateTab).toBeDefined();
-      expect(orchestrator.loadData).toBeDefined();
-      expect(orchestrator.cleanup).toBeDefined();
     });
 
     test("When checking API types, Then all are functions", () => {
       expect(typeof orchestrator.initialize).toBe("function");
       expect(typeof orchestrator.renderPrData).toBe("function");
-      expect(typeof orchestrator.handleDataRefresh).toBe("function");
-      expect(typeof orchestrator.handleFilterChange).toBe("function");
-      expect(typeof orchestrator.activateTab).toBe("function");
-      expect(typeof orchestrator.loadData).toBe("function");
-      expect(typeof orchestrator.cleanup).toBe("function");
     });
   });
 
@@ -73,67 +60,6 @@ describe("PR Data Tab Orchestrator", () => {
 
       // Assert
       expect(mockDeps.initDataTabs).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("Given tab activation", () => {
-    test("When activateTab called, Then activateDataTab helper called with pr-data", () => {
-      // Act
-      orchestrator.activateTab();
-
-      // Assert
-      expect(mockDeps.activateDataTab).toHaveBeenCalledWith("pr-data");
-      expect(mockDeps.activateDataTab).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("Given data loading", () => {
-    test("When loadData called with repo, Then loadStoredData helper called", async () => {
-      // Arrange
-      mockDeps.loadStoredData.mockResolvedValue(undefined);
-
-      // Act
-      await orchestrator.loadData("test-repo");
-
-      // Assert
-      expect(mockDeps.loadStoredData).toHaveBeenCalledWith("test-repo");
-      expect(mockDeps.loadStoredData).toHaveBeenCalledTimes(1);
-    });
-
-    test("When loadData called without repo, Then loadStoredData called with empty string", async () => {
-      // Arrange
-      mockDeps.loadStoredData.mockResolvedValue(undefined);
-
-      // Act
-      await orchestrator.loadData();
-
-      // Assert
-      expect(mockDeps.loadStoredData).toHaveBeenCalledWith("");
-    });
-  });
-
-  describe("Given filter changes", () => {
-    beforeEach(() => {
-      orchestrator.initialize();
-    });
-
-    test("When handleFilterChange called, Then applyFiltersFromCache helper called", () => {
-      // Act
-      orchestrator.handleFilterChange();
-
-      // Assert
-      expect(mockDeps.applyFiltersFromCache).toHaveBeenCalledTimes(1);
-    });
-
-    test("When not initialized and handleFilterChange called, Then helpers not called", () => {
-      // Arrange
-      orchestrator.cleanup(); // Uninitialize
-
-      // Act
-      orchestrator.handleFilterChange();
-
-      // Assert
-      expect(mockDeps.applyFiltersFromCache).not.toHaveBeenCalled();
     });
   });
 
@@ -289,74 +215,47 @@ describe("PR Data Tab Orchestrator", () => {
         );
       });
     });
-  });
 
-  describe("Given data refresh handling", () => {
-    beforeEach(() => {
-      orchestrator.initialize();
+    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): "repo" is
+    // read from PrDataProvider's Context (via a dedicated bridge) when
+    // available, same handled/fallback shape as getFilterStateValue above.
+    describe("Given getSelectedRepoOverride is provided", () => {
+      test("When it returns a string, Then that value is used instead of the DOM read", () => {
+        // Arrange
+        const orchestratorWithRepoOverride = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getSelectedRepoOverride: () => "override-repo",
+        });
+        orchestratorWithRepoOverride.initialize();
+        const mockPayload = { entries: [], meta: {} };
 
-      // Setup DOM mocks
-      mockDeps.getOptionalElementById.mockImplementation((id) => {
-        if (id === "repo") return { value: "" };
-        if (id === "filter-pr-numbers") return { value: "" };
-        return null;
+        // Act
+        orchestratorWithRepoOverride.renderPrData(mockPayload, "test-repo");
+
+        // Assert (the "repo" DOM mock above returns { value: "test-repo" })
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ inputRepo: "override-repo" }),
+        );
       });
 
-      mockDeps.deriveRunPrDataContext.mockReturnValue({
-        allEntries: [],
-        rowsForRepo: [],
-        sectionsHost: {},
-        meta: {},
+      test("When it returns undefined, Then the original DOM read is used", () => {
+        // Arrange
+        const orchestratorWithRepoOverride = createPrDataTabOrchestrator({
+          ...mockDeps,
+          getSelectedRepoOverride: () => undefined,
+        });
+        orchestratorWithRepoOverride.initialize();
+        const mockPayload = { entries: [], meta: {} };
+
+        // Act
+        orchestratorWithRepoOverride.renderPrData(mockPayload, "test-repo");
+
+        // Assert (the "repo" DOM mock above returns { value: "test-repo" })
+        expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalledWith(
+          expect.objectContaining({ inputRepo: "test-repo" }),
+        );
       });
-
-      mockDeps.deriveRenderPipelineState.mockReturnValue({
-        lastSuccessfulRenderedCheckAt: "",
-        committedRenderState: {
-          pendingAutoRenderPayload: null,
-          lastRenderedPrFingerprint: "",
-          latestPrManifest: {},
-        },
-      });
-    });
-
-    test("When handleDataRefresh called, Then renderPrData coordinated", () => {
-      // Arrange
-      const mockPayload = { entries: [] };
-
-      // Act
-      orchestrator.handleDataRefresh(mockPayload, "test-repo");
-
-      // Assert
-      expect(mockDeps.deriveRunPrDataContext).toHaveBeenCalled();
-      expect(mockDeps.stateSetters.setLatestStoredPayload).toHaveBeenCalledWith(
-        mockPayload
-      );
-    });
-
-    test("When not initialized and handleDataRefresh called, Then no rendering", () => {
-      // Arrange
-      orchestrator.cleanup(); // Uninitialize
-      const mockPayload = { entries: [] };
-
-      // Act
-      orchestrator.handleDataRefresh(mockPayload);
-
-      // Assert
-      expect(mockDeps.deriveRunPrDataContext).not.toHaveBeenCalled();
     });
   });
 
-  describe("Given cleanup", () => {
-    test("When cleanup called, Then orchestrator marked as uninitialized", () => {
-      // Arrange
-      orchestrator.initialize();
-
-      // Act
-      orchestrator.cleanup();
-
-      // Assert - verify filter change doesn't work after cleanup
-      orchestrator.handleFilterChange();
-      expect(mockDeps.applyFiltersFromCache).not.toHaveBeenCalled();
-    });
-  });
 });

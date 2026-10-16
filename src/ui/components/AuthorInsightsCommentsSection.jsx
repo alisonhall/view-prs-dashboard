@@ -8,22 +8,17 @@
  * along with its renderComposerForm/renderManualCommentList/
  * renderManualCommentItem/renderEditForm helpers).
  *
- * Important: composer/edit draft state is NOT local-only React state. The
- * auto-render-blocking feature (pr-auto-render-blocking.helpers.js's
- * getBlockingAuthorInsightsLogins, wired into
- * recomputeDirtyPrSectionsFields/getAutoRenderBlockingState in
- * index.page.js) reads authorInsightsState.manualCommentDraftByAuthorLogin
- * / manualCommentEditDraftByAuthorLogin directly to decide whether an
- * incoming poll should be blocked because the user has unsaved author
- * comment edits, and getAuthorManualCommentsForLogin (also reading
- * authorInsightsState.manualCommentsByAuthorLogin) to tell a genuinely
- * dirty edit apart from a no-op one. So every draft mutation here goes
- * through the existing window bridges (getAuthorInsightsComposerDraft/
- * updateAuthorInsightsComposerDraft/etc.) to keep that shared vanilla
- * state correct - local useState here exists only to trigger re-renders,
- * not as the source of truth. This is the same "vanilla remains source of
- * truth, React re-renders on top" shape as every other Phase 1-3 bridge,
- * just now presented as controlled JSX inputs instead of raw DOM.
+ * Phase 7 (see REACT_MIGRATION_PLAN.md): composer/edit draft state reads
+ * and writes AuthorInsightsDraftsContext directly now (useAuthorInsightsDrafts())
+ * instead of mirroring into local useState while also calling through
+ * window.* bridges - that Context *is* the shared state other code outside
+ * this component's own lifetime needs (pr-auto-render-blocking.helpers.js's
+ * getBlockingAuthorInsightsLogins, still vanilla, reads it via the
+ * window.* bridges AuthorInsightsDraftsProvider.jsx republishes), so no
+ * local mirroring or explicit recomputeDirtyPrSectionsFields() calls are
+ * needed here any more - every Context write already triggers that itself.
+ * Genuinely component-local UI state (composerSaving/composerStatus/
+ * loadState/comments/editingCommentId) stays as local useState.
  *
  * @module components/AuthorInsightsCommentsSection
  *
@@ -39,11 +34,10 @@ import { useEffect, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { useAuthorInsightsDrafts } from '../state/AuthorInsightsDraftsContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
-
-const recomputeDirty = () => window.recomputeDirtyPrSectionsFields?.();
 
 function SentimentSelect({ value, onChange, disabled }) {
   const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = useAuthorInsights();
@@ -60,7 +54,8 @@ function SentimentSelect({ value, onChange, disabled }) {
 
 function EditForm({ login, comment, onDone }) {
   const { DEFAULT_AUTHOR_INSIGHTS_SENTIMENT } = useAuthorInsights();
-  const initialDraft = window.getAuthorInsightsEditDraft?.(login, comment) || { note: comment?.note || '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT };
+  const drafts = useAuthorInsightsDrafts();
+  const initialDraft = drafts.getEditDraft(login, comment) || { note: comment?.note || '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT };
   const [draft, setDraft] = useState(initialDraft);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
@@ -70,13 +65,11 @@ function EditForm({ login, comment, onDone }) {
   const updateDraft = (patch) => {
     const next = { ...draft, ...patch, isEditing: true };
     setDraft(next);
-    window.updateAuthorInsightsEditDraft?.(login, commentId, next);
-    recomputeDirty();
+    drafts.updateEditDraft(login, commentId, next);
   };
 
   const handleCancel = () => {
-    window.resetAuthorInsightsEditDraft?.(login, commentId);
-    recomputeDirty();
+    drafts.resetEditDraft(login, commentId);
     onDone(null);
   };
 
@@ -94,9 +87,8 @@ function EditForm({ login, comment, onDone }) {
         setStatus(result.error || 'Failed to save comment edits');
         return;
       }
-      window.resetAuthorInsightsEditDraft?.(login, commentId);
-      window.setAuthorInsightsManualComments?.(login, result.comments);
-      recomputeDirty();
+      drafts.resetEditDraft(login, commentId);
+      drafts.setManualComments(login, result.comments);
       onDone(Array.isArray(result.comments) ? result.comments : []);
     } catch (_error) {
       setStatus('Failed to save comment edits');
@@ -172,6 +164,7 @@ export function AuthorInsightsCommentsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
   const { resolveActorDisplayName } = useActorIdentity();
   const { DEFAULT_AUTHOR_INSIGHTS_SENTIMENT, sortAuthorInsightsManualCommentsDesc } = useAuthorInsights();
+  const drafts = useAuthorInsightsDrafts();
   const actorsMap = payload?.actorsMap || {};
   const selectedAuthor = selectedAuthorLogin
     ? { login: selectedAuthorLogin, name: resolveActorDisplayName(selectedAuthorLogin, actorsMap, selectedAuthorLogin) }
@@ -191,16 +184,16 @@ export function AuthorInsightsCommentsSection() {
       return undefined;
     }
 
-    setComposerDraft(window.getAuthorInsightsComposerDraft?.(login) || { note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
+    setComposerDraft(drafts.getComposerDraft(login) || { note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
     setComposerStatus('');
     setEditingCommentId(null);
 
     const refreshComments = () => {
-      setComments(sortAuthorInsightsManualCommentsDesc(window.getAuthorManualCommentsForLogin?.(login) || []));
-      setLoadState(window.getAuthorInsightsManualCommentsLoadState?.(login) || { loading: false, error: '' });
+      setComments(sortAuthorInsightsManualCommentsDesc(drafts.getManualComments(login) || []));
+      setLoadState(drafts.getManualCommentsLoadState(login) || { loading: false, error: '' });
     };
 
-    window.loadAuthorManualComments?.(login, refreshComments);
+    drafts.loadManualComments(login, refreshComments);
     refreshComments();
 
     return () => {
@@ -208,7 +201,7 @@ export function AuthorInsightsCommentsSection() {
         clearTimeout(savedStatusTimeoutRef.current);
       }
     };
-  }, [login, DEFAULT_AUTHOR_INSIGHTS_SENTIMENT, sortAuthorInsightsManualCommentsDesc]);
+  }, [login, DEFAULT_AUTHOR_INSIGHTS_SENTIMENT, sortAuthorInsightsManualCommentsDesc, drafts]);
 
   if (!selectedAuthor) {
     return null;
@@ -217,8 +210,7 @@ export function AuthorInsightsCommentsSection() {
   const updateComposerDraft = (patch) => {
     const next = { ...composerDraft, ...patch };
     setComposerDraft(next);
-    window.updateAuthorInsightsComposerDraft?.(login, next);
-    recomputeDirty();
+    drafts.updateComposerDraft(login, next);
   };
 
   const handleSaveComment = async () => {
@@ -241,12 +233,11 @@ export function AuthorInsightsCommentsSection() {
         return;
       }
 
-      window.setAuthorInsightsManualComments?.(login, result.comments);
-      window.resetAuthorInsightsComposerDraft?.(login);
+      drafts.setManualComments(login, result.comments);
+      drafts.resetComposerDraft(login);
       setComposerDraft({ note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
       setComments(sortAuthorInsightsManualCommentsDesc(Array.isArray(result.comments) ? result.comments : []));
       setComposerStatus('Saved.');
-      recomputeDirty();
       savedStatusTimeoutRef.current = setTimeout(() => setComposerStatus(''), 2500);
     } catch (_error) {
       setComposerStatus('Save failed');

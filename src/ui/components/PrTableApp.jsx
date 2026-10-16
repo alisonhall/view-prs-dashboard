@@ -13,8 +13,14 @@ import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
+import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
+import { usePrActivityQueue } from '../state/PrActivityQueueContext';
+import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
+import { useAckLabelActions } from '../state/useAckLabelActions';
+import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
+import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
@@ -25,21 +31,19 @@ import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.
  * Renders all PR sections (smart groups + lifecycle sections) with React.
  * Manages section open/closed state and expandable insights state.
  * 
- * @param {Object} props
- * @param {Function} props.onCheckboxChange - Callback for checkbox changes (flagged/inReview)
- * @param {Function} props.onAckAction - Callback for Ack button clicks
  * @returns {JSX.Element}
  */
-export function PrTableApp({
-  onCheckboxChange,
-  onAckAction,
-  onApplyLabel,
-}) {
+export function PrTableApp() {
   // PR data payload/selectedRepo/visiblePrNumbers - owned by <PrDataProvider />
   // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
   // which also owns window.updateReactPrTable itself. Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
-  const { payload, selectedRepo, visiblePrNumbers, setPayload } = usePrData();
+  const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+  // used to come from usePrData() itself (imperatively pushed by the
+  // vanilla "Apply filters" pipeline) - now reactively derived live from
+  // Context instead. See useVisiblePrNumbers.jsx's own comment.
+  const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 
   // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
@@ -79,98 +83,109 @@ export function PrTableApp({
     };
   }, []);
 
-  // State: PR numbers with a user-initiated Ack/Clear, Update, or Add-Label
-  // request currently in flight - shares the same PrNumberCell spinner as
-  // activePrNumbers (the scheduler's own in-progress set) above, merged
-  // together below, so a row shows "busy" whichever reason applies. A Set
-  // of composite "repo::prNumber" keys so concurrent actions on different
-  // rows (or, briefly, the same row) don't clobber each other's add/remove.
-  const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
+  // busyPrNumbers/queuedPrNumbers (and their mark/clear functions and
+  // window bridges) moved to PrActivityQueueProvider.jsx (activity drawer
+  // feature, see REACT_MIGRATION_PLAN.md) - the drawer's bulk-action queue
+  // section is a sibling portal, not a descendant of this component, so it
+  // needs this same state lifted to a shared Provider rather than kept
+  // local here. Semantics are unchanged; this is just where it lives now.
+  const { busyPrNumbers, markPrBusy, clearPrBusy, queuedPrNumbers } = usePrActivityQueue();
 
-  const markPrBusy = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setBusyPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
-  }, []);
+  // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onAckAction/onApplyLabel used to be props, built once by vanilla
+  // createReactCallbacks() (index.page.js) at table-mount time. That
+  // factory couldn't reach useAckLabelActions()'s own Context-backed
+  // instance (it's vanilla code, not a hook), so it built a second,
+  // window-bridge-fed instance of the same factory instead. This
+  // component already calls usePrData()/usePrActivityQueue() directly
+  // (unlike <AppRoot />, which is PrDataProvider's ancestor, not its
+  // descendant) - so it builds its own real handlers here, a second
+  // useAckLabelActions() instance alongside AppRoot's own (for the bulk
+  // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
+  // state in the hook, so two independent instances is harmless.
+  const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();
 
-  const clearPrBusy = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setBusyPrNumbers((prev) => {
-      if (!prev.has(key)) {
-        return prev;
+  // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onCheckboxChange used to be the one remaining vanilla-fed prop (same
+  // createReactCallbacks() shape onAckAction/onApplyLabel came from) -
+  // this component builds its own real handler now too, the same way.
+  const { toggleInReviewForRow, toggleFlaggedForRow } = useRowCheckboxActions();
+
+  // Matches react-callbacks.helpers.js's old handleCheckboxChange exactly -
+  // toggleInReviewForRow/toggleFlaggedForRow's own applyLatestPrData DI
+  // only syncs index.page.js's vanilla payload/repo mirror (confirmed by
+  // reading its real definition), it doesn't touch React - this handler's
+  // own applyFreshTablePayload call afterward is the actual push into
+  // Context, same two-step shape handleAckAction/handleApplyLabel use.
+  const handleCheckboxChange = useCallback(
+    async (prNumber, type, checked, repoOverride) => {
+      try {
+        const repo = repoOverride || selectedRepo;
+        const entry = { prNumber: String(prNumber), repo };
+        const row = { number: prNumber };
+        const mockCheckbox = { checked };
+
+        const result =
+          type === 'flagged'
+            ? await toggleFlaggedForRow(entry, row, checked, mockCheckbox)
+            : type === 'inReview'
+              ? await toggleInReviewForRow(entry, row, checked, mockCheckbox)
+              : null;
+
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling checkbox change:', error);
       }
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }, []);
+    },
+    [toggleFlaggedForRow, toggleInReviewForRow, applyFreshTablePayload, selectedRepo],
+  );
 
-  // Bulk counterpart to markPrBusy/clearPrBusy above, for vanilla code
-  // (index.page.js's ack/apply-label workflows, via
-  // pr-ack-label-actions.helpers.js) to mark every PR number in a
-  // multi-PR batch request busy at once - the per-row withPrBusy wrapper
-  // below only ever covers the single row a user directly clicked, so a
-  // bulk Ack/Clear/Apply-label submitted from the "Run & Filter" tab (which
-  // never goes through a row's own onClick) previously showed no progress
-  // indicator at all for any of the PRs it affected.
-  useEffect(() => {
-    window.markPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo));
-    };
-    window.clearPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrBusy(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsBusy;
-      delete window.clearPrsBusy;
-    };
-  }, [markPrBusy, clearPrBusy]);
-
-  // State: PR numbers queued for a chunked bulk Ack/Clear/Apply-label
-  // request (pr-ack-label-actions.helpers.js) that hasn't reached the
-  // network yet, distinct from busyPrNumbers above ("actively in flight
-  // right now"). A batch larger than one chunk is marked queued in full up
-  // front, then each chunk's PR numbers move queued -> busy right before
-  // that chunk's own request actually fires - see PrNumberCell's own
-  // comment for how the two states render differently.
-  const [queuedPrNumbers, setQueuedPrNumbers] = useState(() => new Set());
-
-  const markPrQueued = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setQueuedPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
-  }, []);
-
-  const clearPrQueued = useCallback((prNumber, repo) => {
-    const key = buildActivePrKey(prNumber, repo);
-    setQueuedPrNumbers((prev) => {
-      if (!prev.has(key)) {
-        return prev;
+  // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel
+  // exactly, including the try/catch - a thrown/rejected workflow is caught
+  // and logged here, not propagated to withPrBusy's caller (byte-for-byte
+  // behavior parity, not just the happy path).
+  const handleAckAction = useCallback(
+    async (prNumber, isAcked, repoOverride) => {
+      try {
+        const prNumberStr = String(prNumber);
+        const repo = repoOverride || selectedRepo;
+        const result = isAcked
+          ? await runClearOnlyWorkflow(prNumberStr, repo)
+          : await runAckOnlyWorkflow(prNumberStr, repo);
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling Ack action:', error);
       }
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }, []);
+    },
+    [runAckOnlyWorkflow, runClearOnlyWorkflow, applyFreshTablePayload, selectedRepo],
+  );
 
-  useEffect(() => {
-    window.markPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrQueued(prNumber, repo));
-    };
-    window.clearPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrQueued(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsQueued;
-      delete window.clearPrsQueued;
-    };
-  }, [markPrQueued, clearPrQueued]);
+  const handleApplyLabel = useCallback(
+    async (prNumber, label, repoOverride) => {
+      try {
+        const repo = repoOverride || selectedRepo;
+        const result = await runApplyLabelWorkflow(String(prNumber), label, repo);
+        if (result) {
+          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
+        }
+      } catch (error) {
+        console.error('[PrTableApp] Error handling Apply Label action:', error);
+      }
+    },
+    [runApplyLabelWorkflow, applyFreshTablePayload, selectedRepo],
+  );
 
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
   // outcome (success, failure, or thrown error). useCallback keeps these
   // (and the wrapped handlers below) referentially stable across renders
-  // that don't touch onAckAction/onApplyLabel/busy state - PrRow is
-  // memoized, so a fresh function identity on every PrTableApp render would
-  // defeat that memoization for every row, not just the busy one.
+  // that don't touch busy state - PrRow is memoized, so a fresh function
+  // identity on every PrTableApp render would defeat that memoization for
+  // every row, not just the busy one.
   const withPrBusy = useCallback(
     (prNumber, repo, action) => async (...args) => {
       markPrBusy(prNumber, repo);
@@ -185,27 +200,25 @@ export function PrTableApp({
 
   const handleAckActionBusy = useCallback(
     (prNumber, isAcked, repoOverride) =>
-      withPrBusy(prNumber, repoOverride, onAckAction)(prNumber, isAcked, repoOverride),
-    [withPrBusy, onAckAction],
+      withPrBusy(prNumber, repoOverride, handleAckAction)(prNumber, isAcked, repoOverride),
+    [withPrBusy, handleAckAction],
   );
 
   const handleApplyLabelBusy = useCallback(
     (prNumber, label, repoOverride) =>
-      withPrBusy(prNumber, repoOverride, onApplyLabel)(prNumber, label, repoOverride),
-    [withPrBusy, onApplyLabel],
+      withPrBusy(prNumber, repoOverride, handleApplyLabel)(prNumber, label, repoOverride),
+    [withPrBusy, handleApplyLabel],
   );
 
-  // Unlike onAckAction/onApplyLabel, the "↻ Update" button has no callback
-  // prop wired from index.page.js today - PrActionsCell calls
-  // window.runSinglePrUpdate directly. Reusing that same global here (like
-  // other PrTableApp/PrActionsCell code already reads window.* helpers set
-  // up by index.page.js, e.g. getAvailableRepoLabels) avoids adding a new
-  // prop all the way through the mount/callbacks wiring in index.page.js
-  // just for this one busy-tracking wrapper.
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"): the "↻
+  // Update" button used to call window.runSinglePrUpdate directly - that
+  // bridge is gone now, this hook is the real implementation (its only
+  // real caller was already this component).
+  const runSinglePrUpdate = useSinglePrUpdate();
   const handleUpdatePrBusy = useCallback(
     (prNumber, entry, pr) =>
-      withPrBusy(prNumber, entry?.repo, window.runSinglePrUpdate)(entry, pr),
-    [withPrBusy],
+      withPrBusy(prNumber, entry?.repo, runSinglePrUpdate)(entry, pr),
+    [withPrBusy, runSinglePrUpdate],
   );
 
   const combinedActivePrNumbers = useMemo(
@@ -366,15 +379,13 @@ export function PrTableApp({
   // instantiation works.
   const sectionGroupingHelpersRef = useRef(null);
   if (!sectionGroupingHelpersRef.current) {
-    // Matches the inline code this replaces: fall back to an identity
-    // function (rows unchanged) when window.sortRowsByX isn't available
-    // yet (e.g. bare-fixture unit tests), not an empty array - reading
-    // window.* fresh on each call (not captured once here) so tests that
-    // install these globals *after* this component first mounts still
-    // take effect, matching every other window.* consumer in this file.
+    // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
+    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.js -
+    // genuinely zero-dependency, so this is a direct import now instead
+    // of a window.* bridge read.
     sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
-      sortRowsByPrNumberDesc: (...args) => (window.sortRowsByPrNumberDesc || ((rows) => rows))(...args),
-      sortRowsByDateFieldDesc: (...args) => (window.sortRowsByDateFieldDesc || ((rows) => rows))(...args),
+      sortRowsByPrNumberDesc,
+      sortRowsByDateFieldDesc,
     });
   }
 
@@ -454,8 +465,9 @@ export function PrTableApp({
       // vanilla's own cross-section ordering (normalizeRows: rowOrder
       // ascending, tie-broken by PR number descending) rather than any
       // single lifecycle section's sort — matching how vanilla builds
-      // "allStoredRows" for its smart groups.
-      const normalizeRows = window.normalizeRows || ((rows) => rows);
+      // "allStoredRows" for its smart groups. Phase 7 (see
+      // REACT_MIGRATION_PLAN.md): direct import now, not a window.*
+      // bridge read - genuinely zero-dependency.
       const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
 
       const smartGroupHelpers = prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({
@@ -543,6 +555,15 @@ export function PrTableApp({
   // state never changed. See navigateToPrInTable in
   // pr-author-insights-pr-link.helpers.js, which dispatches this event
   // instead of mutating the DOM directly when React owns the table.
+  //
+  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // state/useNavigateToPrInTable.jsx (AutoRenderBlockedLinks.jsx's "jump to
+  // unsaved PR" chips) dispatches this same event too, now with an extra
+  // `focusUnsaved` detail flag - pendingNavigationRef tracks which
+  // composite key to scroll/focus once its insights row actually renders
+  // (setExpandedInsights is async), since the scroll/focus target doesn't
+  // exist in the DOM yet at the moment this listener runs.
+  const pendingNavigationRef = useRef(null);
   useEffect(() => {
     const handleNavigateToInsights = (event) => {
       const prNumber = String(event.detail?.prNumber ?? '').trim();
@@ -556,6 +577,7 @@ export function PrTableApp({
       // field yet) has it, in which case this falls back to the first
       // number match, same as before this parameter existed.
       const repo = event.detail?.repo ? String(event.detail.repo) : '';
+      const focusUnsaved = Boolean(event.detail?.focusUnsaved);
       let matchingSection = null;
       let matchingEntry = null;
       sectionsRef.current.some((section) => {
@@ -575,6 +597,7 @@ export function PrTableApp({
         return;
       }
       const compositeKey = buildExpandedInsightsKey(matchingSection.key, matchingEntry?.repo, prNumber);
+      pendingNavigationRef.current = { compositeKey, prNumber, repo: matchingEntry?.repo || '', focusUnsaved };
       setExpandedInsights((prev) => ({ ...prev, [compositeKey]: true }));
     };
 
@@ -583,6 +606,46 @@ export function PrTableApp({
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
   }, []);
+
+  // Runs after the insights row for a pending navigation target has
+  // actually committed to the DOM (expandedInsights flips synchronously in
+  // React terms, but the row's own markup - including the Notes section's
+  // save button - only exists once this effect's render has happened).
+  // Mirrors vanilla's own scrollIntoView/focus behavior
+  // (navigateToPrInTable/navigateToAuthorInsights,
+  // pr-auto-render-navigation.helpers.js, now retired) - same selectors,
+  // just run from inside the component that owns this markup instead of a
+  // cross-cutting DOM scan.
+  useEffect(() => {
+    const pending = pendingNavigationRef.current;
+    if (!pending || !expandedInsights[pending.compositeKey]) {
+      return;
+    }
+    pendingNavigationRef.current = null;
+
+    const rowSelector = pending.repo
+      ? `[data-pr-number="${pending.prNumber}"][data-repo="${pending.repo}"]`
+      : `[data-pr-number="${pending.prNumber}"]`;
+
+    let focusTarget = null;
+    if (pending.focusUnsaved) {
+      focusTarget = document.querySelector(
+        `.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`,
+      );
+    }
+    if (!focusTarget) {
+      focusTarget = document.querySelector(`${rowSelector} .pr-link`);
+    }
+    if (!focusTarget) {
+      return;
+    }
+    if (typeof focusTarget.scrollIntoView === 'function') {
+      focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  }, [expandedInsights]);
 
   // Handler: Toggle section open/closed
   const handleToggleSection = (sectionKey) => {
@@ -649,7 +712,7 @@ export function PrTableApp({
           expandedInsights={expandedInsights}
           onToggleSection={handleToggleSection}
           onToggleInsights={handleToggleInsights}
-          onCheckboxChange={onCheckboxChange}
+          onCheckboxChange={handleCheckboxChange}
           onAckAction={handleAckActionBusy}
           onApplyLabel={handleApplyLabelBusy}
           onUpdatePr={handleUpdatePrBusy}

@@ -1,6 +1,6 @@
 const { __testables } = require("../index.page.js");
 
-const { resolveRepoForLabelsFetch, shouldRefetchLabelsForRepo } = __testables;
+const { resolveRepoForLabelsFetch } = __testables;
 
 describe("ui label-fetch helpers", () => {
   describe("resolveRepoForLabelsFetch", () => {
@@ -59,34 +59,6 @@ describe("ui label-fetch helpers", () => {
           repoInputValue: "",
         }),
       ).toBe("owner/repo");
-    });
-  });
-
-  describe("shouldRefetchLabelsForRepo", () => {
-    test("given an empty repo, when checking, then returns false regardless of lastFetchedRepo", () => {
-      expect(shouldRefetchLabelsForRepo({ repo: "", lastFetchedRepo: "" })).toBe(false);
-      expect(shouldRefetchLabelsForRepo({ repo: "", lastFetchedRepo: "owner/repo" })).toBe(false);
-    });
-
-    test("given a repo matching lastFetchedRepo, when checking, then returns false (avoids redundant refetches)", () => {
-      expect(
-        shouldRefetchLabelsForRepo({ repo: "owner/repo", lastFetchedRepo: "owner/repo" }),
-      ).toBe(false);
-    });
-
-    test("given a repo that differs from lastFetchedRepo, when checking, then returns true", () => {
-      expect(
-        shouldRefetchLabelsForRepo({ repo: "owner/repo-b", lastFetchedRepo: "owner/repo-a" }),
-      ).toBe(true);
-    });
-
-    test("given a repo and no prior lastFetchedRepo, when checking, then returns true", () => {
-      expect(shouldRefetchLabelsForRepo({ repo: "owner/repo", lastFetchedRepo: "" })).toBe(true);
-    });
-
-    test("given no arguments, when checking, then returns false", () => {
-      expect(shouldRefetchLabelsForRepo()).toBe(false);
-      expect(shouldRefetchLabelsForRepo({})).toBe(false);
     });
   });
 });

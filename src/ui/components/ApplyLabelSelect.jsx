@@ -1,3 +1,4 @@
+import { useRepoLabels } from '../state/RepoLabelsContext';
 
 /**
  * Renders the Run & Filter tab's "Apply existing GitHub label" dropdown
@@ -18,8 +19,15 @@
  * to the first option automatically - exactly the "restore previous value
  * if still valid, else reset to placeholder" behavior the vanilla
  * `populateApplyLabelSelect` used to implement by hand.
+ *
+ * Phase 7 (see REACT_MIGRATION_PLAN.md): reads the labels list from
+ * useRepoLabels() (RepoLabelsContext.jsx) instead of a `labels` prop -
+ * the same data PrActionsCell.jsx's own per-row apply-label <select> now
+ * reads too, consolidating what used to be two separate window.* bridges
+ * for this one underlying list into one Context fed by one write point.
  */
-export function ApplyLabelSelect({ labels = [] }) {
+export function ApplyLabelSelect() {
+  const { labels } = useRepoLabels();
   return (
     <select id="apply-label-select">
       <option value="">{labels.length ? 'Choose a label...' : 'No labels found for this repo'}</option>

@@ -17,7 +17,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useNotesDirty } from '../../state/NotesDirtyContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.js';
+import { postJson } from '../../helpers/pr-http.helpers.js';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },
@@ -40,10 +45,6 @@ function generateCommentId() {
 
 function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
   const ref = useRef(null);
-  const autoResizeTextarea = window.autoResizeTextarea || ((el) => {
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  });
 
   return (
     <textarea
@@ -79,15 +80,16 @@ function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStorie
 
 export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const { normalizeActorLogin, resolveActorDisplayName } = useActorIdentity();
+  const { setNotesDirty } = useNotesDirty();
   const { noteAuthorMatchesSelection } = useMemo(
     () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
     [normalizeActorLogin, resolveActorDisplayName],
   );
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const buildPrPeopleOptions = window.buildPrPeopleOptions || (() => []);
-  const normalizeNotesListForUi = window.normalizeNotesListForUi || ((value) => (Array.isArray(value) && value.length ? value : ['']));
-  const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
-  const recomputeDirtyPrSectionsFields = window.recomputeDirtyPrSectionsFields || (() => {});
+  const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
+  // untracked - a slow/hung notes save had no visibility anywhere outside
+  // this component's own "Saving..." status text.
+  const beginRequestActivity = window.beginRequestActivity || (() => () => {});
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const repo = entry?.repo || '';
@@ -144,17 +146,18 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   })();
 
   useEffect(() => {
-    recomputeDirtyPrSectionsFields();
+    setNotesDirty(prNumber, hasChanges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasChanges]);
+  }, [hasChanges, prNumber]);
 
   useEffect(() => {
     // If this section unmounts (row collapsed/filtered away) while still
-    // dirty, its data-has-unsaved-notes="true" node leaves the DOM without
-    // ever notifying the blocker — rescan so a stale block doesn't linger.
-    return () => recomputeDirtyPrSectionsFields();
+    // dirty, it must not leave a stale block behind — clear its entry
+    // explicitly rather than relying on the effect above (which won't
+    // re-run on unmount).
+    return () => setNotesDirty(prNumber, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [prNumber]);
 
   const updateComment = (id, patch) => {
     setComments((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -169,6 +172,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const handleSave = async () => {
     setSaving(true);
     setStatus('Saving...');
+    const finishActivity = beginRequestActivity('notesSave');
     try {
       const cleanedRallyStories = rallyStories.map((v) => v.trim()).filter(Boolean);
       const cleanedRallyLinks = rallyLinks.map((v) => v.trim()).filter(Boolean);
@@ -207,11 +211,12 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
       setStatus('Save failed.');
     } finally {
       setSaving(false);
+      finishActivity();
     }
   };
 
   return (
-    <div className="pr-notes-section" data-pr-number={prNumber} data-has-unsaved-notes={hasChanges ? 'true' : 'false'}>
+    <div className="pr-notes-section" data-pr-number={prNumber}>
       <div className="pr-notes-title">Notes</div>
 
       <div className="pr-notes-subtitle">Comments</div>

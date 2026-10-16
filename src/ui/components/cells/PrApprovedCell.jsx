@@ -7,6 +7,7 @@
  */
 
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 
@@ -15,10 +16,8 @@ const { toCount } = createPrFormattingHelpers();
 
 export function PrApprovedCell({ pr, actorsMap = {} }) {
   const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
-  const collectAssignedUsers = window.collectAssignedUsers || (() => []);
-  const collectRequestedReviewers = window.collectRequestedReviewers || (() => []);
-  const getUserInitials = window.getUserInitials || ((name, login) => String(name || login || '').slice(0, 2));
-  const getOpenConversationCountWithMe = window.getOpenConversationCountWithMe || (() => ({ count: 0, isViewerSpecific: false }));
+  const { collectAssignedUsers, collectRequestedReviewers, getUserInitials, getOpenConversationCountWithMe } =
+    usePrInsightsDisplay();
 
   const assignees = collectAssignedUsers(pr);
   const reviewers = collectRequestedReviewers(pr);

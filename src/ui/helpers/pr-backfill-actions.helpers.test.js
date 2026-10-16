@@ -12,7 +12,7 @@ const createDeps = (overrides = {}) => {
     beginRequestActivity: jest.fn(() => beginFinish),
     setStatusMessage: jest.fn(),
     setOutputMessage: jest.fn(),
-    setButtonDisabled: jest.fn(),
+    setBackfillButtonState: jest.fn(),
     notifyFailureSnackbar: jest.fn(),
     formatCommandOutput: jest.fn((value) => `formatted:${value?.summary || value?.error || ""}`),
     stripAnsi: jest.fn((value) => String(value || "")),
@@ -146,6 +146,12 @@ describe("pr backfill action helpers", () => {
     const helpers = createPrBackfillActionHelpers(deps);
     await helpers.handleBackfillAction("start");
 
+    expect(deps.setBackfillButtonState).toHaveBeenNthCalledWith(1, {
+      startDisabled: true,
+      stopDisabled: true,
+      refreshDisabled: true,
+      refreshLogDisabled: true,
+    });
     expect(deps.setStatusMessage).toHaveBeenCalledWith("started");
     expect(deps.setOutputMessage).toHaveBeenCalledWith("formatted:started");
     expect(deps.updateBackfillStatusFromPayload).toHaveBeenCalledWith({
@@ -154,5 +160,81 @@ describe("pr backfill action helpers", () => {
       output: "ok output",
     });
     expect(deps.fetch).toHaveBeenCalledWith("/view-prs/backfill");
+  });
+
+  // Regression coverage for a real gap found during a Phase 7 sweep (see
+  // REACT_MIGRATION_PLAN.md): only the "postJson resolves" success/failure
+  // shapes had coverage - the thrown-error catch branch, the finally
+  // block's own inner try/catch, and the "stop" action's branching were
+  // all untested.
+  test("handleBackfillAction surfaces a thrown error (postJson rejects), not just a resolved failure shape", async () => {
+    const deps = createDeps({
+      postJson: jest.fn(async () => {
+        throw new Error("network down");
+      }),
+      fetch: jest.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, running: false }),
+      })),
+    });
+
+    const helpers = createPrBackfillActionHelpers(deps);
+    await helpers.handleBackfillAction("start");
+
+    expect(deps.setStatusMessage).toHaveBeenCalledWith("Failed to start backfill");
+    expect(deps.setOutputMessage).toHaveBeenCalledWith("Error: network down");
+    expect(deps.notifyFailureSnackbar).toHaveBeenCalledWith(
+      "Starting backfill failed",
+      expect.any(Error),
+      "Failed to start backfill",
+    );
+    expect(deps.setIsBackfillActionPending).toHaveBeenLastCalledWith(false);
+    expect(deps._finishSpy).toHaveBeenCalled();
+  });
+
+  test("handleBackfillAction re-enables all 4 buttons when the finally block's own status refresh also throws", async () => {
+    const deps = createDeps({
+      postJson: jest.fn(async () => ({
+        response: { ok: true },
+        result: { ok: true, summary: "started" },
+      })),
+      // loadBackfillStatus's own fetch (both the try block's post-start
+      // refresh and the finally block's refresh) rejects every time.
+      fetch: jest.fn(async () => {
+        throw new Error("status fetch failed");
+      }),
+    });
+
+    const helpers = createPrBackfillActionHelpers(deps);
+    await expect(helpers.handleBackfillAction("start")).resolves.toBeUndefined();
+
+    expect(deps.setBackfillButtonState).toHaveBeenLastCalledWith({
+      startDisabled: false,
+      stopDisabled: false,
+      refreshDisabled: false,
+      refreshLogDisabled: false,
+    });
+    expect(deps._finishSpy).toHaveBeenCalled();
+  });
+
+  test("handleBackfillAction only refreshes status once (from finally) for the stop action, not twice", async () => {
+    const deps = createDeps({
+      postJson: jest.fn(async () => ({
+        response: { ok: true },
+        result: { ok: true, summary: "stopped" },
+      })),
+      fetch: jest.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, running: false }),
+      })),
+    });
+
+    const helpers = createPrBackfillActionHelpers(deps);
+    await helpers.handleBackfillAction("stop");
+
+    // The try block only calls loadBackfillStatus for "start" - "stop"
+    // only gets the finally block's own unconditional refresh.
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    expect(deps.setStatusMessage).toHaveBeenCalledWith("stopped");
   });
 });

@@ -49,8 +49,6 @@ export const { createPrDataPollingOrchestrationHelpers } = (() => {
     getPendingAutoRenderPayload,
     setPendingAutoRenderPayload,
     renderPrData,
-    renderAutoRenderBlockedIndicator,
-    flushPendingAutoRender,
     markPollSuccess,
     showPollFailureWarning,
     setStatusMessage,
@@ -115,10 +113,6 @@ export const { createPrDataPollingOrchestrationHelpers } = (() => {
     const setPendingAutoRenderPayloadSafe =
       typeof setPendingAutoRenderPayload === "function" ? setPendingAutoRenderPayload : () => {};
     const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
-    const renderAutoRenderBlockedIndicatorSafe =
-      typeof renderAutoRenderBlockedIndicator === "function" ? renderAutoRenderBlockedIndicator : () => {};
-    const flushPendingAutoRenderSafe =
-      typeof flushPendingAutoRender === "function" ? flushPendingAutoRender : () => {};
     const markPollSuccessSafe = typeof markPollSuccess === "function" ? markPollSuccess : () => {};
     const showPollFailureWarningSafe =
       typeof showPollFailureWarning === "function" ? showPollFailureWarning : () => {};
@@ -258,17 +252,25 @@ export const { createPrDataPollingOrchestrationHelpers } = (() => {
           return;
         }
 
+        // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+        // "queue-render" and "queue-render-and-listen" used to need
+        // different handling here (the latter also rendering the
+        // indicator immediately and arming its own blur listener) - both
+        // are now equivalent from this call site's perspective, since
+        // setPendingAutoRenderPayloadSafe (the bridge to
+        // AutoRenderBlockingProvider.jsx) triggers that Provider's own
+        // reactive effect, which re-derives the exact same
+        // apply/wait-for-blur/wait-for-clean decision itself (including
+        // the blur-listener attachment) as soon as the payload changes -
+        // doing it again here would just attach a second, redundant
+        // listener. getDataPollRenderAction's own distinction between the
+        // two types is preserved (still a real, tested branch), just no
+        // longer needs differentiated handling at this one call site.
         if (
           renderAction.type === "queue-render" ||
           renderAction.type === "queue-render-and-listen"
         ) {
           setPendingAutoRenderPayloadSafe(renderAction.payload);
-          renderAutoRenderBlockedIndicatorSafe();
-          if (renderAction.type === "queue-render-and-listen") {
-            doc?.activeElement?.addEventListener?.("blur", flushPendingAutoRenderSafe, {
-              once: true,
-            });
-          }
           markPollSuccessSafe(pollAttemptedAt);
           return;
         }

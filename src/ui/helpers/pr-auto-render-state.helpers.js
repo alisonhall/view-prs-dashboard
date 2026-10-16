@@ -5,17 +5,14 @@
 // require()/globalThis.ViewPrsAutoRenderStateHelpers fallback.
 export const { createPrAutoRenderStateHelpers } = (() => {
   const createPrAutoRenderStateHelpers = ({
-    getDirtyTrackedFields,
-    getUnsavedNotesSections,
+    getUnsavedNotesPrNumbers,
     getBlockingPrNumbers,
     getBlockingAuthorInsightsLogins,
     formatBlockingPrNumbersLabel,
   } = {}) => {
-    const getDirtyTrackedFieldsSafe =
-      typeof getDirtyTrackedFields === "function" ? getDirtyTrackedFields : () => [];
-    const getUnsavedNotesSectionsSafe =
-      typeof getUnsavedNotesSections === "function"
-        ? getUnsavedNotesSections
+    const getUnsavedNotesPrNumbersSafe =
+      typeof getUnsavedNotesPrNumbers === "function"
+        ? getUnsavedNotesPrNumbers
         : () => [];
     const getBlockingPrNumbersSafe =
       typeof getBlockingPrNumbers === "function" ? getBlockingPrNumbers : () => [];
@@ -29,17 +26,20 @@ export const { createPrAutoRenderStateHelpers } = (() => {
         : () => "";
 
     const getAutoRenderBlockingState = () => {
-      const dirtyTrackedFields = getDirtyTrackedFieldsSafe();
-      const unsavedNotesSections = getUnsavedNotesSectionsSafe();
+      const unsavedNotesPrNumbers = getUnsavedNotesPrNumbersSafe();
       const blockingPrNumbers = getBlockingPrNumbersSafe();
       const blockingAuthorInsightsLogins = getBlockingAuthorInsightsLoginsSafe();
 
       return {
-        dirtyFieldCount: Array.isArray(dirtyTrackedFields)
-          ? dirtyTrackedFields.length
-          : 0,
-        unsavedNotesCount: Array.isArray(unsavedNotesSections)
-          ? unsavedNotesSections.length
+        // Phase H.1 (see REACT_MIGRATION_PLAN.md, "Full migration
+        // roadmap"): used to come from getDirtyTrackedFields (a
+        // data-original-value DOM scan, confirmed dead - nothing ever set
+        // that attribute, so this was always 0 in production). Hardcoded
+        // rather than removed - AutoRenderBlockingProvider.jsx/
+        // pr-auto-render-indicator.helpers.js still read this field.
+        dirtyFieldCount: 0,
+        unsavedNotesCount: Array.isArray(unsavedNotesPrNumbers)
+          ? unsavedNotesPrNumbers.length
           : 0,
         blockingPrNumbers: Array.isArray(blockingPrNumbers)
           ? blockingPrNumbers

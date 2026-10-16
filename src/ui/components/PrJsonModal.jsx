@@ -11,6 +11,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.js';
+import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.js';
 
 function summarizeDiffText(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);
@@ -235,13 +238,6 @@ export function PrJsonModal({ target, payload, onClose }) {
   const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
   const [copyDiffLabel, setCopyDiffLabel] = useState('Copy diff');
 
-  const safeJsonStringify =
-    window.safeJsonStringify || ((value) => JSON.stringify(value ?? null, null, 2));
-  const getPerPrUserStateFromPayload =
-    window.getPerPrUserStateFromPayload ||
-    (() => ({ notesByPrNumber: null, ackByRepo: null, reverifyByRepo: null, inReviewByRepo: null }));
-  const defaultRepo = window.DEFAULT_REPO || '';
-
   // Open/close lifecycle: build the JSON payload synchronously, fetch the
   // diff, manage focus + Escape/Tab handling + body scroll lock, matching
   // vanilla's openPrJsonModal/closePrJsonModal/handlePrJsonModalKeydown.
@@ -279,6 +275,12 @@ export function PrJsonModal({ target, payload, onClose }) {
       const key = String(event?.key || '');
       if (key === 'Escape') {
         event.preventDefault?.();
+        // This is a true modal (focus trap, body scroll lock) that can sit
+        // on top of other dismissable overlays (e.g. the activity drawer,
+        // ActivityDrawer.jsx - also closes on Escape via its own window
+        // listener). Stopping propagation here means Escape closes only
+        // the topmost/true modal, not everything listening for it at once.
+        event.stopPropagation?.();
         onClose?.();
         return;
       }

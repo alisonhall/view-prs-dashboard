@@ -12,9 +12,9 @@
  * `key` that changes on every populate call, so its internal `checked`
  * state (below) always re-initializes fresh from the caller-computed
  * `options` prop rather than trying to diff/reconcile against whatever was
- * checked before - the caller (populateIncludeLabelOptions, etc.) already
- * does that diffing itself (seedSelections/selectedTokens) before calling
- * in.
+ * checked before - the caller (MultiSelectListPortals.jsx, via
+ * pr-multi-select-checked-state.helpers.js's seedCheckedState) already
+ * does that diffing itself before calling in.
  *
  * React mounts directly into the existing `<div id="...-list">` container
  * (like Phase 1's `#pr-sections`), not into a separate wrapper span - the
@@ -46,6 +46,13 @@
  * `summaryContainer`'s `data-base-label` attribute (index.html) replaces
  * the old runtime `summary.textContent.split("(")[0].trim()` parsing.
  *
+ * Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): optionally
+ * controlled via `checkedSet`/`onToggle` (see those props below) for the 5
+ * row-filtering lists, whose checked-state now lives in
+ * RowFilterSelectionContext instead of local state - everything else
+ * described above (remount-via-key re-seeding, the DOM-read fallback
+ * other vanilla code still does) is unaffected either way.
+ *
  * @module components/MultiSelectCheckboxList
  */
 
@@ -61,8 +68,25 @@ const getCheckboxId = (idPrefix, value, index) => {
   return `${idPrefix}-${normalized || 'item'}-${index}`;
 };
 
-export function MultiSelectCheckboxList({ options = [], idPrefix, emptyClassContainer, summaryContainer }) {
-  const [checkedValues, setCheckedValues] = useState(
+export function MultiSelectCheckboxList({
+  options = [],
+  idPrefix,
+  emptyClassContainer,
+  summaryContainer,
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the 5
+  // row-filtering lists (include/exclude label, author, assigned,
+  // approver) pass these so their checked-state lives in
+  // RowFilterSelectionContext instead of this component's own local
+  // state - the new reactive useVisiblePrNumbers derivation needs to read
+  // "currently checked" without a DOM query. The other 4 multi-selects
+  // don't pass these and keep the original local-state behavior below
+  // unchanged.
+  checkedSet,
+  onToggle,
+}) {
+  const isControlled = checkedSet instanceof Set && typeof onToggle === 'function';
+
+  const [localCheckedValues, setLocalCheckedValues] = useState(
     () => new Set(options.filter((option) => option.checked).map((option) => option.value)),
   );
 
@@ -70,8 +94,14 @@ export function MultiSelectCheckboxList({ options = [], idPrefix, emptyClassCont
     emptyClassContainer?.classList.toggle('empty', options.length === 0);
   }, [emptyClassContainer, options.length]);
 
+  const checkedValues = isControlled ? checkedSet : localCheckedValues;
+
   const toggle = (value) => {
-    setCheckedValues((previous) => {
+    if (isControlled) {
+      onToggle(value);
+      return;
+    }
+    setLocalCheckedValues((previous) => {
       const next = new Set(previous);
       if (next.has(value)) {
         next.delete(value);

@@ -6,10 +6,9 @@
  * @module components/cells/PrLabelsCell
  */
 
+import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.js';
 
 export function PrLabelsCell({ pr }) {
-  const getLabelName = window.getLabelName || ((label) => String(label?.name || label || '').trim());
-
   const labels = (Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean);
 
   if (!labels.length) {
