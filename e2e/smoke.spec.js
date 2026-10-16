@@ -283,6 +283,44 @@ test("editing a PR Notes field in the real React-owned row reports dirty state t
   await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
 });
 
+test("typing character-by-character into the Rally stories/links inputs keeps every keystroke", async ({ page }) => {
+  // Regression coverage for a real bug only a real browser could catch:
+  // index.page.js's recomputeDirtyOnEvent is attached directly to
+  // #pr-sections - the same DOM node React's own table root mounts into -
+  // and was registered in initPage(), before React ever mounts, so it
+  // fired *before* React's own delegated listener for the same native
+  // "input" event (same-node listeners fire in registration order).
+  // Calling recomputeDirtyPrSectionsFields() synchronously from there (as
+  // it used to, for every INPUT keystroke - TEXTAREA was already
+  // debounced) triggers a React state update (AutoRenderBlockingProvider's
+  // bump()) *before* React's own event handling for that same native
+  // event starts, so React doesn't batch it - it flushes synchronously,
+  // reconciling the controlled Rally stories/links input back to its
+  // pre-keystroke value before React's own onChange ever runs. Each
+  // keystroke was silently dropped - .fill() didn't catch this (jsdom's
+  // event delegation model doesn't reproduce the real listener-ordering
+  // race either), only real per-keystroke typing in a real browser does.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const rallyStoryInput = page.locator(".pr-notes-rally-story-input:visible").first();
+  await expect(rallyStoryInput).toBeVisible();
+  await rallyStoryInput.click();
+  await rallyStoryInput.pressSequentially("US12345");
+  await expect(rallyStoryInput).toHaveValue("US12345");
+  await rallyStoryInput.fill("");
+
+  const rallyLinkInput = page.locator(".pr-notes-rally-link-input:visible").first();
+  await rallyLinkInput.click();
+  await rallyLinkInput.pressSequentially("https://rally.example/US12345");
+  await expect(rallyLinkInput).toHaveValue("https://rally.example/US12345");
+  await rallyLinkInput.fill("");
+});
+
 test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
   // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
   // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/

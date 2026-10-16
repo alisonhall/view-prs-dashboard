@@ -2644,29 +2644,49 @@ const initPage = () => {
   applyNonCredentialFieldHints();
 
   const prSectionsHost = document.getElementById("pr-sections");
-  
-  // Debounce timer for input events to improve textarea performance
+
+  // Debounce timer for input events - see recomputeDirtyOnEvent's own
+  // comment for why this now applies to INPUT, not just TEXTAREA.
   let recomputeDirtyDebounceTimer = null;
-  
+
   const recomputeDirtyOnEvent = (event) => {
     const tagName = String(event?.target?.tagName || "").toUpperCase();
     const isInputEvent = event?.type === "input";
     const isTextarea = tagName === "TEXTAREA";
-    
+
     if (isInputEvent) {
       if (tagName !== "INPUT" && tagName !== "TEXTAREA") {
         return;
       }
-      // Debounce input events for textareas to reduce lag while typing
-      if (isTextarea) {
-        if (recomputeDirtyDebounceTimer) {
-          clearTimeout(recomputeDirtyDebounceTimer);
-        }
-        recomputeDirtyDebounceTimer = setTimeout(() => {
-          recomputeDirtyPrSectionsFields();
-        }, 300); // 300ms debounce - feels responsive but reduces computation
-        return;
+      // This listener is attached directly to #pr-sections - the exact
+      // same DOM node React's own table root mounts into - and it was
+      // registered here in initPage(), before React ever mounts, so it
+      // fires BEFORE React's own delegated listener for the same native
+      // "input" event (listeners on one node fire in registration order).
+      // Calling recomputeDirtyPrSectionsFields() synchronously from here
+      // (as this used to do for INPUT elements, deferring only TEXTAREA)
+      // calls window.pushAutoRenderBlockingState -> AutoRenderBlockingProvider's
+      // bump(), a React state update - but since this runs *before*
+      // React's own event handling for this same native event even
+      // starts, React doesn't recognize it as happening "inside" one of
+      // its own events, and flushes it synchronously right here. That
+      // out-of-band re-render reconciles the controlled React-owned text
+      // input (e.g. the Notes section's Rally stories/links fields) back
+      // to its pre-keystroke value *before* React's own listener (second
+      // in the queue on this node) gets to process the onChange for the
+      // key just typed - the keystroke is silently lost, confirmed via a
+      // real-browser repro: the DOM's native "input" event fires with the
+      // typed value present, but the controlled input ends up reverted
+      // and the component's own onChange handler never runs at all.
+      // Deferring (even 0ms) moves this off the synchronous dispatch
+      // stack, letting React's own onChange committing happen first.
+      if (recomputeDirtyDebounceTimer) {
+        clearTimeout(recomputeDirtyDebounceTimer);
       }
+      recomputeDirtyDebounceTimer = setTimeout(() => {
+        recomputeDirtyPrSectionsFields();
+      }, isTextarea ? 300 : 0);
+      return;
     }
     if (event?.type === "change") {
       if (tagName !== "INPUT" && tagName !== "TEXTAREA" && tagName !== "SELECT") {

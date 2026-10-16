@@ -47,8 +47,15 @@ export function NotesMultiEntryField({ title, placeholder, values, inputClassNam
     onChange([...safeValues, '']);
   };
 
+  // role="group"/aria-label (not a <label> wrapping the whole thing) -
+  // a single <label> is only valid associated with one form control, but
+  // this group can render N inputs (one per entry) - wrapping them all in
+  // one <label> is invalid HTML that can also confuse a browser's/
+  // extension's form-field-purpose heuristics (seen in practice: Chrome's
+  // password-manager-style autofill misclassifying one of these inputs
+  // and throwing on focus/input).
   return (
-    <label className="pr-notes-label">
+    <div className="pr-notes-label" role="group" aria-label={title}>
       <div className="pr-notes-multi-header">
         <span>{title}</span>
         <button type="button" className="pr-notes-add-entry" aria-label={`Add ${title} entry`} title={`Add ${title} entry`} onClick={handleAdd}>
@@ -78,6 +85,6 @@ export function NotesMultiEntryField({ title, placeholder, values, inputClassNam
           </div>
         ))}
       </div>
-    </label>
+    </div>
   );
 }
