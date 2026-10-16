@@ -321,6 +321,48 @@ test("typing character-by-character into the Rally stories/links inputs keeps ev
   await rallyLinkInput.fill("");
 });
 
+test("selecting an option in the Notes section's author/tone/difficulty dropdowns actually applies it", async ({ page }) => {
+  // Regression coverage for the same root cause as the Rally stories/
+  // links keystroke bug above, on recomputeDirtyOnEvent's "change"/"click"
+  // branches instead of "input" - a native <select> fires only "change"
+  // (no "input"), and clicking the closed <select> to open its dropdown
+  // is itself a "click" on a .pr-notes-* element, both of which this
+  // listener used to handle synchronously, before React's own delegated
+  // listener on the same #pr-sections node got a chance to run.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  await insightsToggle.click();
+  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+
+  const notesSection = page.locator(".pr-notes-section:visible").first();
+
+  const difficultySelect = notesSection.locator("select.pr-notes-input");
+  await expect(difficultySelect).toBeVisible();
+  const originalDifficulty = await difficultySelect.inputValue();
+  const targetDifficulty = originalDifficulty === "4" ? "2" : "4";
+  await difficultySelect.selectOption(targetDifficulty);
+  await expect(difficultySelect).toHaveValue(targetDifficulty);
+  await difficultySelect.selectOption(originalDifficulty);
+  await expect(difficultySelect).toHaveValue(originalDifficulty);
+
+  await notesSection.getByRole("button", { name: "+ Add comment" }).click();
+  const toneSelect = notesSection.locator("select.pr-notes-comment-tone").first();
+  await expect(toneSelect).toHaveValue("Neutral");
+  await toneSelect.selectOption("Negative");
+  await expect(toneSelect).toHaveValue("Negative");
+
+  const authorSelect = notesSection.locator("select.pr-notes-comment-author").first();
+  const authorOptionCount = await authorSelect.locator("option").count();
+  if (authorOptionCount > 1) {
+    const secondOptionValue = await authorSelect.locator("option").nth(1).getAttribute("value");
+    await authorSelect.selectOption(secondOptionValue);
+    await expect(authorSelect).toHaveValue(secondOptionValue);
+  }
+  await notesSection.getByRole("button", { name: "✕ Remove" }).first().click();
+});
+
 test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
   // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
   // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/

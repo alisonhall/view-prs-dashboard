@@ -2699,7 +2699,19 @@ const initPage = () => {
         return;
       }
     }
-    recomputeDirtyPrSectionsFields();
+    // Same listener-ordering race as the "input" branch above (this
+    // function's own comment there has the full explanation) - a native
+    // "change" (select/checkbox/radio) or "click" event reaching here
+    // synchronously, before React's own delegated listener for the same
+    // event gets a chance to run, can revert a just-changed controlled
+    // value (e.g. the Notes section's author/tone/difficulty selects)
+    // before React's own onChange ever fires. Deferred the same way.
+    if (recomputeDirtyDebounceTimer) {
+      clearTimeout(recomputeDirtyDebounceTimer);
+    }
+    recomputeDirtyDebounceTimer = setTimeout(() => {
+      recomputeDirtyPrSectionsFields();
+    }, 0);
   };
 
   prSectionsHost.addEventListener("input", recomputeDirtyOnEvent);
