@@ -23,11 +23,15 @@ import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights
  * backed by this Context, because 2 vanilla subsystems need to read
  * draft state from outside any single AuthorInsightsCommentsSection
  * instance's own lifetime - see AuthorInsightsDraftsContext.jsx's comment.
- * Every write bumps the version tick AND calls
- * window.recomputeDirtyPrSectionsFields?.() (same as NotesDirtyProvider's
- * own write path), since a draft change can flip the auto-render-blocking
- * decision pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
- * computes.
+ * Every write bumps a version tick, and a useEffect reacting to that tick
+ * calls window.recomputeDirtyPrSectionsFields?.() (same as
+ * NotesDirtyProvider's own write path) - deferred to after React commits/
+ * paints, not called synchronously inside the write itself, since a
+ * draft change can flip the auto-render-blocking decision
+ * pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
+ * computes, and that recompute is real work (a scan plus a DOM
+ * re-render) that must not block the composer/edit textarea's own
+ * per-keystroke repaint.
  */
 export function AuthorInsightsDraftsProvider({ children }) {
   // Pre-initialize all 5 fields explicitly (matching index.page.js's old
@@ -86,11 +90,26 @@ export function AuthorInsightsDraftsProvider({ children }) {
     [normalizeActorLoginStable],
   );
 
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   const bump = useCallback(() => {
     setVersion((previous) => previous + 1);
-    window.recomputeDirtyPrSectionsFields?.();
   }, []);
+
+  // window.recomputeDirtyPrSectionsFields?.() used to be called
+  // synchronously inside bump() itself - but bump() is called directly
+  // from AuthorInsightsCommentsSection's onChange handlers (updateComposerDraft/
+  // updateEditDraft), in the SAME synchronous call stack as the composer/
+  // edit textarea's own local setState for the keystroke just typed. React
+  // batches both together and can't paint the typed character until that
+  // whole handler returns - and recomputeDirtyPrSectionsFields() does a
+  // real scan plus a DOM re-render of #auto-render-blocked-pr-links, which
+  // was making every keystroke visibly laggy. Deferred to a useEffect
+  // (reacting to the version tick, after React has already committed/
+  // painted) instead - the same pattern NotesDirtyProvider.jsx's own write
+  // path already uses correctly.
+  useEffect(() => {
+    window.recomputeDirtyPrSectionsFields?.();
+  }, [version]);
 
   const getComposerDraft = useCallback((login) => draftsHelpers.getAuthorInsightsComposerDraft(login), [draftsHelpers]);
   const updateComposerDraft = useCallback(

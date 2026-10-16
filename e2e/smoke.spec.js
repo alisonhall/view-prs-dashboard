@@ -1942,6 +1942,39 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await clickApplyFiltersAndWaitForPersist(page);
 });
 
+test("typing in the Author Insights manual comment composer isn't blocked by a synchronous dirty-fields recompute", async ({ page }) => {
+  // Regression coverage for a real lag bug: AuthorInsightsDraftsProvider's
+  // bump() used to call window.recomputeDirtyPrSectionsFields?.() -  a real
+  // scan plus a DOM re-render of #auto-render-blocked-pr-links - directly
+  // inside updateComposerDraft/updateEditDraft, the same synchronous call
+  // stack as the composer textarea's own per-keystroke local setState.
+  // React batches both into one commit, so it couldn't paint the typed
+  // character until that whole handler (including the recompute) finished -
+  // every keystroke was visibly delayed. Deferred to a useEffect instead
+  // (same pattern NotesDirtyProvider.jsx's own write path already used
+  // correctly), so the recompute runs after React has already painted.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await expect(page.locator("#tab-panel-author-insights")).toBeVisible();
+
+  const composer = page.locator('.author-insights-comment-textarea[data-draft-kind="composer"]');
+  await expect(composer).toBeVisible();
+  await composer.click();
+
+  const start = Date.now();
+  await composer.pressSequentially("regression check", { delay: 0 });
+  const elapsedMs = Date.now() - start;
+  await expect(composer).toHaveValue("regression check");
+  // Generous ceiling (not a tight perf assertion) - this is here to catch
+  // a reintroduced synchronous-recompute-in-the-hot-path regression, which
+  // was ~2.4x slower than the fixed version even against this suite's tiny
+  // fixture dataset, not to pin down exact timing.
+  expect(elapsedMs).toBeLessThan(2000);
+
+  await composer.fill("");
+});
+
 test("typing an unsaved Author Insights comment draft reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
   // Regression test for Phase 7 (see REACT_MIGRATION_PLAN.md): the Author
   // Insights manual-comment composer/edit drafts used to live only in a
