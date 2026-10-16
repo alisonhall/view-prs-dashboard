@@ -622,6 +622,32 @@
             padding: 3px 8px;
         }
 
+        .applied-filter-chip-removable {
+            padding-right: 4px;
+            gap: 4px;
+        }
+
+        .applied-filter-chip-remove {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border: none;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .applied-filter-chip-remove:hover,
+        .applied-filter-chip-remove:focus-visible {
+            background: #bfcbda;
+        }
+
         .low-emphasis-card {
             opacity: 0.86;
             background: #fafbfc;

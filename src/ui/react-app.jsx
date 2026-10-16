@@ -30,6 +30,8 @@ import { BackfillControls } from './components/BackfillControls';
 import { BackfillLogControls } from './components/BackfillLogControls';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
 import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
+import { TableFilterChips } from './components/TableFilterChips';
+import { useTableFilterChips } from './state/useTableFilterChips';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { Snackbar } from './components/Snackbar';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
@@ -413,6 +415,7 @@ function computeStaticContainers() {
     backfillControls: document.getElementById('backfill-controls-root'),
     backfillLogControls: document.getElementById('backfill-log-controls-root'),
     dataMeta: document.getElementById('data-meta'),
+    tableFilterChips: document.getElementById('table-filter-chips-root'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
@@ -531,6 +534,18 @@ function AppliedFilterSummaryLive({ appliedFilterSummaryContainer, dataMetaConta
       {dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, 'data-meta')}
     </>
   );
+}
+
+// Removable filter chips shown above the table (Data Views tab) - a thin
+// wrapper so useTableFilterChips() (a hook) can be called from AppRoot's
+// JSX, same pattern as AppliedFilterSummaryLive above. Must be mounted
+// inside both <RowFilterSelectionProvider> and <FilterStateProvider> - see
+// where it's actually portaled in AppRoot's own JSX, right alongside
+// AppliedFilterSummaryLive which has the same requirement.
+function TableFilterChipsLive({ container }) {
+  const { chips } = useTableFilterChips();
+  if (!container) return null;
+  return createPortal(<TableFilterChips chips={chips} />, container, 'table-filter-chips');
 }
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a thin
@@ -902,6 +917,8 @@ function AppRoot() {
           appliedFilterSummaryContainer={containers.appliedFilterSummary}
           dataMetaContainer={containers.dataMeta}
         />
+
+        <TableFilterChipsLive container={containers.tableFilterChips} />
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 

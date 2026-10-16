@@ -822,6 +822,51 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
   await page.locator("#label-list").getByLabel("enhancement", { exact: true }).uncheck();
 });
 
+test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
+  // Regression coverage for TableFilterChips.jsx/useTableFilterChips.jsx:
+  // unlike the "Applied filters" summary (Run & Filter tab, tested above),
+  // these chips live above the table itself (Data Views tab) and are each
+  // individually removable - clicking a chip's "x" must clear just that
+  // filter, both in the originating control and in the table's own live
+  // rendering, without a page reload or an "Apply filters" click.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const chips = page.locator("#table-filter-chips-root");
+  await expect(chips).toBeEmpty();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.locator("#filter-pr-numbers").fill("1");
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(chips).toContainText("PR #: 1");
+  await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
+  await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
+
+  await chips.getByRole("button", { name: "Remove filter: PR #: 1" }).click();
+
+  await expect(chips).toBeEmpty();
+  await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await expect(page.locator("#filter-pr-numbers")).toHaveValue("");
+
+  // A checked label filter gets its own chip too, removable the same way.
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  await expect(chips).toContainText("Label: enhancement");
+
+  await chips.getByRole("button", { name: "Remove filter: Label: enhancement" }).click();
+  await expect(chips).toBeEmpty();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await labelDropdownSummary.click();
+  await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
+});
+
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
   // Regression coverage for the last checkbox converted (see
   // REACT_MIGRATION_PLAN.md): unlike the plain debouncedApplyOnChangeIds

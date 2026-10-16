@@ -220,6 +220,7 @@ export default defineConfig([
       "src/ui/helpers/pr-job-events.helpers.js",
       "src/ui/helpers/pr-bulk-action-batches.helpers.js",
       "src/ui/helpers/pr-failure-snackbar.helpers.js",
+      "src/ui/helpers/pr-table-filter-chips.helpers.js",
     ],
     languageOptions: { sourceType: "module" },
   },
