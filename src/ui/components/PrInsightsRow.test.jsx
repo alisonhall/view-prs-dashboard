@@ -36,6 +36,48 @@ describe('PrInsightsRow', () => {
     expect(screen.getByText('main')).toBeInTheDocument();
   });
 
+  describe('Activity timeline isOpen derivation', () => {
+    // Regression coverage: isOpen used to check only pr.mergedAt, so a PR
+    // closed without merging (closedAt set, mergedAt empty) was still
+    // treated as "open" - ActivityTimelineSummary's own end-date walk
+    // (isOpen ? today : newest-activity-date) then kept generating
+    // "No activity" rows all the way to today instead of stopping at the
+    // close date. Exercises the real isOpen derivation end-to-end via the
+    // real (unmocked) ActivityTimelineSummary child, not just the
+    // isolated boolean.
+    const activityTimelineRaw = [
+      { date: '2026-01-05', actor: 'alice', type: 'comment', count: 1 },
+    ];
+
+    test('given a PR closed without merging, when rendering, then the activity timeline does not extend past the last real activity', () => {
+      const pr = {
+        number: '1',
+        closedAt: '2026-01-06T00:00:00Z',
+        mergedAt: '',
+        activityTimeline: activityTimelineRaw,
+      };
+      renderInsightsRow({ entry: {}, pr, actorsMap: {}, compositeKey: 'open:1' });
+
+      const table = document.querySelector('table');
+      const rows = Array.from(table.querySelectorAll('tr'));
+      expect(rows).toHaveLength(1);
+      expect(screen.getByText('2026-01-05')).toBeInTheDocument();
+      expect(screen.queryByText(/No activity/)).not.toBeInTheDocument();
+    });
+
+    test('given a PR that is genuinely still open, when rendering, then the activity timeline still extends to today', () => {
+      const pr = {
+        number: '1',
+        closedAt: '',
+        mergedAt: '',
+        activityTimeline: activityTimelineRaw,
+      };
+      renderInsightsRow({ entry: {}, pr, actorsMap: {}, compositeKey: 'open:1' });
+
+      expect(screen.queryByText(/No activity/)).toBeInTheDocument();
+    });
+  });
+
   describe('copy branch name button', () => {
     beforeEach(() => {
       Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });

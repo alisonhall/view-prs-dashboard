@@ -62,7 +62,14 @@ export function PrInsightsRow({ entry, pr, actorsMap: actorsMapFromPayload, comp
   const metrics = normalizeRowMetrics(pr);
   const openConversationResult = getOpenConversationCountWithMe(pr);
   const openConversationCount = String(toCount(openConversationResult?.count));
-  const isOpen = !String(pr.mergedAt || '').trim();
+  // A PR closed without merging (closedAt set, mergedAt empty) is not
+  // "open" either - same mergedAt-wins-else-closedAt precedence
+  // PrDateCell.jsx already uses for "when did this PR stop being live".
+  // Feeds ActivityTimelineSummary's own end-date decision (isOpen ?
+  // today : newest-activity-date) - without this, a closed-not-merged
+  // PR kept generating "No activity" rows all the way to today instead
+  // of stopping at its close date.
+  const isOpen = !String(pr.mergedAt || pr.closedAt || '').trim();
 
   return (
     <div className="row-insights-content" data-insights-key={compositeKey} data-pr-number={String(pr?.number || '')}>
