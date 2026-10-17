@@ -41,6 +41,7 @@ import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling } from './components/PrDataPolling';
 import { useBackfillActions } from './state/useBackfillActions';
+import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
 import { useRunScript } from './state/useRunScript';
 import { useAckLabelActions } from './state/useAckLabelActions';
 import { useRefreshAvailableRepoLabels } from './state/useRefreshAvailableRepoLabels';
@@ -580,6 +581,11 @@ function AppRoot() {
   // deliberate pass-through to its own window.* bridge, see
   // useRefreshAvailableRepoLabels.jsx's own comment).
   const backfillActions = useBackfillActions();
+  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // replaces backfill-tab.orchestrator.js's own initialize()/
+  // onTabActivated() (deleted outright) - see that hook's own header
+  // comment for why this exact shape reproduces both.
+  useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
   const runScript = useRunScript();
   const ackLabelActions = useAckLabelActions();
   const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();

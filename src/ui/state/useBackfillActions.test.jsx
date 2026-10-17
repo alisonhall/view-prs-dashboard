@@ -110,4 +110,57 @@ describe('useBackfillActions', () => {
     expect(snackbarCalls).toHaveLength(1);
     expect(finishActivity).toHaveBeenCalledTimes(1);
   });
+
+  test('given a successful request, when triggerBackfillTabLoad is called, then it loads status+log without announcing a status message or tracking request activity', async () => {
+    const statusMessages = [];
+    const updateBackfillStatusFromPayload = jest.fn();
+    const beginRequestActivity = jest.fn();
+    window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
+    window.beginRequestActivity = beginRequestActivity;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, summary: 'Backfill idle', running: false }),
+    });
+
+    let backfillActions;
+    renderProbe((value) => { backfillActions = value; }, (message) => statusMessages.push(message));
+    await act(async () => {
+      await backfillActions.triggerBackfillTabLoad();
+    });
+
+    expect(updateBackfillStatusFromPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: true }),
+      { announce: false },
+    );
+    expect(statusMessages).toHaveLength(0);
+    expect(beginRequestActivity).not.toHaveBeenCalled();
+  });
+
+  test('given the request fails, when triggerBackfillTabLoad is called, then a synthetic failed status is rendered and a failure snackbar fires', async () => {
+    const renderBackfillStatus = jest.fn();
+    const setBackfillLogMessage = jest.fn();
+    const snackbarCalls = [];
+    window.renderBackfillStatus = renderBackfillStatus;
+    window.setBackfillLogMessage = setBackfillLogMessage;
+    window.showErrorNotification = (...args) => snackbarCalls.push(args);
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ ok: false, error: 'boom' }),
+    });
+
+    let backfillActions;
+    renderProbe((value) => { backfillActions = value; });
+    await act(async () => {
+      await backfillActions.triggerBackfillTabLoad();
+    });
+
+    expect(renderBackfillStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, running: false, error: 'boom' }),
+    );
+    expect(setBackfillLogMessage).toHaveBeenCalledWith('Failed to load backfill log');
+    expect(snackbarCalls).toHaveLength(1);
+    expect(snackbarCalls[0][0]).toBe('Failed to load backfill status');
+  });
 });

@@ -43,6 +43,7 @@ const { RunScriptActionButton } = require("../components/RunScriptActionButton")
 // hooks too, so the bridges (and the window.*-poking that only existed for
 // this file) can be deleted outright instead of kept alive for a test.
 const { useBackfillActions } = require("../state/useBackfillActions");
+const { useBackfillTabAutoRefresh } = require("../state/useBackfillTabAutoRefresh");
 const { useRunScript } = require("../state/useRunScript");
 const { useAckLabelActions } = require("../state/useAckLabelActions");
 const { useTriggerAutoRun } = require("../state/useTriggerAutoRun");
@@ -510,7 +511,17 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
   // the fetched text happens to equal what's already shown (useState bails
   // out of re-rendering on a same-value update otherwise).
   const [logUpdateTick, setLogUpdateTick] = React.useState(0);
-  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail } = useBackfillActions();
+  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, triggerBackfillTabLoad } =
+    useBackfillActions();
+  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // backfill-tab.orchestrator.js (deleted outright that phase) used to
+  // drive the initial/on-activation status+log load here, triggered via
+  // index.page.js's own vanilla activateTab/initPage - since this suite
+  // never mounts the real <AppRoot/> (which now owns this via
+  // useBackfillTabAutoRefresh), this harness needs the same hook itself to
+  // keep the many tests that click into the Backfill management tab and
+  // assert on the resulting status/log passing.
+  useBackfillTabAutoRefresh(triggerBackfillTabLoad);
 
   React.useEffect(() => {
     window.updateReactBackfillButtonState = (state) => {

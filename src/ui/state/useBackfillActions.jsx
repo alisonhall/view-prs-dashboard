@@ -31,12 +31,15 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  * state via new reverse bridges (window.getBackfillTrackingState/
  * setSupportsBackfillLogPolling/setIsBackfillActionPending/
  * updateBackfillStatusFromPayload/setBackfillLogMessage/renderBackfillStatus),
- * rather than this hook forking its own independent copy - that state is
- * also driven by index.page.js's own backfill tab orchestrator (tab-
- * activation reload) and initial auto-load, so a second independent copy
- * here would silently drift from what the orchestrator sees (e.g. a 404'd
- * log endpoint staying "supported" in this hook's copy after index.page.js's
- * copy already disabled it).
+ * rather than this hook forking its own independent copy - a second
+ * independent copy here would silently drift from what this file's own
+ * module-level state sees (e.g. a 404'd log endpoint staying "supported"
+ * in this hook's copy after index.page.js's copy already disabled it).
+ * Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+ * tab-activation reload/initial auto-load that used to drive this same
+ * state via backfill-tab.orchestrator.js (vanilla) is now
+ * useBackfillTabAutoRefresh.jsx, calling this hook's own
+ * triggerBackfillTabLoad below - the orchestrator itself is deleted.
  *
  * Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * autoScrollBackfillLogToBottom is no longer part of this hook's own
@@ -135,6 +138,35 @@ export function useBackfillActions() {
       }
     };
 
+    // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // replaces backfill-tab.orchestrator.js's own loadStatus({includeLog:true})
+    // (deleted outright, along with the orchestrator itself) - same
+    // try/catch fallback verbatim, but no `announce` (the orchestrator's
+    // own call never passed it, so status changes on tab-activation never
+    // triggered a status-text message - only the manual "Refresh status"
+    // button's refreshBackfillStatus above does that) and no
+    // beginRequestActivity wrapping (the orchestrator never tracked this
+    // as a request-activity badge either). useBackfillTabAutoRefresh.jsx
+    // calls this on mount and on every Backfill-tab activation.
+    const triggerBackfillTabLoad = async () => {
+      try {
+        await loadBackfillStatus({ includeLog: true });
+      } catch (error) {
+        window.renderBackfillStatus?.({
+          ok: false,
+          running: false,
+          summary: error?.result?.summary || 'Failed to load backfill status',
+          error: error?.result?.error || error.message,
+        });
+        window.setBackfillLogMessage?.('Failed to load backfill log');
+        notifyFailureSnackbar(
+          'Failed to load backfill status',
+          error?.result || error,
+          'Unable to load backfill status',
+        );
+      }
+    };
+
     const refreshBackfillLogTail = async () => {
       const finishActivity = beginRequestActivity('backfill');
       try {
@@ -157,6 +189,7 @@ export function useBackfillActions() {
       handleBackfillAction,
       refreshBackfillStatus,
       refreshBackfillLogTail,
+      triggerBackfillTabLoad,
     };
   }, [setStatusText]);
 }

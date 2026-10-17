@@ -7,7 +7,6 @@
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
 import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
-import * as backfillTabOrchestratorFactory from "./orchestrators/backfill-tab.orchestrator.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
 import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
@@ -1410,13 +1409,15 @@ const {
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // handleBackfillAction itself is no longer destructured here -
 // state/useBackfillActions.jsx now owns the only real caller (the Start/
-// Stop buttons) via its own separate factory instance. loadBackfillStatus/
-// loadBackfillLogTail stay, since this file's own backfill tab orchestrator
-// and initial auto-load still call them directly.
-const {
-  loadBackfillStatus,
-  loadBackfillLogTail,
-} = prBackfillActionHelperFactory.createPrBackfillActionHelpers({
+// Stop buttons) via its own separate factory instance. loadBackfillStatus
+// stays - window.loadBackfillStatus below still has a real caller
+// (PrDataProvider.jsx's pollBackfillStatus). Phase H.11 (see
+// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): loadBackfillLogTail
+// is no longer destructured here - it was only ever called by
+// backfill-tab.orchestrator.js (deleted outright that phase), and this
+// factory instance's own loadBackfillStatus already calls its own
+// internal loadBackfillLogTail when includeLog is true.
+const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillActionHelpers({
   fetch: (...args) => fetch(...args),
   postJson,
   beginRequestActivity,
@@ -1461,27 +1462,6 @@ if (typeof window !== "undefined") {
     autoScrollBackfillLogToBottom(...args);
 }
 
-// Backfill Tab Orchestrator
-const backfillTabOrchestrator =
-  backfillTabOrchestratorFactory.createBackfillTabOrchestrator({
-    // Helper functions
-    loadBackfillStatus,
-    loadBackfillLogTail,
-    renderBackfillStatus,
-    setBackfillLogMessage,
-    getOptionalElementById,
-    notifyFailureSnackbar,
-    // State management via dependency injection
-    stateGetters: {
-      getLastBackfillStateKey: () => lastBackfillStateKey,
-    },
-    stateSetters: {
-      setLastBackfillStateKey: (value) => {
-        lastBackfillStateKey = value;
-      },
-    },
-  });
-
 // Action Log's fetch/render is React-owned (ActionLogSection.jsx, mounted
 // into #action-log-container) - this just forwards to the bridge it
 // registers on mount, so the tab-switch chrome (pr-management-tabs.helpers.js)
@@ -1495,22 +1475,20 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 // can keep calling `loadActorNameCache()` unchanged on tab activation.
 const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
 
+// Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// onBackfillTabActivated is no longer passed here - backfill-tab.orchestrator.js
+// (the only thing that ever implemented it) is deleted outright.
+// state/useBackfillTabAutoRefresh.jsx now owns refreshing status/log on
+// Backfill-tab activation, the same way Action Log/Actor Names' own
+// refresh-on-activate already works, just driven by watching
+// #tab-panel-backfill's `hidden` attribute directly instead of a callback
+// threaded through this factory. Real tab-switching chrome (panel
+// visibility/aria-selected) stays owned here, unchanged.
 const { activateTab } =
   prManagementTabsHelperFactory.createPrManagementTabsHelpers({
     getOptionalElementById,
     loadActionLog,
     loadActorNameCache,
-    // Bug fix (found during Phase 7 research, see REACT_MIGRATION_PLAN.md):
-    // backfillTabOrchestrator used to expose this as activateTab(), which
-    // called activateDataTab("backfill") itself - a no-op, since
-    // "backfill" isn't one of that function's 3 recognized keys
-    // (pr-data-tabs.helpers.js) - and was never actually called from
-    // anywhere besides that broken self-reference, so the Backfill tab
-    // never got its own refresh-on-activate the way Action Log/Actor
-    // Names already do. Real tab-switching chrome stays owned here
-    // (above); renamed to onTabActivated to reflect that this only
-    // refreshes status/log now, not tab-switching chrome.
-    onBackfillTabActivated: () => backfillTabOrchestrator.onTabActivated(),
   });
 
 // Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -2417,8 +2395,11 @@ const initPage = () => {
   // called from here.
   // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
   prDataTabOrchestrator.initialize();
-  // Initialize Backfill Tab orchestrator
-  backfillTabOrchestrator.initialize();
+  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // backfill-tab.orchestrator.js's own initialize() (eager status/log load
+  // at page-init time) used to be called here - deleted outright along
+  // with the orchestrator itself. useBackfillTabAutoRefresh.jsx now fires
+  // that same eager load unconditionally on mount instead.
   applyNonCredentialFieldHints();
 
   const prSectionsHost = document.getElementById("pr-sections");
