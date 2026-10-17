@@ -414,37 +414,6 @@ const getFilterStateOverrideForFieldId = (id) => {
   return window.getFilterStateValues()?.[key];
 };
 
-const getSelectedMultiSelectValuesFromList = (listId) => {
-  const listNode = getOptionalElementById(listId);
-  if (!listNode || typeof listNode.querySelectorAll !== "function") {
-    return [];
-  }
-
-  return Array.from(listNode.querySelectorAll("input[type='checkbox']:checked"))
-    .map((node) => String(node.value || "").trim())
-    .filter(Boolean);
-};
-
-const getSelectedAuthorThreadResolutionAllowLogins = () =>
-  getSelectedMultiSelectValuesFromList(
-    "attention-author-thread-resolution-allow-list",
-  );
-
-const getSelectedAuthorThreadResolutionDenyLogins = () =>
-  getSelectedMultiSelectValuesFromList(
-    "attention-author-thread-resolution-deny-list",
-  );
-
-const getSelectedChangeFilterIgnoreCommentAuthors = () =>
-  getSelectedMultiSelectValuesFromList(
-    "change-filter-ignore-comment-authors-list",
-  );
-
-const getSelectedChangeFilterIgnoreReviewAuthors = () =>
-  getSelectedMultiSelectValuesFromList(
-    "change-filter-ignore-review-authors-list",
-  );
-
 // Phase 6 (see REACT_MIGRATION_PLAN.md): every field read here is migrated
 // onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) - prefer it
 // via getFilterStateOverrideForFieldId when mounted, falling back to the
@@ -495,8 +464,13 @@ const getNeedsAttentionConfig = () => ({
 // in ReviewThreadsSection.jsx itself, now that
 // AuthorThreadResolutionSelectionContext exists for exactly those 2 lists
 // (same fix RowFilterSelectionContext was for the 5 row-filtering lists).
-// getSelectedAuthorThreadResolutionAllowLogins/DenyLogins stay - still
-// used by persistUiOptionOverrides' own override-persistence logic below.
+// Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// getSelectedAuthorThreadResolutionAllowLogins/DenyLogins (and the
+// change-filter actor equivalents, getSelectedChangeFilterIgnoreComment/
+// ReviewAuthors) were deleted outright - confirmed via grep they'd had no
+// caller left at all since persistUiOptionOverrides itself (the function
+// this comment used to say still needed them) was removed in an earlier
+// phase; this comment just hadn't been updated since.
 
 const {
   getEffectiveViewerLogin,
@@ -1142,25 +1116,15 @@ const {
   },
 });
 
-// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// FilterStateProvider.jsx's persistRunScriptOptions/persistViewFilterOptions
-// call these directly - the 9 multi-select lists' current checked state
-// (DOM-truth by design, see that Provider's own header comment for why).
-if (typeof window !== "undefined") {
-  window.getSelectedAuthorLogins = (...args) => getSelectedAuthorLogins(...args);
-  window.getSelectedAssignedLogins = (...args) => getSelectedAssignedLogins(...args);
-  window.getSelectedApproverLogins = (...args) => getSelectedApproverLogins(...args);
-  window.getSelectedIncludeLabelNames = (...args) => getSelectedIncludeLabelNames(...args);
-  window.getSelectedExcludeLabelNames = (...args) => getSelectedExcludeLabelNames(...args);
-  window.getSelectedAuthorThreadResolutionAllowLogins = (...args) =>
-    getSelectedAuthorThreadResolutionAllowLogins(...args);
-  window.getSelectedAuthorThreadResolutionDenyLogins = (...args) =>
-    getSelectedAuthorThreadResolutionDenyLogins(...args);
-  window.getSelectedChangeFilterIgnoreCommentAuthors = (...args) =>
-    getSelectedChangeFilterIgnoreCommentAuthors(...args);
-  window.getSelectedChangeFilterIgnoreReviewAuthors = (...args) =>
-    getSelectedChangeFilterIgnoreReviewAuthors(...args);
-}
+// Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// the window.getSelectedXxx bridges these 9 functions used to be exposed
+// through are gone - Phase G.3 already moved FilterStateProvider.jsx's own
+// buildOverrides() onto RowFilterSelectionContext/
+// AuthorThreadResolutionSelectionContext/ChangeFilterActorSelectionContext
+// directly, leaving no real caller of any of these bridges (confirmed via
+// grep). The functions themselves stay - getFormBody() below still calls 3
+// of them (getSelectedIncludeLabelNames/getSelectedExcludeLabelNames/
+// getSelectedAuthorLogins) as plain function calls, not through window.
 
 // Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
 // window.updateReactBackfillBadges actually exists - see that listener's

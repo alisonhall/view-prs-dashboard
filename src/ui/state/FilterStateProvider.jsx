@@ -101,9 +101,10 @@ const CHECKBOX_FIELD_IDS = [
  * this Provider had to become a genuine descendant of all 3 Contexts for
  * that (see react-app.jsx's own Provider-tree comment). `index.page.js`'s
  * separate `getFormBody()` call (run-script form submission, not
- * persistence) still reads those same DOM-scan bridges directly - that's
- * genuinely vanilla with no render-tree position, out of this phase's
- * scope.
+ * persistence) still reads 3 of those same DOM-scan functions directly as
+ * plain function calls, not through `window.*` - the bridges themselves
+ * had no caller left anywhere once this phase landed, and were deleted in
+ * Phase H.10.
  */
 export function FilterStateProvider({ initialValues, children }) {
   const [values, setValues] = useState(initialValues);
