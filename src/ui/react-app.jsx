@@ -44,6 +44,9 @@ import { useBackfillActions } from './state/useBackfillActions';
 import { useRunScript } from './state/useRunScript';
 import { useAckLabelActions } from './state/useAckLabelActions';
 import { useRefreshAvailableRepoLabels } from './state/useRefreshAvailableRepoLabels';
+import { useTriggerAutoRun } from './state/useTriggerAutoRun';
+import { useQuickCheckActions } from './state/useQuickCheckActions';
+import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
@@ -580,6 +583,15 @@ function AppRoot() {
   const runScript = useRunScript();
   const ackLabelActions = useAckLabelActions();
   const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();
+  // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton/the
+  // dispatcher-bump and reset-circuit-breaker drawer actions below used to
+  // call window.handleTriggerAutoRun/handleQuickCheck/handleQuickCheckAll/
+  // handleDispatcherBump/handleResetCircuitBreaker directly - they now call
+  // these hooks' returned functions instead.
+  const triggerAutoRun = useTriggerAutoRun();
+  const quickCheckActions = useQuickCheckActions();
+  const activityDrawerActions = useActivityDrawerActions();
 
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): drives
   // which lazy-loaded tab chunks below have been requested yet.
@@ -888,9 +900,9 @@ function AppRoot() {
                   requestActivityBadges={requestActivityBadges.badges}
                   recentRequestActivity={recentRequestActivity}
                   onBumpDispatcherEntry={(repo, taskType) =>
-                    window.handleDispatcherBump?.(repo, taskType)
+                    activityDrawerActions.handleDispatcherBump(repo, taskType)
                   }
-                  onResetCircuitBreaker={() => window.handleResetCircuitBreaker?.()}
+                  onResetCircuitBreaker={() => activityDrawerActions.handleResetCircuitBreaker()}
                 />,
                 containers.activityDrawer,
                 'activity-drawer',
@@ -1010,7 +1022,7 @@ function AppRoot() {
 
         {containers.triggerAutoRunBtn &&
           createPortal(
-            <TriggerAutoRunButton onTrigger={() => window.handleTriggerAutoRun?.()} />,
+            <TriggerAutoRunButton onTrigger={() => triggerAutoRun()} />,
             containers.triggerAutoRunBtn,
             'trigger-auto-run-btn',
           )}
@@ -1092,14 +1104,14 @@ function AppRoot() {
 
         {containers.quickCheckBtn &&
           createPortal(
-            <QuickCheckButton onCheck={() => window.handleQuickCheck?.()} />,
+            <QuickCheckButton onCheck={() => quickCheckActions.handleQuickCheck()} />,
             containers.quickCheckBtn,
             'quick-check-btn',
           )}
 
         {containers.quickCheckAllBtn &&
           createPortal(
-            <QuickCheckAllButton onCheck={() => window.handleQuickCheckAll?.()} />,
+            <QuickCheckAllButton onCheck={() => quickCheckActions.handleQuickCheckAll()} />,
             containers.quickCheckAllBtn,
             'quick-check-all-btn',
           )}

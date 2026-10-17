@@ -82,8 +82,6 @@ import {
   extractRowLabelNames,
   normalizeFilterToken,
 } from "./helpers/pr-filter-label-extraction.helpers.js";
-import * as prQuickCheckActionsHelperFactory from "./helpers/pr-quick-check-actions.helpers.js";
-import * as prTriggerAutoRunActionHelperFactory from "./helpers/pr-trigger-auto-run-action.helpers.js";
 
 // DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
 // 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/AuthorInsightsPrLink.jsx
@@ -1099,122 +1097,6 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
   });
 };
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned
-// (components/TriggerAutoRunButton.jsx), which manages disabled/label
-// state around this call as its injected onTrigger callback. Phase 7,
-// sub-phase 7.6: the fetch/branching logic itself now lives in
-// pr-trigger-auto-run-action.helpers.js's runTriggerAutoRunWorkflow (pure
-// extraction, zero behavior change) - this is a thin wrapper so the
-// window.handleTriggerAutoRun bridge below stays unchanged.
-const handleTriggerAutoRun = () => runTriggerAutoRunWorkflow();
-
-const QUICK_CHECK_BUTTON_LABEL = "Quick check";
-
-// Manually triggers the scheduler's own cheap "did anything change" pass
-// (POST /view-prs/quick-check -> runViewPrsQuickCheck on the server) - a
-// single listing-only `gh` call per repo, no comments/reviews/diffs, so it's
-// fast enough to await directly and report the result inline instead of
-// firing-and-forgetting like "Trigger auto run" does for the full refresh.
-//
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the button itself is React-owned
-// (components/QuickCheckButton.jsx). Unlike handleTriggerAutoRun above,
-// this one's final label depends on the outcome, so rather than touching
-// the DOM directly, this returns a `{ label, resetAfterMs? }` descriptor
-// for that component's own onCheck callback to apply. Phase 7, sub-phase
-// 7.6: the fetch/branching logic itself now lives in
-// pr-quick-check-actions.helpers.js's runQuickCheckWorkflow.
-const buildQuickCheckCountLabel = (pendingTotal) =>
-  pendingTotal > 0
-    ? `${pendingTotal} update${pendingTotal === 1 ? "" : "s"} found`
-    : "No changes found";
-
-const handleQuickCheck = () =>
-  runQuickCheckWorkflow({
-    fallbackLabel: QUICK_CHECK_BUTTON_LABEL,
-    buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
-  });
-
-const QUICK_CHECK_ALL_BUTTON_LABEL = "Quick check all";
-
-// "Quick check all existing PRs" - checks every PR number already loaded in
-// the app (across every repo represented in the loaded rows, not just the
-// selected one), instead of requiring the user to type numbers into the Run
-// & Filter tab's field. Phase 7, sub-phase 7.6: the fetch/branching logic
-// itself now lives in pr-quick-check-actions.helpers.js's
-// runQuickCheckAllWorkflow (which also owns collectAllLoadedPrsByRepo).
-const handleQuickCheckAll = () =>
-  runQuickCheckAllWorkflow({
-    fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
-    buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
-      pendingTotal > 0
-        ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
-            reposChecked.length === 1 ? "" : "s"
-          }`
-        : "No changes found",
-  });
-
-// Manual "run sooner" reprioritization from the Activity drawer's
-// dispatcher queue (see REACT_MIGRATION_PLAN.md's dispatcher plan) - POSTs
-// to /view-prs/dispatcher/bump, which makes that one (repo, taskType)
-// dispatcher entry immediately due and kicks an immediate tick server-side.
-// The drawer's own queue re-renders from the next SSE frame (JobEventsContext),
-// so this doesn't need to apply any result to the UI itself - just report
-// failure if the request didn't succeed. ActivityDrawerDispatcherSection.jsx
-// calls this as its onBump prop.
-const handleDispatcherBump = async (repo, taskType) => {
-  try {
-    const { response, result } = await postJson("/view-prs/dispatcher/bump", {
-      repo,
-      taskType,
-    });
-    if (!response.ok || result.ok === false) {
-      notifyFailureSnackbar("Reprioritize failed", result, "Unable to reprioritize this task");
-      return false;
-    }
-    return true;
-  } catch (error) {
-    notifyFailureSnackbar("Reprioritize failed", error, "Unable to reach the server");
-    return false;
-  }
-};
-
-// Manual "Reset circuit breaker" action from the Activity drawer's
-// circuit-breaker section - POSTs to /view-prs/circuit-breaker/reset with
-// no body, resetting every repo's breaker at once (the section only shows
-// up when at least one is open, and resetting "everything" matches the
-// person's actual intent in the motivating case - coming back after the
-// computer was asleep/locked, where the fix is "let auto refresh try
-// again", not "pick which repo"). The section's own queue/state re-renders
-// from the next SSE frame, so this doesn't need to apply any result to the
-// UI itself - just report failure if the request didn't succeed.
-// ActivityDrawerCircuitBreakerSection.jsx calls this as its onReset prop.
-const handleResetCircuitBreaker = async () => {
-  try {
-    const { response, result } = await postJson("/view-prs/circuit-breaker/reset", {});
-    if (!response.ok || result.ok === false) {
-      notifyFailureSnackbar("Reset failed", result, "Unable to reset the circuit breaker");
-      return false;
-    }
-    return true;
-  } catch (error) {
-    notifyFailureSnackbar("Reset failed", error, "Unable to reach the server");
-    return false;
-  }
-};
-
-// TriggerAutoRunButton.jsx/QuickCheckButton.jsx call these directly as
-// their onTrigger/onCheck props - same exposure shape as
-// window.handleRequestMoreMerged above.
-if (typeof window !== "undefined") {
-  window.handleTriggerAutoRun = (...args) => handleTriggerAutoRun(...args);
-  window.handleQuickCheck = (...args) => handleQuickCheck(...args);
-  window.handleQuickCheckAll = (...args) => handleQuickCheckAll(...args);
-  window.handleDispatcherBump = (...args) => handleDispatcherBump(...args);
-  window.handleResetCircuitBreaker = (...args) => handleResetCircuitBreaker(...args);
-}
-
 // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5
 // populateXOptions functions this factory used to also provide have moved
 // to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals,
@@ -1263,8 +1145,7 @@ const {
 // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // FilterStateProvider.jsx's persistRunScriptOptions/persistViewFilterOptions
 // call these directly - the 9 multi-select lists' current checked state
-// (DOM-truth by design, see that Provider's own header comment for why),
-// same exposure shape as window.handleTriggerAutoRun above.
+// (DOM-truth by design, see that Provider's own header comment for why).
 if (typeof window !== "undefined") {
   window.getSelectedAuthorLogins = (...args) => getSelectedAuthorLogins(...args);
   window.getSelectedAssignedLogins = (...args) => getSelectedAssignedLogins(...args);
@@ -2366,30 +2247,15 @@ if (typeof window !== "undefined") {
   window.getFormBody = (...args) => getFormBody(...args);
 }
 
-const {
-  runQuickCheckWorkflow,
-  runQuickCheckAllWorkflow,
-} = prQuickCheckActionsHelperFactory.createPrQuickCheckActionsHelpers({
-  showErrorNotification: (...args) => showErrorNotification(...args),
-  showWarningNotification: (...args) => showWarningNotification(...args),
-  notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-  loadSchedulerStatus: (...args) => loadSchedulerStatus(...args),
-  postJson: (...args) => postJson(...args),
-  getFormBody: () => getFormBody(),
-  getLatestStoredPayload: () => latestStoredPayload,
-  markPrsBusy: (...args) => window.markPrsBusy?.(...args),
-  clearPrsBusy: (...args) => window.clearPrsBusy?.(...args),
-});
-
-// Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): see that function's
-// own module for why this is a separate, single-action helper file rather
-// than folded into pr-quick-check-actions.helpers.js above.
-const { runTriggerAutoRunWorkflow } =
-  prTriggerAutoRunActionHelperFactory.createPrTriggerAutoRunActionHelpers({
-    postJson: (...args) => postJson(...args),
-    showErrorNotification: (...args) => showErrorNotification(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-  });
+// Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// index.page.js's own createPrQuickCheckActionsHelpers/
+// createPrTriggerAutoRunActionHelpers instances (which used to feed
+// handleQuickCheck/handleQuickCheckAll/handleTriggerAutoRun below) are
+// deleted outright - confirmed their only callers were those 3 functions,
+// and TriggerAutoRunButton.jsx/QuickCheckButton.jsx/QuickCheckAllButton.jsx
+// now build their own equivalent handlers directly via
+// useTriggerAutoRun()/useQuickCheckActions() (real Context-backed
+// instances, not these window-bridge-fed vanilla ones).
 
 // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // index.page.js's own createPrAckLabelActionsHelpers instance (which used
@@ -2996,7 +2862,7 @@ const initPage = () => {
   // REACT_MIGRATION_PLAN.md): #quick-check-btn/#trigger-auto-run-btn are
   // React-owned now (components/QuickCheckButton.jsx/
   // TriggerAutoRunButton.jsx), with their own onClick handlers calling
-  // handleQuickCheck/handleTriggerAutoRun as injected callbacks - no
+  // useQuickCheckActions()/useTriggerAutoRun() directly (Phase H.9) - no
   // vanilla wiring needed here anymore.
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): #error-snackbar-close is React-owned now

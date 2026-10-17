@@ -45,6 +45,9 @@ const { RunScriptActionButton } = require("../components/RunScriptActionButton")
 const { useBackfillActions } = require("../state/useBackfillActions");
 const { useRunScript } = require("../state/useRunScript");
 const { useAckLabelActions } = require("../state/useAckLabelActions");
+const { useTriggerAutoRun } = require("../state/useTriggerAutoRun");
+const { useQuickCheckActions } = require("../state/useQuickCheckActions");
+const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
 const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableRepoLabels");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
@@ -869,35 +872,56 @@ const installReactSnackbarMountBridge = () => {
   rtlRender(React.createElement(Snackbar), { container });
 };
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #trigger-auto-run-btn/#quick-check-btn are now
-// fully React-owned (components/TriggerAutoRunButton.jsx/
-// QuickCheckButton.jsx), each calling window.handleTriggerAutoRun/
-// window.handleQuickCheck (index.page.js) as their onTrigger/onCheck prop
-// - same real-RTL-mount reasoning as the snackbar above, since several
-// tests click these and assert on the resulting disabled/label state.
-const installReactActionButtonMountBridges = () => {
+// Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// #trigger-auto-run-btn/#quick-check-btn/#quick-check-all-btn are now fully
+// React-owned (components/TriggerAutoRunButton.jsx/QuickCheckButton.jsx/
+// QuickCheckAllButton.jsx), each calling useTriggerAutoRun()/
+// useQuickCheckActions() directly instead of window.handleTriggerAutoRun/
+// window.handleQuickCheck/window.handleQuickCheckAll (both deleted from
+// index.page.js, confirmed no other caller) - same real-RTL-mount
+// reasoning as the snackbar above, since several tests click these and
+// assert on the resulting disabled/label state. Wrapped in its own
+// PrActivityQueueProvider instance (useQuickCheckActions()'s own
+// markPrBusy/clearPrBusy for the "Quick check all" sweep) - no test here
+// asserts row-busy-indicator state through these 2 buttons specifically,
+// so a separate instance from the main persistent tree's is harmless.
+function ActionButtonsTestHarness() {
+  const triggerAutoRun = useTriggerAutoRun();
+  const { handleQuickCheck, handleQuickCheckAll } = useQuickCheckActions();
   const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
-  if (triggerAutoRunContainer) {
-    rtlRender(
-      React.createElement(TriggerAutoRunButton, { onTrigger: () => window.handleTriggerAutoRun?.() }),
-      { container: triggerAutoRunContainer },
-    );
-  }
   const quickCheckContainer = document.getElementById("quick-check-btn-root");
-  if (quickCheckContainer) {
-    rtlRender(
-      React.createElement(QuickCheckButton, { onCheck: () => window.handleQuickCheck?.() }),
-      { container: quickCheckContainer },
-    );
-  }
   const quickCheckAllContainer = document.getElementById("quick-check-all-btn-root");
-  if (quickCheckAllContainer) {
-    rtlRender(
-      React.createElement(QuickCheckAllButton, { onCheck: () => window.handleQuickCheckAll?.() }),
-      { container: quickCheckAllContainer },
-    );
-  }
+
+  return React.createElement(
+    React.Fragment,
+    null,
+    triggerAutoRunContainer &&
+      createPortal(
+        React.createElement(TriggerAutoRunButton, { onTrigger: () => triggerAutoRun() }),
+        triggerAutoRunContainer,
+        "trigger-auto-run",
+      ),
+    quickCheckContainer &&
+      createPortal(
+        React.createElement(QuickCheckButton, { onCheck: () => handleQuickCheck() }),
+        quickCheckContainer,
+        "quick-check",
+      ),
+    quickCheckAllContainer &&
+      createPortal(
+        React.createElement(QuickCheckAllButton, { onCheck: () => handleQuickCheckAll() }),
+        quickCheckAllContainer,
+        "quick-check-all",
+      ),
+  );
+}
+
+const installReactActionButtonMountBridges = () => {
+  const container = document.createElement("div");
+  rtlRender(
+    React.createElement(PrActivityQueueProvider, null, React.createElement(ActionButtonsTestHarness)),
+    { container },
+  );
 };
 
 // Track C, slices C2b/C2c (post-Phase-6 follow-up, see
