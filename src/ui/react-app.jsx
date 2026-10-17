@@ -694,16 +694,14 @@ function AppRoot() {
   // window.renderReactFilterSummary (the push bridge this useEffect used
   // to register) is gone - <AppliedFilterSummaryLive> now derives the
   // chip/summary text itself, reactively, via useAppliedFilterSummary().
-  // index.page.js's own vanilla computation of the same text still runs
-  // (deriveRenderSummary's other callers depend on it) and still tries to
-  // call this now-nonexistent bridge - that call site's own
-  // `typeof window.renderReactFilterSummary === "function"` guard makes
-  // it a harmless no-op, left wired rather than ripped out - removing it
-  // is naturally scoped together with a future deriveRenderSummary/
-  // renderSchedulerStatus decoupling pass, not this slice. (index.page.js's
-  // own analogous dead visiblePrNumbers computation, once cited here as
-  // the same kind of "left wired" precedent, has since been confirmed dead
-  // and deleted outright - see REACT_MIGRATION_PLAN.md's cleanup entry.)
+  // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // the vanilla call site that used to try calling this now-nonexistent
+  // bridge (pr-render-apply.helpers.js's applyRenderResults, and its
+  // window.updateReactDataMetaText sibling there) is deleted outright too
+  // - both were confirmed dead in production (no installer anywhere in
+  // this file), left wired only because index.html.test.js's own test
+  // harness faked them (fixed below, see installReactFilterPanelMountBridges's
+  // own comment there).
 
   useEffect(() => {
     window.updateReactBackfillBadges = (badges) => {

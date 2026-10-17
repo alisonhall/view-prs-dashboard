@@ -14,15 +14,15 @@
 // value down to what's still used: reading the currently-checked selection
 // out of a list (still needed at "Apply filters (local)" time and by
 // persistUiOptionOverrides), the 6 "Any (with/without)" metadata filter
-// getters, the applied-filter summary, and the dropdown-closing listener.
+// getters, and the dropdown-closing listener. Phase H.12 (see
+// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the applied-filter
+// summary (renderManagementFilterSummary/renderFilterSummary) is gone too
+// - confirmed dead in production (AppliedFilterSummaryLive, react-app.jsx,
+// already owns the same "Applied filters: ..." summary/chips live,
+// reactively; this factory's own version had no real installer left to
+// call through to).
 export const { createPrFilterPanelHelpers } = (() => {
   const createPrFilterPanelHelpers = ({
-    // Renders the "Applied filters: ..." summary line + chip list via React
-    // (react-app.jsx's renderReactFilterSummary, mounted into
-    // #management-filter-summary-root - see AppliedFilterSummary.jsx).
-    // Optional and defaults to a no-op so every existing call site/unit
-    // test keeps working unmodified before React has mounted it.
-    renderFilterSummary,
     documentRef,
     // Phase 6 (see REACT_MIGRATION_PLAN.md): optional - when provided,
     // returns a migrated field's current value from FilterStateProvider's
@@ -35,8 +35,6 @@ export const { createPrFilterPanelHelpers } = (() => {
   } = {}) => {
     const getFilterStateValueSafe =
       typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
-    const renderFilterSummarySafe =
-      typeof renderFilterSummary === "function" ? renderFilterSummary : () => false;
 
     const getDocument = () =>
       documentRef || (typeof document !== "undefined" ? document : null);
@@ -99,13 +97,6 @@ export const { createPrFilterPanelHelpers } = (() => {
     const getAnalysisOfPrFilter = () =>
       readFilterStateOrDomValue("filterAnalysisOfPr", "filter-analysis-of-pr");
 
-    const renderManagementFilterSummary = ({
-      summaryText = "",
-      filterChips = [],
-    } = {}) => {
-      renderFilterSummarySafe(summaryText, filterChips);
-    };
-
     const setupMultiSelectDropdownClosing = () => {
       const doc = getDocument();
       if (!doc || typeof doc.querySelectorAll !== "function") return;
@@ -133,7 +124,6 @@ export const { createPrFilterPanelHelpers } = (() => {
       getRallyStoriesFilter,
       getRallyLinksFilter,
       getAnalysisOfPrFilter,
-      renderManagementFilterSummary,
       setupMultiSelectDropdownClosing,
     };
   };

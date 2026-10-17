@@ -5,16 +5,11 @@
 // require()/globalThis.ViewPrsRenderApplyHelpers fallback.
 export const { createPrRenderApplyHelpers } = (() => {
   const createPrRenderApplyHelpers = ({
-    renderManagementFilterSummary,
     renderAuthorInsights,
     computePrDataFingerprint,
     computePrDataManifest,
     getOptionalElementById,
   } = {}) => {
-    const renderManagementFilterSummarySafe =
-      typeof renderManagementFilterSummary === "function"
-        ? renderManagementFilterSummary
-        : () => {};
     const renderAuthorInsightsSafe =
       typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
     const computePrDataFingerprintSafe =
@@ -76,39 +71,33 @@ export const { createPrRenderApplyHelpers } = (() => {
     };
 
     // Deferred-items follow-up (full vanilla-to-React sweep, see
-    // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now in the real
-    // app (AppliedFilterSummaryLive's dataMetaText, deriving live from
-    // Context) - the caller-supplied `meta` (the DOM element itself,
-    // threaded through from pr-render-context.helpers.js's
-    // getElementByIdSafe("data-meta")) is deliberately not
-    // destructured/used here anymore; deriveRenderApplyInputs/
-    // deriveRenderFinalizedState/the orchestrator still compute and pass
-    // it through unchanged - not worth a wider refactor just to drop it
-    // from that whole chain.
+    // REACT_MIGRATION_PLAN.md): #data-meta and the "Applied filters: ..."
+    // summary/chips are React-owned now in the real app
+    // (AppliedFilterSummaryLive, deriving both live from Context) - the
+    // caller-supplied `meta`/`appliedSummaryText`/`filterChips` are
+    // deliberately not used for rendering here anymore; `meta` (the DOM
+    // element itself) and `appliedSummaryText`/`filterChips` are still
+    // computed and passed through by deriveRenderApplyInputs/
+    // deriveRenderFinalizedState/the orchestrator unchanged, not worth a
+    // wider refactor just to drop them from that whole chain.
     //
-    // window.updateReactDataMetaText itself is NOT dead the way
-    // updateReactMergedRequestMoreAction turned out to be, despite reading
-    // that way at a glance - confirmed by a regression this exact removal
-    // caused (2026-10-11): index.html.test.js's own integration-test
-    // harness never mounts the real AppliedFilterSummaryLive component, so
-    // its wireTextBridge("updateReactDataMetaText", "data-meta") stub is
-    // the ONLY thing that populates #data-meta in that whole suite. Left
-    // wired in for that reason - removing it is a real test-harness
-    // rework, not a 2-line deletion.
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // window.updateReactDataMetaText/window.renderReactFilterSummary (via
+    // the now-deleted renderManagementFilterSummary DI param) used to be
+    // called here too - both confirmed dead in production (no installer
+    // anywhere in react-app.jsx; AppliedFilterSummaryLive replaced both
+    // already, per the comment above) and deleted outright.
+    // index.html.test.js's own integration-test harness used to be the
+    // only real reader of either (via its own wireTextBridge stubs) -
+    // fixed by mounting the real AppliedFilterSummaryLive there instead of
+    // faking these 2 bridges, same as every other phase's harness fallout.
     const applyRenderResults = ({
       payload,
       allStoredRows,
       filteredRows,
-      appliedSummaryText,
-      filterChips,
     } = {}) => {
       const actorsMap = payload?.actorsMap || {};
-      window.updateReactDataMetaText?.(appliedSummaryText || "");
 
-      renderManagementFilterSummarySafe({
-        summaryText: appliedSummaryText,
-        filterChips,
-      });
       // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
       // this used to run in full on every single render regardless of
       // which data tab the user is actually looking at - a real,

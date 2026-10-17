@@ -627,8 +627,6 @@ const { deriveRenderSummary } =
 
 const { applyRenderResults, renderAuthorInsightsIfVisible, applyFreshAuthorInsightsIfVisible } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
-    renderManagementFilterSummary: (...args) =>
-      renderManagementFilterSummary(...args),
     renderAuthorInsights: (...args) => renderAuthorInsights(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
@@ -1076,7 +1074,11 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
 // which derive the same option lists reactively from PrDataContext instead
 // of being pushed imperatively through here - trimmed DI surface down to
 // just what's still used (selection readers, the 6 "Any" filter getters,
-// the applied-filter summary, and the dropdown-closing listener).
+// and the dropdown-closing listener). Phase H.12 (see
+// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the applied-filter
+// summary (renderManagementFilterSummary/renderFilterSummary) is gone too
+// - AppliedFilterSummaryLive (react-app.jsx) already owned it live,
+// reactively; this factory's own version was a confirmed-dead no-op.
 const {
   getSelectedAuthorLogins,
   getSelectedAssignedLogins,
@@ -1089,16 +1091,8 @@ const {
   getRallyStoriesFilter,
   getRallyLinksFilter,
   getAnalysisOfPrFilter,
-  renderManagementFilterSummary,
   setupMultiSelectDropdownClosing,
 } = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
-  // Delegates the "Applied filters: ..." summary/chips to react-app.jsx's
-  // bridge (AppliedFilterSummary.jsx) - same handled/fallback-to-no-op
-  // shape every Phase 2 bridge in this file uses.
-  renderFilterSummary: (summaryText, filterChips) =>
-    typeof window !== "undefined" && typeof window.renderReactFilterSummary === "function"
-      ? window.renderReactFilterSummary(summaryText, filterChips)
-      : false,
   documentRef: typeof document !== "undefined" ? document : null,
   // Phase 6 (see REACT_MIGRATION_PLAN.md): lets getCustomCommentsFilter/
   // getOtherNotesFilter/etc. prefer a migrated field's Context value over

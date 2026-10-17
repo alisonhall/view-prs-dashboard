@@ -24,6 +24,8 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
+const { usePrData } = require("../state/PrDataContext");
+const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
@@ -425,23 +427,32 @@ const buildMultiSelectContainers = () => {
   return { multiSelect, multiSelectSummary };
 };
 
-const installReactFilterPanelMountBridges = () => {
-  let filterSummaryRerender = null;
-  window.renderReactFilterSummary = (summaryText, filterChips) => {
-    const container = document.getElementById("management-filter-summary-root");
-    if (!container) return false;
-    if (filterSummaryRerender) {
-      filterSummaryRerender(React.createElement(AppliedFilterSummary, { summaryText, filterChips }));
-    } else {
-      const { rerender } = rtlRender(
+// Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
+// push bridges this used to install a standalone rtlRender tree for) are
+// both confirmed dead in production - react-app.jsx's real
+// AppliedFilterSummaryLive derives the same summary/chips/#data-meta text
+// live, reactively, from Context instead. This suite's own equivalent,
+// AppliedFilterSummaryTestLive (below), replaces this function - it has
+// to be mounted *inside* MountedPrTableTree (not as its own independent
+// root the way this used to be) since it needs a real <PrDataProvider/>
+// ancestor, which only exists there.
+function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
+  const { payload } = usePrData();
+  const { summaryText, filterChips } = useAppliedFilterSummary();
+  const dataMetaText = payload?.ok ? summaryText : "Loading...";
+  return React.createElement(
+    React.Fragment,
+    null,
+    appliedFilterSummaryContainer &&
+      createPortal(
         React.createElement(AppliedFilterSummary, { summaryText, filterChips }),
-        { container },
-      );
-      filterSummaryRerender = rerender;
-    }
-    return true;
-  };
-};
+        appliedFilterSummaryContainer,
+        "applied-filter-summary",
+      ),
+    dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, "data-meta"),
+  );
+}
 
 // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
 // the REAL AutoRenderBlockingProvider (not a hand-rolled simulation of its
@@ -633,6 +644,15 @@ function MountedPrTableTree({ initialPayload, selectedRepo }) {
       null,
       React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
     ),
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // mounted inside the SAME <PrDataProvider/> instance as PrTableApp
+    // above, matching react-app.jsx's real AppRoot structure - needs a
+    // real PrDataProvider ancestor for usePrData(), which only exists
+    // here (not at FilterStateTestRootHarness's own top level).
+    React.createElement(AppliedFilterSummaryTestLive, {
+      appliedFilterSummaryContainer: document.getElementById("management-filter-summary-root"),
+      dataMetaContainer: document.getElementById("data-meta"),
+    }),
   );
 }
 
@@ -864,7 +884,11 @@ const installReactStatusTextMountBridges = () => {
   // installBackfillControlsBridge(), always called right after this) now
   // owns it via real React state, matching react-app.jsx's own AppRoot
   // (BackfillLogControls renders the #backfill-log portal itself now).
-  wireTextBridge("updateReactDataMetaText", "data-meta");
+  // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // updateReactDataMetaText no longer wired here either - confirmed dead
+  // in production (no installer anywhere in react-app.jsx), replaced by
+  // mounting the real AppliedFilterSummaryTestLive inside
+  // MountedPrTableTree instead (see that component's own comment).
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see
@@ -952,7 +976,6 @@ const installReactTableMountBridge = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
-  installReactFilterPanelMountBridges();
   installReactStatusTextMountBridges();
   installReactSnackbarMountBridge();
   installReactActionButtonMountBridges();
@@ -3319,6 +3342,17 @@ describe("index page rendering with Testing Library", () => {
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
     await user.clear(prFilterField);
     await user.type(prFilterField, "1");
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // #data-meta's text now comes from the real, Context-only
+    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive), which
+    // has its own identical PR-number-filter-takes-precedence-over-scope
+    // behavior (same production logic, not vanilla-only) - scope-mode/
+    // filter-pr-numbers have no real Context-backed component mounted in
+    // this reduced harness, so both need the same sync call every other
+    // DOM-only field already uses (syncFilterStateFromElement's own
+    // header comment) for the live summary to see them.
+    syncFilterStateFromElement(scopeField, "scopeMode");
+    syncFilterStateFromElement(prFilterField, "filterPrNumbers");
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
     await clickMultiSelectCheckbox("author-list", "author-other", user);
@@ -3326,10 +3360,6 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
-    // The vanilla pipeline's own data-meta summary (its PR-number-filter
-    // precedence over label/author/assigned, computed from the plain DOM
-    // reads this harness exercises) is unaffected by "live filtering" -
-    // still asserted here unchanged.
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
       expect(dataMetaText).toContain("Rows: 1");
@@ -3337,25 +3367,22 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=all stored rows");
     });
 
-    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): the REAL
-    // React table no longer reflects this DOM-only scope-mode/PR-number
-    // filter at all - it reads useVisiblePrNumbers(), a reactive Context
-    // derivation, and scopeMode/filterPrNumbers have no Context-backed
-    // input component mounted in this reduced harness (unlike the real
-    // app's ScopeFilterSelect/PrNumberFilterInput). The table instead
-    // reflects whatever IS Context-backed here: the 4 multi-select
-    // filters above (label=frontend/exclude=bug/author=author-other/
-    // assigned=assignee-other), which match PR #2, not PR #1 - the
-    // opposite of what the vanilla-only precedence computed above. This
-    // PR-number-filter-precedence behavior itself is covered where it's
-    // actually reachable: pr-visible-pr-numbers.helpers.test.js (unit) and
-    // the real, fully-wired app (Playwright e2e).
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // now that filterPrNumbers is synced into real Context above (needed
+    // for the live #data-meta summary to see it), the REAL React table -
+    // which reads useVisiblePrNumbers(), the same reactive Context
+    // derivation - picks it up too, same as it already does in the real
+    // app: the PR-number filter takes precedence over the 4 multi-select
+    // filters (label=frontend/exclude=bug/author=author-other/
+    // assigned=assignee-other, which alone would match PR #2, not PR #1).
+    // Matches the real, fully-wired app's own precedence (also covered by
+    // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
     expect(
-      screen.queryByRole("button", { name: "View PR JSON details for #1" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", { name: "View PR JSON details for #2" }).length,
+      screen.getAllByRole("button", { name: "View PR JSON details for #1" }).length,
     ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: "View PR JSON details for #2" }),
+    ).not.toBeInTheDocument();
   });
 
   test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {
@@ -3434,6 +3461,15 @@ describe("index page rendering with Testing Library", () => {
     expect(scopeField).toBeInTheDocument();
 
     await user.selectOptions(scopeField, "needs-attention");
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // #data-meta's text now comes from the real, Context-only
+    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive) instead of
+    // the old vanilla pipeline's own DOM-fallback-aware computation -
+    // scope-mode has no real Context-backed component mounted in this
+    // suite (see this file's own comment on that), so a raw DOM change
+    // needs this same sync call every other DOM-only field already uses
+    // (syncFilterStateFromElement's own header comment).
+    syncFilterStateFromElement(scopeField, "scopeMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
@@ -3447,6 +3483,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
+    syncFilterStateFromElement(scopeField, "scopeMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review

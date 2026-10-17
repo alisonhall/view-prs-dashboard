@@ -5,20 +5,12 @@ const {
 } = require("./pr-render-apply.helpers.js");
 
 describe("pr render apply helpers", () => {
-  afterEach(() => {
-    delete window.updateReactDataMetaText;
-  });
-
   test("given render artifacts and payload, when applying render results, then side effects are coordinated and next render state is returned", () => {
-    const renderManagementFilterSummary = jest.fn();
     const renderAuthorInsights = jest.fn();
     const computePrDataFingerprint = jest.fn(() => "fingerprint-1");
     const computePrDataManifest = jest.fn(() => ({ fallback: true }));
-    const updateReactDataMetaText = jest.fn();
-    window.updateReactDataMetaText = updateReactDataMetaText;
 
     const { applyRenderResults } = createPrRenderApplyHelpers({
-      renderManagementFilterSummary,
       renderAuthorInsights,
       computePrDataFingerprint,
       computePrDataManifest,
@@ -46,16 +38,11 @@ describe("pr render apply helpers", () => {
     // Deferred-items follow-up (full vanilla-to-React sweep, see
     // REACT_MIGRATION_PLAN.md): #data-meta is React-owned now - `meta`
     // (the DOM element) is still threaded through as a param but no
-    // longer written to directly. window.updateReactDataMetaText itself
-    // stays genuinely alive though - see this function's own header
-    // comment for why (index.html.test.js's integration-test harness
-    // depends on it).
+    // longer written to directly, and (Phase H.12) neither is
+    // appliedSummaryText/filterChips anymore - AppliedFilterSummaryLive
+    // (react-app.jsx) owns both live, reactively, with no bridge left for
+    // this function to call.
     expect(meta.textContent).toBe("");
-    expect(updateReactDataMetaText).toHaveBeenCalledWith("Applied filters: repo=org/repo");
-    expect(renderManagementFilterSummary).toHaveBeenCalledWith({
-      summaryText: "Applied filters: repo=org/repo",
-      filterChips: ["repo=org/repo"],
-    });
     expect(renderAuthorInsights).toHaveBeenCalledWith([{ id: 1 }], payload.actorsMap);
     expect(computePrDataFingerprint).toHaveBeenCalledWith(payload);
     expect(computePrDataManifest).not.toHaveBeenCalled();
