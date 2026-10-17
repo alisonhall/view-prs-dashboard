@@ -416,14 +416,6 @@ const getFilterStateOverrideForFieldId = (id) => {
   return window.getFilterStateValues()?.[key];
 };
 
-const normalizeAuthorThreadResolutionMode = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "allow-only" || normalized === "deny-only") {
-    return normalized;
-  }
-  return "allow-all";
-};
-
 const getSelectedMultiSelectValuesFromList = (listId) => {
   const listNode = getOptionalElementById(listId);
   if (!listNode || typeof listNode.querySelectorAll !== "function") {
@@ -454,46 +446,6 @@ const getSelectedChangeFilterIgnoreReviewAuthors = () =>
   getSelectedMultiSelectValuesFromList(
     "change-filter-ignore-review-authors-list",
   );
-
-const updateAuthorThreadResolutionRuleVisibility = () => {
-  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // prefer Context (same handled/fallback shape every other migrated-field
-  // reader in this file uses) over the DOM - this function is also called
-  // from a React effect reacting to the Context value itself
-  // (FilterStateProvider.jsx), so it must see that same value even when
-  // nothing has written it back into a real DOM element (true for every
-  // production page load, where the real <select> is React-controlled and
-  // always in sync anyway - this only differs when a caller's DOM read
-  // would otherwise be stale).
-  const contextOverride = getFilterStateOverrideForFieldId(
-    "attention-author-thread-resolution-mode",
-  );
-  const mode = normalizeAuthorThreadResolutionMode(
-    typeof contextOverride === "string"
-      ? contextOverride
-      : getOptionalElementById("attention-author-thread-resolution-mode")?.value,
-  );
-  const allowOptions = getOptionalElementById(
-    "attention-author-thread-resolution-allow-options",
-  );
-  const denyOptions = getOptionalElementById(
-    "attention-author-thread-resolution-deny-options",
-  );
-
-  if (allowOptions) {
-    allowOptions.hidden = mode !== "allow-only";
-    if (mode !== "allow-only") {
-      allowOptions.open = false;
-    }
-  }
-
-  if (denyOptions) {
-    denyOptions.hidden = mode !== "deny-only";
-    if (mode !== "deny-only") {
-      denyOptions.open = false;
-    }
-  }
-};
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): every field read here is migrated
 // onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) - prefer it
@@ -1311,9 +1263,8 @@ const {
 // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // FilterStateProvider.jsx's persistRunScriptOptions/persistViewFilterOptions
 // call these directly - the 9 multi-select lists' current checked state
-// (DOM-truth by design, see that Provider's own header comment for why)
-// plus the thread-resolution visibility toggle, same exposure shape as
-// window.handleTriggerAutoRun above.
+// (DOM-truth by design, see that Provider's own header comment for why),
+// same exposure shape as window.handleTriggerAutoRun above.
 if (typeof window !== "undefined") {
   window.getSelectedAuthorLogins = (...args) => getSelectedAuthorLogins(...args);
   window.getSelectedAssignedLogins = (...args) => getSelectedAssignedLogins(...args);
@@ -1328,8 +1279,6 @@ if (typeof window !== "undefined") {
     getSelectedChangeFilterIgnoreCommentAuthors(...args);
   window.getSelectedChangeFilterIgnoreReviewAuthors = (...args) =>
     getSelectedChangeFilterIgnoreReviewAuthors(...args);
-  window.updateAuthorThreadResolutionRuleVisibility = (...args) =>
-    updateAuthorThreadResolutionRuleVisibility(...args);
 }
 
 // Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
@@ -2560,7 +2509,6 @@ if (typeof window !== "undefined") {
 
 const initPage = () => {
   renderRequestActivity();
-  updateAuthorThreadResolutionRuleVisibility();
   // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // restoreUiOptionOverrides() used to be called here (twice - once
   // immediately, once on 'viewprs:react-ready' - see git history for the
@@ -2981,7 +2929,6 @@ const initPage = () => {
         return;
       }
       if (targetId === "attention-author-thread-resolution-mode") {
-        updateAuthorThreadResolutionRuleVisibility();
         void window.persistViewFilterOptionOverrides?.();
         debouncedApplyFilters();
         return;

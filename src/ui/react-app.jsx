@@ -17,6 +17,7 @@ import { AlwaysShowInReviewCheckbox } from './components/AlwaysShowInReviewCheck
 import { ContextFilterCheckbox } from './components/ContextFilterCheckbox';
 import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
+import { AuthorThreadResolutionRuleVisibility } from './components/AuthorThreadResolutionRuleVisibility';
 import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
@@ -250,6 +251,9 @@ function buildFilterStateFieldPortals() {
       createPortal(<PrNumberFilterInput />, filterPrNumbersContainer, 'filter-pr-numbers'),
     authorThreadResolutionModeContainer &&
       createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
+    // Headless (renders nothing, no container needed) - see its own header
+    // comment for why it stays a plain child here instead of a portal.
+    <AuthorThreadResolutionRuleVisibility key="author-thread-resolution-visibility" />,
     ignoreCommitPatternsContainer &&
       createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer, 'ignore-commit-patterns'),
     ...contextCheckboxContainers.map(

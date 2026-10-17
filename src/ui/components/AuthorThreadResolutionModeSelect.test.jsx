@@ -57,9 +57,10 @@ describe('AuthorThreadResolutionModeSelect', () => {
     await user.selectOptions(select, 'allow-only');
 
     expect(select).toHaveValue('allow-only');
-    // Vanilla's updateAuthorThreadResolutionRuleVisibility() is wired via a
-    // real addEventListener("change", ...) on this element's id - confirm
-    // a real native change event still reaches such a listener.
+    // index.page.js's delegated "change" listener (persistViewFilterOptionOverrides/
+    // debouncedApplyFilters) is wired via a real addEventListener("change", ...)
+    // on this element's id - confirm a real native change event still reaches
+    // such a listener.
     expect(handleChange).toHaveBeenCalled();
     expect(window.getFilterStateValues().attentionAuthorThreadResolutionMode).toBe('allow-only');
   });

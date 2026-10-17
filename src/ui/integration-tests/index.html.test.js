@@ -47,6 +47,7 @@ const { useRunScript } = require("../state/useRunScript");
 const { useAckLabelActions } = require("../state/useAckLabelActions");
 const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableRepoLabels");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
+const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
@@ -655,6 +656,13 @@ function FilterStateTestRootHarness({ initialValues }) {
         React.createElement(
           FilterStateProvider,
           { initialValues },
+          // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
+          // roadmap"): the allow/deny <details> visibility is now owned by
+          // this headless component (renders nothing, no container needed)
+          // instead of a vanilla bridge - matches react-app.jsx's own
+          // buildFilterStateFieldPortals(), which mounts it as a plain
+          // child the same way.
+          React.createElement(AuthorThreadResolutionRuleVisibility),
           mountRequest &&
             createPortal(
               React.createElement(MountedPrTableTree, {

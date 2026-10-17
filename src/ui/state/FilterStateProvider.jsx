@@ -483,19 +483,6 @@ export function FilterStateProvider({ initialValues, children }) {
     DEBOUNCE_MS,
   );
 
-  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-  // 2 allow/deny <details> panels' visibility is still a small, deliberate
-  // vanilla DOM responsibility (index.page.js's
-  // updateAuthorThreadResolutionRuleVisibility, exposed as a bridge for
-  // this reason) - reacting to the Context value here covers both the
-  // restore-on-mount case and user-initiated changes (the latter already
-  // triggers the same vanilla function from the delegated "change"
-  // listener too - a harmless double-hookup, same precedent the debounced
-  // effect above already documents).
-  useEffect(() => {
-    window.updateAuthorThreadResolutionRuleVisibility?.();
-  }, [values.attentionAuthorThreadResolutionMode]);
-
   return (
     <FilterStateContext.Provider value={{ values, setValue }}>
       {children}
