@@ -48,6 +48,7 @@ const { useAckLabelActions } = require("../state/useAckLabelActions");
 const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableRepoLabels");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
+const { StatusTextProvider } = require("../components/StatusTextProvider");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
@@ -645,32 +646,42 @@ function FilterStateTestRootHarness({ initialValues }) {
   }, []);
 
   return React.createElement(
-    RowFilterSelectionProvider,
+    // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // useAckLabelActions()/useSinglePrUpdate() (both called from inside
+    // MountedPrTableTree's PrTableApp) now read/write statusText via
+    // useStatusText() directly, not window.setStatusMessage/
+    // updateReactStatusText - wraps the whole tree, same reasoning as
+    // react-app.jsx's own mountAppRoot wrapping <AppRoot />.
+    StatusTextProvider,
     null,
     React.createElement(
-      AuthorThreadResolutionSelectionProvider,
+      RowFilterSelectionProvider,
       null,
       React.createElement(
-        ChangeFilterActorSelectionProvider,
+        AuthorThreadResolutionSelectionProvider,
         null,
         React.createElement(
-          FilterStateProvider,
-          { initialValues },
-          // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
-          // roadmap"): the allow/deny <details> visibility is now owned by
-          // this headless component (renders nothing, no container needed)
-          // instead of a vanilla bridge - matches react-app.jsx's own
-          // buildFilterStateFieldPortals(), which mounts it as a plain
-          // child the same way.
-          React.createElement(AuthorThreadResolutionRuleVisibility),
-          mountRequest &&
-            createPortal(
-              React.createElement(MountedPrTableTree, {
-                initialPayload: mountRequest.props?.initialPayload,
-                selectedRepo: mountRequest.props?.selectedRepo,
-              }),
-              mountRequest.containerElement,
-            ),
+          ChangeFilterActorSelectionProvider,
+          null,
+          React.createElement(
+            FilterStateProvider,
+            { initialValues },
+            // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
+            // roadmap"): the allow/deny <details> visibility is now owned by
+            // this headless component (renders nothing, no container needed)
+            // instead of a vanilla bridge - matches react-app.jsx's own
+            // buildFilterStateFieldPortals(), which mounts it as a plain
+            // child the same way.
+            React.createElement(AuthorThreadResolutionRuleVisibility),
+            mountRequest &&
+              createPortal(
+                React.createElement(MountedPrTableTree, {
+                  initialPayload: mountRequest.props?.initialPayload,
+                  selectedRepo: mountRequest.props?.selectedRepo,
+                }),
+                mountRequest.containerElement,
+              ),
+          ),
         ),
       ),
     ),
@@ -693,7 +704,17 @@ const installBackfillControlsBridge = () => {
   const logControlsRoot = document.getElementById("backfill-log-controls-root");
   const logContainer = document.getElementById("backfill-log");
   rtlRender(
-    React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+    // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // useBackfillActions() now reads/writes statusText via
+    // useStatusText() directly, not window.setStatusMessage - wraps its
+    // own real StatusTextProvider (resolves #status itself, same as
+    // react-app.jsx's real mountAppRoot) so this independent tree's
+    // status updates still reach the real DOM node.
+    React.createElement(
+      StatusTextProvider,
+      null,
+      React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+    ),
     { container },
   );
 };
@@ -784,7 +805,15 @@ function RunScriptActionButtonsTestHarness() {
 
 const installRunScriptActionButtonsBridge = () => {
   const container = document.createElement("div");
-  rtlRender(React.createElement(RunScriptActionButtonsTestHarness), { container });
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // useRunScript()/useAckLabelActions() now read/write statusText via
+  // useStatusText() directly, not window.setStatusMessage - same
+  // StatusTextProvider wrap as installBackfillControlsBridge, for the
+  // same reason.
+  rtlRender(
+    React.createElement(StatusTextProvider, null, React.createElement(RunScriptActionButtonsTestHarness)),
+    { container },
+  );
 };
 
 // Deferred-items follow-up (full vanilla-to-React sweep, see

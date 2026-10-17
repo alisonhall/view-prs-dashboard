@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { usePrData } from './PrDataContext';
 import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { useStatusText } from './StatusTextContext';
 
 /**
  * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -20,15 +21,18 @@ import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar
  * push into Context - see PrTableApp.jsx's own comment).
  *
  * Not a fully "clean" hook, by design, matching useSinglePrUpdate.jsx's
- * own precedent exactly, not a new one.
+ * own precedent exactly, not a new one. statusText itself moved to
+ * StatusTextProvider.jsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
+ * via useStatusText() directly now, same as useSinglePrUpdate.jsx.
  */
 export function useRowCheckboxActions() {
   const { payload, selectedRepo } = usePrData();
+  const { setStatusText } = useStatusText();
 
   return useMemo(() => {
     const { toggleInReviewForRow, toggleFlaggedForRow } = createPrRowCheckboxActionsHelpers({
       fetchFn: (...args) => fetch(...args),
-      setStatusTextOnly: (message) => window.updateReactStatusText?.(message),
+      setStatusTextOnly: (message) => setStatusText(message),
       notifyFailureSnackbar: (title, errorSource, fallbackMessage) => {
         const { title: finalTitle, detail } = buildFailureSnackbarNotification(
           title,
@@ -45,5 +49,5 @@ export function useRowCheckboxActions() {
     });
 
     return { toggleInReviewForRow, toggleFlaggedForRow };
-  }, [payload, selectedRepo]);
+  }, [payload, selectedRepo, setStatusText]);
 }

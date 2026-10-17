@@ -6,6 +6,7 @@ import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpe
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
+import { useStatusText } from './StatusTextContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -58,12 +59,22 @@ export function useAckLabelActions() {
     markBulkActionChunkDone,
     finishBulkActionBatch,
   } = usePrActivityQueue();
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // setStatusMessage below now writes statusText via useStatusText()
+  // directly (both this hook's callers - AppRoot's own body and
+  // PrTableApp.jsx's per-row instance - are genuine descendants of
+  // StatusTextProvider), composed with window.renderRequestActivity - same
+  // reasoning as useRunScript.jsx's own comment on this exact composition.
+  const { setStatusText } = useStatusText();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
       createPrAckLabelActionsHelpers({
         postJson,
-        setStatusMessage: (message) => window.setStatusMessage?.(message),
+        setStatusMessage: (message) => {
+          setStatusText(message);
+          window.renderRequestActivity?.();
+        },
         setOutputMessage: (message) => window.updateReactOutputText?.(message),
         beginRequestActivity: window.beginRequestActivity || (() => () => {}),
         getGithubAuthFailureHint,
@@ -126,5 +137,6 @@ export function useAckLabelActions() {
     markBulkActionChunkInFlight,
     markBulkActionChunkDone,
     finishBulkActionBatch,
+    setStatusText,
   ]);
 }

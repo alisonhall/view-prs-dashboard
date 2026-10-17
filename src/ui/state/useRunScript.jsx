@@ -3,6 +3,7 @@ import { postJson } from '../helpers/pr-http.helpers.js';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
+import { useStatusText } from './StatusTextContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -24,11 +25,27 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
  * (getSelectedIncludeLabelNames etc.) that are their own "DOM is correctly
  * the source of truth" permanent category, not something this hook should
  * re-implement.
+ *
+ * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * setStatusMessage now writes statusText via useStatusText() directly
+ * (this hook's only caller, AppRoot's own body in react-app.jsx, is a
+ * genuine descendant of StatusTextProvider), composed with the existing
+ * window.renderRequestActivity bridge - the vanilla setStatusMessage this
+ * used to call also triggered that re-render (so the request-activity
+ * badge's elapsed time updates on every intermediate progress message,
+ * not just at begin/finish), and that half isn't in scope to close yet
+ * (beginRequestActivity/renderRequestActivity stay bridged - see
+ * PrDataProvider.jsx's own comment for why).
  */
 export function useRunScript() {
+  const { setStatusText } = useStatusText();
+
   return useCallback(async () => {
     const body = window.getFormBody?.() || {};
-    const setStatusMessage = (message) => window.setStatusMessage?.(message);
+    const setStatusMessage = (message) => {
+      setStatusText(message);
+      window.renderRequestActivity?.();
+    };
     const setOutputMessage = (message) => window.updateReactOutputText?.(message);
     const beginRequestActivity = window.beginRequestActivity || (() => () => {});
 
@@ -110,5 +127,5 @@ export function useRunScript() {
     } finally {
       finishActivity();
     }
-  }, []);
+  }, [setStatusText]);
 }

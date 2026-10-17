@@ -3,6 +3,7 @@
 const { render, act } = require('@testing-library/react');
 const { AutoRenderBlockingProvider } = require('./AutoRenderBlockingProvider');
 const { useAutoRenderBlocking } = require('../state/AutoRenderBlockingContext');
+const { StatusTextContext } = require('../state/StatusTextContext');
 
 function Probe({ onValue }) {
   const value = useAutoRenderBlocking();
@@ -41,7 +42,7 @@ describe('AutoRenderBlockingProvider', () => {
     delete window.getHasDirtyPrSectionsFields;
     delete window.getPendingAutoRenderPayload;
     delete window.applyFreshPrPayload;
-    delete window.setStatusMessage;
+    delete window.renderRequestActivity;
   });
 
   test('given the provider mounts, when read, then it publishes all 4 bridges and starts not blocked', () => {
@@ -129,15 +130,16 @@ describe('AutoRenderBlockingProvider', () => {
 
   test('given a pending payload, when discardAndApply is called, then it clears the payload, applies it, and sets a status message', () => {
     const applyFreshPrPayload = jest.fn();
-    const setStatusMessage = jest.fn();
+    const setStatusText = jest.fn();
     window.applyFreshPrPayload = applyFreshPrPayload;
-    window.setStatusMessage = setStatusMessage;
     const payload = { byPrNumber: { 3: {} } };
     let latest;
     render(
-      <AutoRenderBlockingProvider>
-        <Probe onValue={(value) => (latest = value)} />
-      </AutoRenderBlockingProvider>,
+      <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
+        <AutoRenderBlockingProvider>
+          <Probe onValue={(value) => (latest = value)} />
+        </AutoRenderBlockingProvider>
+      </StatusTextContext.Provider>,
     );
 
     act(() => {
@@ -151,7 +153,7 @@ describe('AutoRenderBlockingProvider', () => {
     });
 
     expect(applyFreshPrPayload).toHaveBeenCalledWith(payload);
-    expect(setStatusMessage).toHaveBeenCalledWith(
+    expect(setStatusText).toHaveBeenCalledWith(
       'Applied latest updates and discarded unsaved edits.',
     );
     expect(latest.isBlocked).toBe(false);

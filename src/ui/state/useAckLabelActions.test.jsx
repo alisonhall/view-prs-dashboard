@@ -6,12 +6,26 @@ require('@testing-library/jest-dom');
 const { useAckLabelActions } = require('./useAckLabelActions.jsx');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
+const { StatusTextContext } = require('./StatusTextContext');
 
 function Probe({ onReady }) {
   const ackLabelActions = useAckLabelActions();
   onReady(ackLabelActions);
   return null;
 }
+
+// Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// statusText now comes from StatusTextContext directly, not
+// window.setStatusMessage - render Probe inside a real Provider value
+// instead of mocking the old bridge.
+const renderProbe = (onReady, setStatusText = () => {}) =>
+  render(
+    React.createElement(
+      StatusTextContext.Provider,
+      { value: { statusText: 'Not run', setStatusText } },
+      React.createElement(Probe, { onReady }),
+    ),
+  );
 
 // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // useAckLabelActions() now reads busy/queued/bulk-batch state via
@@ -22,7 +36,6 @@ function Probe({ onReady }) {
 // behavior directly) need no Provider wrapper to keep passing.
 const ACK_LABEL_WINDOW_BRIDGES = [
   'getFormBody',
-  'setStatusMessage',
   'updateReactOutputText',
   'beginRequestActivity',
   'showErrorNotification',
@@ -43,7 +56,6 @@ describe('useAckLabelActions', () => {
     const statusMessages = [];
     const applyFreshPrPayload = jest.fn();
     window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
-    window.setStatusMessage = (message) => statusMessages.push(message);
     window.updateReactOutputText = jest.fn();
     window.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
@@ -53,7 +65,7 @@ describe('useAckLabelActions', () => {
     });
 
     let ackLabelActions;
-    render(<Probe onReady={(value) => { ackLabelActions = value; }} />);
+    renderProbe((value) => { ackLabelActions = value; }, (message) => statusMessages.push(message));
     await act(async () => {
       await ackLabelActions.handleAckOnly();
     });
@@ -71,11 +83,10 @@ describe('useAckLabelActions', () => {
   test('given no PR numbers anywhere, when calling handleClearOnly, then it bails early with a validation message and never fetches', async () => {
     const statusMessages = [];
     window.getFormBody = () => ({ prNumbers: '', repo: '' });
-    window.setStatusMessage = (message) => statusMessages.push(message);
     global.fetch = jest.fn();
 
     let ackLabelActions;
-    render(<Probe onReady={(value) => { ackLabelActions = value; }} />);
+    renderProbe((value) => { ackLabelActions = value; }, (message) => statusMessages.push(message));
     await act(async () => {
       await ackLabelActions.handleClearOnly();
     });
@@ -94,7 +105,6 @@ describe('useAckLabelActions', () => {
     document.body.appendChild(select);
 
     window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
-    window.setStatusMessage = jest.fn();
     window.updateReactOutputText = jest.fn();
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -105,7 +115,7 @@ describe('useAckLabelActions', () => {
     window.getLatestStoredPayload = jest.fn().mockReturnValue({ byPrNumber: {} });
 
     let ackLabelActions;
-    render(<Probe onReady={(value) => { ackLabelActions = value; }} />);
+    renderProbe((value) => { ackLabelActions = value; });
     await act(async () => {
       await ackLabelActions.handleApplyLabelClick();
     });
@@ -122,7 +132,6 @@ describe('useAckLabelActions', () => {
 
   test('given a real PrActivityQueueProvider, when calling handleAckOnly, then the PR is marked busy via Context during the request and cleared after it resolves', async () => {
     window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
-    window.setStatusMessage = jest.fn();
     window.updateReactOutputText = jest.fn();
 
     let resolveFetch;
@@ -142,7 +151,11 @@ describe('useAckLabelActions', () => {
     }
 
     render(
-      React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+      React.createElement(
+        StatusTextContext.Provider,
+        { value: { statusText: 'Not run', setStatusText: () => {} } },
+        React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+      ),
     );
 
     let ackPromise;

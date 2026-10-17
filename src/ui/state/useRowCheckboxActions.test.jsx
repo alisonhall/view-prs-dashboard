@@ -4,6 +4,7 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataProvider } = require('./PrDataProvider');
 const { useRowCheckboxActions } = require('./useRowCheckboxActions.jsx');
+const { StatusTextContext } = require('./StatusTextContext');
 
 function Probe({ onReady }) {
   const actions = useRowCheckboxActions();
@@ -13,7 +14,6 @@ function Probe({ onReady }) {
 
 describe('useRowCheckboxActions', () => {
   afterEach(() => {
-    delete window.updateReactStatusText;
     delete window.showErrorNotification;
     delete window.applyLatestPrData;
     delete window.loadStoredData;
@@ -24,7 +24,6 @@ describe('useRowCheckboxActions', () => {
   test('given toggleInReviewForRow succeeds with a full prData response, when called, then it posts the real request and syncs the vanilla mirror', async () => {
     const statusMessages = [];
     const applyLatestPrData = jest.fn();
-    window.updateReactStatusText = (message) => statusMessages.push(message);
     window.applyLatestPrData = applyLatestPrData;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -33,9 +32,13 @@ describe('useRowCheckboxActions', () => {
 
     let actions;
     render(
-      <PrDataProvider initialSelectedRepo="owner/repo">
-        <Probe onReady={(a) => { actions = a; }} />
-      </PrDataProvider>,
+      <StatusTextContext.Provider
+        value={{ statusText: 'Not run', setStatusText: (message) => statusMessages.push(message) }}
+      >
+        <PrDataProvider initialSelectedRepo="owner/repo">
+          <Probe onReady={(a) => { actions = a; }} />
+        </PrDataProvider>
+      </StatusTextContext.Provider>,
     );
 
     let result;

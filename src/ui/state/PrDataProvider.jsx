@@ -8,6 +8,7 @@ import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpe
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
+import { useStatusText } from './StatusTextContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -308,6 +309,16 @@ export function PrDataProvider({
   // resulting function must be available during render itself, to go
   // into this Provider's own Context `value` for <PrDataPolling /> to
   // call directly.
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // setStatusMessage below writes statusText via useStatusText() directly
+  // (this Provider is a genuine descendant of StatusTextProvider - see
+  // react-app.jsx's mountAppRoot), composed with window.renderRequestActivity
+  // - same reasoning as useRunScript.jsx's own comment on this exact
+  // composition (renderRequestActivity itself stays bridged - it's this
+  // same component's own activityHelpers, declared below, reached the
+  // same way every other still-vanilla-adjacent caller does).
+  const { setStatusText } = useStatusText();
+
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
       fetchFn: (...args) => fetch(...args),
@@ -364,10 +375,13 @@ export function PrDataProvider({
       renderPrData: (...args) => window.renderPrData?.(...args),
       markPollSuccess: (...args) => window.markPollSuccess?.(...args),
       showPollFailureWarning: (...args) => window.showPollFailureWarning?.(...args),
-      setStatusMessage: (...args) => window.setStatusMessage?.(...args),
+      setStatusMessage: (message) => {
+        setStatusText(message);
+        window.renderRequestActivity?.();
+      },
     });
     return helpers.pollForDataChanges;
-  }, []);
+  }, [setStatusText]);
 
   useEffect(() => {
     window.pollForDataChanges = (...args) => pollForDataChanges(...args);

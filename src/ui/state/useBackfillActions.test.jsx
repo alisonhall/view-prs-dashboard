@@ -3,6 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useBackfillActions } = require('./useBackfillActions.jsx');
+const { StatusTextContext } = require('./StatusTextContext');
 
 function Probe({ onReady }) {
   const backfillActions = useBackfillActions();
@@ -10,8 +11,18 @@ function Probe({ onReady }) {
   return null;
 }
 
+// Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// statusText now comes from StatusTextContext directly, not
+// window.setStatusMessage - render Probe inside a real Provider value
+// instead of mocking the old bridge.
+const renderProbe = (onReady, setStatusText = () => {}) =>
+  render(
+    <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
+      <Probe onReady={onReady} />
+    </StatusTextContext.Provider>,
+  );
+
 const BACKFILL_WINDOW_BRIDGES = [
-  'setStatusMessage',
   'updateReactOutputText',
   'updateReactBackfillButtonState',
   'showErrorNotification',
@@ -36,7 +47,6 @@ describe('useBackfillActions', () => {
     const updateBackfillStatusFromPayload = jest.fn();
     const finishActivity = jest.fn();
     window.updateReactBackfillButtonState = (state) => buttonStates.push(state);
-    window.setStatusMessage = (message) => statusMessages.push(message);
     window.updateReactOutputText = jest.fn();
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     window.getBackfillTrackingState = () => ({
@@ -55,7 +65,7 @@ describe('useBackfillActions', () => {
     });
 
     let backfillActions;
-    render(<Probe onReady={(value) => { backfillActions = value; }} />);
+    renderProbe((value) => { backfillActions = value; }, (message) => statusMessages.push(message));
     await act(async () => {
       await backfillActions.handleBackfillAction('start');
     });
@@ -89,7 +99,7 @@ describe('useBackfillActions', () => {
     });
 
     let backfillActions;
-    render(<Probe onReady={(value) => { backfillActions = value; }} />);
+    renderProbe((value) => { backfillActions = value; });
     await act(async () => {
       await backfillActions.refreshBackfillStatus();
     });

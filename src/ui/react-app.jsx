@@ -62,6 +62,7 @@ import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
 import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
+import { StatusTextProvider } from './components/StatusTextProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
@@ -412,7 +413,8 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
-    statusText: document.getElementById('status'),
+    // statusText (#status) moved to StatusTextProvider.jsx (Phase H.8) - it
+    // resolves that container itself, no longer via this containers object.
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
@@ -619,7 +621,15 @@ function AppRoot() {
   // needed since none of these render anything but text). Initial values
   // match each `<pre>`'s original static index.html text, so there's no
   // flash of empty content before the first bridge call.
-  const [statusText, setStatusText] = useState('Not run');
+  //
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // statusText itself moved out of here into <StatusTextProvider />
+  // (wrapping this whole component, see mountAppRoot below) - it owns the
+  // window.updateReactStatusText bridge and writes #status's textContent
+  // directly now (see that Provider's own comment for why a plain DOM
+  // write, not a portal), so hooks called from this component's own body
+  // (useRunScript/useBackfillActions/useAckLabelActions below) can read it
+  // via useStatusText() instead of bouncing through that bridge.
   const [outputText, setOutputText] = useState('Run the script to see output');
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
@@ -730,16 +740,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactAutoRenderBlockedLinks;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactStatusText = (text) => {
-      setStatusText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactStatusText;
     };
   }, []);
 
@@ -1200,8 +1200,6 @@ function AppRoot() {
             'backfill-controls',
           )}
 
-        {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
-
         {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 
         {containers.backfillDetails &&
@@ -1312,10 +1310,18 @@ function mountAppRoot() {
   // usePrActivityQueue() directly. The old inner <PrActivityQueueProvider>
   // (wrapping just the drawer/PrTableApp portals) is gone - removed below,
   // its children now resolve to this single outer Provider instead.
+  //
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // StatusTextProvider wraps from here too, same reasoning -
+  // useRunScript/useBackfillActions/useAckLabelActions/useSinglePrUpdate
+  // need to reach it via useStatusText() directly instead of the
+  // window.updateReactStatusText/setStatusMessage bridges.
   ReactDOM.createRoot(anchor).render(
-    <PrActivityQueueProvider>
-      <AppRoot />
-    </PrActivityQueueProvider>,
+    <StatusTextProvider>
+      <PrActivityQueueProvider>
+        <AppRoot />
+      </PrActivityQueueProvider>
+    </StatusTextProvider>,
   );
 }
 

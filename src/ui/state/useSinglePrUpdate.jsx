@@ -4,6 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { useStatusText } from './StatusTextContext';
 
 // Built once, not per-render - these close over nothing but each other
 // (same "stable, zero-per-render-state" precedent as AuthorInsightsProvider.jsx's
@@ -20,20 +21,25 @@ const { getGithubAuthFailureHint, formatCommandOutputWithAuthHint } =
  * auth-hint formatting, error notification, activity tracking) into React
  * instead of a vanilla DI-factory module.
  *
- * Not a fully "clean" hook, by design, not oversight: status/output text,
+ * Not a fully "clean" hook, by design, not oversight: output text,
  * in-flight request-activity tracking, and the error snackbar have no
  * Context/hook API of their own yet - only window.* bridges, the exact
  * same pattern NotesSection.jsx already uses for its own direct network
  * call (window.beginRequestActivity, bare-imported postJson). Reading
  * those bridges here is consistent with that already-accepted precedent,
- * not a new one.
+ * not a new one. statusText itself moved to StatusTextProvider.jsx (Phase
+ * H.8, see REACT_MIGRATION_PLAN.md) - read via useStatusText() directly
+ * now, since this hook's only caller (PrTableApp.jsx) is a genuine
+ * descendant of that Provider.
  */
 export function useSinglePrUpdate() {
+  const { setStatusText } = useStatusText();
+
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');
     const repo = entry?.repo || DEFAULT_REPO;
 
-    const setStatusMessage = (message) => window.updateReactStatusText?.(message);
+    const setStatusMessage = (message) => setStatusText(message);
     const setOutputMessage = (message) => window.updateReactOutputText?.(message);
     // Same fallback shape NotesSection.jsx already uses for this exact bridge.
     const beginRequestActivity = window.beginRequestActivity || (() => () => {});
@@ -91,5 +97,5 @@ export function useSinglePrUpdate() {
     } finally {
       finishActivity();
     }
-  }, []);
+  }, [setStatusText]);
 }

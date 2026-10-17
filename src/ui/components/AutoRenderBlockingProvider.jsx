@@ -3,6 +3,7 @@ import { AutoRenderBlockingContext } from '../state/AutoRenderBlockingContext';
 import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
+import { useStatusText } from '../state/StatusTextContext';
 
 // Each factory call below is genuinely zero-dependency for the pieces this
 // Provider needs (computeHasDirtyPrSectionsFields/getPendingAutoRenderAction/
@@ -64,6 +65,7 @@ const EMPTY_BLOCKING_STATE = {
  * status text and "Discard unsaved" button move into real JSX.
  */
 export function AutoRenderBlockingProvider({ children }) {
+  const { setStatusText } = useStatusText();
   const stateRef = useRef({
     pendingAutoRenderPayload: null,
     blockingState: EMPTY_BLOCKING_STATE,
@@ -129,8 +131,16 @@ export function AutoRenderBlockingProvider({ children }) {
     stateRef.current.pendingAutoRenderPayload = null;
     bump();
     window.applyFreshPrPayload?.(payload);
-    window.setStatusMessage?.('Applied latest updates and discarded unsaved edits.');
-  }, [bump]);
+    // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // statusText via useStatusText() directly (this component is a
+    // genuine descendant of StatusTextProvider - see that Provider's own
+    // header comment), composed with window.renderRequestActivity - same
+    // reasoning as useRunScript.jsx's own comment on this exact
+    // composition (nothing else re-renders the activity badges for this
+    // one-shot action).
+    setStatusText('Applied latest updates and discarded unsaved edits.');
+    window.renderRequestActivity?.();
+  }, [bump, setStatusText]);
 
   useEffect(() => {
     // Plain ref mutation + version-tick bump, not flushSync - see this

@@ -5,6 +5,7 @@ import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpe
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { useStatusText } from './StatusTextContext';
 
 // Built once, not per-render - same "stable, zero-per-render-state"
 // precedent as useSinglePrUpdate.jsx's own module-level instantiation.
@@ -48,8 +49,16 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  * at all. index.page.js's own
  * instance of this same factory still passes the real bridge, for its own
  * vanilla (non-React) caller.
+ *
+ * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * setStatusMessage now writes statusText via useStatusText() directly
+ * (this hook's only caller, AppRoot's own body, is a genuine descendant of
+ * StatusTextProvider), composed with window.renderRequestActivity - same
+ * reasoning as useRunScript.jsx's own comment on this exact composition.
  */
 export function useBackfillActions() {
+  const { setStatusText } = useStatusText();
+
   return useMemo(() => {
     const beginRequestActivity = window.beginRequestActivity || (() => () => {});
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
@@ -66,7 +75,10 @@ export function useBackfillActions() {
         fetch: (...args) => fetch(...args),
         postJson,
         beginRequestActivity,
-        setStatusMessage: (message) => window.setStatusMessage?.(message),
+        setStatusMessage: (message) => {
+          setStatusText(message);
+          window.renderRequestActivity?.();
+        },
         setOutputMessage: (message) => window.updateReactOutputText?.(message),
         setBackfillButtonState: (state) => window.updateReactBackfillButtonState?.(state),
         notifyFailureSnackbar,
@@ -146,5 +158,5 @@ export function useBackfillActions() {
       refreshBackfillStatus,
       refreshBackfillLogTail,
     };
-  }, []);
+  }, [setStatusText]);
 }
