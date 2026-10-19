@@ -25,15 +25,16 @@
  * migration follow-up, REACT_MIGRATION_PLAN.md), rendered directly below
  * rather than wrapped via a ref+useEffect bridge into a vanilla builder.
  *
- * The "View in table" buttons (cards' and the reviewer table's own
- * expandable sources) go through window.navigateToPrInTableFromStats,
- * which reuses prAuthorInsightsPrLinkHelpers' already-React-safe
- * navigateToPrInTable (dispatches 'pr-navigate-to-insights' when React
- * owns the PR table) - not the raw-DOM-mutation version this component's
- * vanilla predecessor built inline, which was never updated for a
- * React-owned PR table and would silently do nothing under it. This one
- * bridge is deliberately left as-is - it's pure navigation, unrelated to
- * the statsViewState/aggregation cluster this sub-phase moved.
+ * Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): the "View in table" buttons (cards' and the reviewer
+ * table's own expandable sources) now go through useNavigateToPrInTable()
+ * (state/) instead of window.navigateToPrInTableFromStats (deleted
+ * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
+ * same hook AuthorInsightsPrLink.jsx now uses, same "dispatch
+ * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
+ * behavior the old bridge's navigateToPrInTable already had. No `repo` is
+ * passed here (unchanged from before) - this component's source items
+ * don't carry one yet, same as the bridge's own prior behavior.
  *
  * @module components/ReviewStatsContent
  */
@@ -43,13 +44,13 @@ import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
 import { useReviewStats } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
+import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-const navigateToPrInTable = (prNumber) => window.navigateToPrInTableFromStats?.(prNumber);
-
 function SourceItemRow({ item, detailText }) {
+  const navigateToPrInTable = useNavigateToPrInTable();
   const prNumber = String(item?.prNumber || '').trim();
   const prTitle = String(item?.prTitle || '').trim();
   const label = prNumber && prTitle ? `PR #${prNumber}: ${prTitle}` : prNumber ? `PR #${prNumber}` : prTitle || 'Unknown source';

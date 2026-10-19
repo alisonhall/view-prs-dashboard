@@ -92,14 +92,6 @@ const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
   );
 
 describe('ReviewStatsContent', () => {
-  beforeEach(() => {
-    window.navigateToPrInTableFromStats = jest.fn();
-  });
-
-  afterEach(() => {
-    delete window.navigateToPrInTableFromStats;
-  });
-
   test('given no local rows, when rendering, then the empty message is shown instead of cards/table', () => {
     renderContent(null, { hasRows: false });
 
@@ -151,15 +143,23 @@ describe('ReviewStatsContent', () => {
     expect(jamieRow.querySelector('.stats-sources-cell').textContent).toBe('-');
   });
 
-  test('given a card with sources, when opening its "Show sources" details, then clicking "View in table" calls the navigation bridge', async () => {
+  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.navigateToPrInTableFromStats is deleted -
+  // SourceItemRow now calls useNavigateToPrInTable() directly, which
+  // dispatches 'pr-navigate-to-insights' instead of a window.* bridge.
+  test('given a card with sources, when opening its "Show sources" details, then clicking "View in table" dispatches pr-navigate-to-insights', async () => {
     const user = userEvent.setup();
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
     renderContent(buildStats());
 
     const filteredRowsCard = screen.getByText('Filtered rows').closest('.stat-card');
     await user.click(filteredRowsCard.querySelector('summary'));
     await user.click(filteredRowsCard.querySelector('.author-insights-table-link'));
 
-    expect(window.navigateToPrInTableFromStats).toHaveBeenCalledWith('101');
+    expect(events).toEqual([{ prNumber: '101', repo: '', focusUnsaved: false }]);
+    window.removeEventListener('pr-navigate-to-insights', handler);
   });
 
   test('given reviewer stats with comments/approvals, when rendering, then the chart visuals (StatsVisuals) actually render', () => {

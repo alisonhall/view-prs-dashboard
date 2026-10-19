@@ -87,7 +87,7 @@ describe('AutoRenderBlockedLinks', () => {
     });
 
     expect(latestTabState.activeDataTab).toBe('pr-data');
-    expect(events).toEqual([{ prNumber: '15', focusUnsaved: true }]);
+    expect(events).toEqual([{ prNumber: '15', repo: '', focusUnsaved: true }]);
 
     window.removeEventListener('pr-navigate-to-insights', handler);
   });

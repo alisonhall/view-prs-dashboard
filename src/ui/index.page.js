@@ -576,7 +576,11 @@ const { getOptionalElementById, readElementAttribute } =
     documentRef: typeof document !== "undefined" ? document : null,
   });
 
-const { collectNodesByClass, collectNodesByTag } =
+// Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): collectNodesByTag no longer destructured here -
+// navigateToPrInTableFromStats/navigateToPrInTableFromAuthorInsights
+// (deleted outright) were its only 2 callers.
+const { collectNodesByClass } =
   prDomTraversalHelperFactory.createPrDomTraversalHelpers();
 
 const { capturePrSectionOpenState } =
@@ -1512,30 +1516,14 @@ if (typeof window !== "undefined") {
 // factory (helpers/pr-open-conversation-count.helpers.js), so nothing in
 // this file needs it any more.
 
-if (typeof window !== "undefined") {
-  // Reuses the same React-safe navigation prAuthorInsightsPrLinkHelpers
-  // already provides for Author Insights' own "View in table" button
-  // (dispatches 'pr-navigate-to-insights' when React owns the PR table,
-  // instead of directly mutating `.hidden`/textContent on nodes React
-  // renders - see that helper's own comment). The "View in table" button
-  // built inline in pr-review-stats-summary.component.js does the
-  // *unsafe* raw-DOM version instead and was never fixed - ReviewStatsContent
-  // (react-app.jsx) uses this bridge instead of that broken vanilla
-  // behavior, rather than duplicating either version a third time.
-  // `repo` is optional here - ReviewStatsContent.jsx's stats "source" items
-  // don't currently carry a repo field, so this still falls back to
-  // navigateToPrInTable's number-only matching for now (same as before
-  // this parameter existed) until the stats pipeline threads repo through
-  // too.
-  window.navigateToPrInTableFromStats = (prNumber, repo) =>
-    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
-      // roadmap"): routed through TabStateProvider's write bridge - see
-      // the comment at this same swap above (createPrAutoRenderNavigationHelpers).
-      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
-      collectNodesByTag,
-    });
-}
+// Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): window.navigateToPrInTableFromStats is deleted outright -
+// ReviewStatsContent.jsx's own "View in table" buttons now call
+// useNavigateToPrInTable() (state/) directly, the same hook
+// AuthorInsightsPrLink.jsx uses for its sibling
+// window.navigateToPrInTableFromAuthorInsights (also deleted, see
+// below) - both reused AutoRenderBlockedLinks.jsx's existing,
+// already-tested hook instead of writing new navigation logic.
 
 // Author Insights helper modules (refactored dependency injection)
 
@@ -1616,13 +1604,11 @@ if (typeof window !== "undefined") {
   // helpers those sections need, the same "leaf components read window.*
   // for pure data-shaping" pattern StatsVisuals/GraphCard use for Review
   // Stats (Track A).
-  window.navigateToPrInTableFromAuthorInsights = (prNumber, repo) =>
-    prAuthorInsightsPrLinkHelpers.navigateToPrInTable(prNumber, repo, {
-      // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
-      // roadmap"): same swap as navigateToPrInTableFromStats above.
-      activateDataTab: (...args) => window.setActiveDataTab?.(...args),
-      collectNodesByTag,
-    });
+  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.navigateToPrInTableFromAuthorInsights used to be
+  // assigned here (same shape as window.navigateToPrInTableFromStats,
+  // deleted above) - AuthorInsightsPrLink.jsx's own "View in table"
+  // button now calls useNavigateToPrInTable() (state/) directly instead.
   // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
   // composer/editor is now real JSX too (AuthorInsightsCommentsSection.jsx)
   // instead of wrapping buildManualCommentsSection via a ref - that builder

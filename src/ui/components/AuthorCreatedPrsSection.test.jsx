@@ -35,9 +35,6 @@ const renderSection = (rows, selectedAuthorLogin) => {
 };
 
 describe('AuthorCreatedPrsSection', () => {
-  afterEach(() => {
-    delete window.navigateToPrInTableFromAuthorInsights;
-  });
 
   test('given no PRs by the selected author, when rendering, then the empty message is shown', () => {
     renderSection([buildEntry()], 'someone-else');
@@ -51,15 +48,23 @@ describe('AuthorCreatedPrsSection', () => {
     expect(screen.getByText(/Status: NO_CHANGE/)).toBeInTheDocument();
   });
 
-  test('given "View in table", when clicked, then the navigation bridge fires with the PR number and repo', () => {
-    const navigate = jest.fn();
-    window.navigateToPrInTableFromAuthorInsights = navigate;
+  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
+  // AuthorInsightsPrLink.jsx's button now calls useNavigateToPrInTable()
+  // directly, which dispatches 'pr-navigate-to-insights' (PrTableApp.jsx's
+  // own listener) instead of a window.* bridge.
+  test('given "View in table", when clicked, then pr-navigate-to-insights fires with the PR number and repo', () => {
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
     renderSection([buildEntry()], 'octocat');
 
     screen.getByRole('button', { name: 'View in table' }).click();
     // repo disambiguates PR numbers that collide across repos - see
     // AuthorInsightsPrLink/PrTableApp's buildExpandedInsightsKey.
-    expect(navigate).toHaveBeenCalledWith('1', 'owner/repo');
+    expect(events).toEqual([{ prNumber: '1', repo: 'owner/repo', focusUnsaved: false }]);
+
+    window.removeEventListener('pr-navigate-to-insights', handler);
   });
 
   test('given a change to the selected author in Context, when it updates, then the list reflects the new author (no key remount needed)', () => {

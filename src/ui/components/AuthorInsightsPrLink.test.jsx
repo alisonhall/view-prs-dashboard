@@ -5,10 +5,6 @@ require('@testing-library/jest-dom');
 const { AuthorInsightsPrLink } = require('./AuthorInsightsPrLink');
 
 describe('AuthorInsightsPrLink', () => {
-  afterEach(() => {
-    delete window.navigateToPrInTableFromAuthorInsights;
-  });
-
   test('given a PR entry with a url, when rendering, then the external link uses it', () => {
     render(<AuthorInsightsPrLink entry={{ prNumber: '5', repo: 'owner/repo', data: { number: '5', title: 'My PR', url: 'https://github.com/owner/repo/pull/5' } }} />);
 
@@ -23,15 +19,22 @@ describe('AuthorInsightsPrLink', () => {
     expect(screen.getByRole('link', { name: '#7 Another PR' })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
   });
 
-  test('given "View in table", when clicked, then window.navigateToPrInTableFromAuthorInsights fires with the PR number and repo', () => {
-    const navigate = jest.fn();
-    window.navigateToPrInTableFromAuthorInsights = navigate;
+  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
+  // the button now calls useNavigateToPrInTable() directly, which
+  // dispatches 'pr-navigate-to-insights' instead of a window.* bridge.
+  test('given "View in table", when clicked, then pr-navigate-to-insights fires with the PR number and repo', () => {
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
     render(<AuthorInsightsPrLink entry={{ prNumber: '9', repo: 'owner/repo', data: { number: '9', title: 'PR nine' } }} />);
 
     screen.getByRole('button', { name: 'View in table' }).click();
     // repo is passed through (not just the PR number) since PR numbers are
     // only unique within a repo - other repos' PRs can share the same
     // number, and the table now renders rows from every repo at once.
-    expect(navigate).toHaveBeenCalledWith('9', 'owner/repo');
+    expect(events).toEqual([{ prNumber: '9', repo: 'owner/repo', focusUnsaved: false }]);
+
+    window.removeEventListener('pr-navigate-to-insights', handler);
   });
 });

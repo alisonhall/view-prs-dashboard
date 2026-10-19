@@ -16,12 +16,23 @@ import { useTabState } from './TabStateContext';
  * renders the target markup. This hook just adds a `focusUnsaved` detail
  * flag to that same event - no new wiring needed on the receiving end
  * beyond what Phase G.1 already added there.
+ *
+ * Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): also accepts an optional `repo`, now used by
+ * AuthorInsightsPrLink.jsx/ReviewStatsContent.jsx (replacing
+ * window.navigateToPrInTableFromAuthorInsights/navigateToPrInTableFromStats,
+ * both deleted) - PrTableApp's own listener already reads
+ * `event.detail?.repo` to disambiguate a PR number that exists in more
+ * than one repo (see its own comment), this hook just didn't pass it
+ * through yet. Defaults to `''`, matching the listener's own fallback, so
+ * this is additive - AutoRenderBlockedLinks.jsx's existing calls (no repo)
+ * are unaffected.
  */
 export function useNavigateToPrInTable() {
   const { setActiveDataTab } = useTabState();
 
   return useCallback(
-    (prNumber, { focusUnsaved = false } = {}) => {
+    (prNumber, { repo = '', focusUnsaved = false } = {}) => {
       const normalizedPrNumber = String(prNumber || '').trim();
       if (!normalizedPrNumber) {
         return false;
@@ -30,7 +41,7 @@ export function useNavigateToPrInTable() {
       setActiveDataTab('pr-data');
       window.dispatchEvent(
         new CustomEvent('pr-navigate-to-insights', {
-          detail: { prNumber: normalizedPrNumber, focusUnsaved },
+          detail: { prNumber: normalizedPrNumber, repo, focusUnsaved },
         }),
       );
       return true;
