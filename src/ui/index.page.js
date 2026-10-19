@@ -2653,7 +2653,6 @@ const initPage = () => {
 
   loadStoredData("").catch((error) => {
     setStatusMessage("Failed to load stored data");
-    window.updateReactDataMetaText?.("Failed to load.");
     setOutputMessage(String(error));
     notifyFailureSnackbar(
       "Failed to load stored data",

@@ -1,10 +1,14 @@
 /**
  * AppliedFilterSummary - the "Applied filters: ..." summary line plus its
  * chip list, shown in the Run & Filter tab's Visibility Filters panel.
- * Matches vanilla's renderManagementFilterSummary
- * (helpers/pr-filter-panel.helpers.js), which now delegates to this
- * component via react-app.jsx's renderReactFilterSummary bridge instead of
- * building DOM itself.
+ *
+ * Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+ * vanilla's renderManagementFilterSummary (helpers/pr-filter-panel.helpers.js)
+ * and the window.renderReactFilterSummary push bridge that used to feed this
+ * component are both deleted outright - confirmed dead in production.
+ * react-app.jsx's AppliedFilterSummaryLive now derives summaryText/
+ * filterChips live from Context (useAppliedFilterSummary) and passes them
+ * straight to this component as props.
  *
  * @module components/AppliedFilterSummary
  */
