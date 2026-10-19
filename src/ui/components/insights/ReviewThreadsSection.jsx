@@ -113,6 +113,7 @@ function useHelpers() {
     getPreferredActorKey,
     resolveActorDisplayName,
     getAuthorThreadResolutionPolicy: () => authorThreadResolutionPolicy,
+    authorThreadResolutionPolicy,
     parseSortableTime,
     formatIsoDatetime,
     renderMarkdownAsHtml,
@@ -420,7 +421,26 @@ function computeReviewThreadsData(pr, actorsMap, helpers) {
 
 export function ReviewThreadsSection({ pr, actorsMap }) {
   const helpers = useHelpers();
-  const data = useMemo(() => computeReviewThreadsData(pr, actorsMap, helpers), [pr, actorsMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Phase H.19 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): `helpers` itself is a fresh object literal every render
+  // (useHelpers() isn't memoized), so listing it whole here would make this
+  // memo pointless (recompute on every render regardless of pr/actorsMap).
+  // `helpers.authorThreadResolutionPolicy` is the one piece of `helpers`
+  // that both (a) actually affects computeReviewThreadsData's output
+  // (via getAuthorThreadResolutionPolicy()) and (b) is itself a stable
+  // reference unless its own live Context inputs (allow/deny-mode select,
+  // the 2 checklists) really changed - useAuthorThreadResolutionPolicy()'s
+  // own useMemo guarantees that. Depending on it directly (instead of on
+  // the whole non-memoized helpers object) is what makes the warning text
+  // ("Warning: N thread(s) incorrectly resolved") recompute live when the
+  // policy changes, instead of only on the next pr/actorsMap reference
+  // change - previously only forced by the vanilla renderPrData pipeline's
+  // (applyFiltersFromCache/debouncedApplyFilters) re-render side effect,
+  // confirmed via the same empirical stub-and-test check Phase H.18 used.
+  const data = useMemo(
+    () => computeReviewThreadsData(pr, actorsMap, helpers),
+    [pr, actorsMap, helpers.authorThreadResolutionPolicy], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const { getReviewConversationsUiState, setReviewConversationsUiState } = useReviewConversationsUiState();
   const stateKey = useMemo(() => getReviewConversationsStateKey(pr), [pr]);

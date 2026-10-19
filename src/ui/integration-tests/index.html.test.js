@@ -1918,7 +1918,18 @@ describe("index page rendering with Testing Library", () => {
       "attention-author-thread-resolution-mode",
     );
 
+    // Phase H.19 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): same static-markup/React-portal collision Phase H.18
+    // fixed for the 6 attention-* checkbox/select fields - this suite's
+    // injectRunFilterFieldElements() pre-seeds this mode select's
+    // container with plain static markup too, so document.getElementById
+    // here finds that static element, not the real Context-backed
+    // AuthorThreadResolutionModeSelect, and user.selectOptions() on it
+    // never reaches FilterStateContext on its own. Needs the same
+    // syncFilterStateFromElement call every other such field already
+    // gets in this file.
     await user.selectOptions(modeField, "allow-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await clickMultiSelectCheckbox(
       "attention-author-thread-resolution-allow-list",
       "reviewer1",
@@ -1926,6 +1937,7 @@ describe("index page rendering with Testing Library", () => {
     );
 
     await user.selectOptions(modeField, "deny-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await clickMultiSelectCheckbox(
       "attention-author-thread-resolution-deny-list",
       "reviewer1",
@@ -1933,10 +1945,12 @@ describe("index page rendering with Testing Library", () => {
     );
 
     await user.selectOptions(modeField, "allow-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
