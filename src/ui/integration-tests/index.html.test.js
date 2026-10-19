@@ -3850,8 +3850,20 @@ describe("index page rendering with Testing Library", () => {
     expect(includePendingComments).toBeInTheDocument();
     expect(ignoreMergeOnly).toBeInTheDocument();
 
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - injectRunFilterFieldElements()
+    // seeds these fields' containers with plain static markup before
+    // installFilterStateProviderBridge() portals the real Context-backed
+    // components into the same containers, so document.getElementById()
+    // here finds the static element, not the real one, and a user.click()/
+    // selectOptions() on it never reaches Context on its own. Every
+    // interaction below needs the same syncFilterStateFromElement call
+    // this suite already uses for other DOM-only-presenting fields.
     await user.click(includePendingComments);
+    syncFilterStateFromElement(includePendingComments, "attentionIncludePendingComments");
     await user.selectOptions(noActivityMode, "none");
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
@@ -3859,9 +3871,11 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.selectOptions(noActivityMode, "mine-only");
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await user.selectOptions(noActivityMode, "all");
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
@@ -3869,6 +3883,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.click(ignoreMergeOnly);
+    syncFilterStateFromElement(ignoreMergeOnly, "attentionIgnoreMergeOnlyCommits");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
@@ -3877,9 +3892,11 @@ describe("index page rendering with Testing Library", () => {
 
     if (includeDraftChanged.checked) {
       await user.click(includeDraftChanged);
+      syncFilterStateFromElement(includeDraftChanged, "attentionIncludeDraftChanged");
     }
     if (includeDraftNoActivity.checked) {
       await user.click(includeDraftNoActivity);
+      syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
     }
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
@@ -3889,7 +3906,9 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.click(includeDraftChanged);
+    syncFilterStateFromElement(includeDraftChanged, "attentionIncludeDraftChanged");
     await user.click(includeDraftNoActivity);
+    syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
@@ -4419,8 +4438,16 @@ describe("index page rendering with Testing Library", () => {
       "attention-ignore-merge-only-commits",
     );
 
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - a raw `.checked =` write
+    // alone (bypassing React's own onChange) no longer reaches it, same
+    // as every other Context-migrated field this suite already handles
+    // via syncFilterStateFromElement.
     pendingCommentsToggle.checked = false;
+    syncFilterStateFromElement(pendingCommentsToggle, "attentionIncludePendingComments");
     await user.selectOptions(noActivityModeSelect, "none");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
@@ -4428,12 +4455,14 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.selectOptions(noActivityModeSelect, "all");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("101")?.textContent || "").toBe("⚠️");
     });
 
     ignoreMergeOnlyToggle.checked = true;
+    syncFilterStateFromElement(ignoreMergeOnlyToggle, "attentionIgnoreMergeOnlyCommits");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("102")).toBeNull();
@@ -4737,19 +4766,29 @@ describe("index page rendering with Testing Library", () => {
       expect(within(draftSection).getByText("#202")).toBeInTheDocument();
     });
 
-    document.getElementById("attention-include-pending-comments").checked = false;
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - a raw `.checked =` write
+    // alone (bypassing React's own onChange) no longer reaches it, same
+    // as every other Context-migrated field this suite already handles
+    // via syncFilterStateFromElement.
+    const includePendingCommentsToggle = document.getElementById("attention-include-pending-comments");
+    includePendingCommentsToggle.checked = false;
+    syncFilterStateFromElement(includePendingCommentsToggle, "attentionIncludePendingComments");
     await user.selectOptions(document.getElementById("attention-no-activity-mode"), "all");
 
     const includeDraftChangedToggle = document.getElementById(
       "attention-include-draft-changed",
     );
     includeDraftChangedToggle.checked = false;
+    syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("201")).toBeNull();
     });
 
     includeDraftChangedToggle.checked = true;
+    syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("201")?.textContent || "").toBe("⚠️");
@@ -4759,12 +4798,14 @@ describe("index page rendering with Testing Library", () => {
       "attention-include-draft-no-activity",
     );
     includeDraftNoActivityToggle.checked = false;
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("202")).toBeNull();
     });
 
     includeDraftNoActivityToggle.checked = true;
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("202")?.textContent || "").toBe("⚠️");

@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { NeedsAttentionContext } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
-import { usePrData } from '../state/PrDataContext';
+import { FilterStateContext } from '../state/FilterStateContext';
 import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.js';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.js';
@@ -12,28 +12,19 @@ const { isChangedStatus } = createPrStatusDisplayHelpers();
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
-// Same field list/DOM ids as index.page.js's getNeedsAttentionConfig() -
-// these 6 fields are always Context-native in the real app (FilterStateProvider
-// mounts a real component for each one unconditionally), so
-// window.getFilterStateValues() is normally authoritative. The direct
-// element read is a fallback for the rare case nothing has assigned that
-// bridge yet (or a harness simulates these fields with plain static markup
-// instead of mounting the real components) - same handled/fallback shape
-// index.page.js's own getFilterStateOverrideForFieldId/
-// readAttentionConfigCheckbox pair already uses for every other
-// Context-migrated field.
-const readCheckboxField = (values, key, domId, fallback) => {
-  const contextValue = values?.[key];
-  if (typeof contextValue === 'boolean') return contextValue;
-  const domValue = typeof document !== 'undefined' ? document.getElementById(domId)?.checked : undefined;
-  return typeof domValue === 'boolean' ? domValue : fallback;
-};
-
-const readTextField = (values, key, domId, fallback) => {
-  const contextValue = values?.[key];
-  if (typeof contextValue === 'string' && contextValue) return contextValue;
-  const domValue = typeof document !== 'undefined' ? document.getElementById(domId)?.value : undefined;
-  return domValue || fallback;
+// Same defaults FilterStateProvider's own getUiOptionDefaults()
+// (pr-ui-option-persistence.helpers.js) assigns these 6 fields - used only
+// as a fallback for when there's no <FilterStateProvider> ancestor at all
+// (integration-tests/index.html.test.js's isolated PrTableApp mounts),
+// same shape useVisiblePrNumbers.jsx's own DEFAULT_FILTER_STATE_VALUES
+// fallback already uses for its own fields.
+const DEFAULT_ATTENTION_VALUES = {
+  attentionNoActivityMode: 'all',
+  attentionIncludePendingComments: true,
+  attentionIgnoreMergeOnlyCommits: false,
+  attentionIncludeClosedMerged: true,
+  attentionIncludeDraftChanged: true,
+  attentionIncludeDraftNoActivity: false,
 };
 
 /**
@@ -43,28 +34,29 @@ const readTextField = (values, key, domId, fallback) => {
  * window.entryNeedsAttention/window.getNeedsAttentionConfig/
  * window.shouldShowNeedsAttention bridges for PrTableApp specifically.
  *
- * attentionConfig is deliberately read fresh on every render (not memoized)
- * rather than subscribed to via useFilterState() - matching
- * index.page.js's own former getNeedsAttentionConfig()'s "fresh on every
- * call" contract. It still needs *something* to force a re-render whenever
- * one of these 6 fields changes, though: every field is wired into
- * FilterStateProvider's own debounced-apply effect, so a change already
- * triggers a payload update (window.updateReactPrTable) - but
- * NeedsAttentionProvider sits between PrDataProvider and PrTableApp as a
- * *stable* children element (created once, by AppRoot/a test harness, never
- * recreated on PrDataProvider's own re-renders), so React's "same children
- * element" reconciliation bailout means a PrDataProvider-only state update
- * would otherwise skip re-rendering this component entirely - confirmed via
- * a real repro (an integration test's attention-icon assertions kept
- * reading stale DOM state across "Apply filters" clicks; console logging
- * showed PrDataProvider's setState firing every click but this component
- * only rendering once, at mount). usePrData() below exists ONLY to
- * subscribe to PrDataContext so that bailout gets punched through, the same
- * way it already does for any real usePrData() consumer (e.g. PrTableApp
- * itself) - its returned value is intentionally unused otherwise.
+ * Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 1): attentionConfig now reads FilterStateContext directly
+ * (`useContext`, same as useVisiblePrNumbers.jsx's own
+ * useFilteredPrRows() already does for its own fields) instead of
+ * window.getFilterStateValues()/raw DOM reads. That indirection used to
+ * need *something else* to force this component to re-render at all,
+ * since it sits between PrDataProvider and PrTableApp as a stable
+ * children element (created once, never recreated on PrDataProvider's
+ * own re-renders) - a bare usePrData() call existed purely to punch
+ * through React's "same children element" reconciliation bailout, with
+ * its own returned value unused. Subscribing to FilterStateContext
+ * directly makes that punch-through unnecessary - the Context *value*
+ * changing is what triggers the re-render now, regardless of whether
+ * this component is a stable children element, the same way any other
+ * useContext() consumer anywhere in this app already works. User-visible
+ * effect of this phase (confirmed intentional, not a side effect): these
+ * 6 fields now update attention icons/smart-group membership instantly,
+ * like every other Context-migrated filter field, instead of only after
+ * "Apply filters (local)" (or the previous 150ms-debounced auto-apply).
  */
 export function NeedsAttentionProvider({ children }) {
-  usePrData();
+  const filterState = useContext(FilterStateContext);
+  const values = filterState?.values || DEFAULT_ATTENTION_VALUES;
   const { normalizeActorLogin, resolveActorDisplayName, getEffectiveViewerLogin } = useActorIdentity();
 
   const helpers = useMemo(() => {
@@ -87,29 +79,26 @@ export function NeedsAttentionProvider({ children }) {
     });
   }, [normalizeActorLogin, resolveActorDisplayName, getEffectiveViewerLogin]);
 
-  // The 6 primitive fields are read fresh every render (cheap - a handful
-  // of property/DOM reads), but attentionConfig itself is only given a new
-  // object reference when one of them actually changed, so PrTableApp's own
-  // useMemo (keyed on attentionConfig) doesn't recompute the whole section
-  // list on every unrelated re-render.
-  const values = typeof window !== 'undefined' ? window.getFilterStateValues?.() : undefined;
-  const noActivityMode = readTextField(values, 'attentionNoActivityMode', 'attention-no-activity-mode', 'all');
-  const includePendingComments = readCheckboxField(values, 'attentionIncludePendingComments', 'attention-include-pending-comments', true);
-  const ignoreMergeOnlyCommits = readCheckboxField(values, 'attentionIgnoreMergeOnlyCommits', 'attention-ignore-merge-only-commits', false);
-  const includeClosedMerged = readCheckboxField(values, 'attentionIncludeClosedMerged', 'attention-include-closed-merged', true);
-  const includeDraftChanged = readCheckboxField(values, 'attentionIncludeDraftChanged', 'attention-include-draft-changed', true);
-  const includeDraftNoActivity = readCheckboxField(values, 'attentionIncludeDraftNoActivity', 'attention-include-draft-no-activity', false);
-
   const attentionConfig = useMemo(
     () => ({
-      noActivityMode,
-      includePendingComments,
-      ignoreMergeOnlyCommits,
-      includeClosedMerged,
-      includeDraftChanged,
-      includeDraftNoActivity,
+      noActivityMode: values.attentionNoActivityMode ?? DEFAULT_ATTENTION_VALUES.attentionNoActivityMode,
+      includePendingComments:
+        values.attentionIncludePendingComments ?? DEFAULT_ATTENTION_VALUES.attentionIncludePendingComments,
+      ignoreMergeOnlyCommits:
+        values.attentionIgnoreMergeOnlyCommits ?? DEFAULT_ATTENTION_VALUES.attentionIgnoreMergeOnlyCommits,
+      includeClosedMerged: values.attentionIncludeClosedMerged ?? DEFAULT_ATTENTION_VALUES.attentionIncludeClosedMerged,
+      includeDraftChanged: values.attentionIncludeDraftChanged ?? DEFAULT_ATTENTION_VALUES.attentionIncludeDraftChanged,
+      includeDraftNoActivity:
+        values.attentionIncludeDraftNoActivity ?? DEFAULT_ATTENTION_VALUES.attentionIncludeDraftNoActivity,
     }),
-    [noActivityMode, includePendingComments, ignoreMergeOnlyCommits, includeClosedMerged, includeDraftChanged, includeDraftNoActivity],
+    [
+      values.attentionNoActivityMode,
+      values.attentionIncludePendingComments,
+      values.attentionIgnoreMergeOnlyCommits,
+      values.attentionIncludeClosedMerged,
+      values.attentionIncludeDraftChanged,
+      values.attentionIncludeDraftNoActivity,
+    ],
   );
 
   const value = useMemo(() => ({ ...helpers, attentionConfig }), [helpers, attentionConfig]);
