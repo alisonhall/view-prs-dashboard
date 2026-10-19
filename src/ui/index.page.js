@@ -130,10 +130,14 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
 let currentViewerLogin = "";
 let currentActorLoginAliases = {};
 let supportsSchedulerPolling = true;
-let supportsBackfillLogPolling = true;
-let lastBackfillStateKey = "";
-let isBackfillActionPending = false;
-let isBackfillRunning = false;
+// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 4): supportsBackfillLogPolling/lastBackfillStateKey/
+// isBackfillActionPending/isBackfillRunning moved into
+// BackfillStatusProvider.jsx (components/) as real React state - this
+// file reaches them via the window.getBackfillTrackingState/
+// setSupportsBackfillLogPolling/setIsBackfillActionPending bridges that
+// Provider now answers, same as useBackfillActions.jsx (state/) already
+// did before this phase.
 let isRequestMoreMergedPending = false;
 // Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
 // manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
@@ -377,9 +381,21 @@ const isIgnoredCredentialFieldError = (value) => {
 // on the very first load would otherwise never self-correct.
 let latestBackfillLogMessage = null;
 
+// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 4): forwards to window.setBackfillLogMessage (now answered by
+// BackfillStatusProvider.jsx, which just forwards to
+// window.updateReactBackfillLogText itself - same end target as before),
+// instead of writing that downstream bridge directly - this file's own
+// callers (this factory instance's own DI, initPage's catch block below)
+// go through this file's one real owner now, matching
+// useBackfillActions.jsx's own shape. latestBackfillLogMessage's own
+// cache+replay (below, viewprs:react-ready) is untouched - a different,
+// unrelated bridge-not-ready-yet race (window.updateReactBackfillLogText
+// itself, react-app.jsx's AppRoot), not something this phase's migration
+// changes.
 const setBackfillLogMessage = (message) => {
   latestBackfillLogMessage = message;
-  window.updateReactBackfillLogText?.(message);
+  window.setBackfillLogMessage?.(message);
 };
 
 // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -552,7 +568,7 @@ const {
   shouldAutoScrollBackfillLogByState: (...args) =>
     shouldAutoScrollBackfillLogByState(...args),
   getBackfillScrollTop: (...args) => getBackfillScrollTop(...args),
-  getIsBackfillRunning: () => isBackfillRunning,
+  getIsBackfillRunning: () => window.getBackfillTrackingState?.()?.isBackfillRunning ?? false,
 });
 
 const { getOptionalElementById, readElementAttribute } =
@@ -1119,82 +1135,38 @@ const {
 // of them (getSelectedIncludeLabelNames/getSelectedExcludeLabelNames/
 // getSelectedAuthorLogins) as plain function calls, not through window.
 
-// Tracked so 'viewprs:react-ready' (initPage, below) can re-render once
-// window.updateReactBackfillBadges actually exists - see that listener's
-// own comment for why (same bridge-not-ready-yet race the PR table and
-// filter dropdowns already guard against).
+// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 4 "Backfill status rendering"): renderBackfillStatus/
+// updateBackfillStatusFromPayload (the functions) and
+// isBackfillRunning/isBackfillActionPending/supportsBackfillLogPolling/
+// lastBackfillStateKey (the state they wrote) all moved into
+// BackfillStatusProvider.jsx (components/) as real React state - this
+// file no longer owns any of it, it's a pure caller of the
+// window.renderBackfillStatus/updateBackfillStatusFromPayload/
+// getBackfillTrackingState/setSupportsBackfillLogPolling/
+// setIsBackfillActionPending bridges that Provider now answers, the exact
+// same bridges useBackfillActions.jsx (state/) already called through -
+// one real owner now, not two independently-drifting copies.
+//
+// latestBackfillStatus's own cache+replay is kept, repointed at the
+// bridge - the race it exists for (loadBackfillStatus resolving before
+// react-app.jsx has mounted) is unchanged by this move: whatever answers
+// window.renderBackfillStatus (today BackfillStatusProvider, same as
+// AppRoot's own window.updateReactBackfillBadges/etc. bridges) mounts at
+// the same time AppRoot does either way, so the same 'viewprs:react-ready'
+// replay below still closes the gap - see that listener's own comment.
 let latestBackfillStatus = null;
 
 const renderBackfillStatus = (backfillRaw = {}) => {
-  const backfill = backfillRaw || {};
-  latestBackfillStatus = backfill;
-  const badgeHost = getOptionalElementById("backfill-badges");
-  const details = getOptionalElementById("backfill-details");
-
-  if (!badgeHost || !details) {
-    return;
-  }
-
-  const viewModel = getBackfillStatusViewModel({
-    backfillRaw: backfill,
-    isBackfillActionPending,
-  });
-
-  // Renders the badge list into #backfill-badges via React (see
-  // mountBackfillBadges in react-app.jsx).
-  window.updateReactBackfillBadges?.(viewModel.badges);
-
-  window.updateReactBackfillDetailsText?.(viewModel.detailsText);
-  isBackfillRunning = viewModel.isBackfillRunning;
-
-  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
-  // buttons - this replaces the old direct startButton.disabled/etc.
-  // DOM writes with the same push-to-React-state bridge pattern the 2
-  // calls just above already use for badges/details text.
-  window.updateReactBackfillButtonState?.(viewModel.buttonState);
-
-  lastBackfillStateKey = viewModel.stateKey;
+  latestBackfillStatus = backfillRaw || {};
+  window.renderBackfillStatus?.(backfillRaw);
 };
 
-const updateBackfillStatusFromPayload = (
-  payload = {},
-  { announce = false } = {},
-) => {
+const updateBackfillStatusFromPayload = (payload = {}, options = {}) => {
   const backfill = payload?.backfill || payload || {};
-  const previousStateKey = lastBackfillStateKey;
-  const nextStateKey = getBackfillStateKey(backfill);
-
-  renderBackfillStatus(backfill);
-
-  if (announce && nextStateKey !== previousStateKey) {
-    setStatusMessage(backfill.summary || "Backfill status updated");
-  }
+  latestBackfillStatus = backfill;
+  window.updateBackfillStatusFromPayload?.(payload, options);
 };
-
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// state/useBackfillActions.jsx builds its own createPrBackfillActionHelpers
-// instance - these reverse bridges let that instance read/write the exact
-// same module-level state this file's own instance uses (for the backfill
-// tab orchestrator / initial auto-load), instead of forking a second,
-// independently-drifting copy.
-if (typeof window !== "undefined") {
-  window.getBackfillTrackingState = () => ({
-    supportsBackfillLogPolling,
-    isBackfillRunning,
-    isBackfillActionPending,
-  });
-  window.setSupportsBackfillLogPolling = (value) => {
-    supportsBackfillLogPolling = Boolean(value);
-  };
-  window.setIsBackfillActionPending = (value) => {
-    isBackfillActionPending = Boolean(value);
-  };
-  window.updateBackfillStatusFromPayload = (...args) =>
-    updateBackfillStatusFromPayload(...args);
-  window.setBackfillLogMessage = (...args) => setBackfillLogMessage(...args);
-  window.renderBackfillStatus = (...args) => renderBackfillStatus(...args);
-}
 
 const loadSchedulerStatus = async () => {
   const response = await fetch("/view-prs/scheduler");
@@ -1392,11 +1364,15 @@ const prDataTabOrchestrator =
     getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
   });
 
+// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 4): getBackfillStatusViewModel/getBackfillStateKey no longer
+// destructured here - both only ever fed renderBackfillStatus/
+// updateBackfillStatusFromPayload, now moved wholesale into
+// BackfillStatusProvider.jsx (components/), which creates its own
+// instance of this same pure factory.
 const {
   shouldAutoScrollBackfillLog: shouldAutoScrollBackfillLogByState,
   getBackfillScrollTop,
-  getBackfillStatusViewModel,
-  getBackfillStateKey,
   formatBackfillLogMessage,
 } = prBackfillHelperFactory.createPrBackfillHelpers();
 
@@ -1431,14 +1407,19 @@ const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillAct
   setBackfillLogMessage,
   autoScrollBackfillLogToBottom,
   formatBackfillLogMessage,
-  getSupportsBackfillLogPolling: () => supportsBackfillLogPolling,
-  setSupportsBackfillLogPolling: (value) => {
-    supportsBackfillLogPolling = Boolean(value);
-  },
-  getIsBackfillRunning: () => isBackfillRunning,
-  setIsBackfillActionPending: (value) => {
-    isBackfillActionPending = Boolean(value);
-  },
+  // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 4): reads/writes window.getBackfillTrackingState/
+  // setSupportsBackfillLogPolling/setIsBackfillActionPending (now
+  // answered by BackfillStatusProvider.jsx) instead of this file's own
+  // module-level lets, which are deleted - the exact same bridges
+  // useBackfillActions.jsx's own factory instance already used, so both
+  // instances now share one real source of truth.
+  getSupportsBackfillLogPolling: () =>
+    window.getBackfillTrackingState?.()?.supportsBackfillLogPolling ?? true,
+  setSupportsBackfillLogPolling: (value) =>
+    window.setSupportsBackfillLogPolling?.(value),
+  getIsBackfillRunning: () => window.getBackfillTrackingState?.()?.isBackfillRunning ?? false,
+  setIsBackfillActionPending: (value) => window.setIsBackfillActionPending?.(value),
   backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
 });
 

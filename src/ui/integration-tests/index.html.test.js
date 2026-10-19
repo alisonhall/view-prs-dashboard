@@ -55,6 +55,7 @@ const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableR
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
+const { BackfillStatusProvider } = require("../components/BackfillStatusProvider");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
@@ -743,10 +744,24 @@ const installBackfillControlsBridge = () => {
     // own real StatusTextProvider (resolves #status itself, same as
     // react-app.jsx's real mountAppRoot) so this independent tree's
     // status updates still reach the real DOM node.
+    //
+    // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 4): also wraps its own real BackfillStatusProvider, nested
+    // inside StatusTextProvider (it needs useStatusText() itself) - this
+    // suite never mounts react-app.jsx's real mountAppRoot, so without
+    // this, window.getBackfillTrackingState/updateBackfillStatusFromPayload/
+    // etc. (now answered only by that Provider) wouldn't exist at all,
+    // and BackfillLogControls.jsx's own useBackfillStatus() read would
+    // only ever see the Context's unwrapped default (isBackfillRunning:
+    // false), breaking the "auto-scrolls when running" test below.
     React.createElement(
       StatusTextProvider,
       null,
-      React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+      React.createElement(
+        BackfillStatusProvider,
+        null,
+        React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+      ),
     ),
     { container },
   );

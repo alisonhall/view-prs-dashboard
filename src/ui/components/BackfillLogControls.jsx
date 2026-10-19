@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
+import { useBackfillStatus } from '../state/BackfillStatusContext';
 
 const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHelpers();
 
@@ -27,9 +28,14 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  * the log portal itself. `syncScrollPosition` reuses the same pure
  * `shouldAutoScrollBackfillLog`/`getBackfillScrollTop` functions the old
  * bridge used (pr-backfill.helpers.js), just called directly instead of
- * through a window bridge. `window.getBackfillTrackingState()` stays -
- * `isBackfillRunning` is vanilla module state (index.page.js), a different,
- * still-bridged concern out of this phase's scope (see its own plan entry).
+ * through a window bridge.
+ *
+ * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 4): `isBackfillRunning` now read via `useBackfillStatus()`
+ * (BackfillStatusProvider.jsx, state/BackfillStatusContext.jsx) instead of
+ * `window.getBackfillTrackingState()` - this component is a genuine
+ * Context descendant of that Provider (mounted from mountAppRoot(),
+ * wrapping <AppRoot/>, same as StatusTextProvider).
  * `window.autoScrollBackfillLogToBottom` itself (the bridge) is deleted -
  * confirmed to have no remaining readers (cluster-4 cleanup, see
  * REACT_MIGRATION_PLAN.md, "Remaining-effort audit"). index.page.js's own
@@ -46,6 +52,7 @@ export function BackfillLogControls({
   logContainer,
 }) {
   const autoscrollCheckboxRef = useRef(null);
+  const { isBackfillRunning } = useBackfillStatus();
 
   const syncScrollPosition = () => {
     if (!logContainer) {
@@ -53,7 +60,7 @@ export function BackfillLogControls({
     }
     const shouldAutoScroll = shouldAutoScrollBackfillLog({
       autoScrollEnabled: Boolean(autoscrollCheckboxRef.current?.checked),
-      isBackfillRunning: Boolean(window.getBackfillTrackingState?.()?.isBackfillRunning),
+      isBackfillRunning: Boolean(isBackfillRunning),
     });
     logContainer.scrollTop = getBackfillScrollTop({
       scrollHeight: logContainer.scrollHeight,

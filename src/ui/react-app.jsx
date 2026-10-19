@@ -67,6 +67,7 @@ import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
+import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
@@ -1332,11 +1333,20 @@ function mountAppRoot() {
   // useRunScript/useBackfillActions/useAckLabelActions/useSinglePrUpdate
   // need to reach it via useStatusText() directly instead of the
   // window.updateReactStatusText/setStatusMessage bridges.
+  //
+  // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 4): BackfillStatusProvider wraps from here too, inside
+  // StatusTextProvider (it needs useStatusText() itself, for the
+  // announce-on-change path) and outside AppRoot (BackfillLogControls.jsx,
+  // a descendant of AppRoot's own returned JSX, reads it via
+  // useBackfillStatus() - see that component's own comment).
   ReactDOM.createRoot(anchor).render(
     <StatusTextProvider>
-      <PrActivityQueueProvider>
-        <AppRoot />
-      </PrActivityQueueProvider>
+      <BackfillStatusProvider>
+        <PrActivityQueueProvider>
+          <AppRoot />
+        </PrActivityQueueProvider>
+      </BackfillStatusProvider>
     </StatusTextProvider>,
   );
 }

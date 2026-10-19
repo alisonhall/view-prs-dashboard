@@ -27,14 +27,20 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  * instance of the same pure factory directly instead - same shape as
  * useSinglePrUpdate.jsx.
  *
- * A handful of DI params still read/write index.page.js's own module-level
- * state via new reverse bridges (window.getBackfillTrackingState/
- * setSupportsBackfillLogPolling/setIsBackfillActionPending/
- * updateBackfillStatusFromPayload/setBackfillLogMessage/renderBackfillStatus),
- * rather than this hook forking its own independent copy - a second
- * independent copy here would silently drift from what this file's own
- * module-level state sees (e.g. a 404'd log endpoint staying "supported"
- * in this hook's copy after index.page.js's copy already disabled it).
+ * A handful of DI params still read/write shared state via
+ * window.getBackfillTrackingState/setSupportsBackfillLogPolling/
+ * setIsBackfillActionPending/updateBackfillStatusFromPayload/
+ * setBackfillLogMessage/renderBackfillStatus, rather than this hook
+ * forking its own independent copy - a second independent copy here would
+ * silently drift from what the real owner sees (e.g. a 404'd log endpoint
+ * staying "supported" in this hook's copy after the real one already
+ * disabled it).
+ *
+ * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 4): these 6 bridges are now answered by
+ * BackfillStatusProvider.jsx (components/), not index.page.js - this
+ * hook's own call sites are unchanged, since the bridge names stay the
+ * same; only who defines them moved.
  * Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
  * tab-activation reload/initial auto-load that used to drive this same
  * state via backfill-tab.orchestrator.js (vanilla) is now
