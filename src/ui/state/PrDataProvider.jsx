@@ -477,15 +477,17 @@ export function PrDataProvider({
       };
     };
 
-    // pollBackfillStatus's own guard flags
-    // (isBackfillRunning/isBackfillActionPending) and the real fetch work
-    // it delegates to (loadBackfillStatus) stay vanilla-owned
-    // (index.page.js) - it has other real vanilla callers (the backfill
-    // tab orchestrator/initial auto-load) this phase doesn't touch.
-    // Reached via a new reverse bridge, same "vanilla primitive exposed
-    // for React" shape as window.getBackfillTrackingState (Phase D.2,
-    // reused as-is here for the isBackfillRunning/isBackfillActionPending
-    // guard).
+    // pollBackfillStatus's own guard flags (isBackfillRunning/
+    // isBackfillActionPending) are owned by BackfillStatusProvider.jsx
+    // (Phase H.14, see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 4) - reached the same way useBackfillActions.jsx reaches
+    // them, via window.getBackfillTrackingState, not a direct Context
+    // read, since pollBackfillStatus runs from <PrDataPolling/>'s own
+    // interval effect, a plain function call with no guaranteed Context
+    // ancestry to that Provider. The real fetch work it delegates to
+    // (loadBackfillStatus) stays vanilla-owned in index.page.js - it has
+    // its own other real vanilla caller (initPage's initial load) this
+    // phase doesn't touch.
     const pollBackfillStatus = async () => {
       const tracking = window.getBackfillTrackingState?.() || {};
       if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {

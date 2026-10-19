@@ -38,10 +38,11 @@ import { StatusTextContext } from '../state/StatusTextContext';
  * callers (`index.page.js`'s own `setStatusTextOnly`/`setStatusMessage`,
  * still called directly by several vanilla DI factories with no React
  * tree position of their own - `pr-merged-request-more-action.helpers.js`,
- * `pr-apply-filters-cache.helpers.js`, the backfill tab orchestrator's own
- * vanilla instance, `pr-data-polling-orchestration.helpers.js`) - this
- * Provider just becomes the thing that *answers* that bridge now, instead
- * of AppRoot.
+ * `pr-apply-filters-cache.helpers.js`, `pr-data-polling-orchestration.helpers.js`)
+ * - this Provider just becomes the thing that *answers* that bridge now,
+ * instead of AppRoot. (The backfill tab orchestrator was a 4th such
+ * caller once - deleted outright in Phase H.11, see
+ * REACT_MIGRATION_PLAN.md.)
  */
 export function StatusTextProvider({ children }) {
   const [statusText, setStatusText] = useState('Not run');

@@ -2095,10 +2095,12 @@ if (typeof window !== "undefined") {
 // usePrData() Context - window.pollBackfillStatus/window.renderRequestActivity
 // had no caller left besides that component, so both were deleted outright
 // (pollSchedulerStatus itself was later deleted too, in Phase H.2 - see
-// REACT_MIGRATION_PLAN.md). loadBackfillStatus stays vanilla here (the
-// backfill tab orchestrator/initial auto-load are other real callers
-// beyond polling) - exposed via a new reverse bridge for PrDataProvider's
-// own pollBackfillStatus to reach.
+// REACT_MIGRATION_PLAN.md). loadBackfillStatus stays vanilla here -
+// initPage's own initial-load call (below) is another real caller beyond
+// polling. (The backfill tab orchestrator was a 2nd such caller once -
+// deleted outright in Phase H.11, see REACT_MIGRATION_PLAN.md.) Exposed
+// via a new reverse bridge for PrDataProvider's own pollBackfillStatus to
+// reach.
 if (typeof window !== "undefined") {
   window.loadBackfillStatus = (...args) => loadBackfillStatus(...args);
 }
