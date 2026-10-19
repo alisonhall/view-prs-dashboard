@@ -8809,13 +8809,12 @@ describe("index page rendering with Testing Library", () => {
   // comments finish loading" was removed here: the manual comments
   // composer is React-owned (#author-insights-content-root) with no
   // vanilla-DOM fallback left for this jsdom-only suite to render into.
-  // The actual mechanism under test (composer draft state surviving a
-  // full section rebuild, which is what happens when the async
-  // author-comments GET resolves) lives entirely in
-  // buildManualCommentsSection/draftHelpers, unrelated to React - see
-  // "given a composer draft typed for an author..." in
-  // pr-author-insights.component.test.js for the same coverage, tested
-  // directly against that mechanism instead.
+  // The actual mechanism under test (composer draft state surviving an
+  // async author-comments load) lives entirely in
+  // AuthorInsightsDraftsProvider.jsx's real Context state now - see
+  // AuthorInsightsCommentsSection.test.jsx's own draft/dirty-tracking
+  // tests for the equivalent coverage, tested directly against that
+  // mechanism instead.
 
   test("form parsing applies credential hints to filter inputs without changing field names", () => {
     initTestPage();

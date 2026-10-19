@@ -260,9 +260,9 @@ describe("pr author insights display helpers", () => {
   });
 
   describe("resolveValidAuthorLogin", () => {
-    // Shared by renderAuthorInsights (pr-author-insights.component.js) and
-    // navigateToAuthorInsights (pr-auto-render-navigation.helpers.js) - see
-    // REACT_MIGRATION_PLAN.md's navigateToAuthorInsights entry.
+    // Shared by useNavigateToAuthorInsights.jsx (state/) and
+    // AuthorInsightsSelector.jsx (components/, Phase H.17 - see
+    // REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 2).
     const authorOptions = [
       { login: "alice", name: "Alice" },
       { login: "bob", name: "Bob" },

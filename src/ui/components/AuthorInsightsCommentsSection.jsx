@@ -32,10 +32,12 @@
  *
  * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * `selectedAuthor` is now derived from PrDataContext's `selectedAuthorLogin`
- * (kept in sync by pr-author-insights.component.js's renderAuthorInsights)
- * instead of being pushed as a prop via window.updateAuthorInsightsComments
- * (deleted) - the rows/actorsMap that bridge used to also push were already
- * unused here.
+ * (kept in sync by AuthorInsightsSelector.jsx, Phase H.17 - see
+ * REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 2; previously
+ * pr-author-insights.component.js's renderAuthorInsights, deleted outright
+ * that phase) instead of being pushed as a prop via
+ * window.updateAuthorInsightsComments (deleted) - the rows/actorsMap that
+ * bridge used to also push were already unused here.
  */
 
 import { useEffect, useRef, useState } from 'react';

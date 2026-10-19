@@ -62,10 +62,6 @@ import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
 import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
-import * as prAuthorInsightsPrLinkHelperFactory from "./helpers/pr-author-insights-pr-link.helpers.js";
-import * as prAuthorInsightsDisplayHelperFactory from "./helpers/pr-author-insights-display.helpers.js";
-import * as prAuthorInsightsDataHelperFactory from "./helpers/pr-author-insights-data.helpers.js";
-import * as prAuthorInsightsComponentFactory from "./components/pr-author-insights.component.js";
 import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
@@ -145,11 +141,12 @@ let isRequestMoreMergedPending = false;
 // to live here too - moved to AuthorInsightsDraftsProvider.jsx's own
 // useRef-held state (confirmed via grep no other read/write of any of
 // those 5 fields remains on this object anywhere in this file).
-const authorInsightsState = {
-  selectedAuthorLogin: "",
-  latestRows: null,
-  latestActorsMap: null,
-};
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): the authorInsightsState object itself (selectedAuthorLogin/
+// latestRows/latestActorsMap) is deleted too - its only remaining reader/
+// writer, pr-author-insights.component.js's renderAuthorInsights and the
+// window.selectAuthorInsightsAuthor bridge that called it, are both
+// deleted outright this phase.
 const formParsingHelpers = formParsingHelpersModule;
 const toBoolean =
   formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
@@ -645,9 +642,15 @@ const { deriveRenderSummary } =
     renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
   });
 
-const { applyRenderResults, renderAuthorInsightsIfVisible, applyFreshAuthorInsightsIfVisible } =
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): renderAuthorInsightsIfVisible/applyFreshAuthorInsightsIfVisible
+// (and the latestAllStoredRows/latestActorsMap cache feeding them) no
+// longer exist - their sole purpose was re-invoking renderAuthorInsights,
+// deleted outright this phase. applyRenderResults itself needed no other
+// change - its own fingerprint/manifest computation never depended on
+// that cache.
+const { applyRenderResults } =
   prRenderApplyHelperFactory.createPrRenderApplyHelpers({
-    renderAuthorInsights: (...args) => renderAuthorInsights(...args),
     computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
     computePrDataManifest: (...args) => computePrDataManifest(...args),
     getOptionalElementById: (...args) => getOptionalElementById(...args),
@@ -858,11 +861,19 @@ const {
 // to also be destructured here for the now-deleted window.* bridge entry
 // below - NotesSection.jsx/AuthorInsightsNotesSection.jsx get their own
 // copy from AuthorInsightsContext/a local useMemo instead, not this one.
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): getLatestActorsMap used to read authorInsightsState.latestActorsMap
+// (only ever written by the now-deleted renderAuthorInsights) - repointed
+// at the same live-payload-first, vanilla-cache-fallback pattern
+// getLatestStoredPayload above already uses, since this needs the exact
+// same data (the current payload's actorsMap), just always current now
+// instead of only as current as the last renderAuthorInsights call.
 const { getAuthorInsightsDisplayName } =
   prAuthorInsightsIdentityHelperFactory.createPrAuthorInsightsIdentityHelpers({
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-    getLatestActorsMap: () => authorInsightsState.latestActorsMap || {},
+    getLatestActorsMap: () =>
+      (window.getReactPrTablePayload?.() ?? latestStoredPayload)?.actorsMap || {},
   });
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft/comment-cache CRUD
@@ -885,18 +896,19 @@ const {
   isAuthorInsightsEditDraftDirty,
 } = prAuthorInsightsDraftsHelperFactory.createPrAuthorInsightsDraftsHelpers();
 
-// Fresh-reading proxies, not direct references to a local implementation -
-// AuthorInsightsDraftsProvider (a React component) only publishes these on
-// window once it mounts, which happens after this module-level wiring runs;
-// a direct reference captured now would freeze on undefined. Same
-// indirection this file already uses for activateDataTab/collectNodesByTag
-// above.
-const getAuthorInsightsComposerDraft = (...args) => window.getAuthorInsightsComposerDraft?.(...args);
-const updateAuthorInsightsComposerDraft = (...args) => window.updateAuthorInsightsComposerDraft?.(...args);
-const resetAuthorInsightsComposerDraft = (...args) => window.resetAuthorInsightsComposerDraft?.(...args);
-const getAuthorInsightsEditDraft = (...args) => window.getAuthorInsightsEditDraft?.(...args);
-const updateAuthorInsightsEditDraft = (...args) => window.updateAuthorInsightsEditDraft?.(...args);
-const resetAuthorInsightsEditDraft = (...args) => window.resetAuthorInsightsEditDraft?.(...args);
+// Fresh-reading proxy, not a direct reference to a local implementation -
+// AuthorInsightsDraftsProvider (a React component) only publishes this on
+// window once it mounts, which happens after this module-level wiring
+// runs; a direct reference captured now would freeze on undefined. Same
+// indirection this file already uses for activateDataTab above.
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): the other 6 composer/edit-draft proxies this block used to
+// also build (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
+// resetAuthorInsightsComposerDraft/getAuthorInsightsEditDraft/
+// updateAuthorInsightsEditDraft/resetAuthorInsightsEditDraft) were only
+// ever repackaged into prAuthorInsightsDraftsHelpers, which only ever fed
+// pr-author-insights.component.js (deleted outright) - this one stays,
+// still a real DI param for getBlockingAuthorInsightsLogins below.
 const getAuthorManualCommentsForLogin = (...args) => window.getAuthorManualCommentsForLogin?.(...args);
 
 const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
@@ -1292,12 +1304,17 @@ const {
   stripAnsi,
 });
 
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): onTabActivated's only real use was re-invoking
+// renderAuthorInsightsIfVisible (deleted outright this phase) -
+// AuthorInsightsSelector.jsx now validates the selected author itself,
+// reactively, on every payload/options change, not just on tab
+// activation, so there's nothing left for a tab-activation hook to do
+// here. onTabActivated is optional (see pr-data-tabs.helpers.js), so it's
+// simply omitted now rather than passed as a no-op.
 const { activateDataTab } =
   prDataTabsHelperFactory.createPrDataTabsHelpers({
     getOptionalElementById,
-    onTabActivated: () => {
-      renderAuthorInsightsIfVisible();
-    },
   });
 
 // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -1525,120 +1542,19 @@ if (typeof window !== "undefined") {
 // below) - both reused AutoRenderBlockedLinks.jsx's existing,
 // already-tested hook instead of writing new navigation logic.
 
-// Author Insights helper modules (refactored dependency injection)
-
-const prAuthorInsightsPrLinkHelpers =
-  prAuthorInsightsPrLinkHelperFactory.createPrAuthorInsightsPrLinkHelpers({
-    isReactTableMounted: () => isReactTableMounted(),
-  });
-
-const prAuthorInsightsDisplayHelpers =
-  prAuthorInsightsDisplayHelperFactory.createPrAuthorInsightsDisplayHelpers({
-    resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-    normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-    normalizeAuthorInsightsSentiment: (...args) =>
-      normalizeAuthorInsightsSentiment(...args),
-    isChangedStatus: (...args) => isChangedStatus(...args),
-    asArray,
-    parseSortableTime: (...args) => parseSortableTime(...args),
-    formatIsoDatetime: (...args) => formatIsoDatetime(...args),
-  });
-
-const prAuthorInsightsDataHelpers =
-  prAuthorInsightsDataHelperFactory.createPrAuthorInsightsDataHelpers({
-    normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-    fetchFn: (...args) => fetch(...args),
-  });
-
-// Repackage drafts helper as module for component
-const prAuthorInsightsDraftsHelpers = {
-  getAuthorInsightsComposerDraft,
-  updateAuthorInsightsComposerDraft,
-  resetAuthorInsightsComposerDraft,
-  updateAuthorInsightsEditDraft,
-  resetAuthorInsightsEditDraft,
-  getAuthorInsightsEditDraft,
-};
-
-const {
-  renderAuthorInsights,
-} =
-  prAuthorInsightsComponentFactory.createPrAuthorInsightsComponent({
-    prLinkHelpers: prAuthorInsightsPrLinkHelpers,
-    displayHelpers: prAuthorInsightsDisplayHelpers,
-    dataHelpers: prAuthorInsightsDataHelpers,
-    draftHelpers: prAuthorInsightsDraftsHelpers,
-    authorInsightsState,
-    recomputeDirtyPrSectionsFields: (...args) =>
-      recomputeDirtyPrSectionsFields(...args),
-    // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): pushes
-    // the current selection into PrDataProvider's Context state, read
-    // directly by AuthorCreatedPrsSection/AuthorInsightsNotesSection/
-    // AuthorInsightsCommentsSection - see PrDataProvider.jsx.
-    updateReactSelectedAuthorLogin: (login) =>
-      typeof window !== "undefined" && typeof window.updateReactSelectedAuthorLogin === "function"
-        ? window.updateReactSelectedAuthorLogin(login)
-        : false,
-  });
-
-// Phase 3 React migration hooks: let AuthorInsightsSelector/
-// AuthorCreatedPrsSection (react-app.jsx) reach vanilla behavior without
-// index.page.js needing to know React mounted them - mirrors
-// window.updateStatsViewStateAndRerender for Review Stats' controls.
-if (typeof window !== "undefined") {
-  window.selectAuthorInsightsAuthor = (login) => {
-    authorInsightsState.selectedAuthorLogin = login;
-    renderAuthorInsights(
-      authorInsightsState.latestRows || [],
-      authorInsightsState.latestActorsMap || {},
-    );
-  };
-  // Post-Phase-6 follow-up, Track B (REACT_MIGRATION_PLAN.md): the
-  // created-PRs and PR-linked-notes sections are now real JSX
-  // (AuthorCreatedPrsSection.jsx/AuthorInsightsNotesSection.jsx,
-  // AuthorInsightsPrLink.jsx/AuthorInsightsPrDataMeta.jsx) instead of
-  // wrapping pr-author-insights.component.js's buildCreatedPrsSection/
-  // buildPrLinkedNotesSection via a ref - those two builders have been
-  // deleted. These bridges expose the pure filtering/sorting/formatting
-  // helpers those sections need, the same "leaf components read window.*
-  // for pure data-shaping" pattern StatsVisuals/GraphCard use for Review
-  // Stats (Track A).
-  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 2): window.navigateToPrInTableFromAuthorInsights used to be
-  // assigned here (same shape as window.navigateToPrInTableFromStats,
-  // deleted above) - AuthorInsightsPrLink.jsx's own "View in table"
-  // button now calls useNavigateToPrInTable() (state/) directly instead.
-  // Track B batch 2 (REACT_MIGRATION_PLAN.md): the manual comments
-  // composer/editor is now real JSX too (AuthorInsightsCommentsSection.jsx)
-  // instead of wrapping buildManualCommentsSection via a ref - that builder
-  // (and its renderComposerForm/renderManualCommentList/
-  // renderManualCommentItem/renderEditForm helpers) has been deleted.
-  // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft-state/data CRUD
-  // bridges that section needs (getAuthorInsightsComposerDraft/
-  // updateAuthorInsightsComposerDraft/resetAuthorInsightsComposerDraft/
-  // getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
-  // resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin/
-  // getAuthorInsightsManualCommentsLoadState/setAuthorInsightsManualComments/
-  // loadAuthorManualComments) used to be assigned here directly - now
-  // published by AuthorInsightsDraftsProvider.jsx instead (mounted in
-  // react-app.jsx), which owns the underlying state as real React state.
-  // Assigning them here too would create direct recursion with this
-  // file's own fresh-reading proxy consts of the same names (see those
-  // consts' own comment, above) - this file is no longer their source.
-  // Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 2): window.saveAuthorManualComment/updateAuthorManualComment
-  // (this block used to assign both here, wrapping
-  // prAuthorInsightsDataHelpers.saveAuthorManualComment/
-  // updateAuthorManualComment with the same beginRequestActivity tracking)
-  // are deleted outright - AuthorInsightsCommentsSection.jsx's own 2
-  // callers now go straight through AuthorInsightsDraftsProvider.jsx's new
-  // saveManualComment/updateManualComment, which wrap the exact same pure
-  // helpers (that Provider already builds its own dataHelpers instance of
-  // this same factory) with usePrData().beginRequestActivity instead of
-  // this file's own copy - one real owner, not two independent bridge
-  // paths to the same underlying fetch calls.
-}
+// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): pr-author-insights.component.js (renderAuthorInsights) and
+// the window.selectAuthorInsightsAuthor bridge that drove it are deleted
+// outright, closing cluster 2's last bridge - AuthorInsightsSelector.jsx
+// now validates/writes the selected author directly (resolveValidAuthorLogin
+// + PrDataProvider's own setSelectedAuthorLogin), the same Context
+// primitives useNavigateToAuthorInsights.jsx (state/) already used for
+// the identical validation rule. prAuthorInsightsPrLinkHelpers/
+// prAuthorInsightsDisplayHelpers/prAuthorInsightsDataHelpers/
+// prAuthorInsightsDraftsHelpers (this file's own instances, built solely
+// to feed that factory) and the authorInsightsState object itself (used
+// nowhere else - see getAuthorInsightsDisplayName's own getLatestActorsMap
+// DI below, repointed at latestStoredPayload instead) are deleted too.
 
 const {
   normalizeActorLoginAliases,
@@ -1923,12 +1839,13 @@ const applyFreshPrPayload = (payload, repo) => {
   updateBackfillStatusFromPayload(payload);
 
   applyResolvedRepo(resolvedRepo);
-  // Not renderAuthorInsightsIfVisible() directly - that reads a private
-  // cache (latestAllStoredRows/latestActorsMap) only applyRenderResults
-  // (the full pipeline) updates. This variant refreshes that same cache
-  // from the fresh payload first, so both this render and any later
-  // tab-activation catch-up render see the fresh data, not stale leftovers.
-  applyFreshAuthorInsightsIfVisible(payload);
+  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): used to call applyFreshAuthorInsightsIfVisible here, to
+  // refresh the latestAllStoredRows/latestActorsMap cache that fed
+  // renderAuthorInsights - both deleted outright this phase.
+  // AuthorInsightsSelector.jsx now reads rows/actorsMap straight from
+  // PrDataContext's own payload, which updateReactTable below keeps
+  // current - no separate cache to refresh.
   updateReactTable(payload, resolvedRepo);
 };
 

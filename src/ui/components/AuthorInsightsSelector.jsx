@@ -8,44 +8,68 @@
  * being pushed a pre-built option list + selected login via
  * window.updateAuthorInsightsSelector (deleted) - options are rebuilt from
  * the raw payload via useAuthorInsights()'s buildAuthorInsightsEntries
- * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md; already used
- * internally by renderAuthorInsights for its own auto-select-first-author
- * validation, now also exposed for this component). Options are
+ * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md). Options are
  * deliberately empty when there are no local rows at all, even if
- * actorsMap has entries on its own - matching renderAuthorInsights' own
- * "No local rows"/"No authors found" empty-state guards, which this
- * replaces - and (deferred-items follow-up, full vanilla-to-React sweep,
- * see REACT_MIGRATION_PLAN.md) this component now also renders those two
- * empty-state messages itself ("No local rows available for author
- * insights." / "No authors found in the current local data scope."),
- * which renderAuthorInsights used to build directly via
- * document.createElement - it still clears selectedAuthorLogin in both
- * cases (state management, not rendering), but no longer builds any DOM.
+ * actorsMap has entries on its own - matching the empty-state guards
+ * below - and (deferred-items follow-up, full vanilla-to-React sweep, see
+ * REACT_MIGRATION_PLAN.md) this component renders those two empty-state
+ * messages itself ("No local rows available for author insights." / "No
+ * authors found in the current local data scope.").
  *
- * Since `selectedAuthorLogin` is now a real reactive Context value (kept
- * in sync by renderAuthorInsights, including its auto-select-first-author
- * fallback), the <select> can be a plain controlled input - no more local
- * useState/incrementing-`key` remount hack needed to catch external
- * selection changes.
+ * Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): this component now owns the "which author is selected"
+ * validation itself - previously pr-author-insights.component.js's
+ * renderAuthorInsights did this (resolveValidAuthorLogin, falling back to
+ * the first option whenever the current selection no longer exists in
+ * `options`), driven by window.selectAuthorInsightsAuthor on every
+ * explicit pick AND by a vanilla render pipeline on every data
+ * change/tab-activation (both deleted outright this phase). The
+ * useEffect below reproduces the same rule, reactively: it compares
+ * `selectedAuthorLogin` against the live `options` on every render (not
+ * just on explicit picks), using the exact same resolveValidAuthorLogin
+ * useNavigateToAuthorInsights.jsx (state/) already uses for this identical
+ * validation. Guards each setSelectedAuthorLogin call on the value
+ * actually changing - `options`/`rows` are recomputed fresh every render
+ * (not memoized), so an unguarded call here would set state every render
+ * and loop forever.
  *
- * Selecting a different author still calls back into vanilla via
- * onChange, which mutates authorInsightsState.selectedAuthorLogin and
- * re-runs renderAuthorInsights (through window.selectAuthorInsightsAuthor)
- * - vanilla remains the source of truth for validating the selection and
- * driving the other sections' re-render.
+ * Explicit selection (`<select>`'s onChange) writes `setSelectedAuthorLogin`
+ * directly now, not through a window.* bridge - the chosen value always
+ * comes from an `<option>` this component itself rendered from `options`,
+ * so it's valid by construction and needs no extra validation pass.
  *
  * @module components/AuthorInsightsSelector
  */
 
+import { useEffect } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.js';
 
-export function AuthorInsightsSelector({ onChange }) {
-  const { payload, selectedAuthorLogin } = usePrData();
+export function AuthorInsightsSelector() {
+  const { payload, selectedAuthorLogin, setSelectedAuthorLogin } = usePrData();
   const { buildAuthorInsightsEntries } = useAuthorInsights();
   const rows = Object.values(payload?.byPrNumber || {});
   const actorsMap = payload?.actorsMap || {};
+  // Recomputed fresh every render (same shape useNavigateToAuthorInsights.jsx
+  // already uses for this identical validation, not memoized there
+  // either) - a useMemo wrap would only mask the same per-render recompute
+  // one level up, not avoid it, since `rows`/`actorsMap` above are
+  // themselves fresh every render too.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = rows.length ? buildAuthorInsightsEntries(rows, actorsMap) : [];
+
+  // Each setSelectedAuthorLogin call below is guarded on the *value*
+  // actually changing, not just validation re-running, so this effect
+  // running on every render (since `options` above is a fresh reference
+  // each time) is harmless - it stabilizes once selectedAuthorLogin
+  // genuinely matches what resolveValidAuthorLogin resolves to.
+  useEffect(() => {
+    const validatedLogin = resolveValidAuthorLogin(options, selectedAuthorLogin);
+    if (validatedLogin !== selectedAuthorLogin) {
+      setSelectedAuthorLogin(validatedLogin);
+    }
+  }, [options, selectedAuthorLogin, setSelectedAuthorLogin]);
 
   if (!rows.length) {
     return <p className="stats-empty">No local rows available for author insights.</p>;
@@ -62,7 +86,7 @@ export function AuthorInsightsSelector({ onChange }) {
           id="author-insights-select"
           className="author-insights-select"
           value={selectedAuthorLogin || ''}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => setSelectedAuthorLogin(e.target.value)}
         >
           {options.map((author) => (
             <option key={author.login} value={author.login}>

@@ -1,10 +1,11 @@
 /** @jest-environment jsdom */
 
-const { render, screen, act } = require('@testing-library/react');
+const { render, screen, act, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsSelector } = require('./AuthorInsightsSelector');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { usePrData } = require('../state/PrDataContext');
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
 const OPTIONS = [
@@ -12,11 +13,18 @@ const OPTIONS = [
   { login: 'hubot', name: 'Hubot' },
 ];
 
-const renderSelector = ({ selectedAuthorLogin = '', onChange = () => {}, hasRows = true, buildAuthorInsightsEntries = () => OPTIONS } = {}) =>
+let latestSelectedAuthorLogin;
+function SelectedAuthorLoginProbe() {
+  latestSelectedAuthorLogin = usePrData().selectedAuthorLogin;
+  return null;
+}
+
+const renderSelector = ({ selectedAuthorLogin = '', hasRows = true, buildAuthorInsightsEntries = () => OPTIONS } = {}) =>
   render(
     <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }} initialSelectedAuthorLogin={selectedAuthorLogin}>
       <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, buildAuthorInsightsEntries }}>
-        <AuthorInsightsSelector onChange={onChange} />
+        <SelectedAuthorLoginProbe />
+        <AuthorInsightsSelector />
       </AuthorInsightsContext.Provider>
     </PrDataProvider>,
   );
@@ -43,14 +51,16 @@ describe('AuthorInsightsSelector', () => {
     expect(screen.queryByLabelText('Author')).not.toBeInTheDocument();
   });
 
-  test('given a user selects a different author, when selecting, then onChange fires and the Context-driven value updates', async () => {
-    const onChange = jest.fn((login) => window.updateReactSelectedAuthorLogin(login));
+  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): selecting a different author now writes
+  // setSelectedAuthorLogin (PrDataProvider.jsx) directly - no more
+  // window.selectAuthorInsightsAuthor bridge/onChange prop round-trip.
+  test('given a user selects a different author, when selecting, then the Context-driven value updates', async () => {
     const user = userEvent.setup();
-    renderSelector({ selectedAuthorLogin: 'octocat', onChange });
+    renderSelector({ selectedAuthorLogin: 'octocat' });
 
     await user.selectOptions(screen.getByLabelText('Author'), 'hubot');
 
-    expect(onChange).toHaveBeenCalledWith('hubot');
     expect(screen.getByLabelText('Author')).toHaveValue('hubot');
   });
 
@@ -63,5 +73,23 @@ describe('AuthorInsightsSelector', () => {
     });
 
     expect(screen.getByLabelText('Author')).toHaveValue('hubot');
+  });
+
+  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): this component now owns the validation/fallback rule
+  // pr-author-insights.component.js's renderAuthorInsights used to own
+  // (resolveValidAuthorLogin) - these 2 tests cover the cases that used
+  // to only be reachable through that deleted vanilla pipeline.
+  test('given the previously selected author no longer exists in the current options, when rendering, then it falls back to the first option', async () => {
+    renderSelector({ selectedAuthorLogin: 'someone-removed' });
+
+    await waitFor(() => expect(screen.getByLabelText('Author')).toHaveValue('octocat'));
+  });
+
+  test('given no options at all, when the previously selected author existed, then it clears to empty in Context (not just the rendered empty state)', async () => {
+    renderSelector({ selectedAuthorLogin: 'octocat', buildAuthorInsightsEntries: () => [] });
+
+    expect(screen.getByText('No authors found in the current local data scope.')).toBeInTheDocument();
+    await waitFor(() => expect(latestSelectedAuthorLogin).toBe(''));
   });
 });

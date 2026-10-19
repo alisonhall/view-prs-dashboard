@@ -5,70 +5,29 @@
 // require()/globalThis.ViewPrsRenderApplyHelpers fallback.
 export const { createPrRenderApplyHelpers } = (() => {
   const createPrRenderApplyHelpers = ({
-    renderAuthorInsights,
     computePrDataFingerprint,
     computePrDataManifest,
-    getOptionalElementById,
   } = {}) => {
-    const renderAuthorInsightsSafe =
-      typeof renderAuthorInsights === "function" ? renderAuthorInsights : () => {};
     const computePrDataFingerprintSafe =
       typeof computePrDataFingerprint === "function"
         ? computePrDataFingerprint
         : () => "";
     const computePrDataManifestSafe =
       typeof computePrDataManifest === "function" ? computePrDataManifest : () => ({});
-    const getOptionalElementByIdSafe =
-      typeof getOptionalElementById === "function" ? getOptionalElementById : () => null;
-
-    // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
-    // both panels default to visible (no `#tab-panel-xxx` element = jsdom
-    // unit tests using a bare fixture, or a real page where the panel
-    // hasn't rendered yet) so this only ever *skips* work once a real,
-    // genuinely-hidden panel is confirmed - never silently drops a render
-    // for tests/environments that don't set this markup up.
-    const isTabPanelVisible = (panelId) => {
-      const panel = getOptionalElementByIdSafe(panelId);
-      return !panel || !panel.hidden;
-    };
-
-    // The most recent (allStoredRows, actorsMap) applyRenderResults was
-    // called with - kept so a tab that was hidden during the last render
-    // can catch up with the same data once activated, via
-    // renderAuthorInsightsIfVisible below, without needing its own separate
-    // "what are the current rows" derivation (which would risk drifting
-    // from what the shared pipeline computed). Review Stats no longer
-    // needs an equivalent: ReviewStatsContent (react-app.jsx) recomputes
-    // its own stats straight from PrDataContext's payload on every render,
-    // so there's nothing left to "catch up" on tab activation - see Track C
-    // (REACT_MIGRATION_PLAN.md) for why renderStatsView/
-    // renderStatsViewIfVisible were deleted rather than kept for this.
-    let latestAllStoredRows = [];
-    let latestActorsMap = {};
-
-    const renderAuthorInsightsIfVisible = () => {
-      if (isTabPanelVisible("tab-panel-author-insights")) {
-        renderAuthorInsightsSafe(latestAllStoredRows, latestActorsMap);
-      }
-    };
-
-    // Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for
-    // fresh-payload renders"): for a caller with a direct, authoritative
-    // fresh payload that never goes through applyRenderResults (the only
-    // other place latestAllStoredRows/latestActorsMap get updated) -
-    // without this, renderAuthorInsightsIfVisible would render from
-    // whatever stale rows/actorsMap the full pipeline last left behind,
-    // silently missing the fresh payload. Same allEntries derivation
-    // (Object.values(payload.byPrNumber)) pr-render-context.helpers.js's
-    // captureRenderContext uses, so this stays a real cache update, not
-    // just a one-off render - a later tab switch's own catch-up render
-    // (renderAuthorInsightsIfVisible, triggered via onTabActivated) sees
-    // the same fresh data too.
-    const applyFreshAuthorInsightsIfVisible = (payload) => {
-      latestAllStoredRows = Object.values(payload?.byPrNumber || {});
-      latestActorsMap = payload?.actorsMap || {};
-      renderAuthorInsightsIfVisible();
-    };
+    // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 2): getOptionalElementById (no longer taken as a DI param
+    // either, now unused) / isTabPanelVisible, the
+    // latestAllStoredRows/latestActorsMap cache, and
+    // renderAuthorInsightsIfVisible/applyFreshAuthorInsightsIfVisible are
+    // all deleted - their sole purpose was re-invoking renderAuthorInsights
+    // (pr-author-insights.component.js, deleted outright this phase) once
+    // the Author Insights tab's data changed or became visible.
+    // AuthorInsightsSelector.jsx now derives rows/actorsMap straight from
+    // PrDataContext's own payload and validates/writes selectedAuthorLogin
+    // itself, reactively, on every render - no separate cache or
+    // visibility-gated catch-up render needed, matching how Review Stats'
+    // own renderStatsView/renderStatsViewIfVisible were already retired
+    // for the same reason (see Track C, REACT_MIGRATION_PLAN.md).
 
     // Deferred-items follow-up (full vanilla-to-React sweep, see
     // REACT_MIGRATION_PLAN.md): #data-meta and the "Applied filters: ..."
@@ -96,22 +55,6 @@ export const { createPrRenderApplyHelpers } = (() => {
       allStoredRows,
       filteredRows,
     } = {}) => {
-      const actorsMap = payload?.actorsMap || {};
-
-      // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"):
-      // this used to run in full on every single render regardless of
-      // which data tab the user is actually looking at - a real,
-      // measured cost with no benefit when the tab is hidden. Skipped here
-      // when hidden; whichever tab just became visible gets a fresh render
-      // triggered directly from its tab-click handler (index.page.js, via
-      // renderAuthorInsightsIfVisible below), not tracked as "dirty" here -
-      // simpler and correct, since tab clicks are infrequent and
-      // user-initiated, not part of the hot polling/render path this gate
-      // is optimizing.
-      latestAllStoredRows = allStoredRows;
-      latestActorsMap = actorsMap;
-      renderAuthorInsightsIfVisible();
-
       // Phase 6 (see REACT_MIGRATION_PLAN.md): sectionsHost (#pr-sections)
       // is now exclusively React-owned (smart groups, lifecycle sections,
       // progress indicators, insights expand/collapse state) - the vanilla
@@ -144,8 +87,6 @@ export const { createPrRenderApplyHelpers } = (() => {
 
     return {
       applyRenderResults,
-      renderAuthorInsightsIfVisible,
-      applyFreshAuthorInsightsIfVisible,
     };
   };
 

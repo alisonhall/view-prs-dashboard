@@ -1147,7 +1147,7 @@ function AppRoot() {
           createPortal(
             <AuthorInsightsProvider>
               <Suspense fallback={null}>
-                <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />
+                <AuthorInsightsSelector />
               </Suspense>
             </AuthorInsightsProvider>,
             containers.authorInsightsSelector,

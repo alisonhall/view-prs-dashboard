@@ -272,9 +272,12 @@ export const { createPrAuthorInsightsDisplayHelpers } = (() => {
 // Phase 7 (see REACT_MIGRATION_PLAN.md, navigateToAuthorInsights's own
 // entry): zero-dependency pure function - bare export, no createXHelpers()
 // wrapper needed (same precedent as pr-row-sorting.helpers.js). Shared by
-// pr-author-insights.component.js's renderAuthorInsights (the vanilla
-// render path) and pr-auto-render-navigation.helpers.js's
-// navigateToAuthorInsights (the navigation path), so both validate a
+// useNavigateToAuthorInsights.jsx (state/, the "jump to unsaved author
+// draft" navigation path) and AuthorInsightsSelector.jsx (components/,
+// the Author dropdown's own validation/auto-select-first-author rule,
+// Phase H.17 - see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2 - previously pr-author-insights.component.js's
+// renderAuthorInsights, deleted outright that phase), so both validate a
 // requested author login against the same current options the same way
 // instead of one reimplementing the other's rule.
 export const resolveValidAuthorLogin = (authorOptions, requestedLogin) => {

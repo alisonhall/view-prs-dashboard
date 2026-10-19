@@ -266,13 +266,21 @@ export function PrDataProvider({
   }, []);
 
   // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): the
-  // Author Insights tab's "which author is currently selected" value,
-  // pushed from pr-author-insights.component.js's renderAuthorInsights on
-  // every render (both explicit user picks and its own
-  // auto-select-first-author fallback) - not from the selection handler
-  // alone, since that fallback bypasses it. Read directly by
-  // AuthorInsightsSelector/AuthorInsightsHeader/AuthorCreatedPrsSection/
-  // AuthorInsightsNotesSection/AuthorInsightsCommentsSection.
+  // Author Insights tab's "which author is currently selected" value.
+  // Read directly by AuthorInsightsSelector/AuthorInsightsHeader/
+  // AuthorCreatedPrsSection/AuthorInsightsNotesSection/
+  // AuthorInsightsCommentsSection.
+  //
+  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): this bridge used to be the only write path, pushed from
+  // pr-author-insights.component.js's renderAuthorInsights on every
+  // render (both explicit user picks and its own
+  // auto-select-first-author fallback) - that component is deleted
+  // outright now. AuthorInsightsSelector.jsx owns both explicit picks and
+  // the fallback itself, writing setSelectedAuthorLogin (below) directly
+  // - this bridge has no remaining production caller, kept only as a
+  // test-utility "simulate an external Context write" shortcut (several
+  // test files still use it that way).
   useEffect(() => {
     window.updateReactSelectedAuthorLogin = (login) => {
       setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
