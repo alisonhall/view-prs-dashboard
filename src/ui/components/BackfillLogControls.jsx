@@ -30,9 +30,11 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  * through a window bridge. `window.getBackfillTrackingState()` stays -
  * `isBackfillRunning` is vanilla module state (index.page.js), a different,
  * still-bridged concern out of this phase's scope (see its own plan entry).
- * `window.autoScrollBackfillLogToBottom` itself also stays bridged, for
- * index.page.js's own vanilla orchestrator/initial-auto-load caller - this
- * component no longer needs it, but that caller still does.
+ * `window.autoScrollBackfillLogToBottom` itself (the bridge) is deleted -
+ * confirmed to have no remaining readers (cluster-4 cleanup, see
+ * REACT_MIGRATION_PLAN.md, "Remaining-effort audit"). index.page.js's own
+ * loadBackfillStatus still auto-scrolls internally via the local
+ * autoScrollBackfillLogToBottom function directly, not through a bridge.
  *
  * @module components/BackfillLogControls
  */

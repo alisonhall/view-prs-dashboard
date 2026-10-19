@@ -496,10 +496,9 @@ const installAutoRenderBlockingProviderBridge = () => {
 // refreshBackfillStatus/refreshBackfillLogTail directly - this harness now
 // calls useBackfillActions() itself, same as react-app.jsx does, so those
 // 3 bridges have no remaining caller and were deleted from index.page.js.
-// (window.autoScrollBackfillLogToBottom stayed bridged even then, for
-// index.page.js's own vanilla caller - Phase G.4, see
-// REACT_MIGRATION_PLAN.md, closed this harness's/BackfillLogControls.jsx's
-// own need for it specifically, not that bridge itself.)
+// (window.autoScrollBackfillLogToBottom itself is now deleted outright too
+// - cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit" - confirmed to have no remaining readers anywhere.)
 const DEFAULT_BACKFILL_BUTTON_STATE = {
   startDisabled: false,
   stopDisabled: false,

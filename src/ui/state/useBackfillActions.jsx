@@ -49,9 +49,11 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  * logUpdateTick prop changing (bumped on every log refresh, see
  * react-app.jsx's own comment), so this hook's React-rendering-path
  * caller no longer needs the window.autoScrollBackfillLogToBottom bridge
- * at all. index.page.js's own
- * instance of this same factory still passes the real bridge, for its own
- * vanilla (non-React) caller.
+ * at all. index.page.js's own instance of this same factory still passes
+ * the real local scroll function directly (not through a bridge) for its
+ * own vanilla (non-React) caller - the bridge itself is deleted outright
+ * (cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
+ * audit"), confirmed to have had no readers.
  *
  * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * setStatusMessage now writes statusText via useStatusText() directly

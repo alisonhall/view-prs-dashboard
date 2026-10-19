@@ -1447,14 +1447,15 @@ const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillAct
 // handleBackfillAction/a refreshBackfillStatus/refreshBackfillLogTail
 // wrapper pair/autoScrollBackfillLogToBottom via window.* bridges - they
 // now call state/useBackfillActions.jsx's own hook directly instead, which
-// builds its own instance of this same factory. window.autoScrollBackfillLogToBottom
-// stays bridged (that hook's own DI param reads it) - it's a genuine
-// "vanilla primitive exposed for React" case (real DOM scroll/checkbox
-// state), not a trigger duplication.
-if (typeof window !== "undefined") {
-  window.autoScrollBackfillLogToBottom = (...args) =>
-    autoScrollBackfillLogToBottom(...args);
-}
+// builds its own instance of this same factory.
+// Cluster-4 cleanup (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit"): window.autoScrollBackfillLogToBottom itself (the bridge, not
+// the local autoScrollBackfillLogToBottom function below, still used
+// internally by this file's own loadBackfillStatus factory instance) had
+// zero remaining readers - BackfillLogControls.jsx now owns scroll-sync
+// itself via a ref (Phase G.4), and useBackfillActions.jsx's own factory
+// instance passes a no-op for this DI param, not this bridge - deleted
+// outright.
 
 // Action Log's fetch/render is React-owned (ActionLogSection.jsx, mounted
 // into #action-log-container) - this just forwards to the bridge it
@@ -2821,9 +2822,10 @@ const initPage = () => {
   // auto-scroll checkbox are React-owned now (BackfillControls.jsx/
   // BackfillLogControls.jsx) - no vanilla wiring needed here anymore.
   // Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced their window.* bridges
-  // with useBackfillActions.jsx (state/) - window.autoScrollBackfillLogToBottom
-  // stays bridged (that hook's own DI param reads it; a real DOM
-  // scroll/checkbox primitive, not a trigger duplication).
+  // with useBackfillActions.jsx (state/) - that hook's own DI param for
+  // auto-scroll is a no-op (Phase G.4), not window.autoScrollBackfillLogToBottom,
+  // which is itself deleted outright (cluster-4 cleanup, see
+  // REACT_MIGRATION_PLAN.md, "Remaining-effort audit") - confirmed dead.
 
   const actionLogRefreshBtn = getOptionalElementById("action-log-refresh-btn");
   if (actionLogRefreshBtn) {
