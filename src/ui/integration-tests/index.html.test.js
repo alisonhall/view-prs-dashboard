@@ -4775,7 +4775,9 @@ describe("index page rendering with Testing Library", () => {
     const includePendingCommentsToggle = document.getElementById("attention-include-pending-comments");
     includePendingCommentsToggle.checked = false;
     syncFilterStateFromElement(includePendingCommentsToggle, "attentionIncludePendingComments");
-    await user.selectOptions(document.getElementById("attention-no-activity-mode"), "all");
+    const noActivityModeSelect = document.getElementById("attention-no-activity-mode");
+    await user.selectOptions(noActivityModeSelect, "all");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
 
     const includeDraftChangedToggle = document.getElementById(
       "attention-include-draft-changed",
