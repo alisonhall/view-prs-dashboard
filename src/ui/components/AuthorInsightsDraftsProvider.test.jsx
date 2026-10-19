@@ -4,6 +4,7 @@ const { render, cleanup, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { useAuthorInsightsDrafts } = require('../state/AuthorInsightsDraftsContext');
+const { PrDataProvider } = require('../state/PrDataProvider');
 const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render-blocking.helpers.js');
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): closes a real coverage gap for
@@ -18,11 +19,18 @@ function Probe() {
   return null;
 }
 
+// Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 2): AuthorInsightsDraftsProvider now also reads
+// usePrData().beginRequestActivity (for its new saveManualComment/
+// updateManualComment) - needs a real <PrDataProvider> ancestor, which
+// this probe didn't require before.
 const renderProbe = () =>
   render(
-    <AuthorInsightsDraftsProvider>
-      <Probe />
-    </AuthorInsightsDraftsProvider>,
+    <PrDataProvider>
+      <AuthorInsightsDraftsProvider>
+        <Probe />
+      </AuthorInsightsDraftsProvider>
+    </PrDataProvider>,
   );
 
 describe('AuthorInsightsDraftsProvider', () => {

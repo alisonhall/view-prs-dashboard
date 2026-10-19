@@ -20,6 +20,14 @@
  * Genuinely component-local UI state (composerSaving/composerStatus/
  * loadState/comments/editingCommentId) stays as local useState.
  *
+ * Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): handleSaveComment/EditForm's handleSave call
+ * drafts.saveManualComment/updateManualComment (AuthorInsightsDraftsProvider.jsx)
+ * directly now, not window.saveAuthorManualComment/updateAuthorManualComment
+ * (deleted outright) - same underlying fetch calls, just reached via the
+ * Context this component already consumes for draft state, instead of a
+ * window.* round-trip back into index.page.js.
+ *
  * @module components/AuthorInsightsCommentsSection
  *
  * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -77,7 +85,7 @@ function EditForm({ login, comment, onDone }) {
     setSaving(true);
     setStatus('Saving...');
     try {
-      const { response, result } = await window.updateAuthorManualComment({
+      const { response, result } = await drafts.updateManualComment({
         authorLogin: login,
         id: commentId,
         note: draft.note,
@@ -223,7 +231,7 @@ export function AuthorInsightsCommentsSection() {
     setComposerSaving(true);
     setComposerStatus('Saving...');
     try {
-      const { response, result } = await window.saveAuthorManualComment({
+      const { response, result } = await drafts.saveManualComment({
         authorLogin: login,
         note,
         sentiment: composerDraft.sentiment,

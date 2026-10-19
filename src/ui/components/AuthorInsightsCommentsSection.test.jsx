@@ -53,8 +53,6 @@ describe('AuthorInsightsCommentsSection', () => {
   afterEach(() => {
     delete global.fetch;
     delete window.recomputeDirtyPrSectionsFields;
-    delete window.saveAuthorManualComment;
-    delete window.updateAuthorManualComment;
   });
 
   test('given no selected author, when rendering, then nothing renders', () => {
@@ -108,11 +106,22 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(screen.getByText('Comment note is required')).toBeInTheDocument();
   });
 
+  // Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.saveAuthorManualComment/updateAuthorManualComment
+  // are deleted outright - drafts.saveManualComment/updateManualComment
+  // (AuthorInsightsDraftsProvider.jsx) call the real postJson/fetchFn
+  // helpers now, so these tests mock global.fetch by HTTP method instead
+  // of stubbing a window.* bridge.
   test('given a valid composer note, when Save comment succeeds, then the comment list updates and "Saved." shows', async () => {
     const user = userEvent.setup();
-    window.saveAuthorManualComment = jest.fn().mockResolvedValue({
-      response: { ok: true },
-      result: { ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, comments: [] }) });
     });
 
     renderSection('octocat');
@@ -120,14 +129,25 @@ describe('AuthorInsightsCommentsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Save comment' }));
 
     await waitFor(() => expect(screen.getByText('Saved.')).toBeInTheDocument());
-    expect(window.saveAuthorManualComment).toHaveBeenCalledWith({ authorLogin: 'octocat', note: 'Nice work', sentiment: 'neutral' });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/author-comments',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ authorLogin: 'octocat', note: 'Nice work', sentiment: 'neutral' }),
+      }),
+    );
     expect(screen.getByText('Nice work')).toBeInTheDocument();
     expect(window.getAuthorManualCommentsForLogin('octocat')).toHaveLength(1);
   });
 
   test('given a save failure, when Save comment is clicked, then the error message shows', async () => {
     const user = userEvent.setup();
-    window.saveAuthorManualComment = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: false, error: 'Save failed' } });
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: false, error: 'Save failed' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, comments: [] }) });
+    });
 
     renderSection('octocat');
     await user.type(screen.getByPlaceholderText('Add a manual comment about this author...'), 'Nice work');
@@ -138,7 +158,6 @@ describe('AuthorInsightsCommentsSection', () => {
 
   test('given a saved comment, when Edit then Cancel is clicked, then no network call happens and the read-only view is restored', async () => {
     const user = userEvent.setup();
-    window.updateAuthorManualComment = jest.fn();
     // Seeding via the real initial fetch (not a post-mount window.*
     // bridge call) - AuthorInsightsCommentsSection only re-reads the
     // drafts Context's manual-comments cache at specific trigger points
@@ -165,20 +184,25 @@ describe('AuthorInsightsCommentsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
 
+    global.fetch.mockClear();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('Original text')).toBeInTheDocument();
-    expect(window.updateAuthorManualComment).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('given a saved comment, when edited and Save changes succeeds, then the comment list updates via the PUT bridge', async () => {
+  test('given a saved comment, when edited and Save changes succeeds, then the comment list updates via the PUT call', async () => {
     const user = userEvent.setup();
-    window.updateAuthorManualComment = jest.fn().mockResolvedValue({
-      response: { ok: true },
-      result: { ok: true, comments: [{ id: 'c1', note: 'Updated text', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
-    });
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }] }),
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Updated text', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }] }),
+      });
     });
 
     render(
@@ -200,7 +224,13 @@ describe('AuthorInsightsCommentsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(screen.getByText('Updated text')).toBeInTheDocument());
-    expect(window.updateAuthorManualComment).toHaveBeenCalledWith({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/author-comments',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' }),
+      }),
+    );
     expect(window.getAuthorManualCommentsForLogin('octocat')[0].note).toBe('Updated text');
   });
 

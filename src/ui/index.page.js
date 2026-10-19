@@ -1640,30 +1640,18 @@ if (typeof window !== "undefined") {
   // Assigning them here too would create direct recursion with this
   // file's own fresh-reading proxy consts of the same names (see those
   // consts' own comment, above) - this file is no longer their source.
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
-  // untracked - wrapped the same way every other tracked action is, so a
-  // genuinely slow save becomes visible instead of just sitting silent.
-  window.saveAuthorManualComment = async ({ authorLogin, note, sentiment }) => {
-    const finishActivity = beginRequestActivity("authorComment");
-    try {
-      return await prAuthorInsightsDataHelpers.saveAuthorManualComment({
-        authorLogin,
-        note,
-        sentiment,
-        postJson: (...args) => postJson(...args),
-      });
-    } finally {
-      finishActivity();
-    }
-  };
-  window.updateAuthorManualComment = async (args) => {
-    const finishActivity = beginRequestActivity("authorComment");
-    try {
-      return await prAuthorInsightsDataHelpers.updateAuthorManualComment(args);
-    } finally {
-      finishActivity();
-    }
-  };
+  // Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.saveAuthorManualComment/updateAuthorManualComment
+  // (this block used to assign both here, wrapping
+  // prAuthorInsightsDataHelpers.saveAuthorManualComment/
+  // updateAuthorManualComment with the same beginRequestActivity tracking)
+  // are deleted outright - AuthorInsightsCommentsSection.jsx's own 2
+  // callers now go straight through AuthorInsightsDraftsProvider.jsx's new
+  // saveManualComment/updateManualComment, which wrap the exact same pure
+  // helpers (that Provider already builds its own dataHelpers instance of
+  // this same factory) with usePrData().beginRequestActivity instead of
+  // this file's own copy - one real owner, not two independent bridge
+  // paths to the same underlying fetch calls.
 }
 
 const {

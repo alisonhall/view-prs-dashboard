@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthorInsightsDraftsContext } from '../state/AuthorInsightsDraftsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
+import { usePrData } from '../state/PrDataContext';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.js';
+import { postJson } from '../helpers/pr-http.helpers.js';
 
 /**
  * Phase 7 (see REACT_MIGRATION_PLAN.md): owns the Author Insights manual-
@@ -18,6 +20,18 @@ import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights
  * via a version tick" pattern MultiSelectListPortals.jsx's own pendingTick
  * already established in this codebase - cheaper and lower-risk than
  * reimplementing this CRUD surface as a reducer over real useState.
+ *
+ * Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): also owns saveManualComment/updateManualComment now -
+ * index.page.js's own window.saveAuthorManualComment/
+ * updateAuthorManualComment bridges (deleted outright) used to wrap this
+ * same dataHelpers instance's saveAuthorManualComment/
+ * updateAuthorManualComment with beginRequestActivity("authorComment")
+ * tracking; this Provider does the identical wrapping itself, reading
+ * beginRequestActivity from usePrData() (this Provider is mounted inside
+ * <PrDataProvider>, a genuine descendant) instead of index.page.js's own
+ * module-level copy. AuthorInsightsCommentsSection.jsx calls these two
+ * directly via useAuthorInsightsDrafts() now, no window.* round-trip.
  *
  * Publishes the same window.* bridge names index.page.js used to, now
  * backed by this Context, because 2 vanilla subsystems need to read
@@ -73,6 +87,7 @@ export function AuthorInsightsDraftsProvider({ children }) {
   // open edit form. A ref keeps every callback below stable for this
   // Provider's entire mount, exactly like NotesDirtyProvider's own
   // permanently-stable callbacks.
+  const { beginRequestActivity } = usePrData();
   const { normalizeActorLogin } = useActorIdentity();
   const normalizeActorLoginRef = useRef(normalizeActorLogin);
   normalizeActorLoginRef.current = normalizeActorLogin;
@@ -182,6 +197,28 @@ export function AuthorInsightsDraftsProvider({ children }) {
       }),
     [dataHelpers, bump],
   );
+  const saveManualComment = useCallback(
+    async ({ authorLogin, note, sentiment }) => {
+      const finishActivity = beginRequestActivity('authorComment');
+      try {
+        return await dataHelpers.saveAuthorManualComment({ authorLogin, note, sentiment, postJson });
+      } finally {
+        finishActivity();
+      }
+    },
+    [dataHelpers, beginRequestActivity],
+  );
+  const updateManualComment = useCallback(
+    async (args) => {
+      const finishActivity = beginRequestActivity('authorComment');
+      try {
+        return await dataHelpers.updateAuthorManualComment(args);
+      } finally {
+        finishActivity();
+      }
+    },
+    [dataHelpers, beginRequestActivity],
+  );
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md): a dedicated read bridge, not
   // individual getters - pr-auto-render-blocking.helpers.js's
@@ -253,6 +290,8 @@ export function AuthorInsightsDraftsProvider({ children }) {
       setManualComments,
       getManualCommentsLoadState,
       loadManualComments,
+      saveManualComment,
+      updateManualComment,
       getDraftsSnapshot,
     }),
     [
@@ -267,6 +306,8 @@ export function AuthorInsightsDraftsProvider({ children }) {
       setManualComments,
       getManualCommentsLoadState,
       loadManualComments,
+      saveManualComment,
+      updateManualComment,
       getDraftsSnapshot,
     ],
   );
