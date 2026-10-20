@@ -16,7 +16,6 @@ import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.he
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
 import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
 import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
-import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-cache.helpers.js";
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
@@ -452,23 +451,17 @@ if (typeof window !== "undefined") {
   window.handleRequestMoreMerged = (...args) => handleRequestMoreMerged(...args);
 }
 
-const { applyFiltersFromCache } =
-  prApplyFiltersCacheHelperFactory.createPrApplyFiltersCacheHelpers({
-    // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md):
-    // prefers the same payload the visible React table is currently
-    // showing (via PrDataProvider's window.getReactPrTablePayload read
-    // bridge) over the raw, always-freshest latestStoredPayload - correct
-    // for this consumer specifically, since a filter re-application should
-    // respect the same "don't disturb an in-progress edit" deferral
-    // pollForDataChanges already gives the visible table, not silently
-    // filter data the user can't see yet. Falls back to the vanilla
-    // variable before React has mounted.
-    getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    renderPrData: (...args) => renderPrData(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-    logError: (...args) => console.error(...args),
-  });
+// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): applyFiltersFromCache (and the "Apply filters (local)"
+// button/debounced-field-change triggers that called it) is deleted
+// outright - a dedicated research pass, then an empirical "stub both
+// bridges to no-ops, run the full suite" re-check against the current
+// (post-H.23) code, confirmed zero remaining dependents: every real
+// feature this used to drive (row filters, Needs Attention icons, the
+// Review Conversations thread-resolution warning) is independently live
+// via Context now, and calling renderPrData with an unchanged payload
+// only forces a wasteful whole-app re-render, nothing else. See Phase
+// H.26's own plan entry for the full writeup.
 
 // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): the real, still-live reason this survives the rest of the
@@ -1655,15 +1648,15 @@ if (typeof window !== "undefined") {
 // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn are
 // React-owned (RunScriptActionButton.jsx, react-app.jsx) and now call real
 // hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) instead of a
-// window.* bridge. #refresh-labels-btn/#apply-filters-btn are the 2
-// deliberate exceptions still reached via window.* - see
-// useRefreshAvailableRepoLabels.jsx's own comment for why, and
-// window.persistViewFilterOptionOverrides/applyFiltersFromCache's own
-// Phase E history for the second.
+// window.* bridge. #refresh-labels-btn is the 1 deliberate exception still
+// reached via window.* - see useRefreshAvailableRepoLabels.jsx's own
+// comment for why. #apply-filters-btn (the former other exception) is
+// gone entirely - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-
+// effort audit", cluster 1) deleted the button along with
+// window.applyFiltersFromCache, its last remaining caller.
 if (typeof window !== "undefined") {
   window.refreshAvailableRepoLabels = (...args) =>
     refreshAvailableRepoLabels(...args);
-  window.applyFiltersFromCache = (...args) => applyFiltersFromCache(...args);
 }
 
 /**
@@ -2049,42 +2042,30 @@ const initPage = () => {
     // Ignore startup scheduler fetch failures; the next poll will retry.
   });
   
-  // PERFORMANCE OPTIMIZATION: Debounce filter changes to reduce re-renders
-  // When changing multiple filters rapidly, only re-render once after changes stop
-  let filterChangeDebounceTimer = null;
-  const debouncedApplyFilters = () => {
-    if (filterChangeDebounceTimer) {
-      clearTimeout(filterChangeDebounceTimer);
-    }
-    filterChangeDebounceTimer = setTimeout(() => {
-      applyFiltersFromCache();
-    }, 150); // 150ms feels instant but batches rapid changes
-  };
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): exposed so FilterStateProvider
-  // (react-app.jsx) can trigger the same debounced apply for its own
-  // Context-owned fields (scope-mode/always-show-in-review so far) - this
-  // is still the one function actually doing the debounce+apply; only
-  // *what triggers it* for those fields has moved off the vanilla
-  // delegated "change" listener.
-  window.debouncedApplyFilters = debouncedApplyFilters;
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): debouncedApplyFilters/window.debouncedApplyFilters are
+  // deleted outright, along with the "Apply filters (local)" button
+  // (window.applyFiltersFromCache, react-app.jsx) that called it - the
+  // re-filtering it used to (redundantly) trigger has been live via
+  // Context for a while now. That button's OTHER call,
+  // window.persistViewFilterOptionOverrides?.(), was quietly the *only*
+  // save trigger for 9 fields below (scope-mode/filter-pr-numbers/
+  // always-show-in-review/5 attention-* checkboxes/attention-no-activity-mode)
+  // and the 5 multi-select lists further down (label/exclude-label/author/
+  // assigned/approver) - confirmed by a Playwright test that deliberately
+  // persists via a raw API call specifically to avoid "checking boxes and
+  // clicking that button". Each of those 14 fields/lists gets its own
+  // auto-persist-on-change call below now, matching how
+  // attention-author-thread-resolution-mode/the 2 change-filter fields/the
+  // other 4 multi-select lists already auto-persisted - removing the
+  // button is a pure UI cleanup now, not a persistence regression.
 
-  // Delegated on the form (a stable ancestor never replaced by React) for
-  // every field below rather than attached to each field directly:
-  // several of these (scope-mode, filter-pr-numbers, always-show-in-review,
-  // the five attention-* checkboxes, attention-no-activity-mode,
-  // attention-author-thread-resolution-mode) are React-owned fields (see
-  // Phase 2 in REACT_MIGRATION_PLAN.md), and ReactDOM.createRoot().render()
-  // creates a fresh DOM node when it mounts - a listener already attached
-  // directly to the pre-mount static/fallback node is silently orphaned
-  // rather than firing on the field React now owns, since it mounts
-  // *after* this code runs (a classic script, run before react-app.jsx's
-  // deferred module graph finishes loading). The native "change" event
-  // still bubbles up to the form regardless of which side rendered the
-  // target field, so this single delegated listener is immune to that
-  // node-replacement timing entirely - do not revert to direct
-  // addEventListener calls on these ids without re-reading that section of
-  // the plan doc.
-  const debouncedApplyOnChangeIds = new Set([
+  // Delegated on the form (a stable ancestor never replaced by React) -
+  // every field below just persists its own value on change now; see
+  // Phase 2 in REACT_MIGRATION_PLAN.md for why this file still reads
+  // these React-owned fields' change events via the form instead of a
+  // direct listener (ReactDOM's own node-replacement timing).
+  const persistOnChangeIds = new Set([
     "scope-mode",
     "filter-pr-numbers",
     "always-show-in-review",
@@ -2094,34 +2075,34 @@ const initPage = () => {
     "attention-include-draft-changed",
     "attention-include-draft-no-activity",
     "attention-no-activity-mode",
+    "attention-author-thread-resolution-mode",
+    "change-filter-use-builtin-merge-pattern",
+    "change-filter-ignore-commit-patterns",
+    // Phase 7, sub-phase 7.4's own "persistence-gap fix" (see
+    // REACT_MIGRATION_PLAN.md): these 6 were deliberately excluded from
+    // auto-apply-on-change (unrelated to persistence), but always relied
+    // on "Apply filters (local)" as their only persist trigger - now that
+    // the button is gone (Phase H.26), they need the same auto-persist
+    // every other field here gets, or they'd never save at all.
+    "filter-custom-comments",
+    "filter-other-notes",
+    "filter-pr-difficulty",
+    "filter-rally-stories",
+    "filter-rally-links",
+    "filter-analysis-of-pr",
   ]);
   const runScriptForm = getOptionalElementById("run-script-form");
   if (runScriptForm) {
     runScriptForm.addEventListener("change", (event) => {
       const targetId = event.target?.id;
-      if (!targetId) {
-        return;
-      }
-      if (targetId === "attention-author-thread-resolution-mode") {
+      if (targetId && persistOnChangeIds.has(targetId)) {
         void window.persistViewFilterOptionOverrides?.();
-        debouncedApplyFilters();
-        return;
-      }
-      if (
-        targetId === "change-filter-use-builtin-merge-pattern" ||
-        targetId === "change-filter-ignore-commit-patterns"
-      ) {
-        void window.persistViewFilterOptionOverrides?.();
-        debouncedApplyFilters();
-        return;
-      }
-      if (debouncedApplyOnChangeIds.has(targetId)) {
-        debouncedApplyFilters();
       }
     });
   }
 
-  // Add event listeners to checkboxes in multi-select filter groups
+  // Add event listeners to checkboxes in multi-select filter groups, to
+  // persist their checked state.
   [
     "label-list",
     "exclude-label-list",
@@ -2143,26 +2124,18 @@ const initPage = () => {
           // redundant, since MultiSelectCheckboxList.jsx's own React
           // state already reacts to this same checkbox's onChange and
           // re-renders the summary text as part of its own render cycle.
-          if (
-            listId === "attention-author-thread-resolution-allow-list" ||
-            listId === "attention-author-thread-resolution-deny-list" ||
-            listId === "change-filter-ignore-comment-authors-list" ||
-            listId === "change-filter-ignore-review-authors-list"
-          ) {
-            void window.persistViewFilterOptionOverrides?.();
-          }
-          debouncedApplyFilters(); // Use debounced version for multi-select changes
+          void window.persistViewFilterOptionOverrides?.();
         }
       });
     }
   });
 
   // change-filter-use-builtin-merge-pattern's and
-  // change-filter-ignore-commit-patterns' "change" -> persist + apply are
-  // now handled by the delegated listener on #run-script-form above (see
-  // the special-case branch for their ids) - Phase 2, see
-  // REACT_MIGRATION_PLAN.md gotcha #3. Do not re-add a direct
-  // addEventListener for either once they're React-owned.
+  // change-filter-ignore-commit-patterns' "change" -> persist is now
+  // handled by the delegated listener on #run-script-form above (part of
+  // persistOnChangeIds) - Phase 2, see REACT_MIGRATION_PLAN.md gotcha #3.
+  // Do not re-add a direct addEventListener for either once they're
+  // React-owned.
 
   setupMultiSelectDropdownClosing();
 
@@ -2178,14 +2151,16 @@ const initPage = () => {
   // wiring needed here anymore.
   // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn/
-  // #refresh-labels-btn/#apply-filters-btn are React-owned now
-  // (RunScriptActionButton.jsx, react-app.jsx) - no vanilla wiring needed
-  // here anymore. Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced 4 of
-  // their 5 window.* bridges with real hooks (useRunScript.jsx/
-  // useAckLabelActions.jsx, state/) - only window.applyFiltersFromCache
-  // and window.refreshAvailableRepoLabels (a deliberate exception, see
-  // useRefreshAvailableRepoLabels.jsx's own comment) are still reached via
-  // window.* from react-app.jsx.
+  // #refresh-labels-btn were React-owned (RunScriptActionButton.jsx,
+  // react-app.jsx) - no vanilla wiring needed here anymore. Phase D.2 (see
+  // REACT_MIGRATION_PLAN.md) replaced 4 of their window.* bridges with
+  // real hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) - only
+  // window.refreshAvailableRepoLabels (a deliberate exception, see
+  // useRefreshAvailableRepoLabels.jsx's own comment) is still reached via
+  // window.* from react-app.jsx. #apply-filters-btn (the 5th) is gone
+  // entirely now - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-
+  // effort audit", cluster 1) deleted the button along with
+  // window.applyFiltersFromCache, its last remaining caller.
   // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
   // 3 backfill action buttons, the log-refresh button, and the
   // auto-scroll checkbox are React-owned now (BackfillControls.jsx/

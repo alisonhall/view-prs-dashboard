@@ -37,7 +37,6 @@ describe('ContextFilterCheckbox', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds false for this key, when rendering, then starts unchecked', () => {

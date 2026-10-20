@@ -85,7 +85,6 @@ describe('FilterStateProvider', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
     jest.useRealTimers();
   });
 
@@ -146,116 +145,15 @@ describe('FilterStateProvider', () => {
     expect(window.getFilterStateValues().scopeMode).toBe('needs-attention');
   });
 
-  test('given a value change, when 150ms pass with no further change, then window.debouncedApplyFilters is called exactly once', async () => {
-    window.debouncedApplyFilters = jest.fn();
-    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    await user.click(screen.getByText('change scope'));
-    act(() => {
-      jest.advanceTimersByTime(150);
-    });
-
-    expect(window.debouncedApplyFilters).toHaveBeenCalledTimes(1);
-  });
-
-  test('given a change to one of the Slice 2 attention fields, when 150ms pass, then window.debouncedApplyFilters is called', () => {
-    window.debouncedApplyFilters = jest.fn();
-    render(
-      <FilterStateProviderWithSelectionContexts
-        initialValues={{
-          scopeMode: 'all',
-          alwaysShowInReview: false,
-          attentionNoActivityMode: 'all',
-          attentionIncludePendingComments: false,
-        }}
-      >
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    act(() => {
-      window.setFilterStateValue('attentionIncludePendingComments', true);
-    });
-    act(() => {
-      jest.advanceTimersByTime(150);
-    });
-
-    expect(window.debouncedApplyFilters).toHaveBeenCalledTimes(1);
-  });
-
-  test('given a change to filterPrNumbers or attentionAuthorThreadResolutionMode (Slice 5), when 150ms pass, then window.debouncedApplyFilters is called', () => {
-    window.debouncedApplyFilters = jest.fn();
-    render(
-      <FilterStateProviderWithSelectionContexts
-        initialValues={{
-          scopeMode: 'all',
-          alwaysShowInReview: false,
-          filterPrNumbers: '',
-          attentionAuthorThreadResolutionMode: 'allow-all',
-        }}
-      >
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    act(() => {
-      window.setFilterStateValue('filterPrNumbers', '42');
-    });
-    act(() => {
-      jest.advanceTimersByTime(150);
-    });
-
-    expect(window.debouncedApplyFilters).toHaveBeenCalledTimes(1);
-  });
-
-  test('given no value change, when mounting, then window.debouncedApplyFilters is never called', () => {
-    window.debouncedApplyFilters = jest.fn();
-    render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    expect(window.debouncedApplyFilters).not.toHaveBeenCalled();
-  });
-
-  test('given rapid successive changes, when they happen within 150ms of each other, then window.debouncedApplyFilters is called only once (debounced)', () => {
-    window.debouncedApplyFilters = jest.fn();
-    render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    // Each setFilterStateValue call is its own act() (its own commit +
-    // effect flush), matching two separate real user interactions - a
-    // single act() covering both would let React batch them into one
-    // render, which wouldn't actually exercise "cancel the pending timer
-    // and reschedule" the way two distinct changes do in the browser.
-    act(() => {
-      window.setFilterStateValue('scopeMode', 'last-run');
-    });
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    act(() => {
-      window.setFilterStateValue('scopeMode', 'needs-attention');
-    });
-    act(() => {
-      jest.advanceTimersByTime(150);
-    });
-
-    expect(window.debouncedApplyFilters).toHaveBeenCalledTimes(1);
-  });
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): the 5 tests that used to live here asserted on
+  // window.debouncedApplyFilters's own call count/timing - that bridge
+  // (and the useDebouncedEffect call in FilterStateProvider.jsx that fired
+  // it) is deleted outright, confirmed to have had zero remaining real
+  // effect. Removed rather than rewritten, since there's no replacement
+  // mechanism to assert on - this file's own debounced-timer test
+  // infrastructure (fake timers, userEvent's advanceTimers option) stays,
+  // still needed by the tests above/below that aren't about this bridge.
 
   test('given unmount, when the component unmounts, then the window bridges are removed', () => {
     const { unmount } = render(

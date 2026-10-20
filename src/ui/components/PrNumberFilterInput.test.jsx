@@ -31,7 +31,6 @@ describe('PrNumberFilterInput', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds an empty value, when rendering, then renders an empty input with the expected id/name', () => {

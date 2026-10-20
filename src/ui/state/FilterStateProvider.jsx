@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { FilterStateContext } from './FilterStateContext';
-import { useDebouncedEffect } from './useDebouncedCallback';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSelectionContext';
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.js';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.js';
 import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.js';
-
-const DEBOUNCE_MS = 150;
 
 // Built once, not per-render - zero per-instance dependency other than the
 // real fetch (same "stable, zero-per-render-state" precedent as
@@ -57,11 +54,12 @@ const CHECKBOX_FIELD_IDS = [
 /**
  * Phase 6 (see REACT_MIGRATION_PLAN.md): owns the Context state for every
  * filter field migrated off the vanilla DOM-is-the-source-of-truth
- * pattern, and replaces `filterChangeDebounceTimer`/`debouncedApplyFilters`
- * (index.page.js) for exactly those fields - the debounced effect below
- * calls `window.debouncedApplyFilters()` (still the same vanilla function;
- * only *what triggers it* for these fields has moved) whenever `values`
- * changes, skipping the initial mount.
+ * pattern. Used to also replace `filterChangeDebounceTimer`/
+ * `debouncedApplyFilters` (index.page.js) for exactly these fields via a
+ * mirrored debounced effect - Phase H.26 (see REACT_MIGRATION_PLAN.md,
+ * "Remaining-effort audit", cluster 1) deleted that bridge and this
+ * file's own effect calling it outright, confirmed to have had zero
+ * remaining real effect.
  *
  * Exposes `window.getFilterStateValues()`/`window.setFilterStateValue(key, value)`
  * so vanilla code (the render pipeline's DOM-read call sites) can read/write
@@ -452,37 +450,17 @@ export function FilterStateProvider({ initialValues, children }) {
     };
   }, [setValue, persistRunScriptOptions, persistViewFilterOptions]);
 
-  // Every key here matches a field in index.page.js's `debouncedApplyOnChangeIds`
-  // Set (i.e. one that already auto-applies on change under the vanilla
-  // mechanism) - as more fields migrate onto this Context, add their key
-  // here too so changing them still triggers a debounced apply.
-  // changeFilterUseBuiltinMergePattern/changeFilterIgnoreCommitPatterns
-  // are special cases with their own auto-*persist*-on-change behavior
-  // too (not just apply) - that stays owned entirely by the delegated
-  // `#run-script-form` listener (index.page.js), unaffected by Context
-  // migration since it reacts to the same real native "change" event
-  // either way; they're listed here only for the same "harmless
-  // double-hookup" consistency every other auto-apply field gets.
-  useDebouncedEffect(
-    () => {
-      window.debouncedApplyFilters?.();
-    },
-    [
-      values.scopeMode,
-      values.alwaysShowInReview,
-      values.attentionNoActivityMode,
-      values.attentionIncludePendingComments,
-      values.attentionIgnoreMergeOnlyCommits,
-      values.attentionIncludeClosedMerged,
-      values.attentionIncludeDraftChanged,
-      values.attentionIncludeDraftNoActivity,
-      values.filterPrNumbers,
-      values.attentionAuthorThreadResolutionMode,
-      values.changeFilterUseBuiltinMergePattern,
-      values.changeFilterIgnoreCommitPatterns,
-    ],
-    DEBOUNCE_MS,
-  );
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): the useDebouncedEffect call that used to live here,
+  // triggering window.debouncedApplyFilters() 150ms after any of 12
+  // listed fields changed, is deleted outright - that bridge (and the
+  // "Apply filters (local)" button/vanilla delegated-listener triggers
+  // that also called it) is gone entirely now, confirmed to have had zero
+  // remaining real effect once renderPrData's own dead pipeline was
+  // removed in H.23 (row filters/Needs Attention/the Review Conversations
+  // thread-resolution warning are all independently live via Context
+  // already). This was the only real purpose of this effect, so the
+  // whole effect goes, not just the inner call.
 
   return (
     <FilterStateContext.Provider value={{ values, setValue }}>

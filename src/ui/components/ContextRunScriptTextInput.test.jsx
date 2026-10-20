@@ -31,7 +31,6 @@ describe('ContextRunScriptTextInput', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds a value, when rendering, then the input starts with it', () => {

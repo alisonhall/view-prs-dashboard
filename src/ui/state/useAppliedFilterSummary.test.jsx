@@ -159,7 +159,6 @@ describe('useAppliedFilterSummary', () => {
     afterEach(() => {
       delete window.getFilterStateValues;
       delete window.setFilterStateValue;
-      delete window.debouncedApplyFilters;
       jest.useRealTimers();
     });
 

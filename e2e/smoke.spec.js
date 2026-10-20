@@ -21,24 +21,26 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
  * file small.
  */
 
-// "Apply filters (local)" persists via a fire-and-forget PUT
-// (`void persistViewFilterOptionOverrides()` in index.page.js) - it
-// doesn't block the click handler, so a fixed `waitForTimeout` after
-// clicking is a race: real webServer/network latency can make the PUT
-// land after the next step already ran. Since this suite's webServer is
-// one long-lived process shared by every test (see playwright.config.js's
-// isolation comment), a persisted value a test leaves behind by ending
-// before its own PUT actually completed doesn't just risk flaking that
-// test - it can silently change what a *later*, unrelated test sees on
-// its own fresh page load. Wait for the real response instead.
-const clickApplyFiltersAndWaitForPersist = async (page) => {
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    page.getByRole("button", { name: "Apply filters (local)" }).click(),
-  ]);
-  return response;
+// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): "Apply filters (local)" (the button) is deleted outright -
+// every field that used to need it clicked now auto-persists on its own
+// real "change" event instead. This helper used to click that button and
+// race a `waitForResponse` against it (a fire-and-forget PUT -
+// `void persistViewFilterOptionOverrides()` in index.page.js - doesn't
+// block a click handler, so a fixed `waitForTimeout` would have been a
+// real race). Calling the same persist function directly via
+// `page.evaluate` and awaiting its own returned Promise is simpler and
+// strictly more reliable than clicking-then-racing a network listener:
+// no risk of the listener starting after the response it's waiting for
+// already landed. Since this suite's webServer is one long-lived process
+// shared by every test (see playwright.config.js's isolation comment), a
+// persisted value a test leaves behind by ending before its own PUT
+// actually completed doesn't just risk flaking that test - it can
+// silently change what a *later*, unrelated test sees on its own fresh
+// page load, so this still matters even though no button remains to
+// click.
+const waitForFilterPersist = async (page) => {
+  await page.evaluate(() => window.persistViewFilterOptionOverrides?.());
 };
 
 // "Apply existing GitHub label to selected PR(s)" (the admin dropdown, not
@@ -166,14 +168,19 @@ test("Run & Filter dropdowns populate from loaded PR data", async ({ page }) => 
   expect(authorOptionCount).toBeGreaterThan(0);
 });
 
-test("Apply filters (local) actually filters the rendered table, not just the summary line", async ({ page }) => {
-  // Regression test: the React rendering path used to always show every
-  // stored PR for the repo, completely ignoring "Apply filters (local)" -
-  // only the data-meta summary text reflected the filter, because vanilla
-  // computed the filtered set but never told React about it. This only
-  // showed up in a real browser: jsdom-based tests never exercise the
-  // React rendering path at all (window.ReactMountBridge doesn't exist
-  // there), so this bug was invisible to the full jsdom suite.
+test("typing a PR-number filter actually filters the rendered table in a real browser, not just the summary line", async ({ page }) => {
+  // Regression test, now with a different trigger: the React rendering
+  // path used to always show every stored PR for the repo, completely
+  // ignoring the local filter - only the data-meta summary text reflected
+  // it, because vanilla computed the filtered set but never told React
+  // about it. This only showed up in a real browser: jsdom-based tests
+  // never exercise the React rendering path at all (window.ReactMountBridge
+  // doesn't exist there), so this bug was invisible to the full jsdom
+  // suite. Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit", cluster 1): "Apply filters (local)" (the button this test
+  // used to click to trigger the filter) is deleted outright - filtering
+  // is fully live now, confirmed by an empirical check that this exact
+  // test still passes with that bridge stubbed to a no-op.
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
@@ -182,7 +189,7 @@ test("Apply filters (local) actually filters the rendered table, not just the su
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
 
   await expect(page.locator("#data-meta")).toContainText("Rows: 1");
@@ -196,7 +203,7 @@ test("Apply filters (local) actually filters the rendered table, not just the su
   // persisted filter here isn't just cosmetic for the next test anymore.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("Request more merged PRs button renders (lives outside the React-owned table)", async ({ page }) => {
@@ -563,7 +570,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   const input = page.locator("#filter-pr-numbers");
   await input.fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -575,7 +582,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   // hide PR #2/#3 from whatever unrelated test happens to load next
   // against this suite's one shared webServer.
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned scope <select> survives a persisted-value restore, and selecting still applies filters", async ({ page }) => {
@@ -589,7 +596,7 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.selectOption("#scope-mode", "last-run");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -602,7 +609,7 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
   // state doesn't affect whatever unrelated test happens to load next
   // against this suite's one shared webServer.
   await page.selectOption("#scope-mode", "all");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await expect(page.locator("#data-meta")).toContainText("scope=all stored rows");
 });
 
@@ -622,7 +629,7 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   const checkbox = page.locator("#always-show-in-review");
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -636,7 +643,7 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   // whatever unrelated test happens to load next against this suite's one
   // shared webServer.
   await page.locator("#always-show-in-review").uncheck();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await expect(page.locator("#always-show-in-review")).not.toBeChecked();
 });
 
@@ -656,7 +663,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.selectOption("#attention-no-activity-mode", "none");
   await page.locator("#attention-include-pending-comments").uncheck();
   await page.locator("#attention-include-draft-no-activity").check();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -674,7 +681,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.selectOption("#attention-no-activity-mode", "all");
   await page.locator("#attention-include-pending-comments").check();
   await page.locator("#attention-include-draft-no-activity").uncheck();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("changing a React-owned filter auto-applies without clicking \"Apply filters (local)\"", async ({ page }) => {
@@ -706,7 +713,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // change also fires its own auto-persist PUT (registerUiOptionPersistenceHandlers,
   // pr-ui-option-scroll.helpers.js) debounced 150ms behind the one from
   // "last-run" above - wait for it to actually land (same reasoning as
-  // clickApplyFiltersAndWaitForPersist above) so this test can't leak a
+  // waitForFilterPersist above) so this test can't leak a
   // stale scope-mode value into whatever unrelated test loads next against
   // this suite's one shared webServer.
   const [persistResponse] = await Promise.all([
@@ -781,10 +788,16 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer -
   // uncheck is ALSO live, same as the check above, so the table should
-  // show every PR again immediately too.
+  // show every PR again immediately too. Phase H.26 (see
+  // REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 1):
+  // label-list now auto-persists on change too (it never did before -
+  // "Apply filters (local)" was its only persist trigger) - wait for the
+  // clear to actually land, or a slow-to-complete fire-and-forget PUT
+  // from this uncheck can race the next test's own page load.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await labelDropdownSummary.click();
   await labelList.getByLabel("enhancement", { exact: true }).uncheck();
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
 });
@@ -819,7 +832,14 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): label-list now auto-persists on change (it never did
+  // before - "Apply filters (local)" was its only persist trigger) - wait
+  // for the clear to actually land, or a slow-to-complete fire-and-forget
+  // PUT from this uncheck can race the next test's own page load and
+  // leave "enhancement" checked there instead.
   await page.locator("#label-list").getByLabel("enhancement", { exact: true }).uncheck();
+  await waitForFilterPersist(page);
 });
 
 test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
@@ -848,6 +868,14 @@ test("a removable filter chip appears above the table for each non-default filte
   await expect(chips).toBeEmpty();
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
 
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): same as the label chip below - a chip's "x" clears via a
+  // direct Context update, not a native "change" event, so it never
+  // re-fires the auto-persist-on-change listener that the earlier
+  // .fill("1") may have triggered. Persist explicitly so this clear
+  // doesn't leave a stale pr-numbers override behind.
+  await waitForFilterPersist(page);
+
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await expect(page.locator("#filter-pr-numbers")).toHaveValue("");
 
@@ -865,6 +893,16 @@ test("a removable filter chip appears above the table for each non-default filte
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await labelDropdownSummary.click();
   await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
+
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): a chip's "x" clears the filter via a direct Context
+  // update (useTableFilterChips.jsx's own onRemove), not a native "change"
+  // event on the checkbox - the earlier .check() above already persisted
+  // "enhancement" via the real auto-persist-on-change listener, but this
+  // chip-driven clear never re-fires that listener to persist the
+  // rollback. Persist explicitly so this test doesn't leave a stale
+  // "enhancement" override for whatever unrelated test loads next.
+  await waitForFilterPersist(page);
 });
 
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
@@ -1255,7 +1293,7 @@ test("React-owned label multi-select renders options from payload data and filte
   await expect(labelList).toContainText("dependencies");
 
   await labelList.getByLabel("enhancement", { exact: true }).check();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
   await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
@@ -1283,7 +1321,7 @@ test("React-owned label multi-select renders options from payload data and filte
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
   await labelList.getByLabel("enhancement", { exact: true }).uncheck();
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned exclude-label/author/assigned/approver multi-selects render from payload data and survive a persisted restore together", async ({ page }) => {
@@ -1539,7 +1577,7 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.selectOption("#filter-pr-difficulty", "3");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 
   await expect(page.locator("#pr-sections")).toContainText("Add welcome banner");
   await expect(page.locator("#pr-sections")).not.toContainText("Fix flaky test");
@@ -1547,7 +1585,7 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
   await page.selectOption("#filter-pr-difficulty", "");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("PR author thread resolution policy select shows/hides its dependent allow/deny lists live, without a page reload", async ({ page }) => {
@@ -1627,7 +1665,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // review stats), then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Review statistics" }).click();
 
@@ -1643,7 +1681,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Review Stats content renders cards/table and \"View in table\" navigates to the React-owned PR table correctly", async ({ page }) => {
@@ -1746,7 +1784,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // stats), then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
@@ -1757,7 +1795,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Author Insights \"created PRs\" section updates on author switch and survives an unrelated re-render", async ({ page }) => {
@@ -1817,7 +1855,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // class of bug caught the same way).
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
@@ -1828,7 +1866,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Author Insights header updates on author switch and survives an unrelated re-render", async ({ page }) => {
@@ -1870,7 +1908,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // apply an unrelated local filter, then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
@@ -1881,7 +1919,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Author Insights PR-linked notes section survives an unrelated re-render", async ({ page }) => {
@@ -1909,7 +1947,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // apply an unrelated local filter, then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
@@ -1920,7 +1958,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Author Insights manual comments composer can save and edit a comment, and survives an unrelated re-render", async ({ page }) => {
@@ -1973,7 +2011,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // container must not vanish, and the saved comment must still be there.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("1");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
@@ -1984,7 +2022,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.locator("#filter-pr-numbers").fill("");
-  await clickApplyFiltersAndWaitForPersist(page);
+  await waitForFilterPersist(page);
 });
 
 test("typing in the Author Insights manual comment composer isn't blocked by a synchronous dirty-fields recompute", async ({ page }) => {

@@ -31,7 +31,6 @@ describe('OpenModeSelect', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds "none", when rendering, then the select starts with that value', () => {

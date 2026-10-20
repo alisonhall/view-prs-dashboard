@@ -189,7 +189,6 @@ export default defineConfig([
       "src/ui/helpers/pr-auto-render-indicator.helpers.js",
       "src/ui/helpers/pr-auto-render-indicator-links.helpers.js",
       "src/ui/helpers/pr-auto-render-state.helpers.js",
-      "src/ui/helpers/pr-apply-filters-cache.helpers.js",
       "src/ui/helpers/pr-export.helpers.js",
       "src/ui/helpers/pr-filter-panel.helpers.js",
       "src/ui/helpers/form-parsing.helpers.js",

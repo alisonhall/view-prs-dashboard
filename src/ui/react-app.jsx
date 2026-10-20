@@ -447,7 +447,6 @@ function computeStaticContainers() {
     clearOnlyBtn: document.getElementById('clear-only-btn-root'),
     applyLabelBtn: document.getElementById('apply-label-btn-root'),
     refreshLabelsBtn: document.getElementById('refresh-labels-btn-root'),
-    applyFiltersBtn: document.getElementById('apply-filters-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
@@ -1105,21 +1104,6 @@ function AppRoot() {
             />,
             containers.refreshLabelsBtn,
             'refresh-labels-btn',
-          )}
-
-        {containers.applyFiltersBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="apply-filters-btn"
-              className="apply-filters-btn"
-              label="Apply filters (local)"
-              onClick={() => {
-                window.persistViewFilterOptionOverrides?.();
-                window.applyFiltersFromCache?.();
-              }}
-            />,
-            containers.applyFiltersBtn,
-            'apply-filters-btn',
           )}
 
         {containers.quickCheckBtn &&

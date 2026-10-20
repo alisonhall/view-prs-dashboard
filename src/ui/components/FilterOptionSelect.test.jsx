@@ -37,7 +37,6 @@ describe('FilterOptionSelect', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given id/name/options props, when rendering, then all render correctly', () => {

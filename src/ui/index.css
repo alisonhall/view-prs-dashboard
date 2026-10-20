@@ -575,15 +575,6 @@
             box-shadow: none;
         }
 
-        .apply-filters-btn {
-            background: #0a7f36;
-            border-color: #0a7f36;
-        }
-
-        .apply-filters-btn:hover {
-            background: #08682c;
-        }
-
         .subtle-copy {
             margin: 0 0 10px;
             color: #57606a;

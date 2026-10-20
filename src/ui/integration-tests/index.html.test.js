@@ -788,21 +788,23 @@ const installBackfillControlsBridge = () => {
 };
 
 // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
-// the 6 REAL RunScriptActionButton instances into a detached container,
+// the 5 REAL RunScriptActionButton instances into a detached container,
 // same reasoning as installBackfillControlsBridge above - this suite
-// never mounts react-app.jsx, so without this, "Apply filters (local)"/
-// "Run script" (43/8 existing role-based click tests) and the other 4
-// buttons would all become empty, unclickable portal roots.
+// never mounts react-app.jsx, so without this, "Run script" (43/8
+// existing role-based click tests) and the other 3 buttons would all
+// become empty, unclickable portal roots.
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): 4 of
-// these 6 onClick callbacks used to call window.handleRunScript/
+// these 5 onClick callbacks used to call window.handleRunScript/
 // handleAckOnly/handleClearOnly/handleApplyLabelClick directly - this is
 // now a real component calling the matching hooks itself, same as
 // react-app.jsx does, so those 4 bridges have no remaining caller and
-// were deleted from index.page.js. window.refreshAvailableRepoLabels and
-// window.persistViewFilterOptionOverrides/applyFiltersFromCache are the 2
-// deliberate exceptions still reached via window.* (see
-// useRefreshAvailableRepoLabels.jsx's own comment, and Phase E for the
-// persist bridges) - unchanged here.
+// were deleted from index.page.js. window.refreshAvailableRepoLabels is
+// the 1 deliberate exception still reached via window.* (see
+// useRefreshAvailableRepoLabels.jsx's own comment) - unchanged here.
+// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): the "apply-filters-btn" entry this list used to also have
+// is deleted outright, along with the real button/window.applyFiltersFromCache
+// bridge it mirrored - see that phase's own plan entry.
 function RunScriptActionButtonsTestHarness() {
   const runScript = useRunScript();
   const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
@@ -843,16 +845,6 @@ function RunScriptActionButtonsTestHarness() {
       title: "Reload labels for the current repo",
       label: "↻ Labels",
       onClick: () => refreshAvailableRepoLabels(),
-    },
-    {
-      id: "apply-filters-btn",
-      rootId: "apply-filters-btn-root",
-      className: "apply-filters-btn",
-      label: "Apply filters (local)",
-      onClick: () => {
-        window.persistViewFilterOptionOverrides?.();
-        window.applyFiltersFromCache?.();
-      },
     },
   ];
   const portals = buttons
@@ -1816,7 +1808,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer2",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
 
     await clickMultiSelectCheckbox(
@@ -1829,7 +1820,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
@@ -1838,7 +1828,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
 
@@ -1977,12 +1966,10 @@ describe("index page rendering with Testing Library", () => {
 
     await user.selectOptions(modeField, "allow-only");
     syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
     syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
 
@@ -2502,15 +2489,20 @@ describe("index page rendering with Testing Library", () => {
     expect(prNumbersField).toHaveAttribute("name", "prNumbers");
   });
 
-  test("given run and filter tab when Apply filters (local) is clicked then view-filter defaults are persisted", async () => {
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): "Apply filters (local)" (the button) is deleted outright -
+  // view-filter fields now auto-persist on their own real "change" event
+  // instead of needing an explicit click (same mechanism the other,
+  // already-auto-persisting fields always used). Changing scope-mode
+  // directly is this test's new trigger.
+  test("given a view-filter field changes, when the change event fires, then view-filter defaults are persisted", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
     activateManagementTabForTest("script");
 
-    await user.click(
-      screen.getByRole("button", { name: "Apply filters (local)" }),
-    );
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -2532,7 +2524,15 @@ describe("index page rendering with Testing Library", () => {
     activateManagementTabForTest("script");
 
     fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): this block used to rely on the previous test's own
+    // "Apply filters (local)" click (that button is gone now) - gives
+    // itself its own explicit trigger instead of depending on another
+    // test's side effect, same pattern the "view-filter defaults are
+    // persisted" test just above uses.
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find((call) => {
@@ -3454,7 +3454,6 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("author-list", "author-other", user);
     await clickMultiSelectCheckbox("assigned-list", "assignee-other", user);
 
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -3566,7 +3565,6 @@ describe("index page rendering with Testing Library", () => {
     // needs this same sync call every other DOM-only field already uses
     // (syncFilterStateFromElement's own header comment).
     syncFilterStateFromElement(scopeField, "scopeMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
@@ -3580,7 +3578,6 @@ describe("index page rendering with Testing Library", () => {
 
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
     syncFilterStateFromElement(scopeField, "scopeMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
     // flag alone no longer qualifies it for either scope.
@@ -3946,7 +3943,6 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(includePendingComments, "attentionIncludePendingComments");
     await user.selectOptions(noActivityMode, "none");
     syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(false);
@@ -3954,11 +3950,9 @@ describe("index page rendering with Testing Library", () => {
 
     await user.selectOptions(noActivityMode, "mine-only");
     syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await user.selectOptions(noActivityMode, "all");
     syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(true);
@@ -3966,7 +3960,6 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(ignoreMergeOnly);
     syncFilterStateFromElement(ignoreMergeOnly, "attentionIgnoreMergeOnlyCommits");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("102")).toBe(false);
@@ -3980,7 +3973,6 @@ describe("index page rendering with Testing Library", () => {
       await user.click(includeDraftNoActivity);
       syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(false);
@@ -3991,7 +3983,6 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(includeDraftChanged, "attentionIncludeDraftChanged");
     await user.click(includeDraftNoActivity);
     syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(true);
@@ -4005,7 +3996,18 @@ describe("index page rendering with Testing Library", () => {
       await user.click(includeClosedMerged);
       syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): the native "change" event above already fired
+    // index.page.js's delegated persist listener BEFORE the
+    // syncFilterStateFromElement calls updated Context - unlike a real
+    // mounted React field, which updates Context synchronously inside its
+    // own onChange before the native event finishes bubbling, this
+    // suite's static-markup fields can't do that. Discard that stale
+    // call and persist again now that Context is up to date, matching
+    // what a real field's own onChange would have captured the first time.
+    fetchMock.mockClear();
+    await window.persistViewFilterOptionOverrides?.();
 
     let putCall;
     await waitFor(() => {
@@ -4028,7 +4030,9 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     await user.click(includeClosedMerged);
     syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    fetchMock.mockClear();
+    await window.persistViewFilterOptionOverrides?.();
 
     let resetPutCall;
     await waitFor(() => {
@@ -4106,7 +4110,6 @@ describe("index page rendering with Testing Library", () => {
     expect(authorList).toBeInTheDocument();
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -4530,7 +4533,6 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(pendingCommentsToggle, "attentionIncludePendingComments");
     await user.selectOptions(noActivityModeSelect, "none");
     syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getAttentionIcon("101")).toBeNull();
@@ -4538,14 +4540,12 @@ describe("index page rendering with Testing Library", () => {
 
     await user.selectOptions(noActivityModeSelect, "all");
     syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("101")?.textContent || "").toBe("⚠️");
     });
 
     ignoreMergeOnlyToggle.checked = true;
     syncFilterStateFromElement(ignoreMergeOnlyToggle, "attentionIgnoreMergeOnlyCommits");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("102")).toBeNull();
     });
@@ -4563,7 +4563,16 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(includeClosedMergedToggle, "attentionIncludeClosedMerged");
     includeDraftNoActivityToggle.checked = true;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): the 2 raw `.checked =` writes just above never fire a
+    // real native "change" event at all (no user.click()), so
+    // index.page.js's delegated persist listener never saw them - a real
+    // mounted React field's own onChange always fires on a real
+    // interaction, so this is a pure test-harness gap, not a production
+    // one. Persist explicitly now that Context reflects every field set
+    // above.
+    await window.persistViewFilterOptionOverrides?.();
 
     let latestPutCall;
     await waitFor(() => {
@@ -4591,7 +4600,11 @@ describe("index page rendering with Testing Library", () => {
     syncFilterStateFromElement(includeClosedMergedToggle, "attentionIncludeClosedMerged");
     includeDraftNoActivityToggle.checked = false;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): same test-harness gap as above - the raw `.checked =`
+    // write never fires a real native "change" event.
+    await window.persistViewFilterOptionOverrides?.();
 
     await waitFor(() => {
       latestPutCall = fetchMock.mock.calls
@@ -4866,14 +4879,12 @@ describe("index page rendering with Testing Library", () => {
     );
     includeDraftChangedToggle.checked = false;
     syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("201")).toBeNull();
     });
 
     includeDraftChangedToggle.checked = true;
     syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("201")?.textContent || "").toBe("⚠️");
     });
@@ -4883,14 +4894,12 @@ describe("index page rendering with Testing Library", () => {
     );
     includeDraftNoActivityToggle.checked = false;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("202")).toBeNull();
     });
 
     includeDraftNoActivityToggle.checked = true;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
       expect(getAttentionIcon("202")?.textContent || "").toBe("⚠️");
     });
@@ -4977,14 +4986,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
@@ -5198,7 +5205,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "alice", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -5437,14 +5443,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "david", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
@@ -5571,7 +5575,6 @@ describe("index page rendering with Testing Library", () => {
 
     // Select only reviewer-a: should show #601 (approved by both) but not #602 (only reviewer-b) or #603 (no approvals)
     await clickMultiSelectCheckbox("approver-list", "reviewer-a", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -5671,7 +5674,16 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("approver-list", "grace", user);
 
     fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): "Apply filters (local)" (the button) is deleted outright
+    // - approver-list now auto-persists via its own real "change" event,
+    // same mechanism the thread-resolution/change-filter multi-select
+    // lists already used. Awaiting it directly here instead of relying on
+    // the native event's own fire-and-forget call avoids a race against
+    // whatever persistViewFilterOptionOverrides call that earlier click
+    // may have already queued.
+    await window.persistViewFilterOptionOverrides?.();
 
     let putCall;
     await waitFor(() => {
@@ -5748,7 +5760,6 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
     // Ensure user-defaults have been fetched and the pending restore is set
     // before navigating so Apply sees the pre-populated pending selections.
@@ -5769,7 +5780,6 @@ describe("index page rendering with Testing Library", () => {
     expect(approverList).toBeInTheDocument();
 
     // Apply triggers re-render which picks up pendingApproverFilterSelections.
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["grace"]);
@@ -9116,8 +9126,16 @@ describe("index page rendering with Testing Library", () => {
       await user.selectOptions(prDifficultySelect, "3");
       syncFilterStateFromElement(prDifficultySelect, "filterPrDifficulty");
 
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): the native "change" event above already fired
+      // index.page.js's delegated persist listener BEFORE
+      // syncFilterStateFromElement updated Context - a real mounted React
+      // field updates Context synchronously inside its own onChange
+      // before the native event finishes bubbling, so this ordering gap
+      // is a test-harness-only artifact. Discard that stale call and
+      // persist again now that Context is up to date.
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {
@@ -9334,8 +9352,16 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): a textarea's native "change" event only fires on
+      // blur, not on this "input" dispatch - index.page.js's delegated
+      // listener (which only ever watched "change") never saw this edit,
+      // so the latest real auto-persist still reflects the 3 checkbox
+      // clicks above, not this textarea. "Apply filters (local)" used to
+      // be the catch-all that covered this gap; persist explicitly now
+      // that the button is gone.
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {
@@ -9375,7 +9401,6 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
       activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
@@ -9385,8 +9410,13 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): a textarea's native "change" event only fires on
+      // blur, not on this "input" dispatch, so nothing auto-persists this
+      // edit - "Apply filters (local)" used to be the catch-all that
+      // covered this gap; persist explicitly now that the button is gone.
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {
@@ -9543,8 +9573,14 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): a textarea's native "change" event only fires on
+      // blur, not on this "input" dispatch, so the latest real
+      // auto-persist still reflects the 3 checkbox clicks above, not this
+      // textarea - "Apply filters (local)" used to be the catch-all that
+      // covered this gap; persist explicitly now that the button is gone.
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {
@@ -9583,11 +9619,16 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
       activateManagementTabForTest("script");
 
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): nothing in this test changes any field, so no native
+      // "change" event ever fires to auto-persist - "Apply filters
+      // (local)" used to be this test's only trigger; persist explicitly
+      // now that the button is gone.
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {
@@ -9618,7 +9659,6 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
       activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
@@ -9629,8 +9669,13 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
+      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): a textarea's native "change" event only fires on
+      // blur, not on this "input" dispatch, so nothing auto-persists this
+      // edit - "Apply filters (local)" used to be the catch-all that
+      // covered this gap; persist explicitly now that the button is gone.
       fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+      await window.persistViewFilterOptionOverrides?.();
 
       let latestPutCall;
       await waitFor(() => {

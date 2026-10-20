@@ -31,7 +31,6 @@ describe('AlwaysShowInReviewCheckbox', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds false, when rendering, then starts unchecked', () => {

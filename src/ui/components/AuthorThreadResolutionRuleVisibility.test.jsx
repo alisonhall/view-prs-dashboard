@@ -52,7 +52,6 @@ describe('AuthorThreadResolutionRuleVisibility', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given mode is "allow-all" (default), when rendered, then both panels are hidden', () => {

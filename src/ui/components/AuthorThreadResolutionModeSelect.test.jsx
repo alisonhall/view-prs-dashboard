@@ -31,7 +31,6 @@ describe('AuthorThreadResolutionModeSelect', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds "allow-all", when rendering, then the select starts with that value', () => {
@@ -57,10 +56,9 @@ describe('AuthorThreadResolutionModeSelect', () => {
     await user.selectOptions(select, 'allow-only');
 
     expect(select).toHaveValue('allow-only');
-    // index.page.js's delegated "change" listener (persistViewFilterOptionOverrides/
-    // debouncedApplyFilters) is wired via a real addEventListener("change", ...)
-    // on this element's id - confirm a real native change event still reaches
-    // such a listener.
+    // index.page.js's delegated "change" listener (persistViewFilterOptionOverrides)
+    // is wired via a real addEventListener("change", ...) on this element's
+    // id - confirm a real native change event still reaches such a listener.
     expect(handleChange).toHaveBeenCalled();
     expect(window.getFilterStateValues().attentionAuthorThreadResolutionMode).toBe('allow-only');
   });

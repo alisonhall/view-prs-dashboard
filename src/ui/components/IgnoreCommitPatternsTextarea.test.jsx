@@ -31,7 +31,6 @@ describe('IgnoreCommitPatternsTextarea', () => {
   afterEach(() => {
     delete window.getFilterStateValues;
     delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
   });
 
   test('given the provider seeds an empty value, when rendering, then id/name/rows are applied and it starts empty', () => {
