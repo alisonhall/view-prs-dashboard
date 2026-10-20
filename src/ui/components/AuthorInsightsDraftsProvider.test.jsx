@@ -35,31 +35,28 @@ const renderProbe = () =>
 
 describe('AuthorInsightsDraftsProvider', () => {
   afterEach(() => {
-    delete window.getAuthorInsightsComposerDraft;
-    delete window.updateAuthorInsightsComposerDraft;
-    delete window.resetAuthorInsightsComposerDraft;
-    delete window.getAuthorInsightsEditDraft;
-    delete window.getAuthorInsightsEditDraftMap;
-    delete window.updateAuthorInsightsEditDraft;
-    delete window.resetAuthorInsightsEditDraft;
     delete window.getAuthorManualCommentsForLogin;
-    delete window.setAuthorInsightsManualComments;
-    delete window.getAuthorInsightsManualCommentsLoadState;
-    delete window.loadAuthorManualComments;
     delete window.getAuthorInsightsDraftsSnapshot;
     delete window.recomputeDirtyPrSectionsFields;
     probeValue = undefined;
     cleanup();
   });
 
-  test('given a composer draft update via Context, when read back via the window bridge, then it reflects the same value', () => {
+  // Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): getComposerDraft/updateComposerDraft/getEditDraftMap/
+  // updateEditDraft/setManualComments/getManualComments no longer have a
+  // window.* bridge at all - AuthorInsightsCommentsSection.jsx (their only
+  // real consumer) already called every one of them via
+  // useAuthorInsightsDrafts() directly, so these round-trip entirely
+  // through the Context value now.
+  test('given a composer draft update via Context, when read back via Context, then it reflects the same value', () => {
     renderProbe();
 
     act(() => {
       probeValue.updateComposerDraft('octocat', { note: 'hello', sentiment: 'positive' });
     });
 
-    expect(window.getAuthorInsightsComposerDraft('octocat')).toEqual({
+    expect(probeValue.getComposerDraft('octocat')).toEqual({
       note: 'hello',
       sentiment: 'positive',
     });
@@ -76,23 +73,23 @@ describe('AuthorInsightsDraftsProvider', () => {
     expect(window.recomputeDirtyPrSectionsFields).toHaveBeenCalled();
   });
 
-  test('given an edit draft update via Context, when read back via the window bridge, then it reflects the same value', () => {
+  test('given an edit draft update via Context, when read back via Context, then it reflects the same value', () => {
     renderProbe();
 
     act(() => {
       probeValue.updateEditDraft('octocat', 'c1', { note: 'edited', sentiment: 'negative', isEditing: true });
     });
 
-    expect(window.getAuthorInsightsEditDraftMap('octocat')).toEqual({
+    expect(probeValue.getEditDraftMap('octocat')).toEqual({
       c1: { note: 'edited', sentiment: 'negative', isEditing: true },
     });
   });
 
-  test('given manual comments set via the window bridge, when read via Context, then they round-trip', () => {
+  test('given manual comments set via Context, when read back via Context, then they round-trip', () => {
     renderProbe();
 
     act(() => {
-      window.setAuthorInsightsManualComments('octocat', [{ id: 'c1', note: 'x' }]);
+      probeValue.setManualComments('octocat', [{ id: 'c1', note: 'x' }]);
     });
 
     expect(probeValue.getManualComments('octocat')).toEqual([{ id: 'c1', note: 'x' }]);
@@ -128,19 +125,19 @@ describe('AuthorInsightsDraftsProvider', () => {
   test('given the provider unmounts entirely, when checked, then every published bridge is removed', () => {
     const { unmount } = renderProbe();
 
-    expect(typeof window.getAuthorInsightsComposerDraft).toBe('function');
+    expect(typeof window.getAuthorManualCommentsForLogin).toBe('function');
     expect(typeof window.getAuthorInsightsDraftsSnapshot).toBe('function');
 
     unmount();
 
-    expect(window.getAuthorInsightsComposerDraft).toBeUndefined();
+    expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
     expect(window.getAuthorInsightsDraftsSnapshot).toBeUndefined();
   });
 
-  test('given no updates at all, when window.getAuthorInsightsManualCommentsLoadState is read, then it defaults to not-loading with no error', () => {
+  test('given no updates at all, when Context getManualCommentsLoadState is read, then it defaults to not-loading with no error', () => {
     renderProbe();
 
-    expect(window.getAuthorInsightsManualCommentsLoadState('octocat')).toEqual({
+    expect(probeValue.getManualCommentsLoadState('octocat')).toEqual({
       loading: false,
       error: '',
     });

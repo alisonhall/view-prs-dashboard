@@ -6,24 +6,24 @@ import { createContext, useContext } from 'react';
  * index.page.js's former module-scope `authorInsightsState` fields
  * (manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin/
  * manualCommentsByAuthorLogin/manualCommentsLoadingByAuthorLogin/
- * manualCommentsErrorByAuthorLogin) + their 11 window.* bridges.
+ * manualCommentsErrorByAuthorLogin).
  *
- * Owned by AuthorInsightsDraftsProvider.jsx, which still publishes those
- * same 11 bridge names (now backed by this Context) because
- * pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
- * (feeds the real auto-render-blocking/data-loss-prevention check) needs
- * to read "is there an unsaved author-comment draft" from outside any
- * single AuthorInsightsCommentsSection instance's own lifetime, and is
- * itself fully vanilla with no render-tree position. Converting that
- * subsystem is a separate, later step - not this one.
+ * Owned by AuthorInsightsDraftsProvider.jsx. Eleventh follow-up (see
+ * REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): of this Context's
+ * original 12 window.* bridge names, only `getAuthorManualCommentsForLogin`/
+ * `getAuthorInsightsDraftsSnapshot` still get published - `index.page.js`'s
+ * fully-vanilla `getBlockingAuthorInsightsLogins` (feeds the real auto-
+ * render-blocking/data-loss-prevention check) still needs to read "is
+ * there an unsaved author-comment draft" from outside any single
+ * AuthorInsightsCommentsSection instance's own lifetime. The other 10 were
+ * a stale leftover - AuthorInsightsCommentsSection.jsx (their only real
+ * consumer) already calls every one of them via useAuthorInsightsDrafts()
+ * directly, confirmed by grep to have zero remaining window.* callers.
  *
- * Phase G.2 (see REACT_MIGRATION_PLAN.md): also exposes getDraftsSnapshot,
- * the same snapshot the window.getAuthorInsightsDraftsSnapshot bridge
- * already returns, so a future real React consumer can read the dirty-
- * draft maps reactively via useAuthorInsightsDrafts() instead of reaching
- * through window - the bridge itself stays, since
- * getBlockingAuthorInsightsLogins's own caller is vanilla and out of
- * scope here.
+ * getDraftsSnapshot (Phase G.2) is the one bridge whose Context-exposed
+ * form and window-bridge form both stay, for the same reason: a future
+ * real React consumer can read it reactively via useAuthorInsightsDrafts(),
+ * while getBlockingAuthorInsightsLogins's own caller stays vanilla.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context
  * in this migration - AuthorInsightsCommentsSection rendered without a

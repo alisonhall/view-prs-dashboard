@@ -8,6 +8,17 @@ const { AuthorInsightsProvider } = require('./AuthorInsightsProvider');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
+const { useAuthorInsightsDrafts } = require('../state/AuthorInsightsDraftsContext');
+
+// Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit"): window.getAuthorInsightsComposerDraft is gone - this probe
+// reads the same Context value directly, the same way the component
+// itself does via useAuthorInsightsDrafts().
+let draftsProbeValue;
+function DraftsProbe() {
+  draftsProbeValue = useAuthorInsightsDrafts();
+  return null;
+}
 
 const SENTIMENT_OPTIONS = [
   { value: 'positive', label: 'Positive' },
@@ -32,6 +43,7 @@ const renderSection = (selectedAuthorLogin) =>
   render(
     <PrDataProvider initialSelectedAuthorLogin={selectedAuthorLogin}>
       <AuthorInsightsDraftsProvider>
+        <DraftsProbe />
         <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
           <AuthorInsightsCommentsSection />
         </AuthorInsightsContext.Provider>
@@ -94,7 +106,7 @@ describe('AuthorInsightsCommentsSection', () => {
     const textarea = screen.getByPlaceholderText('Add a manual comment about this author...');
     await user.type(textarea, 'Hi');
 
-    expect(window.getAuthorInsightsComposerDraft('octocat').note).toBe('Hi');
+    expect(draftsProbeValue.getComposerDraft('octocat').note).toBe('Hi');
     expect(window.recomputeDirtyPrSectionsFields).toHaveBeenCalled();
   });
 

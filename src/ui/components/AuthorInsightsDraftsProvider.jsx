@@ -33,11 +33,27 @@ import { postJson } from '../helpers/pr-http.helpers.js';
  * module-level copy. AuthorInsightsCommentsSection.jsx calls these two
  * directly via useAuthorInsightsDrafts() now, no window.* round-trip.
  *
- * Publishes the same window.* bridge names index.page.js used to, now
- * backed by this Context, because 2 vanilla subsystems need to read
- * draft state from outside any single AuthorInsightsCommentsSection
- * instance's own lifetime - see AuthorInsightsDraftsContext.jsx's comment.
- * Every write bumps a version tick, and a useEffect reacting to that tick
+ * Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+ * audit"): publishes only 2 of its former 12 window.* bridge names now -
+ * `getAuthorManualCommentsForLogin`/`getAuthorInsightsDraftsSnapshot`,
+ * because `pr-auto-render-blocking.helpers.js`'s `getBlockingAuthorInsightsLogins`
+ * (feeds the real auto-render-blocking/data-loss-prevention check) needs
+ * to read "is there an unsaved author-comment draft" from outside any
+ * single `AuthorInsightsCommentsSection` instance's own lifetime, and is
+ * itself fully vanilla with no render-tree position - confirmed via grep
+ * that `index.page.js` still genuinely reads both. The other 10
+ * (`getComposerDraft`/`updateComposerDraft`/`resetComposerDraft`/
+ * `getEditDraft`/`getEditDraftMap`/`updateEditDraft`/`resetEditDraft`/
+ * `setManualComments`/`getManualCommentsLoadState`/`loadManualComments`)
+ * were a stale leftover: `index.page.js`'s own comment already said most
+ * of them "were only ever repackaged into prAuthorInsightsDraftsHelpers,
+ * which only ever fed pr-author-insights.component.js (deleted outright)",
+ * and `AuthorInsightsCommentsSection.jsx` (their only real consumer) has
+ * called every one of them via `useAuthorInsightsDrafts()` directly since
+ * this Provider was written - a grep confirmed zero remaining `window.*`
+ * references to any of the 10 outside this file's own (now rewritten)
+ * tests. Every write still bumps a version tick, and a useEffect reacting
+ * to that tick
  * calls window.recomputeDirtyPrSectionsFields?.() (same as
  * NotesDirtyProvider's own write path) - deferred to after React commits/
  * paints, not called synchronously inside the write itself, since a
@@ -236,46 +252,13 @@ export function AuthorInsightsDraftsProvider({ children }) {
   );
 
   useEffect(() => {
-    window.getAuthorInsightsComposerDraft = getComposerDraft;
-    window.updateAuthorInsightsComposerDraft = updateComposerDraft;
-    window.resetAuthorInsightsComposerDraft = resetComposerDraft;
-    window.getAuthorInsightsEditDraft = getEditDraft;
-    window.getAuthorInsightsEditDraftMap = getEditDraftMap;
-    window.updateAuthorInsightsEditDraft = updateEditDraft;
-    window.resetAuthorInsightsEditDraft = resetEditDraft;
     window.getAuthorManualCommentsForLogin = getManualComments;
-    window.setAuthorInsightsManualComments = setManualComments;
-    window.getAuthorInsightsManualCommentsLoadState = getManualCommentsLoadState;
-    window.loadAuthorManualComments = loadManualComments;
     window.getAuthorInsightsDraftsSnapshot = getDraftsSnapshot;
     return () => {
-      delete window.getAuthorInsightsComposerDraft;
-      delete window.updateAuthorInsightsComposerDraft;
-      delete window.resetAuthorInsightsComposerDraft;
-      delete window.getAuthorInsightsEditDraft;
-      delete window.getAuthorInsightsEditDraftMap;
-      delete window.updateAuthorInsightsEditDraft;
-      delete window.resetAuthorInsightsEditDraft;
       delete window.getAuthorManualCommentsForLogin;
-      delete window.setAuthorInsightsManualComments;
-      delete window.getAuthorInsightsManualCommentsLoadState;
-      delete window.loadAuthorManualComments;
       delete window.getAuthorInsightsDraftsSnapshot;
     };
-  }, [
-    getComposerDraft,
-    updateComposerDraft,
-    resetComposerDraft,
-    getEditDraft,
-    getEditDraftMap,
-    updateEditDraft,
-    resetEditDraft,
-    getManualComments,
-    setManualComments,
-    getManualCommentsLoadState,
-    loadManualComments,
-    getDraftsSnapshot,
-  ]);
+  }, [getManualComments, getDraftsSnapshot]);
 
   const value = useMemo(
     () => ({

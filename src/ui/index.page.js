@@ -525,19 +525,20 @@ const { getAuthorInsightsDisplayName } =
   });
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft/comment-cache CRUD
-// functions (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
-// resetAuthorInsightsComposerDraft/getAuthorInsightsEditDraftMap/
-// getAuthorInsightsEditDraft/updateAuthorInsightsEditDraft/
-// resetAuthorInsightsEditDraft/getAuthorManualCommentsForLogin) used to be
-// built here directly from authorInsightsState - moved to
-// AuthorInsightsDraftsProvider.jsx (components/AuthorInsightsDraftsProvider.jsx),
-// which now owns that state as real React state and republishes the exact
-// same window.* bridge names, because pr-auto-render-blocking.helpers.js's
-// getBlockingAuthorInsightsLogins still needs to read it from here, fully
-// vanilla. Only the 3 genuinely pure functions below (confirmed via
-// reading each body: no authorInsightsState reference at all, just the
-// draft/comment object passed directly to each call) are still built
-// locally, from a fresh no-args instance of the same factory.
+// functions moved to AuthorInsightsDraftsProvider.jsx
+// (components/AuthorInsightsDraftsProvider.jsx), which owns that state as
+// real React state. Eleventh follow-up (see REACT_MIGRATION_PLAN.md,
+// "Remaining-effort audit"): of the bridges that Provider used to
+// republish for this file, only getAuthorManualCommentsForLogin (used
+// directly below) and getAuthorInsightsDraftsSnapshot (used by
+// getBlockingAuthorInsightsLogins's own DI below) are still genuinely
+// read from here - pr-auto-render-blocking.helpers.js's
+// getBlockingAuthorInsightsLogins needs both, fully vanilla, with no
+// render-tree position. The other 10 the Provider used to also publish
+// were a stale leftover (confirmed dead: AuthorInsightsCommentsSection.jsx,
+// their only real consumer, already called every one of them via
+// useAuthorInsightsDrafts() directly) and were deleted from that Provider
+// outright, not kept for this file's sake.
 const {
   normalizeAuthorInsightsSentiment,
   isAuthorInsightsComposerDraftDirty,
@@ -549,14 +550,6 @@ const {
 // window once it mounts, which happens after this module-level wiring
 // runs; a direct reference captured now would freeze on undefined. Same
 // indirection every other window.*-bridge-reading call in this file uses.
-// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 2): the other 6 composer/edit-draft proxies this block used to
-// also build (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
-// resetAuthorInsightsComposerDraft/getAuthorInsightsEditDraft/
-// updateAuthorInsightsEditDraft/resetAuthorInsightsEditDraft) were only
-// ever repackaged into prAuthorInsightsDraftsHelpers, which only ever fed
-// pr-author-insights.component.js (deleted outright) - this one stays,
-// still a real DI param for getBlockingAuthorInsightsLogins below.
 const getAuthorManualCommentsForLogin = (...args) => window.getAuthorManualCommentsForLogin?.(...args);
 
 const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } =
