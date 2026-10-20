@@ -11,39 +11,13 @@ function Probe() {
   return null;
 }
 
-const BRIDGE_NAMES = [
-  'markPrsBusy',
-  'clearPrsBusy',
-  'markPrsQueued',
-  'clearPrsQueued',
-  'beginBulkActionBatch',
-  'markBulkActionChunkInFlight',
-  'markBulkActionChunkDone',
-  'finishBulkActionBatch',
-];
-
 describe('PrActivityQueueProvider', () => {
   afterEach(() => {
     cleanup();
-    BRIDGE_NAMES.forEach((name) => delete window[name]);
     ProbeLastValue = undefined;
   });
 
-  test('registers all 8 window bridges on mount and removes them on unmount', () => {
-    const { unmount } = render(
-      <PrActivityQueueProvider>
-        <Probe />
-      </PrActivityQueueProvider>,
-    );
-
-    BRIDGE_NAMES.forEach((name) => expect(typeof window[name]).toBe('function'));
-
-    unmount();
-
-    BRIDGE_NAMES.forEach((name) => expect(window[name]).toBeUndefined());
-  });
-
-  test('markPrsBusy/clearPrsBusy via window bridge update busyPrNumbers', () => {
+  test('markPrBusy/clearPrBusy update busyPrNumbers', () => {
     render(
       <PrActivityQueueProvider>
         <Probe />
@@ -51,17 +25,18 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.markPrsBusy(['1', '2'], 'owner/repo');
+      ProbeLastValue.markPrBusy('1', 'owner/repo');
+      ProbeLastValue.markPrBusy('2', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.busyPrNumbers).sort()).toEqual(['owner/repo::1', 'owner/repo::2']);
 
     act(() => {
-      window.clearPrsBusy(['1'], 'owner/repo');
+      ProbeLastValue.clearPrBusy('1', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::2']);
   });
 
-  test('markPrsQueued/clearPrsQueued via window bridge update queuedPrNumbers', () => {
+  test('markPrQueued/clearPrQueued update queuedPrNumbers', () => {
     render(
       <PrActivityQueueProvider>
         <Probe />
@@ -69,35 +44,23 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.markPrsQueued(['5'], 'owner/repo');
+      ProbeLastValue.markPrQueued('5', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.queuedPrNumbers)).toEqual(['owner/repo::5']);
 
     act(() => {
-      window.clearPrsQueued(['5'], 'owner/repo');
+      ProbeLastValue.clearPrQueued('5', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.queuedPrNumbers)).toEqual([]);
   });
 
-  test('direct markPrBusy/clearPrBusy context methods also work (used by PrTableApp withPrBusy)', () => {
-    render(
-      <PrActivityQueueProvider>
-        <Probe />
-      </PrActivityQueueProvider>,
-    );
-
-    act(() => {
-      ProbeLastValue.markPrBusy('7', 'owner/repo');
-    });
-    expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
-  });
-
   // ROADMAP.md regression test (found during the "Quick check all" feature
   // review, 2026-09-30): "Quick check all" marks every loaded PR busy up
-  // front via window.markPrsBusy and only clears them once its whole sweep
-  // finishes; an unrelated action (e.g. an Ack click, via the direct
-  // markPrBusy/clearPrBusy context methods) on one of those same PRs must
-  // not clear the spinner early just because it finished first.
+  // front and only clears them once its whole sweep finishes; an unrelated
+  // action (e.g. an Ack click) on one of those same PRs must not clear the
+  // spinner early just because it finished first - two independent
+  // markPrBusy callers on the same key both have to clear before
+  // busyPrNumbers does.
   test('given the same PR marked busy by two independent callers, when only one clears, then it stays busy until both clear', () => {
     render(
       <PrActivityQueueProvider>
@@ -106,7 +69,7 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.markPrsBusy(['7'], 'owner/repo');
+      ProbeLastValue.markPrBusy('7', 'owner/repo');
       ProbeLastValue.markPrBusy('7', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
@@ -117,7 +80,7 @@ describe('PrActivityQueueProvider', () => {
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::7']);
 
     act(() => {
-      window.clearPrsBusy(['7'], 'owner/repo');
+      ProbeLastValue.clearPrBusy('7', 'owner/repo');
     });
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual([]);
   });
@@ -142,6 +105,11 @@ describe('PrActivityQueueProvider', () => {
     expect(Array.from(ProbeLastValue.busyPrNumbers)).toEqual(['owner/repo::9']);
   });
 
+  // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // window.beginBulkActionBatch/markBulkActionChunkInFlight/
+  // markBulkActionChunkDone/finishBulkActionBatch are gone - useAckLabelActions.jsx
+  // is the only real caller, and it already calls these 4 directly via
+  // usePrActivityQueue(), so every test below exercises that path only.
   test('a multi-chunk bulk batch flows through begin -> in-flight -> done -> finish', () => {
     render(
       <PrActivityQueueProvider>
@@ -150,7 +118,7 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.beginBulkActionBatch({
+      ProbeLastValue.beginBulkActionBatch({
         batchId: 'batch-1',
         actionLabel: 'Ack/Clear',
         repo: 'owner/repo',
@@ -161,17 +129,17 @@ describe('PrActivityQueueProvider', () => {
     expect(ProbeLastValue.bulkBatches[0].totalChunks).toBe(2);
 
     act(() => {
-      window.markBulkActionChunkInFlight({ batchId: 'batch-1', chunkIndex: 0 });
+      ProbeLastValue.markBulkActionChunkInFlight({ batchId: 'batch-1', chunkIndex: 0 });
     });
     expect(ProbeLastValue.bulkBatches[0].chunks[0].state).toBe('in-flight');
 
     act(() => {
-      window.markBulkActionChunkDone({ batchId: 'batch-1', chunkIndex: 0 });
+      ProbeLastValue.markBulkActionChunkDone({ batchId: 'batch-1', chunkIndex: 0 });
     });
     expect(ProbeLastValue.bulkBatches[0].doneCount).toBe(1);
 
     act(() => {
-      window.finishBulkActionBatch({ batchId: 'batch-1' });
+      ProbeLastValue.finishBulkActionBatch({ batchId: 'batch-1' });
     });
     expect(ProbeLastValue.bulkBatches).toEqual([]);
   });
@@ -184,7 +152,7 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.beginBulkActionBatch({
+      ProbeLastValue.beginBulkActionBatch({
         batchId: 'batch-1',
         actionLabel: 'Ack/Clear',
         repo: 'owner/repo',
@@ -193,51 +161,12 @@ describe('PrActivityQueueProvider', () => {
     });
 
     act(() => {
-      window.markBulkActionChunkDone({ batchId: 'batch-1', chunkIndex: 0, ok: false });
+      ProbeLastValue.markBulkActionChunkDone({ batchId: 'batch-1', chunkIndex: 0, ok: false });
     });
 
     expect(ProbeLastValue.bulkBatches[0].chunks[0].state).toBe('failed');
     expect(ProbeLastValue.bulkBatches[0].doneCount).toBe(0);
     expect(ProbeLastValue.bulkBatches[0].failedCount).toBe(1);
-  });
-
-  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // useAckLabelActions.jsx now calls these 4 directly via
-  // usePrActivityQueue() instead of the window.* bridges - confirms the
-  // Context-exposed path reaches the exact same underlying state as the
-  // window-bridge path the test above already covers.
-  test('a multi-chunk bulk batch flows through begin -> in-flight -> done -> finish via the Context-exposed functions directly, not window.*', () => {
-    render(
-      <PrActivityQueueProvider>
-        <Probe />
-      </PrActivityQueueProvider>,
-    );
-
-    act(() => {
-      ProbeLastValue.beginBulkActionBatch({
-        batchId: 'batch-2',
-        actionLabel: 'Apply label',
-        repo: 'owner/repo',
-        chunks: [['1', '2'], ['3', '4']],
-      });
-    });
-    expect(ProbeLastValue.bulkBatches).toHaveLength(1);
-    expect(ProbeLastValue.bulkBatches[0].totalChunks).toBe(2);
-
-    act(() => {
-      ProbeLastValue.markBulkActionChunkInFlight({ batchId: 'batch-2', chunkIndex: 0 });
-    });
-    expect(ProbeLastValue.bulkBatches[0].chunks[0].state).toBe('in-flight');
-
-    act(() => {
-      ProbeLastValue.markBulkActionChunkDone({ batchId: 'batch-2', chunkIndex: 0 });
-    });
-    expect(ProbeLastValue.bulkBatches[0].doneCount).toBe(1);
-
-    act(() => {
-      ProbeLastValue.finishBulkActionBatch({ batchId: 'batch-2' });
-    });
-    expect(ProbeLastValue.bulkBatches).toEqual([]);
   });
 
   test('a single-chunk batch is never tracked (begin is a no-op)', () => {
@@ -248,7 +177,7 @@ describe('PrActivityQueueProvider', () => {
     );
 
     act(() => {
-      window.beginBulkActionBatch({
+      ProbeLastValue.beginBulkActionBatch({
         batchId: 'batch-1',
         actionLabel: 'Ack/Clear',
         repo: 'owner/repo',

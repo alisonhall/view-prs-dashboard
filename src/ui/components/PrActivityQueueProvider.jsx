@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PrActivityQueueContext } from '../state/PrActivityQueueContext';
 import { buildActivePrKey } from './pr-row-keys';
 import { createPrBulkActionBatchesHelpers } from '../helpers/pr-bulk-action-batches.helpers.js';
@@ -18,23 +18,27 @@ const {
  * PrTableApp.jsx (lifted verbatim - same Set-of-"repo::prNumber"-keys
  * shape, same markPrBusy/clearPrBusy/markPrQueued/clearPrQueued
  * semantics), plus the bulk ack/apply-label batch manifest the drawer's
- * queue section needs. The window.markPrsBusy/clearPrsBusy/markPrsQueued/
- * clearPrsQueued bridges move here too - their real external callers
- * (pr-ack-label-actions.helpers.js, pr-quick-check-actions.helpers.js) are
- * unaffected by which component registers them.
+ * queue section needs.
  *
  * Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the 4
- * bulk-batch mutators are also exposed via Context now, not just
- * window.*, so state/useAckLabelActions.jsx's own instance can call them
- * directly via usePrActivityQueue() instead of window.beginBulkActionBatch/
- * etc. The window.* bridges themselves stay (index.page.js's own
- * createPrAckLabelActionsHelpers instance and pr-quick-check-actions.helpers.js
- * are vanilla JS, structurally unable to ever become Context consumers -
- * that's Phase H's job, not this one's). Mounted wrapping <AppRoot />
- * itself now (react-app.jsx's mountAppRoot), not nested inside its own
- * returned JSX - AppRoot's own body calls useAckLabelActions() directly,
- * so it has to be a real Context descendant, not an ancestor, for that to
- * reach this Provider's live state.
+ * bulk-batch mutators are exposed via Context, so state/useAckLabelActions.jsx's
+ * own instance calls them directly via usePrActivityQueue(). Mounted
+ * wrapping <AppRoot /> itself now (react-app.jsx's mountAppRoot), not
+ * nested inside its own returned JSX - AppRoot's own body calls
+ * useAckLabelActions() directly, so it has to be a real Context
+ * descendant, not an ancestor, for that to reach this Provider's live
+ * state.
+ *
+ * Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued/
+ * beginBulkActionBatch/markBulkActionChunkInFlight/markBulkActionChunkDone/
+ * finishBulkActionBatch all deleted outright - their "real external
+ * callers" (pr-ack-label-actions.helpers.js/pr-quick-check-actions.helpers.js)
+ * are pure DI factories with zero window.* references of their own; their
+ * only actual callers are useAckLabelActions.jsx/useQuickCheckActions.jsx,
+ * both hooks that already inject these Context functions directly, not
+ * through window. A grep confirmed zero remaining references outside this
+ * file's own (now rewritten) tests and PrTableApp.test.jsx's.
  */
 export function PrActivityQueueProvider({ children }) {
   const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
@@ -90,19 +94,6 @@ export function PrActivityQueueProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => {
-    window.markPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo));
-    };
-    window.clearPrsBusy = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrBusy(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsBusy;
-      delete window.clearPrsBusy;
-    };
-  }, [markPrBusy, clearPrBusy]);
-
   const [queuedPrNumbers, setQueuedPrNumbers] = useState(() => new Set());
 
   const markPrQueued = useCallback((prNumber, repo) => {
@@ -122,19 +113,6 @@ export function PrActivityQueueProvider({ children }) {
     });
   }, []);
 
-  useEffect(() => {
-    window.markPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrQueued(prNumber, repo));
-    };
-    window.clearPrsQueued = (prNumbers, repo) => {
-      (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => clearPrQueued(prNumber, repo));
-    };
-    return () => {
-      delete window.markPrsQueued;
-      delete window.clearPrsQueued;
-    };
-  }, [markPrQueued, clearPrQueued]);
-
   // The bulk ack/apply-label chunk manifest - the one real ordered queue
   // the drawer surfaces (see pr-bulk-action-batches.helpers.js). A plain
   // Map in a ref would avoid re-renders too, but this state IS the
@@ -143,11 +121,9 @@ export function PrActivityQueueProvider({ children }) {
   const [bulkBatchesState, setBulkBatchesState] = useState(getInitialBatchesState);
 
   // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): these
-  // 4 used to be inlined directly in the window-bridge effect below, with
-  // no Context equivalent at all. Pulled out into their own stable
-  // useCallbacks (same shape as markPrBusy/clearPrBusy above) so
-  // useAckLabelActions.jsx can call them directly via usePrActivityQueue()
-  // instead of window.beginBulkActionBatch/etc.
+  // 4 are stable useCallbacks (same shape as markPrBusy/clearPrBusy above)
+  // so useAckLabelActions.jsx can call them directly via
+  // usePrActivityQueue().
   const beginBulkActionBatch = useCallback(({ batchId, actionLabel, repo, chunks }) => {
     setBulkBatchesState((prev) => beginBatch(prev, { batchId, actionLabel, repo, chunks }));
   }, []);
@@ -160,19 +136,6 @@ export function PrActivityQueueProvider({ children }) {
   const finishBulkActionBatch = useCallback(({ batchId }) => {
     setBulkBatchesState((prev) => finishBatch(prev, { batchId }));
   }, []);
-
-  useEffect(() => {
-    window.beginBulkActionBatch = (...args) => beginBulkActionBatch(...args);
-    window.markBulkActionChunkInFlight = (...args) => markBulkActionChunkInFlight(...args);
-    window.markBulkActionChunkDone = (...args) => markBulkActionChunkDone(...args);
-    window.finishBulkActionBatch = (...args) => finishBulkActionBatch(...args);
-    return () => {
-      delete window.beginBulkActionBatch;
-      delete window.markBulkActionChunkInFlight;
-      delete window.markBulkActionChunkDone;
-      delete window.finishBulkActionBatch;
-    };
-  }, [beginBulkActionBatch, markBulkActionChunkInFlight, markBulkActionChunkDone, finishBulkActionBatch]);
 
   const bulkBatches = useMemo(() => getBulkQueueViewModel(bulkBatchesState), [bulkBatchesState]);
 

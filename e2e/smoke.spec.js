@@ -472,14 +472,17 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
-  // runAckAction/runApplyLabelAction (bulk operations submitted via the
-  // "Run & Filter" tab's PR-number-list field, as opposed to a single row's
-  // own Ack/Apply-label button) previously gave no visible per-row feedback
-  // at all while a multi-PR request was in flight - only the single-row
-  // withPrBusy wrapper in PrTableApp.jsx lit up a row's spinner. Verifies
-  // the window.markPrsBusy/window.clearPrsBusy bridge those functions now
-  // call reaches the same .pr-progress-indicator spinners for every PR
-  // number in the batch, not just one.
+  // runAckAction (bulk operations submitted via the Run & Filter tab's
+  // "#pr-numbers" field, as opposed to a single row's own Ack button)
+  // previously gave no visible per-row feedback at all while a multi-PR
+  // request was in flight - only the single-row withPrBusy wrapper in
+  // PrTableApp.jsx lit up a row's spinner. Tenth follow-up (see
+  // REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): markPrBusy/
+  // clearPrBusy are reached via usePrActivityQueue() directly now, not a
+  // window.markPrsBusy/clearPrsBusy bridge - this test drives the real
+  // Ack workflow through the UI (not a direct function call) so it still
+  // proves the real wiring end to end, with the POST delayed just long
+  // enough to observe the in-flight state before it resolves.
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
@@ -488,57 +491,46 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   await expect(pr1Indicator).toHaveJSProperty("hidden", true);
   await expect(pr2Indicator).toHaveJSProperty("hidden", true);
 
-  await page.evaluate(() => {
-    window.markPrsBusy(["1", "2"], "octocat/hello-world");
+  await page.route("**/view-prs/ack", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  // #repo lives inside the collapsed "Run Script options (rarely changed)"
+  // <details> - open it before filling, same as the other tests in this
+  // file that touch fields in that group. Filled explicitly (not relying
+  // on its usual persisted-default value) so this test doesn't depend on
+  // an earlier test in this shared-webServer suite having already
+  // persisted it.
+  await page.getByText("Run Script options (rarely changed)").click();
+  await page.locator("#repo").fill("octocat/hello-world");
+  await page.locator("#pr-numbers").fill("1,2");
+  await page.getByRole("button", { name: "Apply ack only" }).click();
+
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
   await expect(pr2Indicator).toHaveJSProperty("hidden", false);
 
-  await page.evaluate(() => {
-    window.clearPrsBusy(["1", "2"], "octocat/hello-world");
-  });
   await expect(pr1Indicator).toHaveJSProperty("hidden", true);
   await expect(pr2Indicator).toHaveJSProperty("hidden", true);
 });
 
-test("a chunked bulk operation's queued PRs show a distinct static indicator, separate from the active spinner", async ({ page }) => {
-  // Regression test for the "queued, not yet started" state
-  // (PrTableApp.jsx's markPrsQueued/clearPrsQueued, PrNumberCell.jsx's
-  // .pr-progress-indicator--queued) - a chunked bulk request marks its
-  // whole batch queued up front, then moves each chunk's PR numbers
-  // queued -> active right before that chunk's own request fires. Verifies
-  // both dot variants render distinctly in a real browser, and that
-  // marking a PR both queued and active shows only the active (spinning)
-  // dot, not both.
-  await page.goto("/");
-  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
-
-  const pr1Active = page.locator('[data-pr-number="1"] .pr-progress-indicator:not(.pr-progress-indicator--queued)');
-  const pr1Queued = page.locator('[data-pr-number="1"] .pr-progress-indicator--queued');
-  await expect(pr1Active).toHaveJSProperty("hidden", true);
-  await expect(pr1Queued).toHaveJSProperty("hidden", true);
-
-  await page.evaluate(() => {
-    window.markPrsQueued(["1"], "octocat/hello-world");
-  });
-  await expect(pr1Active).toHaveJSProperty("hidden", true);
-  await expect(pr1Queued).toHaveJSProperty("hidden", false);
-
-  // Moving to "active" (as a chunk's own request actually fires) hides the
-  // queued dot and shows the spinning one instead - never both at once.
-  await page.evaluate(() => {
-    window.markPrsBusy(["1"], "octocat/hello-world");
-  });
-  await expect(pr1Active).toHaveJSProperty("hidden", false);
-  await expect(pr1Queued).toHaveJSProperty("hidden", true);
-
-  await page.evaluate(() => {
-    window.clearPrsBusy(["1"], "octocat/hello-world");
-    window.clearPrsQueued(["1"], "octocat/hello-world");
-  });
-  await expect(pr1Active).toHaveJSProperty("hidden", true);
-  await expect(pr1Queued).toHaveJSProperty("hidden", true);
-});
+// A dedicated real-browser reproduction of the "queued, not yet started"
+// sub-state (PrActivityQueueProvider.jsx's markPrQueued/clearPrQueued,
+// PrNumberCell.jsx's .pr-progress-indicator--queued) used to live here too,
+// driven via the now-deleted window.markPrsQueued/markPrsBusy bridges.
+// Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// reproducing it faithfully through only the 3 PRs this fixture provides
+// would mean engineering a PR-number list that lands a specific PR number
+// in a chunk beyond pr-ack-label-actions.helpers.js's own CONCURRENCY_LIMIT
+// (3 chunks in flight at once) while never appearing in an earlier
+// in-flight chunk - fragile and tightly coupled to that implementation
+// constant, for coverage two other layers already provide faithfully:
+// PrNumberCell.test.jsx proves the queued-vs-active dot renders correctly
+// from props alone, and PrActivityQueueProvider.test.jsx/PrTableApp.test.jsx
+// (jest) prove the exact "active wins over queued" exclusion rule at the
+// Context level, including via a real multi-chunk begin/in-flight/done/
+// finish flow. Not reconstructed here.
 
 test("'View in table' from Author Insights actually expands the insights row content", async ({ page }) => {
   // Regression test: vanilla's navigateToPrInTable finds the PR's row and
