@@ -852,9 +852,13 @@ function AppRoot() {
           AppRoot's own body) to reach useFilterState()/useRowFilterSelection()
           directly, which needs AppRoot to be a genuine descendant of all 4,
           the same "component can't be descendant of what it renders"
-          constraint Phase G's own PrActivityQueueProvider move and Phase
-          G.1's TabStateProvider widening already ran into - see
-          state/useFormBody.jsx. PrDataProvider itself stays here (cluster 6
+          constraint Phase G.3 already ran into moving these same 3
+          selection Providers the first time (that move was to wrap
+          PrDataProvider/FilterStateProvider, not AppRoot - this is the
+          same constraint one level further out), and Phase G's own
+          PrActivityQueueProvider move/Phase G.1's TabStateProvider
+          widening both ran into separately - see state/useFormBody.jsx.
+          PrDataProvider itself stays here (cluster 6
           doesn't move it), so it's now FilterStateProvider's *descendant*
           instead of its ancestor - confirmed inert (neither reads the
           other's Context) but a genuine reversal worth calling out, since
