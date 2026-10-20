@@ -954,8 +954,21 @@ function AppRoot() {
             needs to be a real descendant, not just visually adjacent"
             class of bug Phase G's own PrActivityQueueProvider move fixed.
             Caught by a real end-to-end test, not jsdom - this Provider is
-            cheap/pure state, so widening its scope costs nothing. */}
-        <TabStateProvider>
+            cheap/pure state, so widening its scope costs nothing.
+            Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+            audit", cluster 3): <TabStateProvider> itself moved from here
+            to wrapping <AppRoot/> at mountAppRoot() below, for the same
+            reason - AppRoot's own body calls useHasTabPanelBeenVisible()
+            5 times (hasReviewStatsBeenVisible etc.), which silently
+            resolved to this Context's no-op default too, since AppRoot's
+            body isn't a descendant of a Provider nested inside its own
+            returned JSX (the exact "component can't be descendant of what
+            it renders" constraint Phase H.20 already ran into for
+            FilterStateProvider/the 3 selection Providers) - caught by a
+            real Playwright regression (Author Insights content never
+            appearing after H.21's useIsTabPanelVisible rewrite), not
+            jsdom (every jsdom test happens to wrap its own Probe in a
+            real Provider directly, side-stepping this). */}
           {containers.tabPrData &&
             createPortal(
               <DataTabButton tabKey="pr-data" label="PR data" panelId="tab-panel-pr-data" />,
@@ -1294,7 +1307,6 @@ function AppRoot() {
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
-        </TabStateProvider>
         </JobEventsProvider>
         </AuthorInsightsDraftsProvider>
       </RepoLabelsProvider>
@@ -1351,6 +1363,14 @@ function mountAppRoot() {
   // state/useFormBody.jsx and this function's own initialValues argument
   // below, now computed once here via buildFilterStateInitialValues()
   // instead of threaded through AppRoot's own containers state.
+  //
+  // Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 3): TabStateProvider wraps from here too now (innermost - it
+  // needs none of the other 6 Contexts), same reason as every Provider
+  // above it on this list - AppRoot's own body calls
+  // useHasTabPanelBeenVisible() 5 times (hasReviewStatsBeenVisible etc.),
+  // which needs a genuine Provider ancestor to resolve useTabState() to
+  // anything other than this Context's no-op default.
   ReactDOM.createRoot(anchor).render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
@@ -1359,7 +1379,9 @@ function mountAppRoot() {
             <StatusTextProvider>
               <BackfillStatusProvider>
                 <PrActivityQueueProvider>
-                  <AppRoot />
+                  <TabStateProvider>
+                    <AppRoot />
+                  </TabStateProvider>
                 </PrActivityQueueProvider>
               </BackfillStatusProvider>
             </StatusTextProvider>

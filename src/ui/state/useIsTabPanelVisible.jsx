@@ -1,31 +1,50 @@
 import { useEffect, useState } from 'react';
+import { useTabState } from './TabStateContext';
+
+// Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): maps each tab panel's DOM id to the Context key that
+// controls it (TabStateContext's activeDataTab/activeManagementTab) -
+// the full, exhaustive set of panel ids that exist in index.html (see
+// pr-data-tabs.helpers.js/pr-management-tabs.helpers.js's own panel lists).
+const DATA_TAB_PANEL_IDS = {
+  'tab-panel-pr-data': 'pr-data',
+  'tab-panel-review-stats': 'review-stats',
+  'tab-panel-author-insights': 'author-insights',
+};
+const MANAGEMENT_TAB_PANEL_IDS = {
+  'tab-panel-status': 'status',
+  'tab-panel-script': 'script',
+  'tab-panel-backfill': 'backfill',
+  'tab-panel-action-log': 'action-log',
+  'tab-panel-actor-name-cache': 'actor-name-cache',
+  'tab-panel-export': 'export',
+};
 
 /**
- * Deferred-items follow-up, items 3/5 (see REACT_MIGRATION_PLAN.md):
- * originally added colocated inside ReviewStatsContent.jsx for item 3,
- * promoted here once item 5 needed a second consumer - no Context/React
- * state tracks which management/data tab is active today, since tab
- * switching is pure vanilla DOM (pr-data-tabs.helpers.js's
- * activateDataTab / pr-management-tabs.helpers.js's own tab switcher both
- * set a panel's `hidden` attribute directly), so this watches that DOM
- * attribute via MutationObserver rather than needing a new Context field.
+ * Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): reads TabStateContext directly instead of watching a panel's
+ * `hidden` DOM attribute via MutationObserver - this hook's own prior
+ * comment ("no Context/React state tracks which tab is active today") was
+ * true when written (Deferred-items follow-up, before Phase A's
+ * TabStateProvider existed), but has been stale since Phase A: TabStateContext
+ * has tracked `activeDataTab`/`activeManagementTab` as real state ever
+ * since, this hook just hadn't been pointed at it yet. A safe, isolated
+ * precursor to the rest of cluster 3 (which still owns who *writes* each
+ * panel's `hidden` attribute) - this hook's own external contract
+ * (panelId in, boolean out) is unchanged, so none of its 7 call sites
+ * need to change.
  */
 export function useIsTabPanelVisible(panelId) {
-  const [isVisible, setIsVisible] = useState(() => {
-    const panel = document.getElementById(panelId);
-    return !panel || !panel.hidden;
-  });
-  useEffect(() => {
-    const panel = document.getElementById(panelId);
-    if (!panel) {
-      return undefined;
-    }
-    setIsVisible(!panel.hidden);
-    const observer = new MutationObserver(() => setIsVisible(!panel.hidden));
-    observer.observe(panel, { attributes: true, attributeFilter: ['hidden'] });
-    return () => observer.disconnect();
-  }, [panelId]);
-  return isVisible;
+  const { activeDataTab, activeManagementTab } = useTabState();
+  const dataTabKey = DATA_TAB_PANEL_IDS[panelId];
+  if (dataTabKey) {
+    return activeDataTab === dataTabKey;
+  }
+  const managementTabKey = MANAGEMENT_TAB_PANEL_IDS[panelId];
+  if (managementTabKey) {
+    return activeManagementTab === managementTabKey;
+  }
+  throw new Error(`useIsTabPanelVisible: unrecognized panelId "${panelId}"`);
 }
 
 /**

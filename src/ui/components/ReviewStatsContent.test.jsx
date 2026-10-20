@@ -7,6 +7,7 @@ require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
+const { TabStateContext } = require('../state/TabStateContext');
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -80,15 +81,34 @@ const buildReviewStatsOverrides = (stats) => ({
   renderActivityTrendNote: () => 'Total reviewer activity: 5 events across 3 days.',
 });
 
+// Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): useIsTabPanelVisible() (what ReviewStatsContent calls under
+// the hood) now reads TabStateContext instead of a panel element's
+// `hidden` DOM attribute - defaults to "review-stats is the active tab"
+// here, matching the OLD default (no #tab-panel-review-stats element in
+// the DOM at all -> that hook's own prior "no matching panel = default
+// visible" fallback), so every test below this that isn't specifically
+// about tab-visibility gating keeps seeing real content, not the empty
+// "no filtered rows" fallback. The gating describe block further down
+// supplies its own, more specific TabStateContext.Provider instead.
 const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
   render(
-    <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
-      <ReviewStatsContext.Provider
-        value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats), ...reviewStatsOverrides }}
-      >
-        <ReviewStatsContent />
-      </ReviewStatsContext.Provider>
-    </PrDataProvider>,
+    <TabStateContext.Provider
+      value={{
+        activeDataTab: 'review-stats',
+        activeManagementTab: 'status',
+        setActiveDataTab: () => {},
+        setActiveManagementTab: () => {},
+      }}
+    >
+      <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
+        <ReviewStatsContext.Provider
+          value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats), ...reviewStatsOverrides }}
+        >
+          <ReviewStatsContent />
+        </ReviewStatsContext.Provider>
+      </PrDataProvider>
+    </TabStateContext.Provider>,
   );
 
 describe('ReviewStatsContent', () => {
@@ -173,24 +193,25 @@ describe('ReviewStatsContent', () => {
   });
 
   describe('tab-visibility gating (deferred-items follow-up, item 3 - see REACT_MIGRATION_PLAN.md)', () => {
-    let panel;
-
-    beforeEach(() => {
-      panel = document.createElement('div');
-      panel.id = 'tab-panel-review-stats';
-      panel.hidden = true;
-      document.body.appendChild(panel);
-    });
-
-    afterEach(() => {
-      document.body.removeChild(panel);
-    });
+    // Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 3): useIsTabPanelVisible() (what ReviewStatsContent calls
+    // under the hood) now reads TabStateContext's activeDataTab instead of
+    // a panel element's `hidden` DOM attribute - seed/change that Context
+    // value directly instead of creating a #tab-panel-review-stats element
+    // and flipping its `hidden` property.
+    const renderWithActiveDataTab = (activeDataTab, children) =>
+      render(
+        <TabStateContext.Provider value={{ activeManagementTab: 'status', activeDataTab }}>
+          {children}
+        </TabStateContext.Provider>,
+      );
 
     test('given a hidden review-stats panel, when the payload changes, then the expensive stats recompute is skipped', () => {
       const stats = buildStats();
       const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
 
-      render(
+      renderWithActiveDataTab(
+        'pr-data',
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
           <ReviewStatsContext.Provider
             value={{
@@ -217,11 +238,11 @@ describe('ReviewStatsContent', () => {
       expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
     });
 
-    test('given a review-stats panel that becomes visible, when its hidden attribute flips off, then the stats recompute immediately from the latest payload', async () => {
+    test('given a review-stats panel that becomes visible, when the active data tab changes, then the stats recompute immediately from the latest payload', async () => {
       const stats = buildStats();
       const buildReviewerStatsSpy = jest.fn(() => ({ summary: stats.summary, reviewerRows: stats.reviewerRows }));
 
-      render(
+      const tree = (
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
           <ReviewStatsContext.Provider
             value={{
@@ -232,16 +253,20 @@ describe('ReviewStatsContent', () => {
           >
             <ReviewStatsContent />
           </ReviewStatsContext.Provider>
-        </PrDataProvider>,
+        </PrDataProvider>
       );
+      const { rerender } = renderWithActiveDataTab('pr-data', tree);
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
 
-      // Simulate activateDataTab('review-stats') flipping the panel's
-      // `hidden` attribute directly (pr-data-tabs.helpers.js's real
-      // mechanism) - the MutationObserver picks this up asynchronously,
-      // so wait for its effect rather than asserting synchronously.
+      // Simulate activateDataTab('review-stats') - react-app.jsx's real
+      // mechanism - by changing the Context value that now drives it,
+      // instead of flipping the panel's own `hidden` attribute directly.
       await React.act(async () => {
-        panel.hidden = false;
+        rerender(
+          <TabStateContext.Provider value={{ activeManagementTab: 'status', activeDataTab: 'review-stats' }}>
+            {tree}
+          </TabStateContext.Provider>,
+        );
         await Promise.resolve();
       });
 

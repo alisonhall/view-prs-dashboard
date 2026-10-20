@@ -26,10 +26,19 @@ import { TabStateContext } from '../state/TabStateContext';
  * (`navigateToPrInTable`/`navigateToAuthorInsights`, the two
  * `navigateToPrInTableFrom*` bridges) go *through* this Provider instead
  * of calling the vanilla function directly, so the React-rendered buttons'
- * active-state styling never desyncs from the real active tab -
- * `useIsTabPanelVisible`'s MutationObserver (and `pr-render-apply.
- * helpers.js`'s own vanilla `isTabPanelVisible`) are untouched either way,
- * since `window.activateDataTab` still physically sets `panel.hidden`.
+ * active-state styling never desyncs from the real active tab.
+ *
+ * Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): `useIsTabPanelVisible` (state/) now reads this Context's
+ * `activeDataTab`/`activeManagementTab` directly instead of watching a
+ * panel's `hidden` attribute via `MutationObserver` - this comment used to
+ * say it was untouched "since `window.activateDataTab` still physically
+ * sets `panel.hidden`," which is still true of `activateDataTab` itself
+ * (unchanged this phase, still the only thing physically writing that
+ * attribute), just no longer the mechanism this hook depends on. The
+ * `pr-render-apply.helpers.js` reference in that old wording was already
+ * stale before this phase - that file's own `isTabPanelVisible` was
+ * deleted outright in H.17.
  *
  * Phase A, slice 2: the exact same shape, extended to the other tab bar
  * (`pr-management-tabs.helpers.js`'s `activateTab`/`window.activateManagementTab`/
