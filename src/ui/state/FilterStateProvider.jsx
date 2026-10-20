@@ -66,7 +66,12 @@ const CHECKBOX_FIELD_IDS = [
  * so vanilla code (the render pipeline's DOM-read call sites) can read/write
  * Context state without needing its own React tree - same
  * handled/fallback bridge shape every Phase 2/3 conversion already uses,
- * just in the read direction as well as the update direction.
+ * just in the read direction as well as the update direction. Confirmed
+ * via grep (twelfth follow-up, see REACT_MIGRATION_PLAN.md, "Remaining-
+ * effort audit") this pair still has a real, deliberately non-reactive
+ * consumer: `PrSelectionCell.jsx` (mounted once per table row - a real
+ * Context subscription there would re-render every row on every keystroke
+ * in any of 30+ unrelated fields), so both stay.
  *
  * Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
  * owns UI option persistence now - a mount-only effect restores saved
@@ -75,17 +80,20 @@ const CHECKBOX_FIELD_IDS = [
  * runs *inside* this Provider's own effect, not from vanilla code reaching
  * in, so there's no cross-boundary reentrancy to guard against the way
  * `index.page.js`'s old `restoreUiOptionOverrides` needed `queueMicrotask`/
- * a `'viewprs:react-ready'` second pass for), and `persistRunScriptOptions`/
- * `persistViewFilterOptions` are exposed as `window.persistRunScriptOptionOverrides`/
- * `window.persistViewFilterOptionOverrides` - the *same* bridge names
- * `index.page.js`'s old `persistRunScriptOptionOverrides`/
- * `persistViewFilterOptionOverrides` used, so every existing caller (the
- * "Run script"/"Apply filters (local)" buttons, the 3 vanilla "change"
- * listener branches) needed zero changes - only what's *behind* those
- * names moved. Save *trigger points* (when a save happens) are
- * deliberately unchanged - that's a product decision (not every field
- * auto-persists on every keystroke), not an implementation detail: only
- * the *mechanics* of getting there were simplified.
+ * a `'viewprs:react-ready'` second pass for). `persistRunScriptOptions` is
+ * exposed via this Context's own value now (twelfth follow-up) - its one
+ * real caller (react-app.jsx's "Run script" button) is a genuine
+ * descendant of this Provider, so `window.persistRunScriptOptionOverrides`
+ * is gone outright. `persistViewFilterOptions` keeps its
+ * `window.persistViewFilterOptionOverrides` bridge, but only for this
+ * suite's own tests now - a grep confirmed zero production callers left
+ * (the "Apply filters (local)" button's own call to it was already
+ * removed in an earlier phase; every real save now happens via this
+ * Provider's own debounced effect below). Save *trigger points* (when a
+ * save happens) are deliberately unchanged from the original vanilla
+ * behavior - that's a product decision (not every field auto-persists on
+ * every keystroke), not an implementation detail: only the *mechanics* of
+ * getting there were simplified.
  *
  * The 9 multi-select lists' "pending selections" restore unchanged
  * (`setPendingMultiSelectSelection`, imported directly - that store is
@@ -453,16 +461,23 @@ export function FilterStateProvider({ initialValues, children }) {
     window.setFilterStateValue = (key, value) => {
       flushSync(() => setValue(key, value));
     };
-    // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // same bridge names index.page.js's own persistRunScriptOptionOverrides/
-    // persistViewFilterOptionOverrides used - see this file's own header
-    // comment for why no caller needed to change.
-    window.persistRunScriptOptionOverrides = (...args) => persistRunScriptOptions(...args);
+    // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+    // audit"): window.persistRunScriptOptionOverrides is gone -
+    // persistRunScriptOptions is exposed via this Context's own value
+    // instead (below), since its one real caller (react-app.jsx's "Run
+    // script" button, inside AppRoot) is a genuine descendant of this
+    // Provider. window.persistViewFilterOptionOverrides stays - confirmed
+    // it has zero production callers left (persistViewFilterOptions is
+    // triggered entirely by this Provider's own debounced effect below
+    // now), but this suite's own integration tests still use it as a
+    // deterministic "force the persist now" hook; closing that would mean
+    // reworking ~9 call sites across index.html.test.js to drive the real
+    // 150ms debounce via fake timers instead - a separate, dedicated pass,
+    // not bundled into this one.
     window.persistViewFilterOptionOverrides = (...args) => persistViewFilterOptions(...args);
     return () => {
       delete window.getFilterStateValues;
       delete window.setFilterStateValue;
-      delete window.persistRunScriptOptionOverrides;
       delete window.persistViewFilterOptionOverrides;
     };
   }, [setValue, persistRunScriptOptions, persistViewFilterOptions]);
@@ -502,7 +517,9 @@ export function FilterStateProvider({ initialValues, children }) {
   );
 
   return (
-    <FilterStateContext.Provider value={{ values, setValue, restoredRepoOverride }}>
+    <FilterStateContext.Provider
+      value={{ values, setValue, restoredRepoOverride, persistRunScriptOptions }}
+    >
       {children}
     </FilterStateContext.Provider>
   );

@@ -52,6 +52,7 @@ import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
+import { useFilterState } from './state/FilterStateContext';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
@@ -636,6 +637,12 @@ function AppRoot() {
   // comment for why this exact shape reproduces both.
   useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
   const runScript = useRunScript();
+  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): persistRunScriptOptions comes from useFilterState() directly
+  // now, not window.persistRunScriptOptionOverrides - AppRoot is a
+  // genuine descendant of FilterStateProvider (mountAppRoot wraps it from
+  // outside AppRoot).
+  const { persistRunScriptOptions } = useFilterState();
   const ackLabelActions = useAckLabelActions();
   // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton/the
@@ -1091,7 +1098,7 @@ function AppRoot() {
               className="primary-run-btn"
               label="Run script"
               onClick={() => {
-                window.persistRunScriptOptionOverrides?.();
+                persistRunScriptOptions();
                 runScript();
               }}
             />,

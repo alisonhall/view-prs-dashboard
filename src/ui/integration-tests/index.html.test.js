@@ -27,6 +27,7 @@ const { PrDataProvider } = require("../state/PrDataProvider");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
+const { useFilterState } = require("../state/FilterStateContext");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
@@ -836,6 +837,11 @@ function RunScriptActionButtonsTestHarness() {
   const runScript = useRunScript();
   const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
   const { refresh: refreshAvailableRepoLabels } = useRepoLabels();
+  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): persistRunScriptOptions comes from useFilterState() directly
+  // now, not window.persistRunScriptOptionOverrides - same change as
+  // react-app.jsx's real "Run script" button.
+  const { persistRunScriptOptions } = useFilterState();
 
   const buttons = [
     {
@@ -844,7 +850,7 @@ function RunScriptActionButtonsTestHarness() {
       className: "primary-run-btn",
       label: "Run script",
       onClick: () => {
-        window.persistRunScriptOptionOverrides?.();
+        persistRunScriptOptions();
         runScript();
       },
     },
