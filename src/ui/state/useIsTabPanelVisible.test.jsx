@@ -130,6 +130,5 @@ describe('useHasTabPanelBeenVisible', () => {
       await Promise.resolve();
     });
     expect(onValue).toHaveBeenLastCalledWith(true); // still true - never flips back
-
   });
 });
