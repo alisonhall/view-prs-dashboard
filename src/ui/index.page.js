@@ -6,45 +6,17 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as prDataTabOrchestratorFactory from "./orchestrators/pr-data-tab.orchestrator.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
-import * as prSectionGroupingHelperFactory from "./helpers/pr-section-grouping.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
-import * as prActorIdentityRenderHelperFactory from "./helpers/pr-actor-identity-render.helpers.js";
-import * as prRequestedReviewersHelperFactory from "./helpers/pr-requested-reviewers.helpers.js";
-import * as prAssignedUsersHelperFactory from "./helpers/pr-assigned-users.helpers.js";
-import * as prApproversHelperFactory from "./helpers/pr-approvers.helpers.js";
-import * as prNeedsAttentionHelperFactory from "./helpers/pr-needs-attention.helpers.js";
 import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
-import * as prSectionOpenStateHelperFactory from "./helpers/pr-section-open-state.helpers.js";
-import * as prAppliedSummaryHelperFactory from "./helpers/pr-applied-summary.helpers.js";
-import * as prScopeSelectionHelperFactory from "./helpers/pr-scope-selection.helpers.js";
-import * as prScopeSettingsHelperFactory from "./helpers/pr-scope-settings.helpers.js";
 import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
-import * as prRenderContextHelperFactory from "./helpers/pr-render-context.helpers.js";
-import * as prRowSourcesHelperFactory from "./helpers/pr-row-sources.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
-import * as prScopedRowsHelperFactory from "./helpers/pr-scoped-rows.helpers.js";
-import * as prRenderSummaryHelperFactory from "./helpers/pr-render-summary.helpers.js";
-import * as prRenderApplyHelperFactory from "./helpers/pr-render-apply.helpers.js";
-import * as prFilterPipelineHelperFactory from "./helpers/pr-filter-pipeline.helpers.js";
-import * as prFilterSelectionInputsHelperFactory from "./helpers/pr-filter-selection-inputs.helpers.js";
-import * as prRenderSummaryInputsHelperFactory from "./helpers/pr-render-summary-inputs.helpers.js";
-import * as prRenderFilterSummaryHelperFactory from "./helpers/pr-render-filter-summary.helpers.js";
-import * as prRenderApplyInputsHelperFactory from "./helpers/pr-render-apply-inputs.helpers.js";
-import * as prRenderFinalizeHelperFactory from "./helpers/pr-render-finalize.helpers.js";
-import * as prRenderPipelineHelperFactory from "./helpers/pr-render-pipeline.helpers.js";
-import * as prRenderStateCommitHelperFactory from "./helpers/pr-render-state-commit.helpers.js";
-import * as prRunPrDataContextHelperFactory from "./helpers/pr-run-pr-data-context.helpers.js";
 import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
 import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
 import * as prApplyFiltersCacheHelperFactory from "./helpers/pr-apply-filters-cache.helpers.js";
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
-import * as prSelectedFiltersHelperFactory from "./helpers/pr-selected-filters.helpers.js";
-import * as prRowFilteringHelperFactory from "./helpers/pr-row-filtering.helpers.js";
-import * as prRowMatchFiltersHelperFactory from "./helpers/pr-row-match-filters.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
 import * as prAuthorInsightsDraftsHelperFactory from "./helpers/pr-author-insights-drafts.helpers.js";
@@ -58,23 +30,15 @@ import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
 import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
-import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
-import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
-import { parseSortableTime } from "./helpers/pr-sortable-time.helpers.js";
 import { asArray } from "./helpers/pr-as-array.helpers.js";
-import { getManualNotesFieldSummary } from "./helpers/pr-manual-notes-summary.helpers.js";
 import {
   buildFailureSnackbarNotification,
   isTimeoutFailureMessage,
 } from "./helpers/pr-failure-snackbar.helpers.js";
 import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
-import {
-  extractRowLabelNames,
-  normalizeFilterToken,
-} from "./helpers/pr-filter-label-extraction.helpers.js";
 
 // DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
 // 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/AuthorInsightsPrLink.jsx
@@ -90,10 +54,11 @@ const BACKFILL_LOG_TAIL_LINES = 120;
 // PrDataProvider.jsx's own trackingRef, which now builds pollForDataChanges
 // itself. Every former write site redirects through the new
 // window.pushPrDataPollingTrackingState(partial) bridge instead.
-// lastSuccessfulRenderedCheckAt stays here - it's prDataTabOrchestrator's
-// own concern (tab-activation catch-up), not something pollForDataChanges
-// itself reads.
-let lastSuccessfulRenderedCheckAt = "";
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): lastSuccessfulRenderedCheckAt (which used to stay here as
+// prDataTabOrchestrator's own tab-activation-catch-up concern) is deleted
+// too, along with the orchestrator itself - its only reader was that
+// orchestrator's own stateGetters.getLastSuccessfulRenderedCheckAt.
 let lastSuccessfulPollCheckAt = "";
 let lastPollErrorAt = "";
 let hasActivePollWarning = false;
@@ -121,7 +86,6 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
   }
 };
 
-let currentViewerLogin = "";
 let currentActorLoginAliases = {};
 let supportsSchedulerPolling = true;
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -391,133 +355,20 @@ const setBackfillLogMessage = (message) => {
   window.setBackfillLogMessage?.(message);
 };
 
-// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// getUiOptionDefaults/readUiSessionOverrides/writeUiSessionOverrides/
-// persistUiOptionOverrides/restoreUiOptionOverrides/
-// persistRunScriptOptionOverrides/persistViewFilterOptionOverrides used to
-// live here - moved into FilterStateProvider.jsx (state/FilterStateProvider.jsx),
-// which now owns UI option persistence directly (a mount-only restore
-// effect, plus persistRunScriptOptions/persistViewFilterOptions exposed as
-// window.persistRunScriptOptionOverrides/window.persistViewFilterOptionOverrides
-// - the *same* bridge names, so every caller below is unchanged). Only
-// FILTER_STATE_FIELD_MAP stays here too (shared, not duplicated - imported
-// from the same pr-ui-option-persistence.helpers.js module
-// FilterStateProvider.jsx uses) since getFilterStateOverrideForFieldId
-// below and a few other readers (getNeedsAttentionConfig,
-// shouldAlwaysShowInReviewRows, getOpenModeFilter) still need it.
-const { FILTER_STATE_FIELD_MAP } = prUiOptionPersistenceHelperFactory.createPrUiOptionPersistenceHelpers({
-  fetch: (...args) => fetch(...args),
-});
-
-// Reads a migrated field's current value from FilterStateProvider's
-// Context (via the window.getFilterStateValues bridge react-app.jsx's
-// mountFilterStateProvider exposes) - returns undefined for an
-// unmigrated field id, or if the provider hasn't mounted yet, so every
-// call site below falls back to its original DOM read exactly as before.
-const getFilterStateOverrideForFieldId = (id) => {
-  const key = FILTER_STATE_FIELD_MAP[id];
-  if (!key || typeof window === "undefined" || typeof window.getFilterStateValues !== "function") {
-    return undefined;
-  }
-  return window.getFilterStateValues()?.[key];
-};
-
-// Phase 6 (see REACT_MIGRATION_PLAN.md): every field read here is migrated
-// onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) - prefer it
-// via getFilterStateOverrideForFieldId when mounted, falling back to the
-// original DOM read otherwise, same handled/fallback shape as everywhere
-// else.
-const readAttentionConfigText = (id, fallbackValue) => {
-  const override = getFilterStateOverrideForFieldId(id);
-  if (typeof override === "string") {
-    return override || fallbackValue;
-  }
-  return String(getOptionalElementById(id)?.value || "") || fallbackValue;
-};
-const readAttentionConfigCheckbox = (id) => {
-  const override = getFilterStateOverrideForFieldId(id);
-  if (typeof override === "boolean") {
-    return override;
-  }
-  return Boolean(getOptionalElementById(id)?.checked);
-};
-
-const getNeedsAttentionConfig = () => ({
-  noActivityMode: readAttentionConfigText("attention-no-activity-mode", "all"),
-  includePendingComments: readAttentionConfigCheckbox(
-    "attention-include-pending-comments",
-  ),
-  ignoreMergeOnlyCommits: readAttentionConfigCheckbox(
-    "attention-ignore-merge-only-commits",
-  ),
-  includeClosedMerged: readAttentionConfigCheckbox(
-    "attention-include-closed-merged",
-  ),
-  includeDraftChanged: readAttentionConfigCheckbox(
-    "attention-include-draft-changed",
-  ),
-  includeDraftNoActivity: readAttentionConfigCheckbox(
-    "attention-include-draft-no-activity",
-  ),
-});
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md): getAuthorThreadResolutionPolicy
-// used to live here (combining "attention-author-thread-resolution-mode"'s
-// Context/DOM value with getSelectedAuthorThreadResolutionAllowLogins/
-// DenyLogins' own DOM scans) for ReviewThreadsSection.jsx's window.*
-// bridge read - re-investigated an earlier "genuinely separate concern (a
-// DOM-scan dependency)" deferral and found the DOM-scan dependency was
-// real only because the 2 allow/deny lists' checked-state had nowhere
-// else to live; moved to a dedicated useAuthorThreadResolutionPolicy hook
-// in ReviewThreadsSection.jsx itself, now that
-// AuthorThreadResolutionSelectionContext exists for exactly those 2 lists
-// (same fix RowFilterSelectionContext was for the 5 row-filtering lists).
-// Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// getSelectedAuthorThreadResolutionAllowLogins/DenyLogins (and the
-// change-filter actor equivalents, getSelectedChangeFilterIgnoreComment/
-// ReviewAuthors) were deleted outright - confirmed via grep they'd had no
-// caller left at all since persistUiOptionOverrides itself (the function
-// this comment used to say still needed them) was removed in an earlier
-// phase; this comment just hadn't been updated since.
-
-const {
-  getEffectiveViewerLogin,
-} = prActorIdentityRenderHelperFactory.createPrActorIdentityRenderHelpers({
-  normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-  getCurrentViewerLogin: () => currentViewerLogin,
-  inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
-});
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md): formatRequestedReviewersDisplay/
-// formatAssignedUsersDisplay/formatApproversDisplay used to also be
-// destructured here for the window.* bridge below - PrInsightsRow.jsx now
-// gets them from PrInsightsDisplayProvider/usePrInsightsDisplay() instead
-// (state/PrInsightsDisplayContext.jsx builds its own separate instance of
-// each factory, same "call the zero-dependency factory again rather than
-// import index.page.js's own instance" pattern every other Context in
-// this migration already uses). collectRequestedReviewers/
-// collectAssignedUsers/collectApproversFromRow stay - still used by other
-// vanilla code in this file.
-const { collectRequestedReviewers } =
-  prRequestedReviewersHelperFactory.createPrRequestedReviewersHelpers({
-    asArray: (...args) => asArray(...args),
-    resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  });
-
-const { collectAssignedUsers } =
-  prAssignedUsersHelperFactory.createPrAssignedUsersHelpers({
-    asArray: (...args) => asArray(...args),
-    normalizeActorLogin: (...args) => normalizeActorLogin(...args),
-    resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-  });
-
-const { collectApproversFromRow } =
-  prApproversHelperFactory.createPrApproversHelpers({
-    asArray: (...args) => asArray(...args),
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-    resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
-    formatIsoDatetime: (...args) => formatIsoDatetime(...args),
-  });
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId/
+// readAttentionConfigText/readAttentionConfigCheckbox/getNeedsAttentionConfig
+// (Phase E's own "Needs Attention" config reader, confirmed dead here by
+// H.18 already - NeedsAttentionProvider.jsx has owned the real, live
+// derivation since then) and getEffectiveViewerLogin/collectRequestedReviewers/
+// collectAssignedUsers/collectApproversFromRow (this file's own private
+// instances, each feeding only the now-deleted entryNeedsAttention/
+// rowMatchesUiFilters chain below - every live consumer elsewhere already
+// builds its own separate instance of the same factory, same "call the
+// zero-dependency factory again" pattern as everywhere else in this
+// migration) are all deleted outright - confirmed via grep each had no
+// caller left outside prDataTabOrchestrator's now-deleted pipeline. See
+// Phase H.23's own plan entry for the full accounting.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): getBadgeClassForStatus/Check/Merge
 // and formatReviewFootprint/ConversationStatus/ApprovalRisk/
@@ -541,18 +392,6 @@ const { collectApproversFromRow } =
 // formatChkDisplay call (see that file's own comment for the fix).
 
 const {
-  entryNeedsAttention,
-  entryHasYourLastActivity,
-} = prNeedsAttentionHelperFactory.createPrNeedsAttentionHelpers({
-  asArray: (...args) => asArray(...args),
-  isChangedStatus: (...args) => isChangedStatus(...args),
-  getEffectiveViewerLogin: (...args) => getEffectiveViewerLogin(...args),
-  collectAssignedUsers: (...args) => collectAssignedUsers(...args),
-  collectRequestedReviewers: (...args) => collectRequestedReviewers(...args),
-  countPendingThreadComments: (...args) => countPendingThreadComments(...args),
-});
-
-const {
   registerUiOptionPersistenceHandlers,
   autoScrollBackfillLogToBottom,
 } = prUiOptionScrollHelperFactory.createPrUiOptionScrollHelpers({
@@ -569,167 +408,45 @@ const { getOptionalElementById, readElementAttribute } =
     documentRef: typeof document !== "undefined" ? document : null,
   });
 
-// Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 2): collectNodesByTag no longer destructured here -
-// navigateToPrInTableFromStats/navigateToPrInTableFromAuthorInsights
-// (deleted outright) were its only 2 callers.
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): still real - applyActivePrProgressIndicators (below) is a
+// live, independent consumer of this, unrelated to the deleted
+// capturePrSectionOpenState (this factory's other, now-deleted consumer in
+// this file).
 const { collectNodesByClass } =
   prDomTraversalHelperFactory.createPrDomTraversalHelpers();
-
-const { capturePrSectionOpenState } =
-  prSectionOpenStateHelperFactory.createPrSectionOpenStateHelpers({
-    collectNodesByClass: (...args) => collectNodesByClass(...args),
-    readElementAttribute: (...args) => readElementAttribute(...args),
-  });
-
-const { buildAppliedSummaryViewModel } =
-  prAppliedSummaryHelperFactory.createPrAppliedSummaryHelpers();
-
-const { buildGroupedPrSections } =
-  prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
-    sortRowsByPrNumberDesc: (...args) => sortRowsByPrNumberDesc(...args),
-    sortRowsByDateFieldDesc: (...args) => sortRowsByDateFieldDesc(...args),
-  });
-
-const { normalizeSelectedScope, resolveScopedRows } =
-  prScopeSelectionHelperFactory.createPrScopeSelectionHelpers({
-    entryNeedsAttention: (...args) => entryNeedsAttention(...args),
-    entryHasYourLastActivity: (...args) => entryHasYourLastActivity(...args),
-  });
-
-const { deriveScopeSettings } =
-  prScopeSettingsHelperFactory.createPrScopeSettingsHelpers({
-    parseCsvTokens: (...args) => parseCsvTokens(...args),
-    normalizeSelectedScope: (...args) => normalizeSelectedScope(...args),
-  });
 
 const { deriveRepoRunContext } =
   prRepoRunContextHelperFactory.createPrRepoRunContextHelpers();
 
-const { captureRenderContext } =
-  prRenderContextHelperFactory.createPrRenderContextHelpers({
-    getElementById: (...args) => document.getElementById(...args),
-    capturePrSectionOpenState: (...args) => capturePrSectionOpenState(...args),
-  });
-
-const { deriveRowSources } =
-  prRowSourcesHelperFactory.createPrRowSourcesHelpers({
-    normalizeRows: (...args) => normalizeRows(...args),
-  });
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): collectNodesByClass/capturePrSectionOpenState/
+// buildAppliedSummaryViewModel/buildGroupedPrSections/normalizeSelectedScope/
+// resolveScopedRows/deriveScopeSettings/captureRenderContext/deriveRowSources/
+// deriveScopedRows/deriveRenderSummary/applyRenderResults/
+// deriveFilterPipelineState/deriveFilterSelectionInputs (and the 11
+// getSelected*/get*Filter getters it alone consumed)/deriveRenderSummaryInputs/
+// deriveRenderFilterSummaryState/deriveRenderApplyInputs/
+// deriveRenderFinalizedState/deriveRenderPipelineState/
+// deriveCommittedRenderState/deriveRunPrDataContext are all deleted outright
+// - every one of them fed only prDataTabOrchestrator's own renderPrData
+// pipeline (also deleted, see renderPrData's own comment below), with zero
+// other reader anywhere (confirmed via grep, not assumed - several of
+// these functions' own doc comments already claimed a surviving purpose
+// that turned out stale once actually traced, e.g. getNeedsAttentionConfig
+// was superseded by NeedsAttentionProvider.jsx back in H.18). deriveRepoRunContext
+// above and deriveViewerContext/deriveViewerFilterSetup below are the only
+// 2 survivors from this same original factory cluster - both still feed
+// real, live behavior (repo resolution, and actor-login-alias/viewer-login
+// bookkeeping genuinely read elsewhere, see deriveViewerFilterSetup's own
+// comment), so renderPrData now calls them directly instead of through the
+// deleted pipeline. See Phase H.23's own plan entry for the full accounting.
 
 const { deriveViewerContext } =
   prViewerContextHelperFactory.createPrViewerContextHelpers({
     normalizeActorLoginAliases: (...args) => normalizeActorLoginAliases(...args),
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
-  });
-
-const { deriveScopedRows } =
-  prScopedRowsHelperFactory.createPrScopedRowsHelpers({
-    resolveScopedRows: (...args) => resolveScopedRows(...args),
-    normalizeRows: (...args) => normalizeRows(...args),
-  });
-
-const { deriveRenderSummary } =
-  prRenderSummaryHelperFactory.createPrRenderSummaryHelpers({
-    buildGroupedPrSections: (...args) => buildGroupedPrSections(...args),
-    buildAppliedSummaryViewModel: (...args) =>
-      buildAppliedSummaryViewModel(...args),
-    renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
-  });
-
-// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 2): renderAuthorInsightsIfVisible/applyFreshAuthorInsightsIfVisible
-// (and the latestAllStoredRows/latestActorsMap cache feeding them) no
-// longer exist - their sole purpose was re-invoking renderAuthorInsights,
-// deleted outright this phase. applyRenderResults itself needed no other
-// change - its own fingerprint/manifest computation never depended on
-// that cache.
-const { applyRenderResults } =
-  prRenderApplyHelperFactory.createPrRenderApplyHelpers({
-    computePrDataFingerprint: (...args) => computePrDataFingerprint(...args),
-    computePrDataManifest: (...args) => computePrDataManifest(...args),
-    getOptionalElementById: (...args) => getOptionalElementById(...args),
-  });
-
-const { deriveFilterPipelineState } =
-  prFilterPipelineHelperFactory.createPrFilterPipelineHelpers({
-    buildSelectedFiltersViewModel: (...args) =>
-      buildSelectedFiltersViewModel(...args),
-    buildRowFilterCriteria: (...args) => buildRowFilterCriteria(...args),
-    applyRowUiFilters: (...args) => applyRowUiFilters(...args),
-  });
-
-const { deriveFilterSelectionInputs } =
-  prFilterSelectionInputsHelperFactory.createPrFilterSelectionInputsHelpers({
-    getSelectedIncludeLabelNames: (...args) =>
-      getSelectedIncludeLabelNames(...args),
-    getSelectedExcludeLabelNames: (...args) =>
-      getSelectedExcludeLabelNames(...args),
-    getSelectedAuthorLogins: (...args) => getSelectedAuthorLogins(...args),
-    getSelectedAssignedLogins: (...args) => getSelectedAssignedLogins(...args),
-    getSelectedApproverLogins: (...args) => getSelectedApproverLogins(...args),
-    getOpenModeFilter: () => {
-      const override = getFilterStateOverrideForFieldId("open-mode");
-      if (typeof override === "string") {
-        return override || "none";
-      }
-      return document.getElementById("open-mode")?.value || "none";
-    },
-    shouldAlwaysShowInReviewRows: (...args) =>
-      shouldAlwaysShowInReviewRows(...args),
-    getCustomCommentsFilter: (...args) => getCustomCommentsFilter(...args),
-    getOtherNotesFilter: (...args) => getOtherNotesFilter(...args),
-    getPrDifficultyFilter: (...args) => getPrDifficultyFilter(...args),
-    getRallyStoriesFilter: (...args) => getRallyStoriesFilter(...args),
-    getRallyLinksFilter: (...args) => getRallyLinksFilter(...args),
-    getAnalysisOfPrFilter: (...args) => getAnalysisOfPrFilter(...args),
-  });
-
-const { deriveRenderSummaryInputs } =
-  prRenderSummaryInputsHelperFactory.createPrRenderSummaryInputsHelpers();
-
-const { deriveRenderFilterSummaryState } =
-  prRenderFilterSummaryHelperFactory.createPrRenderFilterSummaryHelpers({
-    deriveScopedRows: (...args) => deriveScopedRows(...args),
-    deriveFilterSelectionInputs: (...args) => deriveFilterSelectionInputs(...args),
-    deriveFilterPipelineState: (...args) => deriveFilterPipelineState(...args),
-    deriveRenderSummaryInputs: (...args) => deriveRenderSummaryInputs(...args),
-    deriveRenderSummary: (...args) => deriveRenderSummary(...args),
-  });
-
-const { deriveRenderApplyInputs } =
-  prRenderApplyInputsHelperFactory.createPrRenderApplyInputsHelpers();
-
-const { deriveRenderFinalizedState } =
-  prRenderFinalizeHelperFactory.createPrRenderFinalizeHelpers({
-    deriveRenderApplyInputs: (...args) => deriveRenderApplyInputs(...args),
-    applyRenderResults: (...args) => applyRenderResults(...args),
-    deriveCommittedRenderState: (...args) => deriveCommittedRenderState(...args),
-  });
-
-const { deriveRenderPipelineState } =
-  prRenderPipelineHelperFactory.createPrRenderPipelineHelpers({
-    deriveViewerFilterSetup: (...args) => deriveViewerFilterSetup(...args),
-    deriveRenderFilterSummaryState: (...args) =>
-      deriveRenderFilterSummaryState(...args),
-    deriveRenderFinalizedState: (...args) => deriveRenderFinalizedState(...args),
-  });
-
-const { deriveCommittedRenderState } =
-  prRenderStateCommitHelperFactory.createPrRenderStateCommitHelpers();
-
-const { deriveRunPrDataContext } =
-  prRunPrDataContextHelperFactory.createPrRunPrDataContextHelpers({
-    captureRenderContext: (...args) => captureRenderContext(...args),
-    deriveRepoRunContext: (...args) => deriveRepoRunContext(...args),
-    deriveScopeSettings: (...args) => deriveScopeSettings(...args),
-    getNeedsAttentionConfig: (...args) => getNeedsAttentionConfig(...args),
-    deriveRowSources: (...args) => deriveRowSources(...args),
-    getFilterStateValue: (name) =>
-      typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
-        ? window.getFilterStateValues()[name]
-        : undefined,
   });
 
 const { loadStoredData } =
@@ -741,9 +458,6 @@ const { loadStoredData } =
     },
     setLastRenderedRunStamp: (value) => {
       window.pushPrDataPollingTrackingState?.({ lastRenderedRunStamp: value });
-    },
-    setLastSuccessfulRenderedCheckAt: (value) => {
-      lastSuccessfulRenderedCheckAt = value;
     },
     setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
     getLatestSelectedRepo: () => latestSelectedRepo,
@@ -799,38 +513,47 @@ const { applyFiltersFromCache } =
     logError: (...args) => console.error(...args),
   });
 
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): the real, still-live reason this survives the rest of the
+// deleted pipeline - currentActorLoginAliases/currentViewerLogin (written
+// by commitViewerContext below) are read elsewhere in this file by
+// normalizeActorLogin's own default-param closure (helpers/
+// pr-actor-identity.helpers.js's getActorLoginAliases DI, instantiated
+// further down), which getAuthorInsightsDisplayName/
+// getBlockingAuthorInsightsLogins both call with no explicit aliases
+// argument - a real, subtle dependency a first pass at this cluster missed
+// (the pipeline's only OTHER reader, getEffectiveViewerLogin, genuinely was
+// dead - see the deleted-functions comment above). Called directly from
+// renderPrData below now (with allEntries derived the same way
+// captureRenderContext used to: Object.values(payload?.byPrNumber || {})),
+// instead of through the deleted deriveRunPrDataContext/
+// deriveRenderPipelineState chain.
 const { deriveViewerFilterSetup } =
   prRenderViewerFilterSetupHelperFactory.createPrRenderViewerFilterSetupHelpers({
     deriveViewerContext: (...args) => deriveViewerContext(...args),
-    commitViewerContext: ({
-      currentActorLoginAliases: nextActorLoginAliases,
-      currentViewerLogin: nextViewerLogin,
-    }) => {
+    // currentViewerLogin (the sibling field this callback also receives)
+    // has zero readers left in this file - its only one,
+    // getEffectiveViewerLogin, was deleted outright this phase (Phase
+    // H.23) - so it's intentionally not captured here, unlike
+    // currentActorLoginAliases.
+    commitViewerContext: ({ currentActorLoginAliases: nextActorLoginAliases }) => {
       currentActorLoginAliases =
         nextActorLoginAliases && typeof nextActorLoginAliases === "object"
           ? nextActorLoginAliases
           : {};
-      currentViewerLogin =
-        typeof nextViewerLogin === "string" ? nextViewerLogin : "";
     },
   });
-
-const { buildSelectedFiltersViewModel } =
-  prSelectedFiltersHelperFactory.createPrSelectedFiltersHelpers();
 
 // Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): one
 // shared cache instance for the page's whole lifetime, not recreated per
 // render - its value comes entirely from persisting across renders (an
 // unchanged entry's derived values/filter-match result stay cached from
-// one render to the next).
+// one render to the next). Still a real, live DI param of
+// prDataPollingHelperFactory below (its own getOrCompute) - unaffected by
+// Phase H.23's deletion of this file's OWN buildRowFilterCriteria/
+// applyRowUiFilters instance, which was this cache's only other consumer.
 const { getOrCompute: getOrComputeEntryDerivedValue } =
   prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
-
-const { buildRowFilterCriteria, applyRowUiFilters } =
-  prRowFilteringHelperFactory.createPrRowFilteringHelpers({
-    rowMatchesUiFilters: (...args) => rowMatchesUiFilters(...args),
-    getOrCompute: (...args) => getOrComputeEntryDerivedValue(...args),
-  });
 
 // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // expandAncestorDetailsElements/ensureInsightsRowVisibleForElement (this
@@ -1100,41 +823,19 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
 // populateXOptions functions this factory used to also provide have moved
 // to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals,
 // which derive the same option lists reactively from PrDataContext instead
-// of being pushed imperatively through here - trimmed DI surface down to
-// just what's still used (selection readers, the 6 "Any" filter getters,
-// and the dropdown-closing listener). Phase H.12 (see
-// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the applied-filter
-// summary (renderManagementFilterSummary/renderFilterSummary) is gone too
-// - AppliedFilterSummaryLive (react-app.jsx) already owned it live,
-// reactively; this factory's own version was a confirmed-dead no-op.
-const {
-  getSelectedAuthorLogins,
-  getSelectedAssignedLogins,
-  getSelectedApproverLogins,
-  getSelectedIncludeLabelNames,
-  getSelectedExcludeLabelNames,
-  getCustomCommentsFilter,
-  getOtherNotesFilter,
-  getPrDifficultyFilter,
-  getRallyStoriesFilter,
-  getRallyLinksFilter,
-  getAnalysisOfPrFilter,
-  setupMultiSelectDropdownClosing,
-} = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
+// of being pushed imperatively through here.
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): the selection readers/"Any" filter getters this factory also
+// used to provide (getSelectedAuthorLogins/getSelectedAssignedLogins/
+// getSelectedApproverLogins/getSelectedIncludeLabelNames/
+// getSelectedExcludeLabelNames/getCustomCommentsFilter/getOtherNotesFilter/
+// getPrDifficultyFilter/getRallyStoriesFilter/getRallyLinksFilter/
+// getAnalysisOfPrFilter) are deleted too - their one remaining caller
+// (deriveFilterSelectionInputs) is gone, and getFormBody() (the comment
+// that used to justify keeping 3 of them) was itself deleted outright in
+// Phase H.20. Only the dropdown-closing listener survives.
+const { setupMultiSelectDropdownClosing } = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
   documentRef: typeof document !== "undefined" ? document : null,
-  // Phase 6 (see REACT_MIGRATION_PLAN.md): lets getCustomCommentsFilter/
-  // getOtherNotesFilter/etc. prefer a migrated field's Context value over
-  // the DOM read - same FILTER_STATE_FIELD_MAP-backed helper every other
-  // bridge in this migration uses, just exposed by Context key here
-  // rather than DOM id (this factory's getters already know their own
-  // Context key, not the DOM id).
-  getFilterStateValue: (key) => {
-    const values =
-      typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
-        ? window.getFilterStateValues()
-        : undefined;
-    return values?.[key];
-  },
 });
 
 // Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -1238,25 +939,15 @@ if (typeof window !== "undefined") {
 // usePrInsightsDisplay() instead of the window.* bridge this used to
 // populate, and nothing else in this file calls it.
 
-const isInReviewEnabled = (row) => {
-  const value = row?.inReview;
-  return value === true || String(value || "").toLowerCase() === "true";
-};
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md): the window.isInReviewEnabled
-// bridge this used to also populate (for components/PrTableApp.jsx) was
-// confirmed dead - PrTableApp.jsx's own checkNeedsAttention delegates to
-// window.entryNeedsAttention only, never isInReviewEnabled (a past bug,
-// already fixed - PrTableApp.test.jsx/index.html.test.js's own regression
-// tests prove this value is never read). isInReviewEnabled's real,
-// legitimate consumer is this file's own "alwaysShowInReview" filter
-// below, which calls it directly, not through window.
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md): isFlaggedEnabled (the sibling of
-// isInReviewEnabled above) used to live here - deleted entirely, not just
-// its window.* bridge, since it had zero callers of any kind (confirmed
-// via grep) - unlike isInReviewEnabled, nothing internal ever called it
-// either (no "alwaysShowFlagged"-style filter exists).
+// Phase 7 (see REACT_MIGRATION_PLAN.md): isFlaggedEnabled used to live here
+// too - deleted entirely, not just its window.* bridge, since it had zero
+// callers of any kind (confirmed via grep).
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): isInReviewEnabled (isFlaggedEnabled's sibling) is now also
+// deleted outright - its own real, legitimate consumer (this file's own
+// "alwaysShowInReview" row-filtering, via rowMatchesUiFilters) is gone too.
+// window.isInReviewEnabled itself was already confirmed dead long before
+// this (Phase 7 - PrTableApp.jsx's checkNeedsAttention never read it).
 
 // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // index.page.js's own createPrRowCheckboxActionsHelpers instance (which
@@ -1288,7 +979,6 @@ const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
 });
 
 const {
-  isChangedStatus,
   statusIcon,
 } = prStatusDisplayHelperFactory.createPrStatusDisplayHelpers();
 
@@ -1309,64 +999,13 @@ const {
 // that). initDataTabs' only call site (the orchestrator below) already
 // passed a no-op in its place (Phase A, slice 1) - removed, not replaced.
 
-// PR Data Tab Orchestrator
-const prDataTabOrchestrator =
-  prDataTabOrchestratorFactory.createPrDataTabOrchestrator({
-    // Helper functions
-    deriveRunPrDataContext,
-    deriveRenderPipelineState,
-    // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
-    // roadmap"): the 3 data-tab buttons are now React-owned
-    // (DataTabButton.jsx/TabStateProvider.jsx) - this orchestrator's
-    // one-time initialize() call no longer wires tab-button clicks, a
-    // plain no-op in its place since Phase A. Phase H.22 (cluster 3)
-    // deleted pr-data-tabs.helpers.js's real initDataTabs outright (no
-    // other caller remained) - this DI param stays a no-op either way.
-    initDataTabs: () => {},
-    getOptionalElementById,
-    // State management via dependency injection
-    stateGetters: {
-      // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md and
-      // applyFiltersFromCache's own DI wiring above for the full reasoning)
-      // - same read-bridge-with-fallback pattern.
-      getLatestStoredPayload: () => window.getReactPrTablePayload?.() ?? latestStoredPayload,
-      getLatestSelectedRepo: () => latestSelectedRepo,
-      getLastSuccessfulRenderedCheckAt: () => lastSuccessfulRenderedCheckAt,
-      getLatestSchedulerState: () => window.getLatestSchedulerState?.() || {},
-    },
-    stateSetters: {
-      setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-      setLastSuccessfulRenderedCheckAt: (value) => {
-        lastSuccessfulRenderedCheckAt = value;
-      },
-      setLastRenderedPrFingerprint: (value) => {
-        window.pushPrDataPollingTrackingState?.({ lastRenderedPrFingerprint: value });
-      },
-      setLatestPrManifest: (value) => {
-        window.pushPrDataPollingTrackingState?.({ latestPrManifest: value });
-      },
-      setPendingAutoRenderPayload: (value) => {
-        window.setPendingAutoRenderPayload?.(value);
-      },
-    },
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): lets renderPrData prefer
-    // "filter-pr-numbers"'s Context value over the DOM read - same bridge
-    // shape as every other Phase 6 wiring, exposed by Context key here
-    // since renderPrData already knows its own key ("filterPrNumbers").
-    getFilterStateValue: (key) => {
-      const values =
-        typeof window !== "undefined" && typeof window.getFilterStateValues === "function"
-          ? window.getFilterStateValues()
-          : undefined;
-      return values?.[key];
-    },
-    // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): lets
-    // renderPrData prefer "repo"'s Context value over the DOM read. A
-    // separate bridge from getFilterStateValue above - "repo" isn't a
-    // FilterStateProvider-migrated field, it's real PrDataProvider
-    // Context state instead (state/PrDataProvider.jsx).
-    getSelectedRepoOverride: () => window.getReactPrTableSelectedRepo?.(),
-  });
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): the PR Data Tab Orchestrator (orchestrators/pr-data-tab.orchestrator.js)
+// and its one remaining caller, renderPrData's own
+// prDataTabOrchestrator.renderPrData(...) calls, are deleted outright -
+// see renderPrData's own comment below for what replaced it.
+// initialize()'s own call site (below, initPage) is removed too - it only
+// ever ran initDataTabs(), a no-op since Phase A slice 1.
 
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 4): getBackfillStatusViewModel/getBackfillStateKey no longer
@@ -1525,7 +1164,6 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 const {
   normalizeActorLoginAliases,
   normalizeActorLogin,
-  getPreferredActorKey,
   resolveActorDisplayName,
 } = prActorIdentityHelperFactory.createPrActorIdentityHelpers({
   asArray,
@@ -1559,38 +1197,11 @@ const {
 // REACT_MIGRATION_PLAN.md) - NotesSection.jsx imports it directly instead
 // of reading it off window.autoResizeTextarea.
 
-const normalizeRows = (rows) =>
-  rows.sort((a, b) => {
-    const orderA = Number.isFinite(Number(a?.rowOrder))
-      ? Number(a.rowOrder)
-      : Number.MAX_SAFE_INTEGER;
-    const orderB = Number.isFinite(Number(b?.rowOrder))
-      ? Number(b.rowOrder)
-      : Number.MAX_SAFE_INTEGER;
-    if (orderA !== orderB) return orderA - orderB;
-    return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-  });
-
-const sortRowsByDateFieldDesc = (rows, fieldName) =>
-  rows.sort((a, b) => {
-    const dateA = parseSortableTime(a?.data?.[fieldName]);
-    const dateB = parseSortableTime(b?.data?.[fieldName]);
-    if (dateA !== dateB) return dateB - dateA;
-    return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-  });
-
-const sortRowsByPrNumberDesc = (rows) =>
-  rows.sort((a, b) => {
-    const prA = Number(a?.data?.number || a?.prNumber || 0);
-    const prB = Number(b?.data?.number || b?.prNumber || 0);
-    return prB - prA;
-  });
-
-const parseCsvTokens = (rawValue) =>
-  String(rawValue || "")
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean);
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): normalizeRows/sortRowsByDateFieldDesc/sortRowsByPrNumberDesc/
+// parseCsvTokens (this file's own private instances) are deleted outright -
+// each only ever fed the now-deleted deriveRowSources/deriveScopedRows/
+// buildGroupedPrSections/deriveScopeSettings chain.
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): getPrNumbersInput/getSelectedPrNumbers/
 // setSelectedPrNumbers/handlePrNumbersInputChange/updateSelectedPrNumbers used
@@ -1604,38 +1215,18 @@ const parseCsvTokens = (rawValue) =>
 // to live in updateSelectedPrNumbers) - no window.* bridge needed for
 // this cluster at all anymore.
 
-// Phase 6 (see REACT_MIGRATION_PLAN.md): "always-show-in-review" is
-// migrated onto FilterStateProvider's Context (FILTER_STATE_FIELD_MAP) -
-// prefer it via getFilterStateOverrideForFieldId when mounted, falling
-// back to the original DOM read otherwise (same handled/fallback shape as
-// every other Phase 2/3 bridge, so this keeps working before React
-// loads/mounts).
-const shouldAlwaysShowInReviewRows = () => {
-  const override = getFilterStateOverrideForFieldId("always-show-in-review");
-  if (typeof override === "boolean") {
-    return override;
-  }
-  return Boolean(getOptionalElementById("always-show-in-review")?.checked);
-};
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): shouldAlwaysShowInReviewRows ("always-show-in-review"'s
+// Context-or-DOM reader) is deleted too - its sole caller,
+// deriveFilterSelectionInputs, is gone.
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): extracted into
-// its own module, pr-row-match-filters.helpers.js, matching the sibling
-// pr-scope-selection.helpers.js/pr-row-filtering.helpers.js factory
-// pattern - the new reactive useVisiblePrNumbers derivation
-// (state/useVisiblePrNumbers.jsx) needs the same logic callable with
-// Context-derived actor-identity functions instead of this file's own
-// closures. Same closures wired in here as before the extraction, so this
-// is a zero-behavior-change move on the vanilla side.
-const { rowMatchesUiFilters } =
-  prRowMatchFiltersHelperFactory.createPrRowMatchFiltersHelpers({
-    getPreferredActorKey: (...args) => getPreferredActorKey(...args),
-    collectAssignedUsers: (...args) => collectAssignedUsers(...args),
-    collectApproversFromRow: (...args) => collectApproversFromRow(...args),
-    extractRowLabelNames,
-    normalizeFilterToken,
-    getManualNotesFieldSummary,
-    isInReviewEnabled,
-  });
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): this file's own rowMatchesUiFilters instance (pr-row-match-
+// filters.helpers.js) is deleted outright - its sole consumer,
+// buildRowFilterCriteria/applyRowUiFilters (pr-row-filtering.helpers.js),
+// is also deleted (both only ever fed the now-deleted renderPrData
+// pipeline). state/useVisiblePrNumbers.jsx's own separate instance of this
+// same factory (the real, live row-filtering logic) is untouched.
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): renderPrData's two genuine
 // mount-failure branches used to fall back to a full vanilla table build,
@@ -1794,7 +1385,6 @@ const applyFreshPrPayload = (payload, repo) => {
   const updatedAt = String(payload?.lastRun?.updatedAt || "").trim();
   if (updatedAt) {
     trackingPatch.lastRenderedRunStamp = payload.lastRun.updatedAt;
-    lastSuccessfulRenderedCheckAt = updatedAt;
   }
   window.pushPrDataPollingTrackingState?.(trackingPatch);
   updateBackfillStatusFromPayload(payload);
@@ -1810,7 +1400,24 @@ const applyFreshPrPayload = (payload, repo) => {
   updateReactTable(payload, resolvedRepo);
 };
 
-const renderPrData = (payload, selectedRepo = "", options = {}) => {
+// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): a dedicated research pass confirmed prDataTabOrchestrator's
+// full renderPrData pipeline (deriveRunPrDataContext/deriveRenderPipelineState)
+// is now entirely dead weight here - every side effect it used to compute
+// (filter dropdowns, chip text, #data-meta text, the merged-request-more-
+// action push, visiblePrNumbers/filteredRows for the table, viewer-context/
+// needs-attention bookkeeping) is either already superseded by a live
+// Context derivation elsewhere, or has zero remaining reader at all left in
+// this file (confirmed by grep, not assumed - see Phase H.23's own plan
+// entry). Only 2 things the orchestrator call used to produce here are
+// still real: repo resolution and fingerprint/manifest bookkeeping for the
+// next poll tick's skip-render dedup - both computed directly below, the
+// exact same way applyFreshPrPayload (above) already does for its own
+// callers, instead of running the dead pipeline just to get the same 2
+// outputs. The `options` param (`useLastRunScope`/`skipTableRender`) only
+// ever fed that pipeline - dropped entirely, not just unused, since nothing
+// else ever read it.
+const renderPrData = (payload, selectedRepo = "") => {
   // Update global state
   if (payload) {
     applyLatestPrData({ payload });
@@ -1821,6 +1428,31 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   if (!container) {
     console.error('[renderPrData] pr-sections container not found');
     return;
+  }
+
+  const repoFilter = deriveRepoRunContext({
+    selectedRepo,
+    inputRepo: getOptionalElementById("repo")?.value,
+    lastRun: payload?.lastRun,
+  }).repoFilter;
+
+  if (payload) {
+    window.pushPrDataPollingTrackingState?.({
+      lastRenderedPrFingerprint: computePrDataFingerprint(payload),
+      lastRenderedMetaFingerprint: computePrDataMetaFingerprint(payload),
+      latestPrManifest: computePrDataManifest(payload),
+    });
+    // See deriveViewerFilterSetup's own comment (above) for why this
+    // specific side effect survives - currentActorLoginAliases/
+    // currentViewerLogin feed normalizeActorLogin's default param
+    // elsewhere in this file (getAuthorInsightsDisplayName/
+    // getBlockingAuthorInsightsLogins), a real dependency independent of
+    // the rest of the deleted pipeline. allEntries computed the same way
+    // the deleted captureRenderContext used to: Object.values(payload.byPrNumber).
+    deriveViewerFilterSetup({
+      payload,
+      allEntries: Object.values(payload?.byPrNumber || {}),
+    });
   }
 
   // Check if React is available
@@ -1835,19 +1467,13 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
     // gone from Phase 2/3's fields, and per explicit sign-off to accept a
     // brief empty #pr-sections during that race rather than keep building
     // a whole vanilla table just to immediately discard/replace it once
-    // React does mount, this now only runs the pipeline's side effects
-    // (skipTableRender: true - same call shape the React path below uses)
-    // and leaves the table itself empty. The `viewprs:react-ready`
-    // listener (below) re-invokes renderPrData once React actually
-    // mounts, taking the REACT RENDERING PATH at that point. Note this is
-    // distinct from the "mount failed"/"callbacks failed" branches
-    // further down, which stay as genuine vanilla-fallback recovery for a
-    // real React failure, not this race.
-    const preReactRenderResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
-      ...options,
-      skipTableRender: true,
-    });
-    applyResolvedRepo(preReactRenderResult?.repoFilter || selectedRepo);
+    // React does mount, this leaves the table itself empty. The
+    // `viewprs:react-ready` listener (below) re-invokes renderPrData once
+    // React actually mounts, taking the REACT RENDERING PATH at that
+    // point. Note this is distinct from the "mount failed"/"callbacks
+    // failed" branches further down, which stay as genuine vanilla-
+    // fallback recovery for a real React failure, not this race.
+    applyResolvedRepo(repoFilter);
     return;
   }
 
@@ -1855,23 +1481,13 @@ const renderPrData = (payload, selectedRepo = "", options = {}) => {
   // REACT RENDERING PATH
   // ========================================
 
-  // The React table renders the PR rows/sections itself, but everything
-  // else the vanilla pipeline normally does as a side effect of building
-  // that table — the data-meta summary line, filter chips, export field
-  // catalog, author insights panel, and stats view — still needs to run.
-  // (The filter dropdown options themselves - label/author/assigned/
-  // approver/thread-resolution/change-filter actor lists - are no longer
-  // one of those side effects; they're owned by FilterOptionsProvider.jsx,
-  // deriving reactively from PrDataContext instead. See
-  // REACT_MIGRATION_PLAN.md, sub-phase 7.4 and the later "populateFilterOptions"
-  // deletion entry for that history.) Run the full vanilla pipeline with
-  // skipTableRender so it performs those side effects without building or
-  // appending its own <table> markup into #pr-sections (which React owns).
-  const renderPipelineResult = prDataTabOrchestrator.renderPrData(payload, selectedRepo, {
-    ...options,
-    skipTableRender: true,
-  });
-  const resolvedRepo = renderPipelineResult?.repoFilter || selectedRepo || latestSelectedRepo || '';
+  // The React table owns rendering the PR rows/sections itself; everything
+  // else the vanilla pipeline used to also do as a side effect of building
+  // that table (the data-meta summary line, filter chips, export field
+  // catalog, author insights panel, stats view, and the filter dropdown
+  // options themselves) has each been superseded by its own live Context
+  // derivation - see Phase H.23's own plan entry for the full accounting.
+  const resolvedRepo = repoFilter || latestSelectedRepo || '';
   applyResolvedRepo(resolvedRepo);
 
   // Check if already mounted
@@ -2195,8 +1811,11 @@ const initPage = () => {
   // onClick if both ran, so this call is removed. initManagementTabs
   // itself (and its own tests) are untouched - it's simply no longer
   // called from here.
-  // Initialize PR Data Tab orchestrator (which calls initDataTabs internally)
-  prDataTabOrchestrator.initialize();
+  // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): the PR Data Tab orchestrator's own initialize() call
+  // (which only ever ran a no-op initDataTabs) is removed - the
+  // orchestrator itself is deleted outright, see renderPrData's own
+  // comment.
   // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // backfill-tab.orchestrator.js's own initialize() (eager status/log load
   // at page-init time) used to be called here - deleted outright along
