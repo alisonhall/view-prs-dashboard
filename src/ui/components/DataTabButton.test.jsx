@@ -18,10 +18,6 @@ const renderButtons = () =>
   );
 
 describe('DataTabButton', () => {
-  afterEach(() => {
-    delete window.setActiveDataTab;
-  });
-
   test('given the default state, when rendering, then only PR data starts active', () => {
     renderButtons();
 

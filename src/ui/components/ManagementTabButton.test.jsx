@@ -18,10 +18,6 @@ const renderButtons = () =>
   );
 
 describe('ManagementTabButton', () => {
-  afterEach(() => {
-    delete window.setActiveManagementTab;
-  });
-
   test('given the default state, when rendering, then only Activity starts active', () => {
     renderButtons();
 

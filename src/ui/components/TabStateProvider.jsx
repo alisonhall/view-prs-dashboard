@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { TabStateContext } from '../state/TabStateContext';
 
 /**
@@ -11,12 +11,16 @@ import { TabStateContext } from '../state/TabStateContext';
  * `NotesDirtyProvider.jsx`'s own comment gives for why it doesn't need a
  * ref either).
  *
- * `window.setActiveDataTab`/`window.setActiveManagementTab` (published
- * below) let vanilla-only callers that still need to trigger a tab switch
- * (`navigateToPrInTable`/`navigateToAuthorInsights`, the two
- * `navigateToPrInTableFrom*` bridges) go *through* this Provider instead
- * of writing to the DOM directly, so the React-rendered buttons'
- * active-state styling never desyncs from the real active tab.
+ * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * `window.setActiveDataTab`/`window.setActiveManagementTab` used to exist
+ * for vanilla-only callers that needed to trigger a tab switch - but
+ * `navigateToPrInTable`/`navigateToAuthorInsights`/the `navigateToPrInTableFrom*`
+ * bridges were already migrated into `useNavigateToPrInTable.jsx`/
+ * `useNavigateToAuthorInsights.jsx`, which call `setActiveDataTab` straight
+ * off this Context via `useTabState()` - no window bridge involved. A grep
+ * confirmed zero remaining production callers of either bridge (only this
+ * file's own now-removed tests referenced them), so they're deleted
+ * outright rather than migrated.
  *
  * Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 3): `useIsTabPanelVisible` (state/) reads this Context's
@@ -53,15 +57,6 @@ export function TabStateProvider({ children }) {
   const setActiveManagementTab = useCallback((key) => {
     setActiveManagementTabState(key);
   }, []);
-
-  useEffect(() => {
-    window.setActiveDataTab = (key) => setActiveDataTab(key);
-    window.setActiveManagementTab = (key) => setActiveManagementTab(key);
-    return () => {
-      delete window.setActiveDataTab;
-      delete window.setActiveManagementTab;
-    };
-  }, [setActiveDataTab, setActiveManagementTab]);
 
   const value = useMemo(
     () => ({ activeDataTab, setActiveDataTab, activeManagementTab, setActiveManagementTab }),
