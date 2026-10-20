@@ -39,6 +39,18 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 // silently change what a *later*, unrelated test sees on its own fresh
 // page load, so this still matters even though no button remains to
 // click.
+// Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit", cluster 1): FilterStateProvider.jsx's own debounced
+// Context-level watcher (added to fix the filter-chip persistence gap)
+// also re-fires once, redundantly, right after the mount-time restore
+// effect seeds `values` from a previously-persisted override - harmless
+// in production (it just writes the same data back), but it means a bare
+// "wait for *a* PUT to /view-prs/user-defaults" network listener can
+// resolve against that unrelated, earlier write instead of the one a
+// test's own action just triggered, racing it. Calling the real persist
+// function directly and awaiting its own returned Promise (below) sidesteps
+// that ambiguity entirely - no network listener involved, so there's
+// nothing to race against a differently-timed, unrelated write.
 const waitForFilterPersist = async (page) => {
   await page.evaluate(() => window.persistViewFilterOptionOverrides?.());
 };
@@ -964,16 +976,12 @@ test("removing a filter chip persists the clear on its own, with no explicit per
 
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
   // Regression coverage for the last checkbox converted (see
-  // REACT_MIGRATION_PLAN.md): unlike the plain debouncedApplyOnChangeIds
-  // fields, this one had (and still has) its own special-case persist
-  // behavior - toggling it fires a real PUT to /view-prs/user-defaults
-  // immediately, without clicking "Apply filters (local)" - so it needed
-  // its own branch added to the delegated #run-script-form listener
-  // (gotcha #3) rather than just joining the existing
-  // debouncedApplyOnChangeIds set, which only re-filters and does not
-  // persist. This test's first assertion (a real PUT firing on toggle
-  // alone) is exactly what a direct, un-delegated addEventListener left on
-  // the fallback node would silently fail to do once React replaced it.
+  // REACT_MIGRATION_PLAN.md): toggling it fires a real PUT to
+  // /view-prs/user-defaults on its own, without clicking "Apply filters
+  // (local)" (gone entirely now, Phase H.26) - persistence for every
+  // field here, this one included, is owned by FilterStateProvider.jsx's
+  // own debounced Context-level watcher, not a per-field special case
+  // any more.
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
@@ -983,12 +991,14 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   const checkbox = page.locator("#change-filter-use-builtin-merge-pattern");
   await expect(checkbox).toBeChecked();
 
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    checkbox.uncheck(),
-  ]);
+  // waitForFilterPersist calls the real persist function directly and
+  // awaits its own returned Promise, rather than racing a bare "wait for
+  // *a* PUT" network listener - the debounced watcher also redundantly
+  // re-persists once right after the mount-time restore (see that
+  // helper's own comment), so a bare URL/method match could resolve
+  // against that unrelated, earlier write instead of this one.
+  await checkbox.uncheck();
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -999,21 +1009,15 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
 
   // Reset so this test's persisted state doesn't affect whatever unrelated
   // test happens to load next against this suite's one shared webServer.
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    page.locator("#change-filter-use-builtin-merge-pattern").check(),
-  ]);
+  await page.locator("#change-filter-use-builtin-merge-pattern").check();
+  await waitForFilterPersist(page);
 });
 
 test("React-owned \"ignore commit patterns\" textarea auto-persists on change and survives a restore", async ({ page }) => {
   // Regression coverage for the only <textarea> converted so far (see
-  // REACT_MIGRATION_PLAN.md) - same special-case auto-persist-on-change
-  // shape as the "Use built-in merge pattern" checkbox above (a real PUT
-  // fires on blur/change alone, without clicking "Apply filters
-  // (local)"), so it needed the same gotcha #3 delegated-listener branch.
-  // Also confirms restoreUiOptionOverrides's fix for this field
+  // REACT_MIGRATION_PLAN.md) - a real PUT fires on blur/change alone,
+  // without clicking "Apply filters (local)" (gone entirely now, Phase
+  // H.26). Also confirms restoreUiOptionOverrides's fix for this field
   // specifically: it used to assign `textarea.value = ...` directly
   // instead of going through setText's native-setter-plus-event helper,
   // which would silently fail to notify a controlled React textarea.
@@ -1027,12 +1031,13 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await expect(textarea).toHaveValue("");
   await textarea.fill("^docs:\n^test:");
 
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    textarea.blur(),
-  ]);
+  // waitForFilterPersist calls the real persist function directly and
+  // awaits its own returned Promise, rather than racing a bare "wait for
+  // *a* PUT" network listener against FilterStateProvider.jsx's own
+  // debounced watcher, which also redundantly re-persists once right
+  // after the mount-time restore (see that helper's own comment).
+  await textarea.blur();
+  await waitForFilterPersist(page);
 
   await page.reload();
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
@@ -1045,12 +1050,8 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   // test happens to load next against this suite's one shared webServer.
   const restoredTextarea = page.locator("#change-filter-ignore-commit-patterns");
   await restoredTextarea.fill("");
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    restoredTextarea.blur(),
-  ]);
+  await restoredTextarea.blur();
+  await waitForFilterPersist(page);
 });
 
 test("React-owned Run Script options (text inputs, select, checkboxes) survive a persisted restore together", async ({ page }) => {

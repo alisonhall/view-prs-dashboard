@@ -4668,11 +4668,15 @@ describe("index page rendering with Testing Library", () => {
       const modeField = document.getElementById(
         "attention-author-thread-resolution-mode",
       );
-      // Sync Context *before* dispatching "change" (not after, via
-      // user.selectOptions) - the delegated listener's own persist call
-      // fires synchronously off this same event, so syncing afterward
-      // would race it (buildOverrides could read stale Context before
-      // the sync call below ever runs).
+      // Sync Context directly (not via user.selectOptions) - this
+      // field's own real React component isn't mounted in this suite
+      // (same static-markup harness gap documented elsewhere in this
+      // file), so nothing else keeps Context in step with the DOM value.
+      // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
+      // effort audit", cluster 1): persistence itself is no longer tied
+      // to this "change" event's own timing at all - FilterStateProvider.jsx's
+      // debounced Context-level watcher picks up the Context write below
+      // on its own, whether or not a native event ever fires.
       modeField.value = "deny-only";
       syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
       fireEvent.change(modeField, { target: { value: "deny-only" } });
@@ -4697,6 +4701,15 @@ describe("index page rendering with Testing Library", () => {
         "deny-only",
       );
 
+      // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
+      // effort audit", cluster 1): persistence is no longer a synchronous
+      // vanilla listener firing off the same event (that whole mechanism
+      // is deleted outright, superseded by FilterStateProvider.jsx's own
+      // debounced Context-level watcher) - without clearing the mock
+      // first, the next waitFor below would trivially find the PUT call
+      // just asserted on above (already non-undefined) before the new,
+      // debounced one for this checkbox click ever lands.
+      fetchMock.mockClear();
       await clickMultiSelectCheckbox(
         "attention-author-thread-resolution-deny-list",
         "reviewer1",

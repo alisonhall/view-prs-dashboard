@@ -2047,95 +2047,26 @@ const initPage = () => {
   // deleted outright, along with the "Apply filters (local)" button
   // (window.applyFiltersFromCache, react-app.jsx) that called it - the
   // re-filtering it used to (redundantly) trigger has been live via
-  // Context for a while now. That button's OTHER call,
-  // window.persistViewFilterOptionOverrides?.(), was quietly the *only*
-  // save trigger for 9 fields below (scope-mode/filter-pr-numbers/
-  // always-show-in-review/5 attention-* checkboxes/attention-no-activity-mode)
-  // and the 5 multi-select lists further down (label/exclude-label/author/
-  // assigned/approver) - confirmed by a Playwright test that deliberately
-  // persists via a raw API call specifically to avoid "checking boxes and
-  // clicking that button". Each of those 14 fields/lists gets its own
-  // auto-persist-on-change call below now, matching how
-  // attention-author-thread-resolution-mode/the 2 change-filter fields/the
-  // other 4 multi-select lists already auto-persisted - removing the
-  // button is a pure UI cleanup now, not a persistence regression.
-
-  // Delegated on the form (a stable ancestor never replaced by React) -
-  // every field below just persists its own value on change now; see
-  // Phase 2 in REACT_MIGRATION_PLAN.md for why this file still reads
-  // these React-owned fields' change events via the form instead of a
-  // direct listener (ReactDOM's own node-replacement timing).
-  const persistOnChangeIds = new Set([
-    "scope-mode",
-    "filter-pr-numbers",
-    "always-show-in-review",
-    "attention-include-pending-comments",
-    "attention-ignore-merge-only-commits",
-    "attention-include-closed-merged",
-    "attention-include-draft-changed",
-    "attention-include-draft-no-activity",
-    "attention-no-activity-mode",
-    "attention-author-thread-resolution-mode",
-    "change-filter-use-builtin-merge-pattern",
-    "change-filter-ignore-commit-patterns",
-    // Phase 7, sub-phase 7.4's own "persistence-gap fix" (see
-    // REACT_MIGRATION_PLAN.md): these 6 were deliberately excluded from
-    // auto-apply-on-change (unrelated to persistence), but always relied
-    // on "Apply filters (local)" as their only persist trigger - now that
-    // the button is gone (Phase H.26), they need the same auto-persist
-    // every other field here gets, or they'd never save at all.
-    "filter-custom-comments",
-    "filter-other-notes",
-    "filter-pr-difficulty",
-    "filter-rally-stories",
-    "filter-rally-links",
-    "filter-analysis-of-pr",
-  ]);
-  const runScriptForm = getOptionalElementById("run-script-form");
-  if (runScriptForm) {
-    runScriptForm.addEventListener("change", (event) => {
-      const targetId = event.target?.id;
-      if (targetId && persistOnChangeIds.has(targetId)) {
-        void window.persistViewFilterOptionOverrides?.();
-      }
-    });
-  }
-
-  // Add event listeners to checkboxes in multi-select filter groups, to
-  // persist their checked state.
-  [
-    "label-list",
-    "exclude-label-list",
-    "author-list",
-    "assigned-list",
-    "approver-list",
-    "attention-author-thread-resolution-allow-list",
-    "attention-author-thread-resolution-deny-list",
-    "change-filter-ignore-comment-authors-list",
-    "change-filter-ignore-review-authors-list",
-  ].forEach((listId) => {
-    const listElement = document.getElementById(listId);
-    if (listElement) {
-      listElement.addEventListener("change", (event) => {
-        if (event.target.type === "checkbox") {
-          // Deferred-items follow-up (full vanilla-to-React sweep, see
-          // REACT_MIGRATION_PLAN.md): used to call
-          // updateMultiSelectSummary(listId) here (deleted) - now
-          // redundant, since MultiSelectCheckboxList.jsx's own React
-          // state already reacts to this same checkbox's onChange and
-          // re-renders the summary text as part of its own render cycle.
-          void window.persistViewFilterOptionOverrides?.();
-        }
-      });
-    }
-  });
-
-  // change-filter-use-builtin-merge-pattern's and
-  // change-filter-ignore-commit-patterns' "change" -> persist is now
-  // handled by the delegated listener on #run-script-form above (part of
-  // persistOnChangeIds) - Phase 2, see REACT_MIGRATION_PLAN.md gotcha #3.
-  // Do not re-add a direct addEventListener for either once they're
-  // React-owned.
+  // Context for a while now.
+  //
+  // H.26 follow-up: this phase's own first fix replaced that button's
+  // other call (window.persistViewFilterOptionOverrides?.()) with a
+  // vanilla delegated "change" listener here, reasoning that was the only
+  // save trigger left for several fields/lists. That reasoning was itself
+  // incomplete - a vanilla DOM listener can only ever see a *native* DOM
+  // event, so it structurally couldn't cover TableFilterChips.jsx's "x"
+  // button (a direct Context update, no DOM event at all) - a real,
+  // found-via-review persistence gap, fixed by reinstating a debounced
+  // Context-level watcher in FilterStateProvider.jsx instead (watching
+  // `values` and all 3 selection Contexts, covering every field this
+  // Provider owns regardless of what triggered the change). That watcher
+  // is now the one, sufficient, fully-React-owned persistence trigger for
+  // every view-filter field and multi-select list - this vanilla
+  // listener pair (and the DOM-id Set it dispatched on) is deleted
+  // outright as the now-fully-redundant leftover of this phase's own
+  // first-pass fix, not a separate mechanism worth keeping as a
+  // "harmless double-hookup". No vanilla wiring needed here at all
+  // anymore for any of these fields' persistence.
 
   setupMultiSelectDropdownClosing();
 
