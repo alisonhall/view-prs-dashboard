@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen, waitFor, act } = require('@testing-library/react');
+const { render, screen, waitFor, act, fireEvent } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
 const { TabStateContext } = require('../state/TabStateContext');
 const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.js');
@@ -12,16 +12,19 @@ const mockEmptyFetchOnce = () =>
   global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entries: [] }) });
 
 describe('ActionLogSection', () => {
+  let refreshBtnRoot;
+
   beforeEach(() => {
-    delete window.triggerActionLogLoad;
     global.fetch = jest.fn();
+    refreshBtnRoot = document.createElement('div');
+    refreshBtnRoot.id = 'action-log-refresh-btn-root';
+    document.body.appendChild(refreshBtnRoot);
   });
 
-  // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
-  // component is now lazy-loaded, so it can no longer rely on being
-  // eagerly mounted (and its window.triggerActionLogLoad bridge already
-  // registered) before pr-management-tabs.helpers.js's tab-click handler
-  // fires its own trigger call - it must load itself on mount instead.
+  afterEach(() => {
+    refreshBtnRoot.remove();
+  });
+
   test('given it mounts, when mounted, then it automatically loads without needing an external trigger', async () => {
     mockEmptyFetchOnce();
 
@@ -33,19 +36,21 @@ describe('ActionLogSection', () => {
     expect(screen.getByText('No actions logged yet.')).toBeInTheDocument();
   });
 
-  test('given it mounts, when mounted, then it registers window.triggerActionLogLoad and cleans it up on unmount', async () => {
+  // Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): window.triggerActionLogLoad is gone - the "Refresh" button is
+  // now portaled into #action-log-refresh-btn-root by this component
+  // itself, calling its own local load() directly.
+  test('given it mounts, when mounted, then it portals a real Refresh button into #action-log-refresh-btn-root', async () => {
     mockEmptyFetchOnce();
-    let unmount;
+
     await act(async () => {
-      ({ unmount } = render(React.createElement(ActionLogSection)));
+      render(React.createElement(ActionLogSection));
     });
 
-    expect(typeof window.triggerActionLogLoad).toBe('function');
-    unmount();
-    expect(window.triggerActionLogLoad).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
   });
 
-  test('given the bridge is triggered again (e.g. Refresh, or re-activating the tab), when the fetch resolves with entries, then it renders a table row per entry with formatted duration/status/detail', async () => {
+  test('given the Refresh button is clicked, when the fetch resolves with entries, then it renders a table row per entry with formatted duration/status/detail', async () => {
     mockEmptyFetchOnce(); // the mount-triggered load
     await act(async () => {
       render(React.createElement(ActionLogSection));
@@ -76,7 +81,7 @@ describe('ActionLogSection', () => {
     });
 
     await act(async () => {
-      await window.triggerActionLogLoad();
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     });
 
     expect(screen.getByText(formatIsoDatetime('2026-05-01T10:00:00Z'))).toBeInTheDocument();
@@ -109,7 +114,7 @@ describe('ActionLogSection', () => {
     expect(screen.getByText('Failed to load action log: network down')).toBeInTheDocument();
   });
 
-  test('given the bridge is triggered again, when re-loading, then it shows the loading message before entries resolve', async () => {
+  test('given the Refresh button is clicked again, when re-loading, then it shows the loading message before entries resolve', async () => {
     mockEmptyFetchOnce(); // the mount-triggered load
     await act(async () => {
       render(React.createElement(ActionLogSection));
@@ -123,16 +128,14 @@ describe('ActionLogSection', () => {
         }),
     );
 
-    let loadPromise;
     act(() => {
-      loadPromise = window.triggerActionLogLoad();
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     });
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
 
     await act(async () => {
       resolveFetch({ ok: true, json: async () => ({ ok: true, entries: [] }) });
-      await loadPromise;
     });
   });
 

@@ -1021,12 +1021,13 @@ const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillAct
 // instance passes a no-op for this DI param, not this bridge - deleted
 // outright.
 
-// Action Log's fetch/render is React-owned (ActionLogSection.jsx, mounted
-// into #action-log-container) - this just forwards to the bridge it
-// registers on mount, so the Refresh button below can keep calling
-// `loadActionLog()` unchanged.
-const loadActionLog = () => window.triggerActionLogLoad?.();
-
+// Action Log's fetch/render AND its own "Refresh" button are both fully
+// React-owned now (ActionLogSection.jsx, mounted into #action-log-container,
+// portals the button into #action-log-refresh-btn-root too) - seventh
+// follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"), this
+// file's own loadActionLog()/window.triggerActionLogLoad bridge and the
+// #action-log-refresh-btn listener below are both deleted outright.
+//
 // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 3): pr-management-tabs.helpers.js (activateTab/initManagementTabs)
 // is deleted outright - components/TabPanelVisibilitySync.jsx now owns the
@@ -1040,8 +1041,11 @@ const loadActionLog = () => window.triggerActionLogLoad?.();
 // watching useIsTabPanelVisible() directly, same shape
 // useBackfillTabAutoRefresh.jsx already established. loadActorNameCache
 // (this file's own local const) had no other caller - deleted outright,
-// not just unused; ActorNamesTab.jsx's own refresh buttons already call
-// window.triggerActorNameCacheLoad directly, bypassing this file entirely.
+// not just unused. Seventh follow-up (see REACT_MIGRATION_PLAN.md,
+// "Remaining-effort audit"): window.triggerActorNameCacheLoad itself is
+// gone too now - ActorNamesTab.jsx's own refresh buttons/re-activation
+// effect call a local load() directly, having never needed a bridge to
+// begin with (confirmed zero callers outside that one component).
 
 // getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,
 // genuinely zero-dependency) used to be imported here too, to build this
@@ -2067,13 +2071,6 @@ const initPage = () => {
   // auto-scroll is a no-op (Phase G.4), not window.autoScrollBackfillLogToBottom,
   // which is itself deleted outright (cluster-4 cleanup, see
   // REACT_MIGRATION_PLAN.md, "Remaining-effort audit") - confirmed dead.
-
-  const actionLogRefreshBtn = getOptionalElementById("action-log-refresh-btn");
-  if (actionLogRefreshBtn) {
-    actionLogRefreshBtn.addEventListener("click", () => {
-      void loadActionLog();
-    });
-  }
 
   // Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
   // the four auto-polling intervals (data/scheduler/backfill/activity-

@@ -1,15 +1,19 @@
 /**
  * ActionLogSection - React-owned content for the Management "Action Log"
- * tab's `#action-log-container`.
+ * tab's `#action-log-container`, and (seventh follow-up, see
+ * REACT_MIGRATION_PLAN.md, "Remaining-effort audit") also the "Refresh"
+ * button, portaled into `#action-log-refresh-btn-root` (a static empty div
+ * in index.html, replacing the old plain `<button>` - same "Live button"
+ * shape as RefreshLabelsButtonLive in react-app.jsx). Both the button and
+ * the auto-reload-on-tab-reactivation effect below call this component's
+ * own local `load` directly now - no `window.triggerActionLogLoad` bridge
+ * needed any more, since both of its former callers (index.page.js's
+ * click handler; this component's own re-activation effect) were always
+ * genuine React/same-component callers, not vanilla ones.
  *
  * Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): real JSX now,
  * replacing pr-action-log.helpers.js's renderActionLog/loadActionLog
- * (deleted). The "Refresh" button (index.page.js) is unchanged and still
- * vanilla - it calls a `loadActionLog` reference, which index.page.js
- * points at `window.triggerActionLogLoad`, a bridge this component
- * registers on mount (the same "vanilla chrome still drives it, React owns
- * the content" shape as the container-split conversions elsewhere in this
- * codebase - only the *refresh button* stays vanilla, not the data/render).
+ * (deleted).
  *
  * @module components/ActionLogSection
  *
@@ -28,7 +32,8 @@
  * tab, just inlined here since this is its only consumer.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
@@ -58,31 +63,27 @@ export function ActionLogSection() {
   const [state, setState] = useState({ status: 'initial', entries: [], error: '' });
   const isVisible = useIsTabPanelVisible('tab-panel-action-log');
 
-  useEffect(() => {
-    const load = async () => {
-      setState((previous) => ({ ...previous, status: 'loading' }));
-      try {
-        const response = await fetch('/view-prs/action-log');
-        const result = await response.json();
-        if (!response.ok || result.ok === false) {
-          throw new Error(result.error || 'Failed to load action log');
-        }
-        setState({
-          status: 'loaded',
-          entries: Array.isArray(result.entries) ? result.entries : [],
-          error: '',
-        });
-      } catch (error) {
-        setState({ status: 'error', entries: [], error: String(error?.message || error) });
+  const load = useCallback(async () => {
+    setState((previous) => ({ ...previous, status: 'loading' }));
+    try {
+      const response = await fetch('/view-prs/action-log');
+      const result = await response.json();
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || 'Failed to load action log');
       }
-    };
-
-    window.triggerActionLogLoad = load;
-    load();
-    return () => {
-      delete window.triggerActionLogLoad;
-    };
+      setState({
+        status: 'loaded',
+        entries: Array.isArray(result.entries) ? result.entries : [],
+        error: '',
+      });
+    } catch (error) {
+      setState({ status: 'error', entries: [], error: String(error?.message || error) });
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Phase H.22 (see this module's own header comment): re-trigger on every
   // later re-activation, matching activateTab("action-log")'s old
@@ -100,52 +101,67 @@ export function ActionLogSection() {
       return;
     }
     if (isVisible) {
-      window.triggerActionLogLoad?.();
+      load();
     }
-  }, [isVisible]);
+  }, [isVisible, load]);
 
+  const refreshBtnRoot = document.getElementById('action-log-refresh-btn-root');
+  const refreshButtonPortal =
+    refreshBtnRoot &&
+    createPortal(
+      <button type="button" onClick={() => load()}>
+        Refresh
+      </button>,
+      refreshBtnRoot,
+      'action-log-refresh-btn',
+    );
+
+  let content;
   if (state.status === 'loading') {
-    return <p className="action-log-empty">Loading...</p>;
-  }
-
-  if (state.status === 'error') {
-    return <p className="action-log-empty">{`Failed to load action log: ${state.error}`}</p>;
-  }
-
-  if (state.entries.length === 0) {
-    return <p className="action-log-empty">No actions logged yet.</p>;
+    content = <p className="action-log-empty">Loading...</p>;
+  } else if (state.status === 'error') {
+    content = <p className="action-log-empty">{`Failed to load action log: ${state.error}`}</p>;
+  } else if (state.entries.length === 0) {
+    content = <p className="action-log-empty">No actions logged yet.</p>;
+  } else {
+    content = (
+      <table className="action-log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {state.entries.map((entry, index) => (
+            <tr key={`${entry?.action || 'entry'}-${entry?.triggeredAt || index}`}>
+              <td>{entry?.triggeredAt ? formatIsoDatetime(entry.triggeredAt) : '(unknown)'}</td>
+              <td>
+                <code>{String(entry?.action || '')}</code>
+              </td>
+              <td>
+                {entry?.ok !== false ? (
+                  <span className="action-log-status-ok">OK</span>
+                ) : (
+                  <span className="action-log-status-fail">Failed</span>
+                )}
+              </td>
+              <td>{formatDuration(typeof entry?.durationMs === 'number' ? entry.durationMs : null)}</td>
+              <td className="action-log-detail">{buildDetailText(entry)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   }
 
   return (
-    <table className="action-log-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Action</th>
-          <th>Status</th>
-          <th>Duration</th>
-          <th>Detail</th>
-        </tr>
-      </thead>
-      <tbody>
-        {state.entries.map((entry, index) => (
-          <tr key={`${entry?.action || 'entry'}-${entry?.triggeredAt || index}`}>
-            <td>{entry?.triggeredAt ? formatIsoDatetime(entry.triggeredAt) : '(unknown)'}</td>
-            <td>
-              <code>{String(entry?.action || '')}</code>
-            </td>
-            <td>
-              {entry?.ok !== false ? (
-                <span className="action-log-status-ok">OK</span>
-              ) : (
-                <span className="action-log-status-fail">Failed</span>
-              )}
-            </td>
-            <td>{formatDuration(typeof entry?.durationMs === 'number' ? entry.durationMs : null)}</td>
-            <td className="action-log-detail">{buildDetailText(entry)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      {refreshButtonPortal}
+      {content}
+    </>
   );
 }

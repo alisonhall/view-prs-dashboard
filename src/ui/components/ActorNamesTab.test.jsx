@@ -7,21 +7,9 @@ require('@testing-library/jest-dom');
 const { ActorNamesTab } = require('./ActorNamesTab');
 const { TabStateContext } = require('../state/TabStateContext');
 
-// Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
-// component is now lazy-loaded, so it can no longer rely on being eagerly
-// mounted (and its window.triggerActorNameCacheLoad bridge already
-// registered) before pr-management-tabs.helpers.js's tab-click handler
-// fires its own trigger call on first activation - it loads itself on
-// mount now, same as the manual bridge trigger does on every later
-// re-activation/Refresh click. Most tests below rely on that mount-time
-// load rather than calling the bridge explicitly; findByText/waitFor
-// already tolerate its async timing.
-const triggerLoad = () => act(() => window.triggerActorNameCacheLoad());
-
 describe('ActorNamesTab', () => {
   afterEach(() => {
     delete global.fetch;
-    delete window.triggerActorNameCacheLoad;
     jest.restoreAllMocks();
   });
 
@@ -60,7 +48,6 @@ describe('ActorNamesTab', () => {
     });
 
     render(<ActorNamesTab />);
-    expect(typeof window.triggerActorNameCacheLoad).toBe('function');
 
     expect(await screen.findByText('Loaded 1 mapping.')).toBeInTheDocument();
     expect(await screen.findByText('Loaded 1 alias mapping.')).toBeInTheDocument();
@@ -129,7 +116,8 @@ describe('ActorNamesTab', () => {
     expect(aliasCalls).toBe(2);
   });
 
-  test('given the bridge is triggered manually, when re-loading, then both endpoints are fetched again', async () => {
+  test('given loaded data, when the name-cache editor\'s own Refresh button is clicked, then both endpoints reload too', async () => {
+    const userForBridgeTest = userEvent.setup();
     let nameCacheCalls = 0;
     global.fetch = jest.fn((url) => {
       if (url === '/view-prs/actor-name-cache') {
@@ -142,23 +130,9 @@ describe('ActorNamesTab', () => {
     await screen.findByText('Loaded 0 mappings.'); // mount's own auto-load
     expect(nameCacheCalls).toBe(1);
 
-    await triggerLoad();
+    await userForBridgeTest.click(screen.getAllByText('Refresh')[0]);
 
     expect(nameCacheCalls).toBe(2);
-  });
-
-  test('when unmounted, then it removes the window.triggerActorNameCacheLoad bridge', async () => {
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) }));
-
-    let unmount;
-    await act(async () => {
-      ({ unmount } = render(<ActorNamesTab />));
-    });
-    expect(typeof window.triggerActorNameCacheLoad).toBe('function');
-
-    unmount();
-
-    expect(window.triggerActorNameCacheLoad).toBeUndefined();
   });
 
   // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",

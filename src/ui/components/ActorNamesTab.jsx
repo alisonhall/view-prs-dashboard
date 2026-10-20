@@ -31,9 +31,18 @@
  * `useIsTabPanelVisible('tab-panel-actor-name-cache')` - same shape
  * `useBackfillTabAutoRefresh.jsx`/`ActionLogSection.jsx` already
  * established.
+ *
+ * Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+ * audit"): `window.triggerActorNameCacheLoad` had zero real external
+ * callers (unlike ActionLogSection.jsx's bridge, this tab's own "Refresh"
+ * buttons were already wired through `onRefresh`/`refreshBoth` below, a
+ * plain React prop, not the bridge) - a grep confirmed only this
+ * component's own 2 internal call sites and its own tests ever referenced
+ * it. Deleted outright: `load` is now a local `useCallback`, called
+ * directly by both the re-activation effect and `refreshBoth`.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MappingRowsEditor, entriesToRows } from './MappingRowsEditor';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
@@ -43,45 +52,41 @@ export function ActorNamesTab() {
   const [aliasRows, setAliasRows] = useState([]);
   const [aliasStatus, setAliasStatus] = useState({ text: 'Loading aliases...', tone: 'info' });
 
-  useEffect(() => {
-    const load = async () => {
-      setNameCacheStatus({ text: 'Loading cache...', tone: 'info' });
-      try {
-        const response = await fetch('/view-prs/actor-name-cache');
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false) {
-          throw new Error(payload?.error || 'Failed to load actor name cache');
-        }
-        const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
-        setNameCacheRows(entriesToRows(entries));
-        const count = Object.keys(entries).length;
-        setNameCacheStatus({ text: `Loaded ${count} mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
-      } catch (error) {
-        setNameCacheStatus({ text: `Failed to load cache: ${error.message || String(error)}`, tone: 'error' });
+  const load = useCallback(async () => {
+    setNameCacheStatus({ text: 'Loading cache...', tone: 'info' });
+    try {
+      const response = await fetch('/view-prs/actor-name-cache');
+      const payload = await response.json();
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Failed to load actor name cache');
       }
+      const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
+      setNameCacheRows(entriesToRows(entries));
+      const count = Object.keys(entries).length;
+      setNameCacheStatus({ text: `Loaded ${count} mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
+    } catch (error) {
+      setNameCacheStatus({ text: `Failed to load cache: ${error.message || String(error)}`, tone: 'error' });
+    }
 
-      setAliasStatus({ text: 'Loading aliases...', tone: 'info' });
-      try {
-        const response = await fetch('/view-prs/actor-login-aliases');
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false) {
-          throw new Error(payload?.error || 'Failed to load actor login aliases');
-        }
-        const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
-        setAliasRows(entriesToRows(entries));
-        const count = Object.keys(entries).length;
-        setAliasStatus({ text: `Loaded ${count} alias mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
-      } catch (error) {
-        setAliasStatus({ text: `Failed to load aliases: ${error.message || String(error)}`, tone: 'error' });
+    setAliasStatus({ text: 'Loading aliases...', tone: 'info' });
+    try {
+      const response = await fetch('/view-prs/actor-login-aliases');
+      const payload = await response.json();
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Failed to load actor login aliases');
       }
-    };
-
-    window.triggerActorNameCacheLoad = load;
-    load();
-    return () => {
-      delete window.triggerActorNameCacheLoad;
-    };
+      const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
+      setAliasRows(entriesToRows(entries));
+      const count = Object.keys(entries).length;
+      setAliasStatus({ text: `Loaded ${count} alias mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
+    } catch (error) {
+      setAliasStatus({ text: `Failed to load aliases: ${error.message || String(error)}`, tone: 'error' });
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Phase H.22 (see this module's own header comment): re-trigger on
   // every later re-activation, matching activateTab("actor-name-cache")'s
@@ -98,11 +103,11 @@ export function ActorNamesTab() {
       return;
     }
     if (isVisible) {
-      window.triggerActorNameCacheLoad?.();
+      load();
     }
-  }, [isVisible]);
+  }, [isVisible, load]);
 
-  const refreshBoth = () => window.triggerActorNameCacheLoad?.();
+  const refreshBoth = load;
 
   return (
     <>
