@@ -33,7 +33,7 @@ const renderProbe = (onReady, values = {}) =>
 const QUICK_CHECK_WINDOW_BRIDGES = [
   'showErrorNotification',
   'showWarningNotification',
-  'loadSchedulerStatus',
+  'renderSchedulerStatus',
   'getLatestStoredPayload',
 ];
 
@@ -43,9 +43,14 @@ describe('useQuickCheckActions', () => {
     delete global.fetch;
   });
 
-  test('given a non-empty "PR number(s)" field, when handleQuickCheck is called, then it scopes the request to that repo/PR list and returns the success label', async () => {
-    const loadSchedulerStatus = jest.fn();
-    window.loadSchedulerStatus = loadSchedulerStatus;
+  // Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): window.loadSchedulerStatus is gone - the hook now builds
+  // its own real pr-scheduler-status.helpers.js instance, which calls
+  // fetch("/view-prs/scheduler") directly and forwards the result to
+  // window.renderSchedulerStatus (the one piece of this still genuinely
+  // vanilla/SSE-shared). Asserting the forced scheduler refresh fires
+  // means asserting that fetch call, not a mocked bridge function.
+  test('given a non-empty "PR number(s)" field, when handleQuickCheck is called, then it scopes the request to that repo/PR list, returns the success label, and forces a scheduler-status refresh', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -65,7 +70,7 @@ describe('useQuickCheckActions', () => {
       expect.objectContaining({ body: JSON.stringify({ repo: 'owner/repo', prNumbers: '7,8' }) }),
     );
     expect(result).toEqual({ label: '3 updates found', resetAfterMs: 2500 });
-    expect(loadSchedulerStatus).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith('/view-prs/scheduler');
   });
 
   test('given a 409 (already in progress), when handleQuickCheck is called, then it shows the matching notification and returns the fallback label', async () => {

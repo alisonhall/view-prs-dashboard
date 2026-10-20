@@ -9,6 +9,7 @@ import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
 import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
 import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
+import * as prSchedulerStatusHelperFactory from "./helpers/pr-scheduler-status.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
 import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
@@ -87,7 +88,6 @@ const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
 };
 
 let currentActorLoginAliases = {};
-let supportsSchedulerPolling = true;
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 4): supportsBackfillLogPolling/lastBackfillStateKey/
 // isBackfillActionPending/isBackfillRunning moved into
@@ -881,35 +881,21 @@ const updateBackfillStatusFromPayload = (payload = {}, options = {}) => {
   window.updateBackfillStatusFromPayload?.(payload, options);
 };
 
-const loadSchedulerStatus = async () => {
-  const response = await fetch("/view-prs/scheduler");
-  if (response.status === 404) {
-    supportsSchedulerPolling = false;
-    return { ok: false, scheduler: null };
-  }
-
-  const result = await response.json();
-  if (!response.ok || result.ok === false) {
-    throw new Error(result.error || "Failed to fetch scheduler status");
-  }
-
-  renderSchedulerStatus(result.scheduler || {});
-  return result;
-};
-
-// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// these 2 reverse bridges used to also serve PrDataProvider.jsx's own
-// pollSchedulerStatus - deleted outright in Phase H.2 (see
-// REACT_MIGRATION_PLAN.md), once its automatic interval had already been
-// retired in favor of SSE and it had no caller left besides a test.
-// loadSchedulerStatus stays vanilla regardless (the quick-check workflow's
-// forced scheduler refresh is a real caller beyond that), and
-// supportsSchedulerPolling stays a vanilla-owned flag (loadSchedulerStatus
-// itself is the only writer, on a 404) rather than forking a second copy.
-if (typeof window !== "undefined") {
-  window.loadSchedulerStatus = (...args) => loadSchedulerStatus(...args);
-  window.getSupportsSchedulerPolling = () => supportsSchedulerPolling;
-}
+// Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): window.loadSchedulerStatus/window.getSupportsSchedulerPolling
+// are deleted outright - the automatic poll loop they used to also serve
+// (PrDataProvider.jsx's own pollSchedulerStatus) was already retired in
+// Phase H.2, and supportsSchedulerPolling itself (the 404 flag) had zero
+// remaining reader anywhere (confirmed via grep - window.getSupportsSchedulerPolling
+// had no caller either). loadSchedulerStatus's own implementation moved to
+// helpers/pr-scheduler-status.helpers.js - this file builds its own
+// instance for the startup call below; useQuickCheckActions.jsx builds a
+// separate instance for its own forced-refresh call, instead of reading
+// this file's vanilla closure through a window.* bridge.
+const { loadSchedulerStatus } = prSchedulerStatusHelperFactory.createPrSchedulerStatusHelpers({
+  fetch: (...args) => fetch(...args),
+  renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
+});
 
 // getViewedFilesSummary (helpers/pr-viewed-files-summary.helpers.js) no
 // longer built here at all (Phase 7, see REACT_MIGRATION_PLAN.md) -

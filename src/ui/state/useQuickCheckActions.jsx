@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.js';
 import { createPrQuickCheckActionsHelpers } from '../helpers/pr-quick-check-actions.helpers.js';
+import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useFormBody } from './useFormBody';
@@ -28,16 +29,25 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
  * useAckLabelActions.jsx's own instance already uses, valid for the same
  * reason (this hook's callers are genuine descendants of
  * PrActivityQueueProvider - react-app.jsx's mountAppRoot wraps it from
- * outside AppRoot). loadSchedulerStatus/getFormBody/getLatestStoredPayload
- * stay window.* bridges - all 3 are DOM/vanilla-module-state reads with no
- * Context equivalent, same "DOM is correctly the source of truth" category
- * as every other hook in this file that reads them.
+ * outside AppRoot). getLatestStoredPayload stays a window.* bridge - a
+ * vanilla-module-state read with no Context equivalent, same "DOM is
+ * correctly the source of truth" category as every other hook in this
+ * file that reads it.
  *
  * Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 6): window.getFormBody is gone - useFormBody() reads the same
  * fields reactively off FilterStateContext/RowFilterSelectionContext
- * instead (see that hook's own comment). loadSchedulerStatus/
- * getLatestStoredPayload stay window.* bridges, unaffected by this.
+ * instead (see that hook's own comment). getLatestStoredPayload stays a
+ * window.* bridge, unaffected by this.
+ *
+ * Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 1): window.loadSchedulerStatus is gone too - this hook now
+ * builds its own instance of helpers/pr-scheduler-status.helpers.js
+ * directly (same "every live consumer builds its own separate instance"
+ * pattern every other Context in this migration already uses), reading
+ * window.renderSchedulerStatus only for the one genuinely-vanilla,
+ * SSE-shared side effect (the active-PR progress indicator) that instance
+ * still needs - not for loadSchedulerStatus's own control flow.
  */
 export function useQuickCheckActions() {
   const { markPrBusy, clearPrBusy } = usePrActivityQueue();
@@ -53,11 +63,16 @@ export function useQuickCheckActions() {
       window.showErrorNotification?.(finalTitle, detail, 0);
     };
 
+    const { loadSchedulerStatus } = createPrSchedulerStatusHelpers({
+      fetch: (...args) => fetch(...args),
+      renderSchedulerStatus: (...args) => window.renderSchedulerStatus?.(...args),
+    });
+
     const { runQuickCheckWorkflow, runQuickCheckAllWorkflow } = createPrQuickCheckActionsHelpers({
       showErrorNotification: (...args) => window.showErrorNotification?.(...args),
       showWarningNotification: (...args) => window.showWarningNotification?.(...args),
       notifyFailureSnackbar,
-      loadSchedulerStatus: (...args) => window.loadSchedulerStatus?.(...args),
+      loadSchedulerStatus,
       postJson,
       getFormBody,
       getLatestStoredPayload: () => window.getLatestStoredPayload?.(),
