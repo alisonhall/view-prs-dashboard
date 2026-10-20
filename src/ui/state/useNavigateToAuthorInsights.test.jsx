@@ -41,7 +41,6 @@ describe('useNavigateToAuthorInsights', () => {
   afterEach(() => {
     latestTabState = undefined;
     latestPrData = undefined;
-    delete window.activateDataTab;
   });
 
   test('given a valid author login, when calling the hook function, then it switches to the author-insights tab and writes the login', () => {

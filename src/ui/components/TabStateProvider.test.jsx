@@ -12,13 +12,11 @@ function Probe({ onValue }) {
 
 describe('TabStateProvider', () => {
   afterEach(() => {
-    delete window.activateDataTab;
     delete window.setActiveDataTab;
-    delete window.activateManagementTab;
     delete window.setActiveManagementTab;
   });
 
-  test('given no window.activateDataTab bridge is installed, when setActiveDataTab is called, then nothing throws', () => {
+  test('given setActiveDataTab is called, when switching, then Context state updates', () => {
     let latest;
     render(
       <TabStateProvider>
@@ -53,21 +51,6 @@ describe('TabStateProvider', () => {
     expect(latest.activeDataTab).toBe('author-insights');
   });
 
-  test('given setActiveDataTab is called, when switching, then the real window.activateDataTab bridge is called with the same key', () => {
-    const activateDataTab = jest.fn();
-    window.activateDataTab = activateDataTab;
-    let latest;
-    render(
-      <TabStateProvider>
-        <Probe onValue={(value) => (latest = value)} />
-      </TabStateProvider>,
-    );
-
-    act(() => latest.setActiveDataTab('review-stats'));
-
-    expect(activateDataTab).toHaveBeenCalledWith('review-stats');
-  });
-
   test('given the provider unmounts, when unmounted, then the window.setActiveDataTab bridge is removed', () => {
     const { unmount } = render(
       <TabStateProvider>
@@ -80,7 +63,7 @@ describe('TabStateProvider', () => {
     expect(window.setActiveDataTab).toBeUndefined();
   });
 
-  test('given no window.activateManagementTab bridge is installed, when setActiveManagementTab is called, then nothing throws', () => {
+  test('given setActiveManagementTab is called, when switching, then Context state updates', () => {
     let latest;
     render(
       <TabStateProvider>
@@ -113,21 +96,6 @@ describe('TabStateProvider', () => {
     act(() => window.setActiveManagementTab('export'));
 
     expect(latest.activeManagementTab).toBe('export');
-  });
-
-  test('given setActiveManagementTab is called, when switching, then the real window.activateManagementTab bridge is called with the same key', () => {
-    const activateManagementTab = jest.fn();
-    window.activateManagementTab = activateManagementTab;
-    let latest;
-    render(
-      <TabStateProvider>
-        <Probe onValue={(value) => (latest = value)} />
-      </TabStateProvider>,
-    );
-
-    act(() => latest.setActiveManagementTab('backfill'));
-
-    expect(activateManagementTab).toHaveBeenCalledWith('backfill');
   });
 
   test('given the provider unmounts, when unmounted, then the window.setActiveManagementTab bridge is removed', () => {

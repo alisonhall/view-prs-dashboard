@@ -47,7 +47,6 @@ describe('AutoRenderBlockedLinks', () => {
   afterEach(() => {
     latestTabState = undefined;
     latestPrData = undefined;
-    delete window.activateDataTab;
   });
 
   test('given no PR numbers or author logins, when rendering, then nothing renders', () => {

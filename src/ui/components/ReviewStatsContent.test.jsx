@@ -258,9 +258,9 @@ describe('ReviewStatsContent', () => {
       const { rerender } = renderWithActiveDataTab('pr-data', tree);
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
 
-      // Simulate activateDataTab('review-stats') - react-app.jsx's real
-      // mechanism - by changing the Context value that now drives it,
-      // instead of flipping the panel's own `hidden` attribute directly.
+      // Simulate clicking the "Review Stats" data tab button - setActiveDataTab
+      // (TabStateProvider.jsx) - by changing the Context value that drives
+      // it, instead of flipping the panel's own `hidden` attribute directly.
       await React.act(async () => {
         rerender(
           <TabStateContext.Provider value={{ activeManagementTab: 'status', activeDataTab: 'review-stats' }}>

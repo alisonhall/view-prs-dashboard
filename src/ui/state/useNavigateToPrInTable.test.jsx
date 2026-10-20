@@ -18,7 +18,6 @@ function Probe({ onReady }) {
 describe('useNavigateToPrInTable', () => {
   afterEach(() => {
     latestTabState = undefined;
-    delete window.activateDataTab;
   });
 
   test('given a PR number, when calling the hook function, then it switches to the pr-data tab and dispatches pr-navigate-to-insights', () => {

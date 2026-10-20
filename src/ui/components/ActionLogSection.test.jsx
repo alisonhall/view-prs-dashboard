@@ -3,6 +3,7 @@
 const React = require('react');
 const { render, screen, waitFor, act } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
+const { TabStateContext } = require('../state/TabStateContext');
 const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.js');
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -132,6 +133,77 @@ describe('ActionLogSection', () => {
     await act(async () => {
       resolveFetch({ ok: true, json: async () => ({ ok: true, entries: [] }) });
       await loadPromise;
+    });
+  });
+
+  // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 3): re-triggering on every later re-activation (switch away,
+  // then back) used to be pr-management-tabs.helpers.js's own
+  // activateTab("action-log") calling loadActionLog() directly, outside
+  // React - now owned by this component's own effect watching
+  // useIsTabPanelVisible(), guarded against double-firing alongside the
+  // mount effect's own unconditional load (see this file's own
+  // hasSkippedFirstRunRef comment).
+  describe('re-triggering on tab re-activation', () => {
+    const renderWithActiveManagementTab = (activeManagementTab) =>
+      render(
+        React.createElement(
+          TabStateContext.Provider,
+          { value: { activeDataTab: 'pr-data', activeManagementTab } },
+          React.createElement(ActionLogSection),
+        ),
+      );
+
+    test('given the tab is not active at mount, when it becomes active later, then it reloads', async () => {
+      mockEmptyFetchOnce(); // the mount-triggered load
+      let rerender;
+      await act(async () => {
+        ({ rerender } = renderWithActiveManagementTab('status'));
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      mockEmptyFetchOnce();
+      await act(async () => {
+        rerender(
+          React.createElement(
+            TabStateContext.Provider,
+            { value: { activeDataTab: 'pr-data', activeManagementTab: 'action-log' } },
+            React.createElement(ActionLogSection),
+          ),
+        );
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('given the tab is already active at mount, when mounted, then it loads exactly once (not twice)', async () => {
+      mockEmptyFetchOnce();
+      await act(async () => {
+        renderWithActiveManagementTab('action-log');
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('given the tab becomes inactive after mount, when it does, then nothing reloads', async () => {
+      mockEmptyFetchOnce();
+      let rerender;
+      await act(async () => {
+        ({ rerender } = renderWithActiveManagementTab('action-log'));
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rerender(
+          React.createElement(
+            TabStateContext.Provider,
+            { value: { activeDataTab: 'pr-data', activeManagementTab: 'status' } },
+            React.createElement(ActionLogSection),
+          ),
+        );
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });
 });

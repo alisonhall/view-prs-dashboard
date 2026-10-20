@@ -7,10 +7,7 @@
  * Action Log's conversion, this tab's own buttons/status/rows are ALL now
  * React-owned (not a container-split leaving vanilla buttons calling a
  * bridge), matching how ReviewStatsControls/AuthorInsightsSelector fully
- * own their own controls - the tab-switch chrome
- * (pr-management-tabs.helpers.js) still calls a `loadActorNameCache`
- * reference on tab activation, which index.page.js now points at
- * `window.triggerActorNameCacheLoad`, a bridge this component registers.
+ * own their own controls.
  *
  * Behavior preserved exactly from the vanilla version, including one
  * quirk: both mapping editors' "Refresh" buttons trigger the SAME combined
@@ -22,15 +19,23 @@
  *
  * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
  * component is now lazy-loaded (react-app.jsx), mounting only once the
- * Actor Names tab is first activated - see ActionLogSection.jsx's own
- * comment for the exact race this created (activateTab("actor-name-cache")
- * calls loadActorNameCache() synchronously on click, always before this
- * component's lazy chunk has mounted on a first visit) and why loading
- * once on mount (below) is the correct fix rather than a workaround.
+ * Actor Names tab is first activated.
+ *
+ * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): re-triggering the combined reload on every later
+ * re-activation (switch away, then back) used to be
+ * `pr-management-tabs.helpers.js`'s `activateTab("actor-name-cache")`
+ * calling `loadActorNameCache()` directly, outside React entirely - that
+ * function is deleted outright this phase. Now owned by this component's
+ * own second effect below, watching
+ * `useIsTabPanelVisible('tab-panel-actor-name-cache')` - same shape
+ * `useBackfillTabAutoRefresh.jsx`/`ActionLogSection.jsx` already
+ * established.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MappingRowsEditor, entriesToRows } from './MappingRowsEditor';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 export function ActorNamesTab() {
   const [nameCacheRows, setNameCacheRows] = useState([]);
@@ -77,6 +82,25 @@ export function ActorNamesTab() {
       delete window.triggerActorNameCacheLoad;
     };
   }, []);
+
+  // Phase H.22 (see this module's own header comment): re-trigger on
+  // every later re-activation, matching activateTab("actor-name-cache")'s
+  // old behavior exactly - skips this effect's own first run via a ref,
+  // not the `isVisible` value itself, since on a first mount where the
+  // tab is already active this effect's first run would otherwise
+  // double-fire right alongside the mount effect's own load() call above
+  // (same reasoning as ActionLogSection.jsx's own identical guard).
+  const isVisible = useIsTabPanelVisible('tab-panel-actor-name-cache');
+  const hasSkippedFirstRunRef = useRef(false);
+  useEffect(() => {
+    if (!hasSkippedFirstRunRef.current) {
+      hasSkippedFirstRunRef.current = true;
+      return;
+    }
+    if (isVisible) {
+      window.triggerActorNameCacheLoad?.();
+    }
+  }, [isVisible]);
 
   const refreshBoth = () => window.triggerActorNameCacheLoad?.();
 

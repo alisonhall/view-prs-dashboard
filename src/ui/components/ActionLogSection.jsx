@@ -4,32 +4,33 @@
  *
  * Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): real JSX now,
  * replacing pr-action-log.helpers.js's renderActionLog/loadActionLog
- * (deleted). The tab-switch chrome (pr-management-tabs.helpers.js) and the
- * "Refresh" button (index.page.js) are unchanged and still vanilla - they
- * both still call a `loadActionLog` reference, which index.page.js now
+ * (deleted). The "Refresh" button (index.page.js) is unchanged and still
+ * vanilla - it calls a `loadActionLog` reference, which index.page.js
  * points at `window.triggerActionLogLoad`, a bridge this component
  * registers on mount (the same "vanilla chrome still drives it, React owns
  * the content" shape as the container-split conversions elsewhere in this
- * codebase - only the *tab-switching* stays vanilla, not the data/render).
+ * codebase - only the *refresh button* stays vanilla, not the data/render).
  *
  * @module components/ActionLogSection
  *
  * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
  * component is now lazy-loaded (react-app.jsx), mounting only once the
- * Action Log tab is first activated - before that, pr-management-tabs.
- * helpers.js's activateTab("action-log") calls loadActionLog() (->
- * window.triggerActionLogLoad?.()) SYNCHRONOUSLY on click, before this
- * component's lazy chunk has even started fetching, so that call always
- * no-ops on first visit. Loading once on mount (below) closes that gap -
- * confirmed no double-fetch results: the vanilla click handler's own
- * trigger call is a no-op until this effect has run (mount always wins the
- * race), and once mounted, that same click handler correctly re-triggers
- * `load` on every later re-activation (this effect's `[]` deps mean it
- * only runs once, on mount).
+ * Action Log tab is first activated.
+ *
+ * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): re-triggering `load()` on every later re-activation (switch
+ * away, then back) used to be `pr-management-tabs.helpers.js`'s
+ * `activateTab("action-log")` calling `loadActionLog()` directly, outside
+ * React entirely - that function is deleted outright this phase. Now owned
+ * by this component's own second effect below, watching
+ * `useIsTabPanelVisible('tab-panel-action-log')` - same shape
+ * `useBackfillTabAutoRefresh.jsx` already established for the Backfill
+ * tab, just inlined here since this is its only consumer.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -55,6 +56,7 @@ const buildDetailText = (entry) => {
 
 export function ActionLogSection() {
   const [state, setState] = useState({ status: 'initial', entries: [], error: '' });
+  const isVisible = useIsTabPanelVisible('tab-panel-action-log');
 
   useEffect(() => {
     const load = async () => {
@@ -81,6 +83,26 @@ export function ActionLogSection() {
       delete window.triggerActionLogLoad;
     };
   }, []);
+
+  // Phase H.22 (see this module's own header comment): re-trigger on every
+  // later re-activation, matching activateTab("action-log")'s old
+  // behavior exactly - skips this effect's own first run (the mount
+  // effect above already loads unconditionally regardless of visibility,
+  // same "eager load on mount" contract useBackfillTabAutoRefresh.jsx's
+  // own comment describes) via a ref, not the `isVisible` value itself,
+  // since on a first mount where the tab is already active this effect's
+  // first run would otherwise double-fire right alongside the mount
+  // effect's own load() call.
+  const hasSkippedFirstRunRef = useRef(false);
+  useEffect(() => {
+    if (!hasSkippedFirstRunRef.current) {
+      hasSkippedFirstRunRef.current = true;
+      return;
+    }
+    if (isVisible) {
+      window.triggerActionLogLoad?.();
+    }
+  }, [isVisible]);
 
   if (state.status === 'loading') {
     return <p className="action-log-empty">Loading...</p>;

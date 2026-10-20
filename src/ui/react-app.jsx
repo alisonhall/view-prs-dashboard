@@ -53,6 +53,7 @@ import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
+import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
 import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
@@ -1371,6 +1372,15 @@ function mountAppRoot() {
   // useHasTabPanelBeenVisible() 5 times (hasReviewStatsBeenVisible etc.),
   // which needs a genuine Provider ancestor to resolve useTabState() to
   // anything other than this Context's no-op default.
+  //
+  // Phase H.22 (same cluster): <TabPanelVisibilitySync/> mounted as
+  // AppRoot's own sibling, inside <TabStateProvider> - a plain sibling,
+  // not a wrapper, since it owns the 9 tab panels' `hidden` attribute via
+  // a DOM write in its own effects, not by being read from Context by
+  // anything inside AppRoot's tree. Replaces `window.activateDataTab`/
+  // `window.activateManagementTab` (both deleted, along with
+  // `pr-data-tabs.helpers.js`/`pr-management-tabs.helpers.js` outright)
+  // as those panels' sole remaining writer.
   ReactDOM.createRoot(anchor).render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
@@ -1380,6 +1390,7 @@ function mountAppRoot() {
               <BackfillStatusProvider>
                 <PrActivityQueueProvider>
                   <TabStateProvider>
+                    <TabPanelVisibilitySync />
                     <AppRoot />
                   </TabStateProvider>
                 </PrActivityQueueProvider>

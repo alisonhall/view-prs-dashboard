@@ -57,11 +57,9 @@ import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.j
 import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
 import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
-import * as prDataTabsHelperFactory from "./helpers/pr-data-tabs.helpers.js";
 import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
 import * as prUiOptionPersistenceHelperFactory from "./helpers/pr-ui-option-persistence.helpers.js";
 import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
-import * as prManagementTabsHelperFactory from "./helpers/pr-management-tabs.helpers.js";
 import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { countPendingThreadComments } from "./helpers/pr-thread-comments.helpers.js";
@@ -898,7 +896,7 @@ const {
 // AuthorInsightsDraftsProvider (a React component) only publishes this on
 // window once it mounts, which happens after this module-level wiring
 // runs; a direct reference captured now would freeze on undefined. Same
-// indirection this file already uses for activateDataTab above.
+// indirection every other window.*-bridge-reading call in this file uses.
 // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 2): the other 6 composer/edit-draft proxies this block used to
 // also build (getAuthorInsightsComposerDraft/updateAuthorInsightsComposerDraft/
@@ -1302,27 +1300,14 @@ const {
   stripAnsi,
 });
 
-// Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 2): onTabActivated's only real use was re-invoking
-// renderAuthorInsightsIfVisible (deleted outright this phase) -
-// AuthorInsightsSelector.jsx now validates the selected author itself,
-// reactively, on every payload/options change, not just on tab
-// activation, so there's nothing left for a tab-activation hook to do
-// here. onTabActivated is optional (see pr-data-tabs.helpers.js), so it's
-// simply omitted now rather than passed as a no-op.
-const { activateDataTab } =
-  prDataTabsHelperFactory.createPrDataTabsHelpers({
-    getOptionalElementById,
-  });
-
-// Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// vanilla primitive exposed for TabStateProvider.jsx (a React component) to
-// call - same category as applyFreshPrPayload/beginRequestActivity below,
-// not a new entanglement. activateDataTab itself is completely unchanged;
-// this just lets React become a second caller of it.
-if (typeof window !== "undefined") {
-  window.activateDataTab = (...args) => activateDataTab(...args);
-}
+// Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): pr-data-tabs.helpers.js (activateDataTab/initDataTabs) is
+// deleted outright - components/TabPanelVisibilitySync.jsx now owns the 3
+// data-tab panels' `hidden` attribute reactively from TabStateContext,
+// and DataTabButton.jsx already owned the buttons' className/aria-selected
+// (this file's own window.activateDataTab bridge was fully redundant with
+// that). initDataTabs' only call site (the orchestrator below) already
+// passed a no-op in its place (Phase A, slice 1) - removed, not replaced.
 
 // PR Data Tab Orchestrator
 const prDataTabOrchestrator =
@@ -1332,11 +1317,11 @@ const prDataTabOrchestrator =
     deriveRenderPipelineState,
     // Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full migration
     // roadmap"): the 3 data-tab buttons are now React-owned
-    // (DataTabButton.jsx/TabStateProvider.jsx) - initDataTabs' own button
-    // click-wiring (`.onclick = ...`) would double-fire alongside React's
-    // own onClick if both ran, so this orchestrator's one-time
-    // initialize() call no longer wires them. initDataTabs itself (and its
-    // own tests) are untouched - only this one call site stops using it.
+    // (DataTabButton.jsx/TabStateProvider.jsx) - this orchestrator's
+    // one-time initialize() call no longer wires tab-button clicks, a
+    // plain no-op in its place since Phase A. Phase H.22 (cluster 3)
+    // deleted pr-data-tabs.helpers.js's real initDataTabs outright (no
+    // other caller remained) - this DI param stays a no-op either way.
     initDataTabs: () => {},
     getOptionalElementById,
     // State management via dependency injection
@@ -1459,42 +1444,25 @@ const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillAct
 
 // Action Log's fetch/render is React-owned (ActionLogSection.jsx, mounted
 // into #action-log-container) - this just forwards to the bridge it
-// registers on mount, so the tab-switch chrome (pr-management-tabs.helpers.js)
-// and the Refresh button below can keep calling `loadActionLog()` unchanged.
+// registers on mount, so the Refresh button below can keep calling
+// `loadActionLog()` unchanged.
 const loadActionLog = () => window.triggerActionLogLoad?.();
 
-// Actor Names' fetch/render/save is fully React-owned (ActorNamesTab.jsx,
-// mounted into #actor-names-root - its own buttons included, not just a
-// container-split like Action Log) - this just forwards to the bridge it
-// registers on mount, so the tab-switch chrome (pr-management-tabs.helpers.js)
-// can keep calling `loadActorNameCache()` unchanged on tab activation.
-const loadActorNameCache = () => window.triggerActorNameCacheLoad?.();
-
-// Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// onBackfillTabActivated is no longer passed here - backfill-tab.orchestrator.js
-// (the only thing that ever implemented it) is deleted outright.
-// state/useBackfillTabAutoRefresh.jsx now owns refreshing status/log on
-// Backfill-tab activation, the same way Action Log/Actor Names' own
-// refresh-on-activate already works, just driven by watching
-// #tab-panel-backfill's `hidden` attribute directly instead of a callback
-// threaded through this factory. Real tab-switching chrome (panel
-// visibility/aria-selected) stays owned here, unchanged.
-const { activateTab } =
-  prManagementTabsHelperFactory.createPrManagementTabsHelpers({
-    getOptionalElementById,
-    loadActionLog,
-    loadActorNameCache,
-  });
-
-// Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// vanilla primitive exposed for TabStateProvider.jsx to call - same
-// category as window.activateDataTab above. activateTab itself is
-// completely unchanged (restructured to a top-level function, same
-// shape as activateDataTab, but behavior-preserving - see that file's
-// own comment).
-if (typeof window !== "undefined") {
-  window.activateManagementTab = (...args) => activateTab(...args);
-}
+// Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): pr-management-tabs.helpers.js (activateTab/initManagementTabs)
+// is deleted outright - components/TabPanelVisibilitySync.jsx now owns the
+// 6 management-tab panels' `hidden` attribute reactively from
+// TabStateContext, and ManagementTabButton.jsx already owned the buttons'
+// className/aria-selected (this file's own window.activateManagementTab
+// bridge was fully redundant with that). The re-trigger-on-tab-activation
+// behavior `activateTab` used to drive (loadActionLog/loadActorNameCache -
+// onBackfillTabActivated was already gone, Phase H.11) moved into each
+// section's own component instead (ActionLogSection.jsx/ActorNamesTab.jsx),
+// watching useIsTabPanelVisible() directly, same shape
+// useBackfillTabAutoRefresh.jsx already established. loadActorNameCache
+// (this file's own local const) had no other caller - deleted outright,
+// not just unused; ActorNamesTab.jsx's own refresh buttons already call
+// window.triggerActorNameCacheLoad directly, bypassing this file entirely.
 
 // getPerPrUserStateFromPayload (helpers/pr-per-pr-user-state.helpers.js,
 // genuinely zero-dependency) used to be imported here too, to build this

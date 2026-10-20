@@ -5,6 +5,7 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
 const { ActorNamesTab } = require('./ActorNamesTab');
+const { TabStateContext } = require('../state/TabStateContext');
 
 // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
 // component is now lazy-loaded, so it can no longer rely on being eagerly
@@ -158,5 +159,72 @@ describe('ActorNamesTab', () => {
     unmount();
 
     expect(window.triggerActorNameCacheLoad).toBeUndefined();
+  });
+
+  // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 3): re-triggering on every later re-activation (switch away,
+  // then back) used to be pr-management-tabs.helpers.js's own
+  // activateTab("actor-name-cache") calling loadActorNameCache() directly,
+  // outside React - now owned by this component's own effect watching
+  // useIsTabPanelVisible(), guarded against double-firing alongside the
+  // mount effect's own unconditional load (see this file's own
+  // hasSkippedFirstRunRef comment).
+  describe('re-triggering on tab re-activation', () => {
+    const emptyFetch = () =>
+      jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) }));
+
+    const renderWithActiveManagementTab = (activeManagementTab) =>
+      render(
+        <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab }}>
+          <ActorNamesTab />
+        </TabStateContext.Provider>,
+      );
+
+    test('given the tab is not active at mount, when it becomes active later, then it reloads both endpoints', async () => {
+      global.fetch = emptyFetch();
+      let rerender;
+      await act(async () => {
+        ({ rerender } = renderWithActiveManagementTab('status'));
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(2); // the mount-triggered load (2 endpoints)
+
+      await act(async () => {
+        rerender(
+          <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab: 'actor-name-cache' }}>
+            <ActorNamesTab />
+          </TabStateContext.Provider>,
+        );
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+    });
+
+    test('given the tab is already active at mount, when mounted, then it loads exactly once (not twice)', async () => {
+      global.fetch = emptyFetch();
+      await act(async () => {
+        renderWithActiveManagementTab('actor-name-cache');
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2); // 1 mount-triggered load, 2 endpoints
+    });
+
+    test('given the tab becomes inactive after mount, when it does, then nothing reloads', async () => {
+      global.fetch = emptyFetch();
+      let rerender;
+      await act(async () => {
+        ({ rerender } = renderWithActiveManagementTab('actor-name-cache'));
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        rerender(
+          <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab: 'status' }}>
+            <ActorNamesTab />
+          </TabStateContext.Provider>,
+        );
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
   });
 });

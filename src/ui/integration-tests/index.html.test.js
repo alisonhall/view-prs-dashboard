@@ -1117,6 +1117,40 @@ const syncFilterStateFromElement = (element, contextKey) => {
   window.setFilterStateValue?.(contextKey, value);
 };
 
+// Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): window.activateManagementTab (pr-management-tabs.helpers.js's
+// activateTab) is deleted outright - the real app's own panel-hiding
+// mechanism is now components/TabPanelVisibilitySync.jsx, reading
+// TabStateContext reactively, which this suite never mounts (it never
+// mounts react-app.jsx/TabStateProvider at all - see this file's own
+// comments elsewhere about the React tab buttons being empty portal roots
+// here). Every one of this suite's own ~60 call sites only ever used
+// "script"/"backfill" (confirmed via grep), purely to unhide that panel so
+// Testing-Library's role/label queries - which exclude elements under a
+// `hidden` ancestor - can find fields inside it; none exercise the
+// deleted function's other side effects (button styling, which the real
+// buttons don't even exist in this suite to assert on; loadActionLog/
+// loadActorNameCache/onBackfillTabActivated, never used with those 2
+// keys here). This local helper replaces the deleted bridge with exactly
+// that one remaining real behavior - same panel-id/key map as
+// TabPanelVisibilitySync.jsx's own.
+const MANAGEMENT_TAB_PANEL_IDS_FOR_TEST = {
+  "tab-panel-status": "status",
+  "tab-panel-script": "script",
+  "tab-panel-backfill": "backfill",
+  "tab-panel-action-log": "action-log",
+  "tab-panel-actor-name-cache": "actor-name-cache",
+  "tab-panel-export": "export",
+};
+const activateManagementTabForTest = (key) => {
+  Object.entries(MANAGEMENT_TAB_PANEL_IDS_FOR_TEST).forEach(([panelId, panelKey]) => {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+      panel.hidden = panelKey !== key;
+    }
+  });
+};
+
 describe("index page rendering with Testing Library", () => {
   beforeAll(() => {
     // jsdom does not implement scrollIntoView; polyfill to prevent unhandled exceptions
@@ -1759,7 +1793,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#77")).toBeInTheDocument();
@@ -1905,7 +1939,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#177")).toBeInTheDocument();
@@ -2398,7 +2432,7 @@ describe("index page rendering with Testing Library", () => {
     // lastQuickCheckSkipReason) is kept only because the rest of this test's
     // payload shape mirrors a real response; nothing here reads it anymore.
 
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
     expect(document.getElementById("tab-panel-status").hidden).toBe(true);
 
@@ -2472,7 +2506,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     await user.click(
       screen.getByRole("button", { name: "Apply filters (local)" }),
@@ -2495,7 +2529,7 @@ describe("index page rendering with Testing Library", () => {
 
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
@@ -2587,7 +2621,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given a single successful target, when Run script completes, then the fresh payload is applied directly with no redundant reload", async () => {
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2636,7 +2670,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given multiple successful targets, when Run script completes, then the final rendered state reflects the last target's payload with no redundant reload", async () => {
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2682,7 +2716,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given one target succeeds and one fails, when Run script completes, then the successful target's data still renders and the combined status/snackbar reflect the partial failure", async () => {
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2739,7 +2773,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given every target fails, when Run script completes, then the failure status is shown, nothing throws, and nothing is rendered", async () => {
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2778,7 +2812,7 @@ describe("index page rendering with Testing Library", () => {
 
     test("given no PR numbers entered (an \"All PRs\" run), when Run script completes, then it behaves the same as a specific-PR-number target", async () => {
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
@@ -2822,7 +2856,7 @@ describe("index page rendering with Testing Library", () => {
 
   test("given no selected author and toggled checkboxes when Run script posts payload then author fallback and boolean flags are mapped", async () => {
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     // Note: With checkbox-based filters, authors are populated dynamically from PR data.
     // This test verifies that when no author checkboxes are selected, the author field
@@ -2908,7 +2942,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2950,7 +2984,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2981,7 +3015,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -3019,7 +3053,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -3055,7 +3089,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const repoField = document.getElementById("repo");
     await user.clear(repoField);
@@ -3110,7 +3144,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -3153,7 +3187,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -3181,7 +3215,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -3223,7 +3257,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -3274,7 +3308,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -3374,7 +3408,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const scopeField = document.getElementById("scope-mode");
     const prFilterField = document.getElementById("filter-pr-numbers");
@@ -3518,7 +3552,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
     const scopeField = document.getElementById("scope-mode");
     expect(scopeField).toBeInTheDocument();
 
@@ -3875,7 +3909,7 @@ describe("index page rendering with Testing Library", () => {
 
     document.getElementById("status").textContent = "Viewer : ahall236_uhg";
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const noActivityMode = document.getElementById("attention-no-activity-mode");
     const includePendingComments = document.getElementById(
@@ -4066,7 +4100,7 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
@@ -4466,7 +4500,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
     });
@@ -4612,7 +4646,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
       await waitFor(() => {
         expect(screen.getByText("#901")).toBeInTheDocument();
       });
@@ -4711,7 +4745,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
       await waitFor(() => {
         expect(screen.getByText("#902")).toBeInTheDocument();
       });
@@ -4804,7 +4838,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
     });
@@ -4930,7 +4964,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const scopeSelect = document.getElementById("scope-mode");
     const authorList = getMultiSelectList("author-list");
@@ -4999,7 +5033,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -5071,7 +5105,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -5153,7 +5187,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5221,7 +5255,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     const approverList = getMultiSelectList("approver-list");
@@ -5262,7 +5296,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     await waitFor(() => {
@@ -5390,7 +5424,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     const scopeSelect = document.getElementById("scope-mode");
@@ -5525,7 +5559,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5572,7 +5606,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5626,7 +5660,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     await waitFor(() => {
@@ -5729,7 +5763,7 @@ describe("index page rendering with Testing Library", () => {
       expect(defaultsCall).toBeDefined();
     });
 
-    window.activateManagementTab("script");
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -5822,7 +5856,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5896,7 +5930,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -7194,7 +7228,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Refresh log" }));
 
     await waitFor(() => {
@@ -7224,7 +7258,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
 
     // Force a running status refresh in-test to avoid startup timing races.
     const defaultImpl = fetchMock.getMockImplementation();
@@ -7280,7 +7314,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -7305,7 +7339,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    window.activateManagementTab("backfill");
+    activateManagementTabForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -9076,7 +9110,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const prDifficultySelect = document.getElementById("filter-pr-difficulty");
       await user.selectOptions(prDifficultySelect, "3");
@@ -9116,7 +9150,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // restore now lands in FilterStateProvider's own Context, not this
@@ -9156,7 +9190,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const list = await waitFor(() => {
         const found = getMultiSelectList("change-filter-ignore-comment-authors-list");
@@ -9199,7 +9233,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const list = await waitFor(() => {
         const found = getMultiSelectList("change-filter-ignore-review-authors-list");
@@ -9231,7 +9265,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const commentList = getMultiSelectList("change-filter-ignore-comment-authors-list");
       const reviewList = getMultiSelectList("change-filter-ignore-review-authors-list");
@@ -9266,7 +9300,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
       await waitFor(() => {
         if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
           throw new Error("not populated yet");
@@ -9342,7 +9376,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
@@ -9399,7 +9433,7 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
       await waitFor(() => {
         if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
           throw new Error("not populated yet");
@@ -9473,7 +9507,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
       await waitFor(() => {
         expect(
           getSelectedMultiSelectValues("change-filter-ignore-comment-authors-list"),
@@ -9550,7 +9584,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       fetchMock.mockClear();
       await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
@@ -9585,7 +9619,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      window.activateManagementTab("script");
+      activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
