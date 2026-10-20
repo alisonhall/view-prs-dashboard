@@ -6,10 +6,6 @@ require('@testing-library/jest-dom');
 const { MergedRequestMoreAction } = require('./MergedRequestMoreAction');
 
 describe('MergedRequestMoreAction', () => {
-  afterEach(() => {
-    delete window.handleRequestMoreMerged;
-  });
-
   test('given isVisible is false, when rendering, then nothing renders', () => {
     const { container } = render(<MergedRequestMoreAction isVisible={false} repo="owner/repo" />);
     expect(container).toBeEmptyDOMElement();
@@ -21,11 +17,11 @@ describe('MergedRequestMoreAction', () => {
     expect(screen.getByRole('button', { name: 'Request more' })).not.toBeDisabled();
   });
 
-  test('given the button is clicked, when handled, then window.handleRequestMoreMerged is called with the repo and onPendingChange/onStatusChange callbacks', async () => {
+  test('given the button is clicked, when handled, then onRequestMore is called with the repo and onPendingChange/onStatusChange callbacks', async () => {
     const calls = [];
-    window.handleRequestMoreMerged = (...args) => calls.push(args);
+    const onRequestMore = (...args) => calls.push(args);
     const user = userEvent.setup();
-    render(<MergedRequestMoreAction isVisible repo="owner/repo" />);
+    render(<MergedRequestMoreAction isVisible repo="owner/repo" onRequestMore={onRequestMore} />);
 
     await user.click(screen.getByRole('button', { name: 'Request more' }));
 
@@ -36,11 +32,11 @@ describe('MergedRequestMoreAction', () => {
   });
 
   test('given the request reports pending, when onPendingChange(true) fires, then the button is disabled', async () => {
-    window.handleRequestMoreMerged = (_repo, { onPendingChange }) => {
+    const onRequestMore = (_repo, { onPendingChange }) => {
       onPendingChange(true);
     };
     const user = userEvent.setup();
-    render(<MergedRequestMoreAction isVisible repo="owner/repo" />);
+    render(<MergedRequestMoreAction isVisible repo="owner/repo" onRequestMore={onRequestMore} />);
 
     await user.click(screen.getByRole('button', { name: 'Request more' }));
 
@@ -48,18 +44,18 @@ describe('MergedRequestMoreAction', () => {
   });
 
   test('given a status update, when onStatusChange fires, then the status text renders', async () => {
-    window.handleRequestMoreMerged = (_repo, { onStatusChange }) => {
+    const onRequestMore = (_repo, { onStatusChange }) => {
       onStatusChange('Loaded 2 merged PRs.');
     };
     const user = userEvent.setup();
-    render(<MergedRequestMoreAction isVisible repo="owner/repo" />);
+    render(<MergedRequestMoreAction isVisible repo="owner/repo" onRequestMore={onRequestMore} />);
 
     await user.click(screen.getByRole('button', { name: 'Request more' }));
 
     await waitFor(() => expect(screen.getByText('Loaded 2 merged PRs.')).toBeInTheDocument());
   });
 
-  test('given no window.handleRequestMoreMerged bridge is installed, when the button is clicked, then nothing throws', async () => {
+  test('given no onRequestMore prop is passed, when the button is clicked, then nothing throws', async () => {
     const user = userEvent.setup();
     render(<MergedRequestMoreAction isVisible repo="owner/repo" />);
 
@@ -74,18 +70,20 @@ describe('MergedRequestMoreAction', () => {
   // just check a string prop was written, not that it actually has the
   // intended effect).
   test('given a completed request left status text showing, when remounted for a different repo (simulating a key={repo} change), then pending/status reset to defaults', async () => {
-    window.handleRequestMoreMerged = (_repo, { onStatusChange }) => {
+    const onRequestMore = (_repo, { onStatusChange }) => {
       onStatusChange('Loaded 2 merged PRs.');
     };
     const user = userEvent.setup();
-    const { unmount } = render(<MergedRequestMoreAction isVisible repo="owner/repo-a" />);
+    const { unmount } = render(
+      <MergedRequestMoreAction isVisible repo="owner/repo-a" onRequestMore={onRequestMore} />,
+    );
     await user.click(screen.getByRole('button', { name: 'Request more' }));
     await waitFor(() => expect(screen.getByText('Loaded 2 merged PRs.')).toBeInTheDocument());
 
     // A key change unmounts the old fiber and mounts a fresh one - exactly
     // what happens here, rather than re-rendering the same instance.
     unmount();
-    render(<MergedRequestMoreAction isVisible repo="owner/repo-b" />);
+    render(<MergedRequestMoreAction isVisible repo="owner/repo-b" onRequestMore={onRequestMore} />);
 
     expect(screen.queryByText('Loaded 2 merged PRs.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Request more' })).not.toBeDisabled();

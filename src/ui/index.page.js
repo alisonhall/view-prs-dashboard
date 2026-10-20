@@ -15,7 +15,6 @@ import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers
 import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
 import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
-import * as prMergedRequestMoreActionHelperFactory from "./helpers/pr-merged-request-more-action.helpers.js";
 import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
@@ -38,11 +37,13 @@ import {
   buildFailureSnackbarNotification,
   isTimeoutFailureMessage,
 } from "./helpers/pr-failure-snackbar.helpers.js";
-import { DEFAULT_REPO } from "./helpers/pr-default-repo.helpers.js";
-
 // DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
-// 7, see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx/AuthorInsightsPrLink.jsx
-// import it directly instead of reading it off window.DEFAULT_REPO.
+// 7, see REACT_MIGRATION_PLAN.md) everywhere it's needed -
+// PrJsonModal.jsx/AuthorInsightsPrLink.jsx import it directly instead of
+// reading it off window.DEFAULT_REPO. This file's own former import (for
+// the now-deleted vanilla handleRequestMoreMerged instance, ninth
+// follow-up, see REACT_MIGRATION_PLAN.md "Remaining-effort audit") is gone
+// too - nothing left in this file needs it.
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
@@ -97,7 +98,6 @@ let currentActorLoginAliases = {};
 // setSupportsBackfillLogPolling/setIsBackfillActionPending bridges that
 // Provider now answers, same as useBackfillActions.jsx (state/) already
 // did before this phase.
-let isRequestMoreMergedPending = false;
 // Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
 // manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
 // manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin used
@@ -421,33 +421,14 @@ const { loadStoredData } =
     renderPrData: (...args) => renderPrData(...args),
   });
 
-const { handleRequestMoreMerged } =
-  prMergedRequestMoreActionHelperFactory.createPrMergedRequestMoreActionHelpers({
-    getIsRequestMoreMergedPending: () => isRequestMoreMergedPending,
-    setIsRequestMoreMergedPending: (value) => {
-      isRequestMoreMergedPending = value;
-    },
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    defaultRepo: DEFAULT_REPO,
-    beginRequestActivity: (...args) => beginRequestActivity(...args),
-    postJson: (...args) => postJson(...args),
-    // Lazy proxy (same pattern as runSinglePrUpdate's own wiring):
-    // applyFreshPrPayload is declared later in this file, safe since this
-    // closure is only ever invoked long after full module evaluation.
-    applyFreshPrPayload: (...args) => applyFreshPrPayload(...args),
-    loadStoredData: (...args) => loadStoredData(...args),
-    setStatusMessage: (...args) => setStatusMessage(...args),
-    notifyFailureSnackbar: (...args) => notifyFailureSnackbar(...args),
-  });
-
-// The "Request more" merged-PRs button is real JSX now
-// (components/MergedRequestMoreAction.jsx) - it calls this directly on
-// click, passing its own local pending/status state setters as the
-// onPendingChange/onStatusChange options handleRequestMoreMerged now
-// expects instead of reaching into #merged-request-more-btn/-status itself.
-if (typeof window !== "undefined") {
-  window.handleRequestMoreMerged = (...args) => handleRequestMoreMerged(...args);
-}
+// Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// window.handleRequestMoreMerged and this file's own vanilla instance of
+// createPrMergedRequestMoreActionHelpers are both deleted outright -
+// MergedRequestMoreAction.jsx's "Request more" button (via
+// MergedRequestMoreActionLive, react-app.jsx) now calls
+// state/useRequestMoreMerged.jsx directly, which builds its own instance
+// of the same pure factory. Confirmed no other caller of either the
+// bridge or isRequestMoreMergedPending existed.
 
 // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): applyFiltersFromCache (and the "Apply filters (local)"

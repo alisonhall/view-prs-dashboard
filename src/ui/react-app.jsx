@@ -34,6 +34,7 @@ import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
 import { TableFilterChips } from './components/TableFilterChips';
 import { useTableFilterChips } from './state/useTableFilterChips';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
+import { useRequestMoreMerged } from './state/useRequestMoreMerged';
 import { Snackbar } from './components/Snackbar';
 import { SnackbarProvider } from './components/SnackbarProvider';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
@@ -596,9 +597,21 @@ function RefreshLabelsButtonLive({ container }) {
 // AppRoot's JSX. key={repo}: same stale-state-on-repo-change reasoning the
 // previous window.updateReactMergedRequestMoreAction-fed version already
 // documented at its own portal call site.
+//
+// Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// also calls useRequestMoreMerged(), passing its returned function as
+// onRequestMore - replaces window.handleRequestMoreMerged.
 function MergedRequestMoreActionLive() {
   const { isVisible, repo } = useMergedRequestMoreActionOptions();
-  return <MergedRequestMoreAction key={repo} isVisible={isVisible} repo={repo} />;
+  const requestMoreMerged = useRequestMoreMerged();
+  return (
+    <MergedRequestMoreAction
+      key={repo}
+      isVisible={isVisible}
+      repo={repo}
+      onRequestMore={requestMoreMerged}
+    />
+  );
 }
 
 function AppRoot() {

@@ -67,6 +67,7 @@ const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
 const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
+const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): these two are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
@@ -6042,14 +6043,24 @@ describe("index page rendering with Testing Library", () => {
     // mount the real MergedRequestMoreAction component and click its
     // button, instead of calling window.handleRequestMoreMerged directly -
     // same pattern ActionButtonsTestHarness already uses for
-    // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton. The
-    // button's own click handler still calls window.handleRequestMoreMerged
-    // (the vanilla orchestration, unchanged) - only how the test triggers
-    // it changed.
-    rtlRender(
-      React.createElement(MergedRequestMoreAction, { isVisible: true, repo: "owner/repo" }),
-      { container: document.getElementById("merged-request-more-action") },
-    );
+    // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton.
+    //
+    // Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+    // audit"): the button's own click handler now calls
+    // useRequestMoreMerged()'s returned function (via onRequestMore), not
+    // window.handleRequestMoreMerged - this small wrapper calls that hook
+    // itself, same shape as MergedRequestMoreActionLive in react-app.jsx.
+    function MergedRequestMoreActionTestHarness() {
+      const requestMoreMerged = useRequestMoreMerged();
+      return React.createElement(MergedRequestMoreAction, {
+        isVisible: true,
+        repo: "owner/repo",
+        onRequestMore: requestMoreMerged,
+      });
+    }
+    rtlRender(React.createElement(MergedRequestMoreActionTestHarness), {
+      container: document.getElementById("merged-request-more-action"),
+    });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Request more" }));
 
