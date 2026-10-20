@@ -8,11 +8,17 @@ import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpe
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
 // matches index.page.js's old module-scope `let` defaults exactly.
+// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): lastSuccessfulPollCheckAt/lastPollErrorAt/hasActivePollWarning
+// added - markPollSuccess/showPollFailureWarning's own former module `let`s
+// (index.page.js), moved here since both functions exist only to serve
+// this same trackingRef-owning poll loop.
 const DEFAULT_POLLING_TRACKING_STATE = {
   supportsDataMetaPolling: true,
   supportsDataManifestPolling: true,
@@ -21,7 +27,27 @@ const DEFAULT_POLLING_TRACKING_STATE = {
   lastRenderedPrFingerprint: '',
   lastRenderedMetaFingerprint: '',
   lastRenderedRunStamp: '',
+  lastSuccessfulPollCheckAt: '',
+  lastPollErrorAt: '',
+  hasActivePollWarning: false,
 };
+
+// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): pure helper for showPollFailureWarning below - verbatim copy
+// of index.page.js's own former describePollFailure, moved here since it
+// has no other caller.
+const describePollFailure = (errorSource) => {
+  const messageCandidates =
+    errorSource && typeof errorSource === 'object'
+      ? [errorSource.error, errorSource.summary, errorSource.message, errorSource.stderr, errorSource.output]
+      : [errorSource];
+
+  const normalizedCandidates = messageCandidates.map((value) => String(value || '').trim()).filter(Boolean);
+
+  return normalizedCandidates[0] || 'Polling request failed.';
+};
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for the request-activity-counter/history/scheduler-state
@@ -392,8 +418,42 @@ export function PrDataProvider({
         window.setPendingAutoRenderPayload?.(value);
       },
       renderPrData: (...args) => window.renderPrData?.(...args),
-      markPollSuccess: (...args) => window.markPollSuccess?.(...args),
-      showPollFailureWarning: (...args) => window.showPollFailureWarning?.(...args),
+      // Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 1): owned directly now, reading/writing trackingRef - no
+      // window.* bridge needed at all, since pollForDataChanges (the only
+      // real caller of either) already lives in this same Provider.
+      // showWarningNotification/hideErrorNotification stay window.*
+      // bridges (Snackbar.jsx, React-owned, genuinely vanilla-reached from
+      // here) - same category every other poll-adjacent UI call uses.
+      markPollSuccess: (checkedAt = new Date().toISOString()) => {
+        trackingRef.current.lastSuccessfulPollCheckAt = String(checkedAt || '').trim();
+        if (!trackingRef.current.hasActivePollWarning) {
+          return;
+        }
+        window.hideErrorNotification?.();
+        trackingRef.current.hasActivePollWarning = false;
+      },
+      showPollFailureWarning: ({ errorSource, attemptedAt } = {}) => {
+        trackingRef.current.lastPollErrorAt = String(attemptedAt || new Date().toISOString()).trim();
+
+        const lastSuccessLabel = trackingRef.current.lastSuccessfulPollCheckAt
+          ? formatIsoDatetime(trackingRef.current.lastSuccessfulPollCheckAt)
+          : 'Unavailable';
+        const lastErrorLabel = formatIsoDatetime(trackingRef.current.lastPollErrorAt);
+
+        window.showWarningNotification?.(
+          'Auto-refresh warning',
+          [
+            `Last successful check: ${lastSuccessLabel}`,
+            `Last error at: ${lastErrorLabel}`,
+            '',
+            describePollFailure(errorSource),
+          ].join('\n'),
+          0,
+        );
+
+        trackingRef.current.hasActivePollWarning = true;
+      },
       setStatusMessage: (message) => {
         setStatusText(message);
         window.renderRequestActivity?.();

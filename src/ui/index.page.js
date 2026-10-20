@@ -60,9 +60,11 @@ const BACKFILL_LOG_TAIL_LINES = 120;
 // prDataTabOrchestrator's own tab-activation-catch-up concern) is deleted
 // too, along with the orchestrator itself - its only reader was that
 // orchestrator's own stateGetters.getLastSuccessfulRenderedCheckAt.
-let lastSuccessfulPollCheckAt = "";
-let lastPollErrorAt = "";
-let hasActivePollWarning = false;
+// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): lastSuccessfulPollCheckAt/lastPollErrorAt/hasActivePollWarning
+// moved into PrDataProvider.jsx's own trackingRef - markPollSuccess/
+// showPollFailureWarning (their only reader/writer) moved there too, since
+// pollForDataChanges (their only real caller) already lives there.
 let latestStoredPayload = null;
 let latestSelectedRepo = "";
 
@@ -113,7 +115,6 @@ const formParsingHelpers = formParsingHelpersModule;
 
 const {
   stripAnsi,
-  formatIsoDatetime,
 } = prFormattingHelperFactory.createPrFormattingHelpers();
 
 const setStatusTextOnly = (message) => {
@@ -157,17 +158,18 @@ const renderRequestActivity = () => {
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the snackbar itself is fully React-owned now
 // (components/Snackbar.jsx, mounted into an empty #error-snackbar-root) -
-// these 3 are thin delegating wrappers around the window.* bridges that
-// component registers, kept under their original names so the ~15+
-// existing call sites (notifyFailureSnackbar, markPollSuccess, etc.) don't
-// need to change.
+// this is a thin delegating wrapper around the window.* bridge that
+// component registers, kept under its original name so the ~15+ existing
+// call sites (notifyFailureSnackbar, etc.) don't need to change.
+// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): showWarningNotification/hideErrorNotification (this
+// function's own siblings) are deleted outright - markPollSuccess/
+// showPollFailureWarning, their only callers, moved into
+// PrDataProvider.jsx, which reaches window.showWarningNotification/
+// window.hideErrorNotification directly instead of through a second
+// layer of wrapper here.
 const showErrorNotification = (title, message, autoDismissMs = 8000) =>
   window.showErrorNotification?.(title, message, autoDismissMs);
-
-const showWarningNotification = (title, message, autoDismissMs = 12000) =>
-  window.showWarningNotification?.(title, message, autoDismissMs);
-
-const hideErrorNotification = () => window.hideErrorNotification?.();
 
 const notifyFailureSnackbar = (
   title,
@@ -182,56 +184,11 @@ const notifyFailureSnackbar = (
   showErrorNotification(finalTitle, detail, 0);
 };
 
-const describePollFailure = (errorSource) => {
-  const messageCandidates =
-    errorSource && typeof errorSource === "object"
-      ? [
-          errorSource.error,
-          errorSource.summary,
-          errorSource.message,
-          errorSource.stderr,
-          errorSource.output,
-        ]
-      : [errorSource];
-
-  const normalizedCandidates = messageCandidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  return normalizedCandidates[0] || "Polling request failed.";
-};
-
-const showPollFailureWarning = ({ errorSource, attemptedAt }) => {
-  lastPollErrorAt = String(attemptedAt || new Date().toISOString()).trim();
-
-  const lastSuccessLabel = lastSuccessfulPollCheckAt
-    ? formatIsoDatetime(lastSuccessfulPollCheckAt)
-    : "Unavailable";
-  const lastErrorLabel = formatIsoDatetime(lastPollErrorAt);
-
-  showWarningNotification(
-    "Auto-refresh warning",
-    [
-      `Last successful check: ${lastSuccessLabel}`,
-      `Last error at: ${lastErrorLabel}`,
-      "",
-      describePollFailure(errorSource),
-    ].join("\n"),
-    0,
-  );
-
-  hasActivePollWarning = true;
-};
-
-const markPollSuccess = (checkedAt = new Date().toISOString()) => {
-  lastSuccessfulPollCheckAt = String(checkedAt || "").trim();
-  if (!hasActivePollWarning) {
-    return;
-  }
-
-  hideErrorNotification();
-  hasActivePollWarning = false;
-};
+// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): describePollFailure/showPollFailureWarning/markPollSuccess
+// are deleted outright - moved into PrDataProvider.jsx (see that file's
+// own comment), the only place either function's one real caller
+// (pollForDataChanges) has ever lived.
 
 const summarizeAckRefreshWarnings = (
   refreshErrors = [],
@@ -1522,13 +1479,15 @@ const pushPayloadToReactTable = (payload, repo) => {
 // factory needs - index.page.js just exposes the vanilla pieces that
 // Provider's own DI still needs to reach (the pure fingerprint/manifest
 // helpers below, already wired with the real getOrComputeEntryDerivedValue
-// cache; applyLatestPrData/renderPrData/markPollSuccess/
-// showPollFailureWarning - vanilla render-pipeline primitives exposed
-// *for* that Provider, same category as every other "vanilla primitive
-// exposed for React" bridge in this migration). window.pollForDataChanges
-// itself is now assigned by PrDataProvider.jsx instead, but stays the
-// same name/shape - index.html.test.js's 17 direct call sites still work
-// unchanged.
+// cache; applyLatestPrData/renderPrData - vanilla render-pipeline
+// primitives exposed *for* that Provider, same category as every other
+// "vanilla primitive exposed for React" bridge in this migration).
+// window.pollForDataChanges itself is now assigned by PrDataProvider.jsx
+// instead, but stays the same name/shape - index.html.test.js's 17 direct
+// call sites still work unchanged. Phase H.25 (see REACT_MIGRATION_PLAN.md,
+// "Remaining-effort audit", cluster 1): markPollSuccess/showPollFailureWarning
+// are gone from this list too - both now live directly inside
+// PrDataProvider.jsx, no window.* bridge needed at all.
 if (typeof window !== "undefined") {
   window.computePrDataManifest = (...args) => computePrDataManifest(...args);
   window.getManifestDelta = (...args) => getManifestDelta(...args);
@@ -1539,8 +1498,6 @@ if (typeof window !== "undefined") {
   window.getLatestStoredPayload = () => latestStoredPayload;
   window.applyLatestPrData = (...args) => applyLatestPrData(...args);
   window.renderPrData = (...args) => renderPrData(...args);
-  window.markPollSuccess = (...args) => markPollSuccess(...args);
-  window.showPollFailureWarning = (...args) => showPollFailureWarning(...args);
 }
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
