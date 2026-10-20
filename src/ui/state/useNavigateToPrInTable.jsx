@@ -7,9 +7,11 @@ import { useTabState } from './TabStateContext';
  * "jump to unsaved PR" chips call this hook's returned function directly.
  *
  * The tab-switch half is a direct Context call now (`setActiveDataTab`,
- * already real React state via TabStateProvider.jsx, itself still calling
- * the real vanilla `window.activateDataTab` underneath). The "which row,
- * then scroll/focus it" half is NOT reimplemented here - PrTableApp.jsx
+ * already real React state via TabStateProvider.jsx - as of Phase H.22,
+ * panel visibility is owned reactively by TabPanelVisibilitySync.jsx
+ * instead of this call also driving a vanilla `window.activateDataTab`
+ * bridge). The "which row, then scroll/focus it" half is NOT reimplemented
+ * here - PrTableApp.jsx
  * already listens for the same `pr-navigate-to-insights` CustomEvent
  * (originally added for the Author-Insights-tab "View in table" link) and
  * owns the actual DOM lookup/scroll/focus, since it's the component that
