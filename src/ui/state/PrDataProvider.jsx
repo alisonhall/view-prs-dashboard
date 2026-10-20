@@ -199,6 +199,17 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * indicator) is unaffected - `window.renderSchedulerStatus`
  * (`index.page.js`, still vanilla) is the one real remaining path,
  * called directly by `JobEventsProvider.jsx`'s SSE connection.
+ *
+ * Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 1): the paragraph above's "`loadSchedulerStatus` stays vanilla -
+ * reached via a reverse bridge" is now stale - `window.loadSchedulerStatus`
+ * itself is deleted outright. `loadSchedulerStatus`'s implementation moved
+ * to `helpers/pr-scheduler-status.helpers.js`; `index.page.js` and
+ * `useQuickCheckActions.jsx` (its only 2 real callers) each build their own
+ * instance directly instead of going through this Provider or a `window.*`
+ * bridge at all. `renderSchedulerStatus` itself (the one piece still
+ * vanilla/SSE-shared, called by `JobEventsProvider.jsx` above) is
+ * unaffected.
  */
 export function PrDataProvider({
   initialPayload,
