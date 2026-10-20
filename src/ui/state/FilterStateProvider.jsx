@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { FilterStateContext } from './FilterStateContext';
+import { useDebouncedEffect } from './useDebouncedCallback';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSelectionContext';
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
@@ -453,14 +454,36 @@ export function FilterStateProvider({ initialValues, children }) {
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): the useDebouncedEffect call that used to live here,
   // triggering window.debouncedApplyFilters() 150ms after any of 12
-  // listed fields changed, is deleted outright - that bridge (and the
-  // "Apply filters (local)" button/vanilla delegated-listener triggers
-  // that also called it) is gone entirely now, confirmed to have had zero
-  // remaining real effect once renderPrData's own dead pipeline was
-  // removed in H.23 (row filters/Needs Attention/the Review Conversations
-  // thread-resolution warning are all independently live via Context
-  // already). This was the only real purpose of this effect, so the
-  // whole effect goes, not just the inner call.
+  // listed fields changed, was deleted outright when that bridge was
+  // deleted (confirmed to have had zero remaining real re-filtering
+  // effect once renderPrData's own dead pipeline was removed in H.23).
+  //
+  // H.26 follow-up, found during code review of that same change: the
+  // "Apply filters (local)" button this phase also deleted had a SECOND
+  // call, window.persistViewFilterOptionOverrides?.() - its removal left
+  // every one of this Provider's own 26 persist-relevant fields relying
+  // entirely on index.page.js's vanilla delegated "change" listeners to
+  // auto-persist, which only fire for a real native DOM event. That
+  // misses any Context-only change with no native event at all - most
+  // notably TableFilterChips.jsx's "x" button, which calls
+  // setValue/toggle directly (see that hook's own header comment) and
+  // never touches the DOM. Reinstating a debounced watcher here, this
+  // time correctly pointed at persistViewFilterOptions (not the old,
+  // wrong "apply" target), closes that gap uniformly for every field
+  // this Provider owns - both FilterStateContext's own `values` and the
+  // 3 selection Contexts' checked-list state, regardless of what
+  // triggered the change. This is a deliberate "double-hookup" with the
+  // vanilla listeners for native-event-driven changes (the same
+  // harmless redundancy several other fields in this migration already
+  // have) - the real gap this closes is the Context-only path those
+  // listeners can never see.
+  useDebouncedEffect(
+    () => {
+      persistViewFilterOptions();
+    },
+    [values, rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection],
+    150,
+  );
 
   return (
     <FilterStateContext.Provider value={{ values, setValue }}>

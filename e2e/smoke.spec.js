@@ -868,12 +868,16 @@ test("a removable filter chip appears above the table for each non-default filte
   await expect(chips).toBeEmpty();
   await expect(page.locator("#pr-sections")).toContainText("Fix flaky test");
 
-  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 1): same as the label chip below - a chip's "x" clears via a
-  // direct Context update, not a native "change" event, so it never
-  // re-fires the auto-persist-on-change listener that the earlier
-  // .fill("1") may have triggered. Persist explicitly so this clear
-  // doesn't leave a stale pr-numbers override behind.
+  // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit", cluster 1): same as the label chip below - a chip's "x"
+  // clears via a direct Context update, not a native "change" event, so
+  // it never fires index.page.js's own vanilla auto-persist-on-change
+  // listeners. FilterStateProvider.jsx's own debounced Context-level
+  // watcher (added as a follow-up fix, once this exact gap was found)
+  // *does* still catch it, 150ms later - forcing it immediately here just
+  // keeps this test from needing to wait that out. See the dedicated
+  // "survives a reload with no manual persist trigger" test below for
+  // proof the debounced watcher alone is sufficient, unaided.
   await waitForFilterPersist(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
@@ -894,15 +898,68 @@ test("a removable filter chip appears above the table for each non-default filte
   await labelDropdownSummary.click();
   await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
 
-  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 1): a chip's "x" clears the filter via a direct Context
-  // update (useTableFilterChips.jsx's own onRemove), not a native "change"
-  // event on the checkbox - the earlier .check() above already persisted
-  // "enhancement" via the real auto-persist-on-change listener, but this
-  // chip-driven clear never re-fires that listener to persist the
-  // rollback. Persist explicitly so this test doesn't leave a stale
-  // "enhancement" override for whatever unrelated test loads next.
+  // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit", cluster 1): a chip's "x" clears the filter via a direct
+  // Context update (useTableFilterChips.jsx's own onRemove), not a
+  // native "change" event on the checkbox - the earlier .check() above
+  // already persisted "enhancement" via the vanilla auto-persist-on-change
+  // listener, but this chip-driven clear never fires that listener to
+  // persist the rollback; forced immediately here so this test doesn't
+  // leave a stale "enhancement" override for whatever unrelated test
+  // loads next (FilterStateProvider.jsx's own debounced watcher would
+  // also catch this, 150ms later - see the dedicated test below).
   await waitForFilterPersist(page);
+});
+
+test("removing a filter chip persists the clear on its own, with no explicit persist call at all", async ({ page }) => {
+  // Regression coverage for a real bug found during Phase H.26's own code
+  // review (see REACT_MIGRATION_PLAN.md): deleting the "Apply filters
+  // (local)" button removed the only persist trigger for a filter
+  // chip's "x", since useTableFilterChips.jsx's onRemove clears the
+  // filter via a direct Context update (setValue/toggle), never a native
+  // DOM "change" event - the vanilla auto-persist-on-change listeners
+  // (index.page.js) can't see that. Fixed by reinstating a debounced
+  // Context-level watcher in FilterStateProvider.jsx, this time correctly
+  // pointed at persistViewFilterOptions (the old, deleted
+  // debouncedApplyFilters effect called the wrong, now-dead "apply"
+  // function). Every other test in this file that removes a chip forces
+  // the persist immediately via waitForFilterPersist, for test speed -
+  // this one deliberately does NOT, to prove the production fix holds up
+  // entirely unaided, the way a real user's click actually would.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  await labelDropdownSummary.click();
+  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await waitForFilterPersist(page);
+
+  await page.getByRole("tab", { name: "PR data" }).click();
+  const chips = page.locator("#table-filter-chips-root");
+  await expect(chips).toContainText("Label: enhancement");
+
+  // Set up the response listener BEFORE the click, not after - the
+  // debounced watcher's own PUT can land well inside the 150ms window
+  // once the click itself returns, and waitForResponse only ever sees
+  // responses that occur after it starts listening.
+  const persistResponse = page.waitForResponse(
+    (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
+  );
+  await chips.getByRole("button", { name: "Remove filter: Label: enhancement" }).click();
+  await expect(chips).toBeEmpty();
+
+  // No explicit persist call here at all - this is
+  // FilterStateProvider.jsx's own debounced Context-level watcher firing
+  // entirely on its own, the same way a real user's click would trigger
+  // it with no test-only help.
+  await persistResponse;
+
+  await page.reload();
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await labelDropdownSummary.click();
+  await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
 });
 
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
