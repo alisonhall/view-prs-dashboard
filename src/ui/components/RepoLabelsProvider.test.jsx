@@ -14,19 +14,19 @@ const { useRepoLabels } = require('../state/RepoLabelsContext');
 
 // Cleanup pass (prompted by a direct question about why
 // window.refreshAvailableRepoLabels stayed vanilla instead of being fully
-// migrated, see REACT_MIGRATION_PLAN.md): RepoLabelsProvider now owns the
-// real fetch (GET /view-prs/labels) itself, as real React state, instead
-// of mirroring a vanilla index.page.js function's result via
-// window.setAvailableRepoLabels - every mount below needs a real
-// <FilterStateProvider> ancestor now too (RepoLabelsProvider reads
-// values.repo via useFilterState(), which throws without one), which
-// itself needs the 3 selection-Context ancestors FilterStateProvider's
-// own buildOverrides() requires - same wrapper shape
-// FilterStateProvider.test.jsx already establishes. FilterStateProvider's
-// own restore-on-mount effect also calls fetch (GET /view-prs/user-defaults)
-// unconditionally, so every mock below branches by URL and every
-// count/absence assertion filters to the /view-prs/labels calls
-// specifically, rather than asserting on `fetch` as a whole.
+// migrated, then a direct instruction to reconsider the structure so NO
+// window.* bridge is needed at all, see REACT_MIGRATION_PLAN.md):
+// RepoLabelsProvider owns the real fetch (GET /view-prs/labels) itself, as
+// real React state - every mount below needs a real <FilterStateProvider>
+// ancestor now (RepoLabelsProvider reads values.repo/restoredRepoOverride
+// via useFilterState(), which throws without one), which itself needs the
+// 3 selection-Context ancestors FilterStateProvider's own buildOverrides()
+// requires - same wrapper shape FilterStateProvider.test.jsx already
+// establishes. FilterStateProvider's own restore-on-mount effect also
+// calls fetch (GET /view-prs/user-defaults) unconditionally, so every mock
+// below branches by URL, and every count/absence assertion filters to the
+// /view-prs/labels calls specifically rather than asserting on `fetch` as
+// a whole.
 function TestProviders({ initialSelectedRepo, initialFilterValues = {}, children }) {
   return (
     <RowFilterSelectionProvider>
@@ -52,12 +52,15 @@ function TestRefreshButton({ repoOverride }) {
   );
 }
 
-const mockFetch = (labels) => {
+const mockFetch = (labels, userDefaultsOverrides = {}) => {
   global.fetch = jest.fn((url) => {
     if (String(url).startsWith('/view-prs/labels')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels }) });
     }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, overrides: userDefaultsOverrides }),
+    });
   });
 };
 
@@ -65,7 +68,6 @@ const labelsFetchCalls = () => fetch.mock.calls.filter(([url]) => String(url).st
 
 describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
   afterEach(() => {
-    delete window.refreshAvailableRepoLabels;
     delete window.getReactPrTableSelectedRepo;
     jest.restoreAllMocks();
   });
@@ -176,12 +178,10 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
 // Phase G.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // RepoLabelsProvider owns the "refetch labels when the selected repo
 // changes" trigger. Cleanup pass (see this file's own header comment):
-// these tests now assert on the real `fetch` call instead of a
-// window.refreshAvailableRepoLabels spy, since the fetch itself lives
-// here now.
+// these tests assert on the real `fetch` call, since the fetch itself
+// lives here now.
 describe('RepoLabelsProvider repo-change trigger', () => {
   afterEach(() => {
-    delete window.refreshAvailableRepoLabels;
     delete window.getReactPrTableSelectedRepo;
     jest.restoreAllMocks();
   });
@@ -253,56 +253,80 @@ describe('RepoLabelsProvider repo-change trigger', () => {
   });
 });
 
-// Cleanup pass (see this file's own header comment): window.*
-// refreshAvailableRepoLabels is NOT deleted outright - it's the one
-// remaining, deliberate escape hatch for FilterStateProvider.jsx's
-// restore-on-mount effect, a genuine ancestor of this Provider that can
-// never consume its descendant's Context. These tests prove that bridge
-// still works, now forwarding to the real `refresh` instead of a vanilla
-// fetch.
-describe('RepoLabelsProvider window.refreshAvailableRepoLabels bridge', () => {
+// Cleanup pass (prompted by a direct instruction to reconsider the
+// structure so no window.* bridge is needed at all - see this file's own
+// header comment): FilterStateProvider.jsx's restore-on-mount effect used
+// to reach window.refreshAvailableRepoLabels directly once a *saved* repo
+// override was known. It's a genuine ANCESTOR of this Provider
+// (FilterStateProvider wraps <AppRoot/>; this Provider is a descendant
+// AppRoot renders further down its own JSX), so instead of calling down
+// into a child, it now just publishes `restoredRepoOverride` as a plain
+// piece of its own Context value - this Provider reacts to it with its
+// own effect, the same already-valid "ancestor state flows down" Context
+// direction every other field here already uses. These tests exercise
+// that path end-to-end: a real FilterStateProvider restore (mocked
+// /view-prs/user-defaults response carrying a `repo` override) triggering
+// a real /view-prs/labels fetch, with zero window.* involved anywhere.
+describe('RepoLabelsProvider reacts to a restored repo override', () => {
   afterEach(() => {
-    delete window.refreshAvailableRepoLabels;
     jest.restoreAllMocks();
   });
 
-  test('given no selectedRepo yet, when window.refreshAvailableRepoLabels is called with an explicit repo, then the real fetch is made for it', async () => {
-    mockFetch([{ name: 'bug' }]);
+  test('given no selectedRepo yet, when a saved repo override restores, then the real fetch is made for it', async () => {
+    mockFetch([{ name: 'bug' }], { repo: 'owner/restored-repo' });
 
     render(
       <TestProviders>
         <ApplyLabelSelect />
       </TestProviders>,
     );
-    expect(labelsFetchCalls()).toEqual([]);
 
-    await act(async () => {
-      await window.refreshAvailableRepoLabels('owner/override-repo');
+    await waitFor(() => {
+      expect(labelsFetchCalls()).toEqual([['/view-prs/labels?repo=owner%2Frestored-repo']]);
     });
-
-    expect(labelsFetchCalls()).toEqual([['/view-prs/labels?repo=owner%2Foverride-repo']]);
     await waitFor(() => {
       expect(document.getElementById('apply-label-select')).not.toHaveDisplayValue('No labels found for this repo');
     });
   });
 
-  test('given the Provider unmounts, when window.refreshAvailableRepoLabels is read afterward, then it is gone', () => {
-    const { unmount } = render(
-      <TestProviders>
+  test('given selectedRepo already triggered its own fetch, when a *different* saved repo override restores shortly after, then a second fetch is made for the restored repo too', async () => {
+    mockFetch([], { repo: 'owner/restored-repo' });
+
+    render(
+      <TestProviders initialSelectedRepo="owner/already-applied-repo">
         <div />
       </TestProviders>,
     );
-    expect(typeof window.refreshAvailableRepoLabels).toBe('function');
 
-    unmount();
+    await waitFor(() => {
+      expect(labelsFetchCalls()).toEqual([
+        ['/view-prs/labels?repo=owner%2Falready-applied-repo'],
+        ['/view-prs/labels?repo=owner%2Frestored-repo'],
+      ]);
+    });
+  });
 
-    expect(window.refreshAvailableRepoLabels).toBeUndefined();
+  test('given no saved repo override at all (an empty restore), when mounting, then no extra labels fetch happens beyond the selectedRepo-driven one', async () => {
+    mockFetch([], {});
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <div />
+      </TestProviders>,
+    );
+
+    await waitFor(() => expect(labelsFetchCalls().length).toBe(1));
+    // Give the restore effect's own promise chain a tick to fully settle,
+    // so a wrongly-triggered second fetch would have had time to happen.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(labelsFetchCalls().length).toBe(1);
   });
 });
 
 describe('RepoLabelsProvider refresh() dedup/fallback rules', () => {
   afterEach(() => {
-    delete window.refreshAvailableRepoLabels;
     jest.restoreAllMocks();
   });
 

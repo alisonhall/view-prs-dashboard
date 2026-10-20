@@ -110,6 +110,21 @@ export function FilterStateProvider({ initialValues, children }) {
   const valuesRef = useRef(values);
   valuesRef.current = values;
 
+  // Cleanup pass (prompted by a direct instruction to reconsider the
+  // repo-labels structure so no window.* bridge is needed at all, see
+  // REACT_MIGRATION_PLAN.md): a dedicated signal, separate from
+  // `values.repo` itself, for "a saved repo override was just restored."
+  // RepoLabelsProvider.jsx (a genuine descendant of this Provider) reads
+  // it via useFilterState() and reacts with its own effect - the natural,
+  // already-valid Context direction (ancestor state flows down to a
+  // descendant's effect), not an imperative call down into a child. Kept
+  // separate from `values.repo` specifically so editing the repo field
+  // isn't itself fetch-triggering (watching `values.repo` directly would
+  // mean a label fetch on every keystroke, not just this one restore
+  // event) - this only ever transitions once, from `null`, inside the
+  // mount-only restore effect below.
+  const [restoredRepoOverride, setRestoredRepoOverride] = useState(null);
+
   // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // buildOverrides below reads these 3 Contexts directly instead of the
   // window.getSelectedXxx DOM-scan bridges those lists used to be checked-
@@ -172,16 +187,17 @@ export function FilterStateProvider({ initialValues, children }) {
 
       // index.page.js's old 2nd restore pass (on 'viewprs:react-ready')
       // called refreshAvailableRepoLabels() once the real configured repo
-      // was known - passing the override value directly here instead of
-      // relying on a later DOM read sidesteps the timing problem that
-      // required a second pass at all (setValues above is async relative
-      // to this synchronous code - the #repo input's DOM value wouldn't
-      // reflect it yet). applyResolvedRepo (index.page.js) already covers
-      // the no-override/default-repo case via the render pipeline; this
-      // is specifically for when a *saved* repo differs from whatever that
-      // path already (possibly prematurely) fetched labels for.
+      // was known - setting restoredRepoOverride here instead sidesteps
+      // the timing problem that required a second pass at all (setValues
+      // above is async relative to this synchronous code - a DOM read of
+      // #repo's value wouldn't reflect it yet, and RepoLabelsProvider.jsx
+      // doesn't read the DOM at all any more besides). This is
+      // specifically for when a *saved* repo differs from whatever
+      // RepoLabelsProvider's own selectedRepo-driven effect already
+      // (possibly prematurely) fetched labels for - see that file's own
+      // comment for the full "why".
       if (overrides.repo) {
-        window.refreshAvailableRepoLabels?.(overrides.repo);
+        setRestoredRepoOverride(overrides.repo);
       }
 
       if (Array.isArray(overrides.author)) {
@@ -486,7 +502,7 @@ export function FilterStateProvider({ initialValues, children }) {
   );
 
   return (
-    <FilterStateContext.Provider value={{ values, setValue }}>
+    <FilterStateContext.Provider value={{ values, setValue, restoredRepoOverride }}>
       {children}
     </FilterStateContext.Provider>
   );

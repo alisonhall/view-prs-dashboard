@@ -14,8 +14,11 @@ import { createContext, useContext } from 'react';
  * Cleanup pass (see RepoLabelsProvider.jsx's own comment): `refresh` is
  * now this Context's own real fetch (GET /view-prs/labels via
  * RepoLabelsProvider.jsx), not a vanilla index.page.js function - the "↻
- * Labels" button calls it directly via this hook instead of a window.*
- * bridge.
+ * Labels" button calls it directly via this hook, and so does
+ * RepoLabelsProvider.jsx's own repo-change-triggered refetch, with no
+ * window.* bridge anywhere in this data's path any more (including for
+ * FilterStateProvider.jsx's restore-on-mount case - see
+ * RepoLabelsProvider.jsx's own comment for how that's covered without one).
  *
  * Default value (unwrapped) is a safe empty list and a no-op refresh,
  * matching every other Context in this migration - a consumer rendered

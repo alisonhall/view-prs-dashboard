@@ -1255,9 +1255,10 @@ const isReactTableMounted = () => reactTableMounted;
 // moved into RepoLabelsProvider.jsx's own effect - it's a real descendant
 // of <PrDataProvider /> and reads selectedRepo via usePrData() directly,
 // instead of this vanilla code deciding it and calling
-// refreshAvailableRepoLabels imperatively. That function/its own
-// dedup/cache state and window.refreshAvailableRepoLabels bridge stay
-// unchanged - only the "when should I call it" decision moved.
+// refreshAvailableRepoLabels imperatively. A later cleanup pass moved the
+// fetch itself (and its dedup/cache state) into that same Provider too,
+// with no window.* bridge left anywhere in the label-fetch path - see
+// RepoLabelsProvider.jsx's own comment.
 const applyResolvedRepo = (resolvedRepo) => {
   if (!resolvedRepo) {
     return;
@@ -1570,23 +1571,26 @@ if (typeof window !== "undefined") {
 // ---- Apply existing GitHub labels to PRs (single-row select or bulk via
 // the "Run & Filter" tab's PR-number selection) ----
 //
-// Cleanup pass (prompted by a direct question about why
-// window.refreshAvailableRepoLabels stayed vanilla instead of being fully
-// migrated, see REACT_MIGRATION_PLAN.md): this entire block - the module
-// state (availableRepoLabels/isFetchingRepoLabels), the DOM read of
-// #repo, the fetch, and populateApplyLabelSelect's push into
-// RepoLabelsContext - is deleted outright. RepoLabelsProvider.jsx
-// (components/) now owns all of it directly as real React state, reading
-// the current repo from usePrData()/useFilterState() instead of a DOM
-// read, with no window.setAvailableRepoLabels bridge needed any more
-// (setLabels is an internal closure now, not a cross-boundary write). The
-// pushPayloadToReactTable(latestStoredPayload, latestSelectedRepo) call
-// this block used to also make after every refresh is dropped, not just
-// moved - both of RepoLabelsContext's real consumers (ApplyLabelSelect.jsx/
-// PrActionsCell.jsx) already re-render from the Context's own `labels`
-// state changing, so re-pushing an unchanged payload into the main table
-// only forced a wasteful whole-app re-render, the same class of dead
-// re-render Phase H.26 already found and removed elsewhere.
+// Cleanup pass (prompted by a direct question, then a direct instruction
+// to reconsider the structure so no window.* bridge is needed at all, see
+// REACT_MIGRATION_PLAN.md): this entire block - the module state
+// (availableRepoLabels/isFetchingRepoLabels), the DOM read of #repo, the
+// fetch, and populateApplyLabelSelect's push into RepoLabelsContext - is
+// deleted outright. RepoLabelsProvider.jsx (components/) now owns all of
+// it directly as real React state, reading the current repo from
+// usePrData()/useFilterState() instead of a DOM read, with no
+// window.setAvailableRepoLabels/window.refreshAvailableRepoLabels bridge
+// of any kind left anywhere in this data's path - see that file's own
+// comment for how its one genuinely cross-tree caller
+// (FilterStateProvider.jsx's restore-on-mount effect) is covered through
+// plain Context instead. The pushPayloadToReactTable(latestStoredPayload,
+// latestSelectedRepo) call this block used to also make after every
+// refresh is dropped, not just moved - both of RepoLabelsContext's real
+// consumers (ApplyLabelSelect.jsx/PrActionsCell.jsx) already re-render
+// from the Context's own `labels` state changing, so re-pushing an
+// unchanged payload into the main table only forced a wasteful whole-app
+// re-render, the same class of dead re-render Phase H.26 already found
+// and removed elsewhere.
 //
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // handleApplyLabelClick's definition moved into
@@ -1612,11 +1616,10 @@ if (typeof window !== "undefined") {
 // hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) instead of a
 // window.* bridge. #refresh-labels-btn (the former "1 deliberate
 // exception") is now React-owned the same way, via useRepoLabels().refresh
-// - see RepoLabelsProvider.jsx's own comment for why window.*
-// refreshAvailableRepoLabels itself still has exactly one real caller left
-// (FilterStateProvider.jsx's restore-on-mount effect, a genuine ancestor
-// that structurally cannot reach a descendant's Context) and isn't gone
-// entirely. #apply-filters-btn (the former other exception) is gone
+// - see RepoLabelsProvider.jsx's own comment for how its one genuinely
+// cross-tree caller (FilterStateProvider.jsx's restore-on-mount effect)
+// reaches it through plain Context instead of any window.* bridge at all.
+// #apply-filters-btn (the former other exception) is gone
 // entirely - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
 // audit", cluster 1) deleted the button along with
 // window.applyFiltersFromCache, its last remaining caller.

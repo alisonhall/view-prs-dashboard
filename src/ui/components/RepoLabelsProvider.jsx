@@ -12,36 +12,35 @@ import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.js'
  *
  * Cleanup pass (prompted by a direct question about why
  * window.refreshAvailableRepoLabels stayed vanilla instead of being fully
- * migrated, see REACT_MIGRATION_PLAN.md): `refresh` below is now this
- * Provider's own real fetch (GET /view-prs/labels) - index.page.js's old
- * module-scope `availableRepoLabels`/`isFetchingRepoLabels`/
- * `refreshAvailableRepoLabels` are deleted outright, along with the DOM
- * read of `#repo` (replaced by `useFilterState()`'s own `values.repo`,
- * since "repo" is already a real `FilterStateContext` field) and
- * `window.setAvailableRepoLabels` (no longer needed - `setLabels` is an
- * internal closure now, not a cross-boundary write). `refresh` is exposed
- * on `RepoLabelsContext` itself for the 2 real descendants that need it
- * (the "↻ Labels" button, via `RefreshLabelsButtonLive` in react-app.jsx;
- * this Provider's own repo-change effect below, which now just calls its
- * sibling function directly instead of going through `window.*` to reach
- * itself).
+ * migrated, see REACT_MIGRATION_PLAN.md): `refresh` below is this
+ * Provider's own real fetch (GET /view-prs/labels), reading the current
+ * repo from usePrData()/useFilterState() instead of a DOM read. Exposed on
+ * `RepoLabelsContext` for the "↻ Labels" button (`RefreshLabelsButtonLive`,
+ * react-app.jsx) to call directly.
  *
- * `window.refreshAvailableRepoLabels` itself is NOT deleted - it still has
- * exactly one real caller, `FilterStateProvider.jsx`'s restore-on-mount
- * effect, which is a genuine ANCESTOR of this Provider in the real
- * component tree (`FilterStateProvider` wraps `<AppRoot/>` from
- * `mountAppRoot()`; this Provider is a descendant AppRoot renders further
- * down its own JSX - see react-app.jsx's own Provider-tree comment). A
- * parent can never consume a Context its own child provides - that's not
- * a leftover vanilla shortcut, it's how React Context works - so this one
- * bridge stays as the deliberate escape hatch for that one cross-tree
- * call, now forwarding to this Provider's real `refresh` instead of a
- * vanilla fetch.
+ * Second cleanup pass (prompted by a direct instruction to reconsider the
+ * structure so NO window.* bridge is needed at all, not even for the one
+ * remaining ancestor caller): `FilterStateProvider.jsx`'s restore-on-mount
+ * effect used to reach `window.refreshAvailableRepoLabels` directly to
+ * trigger a refetch once a *saved* repo override was known - a real
+ * requirement (`selectedRepo`, from usePrData(), doesn't necessarily
+ * reflect it yet), but calling DOWN into a descendant was never the only
+ * option. `FilterStateProvider` is a genuine ANCESTOR of this Provider
+ * (it wraps `<AppRoot/>` from `mountAppRoot()`; this Provider is a
+ * descendant AppRoot renders further down its own JSX) - Context already
+ * flows that direction for free. `FilterStateProvider` now just publishes
+ * `restoredRepoOverride` (a plain piece of its own Context value, `null`
+ * until a restore sets it exactly once), and this Provider reacts to it
+ * with its own effect below, the same shape as its existing
+ * `selectedRepo`-watching effect. No bridge of any kind is needed any
+ * more for any of this Provider's 3 real triggers (the button, the
+ * selectedRepo-change effect, the repo-override-restored effect) - all 3
+ * call/read straight through real Context.
  */
 export function RepoLabelsProvider({ children }) {
   const [labels, setLabels] = useState([]);
   const { selectedRepo } = usePrData();
-  const { values } = useFilterState();
+  const { values, restoredRepoOverride } = useFilterState();
   const lastTriggeredRepoRef = useRef('');
   const isFetchingRef = useRef(false);
 
@@ -73,19 +72,24 @@ export function RepoLabelsProvider({ children }) {
   );
 
   useEffect(() => {
-    window.refreshAvailableRepoLabels = (...args) => refresh(...args);
-    return () => {
-      delete window.refreshAvailableRepoLabels;
-    };
-  }, [refresh]);
-
-  useEffect(() => {
     if (!selectedRepo || selectedRepo === lastTriggeredRepoRef.current) {
       return;
     }
     lastTriggeredRepoRef.current = selectedRepo;
     void refresh(selectedRepo);
   }, [selectedRepo, refresh]);
+
+  // Mirrors the effect above, for the one case selectedRepo alone can't
+  // cover: a *saved* repo override being restored (FilterStateProvider.jsx)
+  // ahead of selectedRepo (PrDataContext) necessarily catching up to it -
+  // see this file's own header comment.
+  useEffect(() => {
+    if (!restoredRepoOverride || restoredRepoOverride === lastTriggeredRepoRef.current) {
+      return;
+    }
+    lastTriggeredRepoRef.current = restoredRepoOverride;
+    void refresh(restoredRepoOverride);
+  }, [restoredRepoOverride, refresh]);
 
   return <RepoLabelsContext.Provider value={{ labels, refresh }}>{children}</RepoLabelsContext.Provider>;
 }

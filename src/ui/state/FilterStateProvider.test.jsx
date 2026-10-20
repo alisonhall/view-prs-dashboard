@@ -41,6 +41,16 @@ function Probe() {
   );
 }
 
+// Cleanup pass (prompted by a direct instruction to reconsider the
+// repo-labels structure so no window.* bridge is needed at all, see
+// REACT_MIGRATION_PLAN.md): exposes `restoredRepoOverride` so tests can
+// assert on it directly, at the source, rather than only indirectly
+// through RepoLabelsProvider.test.jsx's own consumer-side coverage.
+function RestoredRepoOverrideProbe() {
+  const { restoredRepoOverride } = useFilterState();
+  return <span data-testid="restored-repo-override">{String(restoredRepoOverride)}</span>;
+}
+
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mimics
 // MultiSelectListPortals' own setChecked calls for the 3 Contexts
 // buildOverrides() now reads directly, for the regression test below.
@@ -166,6 +176,77 @@ describe('FilterStateProvider', () => {
     unmount();
     expect(window.getFilterStateValues).toBeUndefined();
     expect(window.setFilterStateValue).toBeUndefined();
+  });
+
+  // Cleanup pass (prompted by a direct instruction to reconsider the
+  // repo-labels structure so no window.* bridge is needed at all, see
+  // REACT_MIGRATION_PLAN.md): the restore-on-mount effect used to call
+  // window.refreshAvailableRepoLabels directly once a saved repo override
+  // was known - RepoLabelsProvider.jsx (a genuine descendant) now reads
+  // this signal via useFilterState() instead. These tests cover the
+  // signal itself, at the source; RepoLabelsProvider.test.jsx's own
+  // "reacts to a restored repo override" suite covers the real consumer
+  // reacting to it end-to-end.
+  describe('restoredRepoOverride (restore-on-mount)', () => {
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    test('given a saved repo override, when the restore fetch resolves, then restoredRepoOverride reflects it', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url) === '/view-prs/user-defaults') {
+          return { ok: true, json: async () => ({ ok: true, overrides: { repo: 'owner/restored-repo' } }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ repo: '' }}>
+          <RestoredRepoOverrideProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+      await screen.findByText('owner/restored-repo');
+    });
+
+    test('given no saved overrides at all, when the restore fetch resolves, then restoredRepoOverride stays null', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url) === '/view-prs/user-defaults') {
+          return { ok: true, json: async () => ({ ok: true, overrides: {} }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ repo: '' }}>
+          <RestoredRepoOverrideProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('restored-repo-override')).toHaveTextContent('null');
+    });
+
+    test('given saved overrides with no repo key, when the restore fetch resolves, then restoredRepoOverride stays null', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url) === '/view-prs/user-defaults') {
+          return { ok: true, json: async () => ({ ok: true, overrides: { 'scope-mode': 'last-run' } }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ repo: '' }}>
+          <RestoredRepoOverrideProbe />
+          <Probe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+      await screen.findByText('last-run');
+      expect(screen.getByTestId('restored-repo-override')).toHaveTextContent('null');
+    });
   });
 
   // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
