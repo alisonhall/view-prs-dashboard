@@ -5,6 +5,7 @@ import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.h
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useFormBody } from './useFormBody';
+import { useSnackbar } from './SnackbarContext';
 
 const QUICK_CHECK_BUTTON_LABEL = 'Quick check';
 const QUICK_CHECK_ALL_BUTTON_LABEL = 'Quick check all';
@@ -34,6 +35,11 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
  * correctly the source of truth" category as every other hook in this
  * file that reads it.
  *
+ * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * showErrorNotification/showWarningNotification come from useSnackbar()
+ * directly now too, same reasoning as markPrsBusy/clearPrsBusy above -
+ * SnackbarProvider also wraps from outside AppRoot.
+ *
  * Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 6): window.getFormBody is gone - useFormBody() reads the same
  * fields reactively off FilterStateContext/RowFilterSelectionContext
@@ -52,6 +58,7 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
 export function useQuickCheckActions() {
   const { markPrBusy, clearPrBusy } = usePrActivityQueue();
   const getFormBody = useFormBody();
+  const { showError, showWarning } = useSnackbar();
 
   return useMemo(() => {
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
@@ -60,7 +67,7 @@ export function useQuickCheckActions() {
         errorSource,
         fallbackMessage,
       );
-      window.showErrorNotification?.(finalTitle, detail, 0);
+      showError(finalTitle, detail, 0);
     };
 
     const { loadSchedulerStatus } = createPrSchedulerStatusHelpers({
@@ -69,8 +76,8 @@ export function useQuickCheckActions() {
     });
 
     const { runQuickCheckWorkflow, runQuickCheckAllWorkflow } = createPrQuickCheckActionsHelpers({
-      showErrorNotification: (...args) => window.showErrorNotification?.(...args),
-      showWarningNotification: (...args) => window.showWarningNotification?.(...args),
+      showErrorNotification: showError,
+      showWarningNotification: showWarning,
       notifyFailureSnackbar,
       loadSchedulerStatus,
       postJson,
@@ -100,5 +107,5 @@ export function useQuickCheckActions() {
       });
 
     return { handleQuickCheck, handleQuickCheckAll };
-  }, [markPrBusy, clearPrBusy, getFormBody]);
+  }, [markPrBusy, clearPrBusy, getFormBody, showError, showWarning]);
 }

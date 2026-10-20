@@ -1,15 +1,7 @@
 import { useCallback } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
-
-const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
-  const { title: finalTitle, detail } = buildFailureSnackbarNotification(
-    title,
-    errorSource,
-    fallbackMessage,
-  );
-  window.showErrorNotification?.(finalTitle, detail, 0);
-};
+import { useSnackbar } from './SnackbarContext';
 
 /**
  * Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -22,29 +14,52 @@ const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
  * with no separate factory) their logic is inlined here rather than
  * inventing a factory that wouldn't otherwise exist. Both only ever need
  * postJson (bare import) and notifyFailureSnackbar (same
- * buildFailureSnackbarNotification + window.showErrorNotification
- * composition every other hook in this file uses) - no busy/queued/status
- * state at all, since neither applies a result to the UI itself (the
- * drawer's own queue/circuit-breaker sections re-render from the next SSE
- * frame instead).
+ * buildFailureSnackbarNotification composition every other hook in this
+ * file uses) - no busy/queued/status state at all, since neither applies a
+ * result to the UI itself (the drawer's own queue/circuit-breaker sections
+ * re-render from the next SSE frame instead).
+ *
+ * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * notifyFailureSnackbar used to call window.showErrorNotification directly
+ * as a module-level function - moved inside the hook body to call
+ * showError from useSnackbar() instead, since this hook's callers
+ * (react-app.jsx, inside AppRoot) are genuine descendants of
+ * SnackbarProvider.
  */
 export function useActivityDrawerActions() {
-  const handleDispatcherBump = useCallback(async (repo, taskType) => {
-    try {
-      const { response, result } = await postJson('/view-prs/dispatcher/bump', {
-        repo,
-        taskType,
-      });
-      if (!response.ok || result.ok === false) {
-        notifyFailureSnackbar('Reprioritize failed', result, 'Unable to reprioritize this task');
+  const { showError } = useSnackbar();
+
+  const notifyFailureSnackbar = useCallback(
+    (title, errorSource, fallbackMessage) => {
+      const { title: finalTitle, detail } = buildFailureSnackbarNotification(
+        title,
+        errorSource,
+        fallbackMessage,
+      );
+      showError(finalTitle, detail, 0);
+    },
+    [showError],
+  );
+
+  const handleDispatcherBump = useCallback(
+    async (repo, taskType) => {
+      try {
+        const { response, result } = await postJson('/view-prs/dispatcher/bump', {
+          repo,
+          taskType,
+        });
+        if (!response.ok || result.ok === false) {
+          notifyFailureSnackbar('Reprioritize failed', result, 'Unable to reprioritize this task');
+          return false;
+        }
+        return true;
+      } catch (error) {
+        notifyFailureSnackbar('Reprioritize failed', error, 'Unable to reach the server');
         return false;
       }
-      return true;
-    } catch (error) {
-      notifyFailureSnackbar('Reprioritize failed', error, 'Unable to reach the server');
-      return false;
-    }
-  }, []);
+    },
+    [notifyFailureSnackbar],
+  );
 
   const handleResetCircuitBreaker = useCallback(async () => {
     try {
@@ -58,7 +73,7 @@ export function useActivityDrawerActions() {
       notifyFailureSnackbar('Reset failed', error, 'Unable to reach the server');
       return false;
     }
-  }, []);
+  }, [notifyFailureSnackbar]);
 
   return { handleDispatcherBump, handleResetCircuitBreaker };
 }

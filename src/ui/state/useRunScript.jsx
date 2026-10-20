@@ -5,6 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useFormBody } from './useFormBody';
+import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -41,6 +42,11 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
 export function useRunScript() {
   const { setStatusText } = useStatusText();
   const getFormBody = useFormBody();
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // showErrorNotification below comes from useSnackbar() directly now,
+  // same "genuine descendant, wrapped from outside AppRoot" reasoning as
+  // setStatusText above.
+  const { showError } = useSnackbar();
 
   return useCallback(async () => {
     const body = getFormBody();
@@ -112,7 +118,7 @@ export function useRunScript() {
         const failureDetails = failures
           .map((f) => `${f.prNumber} (HTTP ${f.status})`)
           .join(', ');
-        window.showErrorNotification?.(`Request failed for: ${failureDetails}`, failureReason, 0);
+        showError(`Request failed for: ${failureDetails}`, failureReason, 0);
       } else {
         setStatusMessage('Completed');
       }
@@ -120,14 +126,10 @@ export function useRunScript() {
       setOutputMessage(outputChunks.join('\n\n') || 'Script completed with no output.');
     } catch (error) {
       setStatusMessage('Failed (network/error)');
-      window.showErrorNotification?.(
-        'Request failed',
-        String(error || 'An unknown error occurred'),
-        0,
-      );
+      showError('Request failed', String(error || 'An unknown error occurred'), 0);
       setOutputMessage(String(error));
     } finally {
       finishActivity();
     }
-  }, [setStatusText, getFormBody]);
+  }, [setStatusText, getFormBody, showError]);
 }

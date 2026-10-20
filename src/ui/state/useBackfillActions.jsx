@@ -6,6 +6,7 @@ import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same "stable, zero-per-render-state"
 // precedent as useSinglePrUpdate.jsx's own module-level instantiation.
@@ -69,6 +70,11 @@ const BACKFILL_LOG_TAIL_LINES = 120;
  */
 export function useBackfillActions() {
   const { setStatusText } = useStatusText();
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // notifyFailureSnackbar below calls showError from useSnackbar() directly
+  // now, same "genuine descendant, wrapped from outside AppRoot" reasoning
+  // as setStatusText above.
+  const { showError } = useSnackbar();
 
   return useMemo(() => {
     const beginRequestActivity = window.beginRequestActivity || (() => () => {});
@@ -78,7 +84,7 @@ export function useBackfillActions() {
         errorSource,
         fallbackMessage,
       );
-      window.showErrorNotification?.(finalTitle, detail, 0);
+      showError(finalTitle, detail, 0);
     };
 
     const { loadBackfillStatus, loadBackfillLogTail, handleBackfillAction } =
@@ -199,5 +205,5 @@ export function useBackfillActions() {
       refreshBackfillLogTail,
       triggerBackfillTabLoad,
     };
-  }, [setStatusText]);
+  }, [setStatusText, showError]);
 }

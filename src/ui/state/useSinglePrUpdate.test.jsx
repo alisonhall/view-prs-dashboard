@@ -4,6 +4,7 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useSinglePrUpdate } = require('./useSinglePrUpdate.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const runSinglePrUpdate = useSinglePrUpdate();
@@ -15,10 +16,16 @@ function Probe({ onReady }) {
 // statusText now comes from StatusTextContext directly, not
 // window.updateReactStatusText - render Probe inside a real Provider value
 // instead of mocking the old bridge.
-const renderProbe = (onReady, setStatusText = () => {}) =>
+//
+// Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// showErrorNotification now comes from useSnackbar() directly, not
+// window.showErrorNotification - same real Provider value approach.
+const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
-      <Probe onReady={onReady} />
+      <SnackbarContext.Provider value={{ showError }}>
+        <Probe onReady={onReady} />
+      </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
 
@@ -26,7 +33,6 @@ describe('useSinglePrUpdate', () => {
   afterEach(() => {
     delete window.updateReactOutputText;
     delete window.beginRequestActivity;
-    delete window.showErrorNotification;
     delete window.applyFreshPrPayload;
     delete global.fetch;
   });
@@ -77,7 +83,6 @@ describe('useSinglePrUpdate', () => {
     const outputMessages = [];
     const snackbarCalls = [];
     window.updateReactOutputText = (message) => outputMessages.push(message);
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 401,
@@ -88,7 +93,11 @@ describe('useSinglePrUpdate', () => {
     });
 
     let runSinglePrUpdate;
-    renderProbe((fn) => { runSinglePrUpdate = fn; }, (message) => statusMessages.push(message));
+    renderProbe(
+      (fn) => { runSinglePrUpdate = fn; },
+      (message) => statusMessages.push(message),
+      (...args) => snackbarCalls.push(args),
+    );
 
     await act(async () => {
       await runSinglePrUpdate({}, { number: 11 });
@@ -109,12 +118,15 @@ describe('useSinglePrUpdate', () => {
     const snackbarCalls = [];
     const finishActivity = jest.fn();
     window.updateReactOutputText = (message) => outputMessages.push(message);
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     window.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let runSinglePrUpdate;
-    renderProbe((fn) => { runSinglePrUpdate = fn; }, (message) => statusMessages.push(message));
+    renderProbe(
+      (fn) => { runSinglePrUpdate = fn; },
+      (message) => statusMessages.push(message),
+      (...args) => snackbarCalls.push(args),
+    );
 
     await act(async () => {
       await runSinglePrUpdate({}, { number: 19 });

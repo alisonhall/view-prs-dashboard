@@ -35,6 +35,7 @@ import { TableFilterChips } from './components/TableFilterChips';
 import { useTableFilterChips } from './state/useTableFilterChips';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { Snackbar } from './components/Snackbar';
+import { SnackbarProvider } from './components/SnackbarProvider';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
@@ -1379,6 +1380,17 @@ function mountAppRoot() {
   // `window.activateManagementTab` (both deleted, along with
   // `pr-data-tabs.helpers.js`/`pr-management-tabs.helpers.js` outright)
   // as those panels' sole remaining writer.
+  //
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // SnackbarProvider wraps from here too now (innermost - it needs none of
+  // the other 7 Contexts, same reasoning TabStateProvider's own comment
+  // gives), so useQuickCheckActions/useAckLabelActions/useRunScript/
+  // useBackfillActions/useTriggerAutoRun/useRowCheckboxActions/
+  // useSinglePrUpdate/useActivityDrawerActions (called from AppRoot's own
+  // body or a descendant) and PrDataProvider.jsx (wrapping AppRoot's own
+  // returned JSX from inside, so also a genuine descendant of this) can all
+  // reach useSnackbar() directly instead of window.showErrorNotification/
+  // showWarningNotification/hideErrorNotification.
   ReactDOM.createRoot(anchor).render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
@@ -1388,8 +1400,10 @@ function mountAppRoot() {
               <BackfillStatusProvider>
                 <PrActivityQueueProvider>
                   <TabStateProvider>
-                    <TabPanelVisibilitySync />
-                    <AppRoot />
+                    <SnackbarProvider>
+                      <TabPanelVisibilitySync />
+                      <AppRoot />
+                    </SnackbarProvider>
                   </TabStateProvider>
                 </PrActivityQueueProvider>
               </BackfillStatusProvider>

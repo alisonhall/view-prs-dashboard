@@ -5,6 +5,7 @@ require('@testing-library/jest-dom');
 const { PrDataProvider } = require('./PrDataProvider');
 const { useRowCheckboxActions } = require('./useRowCheckboxActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const actions = useRowCheckboxActions();
@@ -14,7 +15,6 @@ function Probe({ onReady }) {
 
 describe('useRowCheckboxActions', () => {
   afterEach(() => {
-    delete window.showErrorNotification;
     delete window.applyLatestPrData;
     delete window.loadStoredData;
     delete window.beginRequestActivity;
@@ -87,7 +87,6 @@ describe('useRowCheckboxActions', () => {
 
   test('given the request fails, when called, then it shows a failure snackbar and returns null, without throwing', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -96,9 +95,11 @@ describe('useRowCheckboxActions', () => {
 
     let actions;
     render(
-      <PrDataProvider initialSelectedRepo="owner/repo">
-        <Probe onReady={(a) => { actions = a; }} />
-      </PrDataProvider>,
+      <SnackbarContext.Provider value={{ showError: (...args) => snackbarCalls.push(args) }}>
+        <PrDataProvider initialSelectedRepo="owner/repo">
+          <Probe onReady={(a) => { actions = a; }} />
+        </PrDataProvider>
+      </SnackbarContext.Provider>,
     );
 
     let result;

@@ -53,8 +53,6 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
 const ACK_LABEL_WINDOW_BRIDGES = [
   'updateReactOutputText',
   'beginRequestActivity',
-  'showErrorNotification',
-  'showWarningNotification',
   'summarizeAckRefreshWarnings',
   'applyFreshPrPayload',
   'loadStoredData',

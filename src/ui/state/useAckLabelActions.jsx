@@ -8,6 +8,7 @@ import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
 import { useFormBody } from './useFormBody';
+import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -72,6 +73,12 @@ export function useAckLabelActions() {
   // fields reactively off FilterStateContext/RowFilterSelectionContext
   // instead (see that hook's own comment).
   const getFormBody = useFormBody();
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // showErrorNotification/showWarningNotification below come from
+  // useSnackbar() directly now, same "genuine descendant, wrapped from
+  // outside AppRoot" reasoning as setStatusText/the activity-queue
+  // functions above.
+  const { showError, showWarning } = useSnackbar();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
@@ -86,8 +93,8 @@ export function useAckLabelActions() {
         getGithubAuthFailureHint,
         formatCommandOutput,
         formatCommandOutputWithAuthHint,
-        showErrorNotification: (...args) => window.showErrorNotification?.(...args),
-        showWarningNotification: (...args) => window.showWarningNotification?.(...args),
+        showErrorNotification: showError,
+        showWarningNotification: showWarning,
         summarizeAckRefreshWarnings: (...args) => window.summarizeAckRefreshWarnings?.(...args),
         applyFreshPrPayload: (...args) => window.applyFreshPrPayload?.(...args),
         loadStoredData: (...args) => window.loadStoredData?.(...args),
@@ -145,5 +152,7 @@ export function useAckLabelActions() {
     finishBulkActionBatch,
     setStatusText,
     getFormBody,
+    showError,
+    showWarning,
   ]);
 }

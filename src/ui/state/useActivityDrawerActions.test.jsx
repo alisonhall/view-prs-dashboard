@@ -3,6 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useActivityDrawerActions } = require('./useActivityDrawerActions.jsx');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const actions = useActivityDrawerActions();
@@ -10,9 +11,15 @@ function Probe({ onReady }) {
   return null;
 }
 
+const renderProbe = (onReady, showError = () => {}) =>
+  render(
+    <SnackbarContext.Provider value={{ showError }}>
+      <Probe onReady={onReady} />
+    </SnackbarContext.Provider>,
+  );
+
 describe('useActivityDrawerActions', () => {
   afterEach(() => {
-    delete window.showErrorNotification;
     delete global.fetch;
   });
 
@@ -24,7 +31,7 @@ describe('useActivityDrawerActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; });
 
     let result;
     await act(async () => {
@@ -42,7 +49,6 @@ describe('useActivityDrawerActions', () => {
 
   test('given a failed bump request, when handleDispatcherBump is called, then it shows a failure snackbar and resolves false', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -50,7 +56,7 @@ describe('useActivityDrawerActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; }, (...args) => snackbarCalls.push(args));
 
     let result;
     await act(async () => {
@@ -64,11 +70,10 @@ describe('useActivityDrawerActions', () => {
 
   test('given the bump request throws, when handleDispatcherBump is called, then it shows a failure snackbar and resolves false, without throwing', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; }, (...args) => snackbarCalls.push(args));
 
     let result;
     await act(async () => {
@@ -87,7 +92,7 @@ describe('useActivityDrawerActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; });
 
     let result;
     await act(async () => {
@@ -103,7 +108,6 @@ describe('useActivityDrawerActions', () => {
 
   test('given a failed reset request, when handleResetCircuitBreaker is called, then it shows a failure snackbar and resolves false', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -111,7 +115,7 @@ describe('useActivityDrawerActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; }, (...args) => snackbarCalls.push(args));
 
     let result;
     await act(async () => {

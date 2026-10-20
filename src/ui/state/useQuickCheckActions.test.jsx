@@ -7,6 +7,7 @@ const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvid
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const actions = useQuickCheckActions();
@@ -21,21 +22,18 @@ function Probe({ onReady }) {
 // even the 2 tests that only call handleQuickCheckAll (which doesn't read
 // the form body itself, but the hook's own top-level useFormBody() call
 // still does).
-const renderProbe = (onReady, values = {}) =>
+const renderProbe = (onReady, values = {}, snackbar = {}) =>
   render(
     <FilterStateContext.Provider value={{ values }}>
       <RowFilterSelectionContext.Provider value={{ checkedByListId: {} }}>
-        <Probe onReady={onReady} />
+        <SnackbarContext.Provider value={snackbar}>
+          <Probe onReady={onReady} />
+        </SnackbarContext.Provider>
       </RowFilterSelectionContext.Provider>
     </FilterStateContext.Provider>,
   );
 
-const QUICK_CHECK_WINDOW_BRIDGES = [
-  'showErrorNotification',
-  'showWarningNotification',
-  'renderSchedulerStatus',
-  'getLatestStoredPayload',
-];
+const QUICK_CHECK_WINDOW_BRIDGES = ['renderSchedulerStatus', 'getLatestStoredPayload'];
 
 describe('useQuickCheckActions', () => {
   afterEach(() => {
@@ -75,7 +73,6 @@ describe('useQuickCheckActions', () => {
 
   test('given a 409 (already in progress), when handleQuickCheck is called, then it shows the matching notification and returns the fallback label', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 409,
@@ -83,7 +80,7 @@ describe('useQuickCheckActions', () => {
     });
 
     let actions;
-    renderProbe((value) => { actions = value; });
+    renderProbe((value) => { actions = value; }, {}, { showError: (...args) => snackbarCalls.push(args) });
 
     let result;
     await act(async () => {

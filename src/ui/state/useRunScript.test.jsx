@@ -6,6 +6,7 @@ const { useRunScript } = require('./useRunScript.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const runScript = useRunScript();
@@ -22,12 +23,21 @@ function Probe({ onReady }) {
 // cluster 6): useRunScript() now reads its form body via useFormBody()
 // (FilterStateContext/RowFilterSelectionContext), not window.getFormBody -
 // seed real Provider values instead of stubbing that bridge.
-const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedByListId = {} } = {}) =>
+//
+// Sixth follow-up (same audit): showErrorNotification now comes from
+// useSnackbar() directly, not window.showErrorNotification - same real
+// Provider value approach as statusText above.
+const renderProbe = (
+  onReady,
+  { setStatusText = () => {}, values = {}, checkedByListId = {}, showError = () => {} } = {},
+) =>
   render(
     <FilterStateContext.Provider value={{ values }}>
       <RowFilterSelectionContext.Provider value={{ checkedByListId }}>
         <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
-          <Probe onReady={onReady} />
+          <SnackbarContext.Provider value={{ showError }}>
+            <Probe onReady={onReady} />
+          </SnackbarContext.Provider>
         </StatusTextContext.Provider>
       </RowFilterSelectionContext.Provider>
     </FilterStateContext.Provider>,
@@ -38,7 +48,6 @@ describe('useRunScript', () => {
     delete window.updateReactOutputText;
     delete window.beginRequestActivity;
     delete window.applyFreshPrPayload;
-    delete window.showErrorNotification;
     delete global.fetch;
   });
 
@@ -96,13 +105,13 @@ describe('useRunScript', () => {
     const finishActivity = jest.fn();
     window.updateReactOutputText = jest.fn();
     window.beginRequestActivity = () => finishActivity;
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let runScript;
     renderProbe((fn) => { runScript = fn; }, {
       setStatusText: (message) => statusMessages.push(message),
       values: { repo: 'org/repo', prNumbersInput: '' },
+      showError: (...args) => snackbarCalls.push(args),
     });
     await act(async () => {
       await runScript();

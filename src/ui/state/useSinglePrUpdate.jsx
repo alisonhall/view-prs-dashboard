@@ -5,6 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - these close over nothing but each other
 // (same "stable, zero-per-render-state" precedent as AuthorInsightsProvider.jsx's
@@ -21,19 +22,23 @@ const { getGithubAuthFailureHint, formatCommandOutputWithAuthHint } =
  * auth-hint formatting, error notification, activity tracking) into React
  * instead of a vanilla DI-factory module.
  *
- * Not a fully "clean" hook, by design, not oversight: output text,
- * in-flight request-activity tracking, and the error snackbar have no
- * Context/hook API of their own yet - only window.* bridges, the exact
- * same pattern NotesSection.jsx already uses for its own direct network
- * call (window.beginRequestActivity, bare-imported postJson). Reading
- * those bridges here is consistent with that already-accepted precedent,
- * not a new one. statusText itself moved to StatusTextProvider.jsx (Phase
- * H.8, see REACT_MIGRATION_PLAN.md) - read via useStatusText() directly
- * now, since this hook's only caller (PrTableApp.jsx) is a genuine
- * descendant of that Provider.
+ * Not a fully "clean" hook, by design, not oversight: output text and
+ * in-flight request-activity tracking have no Context/hook API of their
+ * own yet - only window.* bridges, the exact same pattern NotesSection.jsx
+ * already uses for its own direct network call (window.beginRequestActivity,
+ * bare-imported postJson). Reading those bridges here is consistent with
+ * that already-accepted precedent, not a new one. statusText itself moved
+ * to StatusTextProvider.jsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
+ * via useStatusText() directly now, since this hook's only caller
+ * (PrTableApp.jsx) is a genuine descendant of that Provider.
+ *
+ * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * the error snackbar moved off window.showErrorNotification the same way -
+ * useSnackbar() directly, same reasoning as statusText above.
  */
 export function useSinglePrUpdate() {
   const { setStatusText } = useStatusText();
+  const { showError } = useSnackbar();
 
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');
@@ -49,7 +54,7 @@ export function useSinglePrUpdate() {
         errorSource,
         fallbackMessage,
       );
-      window.showErrorNotification?.(finalTitle, detail, 0);
+      showError(finalTitle, detail, 0);
     };
 
     setStatusMessage(`Updating PR #${prNumber}...`);
@@ -97,5 +102,5 @@ export function useSinglePrUpdate() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText]);
+  }, [setStatusText, showError]);
 }

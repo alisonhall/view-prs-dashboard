@@ -3,6 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useTriggerAutoRun } = require('./useTriggerAutoRun.jsx');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const triggerAutoRun = useTriggerAutoRun();
@@ -10,15 +11,20 @@ function Probe({ onReady }) {
   return null;
 }
 
+const renderProbe = (onReady, showError) =>
+  render(
+    <SnackbarContext.Provider value={{ showError }}>
+      <Probe onReady={onReady} />
+    </SnackbarContext.Provider>,
+  );
+
 describe('useTriggerAutoRun', () => {
   afterEach(() => {
-    delete window.showErrorNotification;
     delete global.fetch;
   });
 
   test('given a successful request, when triggered, then it posts to /view-prs/run-auto and shows no notification', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -26,7 +32,7 @@ describe('useTriggerAutoRun', () => {
     });
 
     let triggerAutoRun;
-    render(<Probe onReady={(fn) => { triggerAutoRun = fn; }} />);
+    renderProbe((fn) => { triggerAutoRun = fn; }, (...args) => snackbarCalls.push(args));
 
     await act(async () => {
       await triggerAutoRun();
@@ -41,7 +47,6 @@ describe('useTriggerAutoRun', () => {
 
   test('given a 409 (already in progress), when triggered, then it shows the matching notification', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 409,
@@ -49,7 +54,7 @@ describe('useTriggerAutoRun', () => {
     });
 
     let triggerAutoRun;
-    render(<Probe onReady={(fn) => { triggerAutoRun = fn; }} />);
+    renderProbe((fn) => { triggerAutoRun = fn; }, (...args) => snackbarCalls.push(args));
 
     await act(async () => {
       await triggerAutoRun();
@@ -61,11 +66,10 @@ describe('useTriggerAutoRun', () => {
 
   test('given the request throws, when triggered, then it shows a failure snackbar, without throwing', async () => {
     const snackbarCalls = [];
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let triggerAutoRun;
-    render(<Probe onReady={(fn) => { triggerAutoRun = fn; }} />);
+    renderProbe((fn) => { triggerAutoRun = fn; }, (...args) => snackbarCalls.push(args));
 
     await act(async () => {
       await triggerAutoRun();

@@ -62,6 +62,7 @@ const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThre
 const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
+const { SnackbarProvider } = require("../components/SnackbarProvider");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
@@ -679,66 +680,87 @@ function FilterStateTestRootHarness({ initialValues }) {
     };
   }, []);
 
+  const errorSnackbarRoot = document.getElementById("error-snackbar-root");
+
   return React.createElement(
-    // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // useAckLabelActions()/useSinglePrUpdate() (both called from inside
-    // MountedPrTableTree's PrTableApp) now read/write statusText via
-    // useStatusText() directly, not window.setStatusMessage/
-    // updateReactStatusText - wraps the whole tree, same reasoning as
-    // react-app.jsx's own mountAppRoot wrapping <AppRoot />.
-    StatusTextProvider,
+    // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+    // audit"): wraps the whole tree, outside StatusTextProvider (order
+    // between the two is arbitrary - neither depends on the other, same
+    // reasoning TabStateProvider's own header comment gives for its own
+    // position in react-app.jsx's mountAppRoot). useQuickCheckActions/
+    // useRunScript/useAckLabelActions/useTriggerAutoRun/useSinglePrUpdate/
+    // PrDataProvider's own poll-warning path (all exercised below) now call
+    // useSnackbar() directly instead of window.showErrorNotification/
+    // showWarningNotification/hideErrorNotification, so they need a real
+    // Provider ancestor - and the real <Snackbar/> UI (portaled into
+    // #error-snackbar-root just below, replacing its own former
+    // independent rtlRender tree) needs to be the SAME instance, so that
+    // calling one of these hooks actually updates the #error-snackbar-message
+    // DOM text this suite's own tests assert on.
+    SnackbarProvider,
     null,
     React.createElement(
-      RowFilterSelectionProvider,
+      // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // useAckLabelActions()/useSinglePrUpdate() (both called from inside
+      // MountedPrTableTree's PrTableApp) now read/write statusText via
+      // useStatusText() directly, not window.setStatusMessage/
+      // updateReactStatusText - wraps the whole tree, same reasoning as
+      // react-app.jsx's own mountAppRoot wrapping <AppRoot />.
+      StatusTextProvider,
       null,
       React.createElement(
-        AuthorThreadResolutionSelectionProvider,
+        RowFilterSelectionProvider,
         null,
         React.createElement(
-          ChangeFilterActorSelectionProvider,
+          AuthorThreadResolutionSelectionProvider,
           null,
           React.createElement(
-            FilterStateProvider,
-            { initialValues },
-            // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
-            // roadmap"): the allow/deny <details> visibility is now owned by
-            // this headless component (renders nothing, no container needed)
-            // instead of a vanilla bridge - matches react-app.jsx's own
-            // buildFilterStateFieldPortals(), which mounts it as a plain
-            // child the same way.
-            React.createElement(AuthorThreadResolutionRuleVisibility),
-            // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-            // audit", cluster 6): RunScriptActionButtonsTestHarness/
-            // ActionButtonsTestHarness used to each mount via their own,
-            // separate rtlRender tree (installRunScriptActionButtonsBridge/
-            // installReactActionButtonMountBridges) - useRunScript/
-            // useAckLabelActions/useQuickCheckActions now call useFormBody()
-            // (FilterStateContext/RowFilterSelectionContext), so they need
-            // to be genuine descendants of THIS tree's Providers instead,
-            // same "merge into the one persistent root" move G.3 already
-            // made for MountedPrTableTree (see this component's own header
-            // comment). ActionButtonsTestHarness keeps its own isolated
-            // PrActivityQueueProvider instance (no test asserts row-busy
-            // state through these 2 buttons specifically, so a separate
-            // instance from the main tree's is harmless, same as before).
-            React.createElement(RunScriptActionButtonsTestHarness),
+            ChangeFilterActorSelectionProvider,
+            null,
             React.createElement(
-              PrActivityQueueProvider,
-              null,
-              React.createElement(ActionButtonsTestHarness),
-            ),
-            mountRequest &&
-              createPortal(
-                React.createElement(MountedPrTableTree, {
-                  initialPayload: mountRequest.props?.initialPayload,
-                  selectedRepo: mountRequest.props?.selectedRepo,
-                }),
-                mountRequest.containerElement,
+              FilterStateProvider,
+              { initialValues },
+              // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
+              // roadmap"): the allow/deny <details> visibility is now owned by
+              // this headless component (renders nothing, no container needed)
+              // instead of a vanilla bridge - matches react-app.jsx's own
+              // buildFilterStateFieldPortals(), which mounts it as a plain
+              // child the same way.
+              React.createElement(AuthorThreadResolutionRuleVisibility),
+              // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+              // audit", cluster 6): RunScriptActionButtonsTestHarness/
+              // ActionButtonsTestHarness used to each mount via their own,
+              // separate rtlRender tree (installRunScriptActionButtonsBridge/
+              // installReactActionButtonMountBridges) - useRunScript/
+              // useAckLabelActions/useQuickCheckActions now call useFormBody()
+              // (FilterStateContext/RowFilterSelectionContext), so they need
+              // to be genuine descendants of THIS tree's Providers instead,
+              // same "merge into the one persistent root" move G.3 already
+              // made for MountedPrTableTree (see this component's own header
+              // comment). ActionButtonsTestHarness keeps its own isolated
+              // PrActivityQueueProvider instance (no test asserts row-busy
+              // state through these 2 buttons specifically, so a separate
+              // instance from the main tree's is harmless, same as before).
+              React.createElement(RunScriptActionButtonsTestHarness),
+              React.createElement(
+                PrActivityQueueProvider,
+                null,
+                React.createElement(ActionButtonsTestHarness),
               ),
+              mountRequest &&
+                createPortal(
+                  React.createElement(MountedPrTableTree, {
+                    initialPayload: mountRequest.props?.initialPayload,
+                    selectedRepo: mountRequest.props?.selectedRepo,
+                  }),
+                  mountRequest.containerElement,
+                ),
+            ),
           ),
         ),
       ),
     ),
+    errorSnackbarRoot && createPortal(React.createElement(Snackbar), errorSnackbarRoot),
   );
 }
 
@@ -908,22 +930,6 @@ const installReactStatusTextMountBridges = () => {
   // MountedPrTableTree instead (see that component's own comment).
 };
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #error-snackbar is now fully React-owned
-// (components/Snackbar.jsx, mounted into #error-snackbar-root) - unlike
-// the plain-text panels above, this has real stateful behavior (variant
-// class, hidden toggle, auto-dismiss timer) that many tests assert on
-// precisely, so this mounts the REAL component via RTL (matching the
-// multi-select/filter-summary bridges' approach), not a plain-write
-// simulation - Snackbar.jsx registers window.showErrorNotification/
-// window.showWarningNotification/window.hideErrorNotification itself via
-// its own useEffect, exactly like the real app.
-const installReactSnackbarMountBridge = () => {
-  const container = document.getElementById("error-snackbar-root");
-  if (!container) return;
-  rtlRender(React.createElement(Snackbar), { container });
-};
-
 // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // #trigger-auto-run-btn/#quick-check-btn/#quick-check-all-btn are now fully
 // React-owned (components/TriggerAutoRunButton.jsx/QuickCheckButton.jsx/
@@ -986,8 +992,18 @@ const installReactTableMountBridge = () => {
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   installReactStatusTextMountBridges();
-  installReactSnackbarMountBridge();
 
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // Snackbar no longer gets its own independent rtlRender tree here either
+  // (installReactSnackbarMountBridge, deleted) - several hooks that call
+  // useSnackbar() directly now (useQuickCheckActions/useSinglePrUpdate/
+  // PrDataProvider's own poll-warning path, all exercised by tests in this
+  // file that assert real #error-snackbar-message text) need a genuine
+  // SnackbarProvider ancestor, which a separate, disconnected RTL tree
+  // can't give them - FilterStateTestRootHarness now wraps with
+  // SnackbarProvider and portals <Snackbar/> into #error-snackbar-root
+  // itself (see that component's own comment).
+  //
   // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): no
   // longer its own independent rtlRender tree - renders MountedPrTableTree
   // (installFilterStateProviderBridge's own comment) via createPortal from

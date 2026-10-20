@@ -3,6 +3,7 @@ import { usePrData } from './PrDataContext';
 import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useSnackbar } from './SnackbarContext';
 
 /**
  * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -15,19 +16,24 @@ import { useStatusText } from './StatusTextContext';
  * with Context-sourced state where it's available (payload/selectedRepo,
  * via usePrData()) and window.* bridges for the pieces that stay
  * vanilla-owned for now (beginRequestActivity/loadStoredData/
- * updateReactStatusText/showErrorNotification/applyLatestPrData - the
- * last one only syncs index.page.js's own vanilla payload/repo mirror,
- * it doesn't touch React at all, so the caller still needs to separately
- * push into Context - see PrTableApp.jsx's own comment).
+ * applyLatestPrData - the last one only syncs index.page.js's own vanilla
+ * payload/repo mirror, it doesn't touch React at all, so the caller still
+ * needs to separately push into Context - see PrTableApp.jsx's own
+ * comment).
  *
  * Not a fully "clean" hook, by design, matching useSinglePrUpdate.jsx's
  * own precedent exactly, not a new one. statusText itself moved to
  * StatusTextProvider.jsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
  * via useStatusText() directly now, same as useSinglePrUpdate.jsx.
+ *
+ * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+ * showErrorNotification comes from useSnackbar() directly now too, same
+ * reasoning as statusText above.
  */
 export function useRowCheckboxActions() {
   const { payload, selectedRepo } = usePrData();
   const { setStatusText } = useStatusText();
+  const { showError } = useSnackbar();
 
   return useMemo(() => {
     const { toggleInReviewForRow, toggleFlaggedForRow } = createPrRowCheckboxActionsHelpers({
@@ -39,7 +45,7 @@ export function useRowCheckboxActions() {
           errorSource,
           fallbackMessage,
         );
-        window.showErrorNotification?.(finalTitle, detail, 0);
+        showError(finalTitle, detail, 0);
       },
       getLatestStoredPayload: () => payload,
       getLatestSelectedRepo: () => selectedRepo,
@@ -49,5 +55,5 @@ export function useRowCheckboxActions() {
     });
 
     return { toggleInReviewForRow, toggleFlaggedForRow };
-  }, [payload, selectedRepo, setStatusText]);
+  }, [payload, selectedRepo, setStatusText, showError]);
 }

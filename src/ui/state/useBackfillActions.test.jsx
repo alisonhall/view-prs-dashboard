@@ -4,6 +4,7 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useBackfillActions } = require('./useBackfillActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {
   const backfillActions = useBackfillActions();
@@ -15,17 +16,22 @@ function Probe({ onReady }) {
 // statusText now comes from StatusTextContext directly, not
 // window.setStatusMessage - render Probe inside a real Provider value
 // instead of mocking the old bridge.
-const renderProbe = (onReady, setStatusText = () => {}) =>
+//
+// Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// showErrorNotification now comes from useSnackbar() directly, not
+// window.showErrorNotification - same real Provider value approach.
+const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
-      <Probe onReady={onReady} />
+      <SnackbarContext.Provider value={{ showError }}>
+        <Probe onReady={onReady} />
+      </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
 
 const BACKFILL_WINDOW_BRIDGES = [
   'updateReactOutputText',
   'updateReactBackfillButtonState',
-  'showErrorNotification',
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
   'getBackfillTrackingState',
@@ -90,7 +96,6 @@ describe('useBackfillActions', () => {
     const finishActivity = jest.fn();
     window.renderBackfillStatus = renderBackfillStatus;
     window.setBackfillLogMessage = jest.fn();
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     window.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
@@ -99,7 +104,7 @@ describe('useBackfillActions', () => {
     });
 
     let backfillActions;
-    renderProbe((value) => { backfillActions = value; });
+    renderProbe((value) => { backfillActions = value; }, undefined, (...args) => snackbarCalls.push(args));
     await act(async () => {
       await backfillActions.refreshBackfillStatus();
     });
@@ -143,7 +148,6 @@ describe('useBackfillActions', () => {
     const snackbarCalls = [];
     window.renderBackfillStatus = renderBackfillStatus;
     window.setBackfillLogMessage = setBackfillLogMessage;
-    window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -151,7 +155,7 @@ describe('useBackfillActions', () => {
     });
 
     let backfillActions;
-    renderProbe((value) => { backfillActions = value; });
+    renderProbe((value) => { backfillActions = value; }, undefined, (...args) => snackbarCalls.push(args));
     await act(async () => {
       await backfillActions.triggerBackfillTabLoad();
     });

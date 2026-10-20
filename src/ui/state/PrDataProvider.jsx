@@ -10,6 +10,7 @@ import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-poll
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useSnackbar } from './SnackbarContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -363,6 +364,11 @@ export function PrDataProvider({
   // same component's own activityHelpers, declared below, reached the
   // same way every other still-vanilla-adjacent caller does).
   const { setStatusText } = useStatusText();
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // markPollSuccess/showPollFailureWarning below call hide/showWarning
+  // from useSnackbar() directly now, same "genuine descendant, wrapped
+  // from outside AppRoot" reasoning as setStatusText above.
+  const { showWarning, hide } = useSnackbar();
 
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
@@ -422,15 +428,17 @@ export function PrDataProvider({
       // cluster 1): owned directly now, reading/writing trackingRef - no
       // window.* bridge needed at all, since pollForDataChanges (the only
       // real caller of either) already lives in this same Provider.
-      // showWarningNotification/hideErrorNotification stay window.*
-      // bridges (Snackbar.jsx, React-owned, genuinely vanilla-reached from
-      // here) - same category every other poll-adjacent UI call uses.
+      // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+      // audit"): showWarningNotification/hideErrorNotification now call
+      // showWarning/hide from useSnackbar() directly, not window.* bridges
+      // - this Provider is a genuine descendant of SnackbarProvider too
+      // (wrapped from outside AppRoot, same as StatusTextProvider).
       markPollSuccess: (checkedAt = new Date().toISOString()) => {
         trackingRef.current.lastSuccessfulPollCheckAt = String(checkedAt || '').trim();
         if (!trackingRef.current.hasActivePollWarning) {
           return;
         }
-        window.hideErrorNotification?.();
+        hide();
         trackingRef.current.hasActivePollWarning = false;
       },
       showPollFailureWarning: ({ errorSource, attemptedAt } = {}) => {
@@ -441,7 +449,7 @@ export function PrDataProvider({
           : 'Unavailable';
         const lastErrorLabel = formatIsoDatetime(trackingRef.current.lastPollErrorAt);
 
-        window.showWarningNotification?.(
+        showWarning(
           'Auto-refresh warning',
           [
             `Last successful check: ${lastSuccessLabel}`,
@@ -460,7 +468,7 @@ export function PrDataProvider({
       },
     });
     return helpers.pollForDataChanges;
-  }, [setStatusText]);
+  }, [setStatusText, showWarning, hide]);
 
   useEffect(() => {
     window.pollForDataChanges = (...args) => pollForDataChanges(...args);
