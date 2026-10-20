@@ -5,6 +5,8 @@ require('@testing-library/jest-dom');
 const { useQuickCheckActions } = require('./useQuickCheckActions.jsx');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
+const { FilterStateContext } = require('./FilterStateContext');
+const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 
 function Probe({ onReady }) {
   const actions = useQuickCheckActions();
@@ -12,11 +14,26 @@ function Probe({ onReady }) {
   return null;
 }
 
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): useQuickCheckActions() now unconditionally calls
+// useFormBody() (FilterStateContext/RowFilterSelectionContext), not
+// window.getFormBody - every render in this file needs both Providers now,
+// even the 2 tests that only call handleQuickCheckAll (which doesn't read
+// the form body itself, but the hook's own top-level useFormBody() call
+// still does).
+const renderProbe = (onReady, values = {}) =>
+  render(
+    <FilterStateContext.Provider value={{ values }}>
+      <RowFilterSelectionContext.Provider value={{ checkedByListId: {} }}>
+        <Probe onReady={onReady} />
+      </RowFilterSelectionContext.Provider>
+    </FilterStateContext.Provider>,
+  );
+
 const QUICK_CHECK_WINDOW_BRIDGES = [
   'showErrorNotification',
   'showWarningNotification',
   'loadSchedulerStatus',
-  'getFormBody',
   'getLatestStoredPayload',
 ];
 
@@ -27,7 +44,6 @@ describe('useQuickCheckActions', () => {
   });
 
   test('given a non-empty "PR number(s)" field, when handleQuickCheck is called, then it scopes the request to that repo/PR list and returns the success label', async () => {
-    window.getFormBody = () => ({ repo: 'owner/repo', prNumbers: '7,8' });
     const loadSchedulerStatus = jest.fn();
     window.loadSchedulerStatus = loadSchedulerStatus;
     global.fetch = jest.fn().mockResolvedValue({
@@ -37,7 +53,7 @@ describe('useQuickCheckActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; }, { repo: 'owner/repo', prNumbersInput: '7,8' });
 
     let result;
     await act(async () => {
@@ -53,7 +69,6 @@ describe('useQuickCheckActions', () => {
   });
 
   test('given a 409 (already in progress), when handleQuickCheck is called, then it shows the matching notification and returns the fallback label', async () => {
-    window.getFormBody = () => ({ repo: '', prNumbers: '' });
     const snackbarCalls = [];
     window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockResolvedValue({
@@ -63,7 +78,7 @@ describe('useQuickCheckActions', () => {
     });
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; });
 
     let result;
     await act(async () => {
@@ -80,7 +95,7 @@ describe('useQuickCheckActions', () => {
     global.fetch = jest.fn();
 
     let actions;
-    render(<Probe onReady={(value) => { actions = value; }} />);
+    renderProbe((value) => { actions = value; });
 
     let result;
     await act(async () => {
@@ -116,9 +131,13 @@ describe('useQuickCheckActions', () => {
     }
 
     render(
-      <PrActivityQueueProvider>
-        <ProbeWithActivityQueue />
-      </PrActivityQueueProvider>,
+      <FilterStateContext.Provider value={{ values: {} }}>
+        <RowFilterSelectionContext.Provider value={{ checkedByListId: {} }}>
+          <PrActivityQueueProvider>
+            <ProbeWithActivityQueue />
+          </PrActivityQueueProvider>
+        </RowFilterSelectionContext.Provider>
+      </FilterStateContext.Provider>,
     );
 
     let checkAllPromise;

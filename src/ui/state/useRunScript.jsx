@@ -4,6 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useFormBody } from './useFormBody';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -19,12 +20,12 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
  * label) - it was always a plain top-level function in index.page.js, so
  * (matching useSinglePrUpdate.jsx's own precedent for pieces with no
  * separate factory) its logic is inlined here rather than inventing a
- * factory that wouldn't otherwise exist. window.getFormBody (new bridge,
- * see index.page.js) stays a bridge rather than being ported, since the
- * form read itself depends on several other DOM-backed helpers
- * (getSelectedIncludeLabelNames etc.) that are their own "DOM is correctly
- * the source of truth" permanent category, not something this hook should
- * re-implement.
+ * factory that wouldn't otherwise exist.
+ *
+ * Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 6): window.getFormBody is gone - useFormBody() reads the same
+ * fields reactively off FilterStateContext/RowFilterSelectionContext
+ * instead (see that hook's own comment).
  *
  * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * setStatusMessage now writes statusText via useStatusText() directly
@@ -39,9 +40,10 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
  */
 export function useRunScript() {
   const { setStatusText } = useStatusText();
+  const getFormBody = useFormBody();
 
   return useCallback(async () => {
-    const body = window.getFormBody?.() || {};
+    const body = getFormBody();
     const setStatusMessage = (message) => {
       setStatusText(message);
       window.renderRequestActivity?.();
@@ -127,5 +129,5 @@ export function useRunScript() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText]);
+  }, [setStatusText, getFormBody]);
 }

@@ -7,6 +7,8 @@ const { useAckLabelActions } = require('./useAckLabelActions.jsx');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { StatusTextContext } = require('./StatusTextContext');
+const { FilterStateContext } = require('./FilterStateContext');
+const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 
 function Probe({ onReady }) {
   const ackLabelActions = useAckLabelActions();
@@ -18,12 +20,26 @@ function Probe({ onReady }) {
 // statusText now comes from StatusTextContext directly, not
 // window.setStatusMessage - render Probe inside a real Provider value
 // instead of mocking the old bridge.
-const renderProbe = (onReady, setStatusText = () => {}) =>
+//
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): useAckLabelActions() now reads its form body via
+// useFormBody() (FilterStateContext/RowFilterSelectionContext), not
+// window.getFormBody - seed real Provider values instead of stubbing that
+// bridge.
+const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedByListId = {} } = {}) =>
   render(
     React.createElement(
-      StatusTextContext.Provider,
-      { value: { statusText: 'Not run', setStatusText } },
-      React.createElement(Probe, { onReady }),
+      FilterStateContext.Provider,
+      { value: { values } },
+      React.createElement(
+        RowFilterSelectionContext.Provider,
+        { value: { checkedByListId } },
+        React.createElement(
+          StatusTextContext.Provider,
+          { value: { statusText: 'Not run', setStatusText } },
+          React.createElement(Probe, { onReady }),
+        ),
+      ),
     ),
   );
 
@@ -35,7 +51,6 @@ const renderProbe = (onReady, setStatusText = () => {}) =>
 // automatically, so the 3 tests below (which don't exercise busy/queued
 // behavior directly) need no Provider wrapper to keep passing.
 const ACK_LABEL_WINDOW_BRIDGES = [
-  'getFormBody',
   'updateReactOutputText',
   'beginRequestActivity',
   'showErrorNotification',
@@ -55,7 +70,6 @@ describe('useAckLabelActions', () => {
   test('given a single PR number from the form, when calling handleAckOnly, then it posts to /view-prs/ack and applies the fresh payload directly', async () => {
     const statusMessages = [];
     const applyFreshPrPayload = jest.fn();
-    window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
     window.updateReactOutputText = jest.fn();
     window.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
@@ -65,7 +79,10 @@ describe('useAckLabelActions', () => {
     });
 
     let ackLabelActions;
-    renderProbe((value) => { ackLabelActions = value; }, (message) => statusMessages.push(message));
+    renderProbe((value) => { ackLabelActions = value; }, {
+      setStatusText: (message) => statusMessages.push(message),
+      values: { prNumbersInput: '42', repo: 'org/repo' },
+    });
     await act(async () => {
       await ackLabelActions.handleAckOnly();
     });
@@ -82,11 +99,13 @@ describe('useAckLabelActions', () => {
 
   test('given no PR numbers anywhere, when calling handleClearOnly, then it bails early with a validation message and never fetches', async () => {
     const statusMessages = [];
-    window.getFormBody = () => ({ prNumbers: '', repo: '' });
     global.fetch = jest.fn();
 
     let ackLabelActions;
-    renderProbe((value) => { ackLabelActions = value; }, (message) => statusMessages.push(message));
+    renderProbe((value) => { ackLabelActions = value; }, {
+      setStatusText: (message) => statusMessages.push(message),
+      values: { prNumbersInput: '', repo: '' },
+    });
     await act(async () => {
       await ackLabelActions.handleClearOnly();
     });
@@ -104,7 +123,6 @@ describe('useAckLabelActions', () => {
     select.appendChild(option);
     document.body.appendChild(select);
 
-    window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
     window.updateReactOutputText = jest.fn();
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -115,7 +133,9 @@ describe('useAckLabelActions', () => {
     window.getLatestStoredPayload = jest.fn().mockReturnValue({ byPrNumber: {} });
 
     let ackLabelActions;
-    renderProbe((value) => { ackLabelActions = value; });
+    renderProbe((value) => { ackLabelActions = value; }, {
+      values: { prNumbersInput: '42', repo: 'org/repo' },
+    });
     await act(async () => {
       await ackLabelActions.handleApplyLabelClick();
     });
@@ -131,7 +151,6 @@ describe('useAckLabelActions', () => {
   });
 
   test('given a real PrActivityQueueProvider, when calling handleAckOnly, then the PR is marked busy via Context during the request and cleared after it resolves', async () => {
-    window.getFormBody = () => ({ prNumbers: '42', repo: 'org/repo' });
     window.updateReactOutputText = jest.fn();
 
     let resolveFetch;
@@ -152,9 +171,17 @@ describe('useAckLabelActions', () => {
 
     render(
       React.createElement(
-        StatusTextContext.Provider,
-        { value: { statusText: 'Not run', setStatusText: () => {} } },
-        React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+        FilterStateContext.Provider,
+        { value: { values: { prNumbersInput: '42', repo: 'org/repo' } } },
+        React.createElement(
+          RowFilterSelectionContext.Provider,
+          { value: { checkedByListId: {} } },
+          React.createElement(
+            StatusTextContext.Provider,
+            { value: { statusText: 'Not run', setStatusText: () => {} } },
+            React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+          ),
+        ),
       ),
     );
 

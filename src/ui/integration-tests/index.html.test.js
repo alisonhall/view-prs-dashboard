@@ -36,7 +36,7 @@ const { BackfillControls } = require("../components/BackfillControls");
 const { BackfillLogControls } = require("../components/BackfillLogControls");
 const { RunScriptActionButton } = require("../components/RunScriptActionButton");
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
-// suite's own BackfillControlsTestHarness/installRunScriptActionButtonsBridge
+// suite's own BackfillControlsTestHarness/RunScriptActionButtonsTestHarness
 // below used to wire these components' onClick/onStart/etc. props straight
 // to window.handleBackfillAction/handleRunScript/handleAckOnly/etc. - a
 // hand-rolled duplicate of react-app.jsx's own wiring, needed only because
@@ -707,6 +707,26 @@ function FilterStateTestRootHarness({ initialValues }) {
             // buildFilterStateFieldPortals(), which mounts it as a plain
             // child the same way.
             React.createElement(AuthorThreadResolutionRuleVisibility),
+            // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+            // audit", cluster 6): RunScriptActionButtonsTestHarness/
+            // ActionButtonsTestHarness used to each mount via their own,
+            // separate rtlRender tree (installRunScriptActionButtonsBridge/
+            // installReactActionButtonMountBridges) - useRunScript/
+            // useAckLabelActions/useQuickCheckActions now call useFormBody()
+            // (FilterStateContext/RowFilterSelectionContext), so they need
+            // to be genuine descendants of THIS tree's Providers instead,
+            // same "merge into the one persistent root" move G.3 already
+            // made for MountedPrTableTree (see this component's own header
+            // comment). ActionButtonsTestHarness keeps its own isolated
+            // PrActivityQueueProvider instance (no test asserts row-busy
+            // state through these 2 buttons specifically, so a separate
+            // instance from the main tree's is harmless, same as before).
+            React.createElement(RunScriptActionButtonsTestHarness),
+            React.createElement(
+              PrActivityQueueProvider,
+              null,
+              React.createElement(ActionButtonsTestHarness),
+            ),
             mountRequest &&
               createPortal(
                 React.createElement(MountedPrTableTree, {
@@ -851,19 +871,6 @@ function RunScriptActionButtonsTestHarness() {
   return React.createElement(React.Fragment, null, ...portals);
 }
 
-const installRunScriptActionButtonsBridge = () => {
-  const container = document.createElement("div");
-  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // useRunScript()/useAckLabelActions() now read/write statusText via
-  // useStatusText() directly, not window.setStatusMessage - same
-  // StatusTextProvider wrap as installBackfillControlsBridge, for the
-  // same reason.
-  rtlRender(
-    React.createElement(StatusTextProvider, null, React.createElement(RunScriptActionButtonsTestHarness)),
-    { container },
-  );
-};
-
 // Deferred-items follow-up (full vanilla-to-React sweep, see
 // REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
 // #output, #backfill-details, #data-meta) are now React-portaled plain
@@ -965,14 +972,6 @@ function ActionButtonsTestHarness() {
   );
 }
 
-const installReactActionButtonMountBridges = () => {
-  const container = document.createElement("div");
-  rtlRender(
-    React.createElement(PrActivityQueueProvider, null, React.createElement(ActionButtonsTestHarness)),
-    { container },
-  );
-};
-
 // Track C, slices C2b/C2c (post-Phase-6 follow-up, see
 // REACT_MIGRATION_PLAN.md): index.page.js no longer calls
 // window.ReactMountBridge (that module was deleted - it was just a thin
@@ -992,7 +991,6 @@ const installReactTableMountBridge = () => {
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   installReactStatusTextMountBridges();
   installReactSnackbarMountBridge();
-  installReactActionButtonMountBridges();
 
   // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): no
   // longer its own independent rtlRender tree - renders MountedPrTableTree
@@ -1056,7 +1054,6 @@ const initTestPage = ({
   installReactTableMountBridge();
   installAutoRenderBlockingProviderBridge();
   installBackfillControlsBridge();
-  installRunScriptActionButtonsBridge();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
@@ -2523,6 +2520,14 @@ describe("index page rendering with Testing Library", () => {
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "912  921,  300");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): useRunScript()'s getFormBody is Context-based now
+    // (useFormBody.jsx), not a FormData scan of the real <form> - same
+    // static-markup/React-portal collision Phase H.18/H.19 fixed
+    // elsewhere: injectRunFilterFieldElements() pre-seeds this field's
+    // container too, so document.getElementById finds the static element,
+    // not the real one, and needs the same syncFilterStateFromElement call.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Run script" }));
@@ -2587,6 +2592,12 @@ describe("index page rendering with Testing Library", () => {
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
       await user.type(prNumbersInput, "42");
+      // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 6): same static-markup/React-portal collision Phase
+      // H.18/H.19 fixed elsewhere - useFormBody() reads
+      // FilterStateContext, not a FormData scan, so document.getElementById
+      // here needs the matching syncFilterStateFromElement call.
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -2630,6 +2641,7 @@ describe("index page rendering with Testing Library", () => {
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
       await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
       fetchMock.mockClear();
       let callCount = 0;
@@ -2675,6 +2687,7 @@ describe("index page rendering with Testing Library", () => {
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
       await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -2731,6 +2744,7 @@ describe("index page rendering with Testing Library", () => {
       const prNumbersInput = document.getElementById("pr-numbers");
       await user.clear(prNumbersInput);
       await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -2817,14 +2831,23 @@ describe("index page rendering with Testing Library", () => {
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "101  xyz, 202");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useFormBody() reads FilterStateContext,
+    // not a FormData scan, so every document.getElementById-driven
+    // interaction below needs the matching syncFilterStateFromElement call.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     const ackChangedCheckbox = document.getElementById("ack-changed");
     const showReasonCheckbox = document.getElementById("show-reason");
     const quietCheckbox = document.getElementById("quiet");
 
     await user.click(ackChangedCheckbox);
+    syncFilterStateFromElement(ackChangedCheckbox, "ackChanged");
     await user.click(showReasonCheckbox);
+    syncFilterStateFromElement(showReasonCheckbox, "showReason");
     await user.click(quietCheckbox);
+    syncFilterStateFromElement(quietCheckbox, "quiet");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Run script" }));
@@ -3037,10 +3060,16 @@ describe("index page rendering with Testing Library", () => {
     const repoField = document.getElementById("repo");
     await user.clear(repoField);
     await user.type(repoField, "owner/repo");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useQuickCheckActions()'s getFormBody is
+    // Context-based now (useFormBody.jsx), not a FormData scan.
+    syncFilterStateFromElement(repoField, "repo");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "912,921");
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -3250,6 +3279,11 @@ describe("index page rendering with Testing Library", () => {
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "101");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useRunScript()'s getFormBody is
+    // Context-based now (useFormBody.jsx), not a FormData scan.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     await waitFor(() => {
       const includeValues = Array.from(
@@ -5930,7 +5964,7 @@ describe("index page rendering with Testing Library", () => {
     // Phase H.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // mount the real MergedRequestMoreAction component and click its
     // button, instead of calling window.handleRequestMoreMerged directly -
-    // same pattern installReactActionButtonMountBridges() already uses for
+    // same pattern ActionButtonsTestHarness already uses for
     // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton. The
     // button's own click handler still calls window.handleRequestMoreMerged
     // (the vanilla orchestration, unchanged) - only how the test triggers

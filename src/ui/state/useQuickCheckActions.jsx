@@ -3,6 +3,7 @@ import { postJson } from '../helpers/pr-http.helpers.js';
 import { createPrQuickCheckActionsHelpers } from '../helpers/pr-quick-check-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
+import { useFormBody } from './useFormBody';
 
 const QUICK_CHECK_BUTTON_LABEL = 'Quick check';
 const QUICK_CHECK_ALL_BUTTON_LABEL = 'Quick check all';
@@ -31,9 +32,16 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
  * stay window.* bridges - all 3 are DOM/vanilla-module-state reads with no
  * Context equivalent, same "DOM is correctly the source of truth" category
  * as every other hook in this file that reads them.
+ *
+ * Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 6): window.getFormBody is gone - useFormBody() reads the same
+ * fields reactively off FilterStateContext/RowFilterSelectionContext
+ * instead (see that hook's own comment). loadSchedulerStatus/
+ * getLatestStoredPayload stay window.* bridges, unaffected by this.
  */
 export function useQuickCheckActions() {
   const { markPrBusy, clearPrBusy } = usePrActivityQueue();
+  const getFormBody = useFormBody();
 
   return useMemo(() => {
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
@@ -51,7 +59,7 @@ export function useQuickCheckActions() {
       notifyFailureSnackbar,
       loadSchedulerStatus: (...args) => window.loadSchedulerStatus?.(...args),
       postJson,
-      getFormBody: () => window.getFormBody?.(),
+      getFormBody,
       getLatestStoredPayload: () => window.getLatestStoredPayload?.(),
       markPrsBusy: (prNumbers, repo) =>
         (Array.isArray(prNumbers) ? prNumbers : []).forEach((prNumber) => markPrBusy(prNumber, repo)),
@@ -77,5 +85,5 @@ export function useQuickCheckActions() {
       });
 
     return { handleQuickCheck, handleQuickCheckAll };
-  }, [markPrBusy, clearPrBusy]);
+  }, [markPrBusy, clearPrBusy, getFormBody]);
 }

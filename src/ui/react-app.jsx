@@ -197,6 +197,37 @@ const FILTER_STATE_TEXT_FIELDS = [
   { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
 ];
 
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): extracted out of buildFilterStateFieldPortals() below (still
+// its only other caller) so mountAppRoot() can compute FilterStateProvider's
+// initialValues once, at module load, with no DOM dependency - needed now
+// that FilterStateProvider itself moves from inside AppRoot's own returned
+// JSX to wrapping <AppRoot/> at mountAppRoot()'s own render() call (closing
+// window.getFormBody - see useFormBody.jsx). Pure defaults, same values as
+// getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.js) - no
+// vanilla fallback markup is left to read a "currently showing" value from.
+function buildFilterStateInitialValues() {
+  const initialValues = {
+    scopeMode: 'all',
+    alwaysShowInReview: false,
+    attentionNoActivityMode: 'all',
+    openMode: 'none',
+    filterPrNumbers: '',
+    attentionAuthorThreadResolutionMode: 'allow-all',
+    changeFilterIgnoreCommitPatterns: '',
+  };
+  FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.defaultValue;
+  });
+  FILTER_STATE_TEXT_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.defaultValue;
+  });
+  FILTER_OPTION_SELECT_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.options[0]?.value ?? '';
+  });
+  return initialValues;
+}
+
 function buildFilterStateFieldPortals() {
   const scopeModeContainer = document.getElementById('scope-mode-root');
   const alwaysShowInReviewContainer = document.getElementById('always-show-in-review-root');
@@ -223,28 +254,6 @@ function buildFilterStateFieldPortals() {
     ...field,
     container: document.getElementById(`${field.id}-root`),
   }));
-
-  // Same defaults as getUiOptionDefaults()
-  // (helpers/pr-ui-option-persistence.helpers.js) - no vanilla fallback
-  // markup is left to read a "currently showing" value from.
-  const initialValues = {
-    scopeMode: 'all',
-    alwaysShowInReview: false,
-    attentionNoActivityMode: 'all',
-    openMode: 'none',
-    filterPrNumbers: '',
-    attentionAuthorThreadResolutionMode: 'allow-all',
-    changeFilterIgnoreCommitPatterns: '',
-  };
-  contextCheckboxContainers.forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  contextTextContainers.forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  contextOptionSelectContainers.forEach((field) => {
-    initialValues[field.key] = field.options[0]?.value ?? '';
-  });
 
   const portals = [
     scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer, 'scope-mode'),
@@ -302,7 +311,7 @@ function buildFilterStateFieldPortals() {
     ),
   ].filter(Boolean);
 
-  return { initialValues, portals };
+  return { portals };
 }
 
 // Context-backed "Any (with/without)" plain-metadata filter selects (see
@@ -826,43 +835,31 @@ function AppRoot() {
   }, []);
 
   return (
-    <RowFilterSelectionProvider>
-    {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"):
-        RowFilterSelectionProvider wraps everything below for the same
-        cross-portal-sharing reason RepoLabelsProvider (further down) does -
-        MultiSelectListPortals (the filter-field portals further down)
-        and PrTableApp's own useVisiblePrNumbers (inside the prTable
-        portal) are sibling portals, not an ancestor/descendant pair,
-        that both need the same 5 row-filtering lists' checked-state.
-        Phase G.3 (see REACT_MIGRATION_PLAN.md) moved this Provider (and
-        AuthorThreadResolutionSelectionProvider/ChangeFilterActorSelectionProvider
-        below) to wrap PrDataProvider/FilterStateProvider, not the other
-        way around as before - FilterStateProvider's own buildOverrides()
-        now reads all 3 Contexts directly (useRowFilterSelection() etc.)
-        instead of a DOM-scan window.* bridge, which requires it to be a
-        genuine descendant, not an ancestor, of all 3 - the same
-        "component can't be descendant of what it renders" constraint
-        Phase G's own PrActivityQueueProvider move and Phase G.1's
-        TabStateProvider widening already ran into. */}
-    <AuthorThreadResolutionSelectionProvider>
-    {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorThreadResolutionSelectionProvider
-        wraps the same scope as RowFilterSelectionProvider, same reasoning,
-        just for the 2 thread-resolution allow/deny lists instead of the 5
-        row-filtering ones - MultiSelectListPortals (seeds it) and
-        ReviewThreadsSection (reads it, inside the prTable portal) are
-        sibling portals too. */}
-    <ChangeFilterActorSelectionProvider>
-    {/* Phase G.3 (see REACT_MIGRATION_PLAN.md): ChangeFilterActorSelectionProvider
-        wraps the same scope, same reasoning, for the last 2 of the 9
-        multi-select lists to get a Context mirror (the 2 change-filter
-        actor lists) - FilterStateProvider's buildOverrides() reads it
-        directly too. */}
     <PrDataProvider
       initialPayload={{}}
       initialSelectedRepo=""
       initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
     >
-      <FilterStateProvider initialValues={containers.filterFields.initialValues}>
+      {/* Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+          cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
+          ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
+          from here (same reasoning as the comment that used to sit at this
+          spot: cross-portal sharing between MultiSelectListPortals and
+          PrTableApp/ReviewThreadsSection, sibling portals not an
+          ancestor/descendant pair). They now wrap <AppRoot/> itself instead,
+          from mountAppRoot() below - closing window.getFormBody required
+          useRunScript/useAckLabelActions/useQuickCheckActions (called from
+          AppRoot's own body) to reach useFilterState()/useRowFilterSelection()
+          directly, which needs AppRoot to be a genuine descendant of all 4,
+          the same "component can't be descendant of what it renders"
+          constraint Phase G's own PrActivityQueueProvider move and Phase
+          G.1's TabStateProvider widening already ran into - see
+          state/useFormBody.jsx. PrDataProvider itself stays here (cluster 6
+          doesn't move it), so it's now FilterStateProvider's *descendant*
+          instead of its ancestor - confirmed inert (neither reads the
+          other's Context) but a genuine reversal worth calling out, since
+          every move before this one only ever added a new ancestor above
+          an existing one. */}
         {/* RepoLabelsProvider wraps everything below for the same reason
             PrActivityQueueProvider does: ApplyLabelSelect's own portal
             (inside the filter-field portals further down) and PrTableApp's
@@ -1296,13 +1293,9 @@ function AppRoot() {
         </TabStateProvider>
         </JobEventsProvider>
         </AuthorInsightsDraftsProvider>
-        </RepoLabelsProvider>
-      </FilterStateProvider>
+      </RepoLabelsProvider>
       <PrDataPolling />
     </PrDataProvider>
-    </ChangeFilterActorSelectionProvider>
-    </AuthorThreadResolutionSelectionProvider>
-    </RowFilterSelectionProvider>
   );
 }
 
@@ -1340,14 +1333,36 @@ function mountAppRoot() {
   // announce-on-change path) and outside AppRoot (BackfillLogControls.jsx,
   // a descendant of AppRoot's own returned JSX, reads it via
   // useBackfillStatus() - see that component's own comment).
+  //
+  // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
+  // ChangeFilterActorSelectionProvider/FilterStateProvider wrap from here
+  // too now (outermost - none of the 4 need useStatusText()/
+  // usePrActivityQueue(), confirmed by reading each file, so nesting order
+  // relative to the 3 existing Providers is arbitrary; kept in the same
+  // relative order they were in inside AppRoot's own JSX before this
+  // phase). Closing window.getFormBody needed useRunScript/
+  // useAckLabelActions/useQuickCheckActions (called from AppRoot's own
+  // body) to reach useFilterState()/useRowFilterSelection() directly - see
+  // state/useFormBody.jsx and this function's own initialValues argument
+  // below, now computed once here via buildFilterStateInitialValues()
+  // instead of threaded through AppRoot's own containers state.
   ReactDOM.createRoot(anchor).render(
-    <StatusTextProvider>
-      <BackfillStatusProvider>
-        <PrActivityQueueProvider>
-          <AppRoot />
-        </PrActivityQueueProvider>
-      </BackfillStatusProvider>
-    </StatusTextProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
+            <StatusTextProvider>
+              <BackfillStatusProvider>
+                <PrActivityQueueProvider>
+                  <AppRoot />
+                </PrActivityQueueProvider>
+              </BackfillStatusProvider>
+            </StatusTextProvider>
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 }
 

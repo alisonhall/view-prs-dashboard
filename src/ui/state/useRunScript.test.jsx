@@ -4,6 +4,8 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useRunScript } = require('./useRunScript.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
+const { FilterStateContext } = require('./FilterStateContext');
+const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 
 function Probe({ onReady }) {
   const runScript = useRunScript();
@@ -15,16 +17,24 @@ function Probe({ onReady }) {
 // statusText now comes from StatusTextContext directly, not
 // window.setStatusMessage - render Probe inside a real Provider value
 // instead of mocking the old bridge.
-const renderProbe = (onReady, setStatusText = () => {}) =>
+//
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): useRunScript() now reads its form body via useFormBody()
+// (FilterStateContext/RowFilterSelectionContext), not window.getFormBody -
+// seed real Provider values instead of stubbing that bridge.
+const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedByListId = {} } = {}) =>
   render(
-    <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
-      <Probe onReady={onReady} />
-    </StatusTextContext.Provider>,
+    <FilterStateContext.Provider value={{ values }}>
+      <RowFilterSelectionContext.Provider value={{ checkedByListId }}>
+        <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
+          <Probe onReady={onReady} />
+        </StatusTextContext.Provider>
+      </RowFilterSelectionContext.Provider>
+    </FilterStateContext.Provider>,
   );
 
 describe('useRunScript', () => {
   afterEach(() => {
-    delete window.getFormBody;
     delete window.updateReactOutputText;
     delete window.beginRequestActivity;
     delete window.applyFreshPrPayload;
@@ -37,12 +47,6 @@ describe('useRunScript', () => {
     const outputMessages = [];
     const applyFreshPrPayload = jest.fn();
     const finishActivity = jest.fn();
-    window.getFormBody = () => ({
-      repo: 'org/repo',
-      prNumbersInput: '7',
-      prNumberList: ['7'],
-      prNumber: '7',
-    });
     window.updateReactOutputText = (message) => outputMessages.push(message);
     window.beginRequestActivity = jest.fn(() => finishActivity);
     window.applyFreshPrPayload = applyFreshPrPayload;
@@ -52,7 +56,10 @@ describe('useRunScript', () => {
     });
 
     let runScript;
-    renderProbe((fn) => { runScript = fn; }, (message) => statusMessages.push(message));
+    renderProbe((fn) => { runScript = fn; }, {
+      setStatusText: (message) => statusMessages.push(message),
+      values: { repo: 'org/repo', prNumbersInput: '7' },
+    });
     await act(async () => {
       await runScript();
     });
@@ -68,16 +75,13 @@ describe('useRunScript', () => {
 
   test('given a non-numeric PR number input, when running the script, then it bails early with a validation message and never fetches', async () => {
     const statusMessages = [];
-    window.getFormBody = () => ({
-      repo: 'org/repo',
-      prNumbersInput: 'not-a-number',
-      prNumberList: [],
-      prNumber: '',
-    });
     global.fetch = jest.fn();
 
     let runScript;
-    renderProbe((fn) => { runScript = fn; }, (message) => statusMessages.push(message));
+    renderProbe((fn) => { runScript = fn; }, {
+      setStatusText: (message) => statusMessages.push(message),
+      values: { repo: 'org/repo', prNumbersInput: 'not-a-number' },
+    });
     await act(async () => {
       await runScript();
     });
@@ -90,14 +94,16 @@ describe('useRunScript', () => {
     const statusMessages = [];
     const snackbarCalls = [];
     const finishActivity = jest.fn();
-    window.getFormBody = () => ({ repo: 'org/repo', prNumbersInput: '', prNumberList: [], prNumber: '' });
     window.updateReactOutputText = jest.fn();
     window.beginRequestActivity = () => finishActivity;
     window.showErrorNotification = (...args) => snackbarCalls.push(args);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let runScript;
-    renderProbe((fn) => { runScript = fn; }, (message) => statusMessages.push(message));
+    renderProbe((fn) => { runScript = fn; }, {
+      setStatusText: (message) => statusMessages.push(message),
+      values: { repo: 'org/repo', prNumbersInput: '' },
+    });
     await act(async () => {
       await runScript();
     });

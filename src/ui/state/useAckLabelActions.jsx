@@ -7,6 +7,7 @@ import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
+import { useFormBody } from './useFormBody';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -66,6 +67,11 @@ export function useAckLabelActions() {
   // StatusTextProvider), composed with window.renderRequestActivity - same
   // reasoning as useRunScript.jsx's own comment on this exact composition.
   const { setStatusText } = useStatusText();
+  // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 6): window.getFormBody is gone - useFormBody() reads the same
+  // fields reactively off FilterStateContext/RowFilterSelectionContext
+  // instead (see that hook's own comment).
+  const getFormBody = useFormBody();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
@@ -85,7 +91,7 @@ export function useAckLabelActions() {
         summarizeAckRefreshWarnings: (...args) => window.summarizeAckRefreshWarnings?.(...args),
         applyFreshPrPayload: (...args) => window.applyFreshPrPayload?.(...args),
         loadStoredData: (...args) => window.loadStoredData?.(...args),
-        getFormBody: () => window.getFormBody?.(),
+        getFormBody,
         defaultRepo: DEFAULT_REPO,
         parseCsvTokens,
         markPrsBusy: (prNumbers, repo) =>
@@ -138,5 +144,6 @@ export function useAckLabelActions() {
     markBulkActionChunkDone,
     finishBulkActionBatch,
     setStatusText,
+    getFormBody,
   ]);
 }

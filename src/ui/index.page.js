@@ -148,8 +148,6 @@ let isRequestMoreMergedPending = false;
 // window.selectAuthorInsightsAuthor bridge that called it, are both
 // deleted outright this phase.
 const formParsingHelpers = formParsingHelpersModule;
-const toBoolean =
-  formParsingHelpers?.toBoolean || ((value) => value === true || value === "on");
 
 const {
   stripAnsi,
@@ -1626,11 +1624,6 @@ const parseCsvTokens = (rawValue) =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-const parsePrNumbersInput = (rawValue) =>
-  formParsingHelpers?.parsePrNumbersInput
-    ? formParsingHelpers.parsePrNumbersInput(rawValue)
-    : parseCsvTokens(rawValue).filter((value) => /^\d+$/.test(String(value)));
-
 // Phase 7 (see REACT_MIGRATION_PLAN.md): getPrNumbersInput/getSelectedPrNumbers/
 // setSelectedPrNumbers/handlePrNumbersInputChange/updateSelectedPrNumbers used
 // to live here, reading/writing the "#pr-numbers" DOM input directly and
@@ -2020,43 +2013,15 @@ if (typeof window !== "undefined") {
   window.AUTO_BACKFILL_POLL_MS = AUTO_BACKFILL_POLL_MS;
 }
 
-const getFormBody = () => {
-  const form = document.getElementById("run-script-form");
-  const formData = new FormData(form);
-  const formProps = Object.fromEntries(formData);
-  const prNumbersInput = formProps.prNumbers?.trim() || "";
-  const parsedPrNumbers = parsePrNumbersInput(prNumbersInput);
-  const normalizedPrNumbers = parsedPrNumbers.join(",");
-
-  return {
-    repo: formProps.repo?.trim() || "",
-    prNumbersInput,
-    prNumberList: parsedPrNumbers,
-    prNumbers: normalizedPrNumbers,
-    prNumber: parsedPrNumbers[0] || "",
-    limit: formProps.limit?.trim() || "",
-    mergedLimit: formProps.mergedLimit?.trim() || "",
-    jobs: formProps.jobs?.trim() || "",
-    openMode: formProps.openMode || "none",
-    label: getSelectedIncludeLabelNames().join(", "),
-    excludeLabel: getSelectedExcludeLabelNames().join(", "),
-    author: getSelectedAuthorLogins().join(", "),
-    ackChanged: toBoolean(formProps.ackChanged),
-    showReason: toBoolean(formProps.showReason),
-    quiet: toBoolean(formProps.quiet),
-  };
-};
-
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// handleRunScript itself (this used to be its definition) moved into
-// state/useRunScript.jsx - it never had its own DI-factory, and its only
-// real caller was always the "Run script" button, so this file just
-// exposes getFormBody for the hook to read instead of re-implementing its
-// own copy of the form-read logic (which itself depends on several other
-// DOM-is-the-source-of-truth helpers below, like getSelectedIncludeLabelNames).
-if (typeof window !== "undefined") {
-  window.getFormBody = (...args) => getFormBody(...args);
-}
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): getFormBody() (this used to be its definition) and the
+// window.getFormBody bridge are both gone - every field it read via
+// FormData/DOM scan was already Context-backed, so state/useFormBody.jsx
+// now re-derives the same shape straight from FilterStateContext/
+// RowFilterSelectionContext instead. getSelectedIncludeLabelNames/
+// getSelectedExcludeLabelNames/getSelectedAuthorLogins (just above) stay -
+// still genuinely needed by createPrFilterSelectionInputsHelpers' own
+// instance (cluster 1's territory), this was just their one other caller.
 
 // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // index.page.js's own createPrQuickCheckActionsHelpers/
