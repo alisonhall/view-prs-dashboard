@@ -51,7 +51,7 @@ const { useAckLabelActions } = require("../state/useAckLabelActions");
 const { useTriggerAutoRun } = require("../state/useTriggerAutoRun");
 const { useQuickCheckActions } = require("../state/useQuickCheckActions");
 const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
-const { useRefreshAvailableRepoLabels } = require("../state/useRefreshAvailableRepoLabels");
+const { useRepoLabels } = require("../state/RepoLabelsContext");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
@@ -798,9 +798,13 @@ const installBackfillControlsBridge = () => {
 // handleAckOnly/handleClearOnly/handleApplyLabelClick directly - this is
 // now a real component calling the matching hooks itself, same as
 // react-app.jsx does, so those 4 bridges have no remaining caller and
-// were deleted from index.page.js. window.refreshAvailableRepoLabels is
-// the 1 deliberate exception still reached via window.* (see
-// useRefreshAvailableRepoLabels.jsx's own comment) - unchanged here.
+// were deleted from index.page.js. The 5th, "↻ Labels", now calls
+// useRepoLabels().refresh() directly too (see RepoLabelsProvider.jsx's own
+// comment) - this harness isn't wrapped in a real <RepoLabelsProvider>
+// (nothing here clicks this button, only mounts it so the other 4 don't
+// become empty portal roots), so it gets RepoLabelsContext's safe no-op
+// default instead; real coverage for an actual click is the Playwright
+// smoke suite, which boots the full Provider tree.
 // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): the "apply-filters-btn" entry this list used to also have
 // is deleted outright, along with the real button/window.applyFiltersFromCache
@@ -808,7 +812,7 @@ const installBackfillControlsBridge = () => {
 function RunScriptActionButtonsTestHarness() {
   const runScript = useRunScript();
   const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
-  const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();
+  const { refresh: refreshAvailableRepoLabels } = useRepoLabels();
 
   const buttons = [
     {

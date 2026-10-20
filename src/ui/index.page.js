@@ -1453,21 +1453,15 @@ const renderPrData = (payload, selectedRepo = "") => {
 };
 
 // Track C, slice C2a (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// the *only* other way React's PR table gets new data besides the full
-// renderPrData pipeline above - a deliberate perf optimization used by the
+// pushPayloadToReactTable (this used to be its definition) is deleted
+// outright now too - a consolidated `if (isReactTableMounted())
+// updateReactTable(...)` guard that was originally shared by the
 // checkbox/Ack/Apply-Label React callbacks and the label-dropdown refresh,
-// which push a mutated latestStoredPayload straight to the mounted React
-// table without re-running the whole orchestrator pipeline (stats/filter-
-// dropdown/export-catalog/author-insights side effects), since none of
-// that changed. Previously this exact three-line check was duplicated
-// inline at two call sites; consolidating it here means moving the payload
-// itself into Context/hooks later only has to change what happens *inside*
-// this one function, not hunt down every direct call site across the file.
-const pushPayloadToReactTable = (payload, repo) => {
-  if (isReactTableMounted()) {
-    updateReactTable(payload, repo);
-  }
-};
+// but each of those migrated to its own real Context/hook path long before
+// this cleanup pass looked for its caller (confirmed via grep - zero
+// remaining callers anywhere, not even a window.* bridge), and the label-
+// dropdown refresh (its last real use) is gone too, moved into
+// RepoLabelsProvider.jsx (see that block's own comment above).
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // pollForDataChanges itself (the createPrDataPollingOrchestrationHelpers
@@ -1575,63 +1569,25 @@ if (typeof window !== "undefined") {
 
 // ---- Apply existing GitHub labels to PRs (single-row select or bulk via
 // the "Run & Filter" tab's PR-number selection) ----
-
-let availableRepoLabels = [];
-let isFetchingRepoLabels = false;
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md): getAvailableRepoLabels (a plain
-// pull of this module variable) used to be bridged on window for
-// PrActionsCell.jsx to read directly - both it and ApplyLabelSelect.jsx
-// (Run & Filter tab dropdown, below) now read the same RepoLabelsContext
-// instead, fed by the one write point below, consolidating what used to
-// be two separate window.* bridges for this one list.
 //
-// Renders into both React consumers via RepoLabelsContext
-// (RepoLabelsProvider.jsx, mounted in react-app.jsx) - a native <select>'s
-// own selection-preservation behavior on re-render replaces the vanilla
-// version's manual "restore previous value if still valid" logic, so no
-// bridge return value or key remount is needed here.
-const populateApplyLabelSelect = () => {
-  window.setAvailableRepoLabels?.(availableRepoLabels);
-};
-
-// Deliberately does NOT fall back to DEFAULT_REPO: that constant is only
-// ever a placeholder/example value (see the "repo" field's `placeholder`
-// in react-app.jsx) - it isn't guaranteed to be a repo this GitHub account
-// can actually see, and eagerly querying `gh label list` against it on
-// every page load produced a real 500 (repo not found) before the actual
-// selected repo was even known yet. Pure so it's directly unit-testable
-// via __testables without needing a DOM/fetch harness.
-const resolveRepoForLabelsFetch = ({ repoOverride, currentRepo, repoInputValue } = {}) =>
-  String(repoOverride || currentRepo || repoInputValue || "").trim();
-
-const refreshAvailableRepoLabels = async (repoOverride) => {
-  const repoInput = getOptionalElementById("repo");
-  const repo = resolveRepoForLabelsFetch({
-    repoOverride,
-    currentRepo: latestSelectedRepo,
-    repoInputValue: repoInput ? repoInput.value : "",
-  });
-  if (!repo || isFetchingRepoLabels) {
-    return;
-  }
-
-  isFetchingRepoLabels = true;
-  try {
-    const response = await fetch(`/view-prs/labels?repo=${encodeURIComponent(repo)}`);
-    const result = await response.json();
-    if (response.ok && result?.ok !== false) {
-      availableRepoLabels = Array.isArray(result.labels) ? result.labels : [];
-      populateApplyLabelSelect();
-      pushPayloadToReactTable(latestStoredPayload, latestSelectedRepo);
-    }
-  } catch (_error) {
-    // Best-effort: leave any previously cached labels/options in place.
-  } finally {
-    isFetchingRepoLabels = false;
-  }
-};
-
+// Cleanup pass (prompted by a direct question about why
+// window.refreshAvailableRepoLabels stayed vanilla instead of being fully
+// migrated, see REACT_MIGRATION_PLAN.md): this entire block - the module
+// state (availableRepoLabels/isFetchingRepoLabels), the DOM read of
+// #repo, the fetch, and populateApplyLabelSelect's push into
+// RepoLabelsContext - is deleted outright. RepoLabelsProvider.jsx
+// (components/) now owns all of it directly as real React state, reading
+// the current repo from usePrData()/useFilterState() instead of a DOM
+// read, with no window.setAvailableRepoLabels bridge needed any more
+// (setLabels is an internal closure now, not a cross-boundary write). The
+// pushPayloadToReactTable(latestStoredPayload, latestSelectedRepo) call
+// this block used to also make after every refresh is dropped, not just
+// moved - both of RepoLabelsContext's real consumers (ApplyLabelSelect.jsx/
+// PrActionsCell.jsx) already re-render from the Context's own `labels`
+// state changing, so re-pushing an unchanged payload into the main table
+// only forced a wasteful whole-app re-render, the same class of dead
+// re-render Phase H.26 already found and removed elsewhere.
+//
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // handleApplyLabelClick's definition moved into
 // state/useAckLabelActions.jsx - its only caller was the "Apply label"
@@ -1654,16 +1610,16 @@ if (typeof window !== "undefined") {
 // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn are
 // React-owned (RunScriptActionButton.jsx, react-app.jsx) and now call real
 // hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) instead of a
-// window.* bridge. #refresh-labels-btn is the 1 deliberate exception still
-// reached via window.* - see useRefreshAvailableRepoLabels.jsx's own
-// comment for why. #apply-filters-btn (the former other exception) is
-// gone entirely - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-
-// effort audit", cluster 1) deleted the button along with
+// window.* bridge. #refresh-labels-btn (the former "1 deliberate
+// exception") is now React-owned the same way, via useRepoLabels().refresh
+// - see RepoLabelsProvider.jsx's own comment for why window.*
+// refreshAvailableRepoLabels itself still has exactly one real caller left
+// (FilterStateProvider.jsx's restore-on-mount effect, a genuine ancestor
+// that structurally cannot reach a descendant's Context) and isn't gone
+// entirely. #apply-filters-btn (the former other exception) is gone
+// entirely - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit", cluster 1) deleted the button along with
 // window.applyFiltersFromCache, its last remaining caller.
-if (typeof window !== "undefined") {
-  window.refreshAvailableRepoLabels = (...args) =>
-    refreshAvailableRepoLabels(...args);
-}
 
 /**
  * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -1903,8 +1859,9 @@ const initPage = () => {
     // pr-filter-label-extraction.helpers.js instead of reading
     // window.getLabelName. getAvailableRepoLabels used to be bridged here
     // too - PrActionsCell.jsx now reads RepoLabelsContext directly instead
-    // (see populateApplyLabelSelect's own comment, above
-    // getAvailableRepoLabels' old definition).
+    // (see RepoLabelsProvider.jsx's own comment for the full history, now
+    // that this file's own label-fetch block that used to sit near
+    // getAvailableRepoLabels' old definition is deleted outright).
     // Phase 7 (see REACT_MIGRATION_PLAN.md): isInReviewEnabled/
     // isFlaggedEnabled used to also be bridged here - confirmed dead for
     // the React/component side (see the comments at isInReviewEnabled's
@@ -2087,16 +2044,17 @@ const initPage = () => {
   // wiring needed here anymore.
   // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn/
-  // #refresh-labels-btn were React-owned (RunScriptActionButton.jsx,
-  // react-app.jsx) - no vanilla wiring needed here anymore. Phase D.2 (see
-  // REACT_MIGRATION_PLAN.md) replaced 4 of their window.* bridges with
-  // real hooks (useRunScript.jsx/useAckLabelActions.jsx, state/) - only
-  // window.refreshAvailableRepoLabels (a deliberate exception, see
-  // useRefreshAvailableRepoLabels.jsx's own comment) is still reached via
-  // window.* from react-app.jsx. #apply-filters-btn (the 5th) is gone
-  // entirely now - Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-
-  // effort audit", cluster 1) deleted the button along with
-  // window.applyFiltersFromCache, its last remaining caller.
+  // #refresh-labels-btn are React-owned (RunScriptActionButton.jsx,
+  // react-app.jsx) - no vanilla wiring needed here anymore, for any of
+  // them. Phase D.2 (see REACT_MIGRATION_PLAN.md) replaced 4 of their
+  // window.* bridges with real hooks (useRunScript.jsx/
+  // useAckLabelActions.jsx, state/); a later cleanup pass gave
+  // #refresh-labels-btn the same treatment (RefreshLabelsButtonLive, via
+  // useRepoLabels().refresh - see RepoLabelsProvider.jsx's own comment).
+  // #apply-filters-btn (the 5th) is gone entirely now - Phase H.26 (see
+  // REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 1) deleted
+  // the button along with window.applyFiltersFromCache, its last
+  // remaining caller.
   // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
   // 3 backfill action buttons, the log-refresh button, and the
   // auto-scroll checkbox are React-owned now (BackfillControls.jsx/
@@ -2163,7 +2121,6 @@ if (typeof module !== "undefined" && module.exports) {
       normalizeAuthorInsightsSentiment,
       isAuthorInsightsComposerDraftDirty,
       isAuthorInsightsEditDraftDirty,
-      resolveRepoForLabelsFetch,
     },
   };
 }

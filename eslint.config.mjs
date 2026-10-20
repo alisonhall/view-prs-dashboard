@@ -101,6 +101,7 @@ export default defineConfig([
       "src/ui/helpers/pr-as-array.helpers.js",
       "src/ui/helpers/pr-per-pr-user-state.helpers.js",
       "src/ui/helpers/pr-default-repo.helpers.js",
+      "src/ui/helpers/pr-repo-labels.helpers.js",
       "src/ui/helpers/pr-last-checked-indicator.helpers.js",
       "src/ui/helpers/pr-manual-notes-summary.helpers.js",
       "src/ui/helpers/pr-textarea-autoresize.helpers.js",

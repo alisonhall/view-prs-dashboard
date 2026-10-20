@@ -44,7 +44,6 @@ import { useBackfillActions } from './state/useBackfillActions';
 import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
 import { useRunScript } from './state/useRunScript';
 import { useAckLabelActions } from './state/useAckLabelActions';
-import { useRefreshAvailableRepoLabels } from './state/useRefreshAvailableRepoLabels';
 import { useTriggerAutoRun } from './state/useTriggerAutoRun';
 import { useQuickCheckActions } from './state/useQuickCheckActions';
 import { useActivityDrawerActions } from './state/useActivityDrawerActions';
@@ -70,6 +69,7 @@ import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
+import { useRepoLabels } from './state/RepoLabelsContext';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
@@ -567,6 +567,29 @@ function TableFilterChipsLive({ container }) {
   return createPortal(<TableFilterChips chips={chips} />, container, 'table-filter-chips');
 }
 
+// The "↻ Labels" button - a thin wrapper so useRepoLabels() (a hook) can
+// be called from inside <RepoLabelsProvider>'s own subtree, same pattern
+// as TableFilterChipsLive above. Must be mounted inside
+// <RepoLabelsProvider> specifically (see where it's actually rendered in
+// AppRoot's own JSX) - AppRoot itself can't call useRepoLabels() directly
+// in its own body, since that Provider is a descendant AppRoot renders
+// further down its own JSX, not an ancestor (see RepoLabelsProvider.jsx's
+// own comment).
+function RefreshLabelsButtonLive({ container }) {
+  const { refresh } = useRepoLabels();
+  if (!container) return null;
+  return createPortal(
+    <RunScriptActionButton
+      id="refresh-labels-btn"
+      title="Reload labels for the current repo"
+      label={'↻ Labels'}
+      onClick={() => refresh()}
+    />,
+    container,
+    'refresh-labels-btn',
+  );
+}
+
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a thin
 // wrapper so useMergedRequestMoreActionOptions() (a hook) can be called from
 // AppRoot's JSX. key={repo}: same stale-state-on-repo-change reasoning the
@@ -584,11 +607,14 @@ function AppRoot() {
   // BackfillControls/BackfillLogControls/RunScriptActionButton's instances
   // below used to call window.handleBackfillAction/refreshBackfillStatus/
   // refreshBackfillLogTail/autoScrollBackfillLogToBottom/handleRunScript/
-  // handleAckOnly/handleClearOnly/handleApplyLabelClick/
-  // refreshAvailableRepoLabels directly - they now call these hooks'
-  // returned functions instead (refreshAvailableRepoLabels stays a
-  // deliberate pass-through to its own window.* bridge, see
-  // useRefreshAvailableRepoLabels.jsx's own comment).
+  // handleAckOnly/handleClearOnly/handleApplyLabelClick directly - they now
+  // call these hooks' returned functions instead. refreshAvailableRepoLabels
+  // (the "↻ Labels" button's own handler) isn't one of these - it can't be
+  // called from here at all, since useRepoLabels() needs a real
+  // <RepoLabelsProvider> ancestor and that Provider is a descendant AppRoot
+  // itself renders further down (see RepoLabelsProvider.jsx's own comment)
+  // - RefreshLabelsButtonLive, below, calls it from inside that Provider's
+  // own subtree instead.
   const backfillActions = useBackfillActions();
   // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // replaces backfill-tab.orchestrator.js's own initialize()/
@@ -597,7 +623,6 @@ function AppRoot() {
   useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
   const runScript = useRunScript();
   const ackLabelActions = useAckLabelActions();
-  const refreshAvailableRepoLabels = useRefreshAvailableRepoLabels();
   // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton/the
   // dispatcher-bump and reset-circuit-breaker drawer actions below used to
@@ -1093,17 +1118,7 @@ function AppRoot() {
             'apply-label-btn',
           )}
 
-        {containers.refreshLabelsBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="refresh-labels-btn"
-              title="Reload labels for the current repo"
-              label={'↻ Labels'}
-              onClick={() => refreshAvailableRepoLabels()}
-            />,
-            containers.refreshLabelsBtn,
-            'refresh-labels-btn',
-          )}
+        <RefreshLabelsButtonLive container={containers.refreshLabelsBtn} />
 
         {containers.quickCheckBtn &&
           createPortal(
