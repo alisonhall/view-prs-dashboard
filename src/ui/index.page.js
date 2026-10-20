@@ -348,11 +348,9 @@ const setBackfillLogMessage = (message) => {
 // formatChkDisplay call (see that file's own comment for the fix).
 
 const {
-  registerUiOptionPersistenceHandlers,
   autoScrollBackfillLogToBottom,
 } = prUiOptionScrollHelperFactory.createPrUiOptionScrollHelpers({
   getOptionalElementById: (...args) => getOptionalElementById(...args),
-  persistViewFilterOptions: (...args) => window.persistViewFilterOptionOverrides?.(...args),
   shouldAutoScrollBackfillLogByState: (...args) =>
     shouldAutoScrollBackfillLogByState(...args),
   getBackfillScrollTop: (...args) => getBackfillScrollTop(...args),
@@ -774,29 +772,35 @@ const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
 // to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals,
 // which derive the same option lists reactively from PrDataContext instead
 // of being pushed imperatively through here.
-// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): the selection readers/"Any" filter getters this factory also
-// used to provide (getSelectedAuthorLogins/getSelectedAssignedLogins/
-// getSelectedApproverLogins/getSelectedIncludeLabelNames/
-// getSelectedExcludeLabelNames/getCustomCommentsFilter/getOtherNotesFilter/
-// getPrDifficultyFilter/getRallyStoriesFilter/getRallyLinksFilter/
-// getAnalysisOfPrFilter) are deleted too - their one remaining caller
-// (deriveFilterSelectionInputs) is gone, and getFormBody() (the comment
-// that used to justify keeping 3 of them) was itself deleted outright in
-// Phase H.20. Only the dropdown-closing listener survives.
+// Cleanup pass (prompted by a direct question about leftover vanilla code,
+// see REACT_MIGRATION_PLAN.md): the selection readers/"Any" filter getters
+// this factory also used to provide (getSelectedAuthorLogins/
+// getSelectedAssignedLogins/getSelectedApproverLogins/
+// getSelectedIncludeLabelNames/getSelectedExcludeLabelNames/
+// getCustomCommentsFilter/getOtherNotesFilter/getPrDifficultyFilter/
+// getRallyStoriesFilter/getRallyLinksFilter/getAnalysisOfPrFilter) are
+// deleted from the factory itself now too, not just unused here - a
+// previous pass (Phase H.23) only confirmed this file had stopped calling
+// them, but left them in pr-filter-panel.helpers.js on the strength of a
+// comment (just below, now also corrected) claiming
+// createPrFilterSelectionInputsHelpers still needed them; that factory
+// doesn't exist anywhere in the codebase any more (confirmed via grep), so
+// they had zero real caller left at all. Only the dropdown-closing
+// listener survives.
 const { setupMultiSelectDropdownClosing } = prFilterPanelHelperFactory.createPrFilterPanelHelpers({
   documentRef: typeof document !== "undefined" ? document : null,
 });
 
-// Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// the window.getSelectedXxx bridges these 9 functions used to be exposed
-// through are gone - Phase G.3 already moved FilterStateProvider.jsx's own
+// Phase H.10 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// window.getSelectedXxx bridges these functions used to be exposed through
+// are gone - Phase G.3 already moved FilterStateProvider.jsx's own
 // buildOverrides() onto RowFilterSelectionContext/
 // AuthorThreadResolutionSelectionContext/ChangeFilterActorSelectionContext
 // directly, leaving no real caller of any of these bridges (confirmed via
-// grep). The functions themselves stay - getFormBody() below still calls 3
-// of them (getSelectedIncludeLabelNames/getSelectedExcludeLabelNames/
-// getSelectedAuthorLogins) as plain function calls, not through window.
+// grep). getFormBody() (the comment that used to justify keeping 3 of the
+// underlying functions as plain calls) was itself deleted outright in
+// Phase H.20, and the functions themselves are deleted now too - see
+// pr-filter-panel.helpers.js's own comment above for the full accounting.
 
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 4 "Backfill status rendering"): renderBackfillStatus/
@@ -1539,9 +1543,11 @@ if (typeof window !== "undefined") {
 // FormData/DOM scan was already Context-backed, so state/useFormBody.jsx
 // now re-derives the same shape straight from FilterStateContext/
 // RowFilterSelectionContext instead. getSelectedIncludeLabelNames/
-// getSelectedExcludeLabelNames/getSelectedAuthorLogins (just above) stay -
-// still genuinely needed by createPrFilterSelectionInputsHelpers' own
-// instance (cluster 1's territory), this was just their one other caller.
+// getSelectedExcludeLabelNames/getSelectedAuthorLogins (this was their one
+// other caller) are deleted outright too now - see
+// pr-filter-panel.helpers.js's own comment for why the
+// createPrFilterSelectionInputsHelpers' instance this comment used to cite
+// as their other reason to stay doesn't exist any more.
 
 // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // index.page.js's own createPrQuickCheckActionsHelpers/
@@ -1739,7 +1745,6 @@ const initPage = () => {
     () => renderRequestActivity(),
     { once: true },
   );
-  registerUiOptionPersistenceHandlers();
   // Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
   // roadmap"): the 6 management-tab buttons are React-owned now
   // (ManagementTabButton.jsx/TabStateProvider.jsx) - initManagementTabs'

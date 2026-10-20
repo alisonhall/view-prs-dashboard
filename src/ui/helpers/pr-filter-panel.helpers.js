@@ -10,92 +10,33 @@
 // populateApproverOptions, plus their shared collectSortedLabelOptions
 // helper) have moved to FilterOptionsProvider.jsx, which derives the same
 // option lists reactively from PrDataContext instead of having them pushed
-// imperatively through here - trimmed this factory's DI surface and return
-// value down to what's still used: reading the currently-checked selection
-// out of a list (still needed at "Apply filters (local)" time and by
-// persistUiOptionOverrides), the 6 "Any (with/without)" metadata filter
-// getters, and the dropdown-closing listener. Phase H.12 (see
-// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the applied-filter
-// summary (renderManagementFilterSummary/renderFilterSummary) is gone too
-// - confirmed dead in production (AppliedFilterSummaryLive, react-app.jsx,
-// already owns the same "Applied filters: ..." summary/chips live,
-// reactively; this factory's own version had no real installer left to
-// call through to).
+// imperatively through here. Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full
+// migration roadmap"): the applied-filter summary (renderManagementFilterSummary/
+// renderFilterSummary) is gone too - confirmed dead in production
+// (AppliedFilterSummaryLive, react-app.jsx, already owns the same "Applied
+// filters: ..." summary/chips live, reactively; this factory's own version
+// had no real installer left to call through to).
+// Cleanup pass (prompted by a direct question about leftover vanilla code,
+// see REACT_MIGRATION_PLAN.md): the 11 selection/metadata-filter getters
+// this factory used to also keep (getSelectedAuthorLogins/
+// getSelectedAssignedLogins/getSelectedApproverLogins/
+// getSelectedIncludeLabelNames/getSelectedExcludeLabelNames/
+// getCustomCommentsFilter/getOtherNotesFilter/getPrDifficultyFilter/
+// getRallyStoriesFilter/getRallyLinksFilter/getAnalysisOfPrFilter, plus the
+// getFilterStateValue DI param and getSelectedMultiSelectValues/
+// readFilterStateOrDomValue internals they alone used) are deleted outright
+// - index.page.js's own comment claiming they were "still genuinely needed
+// by createPrFilterSelectionInputsHelpers' own instance" was stale:
+// createPrFilterSelectionInputsHelpers doesn't exist anywhere in this
+// codebase any more (confirmed via grep), and index.page.js's own
+// destructuring of this factory already only pulled out
+// setupMultiSelectDropdownClosing - every one of these 11 getters had zero
+// real caller left, exercised only by this file's own now-deleted unit
+// tests. Only the dropdown-closing listener survives.
 export const { createPrFilterPanelHelpers } = (() => {
-  const createPrFilterPanelHelpers = ({
-    documentRef,
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): optional - when provided,
-    // returns a migrated field's current value from FilterStateProvider's
-    // Context by its Context key (not DOM id), or undefined for an
-    // unmigrated key/before the provider mounts. Defaults to always
-    // undefined so every existing call site (and every existing unit
-    // test, which doesn't pass this) falls back to its original DOM read
-    // unchanged.
-    getFilterStateValue,
-  } = {}) => {
-    const getFilterStateValueSafe =
-      typeof getFilterStateValue === "function" ? getFilterStateValue : () => undefined;
-
+  const createPrFilterPanelHelpers = ({ documentRef } = {}) => {
     const getDocument = () =>
       documentRef || (typeof document !== "undefined" ? document : null);
-
-    const getListElement = (listId) => {
-      const doc = getDocument();
-      if (!doc || typeof doc.getElementById !== "function") {
-        return null;
-      }
-      return doc.getElementById(listId);
-    };
-
-    const getSelectedMultiSelectValues = (listId) => {
-      const list = getListElement(listId);
-      if (!list || typeof list.querySelectorAll !== "function") return [];
-
-      const checkboxes = Array.from(
-        list.querySelectorAll("input[type='checkbox']:checked"),
-      );
-      return checkboxes
-        .map((checkbox) => String(checkbox.value || "").trim())
-        .filter(Boolean);
-    };
-
-    const getSelectedAuthorLogins = () => getSelectedMultiSelectValues("author-list");
-    const getSelectedAssignedLogins = () =>
-      getSelectedMultiSelectValues("assigned-list");
-    const getSelectedApproverLogins = () =>
-      getSelectedMultiSelectValues("approver-list");
-    const getSelectedIncludeLabelNames = () =>
-      getSelectedMultiSelectValues("label-list");
-    const getSelectedExcludeLabelNames = () =>
-      getSelectedMultiSelectValues("exclude-label-list");
-
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): each of these six "Any
-    // (with/without)" filters prefers its migrated value via
-    // getFilterStateValueSafe (Context key, not DOM id) over the DOM read,
-    // same handled/fallback shape as every other bridge in this
-    // migration.
-    const readFilterStateOrDomValue = (contextKey, domId) => {
-      const override = getFilterStateValueSafe(contextKey);
-      if (typeof override === "string") {
-        return override.trim();
-      }
-      const doc = getDocument();
-      const element = doc?.getElementById(domId);
-      return String(element?.value || "").trim();
-    };
-
-    const getCustomCommentsFilter = () =>
-      readFilterStateOrDomValue("filterCustomComments", "filter-custom-comments");
-    const getOtherNotesFilter = () =>
-      readFilterStateOrDomValue("filterOtherNotes", "filter-other-notes");
-    const getPrDifficultyFilter = () =>
-      readFilterStateOrDomValue("filterPrDifficulty", "filter-pr-difficulty");
-    const getRallyStoriesFilter = () =>
-      readFilterStateOrDomValue("filterRallyStories", "filter-rally-stories");
-    const getRallyLinksFilter = () =>
-      readFilterStateOrDomValue("filterRallyLinks", "filter-rally-links");
-    const getAnalysisOfPrFilter = () =>
-      readFilterStateOrDomValue("filterAnalysisOfPr", "filter-analysis-of-pr");
 
     const setupMultiSelectDropdownClosing = () => {
       const doc = getDocument();
@@ -113,17 +54,6 @@ export const { createPrFilterPanelHelpers } = (() => {
     };
 
     return {
-      getSelectedAuthorLogins,
-      getSelectedAssignedLogins,
-      getSelectedApproverLogins,
-      getSelectedIncludeLabelNames,
-      getSelectedExcludeLabelNames,
-      getCustomCommentsFilter,
-      getOtherNotesFilter,
-      getPrDifficultyFilter,
-      getRallyStoriesFilter,
-      getRallyLinksFilter,
-      getAnalysisOfPrFilter,
       setupMultiSelectDropdownClosing,
     };
   };

@@ -11,34 +11,38 @@ describe("pr filter panel helpers", () => {
         <summary class="multi-select-summary">Labels</summary>
         <div id="label-list"></div>
       </details>
-      <details class="multi-select-dropdown" open>
-        <summary class="multi-select-summary">Authors</summary>
-        <div id="author-list"></div>
-      </details>
+      <button id="outside"></button>
     `;
   });
 
-  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): getSelectedAuthorLogins/
-  // getSelectedIncludeLabelNames/etc. are the one piece of this factory
-  // that still reads real DOM state (the currently-checked values) - the
-  // populateXOptions functions that used to build those same lists moved
-  // to FilterOptionsProvider.jsx/react-app.jsx's MultiSelectListPortals.
-  test("given checked checkboxes in a list, when reading the selected values, then it returns them trimmed", () => {
-    const component = createPrFilterPanelHelpers({ documentRef: document });
-    document.getElementById("author-list").innerHTML = `
-      <input type="checkbox" value=" alice " checked />
-      <input type="checkbox" value="bob" />
-    `;
-
-    expect(component.getSelectedAuthorLogins()).toEqual(["alice"]);
-  });
-
-  test("given a Context override for a metadata filter, when reading it, then the Context value wins over the DOM read", () => {
-    const component = createPrFilterPanelHelpers({
+  test("given an open multi-select dropdown, when a click lands outside it, then the dropdown closes", () => {
+    const { setupMultiSelectDropdownClosing } = createPrFilterPanelHelpers({
       documentRef: document,
-      getFilterStateValue: (key) => (key === "filterCustomComments" ? "with" : undefined),
     });
 
-    expect(component.getCustomCommentsFilter()).toBe("with");
+    setupMultiSelectDropdownClosing();
+    document.getElementById("outside").click();
+
+    expect(document.querySelector(".multi-select-dropdown").open).toBe(false);
+  });
+
+  test("given an open multi-select dropdown, when a click lands inside it, then the dropdown stays open", () => {
+    const { setupMultiSelectDropdownClosing } = createPrFilterPanelHelpers({
+      documentRef: document,
+    });
+
+    setupMultiSelectDropdownClosing();
+    document.getElementById("label-list").click();
+
+    expect(document.querySelector(".multi-select-dropdown").open).toBe(true);
+  });
+
+  test("given no multi-select dropdowns in the document, when setting up, then it exits without throwing", () => {
+    document.body.innerHTML = "";
+    const { setupMultiSelectDropdownClosing } = createPrFilterPanelHelpers({
+      documentRef: document,
+    });
+
+    expect(() => setupMultiSelectDropdownClosing()).not.toThrow();
   });
 });

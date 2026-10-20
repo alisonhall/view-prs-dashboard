@@ -98,12 +98,12 @@ const CHECKBOX_FIELD_IDS = [
  * `useChangeFilterActorSelection()` directly, instead of the
  * `window.getSelectedAuthorLogins` etc. DOM-scan bridges it used before -
  * this Provider had to become a genuine descendant of all 3 Contexts for
- * that (see react-app.jsx's own Provider-tree comment). `index.page.js`'s
- * separate `getFormBody()` call (run-script form submission, not
- * persistence) still reads 3 of those same DOM-scan functions directly as
- * plain function calls, not through `window.*` - the bridges themselves
- * had no caller left anywhere once this phase landed, and were deleted in
- * Phase H.10.
+ * that (see react-app.jsx's own Provider-tree comment). The bridges
+ * themselves had no caller left anywhere once this phase landed, and were
+ * deleted in Phase H.10; `index.page.js`'s separate `getFormBody()` call
+ * (its last remaining plain-function-call reader) was itself deleted in
+ * Phase H.20, and the underlying DOM-scan functions followed in a later
+ * cleanup pass once nothing called them at all.
  */
 export function FilterStateProvider({ initialValues, children }) {
   const [values, setValues] = useState(initialValues);

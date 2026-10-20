@@ -318,11 +318,10 @@ function buildFilterStateFieldPortals() {
 // Context-backed "Any (with/without)" plain-metadata filter selects (see
 // FilterOptionSelect.jsx) - each `key` matches the field's `name`
 // attribute and has a corresponding entry in index.page.js's
-// FILTER_STATE_FIELD_MAP. None of these are read via a direct DOM read
-// outside pr-filter-panel.helpers.js's getCustomCommentsFilter/etc.
-// (each only called when "Apply filters (local)" is clicked), and none
-// are in debouncedApplyOnChangeIds, so FilterStateProvider's
-// debounced-apply effect dependency list doesn't need these keys either.
+// FILTER_STATE_FIELD_MAP, and each is part of FilterStateContext's own
+// `values` object, so FilterStateProvider.jsx's debounced persistence
+// watcher already covers every one of these keys with no extra wiring
+// needed here.
 const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-custom-comments',

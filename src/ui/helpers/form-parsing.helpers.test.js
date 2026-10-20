@@ -4,7 +4,6 @@
 
 const {
   toBoolean,
-  getSelectedAuthorLogins,
   applyCredentialHints,
   parsePrNumbersInput,
   parseCommitPatterns,
@@ -29,90 +28,6 @@ describe("form-parsing.helpers", () => {
       expect(toBoolean("true")).toBe(false);
       expect(toBoolean(1)).toBe(false);
       expect(toBoolean("")).toBe(false);
-    });
-  });
-
-  describe("getSelectedAuthorLogins", () => {
-    test("given a multi-select with no selected options when reading authors then it returns an empty array", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "author1";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "author2";
-      option2.textContent = "Author Two";
-      select.appendChild(option1);
-      select.appendChild(option2);
-
-      // Explicitly deselect all in a multi-select
-      Array.from(select.options).forEach((opt) => {
-        opt.selected = false;
-      });
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual([]);
-    });
-
-    test("given selected author options when reading authors then it returns selected logins", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "author1";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "author2";
-      option2.textContent = "Author Two";
-      const option3 = document.createElement("option");
-      option3.value = "author3";
-      option3.textContent = "Author Three";
-      select.appendChild(option1);
-      select.appendChild(option2);
-      select.appendChild(option3);
-
-      // Select specific options
-      option1.selected = true;
-      option2.selected = true;
-      option3.selected = false;
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual(["author1", "author2"]);
-    });
-
-    test("given selected author values with whitespace when reading authors then values are trimmed", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "  author1  ";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "";
-      option2.textContent = "Empty";
-      select.appendChild(option1);
-      select.appendChild(option2);
-
-      option1.selected = true;
-      option2.selected = false;
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual(["author1"]);
-    });
-
-    test("given no author select element when reading authors then it returns an empty array", () => {
-      const result = getSelectedAuthorLogins(null);
-      expect(result).toEqual([]);
-    });
-
-    test("given no explicit select when reading authors then it falls back to the page author select", () => {
-      document.body.innerHTML = `<select id="author">
-        <option value="author1" selected="true">Author One</option>
-      </select>`;
-
-      const result = getSelectedAuthorLogins();
-      expect(result).toEqual(["author1"]);
     });
   });
 

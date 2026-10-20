@@ -10,10 +10,9 @@
  * (unlike FilterCheckbox/RunScriptTextInput, which have other,
  * unmigrated consumers), so there was no reason to fork a parallel
  * Context-backed component here; every usage just gained the prop. Each
- * field is only ever read via `getCustomCommentsFilter` etc.
- * (pr-filter-panel.helpers.js) when "Apply filters (local)" is clicked -
- * those now prefer Context the same handled/fallback way as everywhere
- * else in this migration.
+ * field is part of FilterStateContext's own `values` object, so
+ * FilterStateProvider.jsx's debounced persistence watcher already covers
+ * it with no separate read path needed.
  *
  * @module components/FilterOptionSelect
  */

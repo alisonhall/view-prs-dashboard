@@ -3,10 +3,17 @@
 // below is unchanged, only the export mechanism differs. index.page.js
 // imports this directly instead of using the
 // require()/globalThis.ViewPrsFormParsingHelpers fallback.
+//
+// Cleanup pass (prompted by a direct question about leftover vanilla code,
+// see REACT_MIGRATION_PLAN.md): getSelectedAuthorLogins (this factory's
+// former fourth export) is deleted outright - it read option.selected off
+// a `<select id="author">`, a field that was replaced by the "author-list"
+// checkbox multi-select (RowFilterSelectionContext) long before this
+// cleanup pass, leaving zero real caller anywhere (confirmed via grep -
+// only its own unit tests still called it).
 export const {
   createFormParsingHelpers,
   toBoolean,
-  getSelectedAuthorLogins,
   applyCredentialHints,
   parsePrNumbersInput,
   parseCommitPatterns,
@@ -14,17 +21,6 @@ export const {
 } = (() => {
   const createFormParsingHelpers = () => {
     const toBoolean = (value) => value === true || value === "on";
-
-    const getSelectedAuthorLogins = (authorSelect) => {
-      const selectElement = authorSelect || document.getElementById("author");
-      if (!selectElement) return [];
-
-      const options = Array.from(selectElement.options || []);
-      return options
-        .filter((option) => option.selected)
-        .map((option) => String(option.value || "").trim())
-        .filter(Boolean);
-    };
 
     const applyCredentialHints = (input, fieldName, options = {}) => {
       if (!input) return;
@@ -73,7 +69,6 @@ export const {
 
     return {
       toBoolean,
-      getSelectedAuthorLogins,
       applyCredentialHints,
       parsePrNumbersInput,
       parseCommitPatterns,

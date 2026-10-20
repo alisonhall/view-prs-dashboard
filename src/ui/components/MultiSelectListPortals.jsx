@@ -244,13 +244,13 @@ export function MultiSelectListPortals({ containers }) {
     // was called synchronously from *vanilla* code reading the DOM again
     // in the same call stack right after populating - a real need for
     // flushSync there. Every reader of these lists' checked values now
-    // (getSelectedAuthorLogins/persistUiOptionOverrides/getFormBody/etc.,
-    // see index.page.js) runs from a separate, later user-triggered event
-    // (a button click), never synchronously after this effect - and
-    // calling flushSync from inside a useEffect risks a genuine
-    // "flushSync was called from inside a lifecycle method" React warning
-    // when this effect itself fires as part of a parent component's own
-    // commit (confirmed via a real Playwright run during this sub-phase).
+    // (RowFilterSelectionContext's own consumers, FilterStateProvider's
+    // persistence watcher) runs from a separate, later event - a Context
+    // read/effect, never synchronously after this effect - and calling
+    // flushSync from inside a useEffect risks a genuine "flushSync was
+    // called from inside a lifecycle method" React warning when this
+    // effect itself fires as part of a parent component's own commit
+    // (confirmed via a real Playwright run during this sub-phase).
     if (didAnyChange) {
       setRenderState(nextRenderState);
     }
