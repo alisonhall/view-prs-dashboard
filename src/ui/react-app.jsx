@@ -72,6 +72,7 @@ import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
 import { OutputTextProvider } from './components/OutputTextProvider';
 import { useOutputText } from './state/OutputTextContext';
+import { useBackfillStatus } from './state/BackfillStatusContext';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { useRepoLabels } from './state/RepoLabelsContext';
@@ -666,19 +667,13 @@ function AppRoot() {
 
   const [prTable, setPrTable] = useState(null);
   const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
-  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // mirrors backfillBadges/backfillDetailsText's own bridge shape below -
-  // getBackfillStatusViewModel (pr-backfill.helpers.js) already computes
-  // this from isBackfillActionPending + backfill.running, pushed here
-  // instead of index.page.js's old direct startButton.disabled=... writes.
-  // Default matches the static markup's own implicit initial state (no
-  // button starts out with a disabled attribute).
-  const [backfillButtonState, setBackfillButtonState] = useState({
-    startDisabled: false,
-    stopDisabled: false,
-    refreshDisabled: false,
-    refreshLogDisabled: false,
-  });
+  // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the Backfill tab's button-disabled flags live in <BackfillStatusProvider />
+  // now (it computes them via getBackfillStatusViewModel anyway, and used to
+  // push them into this component's own state through
+  // window.updateReactBackfillButtonState - a bridge from an ancestor down
+  // into its own descendant). Read back here for the buttons' props.
+  const { backfillButtonState } = useBackfillStatus();
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
   // Activity" section's history of this tab's own finished requests - no
@@ -771,22 +766,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactBackfillBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactBackfillButtonState = (state) => {
-      setBackfillButtonState(
-        state || {
-          startDisabled: false,
-          stopDisabled: false,
-          refreshDisabled: false,
-          refreshLogDisabled: false,
-        },
-      );
-    };
-    return () => {
-      delete window.updateReactBackfillButtonState;
     };
   }, []);
 

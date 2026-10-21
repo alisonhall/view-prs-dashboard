@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
-import { BackfillStatusContext } from '../state/BackfillStatusContext';
+import { BackfillStatusContext, DEFAULT_BACKFILL_BUTTON_STATE } from '../state/BackfillStatusContext';
 import { useStatusText } from '../state/StatusTextContext';
 
 const { getBackfillStatusViewModel, getBackfillStateKey } = createPrBackfillHelpers();
@@ -60,6 +60,14 @@ export function BackfillStatusProvider({ children }) {
   const [isBackfillActionPending, setIsBackfillActionPendingState] = useState(false);
   const [supportsBackfillLogPolling, setSupportsBackfillLogPollingState] = useState(true);
 
+  // Window-bridge elimination Phase 3d: owned here (was AppRoot's local
+  // state, pushed in through window.updateReactBackfillButtonState). A
+  // falsy value resets to the default, as that bridge always did.
+  const [backfillButtonState, setBackfillButtonStateRaw] = useState(DEFAULT_BACKFILL_BUTTON_STATE);
+  const setBackfillButtonState = useCallback((state) => {
+    setBackfillButtonStateRaw(state || DEFAULT_BACKFILL_BUTTON_STATE);
+  }, []);
+
   const isBackfillRunningRef = useRef(isBackfillRunning);
   const isBackfillActionPendingRef = useRef(isBackfillActionPending);
   const supportsBackfillLogPollingRef = useRef(supportsBackfillLogPolling);
@@ -88,7 +96,7 @@ export function BackfillStatusProvider({ children }) {
 
       window.updateReactBackfillBadges?.(viewModel.badges);
       window.updateReactBackfillDetailsText?.(viewModel.detailsText);
-      window.updateReactBackfillButtonState?.(viewModel.buttonState);
+      setBackfillButtonState(viewModel.buttonState);
       setIsBackfillRunning(viewModel.isBackfillRunning);
       lastBackfillStateKeyRef.current = viewModel.stateKey;
     };
@@ -127,7 +135,19 @@ export function BackfillStatusProvider({ children }) {
       delete window.setBackfillLogMessage;
       delete window.renderBackfillStatus;
     };
-  }, [setStatusText]);
+  }, [setStatusText, setBackfillButtonState]);
+
+  // Still published for index.page.js (vanilla), which writes the button
+  // state too and has no Context access - the one remaining caller, so this
+  // bridge goes away with index.page.js (Phase 7).
+  useEffect(() => {
+    window.updateReactBackfillButtonState = (state) => {
+      setBackfillButtonState(state);
+    };
+    return () => {
+      delete window.updateReactBackfillButtonState;
+    };
+  }, [setBackfillButtonState]);
 
   // Reads the refs (not the state above), so a caller holding this across
   // an async flow still sees a setter's write immediately - same
@@ -140,13 +160,21 @@ export function BackfillStatusProvider({ children }) {
   const value = useMemo(
     () => ({
       getBackfillTrackingState,
+      backfillButtonState,
+      setBackfillButtonState,
       isBackfillRunning,
       isBackfillActionPending,
       supportsBackfillLogPolling,
       setIsBackfillActionPending,
       setSupportsBackfillLogPolling,
     }),
-    [isBackfillRunning, isBackfillActionPending, supportsBackfillLogPolling],
+    [
+      isBackfillRunning,
+      isBackfillActionPending,
+      supportsBackfillLogPolling,
+      backfillButtonState,
+      setBackfillButtonState,
+    ],
   );
 
   return <BackfillStatusContext.Provider value={value}>{children}</BackfillStatusContext.Provider>;

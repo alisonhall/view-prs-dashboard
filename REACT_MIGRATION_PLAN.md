@@ -2674,6 +2674,18 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 - **Tests:** +5 `OutputTextProvider.test.jsx` (placeholder, setter + stable identity, bridge write, bridge removed on unmount, inert default); 4 hook test files assign `setOutputText` via an `OutputTextContext` instead of stubbing the bridge; +1 Playwright test writing through the bridge and reading the real `#output` (fails when the provider's write is broken). The integration harness needed no change: no test there asserts `#output`, and `index.page.js`'s writes still reach it through the harness's bridge.
 - Jest 2520/2520 (was 2515), eslint clean, Playwright 56/56 (was 55).
 
+## ✅ **Window-bridge elimination, Phase 3d: Backfill button state moves into `BackfillStatusProvider` (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Completes Phase 3.
+
+- `backfillButtonState` (the 4 button-disabled flags) was `AppRoot`'s local state, pushed in by `BackfillStatusProvider` (and `useBackfillActions`) through `window.updateReactBackfillButtonState` - an ancestor writing down into its own descendant through `window`. It now lives in `BackfillStatusProvider` and is exposed on `BackfillStatusContext` (`backfillButtonState`, a stable `setBackfillButtonState`; `DEFAULT_BACKFILL_BUTTON_STATE` exported). The Provider calls its own setter when a status render computes the view model; `useBackfillActions` takes the setter from Context; `AppRoot` reads `backfillButtonState` back for the buttons' props. Pulls forward the Phase 4 "extend `BackfillStatusProvider`'s Context" idea for this one value.
+- **Bridge kept:** `window.updateReactBackfillButtonState` is still published, by the Provider now, for `index.page.js` (the one remaining caller; Phase 7).
+- **Tests:** new `BackfillStatusProvider.test.jsx` (+6, the Provider had none: default state; a real `renderBackfillStatus` for a running backfill yields exactly the view model's button state, with a guard that it differs from the default; setter incl. falsy reset; vanilla bridge write; stable setter identity; bridge removed on unmount). `useBackfillActions.test.jsx` passes `setBackfillButtonState` through `BackfillStatusContext`. The integration harness's `BackfillControlsTestHarness` reads the Context instead of keeping local state fed by the bridge.
+- Jest 2526/2526 (was 2520), eslint clean, Playwright 56/56.
+
+### Phase 3 summary
+Done: 3a (auto-render blocking via Context; 2 dead bridges deleted), 3b (6 hooks use `usePrData()` for request activity), 3c (output text -> `OutputTextProvider`), 3d (backfill button state -> `BackfillStatusProvider`). **Deliberately left (a real caller remains, none of them fixable from React):** `window.beginRequestActivity`/`renderRequestActivity` (callers: `index.page.js`; the latter also `PrDataProvider`'s own `pollForDataChanges` closure and the two providers that sit outside it), `window.updateReactOutputText` and `updateReactBackfillButtonState` (`index.page.js`), `window.updateReactAutoRenderBlockedLinks` (called only from vanilla code via `pr-auto-render-indicator-links.helpers.js`), and everything `index.page.js` owns (`applyFreshPrPayload`, `loadStoredData`, `getLatestStoredPayload`, `applyLatestPrData`, `summarizeAckRefreshWarnings`) - all Phase 7.
+
 ## 📞 **Getting Help**
 
 **Resources:**

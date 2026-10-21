@@ -25,6 +25,7 @@ const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 const { PrDataContext } = require("../state/PrDataContext");
+const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
@@ -504,15 +505,11 @@ const WINDOW_BACKED_PR_ACTIVITY_VALUE = {
 const WindowBackedPrActivityProvider = ({ children }) =>
   React.createElement(PrDataContext.Provider, { value: WINDOW_BACKED_PR_ACTIVITY_VALUE }, children);
 
-const DEFAULT_BACKFILL_BUTTON_STATE = {
-  startDisabled: false,
-  stopDisabled: false,
-  refreshDisabled: false,
-  refreshLogDisabled: false,
-};
-
 function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContainer }) {
-  const [buttonState, setButtonState] = React.useState(DEFAULT_BACKFILL_BUTTON_STATE);
+  // Window-bridge elimination Phase 3d: the button state is owned by the real
+  // BackfillStatusProvider this harness is mounted under (same as react-app.jsx's
+  // AppRoot reads it), not a local state fed by window.updateReactBackfillButtonState.
+  const { backfillButtonState: buttonState } = useBackfillStatus();
   // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // BackfillLogControls now owns the #backfill-log content portal itself
   // (matching react-app.jsx's real AppRoot), so this harness needs its own
@@ -539,16 +536,12 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
   useBackfillTabAutoRefresh(triggerBackfillTabLoad);
 
   React.useEffect(() => {
-    window.updateReactBackfillButtonState = (state) => {
-      setButtonState(state || DEFAULT_BACKFILL_BUTTON_STATE);
-    };
     window.updateReactBackfillLogText = (text) => {
       setLogText(text);
       setLogUpdateTick((tick) => tick + 1);
       return true;
     };
     return () => {
-      delete window.updateReactBackfillButtonState;
       delete window.updateReactBackfillLogText;
     };
   }, []);

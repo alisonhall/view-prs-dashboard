@@ -54,3 +54,11 @@ One responsibility at a time, each with full eslint+jest+Playwright and a `REACT
 - Full `npx jest` green; reconcile added/removed test counts.
 - Full `npx playwright test` green; add e2e coverage where a removal changes observable behavior.
 - `REACT_MIGRATION_PLAN.md` entry + commit per logical group.
+
+## Status
+
+- **Phase 1** done (`6a910e5`). **Phase 2** done (`1db3f35`).
+- **Phase 3** done as 3a-3d (see `REACT_MIGRATION_PLAN.md`). Two deviations from the text above, both because investigating showed the plan's wording didn't fit:
+  - `AutoRenderBlockingContext` had no getters to call, so they were added to it first (3a).
+  - Output text and backfill button state got Provider-owned Context state instead of "explicit parameters from `AppRoot`", since `useSinglePrUpdate` (in `PrTableApp`) and `BackfillStatusProvider` (an ancestor) can't receive parameters from `AppRoot` (3c, 3d).
+- Phases 4-7 not started. Phase 4's remaining scope shrinks: `getBackfillTrackingState` and the button state are already on `BackfillStatusContext`.

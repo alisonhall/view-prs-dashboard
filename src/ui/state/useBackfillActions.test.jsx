@@ -73,7 +73,6 @@ const renderProbe = (
   );
 
 const BACKFILL_WINDOW_BRIDGES = [
-  'updateReactBackfillButtonState',
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
   'renderBackfillStatus',
@@ -92,7 +91,6 @@ describe('useBackfillActions', () => {
     const statusMessages = [];
     const updateBackfillStatusFromPayload = jest.fn();
     const finishActivity = jest.fn();
-    window.updateReactBackfillButtonState = (state) => buttonStates.push(state);
     setOutputText = jest.fn();
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     const setIsBackfillActionPending = jest.fn();
@@ -107,6 +105,9 @@ describe('useBackfillActions', () => {
     let backfillActions;
     renderProbe((value) => { backfillActions = value; }, (message) => statusMessages.push(message), undefined, {
       setIsBackfillActionPending,
+      // Window-bridge elimination Phase 3d: the button state is written through
+      // BackfillStatusContext now, not window.updateReactBackfillButtonState.
+      setBackfillButtonState: (state) => buttonStates.push(state),
     });
     await act(async () => {
       await backfillActions.handleBackfillAction('start');

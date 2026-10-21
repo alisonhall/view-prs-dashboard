@@ -81,8 +81,12 @@ export function useBackfillActions() {
   // BackfillStatusProvider wraps AppRoot from mountAppRoot(), so this hook
   // (called from AppRoot's body) is a genuine descendant - no window.*
   // bridge needed for the tracking flags or their setters.
-  const { getBackfillTrackingState, setSupportsBackfillLogPolling, setIsBackfillActionPending } =
-    useBackfillStatus();
+  const {
+    getBackfillTrackingState,
+    setSupportsBackfillLogPolling,
+    setIsBackfillActionPending,
+    setBackfillButtonState,
+  } = useBackfillStatus();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
   // beginRequestActivity/renderRequestActivity come from usePrData() instead of
@@ -111,7 +115,7 @@ export function useBackfillActions() {
           renderRequestActivity();
         },
         setOutputMessage: (message) => setOutputText(message),
-        setBackfillButtonState: (state) => window.updateReactBackfillButtonState?.(state),
+        setBackfillButtonState,
         notifyFailureSnackbar,
         formatCommandOutput,
         stripAnsi,
@@ -222,6 +226,7 @@ export function useBackfillActions() {
     getBackfillTrackingState,
     setSupportsBackfillLogPolling,
     setIsBackfillActionPending,
+    setBackfillButtonState,
     beginRequestActivity,
     renderRequestActivity,
     setOutputText,
