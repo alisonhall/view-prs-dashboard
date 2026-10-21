@@ -99,8 +99,6 @@ describe('FilterStateProvider', () => {
   });
 
   afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
     jest.useRealTimers();
   });
 
@@ -115,7 +113,7 @@ describe('FilterStateProvider', () => {
     expect(screen.getByTestId('always-show-value')).toHaveTextContent('true');
   });
 
-  test('given a value change, when it happens, then window.getFilterStateValues() reflects it', async () => {
+  test('given a value change, when it happens, then every Context reader sees it', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(
       <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
@@ -125,40 +123,21 @@ describe('FilterStateProvider', () => {
 
     await user.click(screen.getByText('change scope'));
 
-    expect(window.getFilterStateValues().scopeMode).toBe('last-run');
+    expect(screen.getByTestId('scope-mode-value')).toHaveTextContent('last-run');
   });
 
-  test('given window.setFilterStateValue is called, when called, then it updates the shared state', () => {
+  // Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // these two bridges had no production caller once PrSelectionCell moved to the
+  // per-key store, so they were deleted rather than kept for tests.
+  test('given the provider mounts, when window is inspected, then getFilterStateValues/setFilterStateValue are not published', () => {
     render(
       <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
         <Probe />
       </FilterStateProviderWithSelectionContexts>,
     );
 
-    act(() => {
-      window.setFilterStateValue('scopeMode', 'needs-attention-or-interacted');
-    });
-
-    expect(screen.getByTestId('scope-mode-value')).toHaveTextContent(
-      'needs-attention-or-interacted',
-    );
-  });
-
-  test('given window.setFilterStateValue is called, when window.getFilterStateValues() is read immediately after with no act()/tick in between, then it reflects the new value synchronously', () => {
-    // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): this is the exact
-    // shape restoreUiOptionOverrides -> immediate re-populate-read
-    // (index.page.js, for the multi-select "pending selections") exercises
-    // in real vanilla code - a plain synchronous call, no React act()
-    // wrapper, no awaited tick. Without flushSync-wrapping
-    // window.setFilterStateValue, this would read stale (pre-update) state.
-    render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    window.setFilterStateValue('scopeMode', 'needs-attention');
-    expect(window.getFilterStateValues().scopeMode).toBe('needs-attention');
+    expect(window.getFilterStateValues).toBeUndefined();
+    expect(window.setFilterStateValue).toBeUndefined();
   });
 
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -171,18 +150,6 @@ describe('FilterStateProvider', () => {
   // infrastructure (fake timers, userEvent's advanceTimers option) stays,
   // still needed by the tests above/below that aren't about this bridge.
 
-  test('given unmount, when the component unmounts, then the window bridges are removed', () => {
-    const { unmount } = render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
-        <Probe />
-      </FilterStateProviderWithSelectionContexts>,
-    );
-
-    expect(typeof window.getFilterStateValues).toBe('function');
-    unmount();
-    expect(window.getFilterStateValues).toBeUndefined();
-    expect(window.setFilterStateValue).toBeUndefined();
-  });
 
   // Cleanup pass (prompted by a direct instruction to reconsider the
   // repo-labels structure so no window.* bridge is needed at all, see
@@ -355,13 +322,6 @@ describe('FilterStateProvider', () => {
       act(() => fieldActions.setFieldValue('scopeMode', 'needs-attention'));
       expect(state.values.scopeMode).toBe('needs-attention');
       expect(fieldValue).toBe('needs-attention');
-    });
-
-    test('given a write through window.setFilterStateValue, when read through the field store, then it is the same value', () => {
-      mount();
-      act(() => window.setFilterStateValue('scopeMode', 'last-run'));
-      expect(fieldValue).toBe('last-run');
-      expect(window.getFilterStateValues().scopeMode).toBe('last-run');
     });
 
     test('given saved overrides restore on mount, when the restore resolves, then the field store gets them too (not only useFilterState())', async () => {

@@ -2746,6 +2746,18 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 - **Deliberately not done here:** `window.getFilterStateValues`/`setFilterStateValue` are NOT deleted. `PrSelectionCell` was their only *production* caller (`index.page.js` has none, despite the cell's old comment), but ~15 test files still use them for assertions/setup; deleting them is a mechanical test rewrite, tracked as 5b.
 - **Tests (+23 jest, +1 e2e):** `filterValuesStore.test.jsx` (12: store semantics + the hooks incl. selector bail-out, resubscribe on key change, inert defaults), `PrSelectionCell.test.jsx` rewritten against the real Provider (10 incl. the 3 render-cost tests), `FilterStateProvider.test.jsx` +6 (store and values in sync via every write path, restore-on-mount included, stable context identity). Each sync path verified by breaking it. `lint:check`, `test:ci` (2575/2575 + state guards) and `test:e2e` (59/59) all pass.
 
+## ✅ **Window-bridge elimination, Phase 5b: `window.getFilterStateValues`/`setFilterStateValue` deleted (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Follows 5a, which moved their only production caller (`PrSelectionCell`) to the per-key store.
+
+- **Confirmed by grep before deleting:** `index.page.js` never called either bridge (the old `PrSelectionCell` comment claiming it did was wrong); the only remaining users were ~15 test files. Per the standing policy for test-only bridges, the tests were fixed instead of keeping the bridge.
+- **Deleted** from `FilterStateProvider` (with its `flushSync` import). `window.persistViewFilterOptionOverrides` is untouched (Phase 6).
+- **Component tests (11 files)** read and write the state through a new shared helper, `test-fixtures/filter-state-probe.jsx` (`createFilterStateProbe()`: a `<FilterStateProbe />` mounted inside the real `FilterStateProvider`, with `readValues()`/`setValue()`), so they exercise the same Context the components read. `useAppliedFilterSummary.test.jsx` seeds through it too.
+- **`FilterStateProvider.test.jsx`:** the bridge-specific tests (write through the bridge, synchronous-read-after-write, bridges removed on unmount) are gone since there is no bridge to test; the value-change test asserts through a Context reader; +1 test that neither bridge is published.
+- **Integration harness (`index.html.test.js`):** `syncFilterStateFromElement` (68 call sites) and 3 assertions go through `filterStateTestHandle`, the real Provider's Context value captured by a `FilterStateTestHandle` component in the harness root, with `flushSync` to keep the synchronous visibility the bridge gave.
+- Stale comments describing the bridges as live were corrected (`FilterStateProvider` header, `index.page.js`, `react-app.jsx`); historical "used to" mentions elsewhere left as history.
+- Jest 2572/2572 (2575 before: -4 bridge-specific tests, +1 absence test), `lint:check` clean, `test:ci` + state guards pass, `test:e2e` 59/59.
+
 ## 📞 **Getting Help**
 
 **Resources:**

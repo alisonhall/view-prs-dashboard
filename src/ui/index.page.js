@@ -1128,10 +1128,10 @@ const {
 // Context-backed (FilterStateProvider, via ContextRunScriptTextInput.jsx -
 // see FILTER_STATE_FIELD_MAP's "pr-numbers" entry above) and
 // PrSelectionCell.jsx reads/writes the same Context value directly via
-// window.getFilterStateValues()/setFilterStateValue() (helpers/
-// pr-selected-pr-numbers.helpers.js holds the pure toggle logic that used
-// to live in updateSelectedPrNumbers) - no window.* bridge needed for
-// this cluster at all anymore.
+// FilterStateProvider's per-key store (useFilterFieldValue/
+// useFilterFieldActions; helpers/pr-selected-pr-numbers.helpers.js holds
+// the pure toggle logic that used to live in updateSelectedPrNumbers) - no
+// window.* bridge needed for this cluster at all anymore.
 
 // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): shouldAlwaysShowInReviewRows ("always-show-in-review"'s

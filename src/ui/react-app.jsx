@@ -147,7 +147,7 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * into these containers now. FilterStateProvider's own mount effect (a
  * real async fetch) still overwrites these with any saved overrides once
  * it resolves - a direct `setValues` call from inside that effect, not a
- * `window.setFilterStateValue` call reaching in from outside (see
+ * flushSync-wrapped bridge call reaching in from outside (see
  * state/FilterStateProvider.jsx's own header comment).
  */
 // Context-backed checkboxes with no field-specific behavior (see
@@ -194,11 +194,11 @@ const FILTER_STATE_TEXT_FIELDS = [
   // PrSelectionCell.jsx's bulk-select checkboxes read/write its value too
   // (off their own one-off window.getSelectedPrNumbers/updateSelectedPrNumbers
   // bridge). Now Context-backed like its 4 siblings; PrSelectionCell.jsx
-  // reads/writes the same prNumbersInput Context key non-reactively via
-  // window.getFilterStateValues()/setFilterStateValue() instead (the same
-  // generic bridge index.page.js's own vanilla code already uses) rather
-  // than subscribing via useFilterState(), since it's mounted once per
-  // visible table row - a reactive subscription there would re-render
+  // reads/writes the same prNumbersInput Context key through a per-key
+  // store (useFilterFieldValue, Phase 5 of the window-bridge elimination -
+  // it used to use window.getFilterStateValues()/setFilterStateValue())
+  // rather than subscribing via useFilterState(), since it's mounted once
+  // per visible table row - a whole-object subscription there would re-render
   // every row's checkbox on every keystroke in ANY of the 30+ filter
   // fields, not just this one.
   { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
@@ -804,7 +804,7 @@ function AppRoot() {
   useEffect(() => {
     // queueMicrotask, not a direct dispatch: every listener (index.page.js)
     // is invoked synchronously by dispatchEvent, and several call back into
-    // flushSync-wrapped bridges (window.setFilterStateValue) either
+    // flushSync-wrapped bridges either
     // directly or via a fetch
     // continuation that can resolve fast enough to still be "inside"
     // React's own effect-flush for this commit. flushSync reentrant with

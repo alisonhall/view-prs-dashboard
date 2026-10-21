@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { FilterFieldStoreContext, FilterStateContext } from './FilterStateContext';
 import { createFilterValuesStore } from './filterValuesStore';
 import { useDebouncedEffect } from './useDebouncedCallback';
@@ -63,21 +62,21 @@ const CHECKBOX_FIELD_IDS = [
  * file's own effect calling it outright, confirmed to have had zero
  * remaining real effect.
  *
- * Exposes `window.getFilterStateValues()`/`window.setFilterStateValue(key, value)`
- * so vanilla code (the render pipeline's DOM-read call sites) can read/write
- * Context state without needing its own React tree - same
- * handled/fallback bridge shape every Phase 2/3 conversion already uses,
- * just in the read direction as well as the update direction. Confirmed
- * via grep (twelfth follow-up, see REACT_MIGRATION_PLAN.md, "Remaining-
- * effort audit") this pair still has a real, deliberately non-reactive
- * consumer: `PrSelectionCell.jsx` (mounted once per table row - a real
- * Context subscription there would re-render every row on every keystroke
- * in any of 30+ unrelated fields), so both stay.
+ * Used to expose `window.getFilterStateValues()`/`window.setFilterStateValue(key,
+ * value)` so vanilla code could read/write this Context without its own React
+ * tree. Both are gone (Window-bridge elimination Phase 5, see
+ * WINDOW_BRIDGE_ELIMINATION_PLAN.md): grep showed `index.page.js` never called
+ * them, and their one production caller, `PrSelectionCell.jsx` (mounted once
+ * per table row, so it can't afford a whole-object Context subscription), now
+ * subscribes to just its own field through a per-key store this Provider keeps
+ * in step with `values` (`filterValuesStore.jsx`; `useFilterFieldValue`/
+ * `useFilterFieldActions` in FilterStateContext.jsx). Tests read and write the
+ * same state through the Context (`test-fixtures/filter-state-probe.jsx`).
  *
  * Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
  * owns UI option persistence now - a mount-only effect restores saved
  * overrides from `/view-prs/user-defaults` directly into `values` (a plain
- * `setValues` call, not `window.setFilterStateValue`/`flushSync` - this
+ * `setValues` call, not a `flushSync`-wrapped bridge - this
  * runs *inside* this Provider's own effect, not from vanilla code reaching
  * in, so there's no cross-boundary reentrancy to guard against the way
  * `index.page.js`'s old `restoreUiOptionOverrides` needed `queueMicrotask`/
@@ -474,39 +473,31 @@ export function FilterStateProvider({ initialValues, children }) {
     await writeUiSessionOverrides(overrides);
   }, [buildOverrides]);
 
+  // Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // window.getFilterStateValues/window.setFilterStateValue are gone. Their only
+  // production caller was PrSelectionCell (index.page.js never had one),
+  // which now uses the per-key store; the rest were tests, which read and
+  // write this state through the Context like the components do.
+  //
+  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): window.persistRunScriptOptionOverrides is gone -
+  // persistRunScriptOptions is exposed via this Context's own value
+  // instead (below), since its one real caller (react-app.jsx's "Run
+  // script" button, inside AppRoot) is a genuine descendant of this
+  // Provider. window.persistViewFilterOptionOverrides stays - confirmed
+  // it has zero production callers left (persistViewFilterOptions is
+  // triggered entirely by this Provider's own debounced effect below
+  // now), but this suite's own integration tests still use it as a
+  // deterministic "force the persist now" hook; closing that would mean
+  // reworking ~9 call sites across index.html.test.js to drive the real
+  // 150ms debounce via fake timers instead - a separate, dedicated pass
+  // (Phase 6), not bundled into this one.
   useEffect(() => {
-    window.getFilterStateValues = () => valuesRef.current;
-    // Phase 6, Slice 7 (see REACT_MIGRATION_PLAN.md): flushSync-wrapped so
-    // a write is synchronously visible to any window.getFilterStateValues()
-    // read that follows in the same call stack. The 9 multi-select lists'
-    // "pending selections" no longer go through this bridge at all (Phase
-    // 7, sub-phase 7.4 - see pr-pending-multi-select-selections.helpers.js),
-    // so this flushSync is no longer load-bearing for them specifically,
-    // only for the other FILTER_STATE_FIELD_MAP-mapped fields still routed
-    // through here.
-    window.setFilterStateValue = (key, value) => {
-      flushSync(() => setValue(key, value));
-    };
-    // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-    // audit"): window.persistRunScriptOptionOverrides is gone -
-    // persistRunScriptOptions is exposed via this Context's own value
-    // instead (below), since its one real caller (react-app.jsx's "Run
-    // script" button, inside AppRoot) is a genuine descendant of this
-    // Provider. window.persistViewFilterOptionOverrides stays - confirmed
-    // it has zero production callers left (persistViewFilterOptions is
-    // triggered entirely by this Provider's own debounced effect below
-    // now), but this suite's own integration tests still use it as a
-    // deterministic "force the persist now" hook; closing that would mean
-    // reworking ~9 call sites across index.html.test.js to drive the real
-    // 150ms debounce via fake timers instead - a separate, dedicated pass,
-    // not bundled into this one.
     window.persistViewFilterOptionOverrides = (...args) => persistViewFilterOptions(...args);
     return () => {
-      delete window.getFilterStateValues;
-      delete window.setFilterStateValue;
       delete window.persistViewFilterOptionOverrides;
     };
-  }, [setValue, persistRunScriptOptions, persistViewFilterOptions]);
+  }, [persistViewFilterOptions]);
 
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): the useDebouncedEffect call that used to live here,

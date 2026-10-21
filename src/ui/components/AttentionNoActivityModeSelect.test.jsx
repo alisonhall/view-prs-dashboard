@@ -5,9 +5,12 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AttentionNoActivityModeSelect } = require('./AttentionNoActivityModeSelect');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
 const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+
+const filterStateProbe = createFilterStateProbe();
 
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // FilterStateProvider's own buildOverrides() now calls
@@ -20,6 +23,7 @@ const renderWithProvider = (attentionNoActivityMode = 'all') =>
       <AuthorThreadResolutionSelectionProvider>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={{ attentionNoActivityMode }}>
+            <filterStateProbe.FilterStateProbe />
             <AttentionNoActivityModeSelect />
           </FilterStateProvider>
         </ChangeFilterActorSelectionProvider>
@@ -28,10 +32,6 @@ const renderWithProvider = (attentionNoActivityMode = 'all') =>
   );
 
 describe('AttentionNoActivityModeSelect', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-  });
 
   test('given the provider seeds "all", when rendering, then the select starts with that value', () => {
     renderWithProvider('all');
@@ -54,7 +54,7 @@ describe('AttentionNoActivityModeSelect', () => {
     await user.selectOptions(select, 'none');
 
     expect(select).toHaveValue('none');
-    expect(window.getFilterStateValues().attentionNoActivityMode).toBe('none');
+    expect(filterStateProbe.readValues().attentionNoActivityMode).toBe('none');
   });
 
   test('given an external native value change, when the native setter + change event fire, then React state picks it up', () => {

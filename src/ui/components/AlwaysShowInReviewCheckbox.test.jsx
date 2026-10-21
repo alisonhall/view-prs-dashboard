@@ -5,9 +5,12 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AlwaysShowInReviewCheckbox } = require('./AlwaysShowInReviewCheckbox');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
 const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+
+const filterStateProbe = createFilterStateProbe();
 
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // FilterStateProvider's own buildOverrides() now calls
@@ -20,6 +23,7 @@ const renderWithProvider = (initialValues = { scopeMode: 'all', alwaysShowInRevi
       <AuthorThreadResolutionSelectionProvider>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={initialValues}>
+            <filterStateProbe.FilterStateProbe />
             <AlwaysShowInReviewCheckbox />
           </FilterStateProvider>
         </ChangeFilterActorSelectionProvider>
@@ -28,10 +32,6 @@ const renderWithProvider = (initialValues = { scopeMode: 'all', alwaysShowInRevi
   );
 
 describe('AlwaysShowInReviewCheckbox', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-  });
 
   test('given the provider seeds false, when rendering, then starts unchecked', () => {
     renderWithProvider({ scopeMode: 'all', alwaysShowInReview: false });
@@ -58,14 +58,14 @@ describe('AlwaysShowInReviewCheckbox', () => {
     expect(checkbox).not.toBeChecked();
   });
 
-  test('given a user clicks the checkbox, when clicking, then window.getFilterStateValues() reflects the new value', async () => {
+  test('given a user clicks the checkbox, when clicking, then filterStateProbe.readValues() reflects the new value', async () => {
     const user = userEvent.setup();
     renderWithProvider();
     const checkbox = screen.getByRole('checkbox');
 
     await user.click(checkbox);
 
-    expect(window.getFilterStateValues().alwaysShowInReview).toBe(true);
+    expect(filterStateProbe.readValues().alwaysShowInReview).toBe(true);
   });
 
   test('given an external .click() (e.g. some other legacy code restoring a persisted override the old way), when the native click fires, then React state picks it up', async () => {
@@ -78,12 +78,12 @@ describe('AlwaysShowInReviewCheckbox', () => {
     expect(checkbox).toBeChecked();
   });
 
-  test('given window.setFilterStateValue is called directly (the new restore path), when called, then the checkbox reflects the new value', () => {
+  test('given setValue is called directly through the Context (the restore path), when called, then the checkbox reflects the new value', () => {
     renderWithProvider();
     const checkbox = screen.getByRole('checkbox');
 
     act(() => {
-      window.setFilterStateValue('alwaysShowInReview', true);
+      filterStateProbe.setValue('alwaysShowInReview', true);
     });
 
     expect(checkbox).toBeChecked();

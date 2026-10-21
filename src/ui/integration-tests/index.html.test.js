@@ -13,7 +13,7 @@ const React = require("react");
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
 const { render: rtlRender, cleanup, act } = require("@testing-library/react");
-const { createPortal } = require("react-dom");
+const { createPortal, flushSync } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -120,6 +120,16 @@ let fetchMock;
 // createPortal from *inside* that same tree instead of starting a second,
 // disconnected one.
 let mountReactPrTableSlotController = null;
+
+// Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the real FilterStateProvider's Context value, captured by
+// FilterStateTestHandle below. This suite's own helpers (and a few assertions)
+// used to read/write that state through window.getFilterStateValues()/
+// setFilterStateValue() - bridges with no production caller, deleted. null
+// until the harness tree mounts (and after it unmounts), like the bridges
+// were.
+let filterStateTestHandle = null;
+const readFilterStateValues = () => filterStateTestHandle?.values;
 
 const createFetchMock = ({
   userDefaultsOverrides = {},
@@ -655,6 +665,19 @@ function MountedPrTableTree({ initialPayload, selectedRepo }) {
 // FilterStateProvider's buildOverrides() resolves the exact same Context
 // instances MultiSelectListPortals (inside the portaled MountedPrTableTree)
 // writes into.
+// Captures the real FilterStateProvider's Context value for the helpers above.
+function FilterStateTestHandle() {
+  const state = useFilterState();
+  filterStateTestHandle = state;
+  React.useEffect(
+    () => () => {
+      filterStateTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
 function FilterStateTestRootHarness({ initialValues }) {
   const [mountRequest, setMountRequest] = React.useState(null);
 
@@ -716,6 +739,7 @@ function FilterStateTestRootHarness({ initialValues }) {
               // buildFilterStateFieldPortals(), which mounts it as a plain
               // child the same way.
               React.createElement(AuthorThreadResolutionRuleVisibility),
+              React.createElement(FilterStateTestHandle),
               // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
               // audit", cluster 6): RunScriptActionButtonsTestHarness/
               // ActionButtonsTestHarness used to each mount via their own,
@@ -1142,7 +1166,12 @@ const clickMultiSelectCheckbox = async (listId, value, user) => {
 const syncFilterStateFromElement = (element, contextKey) => {
   if (!element) return;
   const value = element.type === "checkbox" ? element.checked : element.value;
-  window.setFilterStateValue?.(contextKey, value);
+  // flushSync: the removed window bridge was flushSync-wrapped, so a write was
+  // visible to a read (or the next assertion) in the same call stack. Callers
+  // here are plain synchronous test code, with no act() around them.
+  if (filterStateTestHandle) {
+    flushSync(() => filterStateTestHandle.setValue(contextKey, value));
+  }
 };
 
 // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -4827,7 +4856,7 @@ describe("index page rendering with Testing Library", () => {
       // source of truth instead of the DOM. Also now async (a fetch), so
       // this needs a waitFor.
       await waitFor(() => {
-        expect(window.getFilterStateValues?.()?.attentionAuthorThreadResolutionMode).toBe(
+        expect(readFilterStateValues()?.attentionAuthorThreadResolutionMode).toBe(
           "deny-only",
         );
       });
@@ -9239,7 +9268,7 @@ describe("index page rendering with Testing Library", () => {
       // static <select> directly (see installFilterStateProviderBridge's
       // own comment) - read the real source of truth instead of the DOM.
       await waitFor(() => {
-        expect(window.getFilterStateValues?.()?.filterPrDifficulty).toBe("4");
+        expect(readFilterStateValues()?.filterPrDifficulty).toBe("4");
       });
     });
   });
@@ -9572,7 +9601,7 @@ describe("index page rendering with Testing Library", () => {
       // <textarea> directly (see installFilterStateProviderBridge's own
       // comment) - read the real source of truth instead of the DOM.
       await waitFor(() => {
-        expect(window.getFilterStateValues?.()?.changeFilterIgnoreCommitPatterns).toBe(
+        expect(readFilterStateValues()?.changeFilterIgnoreCommitPatterns).toBe(
           "^docs:\n^test:\n^chore\\(deps\\):",
         );
       });

@@ -6,6 +6,7 @@ require('@testing-library/jest-dom');
 const { useRowFilterSelection } = require('./RowFilterSelectionContext');
 const { PrDataProvider } = require('./PrDataProvider');
 const { FilterStateProvider } = require('./FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
 const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
@@ -20,6 +21,8 @@ const SCHEDULER_SUMMARY = {
   lastAutoSkipReason: null,
   lastAutoError: null,
 };
+
+const filterStateProbe = createFilterStateProbe();
 
 function Probe() {
   const { summaryText, filterChips } = useAppliedFilterSummary();
@@ -70,6 +73,7 @@ const renderProbe = ({
                 ...filterStateValues,
               }}
             >
+              <filterStateProbe.FilterStateProbe />
               <JobEventsContext.Provider value={{ schedulerSummary }}>
                 <Probe />
               </JobEventsContext.Provider>
@@ -157,8 +161,6 @@ describe('useAppliedFilterSummary', () => {
     });
 
     afterEach(() => {
-      delete window.getFilterStateValues;
-      delete window.setFilterStateValue;
       jest.useRealTimers();
     });
 
@@ -174,7 +176,7 @@ describe('useAppliedFilterSummary', () => {
       expect(screen.getByTestId('summary-text').textContent).toContain('Rows: 1');
 
       act(() => {
-        window.setFilterStateValue('filterPrNumbers', '12');
+        filterStateProbe.setValue('filterPrNumbers', '12');
       });
       // Deliberately NOT advancing timers yet - both debounced values
       // (useFilteredPrRows' internal one, and this hook's own) should
