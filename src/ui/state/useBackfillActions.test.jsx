@@ -208,4 +208,74 @@ describe('useBackfillActions', () => {
     expect(snackbarCalls).toHaveLength(1);
     expect(snackbarCalls[0][0]).toBe('Failed to load backfill status');
   });
+
+  // Regression guard. useBackfillTabAutoRefresh lists `triggerBackfillTabLoad`
+  // as an effect dependency and fires a status+log fetch whenever it changes
+  // while the Backfill tab is visible, and each fetch updates state that
+  // re-renders the caller - so if this hook's return value ever gets a new
+  // identity on re-render (one unstable dependency anywhere in the provider
+  // chain is enough), that becomes a fetch loop. It's stable today only
+  // because every dependency is; this pins it, under the *real* providers
+  // and every kind of update that can re-render the caller in production.
+  describe('result identity under the real providers', () => {
+    const { StatusTextProvider } = require('../components/StatusTextProvider');
+    const { SnackbarProvider } = require('../components/SnackbarProvider');
+    const { OutputTextProvider } = require('../components/OutputTextProvider');
+    const { BackfillStatusProvider } = require('../components/BackfillStatusProvider');
+    const { PrDataProvider } = require('./PrDataProvider');
+    const { useStatusText } = require('./StatusTextContext');
+    const { useSnackbar } = require('./SnackbarContext');
+    const { useOutputText } = require('./OutputTextContext');
+    const { useBackfillStatusActions } = require('./BackfillStatusContext');
+
+    test('given status, output, backfill, snackbar and PR-data updates, when the caller re-renders, then the hook returns the very same object and functions every time', () => {
+      document.body.innerHTML = '<div id="status"></div>';
+      const seenResults = new Set();
+      const seenTriggers = new Set();
+      let renders = 0;
+      let controls;
+      function Caller() {
+        const result = useBackfillActions();
+        seenResults.add(result);
+        seenTriggers.add(result.triggerBackfillTabLoad);
+        renders += 1;
+        controls = {
+          status: useStatusText(),
+          snackbar: useSnackbar(),
+          output: useOutputText(),
+          backfill: useBackfillStatusActions(),
+        };
+        return null;
+      }
+      render(
+        <StatusTextProvider>
+          <SnackbarProvider>
+            <OutputTextProvider>
+              <BackfillStatusProvider>
+                <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+                  <Caller />
+                </PrDataProvider>
+              </BackfillStatusProvider>
+            </OutputTextProvider>
+          </SnackbarProvider>
+        </StatusTextProvider>,
+      );
+      const rendersBefore = renders;
+
+      act(() => controls.status.setStatusText('status'));
+      act(() => controls.output.setOutputText('output'));
+      act(() => controls.backfill.setBackfillLogMessage('log'));
+      act(() => controls.backfill.renderBackfillStatus({ running: true }));
+      act(() => controls.backfill.setIsBackfillActionPending(true));
+      act(() => controls.snackbar.showError('title', 'detail', 0));
+      act(() => {
+        window.updateReactPrTable({ byPrNumber: { 1: { prNumber: '1' } } }, 'owner/repo');
+      });
+
+      // Guard against a vacuous pass: the caller really did re-render.
+      expect(renders).toBeGreaterThan(rendersBefore);
+      expect(seenResults.size).toBe(1);
+      expect(seenTriggers.size).toBe(1);
+    });
+  });
 });

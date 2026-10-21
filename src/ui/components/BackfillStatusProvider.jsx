@@ -34,16 +34,18 @@ const { getBackfillStatusViewModel, getBackfillStateKey } = createPrBackfillHelp
  * that pipeline and useBackfillActions.jsx (state/) one shared, real
  * source of truth instead of two independently-drifting copies.
  *
+ * The badges/button state/details text this Provider's status render
+ * produces used to be pushed into react-app.jsx's AppRoot through
  * `window.updateReactBackfillBadges`/`updateReactBackfillButtonState`/
- * `updateReactBackfillDetailsText` (react-app.jsx's own AppRoot) stay
- * exactly as they are - this Provider calls into them, the same
- * "downstream rendering target" relationship `renderBackfillStatus` always
- * had, just relocated. Deliberately drops the old DOM-existence guard
- * (`#backfill-badges`/`#backfill-details` both present) the old vanilla
- * `renderBackfillStatus` used to bail out on - a Provider doesn't need
- * those DOM nodes to exist to hold its own state, and in every real page
- * load and test harness that mounts this Provider, both containers are
- * already-present static markup, never conditionally rendered.
+ * `updateReactBackfillDetailsText`; as of Phases 3d and 4 they are this
+ * Provider's own state and AppRoot reads them back (see the Phase 4 note
+ * below, and BackfillStatusContext.jsx). Deliberately drops the old
+ * DOM-existence guard (`#backfill-badges`/`#backfill-details` both
+ * present) the old vanilla `renderBackfillStatus` used to bail out on - a
+ * Provider doesn't need those DOM nodes to exist to hold its own state, and
+ * in every real page load and test harness that mounts this Provider, both
+ * containers are already-present static markup, never conditionally
+ * rendered.
  *
  * Reads/writes go through refs, not the `useState` values directly,
  * inside the bridge functions - `handleBackfillAction` (pr-backfill-

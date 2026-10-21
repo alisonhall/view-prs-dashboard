@@ -249,6 +249,59 @@ describe('BackfillStatusProvider', () => {
     });
   });
 
+  // The two real Providers wired together in mountAppRoot()'s order. The
+  // other tests here (and PrDataProvider.test.jsx) feed pollBackfillStatus a
+  // mocked tracking value; this proves the real chain end to end.
+  describe('real BackfillStatusProvider + PrDataProvider wiring', () => {
+    test('given a status render reports a running backfill, when PrDataProvider polls, then it reloads status; once it stops, it does not', async () => {
+      const loadBackfillStatus = jest.fn().mockResolvedValue({});
+      window.loadBackfillStatus = loadBackfillStatus;
+      let actions;
+      let pollBackfillStatus;
+      function Capture() {
+        actions = useBackfillStatusActions();
+        pollBackfillStatus = usePrData().pollBackfillStatus;
+        return null;
+      }
+      render(
+        <BackfillStatusProvider>
+          <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+            <Capture />
+          </PrDataProvider>
+        </BackfillStatusProvider>,
+      );
+
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+      expect(loadBackfillStatus).not.toHaveBeenCalled();
+
+      act(() => actions.renderBackfillStatus({ running: true }));
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+      expect(loadBackfillStatus).toHaveBeenCalledTimes(1);
+      expect(loadBackfillStatus).toHaveBeenCalledWith({ announce: true, includeLog: true });
+
+      // A pending backfill action suppresses the poll, read live through the
+      // function the first render captured.
+      act(() => actions.setIsBackfillActionPending(true));
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+      expect(loadBackfillStatus).toHaveBeenCalledTimes(1);
+
+      act(() => actions.setIsBackfillActionPending(false));
+      act(() => actions.renderBackfillStatus({ running: false }));
+      await act(async () => {
+        await pollBackfillStatus();
+      });
+      expect(loadBackfillStatus).toHaveBeenCalledTimes(1);
+
+      delete window.loadBackfillStatus;
+    });
+  });
+
   describe('vanilla bridges (index.page.js has no Context access)', () => {
     test('given the provider mounts, when read, then the bridges exist and the two deleted ones do not', () => {
       mountProvider();

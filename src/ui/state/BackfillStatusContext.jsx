@@ -9,11 +9,12 @@ import { createContext, useContext } from 'react';
  * `window.getBackfillTrackingState`/`setSupportsBackfillLogPolling`/
  * `setIsBackfillActionPending` reverse bridges. This Context makes
  * BackfillStatusProvider.jsx the single real owner - both index.page.js's
- * own vanilla `loadBackfillStatus` instance and useBackfillActions.jsx's
- * hook now read/write the exact same state, via the same bridges the
- * Provider itself answers (index.page.js has no Context access, so it
- * can't call useBackfillStatus() directly - see that Provider's own
- * comment).
+ * own vanilla `loadBackfillStatus` instance and the React side read/write
+ * the exact same state. React code reaches it through this file's two
+ * Contexts (state via useBackfillStatus(), stable functions via
+ * useBackfillStatusActions()); index.page.js has no Context access, so it
+ * still goes through the `window.*` bridges the Provider publishes - see
+ * that Provider's own comment.
  *
  * Default value (unwrapped) is a safe no-op shape, matching every other
  * Context in this app.

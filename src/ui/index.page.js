@@ -792,10 +792,10 @@ const { setupMultiSelectDropdownClosing } = prFilterPanelHelperFactory.createPrF
 // latestBackfillStatus's own cache+replay is kept, repointed at the
 // bridge - the race it exists for (loadBackfillStatus resolving before
 // react-app.jsx has mounted) is unchanged by this move: whatever answers
-// window.renderBackfillStatus (today BackfillStatusProvider, same as
-// AppRoot's own window.updateReactBackfillBadges/etc. bridges) mounts at
-// the same time AppRoot does either way, so the same 'viewprs:react-ready'
-// replay below still closes the gap - see that listener's own comment.
+// window.renderBackfillStatus (today BackfillStatusProvider, which owns the
+// badges/details/button state it renders) mounts at the same time AppRoot
+// does either way, so the same 'viewprs:react-ready' replay below still
+// closes the gap - see that listener's own comment.
 let latestBackfillStatus = null;
 
 const renderBackfillStatus = (backfillRaw = {}) => {
@@ -1622,13 +1622,13 @@ const initPage = () => {
   // - a plain "fetch then setState" running inside React's own lifecycle,
   // not vanilla code reaching in, so none of the old queueMicrotask/
   // dual-pass machinery is needed any more.
-  // The Backfill tab's status badges (<BackfillBadges />, mounted via
-  // window.updateReactBackfillBadges) have the exact same load-order race
-  // as the PR table above: loadBackfillStatus() below often resolves
-  // before react-app.jsx has mounted, and renderBackfillStatus's
-  // window.updateReactBackfillBadges?.(...) call silently no-ops when the
-  // bridge isn't there yet - with no retry, unlike the PR table and filter
-  // dropdowns, so the badges stayed permanently empty. Only actually
+  // The Backfill tab's status (badges, details text, button state - all
+  // owned by BackfillStatusProvider, which AppRoot reads) has the exact same
+  // load-order race as the PR table above: loadBackfillStatus() below often
+  // resolves before react-app.jsx has mounted, and the
+  // window.renderBackfillStatus?.(...) call silently no-ops when the
+  // Provider's bridge isn't there yet - with no retry, unlike the PR table
+  // and filter dropdowns, so the badges stayed permanently empty. Only actually
   // reproduces when React's mount is slow enough to lose the race (a real
   // CI-only flake - always won locally, confirmed failing intermittently
   // in CI's slower/shared runners). Re-render once React signals ready.

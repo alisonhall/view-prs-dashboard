@@ -4,8 +4,9 @@
  *
  * Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * replaces `index.page.js`'s vanilla click-wiring for these 3 buttons.
- * `disabled` comes from `buttonState` (pushed by `index.page.js`'s
- * `renderBackfillStatus` via `window.updateReactBackfillButtonState`,
+ * `disabled` comes from `buttonState` (BackfillStatusProvider's state, read
+ * back by AppRoot and set by that Provider's status render - since Phase 3d,
+ * no longer pushed through `window.updateReactBackfillButtonState` -
  * itself derived from `getBackfillStatusViewModel` - see that helper's own
  * comment for why this is richer than a simple in-flight "pending" flag:
  * Start also stays disabled while a backfill is already running, Stop

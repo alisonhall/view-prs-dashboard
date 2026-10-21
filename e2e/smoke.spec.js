@@ -2193,6 +2193,35 @@ test("the Backfill tab's details and log text replace their loading placeholders
   await expect(page.locator("#backfill-log-refresh-btn")).toBeEnabled();
 });
 
+test("opening the Backfill tab and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
+  // useBackfillTabAutoRefresh lists useBackfillActions()'s
+  // triggerBackfillTabLoad as an effect dependency and re-fetches whenever
+  // that function's identity changes while the tab is visible - and each
+  // fetch updates state that re-renders its caller. So a single unstable
+  // dependency anywhere in the provider chain would turn this tab into a
+  // request loop. jsdom pins the identity (useBackfillActions.test.jsx); this
+  // proves it from the network side in a real browser. Read-only GETs only.
+  const counts = { status: 0, log: 0 };
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() !== "GET") return;
+    if (url.pathname === "/view-prs/backfill") counts.status += 1;
+    if (url.pathname === "/view-prs/backfill/log") counts.log += 1;
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Backfill" }).click();
+  await expect(page.locator("#backfill-details")).not.toHaveText("Loading backfill status...");
+
+  // Sit idle long enough that a loop would pile up dozens of requests.
+  await page.waitForTimeout(3000);
+
+  // A page load plus one tab activation: a handful at most, never a stream.
+  expect(counts.status).toBeGreaterThan(0);
+  expect(counts.status).toBeLessThanOrEqual(5);
+  expect(counts.log).toBeLessThanOrEqual(5);
+});
+
 test("Action Log tab loads its entries on its very first visit, not just on a second one", async ({ page }) => {
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
   // ActionLogSection is now lazy-loaded, mounting only once this tab is
