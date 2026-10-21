@@ -611,28 +611,38 @@ function createCommandExecutionHelpers({
    * false here just means "not found this way" - isCommandAvailable falls
    * back to the login-shell check below for that case.
    *
+   * Never used on Windows: there, a file on PATH proves nothing. The
+   * `bash.exe` in System32 is a WSL launcher stub that exists on machines
+   * with no WSL distro installed and can't run a script, so finding it must
+   * not count as "bash is available" (run-bash-script.js's "requires bash"
+   * message depends on that check actually *running* bash). Windows also has
+   * no executable bit to check. It keeps the exact login-shell behavior it
+   * always had.
+   *
    * @param {string} cmd - Command name (plain names only, no path separators)
    * @returns {boolean} True if an executable of that name is on PATH
    */
   const isExecutableOnProcessPath = (cmd) => {
-    if (!/^[A-Za-z0-9._+-]+$/.test(cmd)) {
+    if (process.platform === "win32") {
+      return false;
+    }
+    // Not just a regex test: that coerces null/undefined/numbers to strings and
+    // passes, and path.join below then throws on a non-string.
+    if (typeof cmd !== "string" || !/^[A-Za-z0-9._+-]+$/.test(cmd)) {
       return false;
     }
     const dirs = String((process.env && process.env.PATH) || "")
       .split(path.delimiter)
       .filter(Boolean);
-    const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat", ".com"] : [""];
-    return dirs.some((dir) =>
-      extensions.some((extension) => {
-        const candidate = path.join(dir, `${cmd}${extension}`);
-        try {
-          fs.accessSync(candidate, fs.constants.X_OK);
-          return fs.statSync(candidate).isFile();
-        } catch (_error) {
-          return false;
-        }
-      }),
-    );
+    return dirs.some((dir) => {
+      const candidate = path.join(dir, cmd);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return fs.statSync(candidate).isFile();
+      } catch (_error) {
+        return false;
+      }
+    });
   };
 
   /**

@@ -2721,6 +2721,20 @@ Re-reading Phase 4 (and Phases 1-3 with it) for what could go wrong that no exis
 - **Unrelated flake seen once, not fixed:** `src/server/integration-tests/app.events-routes.test.js` failed once in a full parallel run and then passed 4/4 alone and 3/3 more full runs. Its heartbeat test uses a 50 ms interval and a fixed 100 ms wait, so a loaded machine can miss the window. Pre-existing; left alone.
 - Tests: +2 jest (identity guard, real-wiring), +1 Playwright. Jest 2544/2544, eslint clean, Playwright 58/58.
 
+## ✅ **CI failure on Windows: the `PATH`-first dependency check is unsafe there (2026-10-21)**
+
+Run `39663610747` (push of `dcb8db8`): lint, ubuntu `test` and `e2e` passed; **`test (windows-latest)`** failed with 2 tests. Not a flake: both trace to the `isCommandAvailable` `PATH`-lookup I added in `03dadc1` (see "Playwright pre-existing failures").
+
+1. **`run-bash-script.test.js` "given bash is unavailable..." (a real bug, not just a test problem).** The test strips every `bin` directory from `PATH` to simulate "no bash". On the runner `C:\Windows\System32\bash.exe` is the **WSL launcher stub** (present with no distro installed, can't run a script) and isn't stripped. Before my change the check ran `bash -lc "command -v bash"`, the stub failed, and bash was correctly reported unavailable. With a `PATH` shortcut, merely *finding* the stub made it report "available", so `run-bash-script.js` skipped its actionable "requires bash ... Git Bash" message and the user got an empty failure. This is exactly the trade-off flagged earlier ("a command found on `PATH` counts without checking the login shell"); on Windows a file on `PATH` can be a non-functional stub.
+2. **`command-execution-helpers.test.js` "file is not executable".** My test was POSIX-only: Windows has no executable bit, so `accessSync(X_OK)` succeeds for any readable file.
+
+**Fix:** the `PATH` shortcut never runs on Windows (`process.platform === "win32"` -> always the real `bash -lc` check, i.e. exactly the previous behavior there); the not-executable assertion is skipped on a real Windows filesystem. Both `command-execution-helpers.js` and `check-deps.js`.
+
+**A second regression I introduced while fixing it, caught by running the exact CI command, not bare `jest`:** simplifying the lookup (dropping the Windows extension loop) replaced `path.join(dir, \`${cmd}${ext}\`)`, which coerced `null` to `"null"`, with `path.join(dir, cmd)`, which throws on a non-string; `app.scheduler-timing.test.js` "isCommandAvailable handles null input" failed (deterministically, 3/3). The name is now `typeof`-checked before the regex (a bare regex `.test` coerces `null`/`undefined`/numbers to strings and passes). My earlier full `jest` run predated that edit, which is why `npm run lint:check`, `npm run test:ci` and `npm run test:e2e` were run as CI does.
+
+- Tests: +3 `command-execution-helpers` (Windows with a file of that name on `PATH` still runs the real check; non-string names x3 via `test.each`; the not-executable and directory cases split), +2 `check-deps` (POSIX shortcut vs Windows, non-string names). Each new test verified to fail against the pre-fix source; the `check-deps` non-string test was first vacuous (that file's empty `PATH` meant nothing was ever joined) and was fixed to use a non-empty `PATH`.
+- Verified locally (macOS): `lint:check` clean; `test:ci` 2552/2552 with the state guards; `test:e2e` 58/58. **Not verified on Windows itself** - no Windows runner here; the Windows behavior is pinned by injecting `platform: "win32"` and by the unchanged pre-existing code path, and needs the next CI run to confirm.
+
 ## 📞 **Getting Help**
 
 **Resources:**

@@ -122,24 +122,30 @@ const getInstallHint = (install) =>
 // (a login shell sources the whole shell profile - ~1.4s on a machine that
 // loads nvm/pyenv). Same logic as isExecutableOnProcessPath in
 // src/server/helpers/command-execution-helpers.js, duplicated because this
-// CLI script has no shared import path to that module.
+// CLI script has no shared import path to that module. Never used on
+// Windows, for the same reason as there: a file on PATH proves nothing
+// (System32's bash.exe is a WSL stub that can't run scripts), and
+// run-bash-script.js's "requires bash" message depends on this check
+// actually running bash.
 const isExecutableOnProcessPath = (command) => {
-  if (!/^[A-Za-z0-9._+-]+$/.test(command)) {
+  if (process.platform === "win32") {
+    return false;
+  }
+  // Not just a regex test: that coerces null/undefined/numbers to strings and
+  // passes, and path.join below then throws on a non-string.
+  if (typeof command !== "string" || !/^[A-Za-z0-9._+-]+$/.test(command)) {
     return false;
   }
   const dirs = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
-  const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat", ".com"] : [""];
-  return dirs.some((dir) =>
-    extensions.some((extension) => {
-      const candidate = path.join(dir, `${command}${extension}`);
-      try {
-        fs.accessSync(candidate, fs.constants.X_OK);
-        return fs.statSync(candidate).isFile();
-      } catch (_error) {
-        return false;
-      }
-    }),
-  );
+  return dirs.some((dir) => {
+    const candidate = path.join(dir, command);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return fs.statSync(candidate).isFile();
+    } catch (_error) {
+      return false;
+    }
+  });
 };
 
 // PATH first, then a login shell (what the scripts themselves run under) only

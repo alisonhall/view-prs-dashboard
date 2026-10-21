@@ -1,5 +1,6 @@
 jest.mock("child_process");
 
+const path = require("path");
 const { spawnSync } = require("child_process");
 const {
   REQUIRED_SYSTEM_COMMANDS,
@@ -67,6 +68,63 @@ describe("check-deps", () => {
       expect(ghEntry.available).toBe(false);
       const bashEntry = results.find((entry) => entry.command === "bash");
       expect(bashEntry.available).toBe(true);
+    });
+
+    test("a command found on PATH is available without starting a shell, except on Windows where a file on PATH proves nothing", () => {
+      // Regression (found by CI on windows-latest): System32\\bash.exe is a WSL
+      // launcher stub that exists with no distro installed and can't run a
+      // script. A PATH shortcut there reported "bash is available", so
+      // run-bash-script.js never printed its "requires bash" message. On
+      // Windows the real `bash -lc` check must always run.
+      const fs = require("fs");
+      const os = require("os");
+      const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-deps-path-"));
+      fs.writeFileSync(path.join(binDir, "nohup"), "#!/bin/sh\n", { mode: 0o755 });
+      const originalPlatform = process.platform;
+      try {
+        process.env.PATH = binDir;
+        spawnSync.mockReset();
+        spawnSync.mockReturnValue({ status: 1 });
+
+        // POSIX: found directly on PATH, no shell spawned for it.
+        Object.defineProperty(process, "platform", { value: "linux" });
+        const posix = evaluateSystemCommands().find((entry) => entry.command === "nohup");
+        expect(posix.available).toBe(true);
+        expect(spawnSync.mock.calls.some(([, args]) => String(args[1]).includes("nohup"))).toBe(false);
+
+        // Windows: the same file on PATH is ignored; only the real check counts.
+        spawnSync.mockClear();
+        Object.defineProperty(process, "platform", { value: "win32" });
+        const windows = evaluateSystemCommands().find((entry) => entry.command === "nohup");
+        expect(windows.available).toBe(false);
+        expect(spawnSync.mock.calls.some(([, args]) => String(args[1]).includes("nohup"))).toBe(true);
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        fs.rmSync(binDir, { recursive: true, force: true });
+      }
+    });
+
+    test("a non-string command name never throws out of the PATH lookup", () => {
+      // check-deps.js's own isCommandAvailable isn't exported; REQUIRED_SYSTEM_COMMANDS
+      // entries go through it, so poison one with non-strings and confirm the
+      // evaluation still completes (the same null case app.scheduler-timing.test.js
+      // exercises on the server's copy).
+      spawnSync.mockReset();
+      spawnSync.mockReturnValue({ status: 1 });
+      // A non-empty PATH: with an empty one (this file's default) the lookup
+      // has no directories to join the name onto, so nothing could throw.
+      process.env.PATH = require("os").tmpdir();
+      const original = REQUIRED_SYSTEM_COMMANDS.map((entry) => entry.command);
+      try {
+        [null, undefined, 42].forEach((value, index) => {
+          REQUIRED_SYSTEM_COMMANDS[index].command = value;
+        });
+        expect(() => evaluateSystemCommands()).not.toThrow();
+      } finally {
+        REQUIRED_SYSTEM_COMMANDS.forEach((entry, index) => {
+          entry.command = original[index];
+        });
+      }
     });
 
     test("reports jq as available via the bundled node-jq binary even when `command -v jq` itself would fail", () => {
