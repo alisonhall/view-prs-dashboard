@@ -5,6 +5,7 @@ import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpe
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { useBackfillStatus } from './BackfillStatusContext';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 
@@ -75,6 +76,11 @@ export function useBackfillActions() {
   // now, same "genuine descendant, wrapped from outside AppRoot" reasoning
   // as setStatusText above.
   const { showError } = useSnackbar();
+  // BackfillStatusProvider wraps AppRoot from mountAppRoot(), so this hook
+  // (called from AppRoot's body) is a genuine descendant - no window.*
+  // bridge needed for the tracking flags or their setters.
+  const { getBackfillTrackingState, setSupportsBackfillLogPolling, setIsBackfillActionPending } =
+    useBackfillStatus();
 
   return useMemo(() => {
     const beginRequestActivity = window.beginRequestActivity || (() => () => {});
@@ -116,13 +122,10 @@ export function useBackfillActions() {
         // caller.
         autoScrollBackfillLogToBottom: () => {},
         formatBackfillLogMessage,
-        getSupportsBackfillLogPolling: () =>
-          window.getBackfillTrackingState?.()?.supportsBackfillLogPolling ?? true,
-        setSupportsBackfillLogPolling: (value) =>
-          window.setSupportsBackfillLogPolling?.(value),
-        getIsBackfillRunning: () =>
-          window.getBackfillTrackingState?.()?.isBackfillRunning ?? false,
-        setIsBackfillActionPending: (value) => window.setIsBackfillActionPending?.(value),
+        getSupportsBackfillLogPolling: () => getBackfillTrackingState().supportsBackfillLogPolling,
+        setSupportsBackfillLogPolling,
+        getIsBackfillRunning: () => getBackfillTrackingState().isBackfillRunning,
+        setIsBackfillActionPending,
         backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
       });
 
@@ -205,5 +208,11 @@ export function useBackfillActions() {
       refreshBackfillLogTail,
       triggerBackfillTabLoad,
     };
-  }, [setStatusText, showError]);
+  }, [
+    setStatusText,
+    showError,
+    getBackfillTrackingState,
+    setSupportsBackfillLogPolling,
+    setIsBackfillActionPending,
+  ]);
 }

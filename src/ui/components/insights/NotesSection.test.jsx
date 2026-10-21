@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen, fireEvent, cleanup } = require('@testing-library/react');
+const { render: baseRender, screen, fireEvent, cleanup } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 
 // postJson is a plain ES import now (Phase 7, see REACT_MIGRATION_PLAN.md) -
@@ -12,8 +12,19 @@ jest.mock('../../helpers/pr-http.helpers.js', () => ({
 }));
 
 const { NotesSection } = require('./NotesSection');
+const { PrDataContext } = require('../../state/PrDataContext');
 const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
 const { postJson } = require('../../helpers/pr-http.helpers.js');
+
+// NotesSection reads beginRequestActivity from usePrData() now, not
+// window.beginRequestActivity (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+function render(ui) {
+  return baseRender(
+    <PrDataContext.Provider value={{ beginRequestActivity: () => () => {} }}>
+      {ui}
+    </PrDataContext.Provider>,
+  );
+}
 
 function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
   return render(

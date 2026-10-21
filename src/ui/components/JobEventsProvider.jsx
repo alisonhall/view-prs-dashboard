@@ -34,7 +34,7 @@ const {
  * independent of this drawer's own UI. And on an autoRefresh/
  * mergedQueueDrain "finish" job event, OR a "data-changed" event (fired by
  * ack/apply-label/manual-run/request-more once one of those routes actually
- * wrote to the stored PR data file), it calls window.pollForDataChanges
+ * wrote to the stored PR data file), it calls PrDataContext's pollForDataChanges
  * immediately rather than waiting for that poll's own next tick - the
  * interval itself stays as a slower safety net, since not every possible
  * write path is instrumented (e.g. anything that bypasses these routes
@@ -47,7 +47,13 @@ export function JobEventsProvider({ children }) {
   // is only used below as an optional seed (see the schedulerSummary
   // useMemo's own comment), never required for this Provider's main job
   // (owning the EventSource connection).
-  const payload = useContext(PrDataContext)?.payload;
+  const prDataContext = useContext(PrDataContext);
+  const payload = prDataContext?.payload;
+  // Ref, not an effect dependency: the SSE effect below must not tear down
+  // and reconnect the EventSource if PrDataProvider ever rebuilds this
+  // function's identity.
+  const pollForDataChangesRef = useRef(null);
+  pollForDataChangesRef.current = prDataContext?.pollForDataChanges;
   const [jobEventsState, setJobEventsState] = useState(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
   const lastEventAtRef = useRef(null);
@@ -100,7 +106,7 @@ export function JobEventsProvider({ children }) {
       // connected tab.
       const isDataChangedEvent = envelope?.type === 'data-changed';
       if (isDataWritingJobFinish || isDataChangedEvent) {
-        window.pollForDataChanges?.();
+        pollForDataChangesRef.current?.();
       }
     };
 

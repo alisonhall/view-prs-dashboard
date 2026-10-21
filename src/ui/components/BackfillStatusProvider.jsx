@@ -129,8 +129,17 @@ export function BackfillStatusProvider({ children }) {
     };
   }, [setStatusText]);
 
+  // Reads the refs (not the state above), so a caller holding this across
+  // an async flow still sees a setter's write immediately - same
+  // synchronous-read semantics window.getBackfillTrackingState has.
+  const getBackfillTrackingState = () => ({
+    supportsBackfillLogPolling: supportsBackfillLogPollingRef.current,
+    isBackfillRunning: isBackfillRunningRef.current,
+  });
+
   const value = useMemo(
     () => ({
+      getBackfillTrackingState,
       isBackfillRunning,
       isBackfillActionPending,
       supportsBackfillLogPolling,

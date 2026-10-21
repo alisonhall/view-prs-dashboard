@@ -5,6 +5,7 @@ require('@testing-library/jest-dom');
 const { useBackfillActions } = require('./useBackfillActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
+const { BackfillStatusContext } = require('./BackfillStatusContext');
 
 function Probe({ onReady }) {
   const backfillActions = useBackfillActions();
@@ -20,11 +21,33 @@ function Probe({ onReady }) {
 // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // showErrorNotification now comes from useSnackbar() directly, not
 // window.showErrorNotification - same real Provider value approach.
-const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
+//
+// Phase 1 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the backfill tracking
+// flags and their setters come from BackfillStatusContext directly, not
+// window.getBackfillTrackingState/setSupportsBackfillLogPolling/
+// setIsBackfillActionPending.
+const renderProbe = (
+  onReady,
+  setStatusText = () => {},
+  showError = () => {},
+  backfillStatus = {},
+) =>
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
       <SnackbarContext.Provider value={{ showError }}>
-        <Probe onReady={onReady} />
+        <BackfillStatusContext.Provider
+          value={{
+            getBackfillTrackingState: () => ({
+              supportsBackfillLogPolling: true,
+              isBackfillRunning: false,
+            }),
+            setSupportsBackfillLogPolling: () => {},
+            setIsBackfillActionPending: () => {},
+            ...backfillStatus,
+          }}
+        >
+          <Probe onReady={onReady} />
+        </BackfillStatusContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
@@ -34,9 +57,6 @@ const BACKFILL_WINDOW_BRIDGES = [
   'updateReactBackfillButtonState',
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
-  'getBackfillTrackingState',
-  'setSupportsBackfillLogPolling',
-  'setIsBackfillActionPending',
   'renderBackfillStatus',
   'beginRequestActivity',
 ];
@@ -55,13 +75,7 @@ describe('useBackfillActions', () => {
     window.updateReactBackfillButtonState = (state) => buttonStates.push(state);
     window.updateReactOutputText = jest.fn();
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
-    window.getBackfillTrackingState = () => ({
-      supportsBackfillLogPolling: true,
-      isBackfillRunning: false,
-      isBackfillActionPending: false,
-    });
-    window.setSupportsBackfillLogPolling = jest.fn();
-    window.setIsBackfillActionPending = jest.fn();
+    const setIsBackfillActionPending = jest.fn();
     window.setBackfillLogMessage = jest.fn();
     window.beginRequestActivity = jest.fn(() => finishActivity);
     global.fetch = jest.fn().mockResolvedValue({
@@ -71,7 +85,9 @@ describe('useBackfillActions', () => {
     });
 
     let backfillActions;
-    renderProbe((value) => { backfillActions = value; }, (message) => statusMessages.push(message));
+    renderProbe((value) => { backfillActions = value; }, (message) => statusMessages.push(message), undefined, {
+      setIsBackfillActionPending,
+    });
     await act(async () => {
       await backfillActions.handleBackfillAction('start');
     });
@@ -84,8 +100,8 @@ describe('useBackfillActions', () => {
     });
     expect(statusMessages).toContain('Starting backfill...');
     expect(statusMessages).toContain('Backfill started');
-    expect(window.setIsBackfillActionPending).toHaveBeenCalledWith(true);
-    expect(window.setIsBackfillActionPending).toHaveBeenCalledWith(false);
+    expect(setIsBackfillActionPending).toHaveBeenCalledWith(true);
+    expect(setIsBackfillActionPending).toHaveBeenCalledWith(false);
     expect(updateBackfillStatusFromPayload).toHaveBeenCalled();
     expect(finishActivity).toHaveBeenCalledTimes(1);
   });

@@ -76,7 +76,6 @@ describe('JobEventsProvider', () => {
       window.EventSource = originalEventSource;
     }
     delete window.renderSchedulerStatus;
-    delete window.pollForDataChanges;
     jest.useRealTimers();
   });
 
@@ -206,12 +205,14 @@ describe('JobEventsProvider', () => {
     expect(window.renderSchedulerStatus).toHaveBeenCalledWith({ isAutoRunInProgress: true });
   });
 
-  test('an autoRefresh finish event triggers an immediate window.pollForDataChanges call', () => {
-    window.pollForDataChanges = jest.fn();
+  test('an autoRefresh finish event triggers an immediate pollForDataChanges call', () => {
+    const pollForDataChanges = jest.fn();
     render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
     );
     const instance = FakeEventSource.instances[0];
 
@@ -219,15 +220,17 @@ describe('JobEventsProvider', () => {
       instance.emit('job', { type: 'job', job: 'autoRefresh', phase: 'finish', seq: 1, ok: true });
     });
 
-    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
-  test('a "data-changed" event (from ack/apply-label/manual-run/request-more) triggers an immediate window.pollForDataChanges call', () => {
-    window.pollForDataChanges = jest.fn();
+  test('a "data-changed" event (from ack/apply-label/manual-run/request-more) triggers an immediate pollForDataChanges call', () => {
+    const pollForDataChanges = jest.fn();
     render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
     );
     const instance = FakeEventSource.instances[0];
 
@@ -235,15 +238,17 @@ describe('JobEventsProvider', () => {
       instance.emit('data-changed', { type: 'data-changed', seq: 1, at: '2026-01-01T00:00:00.000Z' });
     });
 
-    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
-  test('a quickCheck finish event does not trigger window.pollForDataChanges', () => {
-    window.pollForDataChanges = jest.fn();
+  test('a quickCheck finish event does not trigger pollForDataChanges', () => {
+    const pollForDataChanges = jest.fn();
     render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
     );
     const instance = FakeEventSource.instances[0];
 
@@ -251,7 +256,7 @@ describe('JobEventsProvider', () => {
       instance.emit('job', { type: 'job', job: 'quickCheck', phase: 'finish', seq: 1, ok: true });
     });
 
-    expect(window.pollForDataChanges).not.toHaveBeenCalled();
+    expect(pollForDataChanges).not.toHaveBeenCalled();
   });
 
   test('onerror while CONNECTING marks the connection reconnecting without opening a new EventSource', () => {

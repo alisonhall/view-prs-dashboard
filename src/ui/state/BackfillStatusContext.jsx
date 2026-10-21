@@ -19,6 +19,7 @@ import { createContext, useContext } from 'react';
  * Context in this app.
  */
 export const BackfillStatusContext = createContext({
+  getBackfillTrackingState: () => ({ supportsBackfillLogPolling: true, isBackfillRunning: false }),
   isBackfillRunning: false,
   isBackfillActionPending: false,
   supportsBackfillLogPolling: true,

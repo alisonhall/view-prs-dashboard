@@ -2599,6 +2599,17 @@ Asked directly, after H.11: how much is actually left to fully migrate everythin
 
 ---
 
+## ✅ **Window-bridge elimination, Phase 1: three same-tree hook swaps (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+
+- `JobEventsProvider.jsx` now calls `pollForDataChanges` from `PrDataContext` (held in a ref so the SSE effect never reconnects on identity change) instead of `window.pollForDataChanges`.
+- `useBackfillActions.jsx` now takes the tracking flags and setters from `useBackfillStatus()`. `BackfillStatusProvider` gained a ref-backed `getBackfillTrackingState` on its Context, pulled forward from Phase 4: state values captured in the hook's `useMemo` would go stale mid-flow, which the old bridge never did.
+- `NotesSection.jsx` now uses `usePrData().beginRequestActivity`. Four test files that render a real `NotesSection` (`NotesSection`, `PrRow`, `PrInsightsRow`, `NotesDirtyProvider`) now supply a `PrDataContext`.
+- Tests: 1572 pass, 1 fails (`InsightsHookSection`, pre-existing: `dompurify` isn't installed). No tests added or removed.
+- Not run: `eslint` (`eslint-plugin-react-hooks` missing from node_modules) and Playwright.
+- Environment note: the default shell is Node 16, but Jest 30 needs Node 18+; use `PATH=/opt/homebrew/bin:$PATH`.
+
 ## 📞 **Getting Help**
 
 **Resources:**
