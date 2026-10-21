@@ -2617,7 +2617,17 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Mo
 - Both Providers moved out of `AppRoot`'s returned JSX to wrap it from `mountAppRoot()`, inside `SnackbarProvider`, with `AutoRenderBlockingProvider` outside `PrDataProvider`. `<PrDataPolling/>` moved with them as `AppRoot`'s sibling. The inner `AutoRenderBlockingProvider` that wrapped just the two blocked-status portals is gone; those portals resolve to the outer one.
 - Checked beforehand that neither Provider reads a Context `AppRoot`'s JSX rendered between them: both only use `StatusText`/`Snackbar`, already outer.
 - Unlocks Phase 3: `AppRoot`'s body is now inside both trees.
-- Verification (Node 22.22.0): eslint clean; jest 2488/2488; Playwright 52 pass, 3 fail. The same 3 fail on the untouched baseline (PR JSON modal, Quick check over SSE, Trigger auto run; the JSON modal one passes in isolation), so they are environmental/order-dependent, not from this change.
+- Verification (Node 22.22.0): eslint clean; jest 2488/2488; Playwright 52 pass, 3 fail. The same 3 fail on the pre-Phase-1 baseline (`2a02ebb`): PR JSON modal, Quick check over SSE, Trigger auto run. Root-caused afterwards, see "Playwright pre-existing failures" below.
+
+## 🔎 **Playwright pre-existing failures: root cause is a slow, synchronous dependency check (2026-10-21)**
+
+Not caused by the window-bridge work (same 3 failures at `2a02ebb`, before Phase 1).
+
+- **Cause:** `isCommandAvailable` in `src/server/helpers/command-execution-helpers.js` (and `check-deps.js`) runs `spawnSync("bash", ["-lc", "command -v <cmd>"])`, a *login* shell per required command, on the request path. `getDependencyStatus()` is called synchronously by `POST /run-auto`. On a machine whose login shell is slow (here ~1.4s per spawn, measured: `bash -lc` 1.4s vs `bash -c` 8ms), the route blocks the whole server event loop for ~5.9s.
+- **Trigger auto run test:** the route answers 202 after 5.9s; the test allows 5s for the button to settle. Fails deterministically on this machine, also with `gh` unauthenticated (ruled out `gh` network time).
+- **Quick check over SSE and PR JSON modal:** both pass in isolation once the dev server's Vite dependency cache is warm; they fail in the full run or on a cold cache while the server is blocked or re-optimizing. The blocked-event-loop link is a strong fit but not proven for these two.
+- **Not caused by:** `gh` speed (0.4-1.1s), the dotfiles `PATH` change (sourcing `common.sh` is ~1.4s before and after), or any Phase 1/2 change.
+- **Not fixed.** Options: check availability by scanning `PATH` in Node (no shell), or cache the result for the process lifetime, or at least drop `-l`.
 
 ## 📞 **Getting Help**
 
