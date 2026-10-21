@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { FilterStateContext } from './FilterStateContext';
+import { FilterFieldStoreContext, FilterStateContext } from './FilterStateContext';
+import { createFilterValuesStore } from './filterValuesStore';
 import { useDebouncedEffect } from './useDebouncedCallback';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSelectionContext';
@@ -118,6 +119,16 @@ export function FilterStateProvider({ initialValues, children }) {
   const valuesRef = useRef(values);
   valuesRef.current = values;
 
+  // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // a per-key store mirroring `values`, for components that can't afford the
+  // whole-object Context (see filterValuesStore.jsx). Every write below goes to
+  // both, in the same call, so they never diverge; `values` (the Context every
+  // other consumer reads) is unchanged.
+  const storeRef = useRef(null);
+  if (!storeRef.current) {
+    storeRef.current = createFilterValuesStore(initialValues);
+  }
+
   // Cleanup pass (prompted by a direct instruction to reconsider the
   // repo-labels structure so no window.* bridge is needed at all, see
   // REACT_MIGRATION_PLAN.md): a dedicated signal, separate from
@@ -144,8 +155,22 @@ export function FilterStateProvider({ initialValues, children }) {
   const changeFilterActorSelection = useChangeFilterActorSelection();
 
   const setValue = useCallback((key, value) => {
+    storeRef.current.setValue(key, value);
     setValues((previous) => ({ ...previous, [key]: value }));
   }, []);
+
+  // One identity for this Provider's lifetime (the store is created once and
+  // setValue is a stable callback) - see FilterFieldStoreContext.
+  const fieldStoreValue = useMemo(
+    () => ({
+      store: storeRef.current,
+      actions: {
+        getFieldValue: (key) => storeRef.current.getSnapshot(key),
+        setFieldValue: setValue,
+      },
+    }),
+    [setValue],
+  );
 
   // Restores saved overrides once, on mount. See this file's own header
   // comment for why this needs no flushSync/queueMicrotask trickery: it's
@@ -190,6 +215,7 @@ export function FilterStateProvider({ initialValues, children }) {
       }
 
       if (Object.keys(mapped).length > 0) {
+        storeRef.current.setMany(mapped);
         setValues((previous) => ({ ...previous, ...mapped }));
       }
 
@@ -520,7 +546,7 @@ export function FilterStateProvider({ initialValues, children }) {
     <FilterStateContext.Provider
       value={{ values, setValue, restoredRepoOverride, persistRunScriptOptions }}
     >
-      {children}
+      <FilterFieldStoreContext.Provider value={fieldStoreValue}>{children}</FilterFieldStoreContext.Provider>
     </FilterStateContext.Provider>
   );
 }

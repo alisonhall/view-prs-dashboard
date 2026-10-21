@@ -1189,6 +1189,45 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
   await expect(page.locator("#pr-numbers")).toHaveValue("1");
 });
 
+test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
+  // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the reverse direction of the test above. PrSelectionCell used to read the
+  // field once (defaultChecked) through window.getFilterStateValues(), so
+  // editing the field never touched an already-rendered row's checkbox. It now
+  // subscribes to that one field through a per-key store, so the checkbox
+  // follows the field. The single-row assertions run in a real browser against
+  // the real React-owned #pr-numbers input.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
+    rows.forEach((row) => {
+      row.closest("details").open = true;
+    });
+  });
+  const selectCheckbox = page.locator('.row-select-checkbox[data-pr-number="1"]').first();
+  await expect(selectCheckbox).not.toBeChecked();
+
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByText("Run Script options (rarely changed)").click();
+  const prNumbers = page.locator("#pr-numbers");
+
+  await prNumbers.fill("1");
+  await expect(selectCheckbox).toBeChecked();
+
+  // Unrelated numbers around it: PR #1 stays selected.
+  await prNumbers.fill("999, 1, 998");
+  await expect(selectCheckbox).toBeChecked();
+
+  await prNumbers.fill("999");
+  await expect(selectCheckbox).not.toBeChecked();
+
+  // And the original direction still works from this state.
+  await prNumbers.fill("");
+  await selectCheckbox.check();
+  await expect(prNumbers).toHaveValue("1");
+});
+
 test("the PR JSON modal opens and renders real JSON for a real row", async ({ page }) => {
   // Regression test for Phase 7's safeJsonStringify/getPerPrUserStateFromPayload/
   // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx

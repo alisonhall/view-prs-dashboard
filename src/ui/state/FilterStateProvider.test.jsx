@@ -4,7 +4,13 @@ const { render, screen, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterStateProvider: RealFilterStateProvider } = require('./FilterStateProvider');
-const { useFilterState } = require('./FilterStateContext');
+const {
+  useFilterState,
+  useFilterFieldValue,
+  useFilterFieldActions,
+  FilterFieldStoreContext,
+} = require('./FilterStateContext');
+const { useContext } = require('react');
 const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
@@ -301,6 +307,100 @@ describe('FilterStateProvider', () => {
       expect(putBody.author).toEqual(['zuser']);
       expect(putBody['attention-author-thread-resolution-allow']).toEqual(['allowed-user']);
       expect(putBody.changeFilters.ignoreCommentsFromAuthors).toEqual(['ignored-user']);
+    });
+  });
+
+  // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the per-key store (filterValuesStore.jsx) mirrors `values`. Every write path
+  // updates both in the same call, so a store reader and a useFilterState()
+  // reader can never disagree.
+  describe('per-field store kept in sync with values', () => {
+    let fieldValue;
+    let fieldActions;
+    let fieldContext;
+    let state;
+    function FieldProbe() {
+      fieldValue = useFilterFieldValue('scopeMode');
+      fieldActions = useFilterFieldActions();
+      fieldContext = useContext(FilterFieldStoreContext);
+      state = useFilterState();
+      return null;
+    }
+    const mount = (initialValues = { scopeMode: 'all' }) =>
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={initialValues}>
+          <FieldProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    test('given initial values, when a field reader mounts, then it sees them', () => {
+      mount({ scopeMode: 'needs-attention' });
+      expect(fieldValue).toBe('needs-attention');
+    });
+
+    test('given a write through useFilterState().setValue, when read through the field store, then it is the same value', () => {
+      mount();
+      act(() => state.setValue('scopeMode', 'last-run'));
+      expect(fieldValue).toBe('last-run');
+      expect(fieldActions.getFieldValue('scopeMode')).toBe('last-run');
+      expect(state.values.scopeMode).toBe('last-run');
+    });
+
+    test('given a write through the field actions, when read through useFilterState(), then the whole-object Context has it too', () => {
+      mount();
+      act(() => fieldActions.setFieldValue('scopeMode', 'needs-attention'));
+      expect(state.values.scopeMode).toBe('needs-attention');
+      expect(fieldValue).toBe('needs-attention');
+    });
+
+    test('given a write through window.setFilterStateValue, when read through the field store, then it is the same value', () => {
+      mount();
+      act(() => window.setFilterStateValue('scopeMode', 'last-run'));
+      expect(fieldValue).toBe('last-run');
+      expect(window.getFilterStateValues().scopeMode).toBe('last-run');
+    });
+
+    test('given saved overrides restore on mount, when the restore resolves, then the field store gets them too (not only useFilterState())', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url) === '/view-prs/user-defaults') {
+          return { ok: true, json: async () => ({ ok: true, overrides: { 'scope-mode': 'last-run' } }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      mount({ scopeMode: 'all' });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(state.values.scopeMode).toBe('last-run');
+      expect(fieldValue).toBe('last-run');
+    });
+
+    test('given many writes and re-renders, when the field-store context is read each time, then it keeps one identity', () => {
+      const seen = new Set();
+      function IdentityProbe() {
+        seen.add(useContext(FilterFieldStoreContext));
+        return null;
+      }
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all' }}>
+          <FieldProbe />
+          <IdentityProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+      act(() => state.setValue('scopeMode', 'a'));
+      act(() => state.setValue('scopeMode', 'b'));
+      act(() => fieldActions.setFieldValue('scopeMode', 'c'));
+
+      expect(seen.size).toBe(1);
+      expect(fieldContext).toBe([...seen][0]);
     });
   });
 });
