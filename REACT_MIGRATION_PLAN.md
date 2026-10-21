@@ -2610,6 +2610,15 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 - Not run: `eslint` (`eslint-plugin-react-hooks` missing from node_modules) and Playwright.
 - Environment note: the default shell is Node 16, but Jest 30 needs Node 18+; use `PATH=/opt/homebrew/bin:$PATH`.
 
+## ✅ **Window-bridge elimination, Phase 2: `AutoRenderBlockingProvider` + `PrDataProvider` now wrap `<AppRoot/>` from `mountAppRoot()` (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Mount-tree change only; no caller was touched.
+
+- Both Providers moved out of `AppRoot`'s returned JSX to wrap it from `mountAppRoot()`, inside `SnackbarProvider`, with `AutoRenderBlockingProvider` outside `PrDataProvider`. `<PrDataPolling/>` moved with them as `AppRoot`'s sibling. The inner `AutoRenderBlockingProvider` that wrapped just the two blocked-status portals is gone; those portals resolve to the outer one.
+- Checked beforehand that neither Provider reads a Context `AppRoot`'s JSX rendered between them: both only use `StatusText`/`Snackbar`, already outer.
+- Unlocks Phase 3: `AppRoot`'s body is now inside both trees.
+- Verification (Node 22.22.0): eslint clean; jest 2488/2488; Playwright 52 pass, 3 fail. The same 3 fail on the untouched baseline (PR JSON modal, Quick check over SSE, Trigger auto run; the JSON modal one passes in isolation), so they are environmental/order-dependent, not from this change.
+
 ## 📞 **Getting Help**
 
 **Resources:**

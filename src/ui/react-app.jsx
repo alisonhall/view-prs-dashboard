@@ -880,11 +880,7 @@ function AppRoot() {
   }, []);
 
   return (
-    <PrDataProvider
-      initialPayload={{}}
-      initialSelectedRepo=""
-      initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
-    >
+    <>
       {/* Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
           cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
           ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
@@ -1069,8 +1065,7 @@ function AppRoot() {
               'tab-export',
             )}
 
-        <AutoRenderBlockingProvider>
-          {containers.autoRenderBlockedStatus &&
+        {containers.autoRenderBlockedStatus &&
             createPortal(
               <AutoRenderBlockedStatusText />,
               containers.autoRenderBlockedStatus,
@@ -1082,7 +1077,6 @@ function AppRoot() {
               containers.autoRenderBlockedApplyBtn,
               'auto-render-blocked-apply-btn',
             )}
-        </AutoRenderBlockingProvider>
 
         {containers.triggerAutoRunBtn &&
           createPortal(
@@ -1330,8 +1324,7 @@ function AppRoot() {
         </JobEventsProvider>
         </AuthorInsightsDraftsProvider>
       </RepoLabelsProvider>
-      <PrDataPolling />
-    </PrDataProvider>
+    </>
   );
 }
 
@@ -1411,6 +1404,18 @@ function mountAppRoot() {
   // returned JSX from inside, so also a genuine descendant of this) can all
   // reach useSnackbar() directly instead of window.showErrorNotification/
   // showWarningNotification/hideErrorNotification.
+  //
+  // Window-bridge elimination Phase 2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // AutoRenderBlockingProvider and PrDataProvider wrap from here too now
+  // (AutoRenderBlockingProvider outside PrDataProvider, so PrDataProvider
+  // can read it), same reasoning as every Provider above - AppRoot's own
+  // body (useRunScript/useSinglePrUpdate/useAckLabelActions/
+  // useRowCheckboxActions/useRequestMoreMerged) can now call usePrData()/
+  // useAutoRenderBlocking() directly in Phase 3, instead of reaching their
+  // window.* bridges. <PrDataPolling /> moved with PrDataProvider, as
+  // AppRoot's sibling instead of a child of the Provider AppRoot rendered.
+  // Neither Provider reads anything AppRoot's own JSX used to render
+  // between them: both only need StatusText/Snackbar, already outer.
   ReactDOM.createRoot(anchor).render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
@@ -1421,8 +1426,17 @@ function mountAppRoot() {
                 <PrActivityQueueProvider>
                   <TabStateProvider>
                     <SnackbarProvider>
-                      <TabPanelVisibilitySync />
-                      <AppRoot />
+                      <AutoRenderBlockingProvider>
+                        <PrDataProvider
+                          initialPayload={{}}
+                          initialSelectedRepo=""
+                          initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                        >
+                          <TabPanelVisibilitySync />
+                          <AppRoot />
+                          <PrDataPolling />
+                        </PrDataProvider>
+                      </AutoRenderBlockingProvider>
                     </SnackbarProvider>
                   </TabStateProvider>
                 </PrActivityQueueProvider>
