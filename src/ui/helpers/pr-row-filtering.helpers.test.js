@@ -3,6 +3,7 @@
 const {
   createPrRowFilteringHelpers,
 } = require("./pr-row-filtering.helpers.js");
+const { createEntryDerivedCache } = require("./pr-entry-derived-cache.helpers.js");
 
 describe("pr row filtering helpers", () => {
   test("given filter inputs, when building row filter criteria, then criteria object preserves arrays and boolean", () => {
@@ -136,5 +137,68 @@ describe("pr row filtering helpers", () => {
     applyRowUiFilters(rows, { authorLogins: ["bob"] });
 
     expect(rowMatchesUiFilters).toHaveBeenCalledTimes(2);
+  });
+
+  describe("typing into the undebounced free-text filter fields (regression: renderer OOM, Chrome 'Error code: 5')", () => {
+    const FREE_TEXT_FIELDS = [
+      "customComments",
+      "otherNotes",
+      "prDifficulty",
+      "rallyStories",
+      "rallyLinks",
+      "analysisOfPr",
+    ];
+
+    test.each(FREE_TEXT_FIELDS)(
+      "given a keystroke-by-keystroke change to %s on many loaded PRs, when filtering each time, then each entry's cache stays at one key and results stay correct",
+      (field) => {
+        const { getOrCompute, getOrComputeLatest, getCachedKeyCount } = createEntryDerivedCache();
+        const rowMatchesUiFilters = jest.fn((entry, criteria) =>
+          entry.text.includes(criteria[field]),
+        );
+        const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
+          rowMatchesUiFilters,
+          getOrCompute,
+          getOrComputeLatest,
+        });
+        const rows = Array.from({ length: 30 }, (_, index) => ({
+          id: index,
+          text: index % 2 === 0 ? "alpha beta" : "gamma",
+        }));
+        const typed = "alpha beta".repeat(20);
+
+        let lastResult;
+        for (let length = 1; length <= typed.length; length += 1) {
+          const criteria = buildRowFilterCriteria({ [field]: typed.slice(0, length) });
+          lastResult = applyRowUiFilters(rows, criteria);
+        }
+
+        rows.forEach((row) => expect(getCachedKeyCount(row)).toBe(1));
+        // The full typed text ("alpha betaalpha beta...") matches nothing.
+        expect(lastResult).toEqual([]);
+        // An earlier, shorter prefix still filters correctly after recompute.
+        const early = applyRowUiFilters(rows, buildRowFilterCriteria({ [field]: "alpha" }));
+        expect(early.map((row) => row.id)).toEqual(
+          rows.filter((row) => row.id % 2 === 0).map((row) => row.id),
+        );
+      },
+    );
+
+    test("given unchanged criteria and rows, when filtering again after typing, then the cached result is reused (no recompute)", () => {
+      const { getOrCompute, getOrComputeLatest } = createEntryDerivedCache();
+      const rowMatchesUiFilters = jest.fn(() => true);
+      const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
+        rowMatchesUiFilters,
+        getOrCompute,
+        getOrComputeLatest,
+      });
+      const rows = [{ id: 1 }, { id: 2 }];
+      const criteria = buildRowFilterCriteria({ customComments: "abc" });
+
+      applyRowUiFilters(rows, criteria);
+      applyRowUiFilters(rows, criteria);
+
+      expect(rowMatchesUiFilters).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -150,6 +150,7 @@ export function useFilteredPrRows() {
     const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
       rowMatchesUiFilters,
       getOrCompute: cacheRef.current.getOrCompute,
+      getOrComputeLatest: cacheRef.current.getOrComputeLatest,
     });
     return createPrVisiblePrNumbersHelpers({
       resolveScopedRows,

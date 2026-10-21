@@ -51,4 +51,70 @@ describe("pr entry derived cache helpers", () => {
 
     expect(computeMatch).toHaveBeenCalledTimes(2);
   });
+
+  describe("getOrComputeLatest (bounded per-entry results for churning variants)", () => {
+    test("given the same entry, key and variant, when called twice, then the compute function only runs once", () => {
+      const { getOrComputeLatest } = createEntryDerivedCache();
+      const entry = { id: 1 };
+      const compute = jest.fn(() => true);
+
+      getOrComputeLatest(entry, "filterMatch", "criteria-a", compute);
+      getOrComputeLatest(entry, "filterMatch", "criteria-a", compute);
+
+      expect(compute).toHaveBeenCalledTimes(1);
+    });
+
+    test("given a new variant, when called, then it recomputes and the previous variant's result is no longer retained", () => {
+      const { getOrComputeLatest } = createEntryDerivedCache();
+      const entry = { id: 1 };
+      const compute = jest.fn(() => true);
+
+      getOrComputeLatest(entry, "filterMatch", "criteria-a", compute);
+      getOrComputeLatest(entry, "filterMatch", "criteria-b", compute);
+      getOrComputeLatest(entry, "filterMatch", "criteria-a", compute);
+
+      expect(compute).toHaveBeenCalledTimes(3);
+    });
+
+    test("given thousands of distinct variants on many entries, when called, then each entry holds one cached key, not one per variant (regression: renderer OOM, Chrome 'Error code: 5')", () => {
+      // Entries keep the same object reference across renders while their
+      // data is unchanged, so the cache's WeakMap never frees them - a
+      // key-per-variant Map therefore grew by one result per keystroke
+      // per loaded PR, forever.
+      const { getOrComputeLatest, getCachedKeyCount } = createEntryDerivedCache();
+      const entries = Array.from({ length: 50 }, (_, index) => ({ id: index }));
+
+      for (let keystroke = 0; keystroke < 2000; keystroke += 1) {
+        entries.forEach((entry) => getOrComputeLatest(entry, "filterMatch", `typed-${keystroke}`, () => true));
+      }
+
+      entries.forEach((entry) => expect(getCachedKeyCount(entry)).toBe(1));
+    });
+
+    test("given getOrCompute with the variant folded into the key (the old approach), when many variants are seen, then the entry's Map grows without bound - documenting why getOrComputeLatest exists", () => {
+      const { getOrCompute, getCachedKeyCount } = createEntryDerivedCache();
+      const entry = { id: 1 };
+
+      for (let keystroke = 0; keystroke < 100; keystroke += 1) {
+        getOrCompute(entry, `filterMatch:typed-${keystroke}`, () => true);
+      }
+
+      expect(getCachedKeyCount(entry)).toBe(100);
+    });
+
+    test("given an unrelated key on the same entry, when the latest-variant key churns, then the unrelated key is untouched", () => {
+      const { getOrCompute, getOrComputeLatest, getCachedKeyCount } = createEntryDerivedCache();
+      const entry = { id: 1 };
+      const computeLabels = jest.fn(() => ["bug"]);
+
+      getOrCompute(entry, "labelNames", computeLabels);
+      for (let keystroke = 0; keystroke < 20; keystroke += 1) {
+        getOrComputeLatest(entry, "filterMatch", `typed-${keystroke}`, () => true);
+      }
+      getOrCompute(entry, "labelNames", computeLabels);
+
+      expect(computeLabels).toHaveBeenCalledTimes(1);
+      expect(getCachedKeyCount(entry)).toBe(2);
+    });
+  });
 });

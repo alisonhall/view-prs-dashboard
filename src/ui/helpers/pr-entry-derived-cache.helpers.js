@@ -43,8 +43,41 @@ export const { createEntryDerivedCache } = (() => {
       return entryCache.get(cacheKey);
     };
 
+    // Like getOrCompute, but keeps only the *latest* variant per
+    // (entry, cacheKey) instead of one result per variant ever seen. Use
+    // this - not getOrCompute with the variant folded into the key - when
+    // the variant is something that churns without the entry changing
+    // (e.g. the filter criteria while the user types): the WeakMap above
+    // only frees an entry's Map when the *entry object* dies, and entries
+    // keep the same reference across renders while their data is unchanged,
+    // so a key-per-variant Map grows by one result per keystroke per
+    // loaded PR, forever (found as a renderer out-of-memory crash, "Error
+    // code: 5", after typing into the free-text filter fields). A variant
+    // change here overwrites the previous result, so the cost is a
+    // recompute when switching back to an earlier variant, never growth.
+    const getOrComputeLatest = (entry, cacheKey, variant, compute) => {
+      let entryCache = cache.get(entry);
+      if (!entryCache) {
+        entryCache = new Map();
+        cache.set(entry, entryCache);
+      }
+      const cached = entryCache.get(cacheKey);
+      if (cached && cached.variant === variant) {
+        return cached.value;
+      }
+      const value = compute();
+      entryCache.set(cacheKey, { variant, value });
+      return value;
+    };
+
+    // Number of cached keys held for an entry - for tests/diagnostics, to
+    // assert the cache stays bounded.
+    const getCachedKeyCount = (entry) => cache.get(entry)?.size || 0;
+
     return {
       getOrCompute,
+      getOrComputeLatest,
+      getCachedKeyCount,
     };
   };
 

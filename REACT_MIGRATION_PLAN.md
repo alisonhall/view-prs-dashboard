@@ -2632,6 +2632,16 @@ Not caused by the window-bridge work (same 3 failures at `2a02ebb`, before Phase
 - **Fix 2 (`PrJsonModal`):** see above.
 - **Tests:** +4 for the `PATH` lookup (found without a shell; fallback result; non-executable/directory ignored; path-separator names never match), +1 first-render "Loading..." regression test for `PrJsonModal` (fails without the fix). Jest 2493/2493 (was 2488), eslint clean, Playwright 55/55 on three consecutive runs (was 52/55; suite ~40s, was ~60s).
 
+## ✅ **Memory leak in the filter-match cache (Chrome "Error code: 5" renderer crash) - present in the latest code, fixed (2026-10-21)**
+
+Reported against an older version: the page periodically crashed with "This page is having a problem / Error code: 5" (renderer out of memory), nothing in the terminal.
+
+- **Still present.** `applyRowUiFilters` (`pr-row-filtering.helpers.js`) cached each entry's filter-match result under `filterMatch:<JSON of all criteria>` via `createEntryDerivedCache().getOrCompute`. That cache's `WeakMap` only frees an entry's `Map` when the *entry object* dies, but entries keep the same reference across renders while their data is unchanged, so the per-entry `Map` was never pruned. In `useFilteredPrRows`, only `filterPrNumbers` is debounced; the 6 free-text fields (`filterCustomComments`, `filterOtherNotes`, `filterPrDifficulty`, `filterRallyStories`, `filterRallyLinks`, `filterAnalysisOfPr`) flow straight into the criteria, so every keystroke created a new fingerprint and one permanent cache key on every loaded PR. N keystrokes x M PRs entries, unbounded.
+- **Fix.** `createEntryDerivedCache` gains `getOrComputeLatest(entry, key, variant, compute)`, which keeps only the latest variant per (entry, key) and overwrites it when the variant changes (cost: one recompute when switching back to an earlier criteria set, never growth), plus `getCachedKeyCount(entry)` for tests/diagnostics. `applyRowUiFilters` uses it (key `filterMatch`, variant = criteria fingerprint); `useFilteredPrRows` passes it in. The other `getOrCompute` callers use fixed keys (`fingerprint`, `labelNames`, ...) and don't grow. `getOrCompute` stays for them; a caller wiring only `getOrCompute` into the filtering helper still gets the old unbounded behavior, which the helper's comment now says.
+- **Not changed:** the free-text fields are still undebounced (typing re-filters on every keystroke); that's a UX/perf choice separate from the leak, which is now bounded either way.
+- **Regression tests (+23):** cache level (5: bounded at 1 key after 2000 variants x 50 entries; old key-per-variant approach grows, documenting why; unrelated keys untouched), filtering-helper level (7: typing into each of the 6 fields stays at 1 key per entry with correct results, plus cached-result reuse), and the real hook (`useVisiblePrNumbers.test.jsx`, 6: typing into each field through `useFilteredPrRows`, so it also proves the wiring). Verified they fail without the fix: reverting only the filtering helper fails 12, reverting only the hook wiring fails 6.
+- **Verification:** eslint clean; jest 2511/2511 (was 2493); Playwright 55/55.
+
 ## 📞 **Getting Help**
 
 **Resources:**

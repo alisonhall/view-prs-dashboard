@@ -4,7 +4,11 @@
 // imports this directly instead of using the
 // require()/globalThis.ViewPrsRowFilteringHelpers fallback.
 export const { createPrRowFilteringHelpers } = (() => {
-  const createPrRowFilteringHelpers = ({ rowMatchesUiFilters, getOrCompute } = {}) => {
+  const createPrRowFilteringHelpers = ({
+    rowMatchesUiFilters,
+    getOrCompute,
+    getOrComputeLatest,
+  } = {}) => {
     const rowMatchesUiFiltersSafe =
       typeof rowMatchesUiFilters === "function"
         ? rowMatchesUiFilters
@@ -60,11 +64,24 @@ export const { createPrRowFilteringHelpers } = (() => {
       // filter selection changes filtersFingerprint, busting every
       // entry's cached result for it) while an actual delta-changed
       // subset of entries does real new work.
+      //
+      // Only the latest criteria's result is kept per entry
+      // (getOrComputeLatest), NOT one result per fingerprint ever seen:
+      // the 6 free-text filter fields are undebounced, so every keystroke
+      // is a new fingerprint, and a key-per-fingerprint cache grew by one
+      // permanent result per keystroke per loaded PR until Chrome killed
+      // the renderer ("Error code: 5"). Callers that only inject a plain
+      // getOrCompute (no getOrComputeLatest) still get the old
+      // key-per-fingerprint behavior, which is unbounded - wire both.
       const filtersFingerprint = JSON.stringify(criteria);
       return safeRows.filter((entry) =>
-        getOrComputeSafe(entry, `filterMatch:${filtersFingerprint}`, () =>
-          rowMatchesUiFiltersSafe(entry, criteria),
-        ),
+        typeof getOrComputeLatest === "function"
+          ? getOrComputeLatest(entry, "filterMatch", filtersFingerprint, () =>
+              rowMatchesUiFiltersSafe(entry, criteria),
+            )
+          : getOrComputeSafe(entry, `filterMatch:${filtersFingerprint}`, () =>
+              rowMatchesUiFiltersSafe(entry, criteria),
+            ),
       );
     };
 
