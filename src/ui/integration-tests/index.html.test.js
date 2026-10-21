@@ -1157,9 +1157,8 @@ const clickMultiSelectCheckbox = async (listId, value, user) => {
 // installFilterStateProviderBridge's own comment), so a plain DOM
 // interaction (user.click/selectOptions/type) never reaches
 // FilterStateProvider's `values` the way the real app's own field
-// components do via their own onChange. index.page.js's
-// persistRunScriptOptionOverrides/persistViewFilterOptionOverrides
-// (now implemented in FilterStateProvider.jsx) read `values` directly,
+// components do via their own onChange. FilterStateProvider.jsx's
+// persistRunScriptOptions/persistViewFilterOptions read `values` directly,
 // with no DOM-read fallback - call this right after simulating the
 // interaction (reads the DOM's current value, so order matters) wherever
 // a test asserts on what actually got persisted/restored.
@@ -1172,6 +1171,28 @@ const syncFilterStateFromElement = (element, contextKey) => {
   if (filterStateTestHandle) {
     flushSync(() => filterStateTestHandle.setValue(contextKey, value));
   }
+};
+
+// Window-bridge elimination Phase 6 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// window.persistViewFilterOptionOverrides is gone. FilterStateProvider's own
+// 150ms debounced effect is the only thing that saves view-filter fields, so
+// tests wait for it: the latest PUT to /view-prs/user-defaults must pass
+// `assertBody`. Asserting inside waitFor (rather than on the first PUT seen)
+// tolerates an intermediate debounced save if a test's steps straddle 150ms;
+// the debounce always ends on the final state. Clear fetchMock *before* the
+// changes being asserted on, not after them, or the save can land first.
+const waitForPersistedViewFilterOverrides = async (assertBody) => {
+  await waitFor(() => {
+    const putCall = fetchMock.mock.calls
+      .slice()
+      .reverse()
+      .find(([url, init]) => (
+        String(url || "") === "/view-prs/user-defaults" &&
+        String(init?.method || "GET").toUpperCase() === "PUT"
+      ));
+    expect(putCall).toBeDefined();
+    assertBody(JSON.parse(String(putCall[1]?.body || "{}")));
+  });
 };
 
 // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -1308,9 +1329,9 @@ describe("index page rendering with Testing Library", () => {
   }, 20_000);
 
   afterEach(async () => {
-    // Some click handlers (e.g. "Apply filters (local)") kick off a
-    // fire-and-forget persistence fetch (`void persistViewFilterOptionOverrides()`)
-    // that the test never awaits. If that Promise chain is still pending
+    // Some handlers (e.g. FilterStateProvider's debounced view-filter
+    // persist) kick off a fire-and-forget persistence fetch that the test
+    // never awaits. If that Promise chain is still pending
     // when the test ends, it resolves during the *next* test - after
     // document.body.innerHTML has already been replaced - and can
     // re-render using this test's now-stale closure state into the next
@@ -4062,33 +4083,10 @@ describe("index page rendering with Testing Library", () => {
       syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
     }
 
-    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 1): the native "change" event above already fired
-    // index.page.js's delegated persist listener BEFORE the
-    // syncFilterStateFromElement calls updated Context - unlike a real
-    // mounted React field, which updates Context synchronously inside its
-    // own onChange before the native event finishes bubbling, this
-    // suite's static-markup fields can't do that. Discard that stale
-    // call and persist again now that Context is up to date, matching
-    // what a real field's own onChange would have captured the first time.
-    fetchMock.mockClear();
-    await window.persistViewFilterOptionOverrides?.();
-
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
 
     fetchMock.mockClear();
     await user.selectOptions(noActivityMode, "all");
@@ -4096,30 +4094,15 @@ describe("index page rendering with Testing Library", () => {
     await user.click(includeClosedMerged);
     syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
 
-    fetchMock.mockClear();
-    await window.persistViewFilterOptionOverrides?.();
-
-    let resetPutCall;
-    await waitFor(() => {
-      resetPutCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(resetPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-closed-merged"]).not.toBe(false);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(resetPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
   test("preserves selected author filter through rerender after row actions", async () => {
@@ -4622,6 +4605,10 @@ describe("index page rendering with Testing Library", () => {
       "attention-include-draft-no-activity",
     );
 
+    // The 2 raw `.checked =` writes below fire no native event at all; only
+    // Context (via syncFilterStateFromElement) sees them, which is all the
+    // debounced persist needs.
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "mine-only");
     syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     includeClosedMergedToggle.checked = false;
@@ -4629,36 +4616,13 @@ describe("index page rendering with Testing Library", () => {
     includeDraftNoActivityToggle.checked = true;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
 
-    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 1): the 2 raw `.checked =` writes just above never fire a
-    // real native "change" event at all (no user.click()), so
-    // index.page.js's delegated persist listener never saw them - a real
-    // mounted React field's own onChange always fires on a real
-    // interaction, so this is a pure test-harness gap, not a production
-    // one. Persist explicitly now that Context reflects every field set
-    // above.
-    await window.persistViewFilterOptionOverrides?.();
-
-    let latestPutCall;
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
+      expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
     });
 
-    const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
-    expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
-
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "all");
     syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     includeClosedMergedToggle.checked = true;
@@ -4666,34 +4630,15 @@ describe("index page rendering with Testing Library", () => {
     includeDraftNoActivityToggle.checked = false;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
 
-    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 1): same test-harness gap as above - the raw `.checked =`
-    // write never fires a real native "change" event.
-    await window.persistViewFilterOptionOverrides?.();
-
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-draft-no-activity"]).not.toBe(true);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(latestPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
     test("given author thread-resolution controls, when mode and actor selections change, then user-default overrides are persisted immediately", async () => {
@@ -5749,34 +5694,12 @@ describe("index page rendering with Testing Library", () => {
       expect(approverLogins).toEqual(["grace"]);
     });
 
+    fetchMock.mockClear();
     await clickMultiSelectCheckbox("approver-list", "grace", user);
 
-    fetchMock.mockClear();
-
-    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 1): "Apply filters (local)" (the button) is deleted outright
-    // - approver-list now auto-persists via its own real "change" event,
-    // same mechanism the thread-resolution/change-filter multi-select
-    // lists already used. Awaiting it directly here instead of relying on
-    // the native event's own fire-and-forget call avoids a race against
-    // whatever persistViewFilterOptionOverrides call that earlier click
-    // may have already queued.
-    await window.persistViewFilterOptionOverrides?.();
-
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides.approver).toEqual(["grace"]);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides.approver).toEqual(["grace"]);
   });
 
   test("given approver stored in user-defaults, when page loads and data renders, then approver select is pre-selected", async () => {
@@ -9204,7 +9127,7 @@ describe("index page rendering with Testing Library", () => {
   // Covers both directions of that fix for one representative field
   // (filter-pr-difficulty); the other 5 share the exact same code path.
   describe("FilterOptionSelect persistence (persistence-gap fix)", () => {
-    test("given a FilterOptionSelect value, when Apply filters clicked, then it is persisted to user-defaults", async () => {
+    test("given a FilterOptionSelect value, when it changes, then it is persisted to user-defaults", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 850 }],
@@ -9216,37 +9139,13 @@ describe("index page rendering with Testing Library", () => {
       activateManagementTabForTest("script");
 
       const prDifficultySelect = document.getElementById("filter-pr-difficulty");
+      fetchMock.mockClear();
       await user.selectOptions(prDifficultySelect, "3");
       syncFilterStateFromElement(prDifficultySelect, "filterPrDifficulty");
 
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): the native "change" event above already fired
-      // index.page.js's delegated persist listener BEFORE
-      // syncFilterStateFromElement updated Context - a real mounted React
-      // field updates Context synchronously inside its own onChange
-      // before the native event finishes bubbling, so this ordering gap
-      // is a test-harness-only artifact. Discard that stale call and
-      // persist again now that Context is up to date.
-      fetchMock.mockClear();
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides["filter-pr-difficulty"]).toBe("3");
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides["filter-pr-difficulty"]).toBe("3");
     });
 
     test("given user-defaults with a FilterOptionSelect value, when page loads, then it is restored", async () => {
@@ -9397,7 +9296,7 @@ describe("index page rendering with Testing Library", () => {
       expect(commentCheckboxes.length).toBe(reviewCheckboxes.length);
     });
 
-    test("given change filter selections, when Apply filters clicked, then selections are persisted to user-defaults", async () => {
+    test("given change filter selections, when they are made, then they are persisted to user-defaults", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 804 }],
@@ -9445,47 +9344,22 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): a textarea's native "change" event only fires on
-      // blur, not on this "input" dispatch - index.page.js's delegated
-      // listener (which only ever watched "change") never saw this edit,
-      // so the latest real auto-persist still reflects the 3 checkbox
-      // clicks above, not this textarea. "Apply filters (local)" used to
-      // be the catch-all that covered this gap; persist explicitly now
-      // that the button is gone.
-      fetchMock.mockClear();
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters).toBeDefined();
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "dependabot[bot]",
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^chore\\(deps\\):",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters).toBeDefined();
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "dependabot[bot]",
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^chore\\(deps\\):",
-      ]);
     });
 
-    test("given commit patterns with whitespace and empty lines, when Apply filters clicked, then patterns are trimmed and empty lines removed", async () => {
+    test("given commit patterns with whitespace and empty lines, when entered, then the persisted patterns are trimmed and empty lines removed", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 805 }],
@@ -9503,35 +9377,13 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): a textarea's native "change" event only fires on
-      // blur, not on this "input" dispatch, so nothing auto-persists this
-      // edit - "Apply filters (local)" used to be the catch-all that
-      // covered this gap; persist explicitly now that the button is gone.
-      fetchMock.mockClear();
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^style: formatting",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^style: formatting",
-      ]);
     });
 
     test("given user-defaults with change filters, when page loads, then selections are restored", async () => {
@@ -9607,7 +9459,7 @@ describe("index page rendering with Testing Library", () => {
       });
     });
 
-    test("given change filter selections, when selections are changed and Apply filters clicked, then new selections replace old ones", async () => {
+    test("given change filter selections, when selections are changed, then new selections replace old ones", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 807 }],
@@ -9666,42 +9518,19 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): a textarea's native "change" event only fires on
-      // blur, not on this "input" dispatch, so the latest real
-      // auto-persist still reflects the 3 checkbox clicks above, not this
-      // textarea - "Apply filters (local)" used to be the catch-all that
-      // covered this gap; persist explicitly now that the button is gone.
-      fetchMock.mockClear();
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
+          expect.arrayContaining(["reviewer1", "reviewer2"]),
+        );
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
-        expect.arrayContaining(["reviewer1", "reviewer2"]),
-      );
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
     });
 
-    test("given no change filter selections, when Apply filters clicked, then empty arrays are persisted", async () => {
+    test("given a change filter selection, when it is cleared again, then empty lists are persisted (changeFilters omitted)", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 808 }],
@@ -9712,38 +9541,27 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
+      const user = userEvent.setup();
       activateManagementTabForTest("script");
-
-      fetchMock.mockClear();
-
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): nothing in this test changes any field, so no native
-      // "change" event ever fires to auto-persist - "Apply filters
-      // (local)" used to be this test's only trigger; persist explicitly
-      // now that the button is gone.
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
       await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
       });
 
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      // When all filter arrays are empty, changeFilters should be removed from saved overrides
-      expect(savedOverrides.changeFilters).toBeUndefined();
+      // Saves only happen on a change (the debounce never fires on mount), so
+      // check and uncheck a reviewer: the final state has every list empty.
+      fetchMock.mockClear();
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        // When all filter arrays are empty, changeFilters should be removed from saved overrides
+        expect(savedOverrides.changeFilters).toBeUndefined();
+      });
     });
 
-    test("given commit patterns textarea with complex regex, when Apply filters clicked, then patterns are preserved exactly", async () => {
+    test("given commit patterns textarea with complex regex, when persisted, then patterns are preserved exactly", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 809 }],
@@ -9762,35 +9580,13 @@ describe("index page rendering with Testing Library", () => {
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
       syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-      // cluster 1): a textarea's native "change" event only fires on
-      // blur, not on this "input" dispatch, so nothing auto-persists this
-      // edit - "Apply filters (local)" used to be the catch-all that
-      // covered this gap; persist explicitly now that the button is gone.
-      fetchMock.mockClear();
-      await window.persistViewFilterOptionOverrides?.();
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^chore\\(deps(-dev)?\\): bump",
+          "^(docs|test):\\s+[A-Z]",
+          "^Merge branch .* into .*$",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^chore\\(deps(-dev)?\\): bump",
-        "^(docs|test):\\s+[A-Z]",
-        "^Merge branch .* into .*$",
-      ]);
     });
   });
 

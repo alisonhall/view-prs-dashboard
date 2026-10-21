@@ -55,9 +55,9 @@ One responsibility at a time, each with full eslint+jest+Playwright and a `REACT
 - Full `npx playwright test` green; add e2e coverage where a removal changes observable behavior.
 - `REACT_MIGRATION_PLAN.md` entry + commit per logical group.
 
-## Status (last updated 2026-10-21, end of the session that did Phases 1-5)
+## Status (last updated 2026-10-21, after Phase 6)
 
-Branch `development`, all work pushed through `f09b2f2`; CI (lint, ubuntu, **windows**, e2e) green at that commit.
+Branch `development`. Phases 1-5 pushed through `f09b2f2`; CI (lint, ubuntu, **windows**, e2e) green at that commit. Phase 6 is committed locally and **not pushed**, so CI hasn't run on it yet (local run on Windows: lint, `test:ci`, `test:e2e` all pass).
 
 ### Done
 | Phase | Commits | Notes |
@@ -69,16 +69,11 @@ Branch `development`, all work pushed through `f09b2f2`; CI (lint, ubuntu, **win
 | 4 | `1aff624`, `964ffcd` | `BackfillStatusProvider` owns all status state; `BackfillStatusActionsContext`; refetch-loop guards |
 | 5a / 5b | `fe67837` `3f8fd59`, review fix `f09b2f2` | per-key `useSyncExternalStore` store; `window.getFilterStateValues`/`setFilterStateValue` deleted |
 | CI fixes | `03dadc1`, `cd077b6` | not part of the plan: the `PATH`-first dependency check must never run on win32 |
+| 6 | the "Phase 6" commit after `656ad05` | `window.persistViewFilterOptionOverrides` deleted. jsdom tests wait for the real debounce with **real** timers (fake timers didn't fit; see `REACT_MIGRATION_PLAN.md`). e2e `waitForFilterPersist` (38 call sites, missed by the plan) rewritten as a request-settle wait. |
 
 Deviations from the plan text (each because investigation showed the wording didn't fit) are in `REACT_MIGRATION_PLAN.md`'s entries for each phase.
 
-### Next: Phase 6 - `persistViewFilterOptionOverrides` tests, then delete the bridge
-- `grep -c persistViewFilterOptionOverrides src/ui/integration-tests/index.html.test.js` = 14 mentions (plan said 11 call sites; some are comments). Also referenced in `state/FilterStateProvider.jsx` (the `useEffect` that installs/removes it, plus header comments) and `state/FilterStateProvider.test.jsx` (a persistence test calls it).
-- Zero production callers (confirmed). It exists only to bypass the 150 ms `useDebouncedEffect` in `FilterStateProvider`.
-- Approach: `jest.useFakeTimers()` scoped to each affected test (mirror the existing narrowly-scoped fake-timer blocks in the same file; check how `userEvent.setup({ advanceTimers })` is used), replace `await window.persistViewFilterOptionOverrides(...)` with `act(() => jest.advanceTimersByTime(150))` (plus awaiting the PUT), re-run each test individually, then delete the bridge and its comments. NB: the file uses real timers almost everywhere; a test that mixes fake timers with `waitFor`/real `fetch` mocks needs care. Prove each rewritten test still asserts the PUT body.
-- The harness's `syncFilterStateFromElement` now writes via `filterStateTestHandle` (+ `flushSync`); the debounce effect keys on `values`, so that path will start the 150 ms timer.
-
-### After that: Phase 7 - move `index.page.js`'s orchestration into React (do it one responsibility at a time)
+### Next: Phase 7 - move `index.page.js`'s orchestration into React (do it one responsibility at a time)
 Re-grep before starting (`grep -rn "window\.<name>" src/ui | grep -v test`); as of `f09b2f2` the bridges that remain **only because `index.page.js` (vanilla) still calls them** are:
 - request activity: `beginRequestActivity`, `renderRequestActivity` (also used by `PrDataProvider`'s own poll closure, `BackfillStatusProvider`, `AutoRenderBlockingProvider`, which sit outside / inside `PrDataProvider` and can't use `useRequestActivity()`)
 - `updateReactOutputText` (OutputTextProvider), `updateReactBackfillButtonState`, `updateReactBackfillLogText`, `getBackfillTrackingState`, `setSupportsBackfillLogPolling`, `setIsBackfillActionPending`, `updateBackfillStatusFromPayload`, `setBackfillLogMessage`, `renderBackfillStatus` (all BackfillStatusProvider)

@@ -84,12 +84,9 @@ const CHECKBOX_FIELD_IDS = [
  * exposed via this Context's own value now (twelfth follow-up) - its one
  * real caller (react-app.jsx's "Run script" button) is a genuine
  * descendant of this Provider, so `window.persistRunScriptOptionOverrides`
- * is gone outright. `persistViewFilterOptions` keeps its
- * `window.persistViewFilterOptionOverrides` bridge, but only for this
- * suite's own tests now - a grep confirmed zero production callers left
- * (the "Apply filters (local)" button's own call to it was already
- * removed in an earlier phase; every real save now happens via this
- * Provider's own debounced effect below). Save *trigger points* (when a
+ * is gone outright. `persistViewFilterOptions` has no bridge either
+ * (window-bridge elimination Phase 6): every save happens via this
+ * Provider's own debounced effect below. Save *trigger points* (when a
  * save happens) are deliberately unchanged from the original vanilla
  * behavior - that's a product decision (not every field auto-persists on
  * every keystroke), not an implementation detail: only the *mechanics* of
@@ -484,20 +481,10 @@ export function FilterStateProvider({ initialValues, children }) {
   // persistRunScriptOptions is exposed via this Context's own value
   // instead (below), since its one real caller (react-app.jsx's "Run
   // script" button, inside AppRoot) is a genuine descendant of this
-  // Provider. window.persistViewFilterOptionOverrides stays - confirmed
-  // it has zero production callers left (persistViewFilterOptions is
-  // triggered entirely by this Provider's own debounced effect below
-  // now), but this suite's own integration tests still use it as a
-  // deterministic "force the persist now" hook; closing that would mean
-  // reworking ~9 call sites across index.html.test.js to drive the real
-  // 150ms debounce via fake timers instead - a separate, dedicated pass
-  // (Phase 6), not bundled into this one.
-  useEffect(() => {
-    window.persistViewFilterOptionOverrides = (...args) => persistViewFilterOptions(...args);
-    return () => {
-      delete window.persistViewFilterOptionOverrides;
-    };
-  }, [persistViewFilterOptions]);
+  // Provider. Window-bridge elimination Phase 6: so is
+  // window.persistViewFilterOptionOverrides. It had no production callers
+  // (persistViewFilterOptions runs only from the debounced effect below);
+  // the tests that used it to force a save now wait for that debounce.
 
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): the useDebouncedEffect call that used to live here,

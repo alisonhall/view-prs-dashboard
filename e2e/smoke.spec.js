@@ -21,38 +21,52 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
  * file small.
  */
 
-// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): "Apply filters (local)" (the button) is deleted outright -
-// every field that used to need it clicked now auto-persists on its own
-// real "change" event instead. This helper used to click that button and
-// race a `waitForResponse` against it (a fire-and-forget PUT -
-// `void persistViewFilterOptionOverrides()` in index.page.js - doesn't
-// block a click handler, so a fixed `waitForTimeout` would have been a
-// real race). Calling the same persist function directly via
-// `page.evaluate` and awaiting its own returned Promise is simpler and
-// strictly more reliable than clicking-then-racing a network listener:
-// no risk of the listener starting after the response it's waiting for
-// already landed. Since this suite's webServer is one long-lived process
+// Waits for the view-filter save triggered by the action just before the
+// call to finish. Since this suite's webServer is one long-lived process
 // shared by every test (see playwright.config.js's isolation comment), a
-// persisted value a test leaves behind by ending before its own PUT
-// actually completed doesn't just risk flaking that test - it can
-// silently change what a *later*, unrelated test sees on its own fresh
-// page load, so this still matters even though no button remains to
-// click.
-// Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-// audit", cluster 1): FilterStateProvider.jsx's own debounced
-// Context-level watcher (added to fix the filter-chip persistence gap)
-// also re-fires once, redundantly, right after the mount-time restore
-// effect seeds `values` from a previously-persisted override - harmless
-// in production (it just writes the same data back), but it means a bare
-// "wait for *a* PUT to /view-prs/user-defaults" network listener can
-// resolve against that unrelated, earlier write instead of the one a
-// test's own action just triggered, racing it. Calling the real persist
-// function directly and awaiting its own returned Promise (below) sidesteps
-// that ambiguity entirely - no network listener involved, so there's
-// nothing to race against a differently-timed, unrelated write.
+// test that ends before its own PUT lands can silently change what a
+// *later*, unrelated test sees on its own fresh page load.
+//
+// Window-bridge elimination Phase 6 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// this used to call window.persistViewFilterOptionOverrides to force the save;
+// that bridge is gone, so it now waits for the app's real save instead.
+// FilterStateProvider's 150ms debounced effect is the only trigger. A bare
+// "wait for *a* PUT" listener is unreliable: the effect also re-saves once
+// after the mount-time restore, so such a listener can match that earlier
+// write. Instead: (1) wait 200ms on a timer *inside the page*. Page timers
+// fire in due order, so the debounce (due 150ms after the action, which was
+// already dispatched) has fired by then, even on a lagging page. (2) Then wait
+// until no /view-prs/user-defaults request is in flight and none has
+// started or finished for USER_DEFAULTS_QUIET_MS. That covers the gap
+// between a save's GET and its PUT (see FilterStateProvider's
+// persistViewFilterOptions).
+const USER_DEFAULTS_QUIET_MS = 100;
+const userDefaultsTrackers = new WeakMap();
+const trackUserDefaultsRequests = (page) => {
+  const tracker = { inFlight: 0, lastActivityAt: 0 };
+  const isUserDefaults = (request) => new URL(request.url()).pathname === "/view-prs/user-defaults";
+  const onDone = (request) => {
+    if (!isUserDefaults(request)) return;
+    tracker.inFlight -= 1;
+    tracker.lastActivityAt = Date.now();
+  };
+  page.on("request", (request) => {
+    if (!isUserDefaults(request)) return;
+    tracker.inFlight += 1;
+    tracker.lastActivityAt = Date.now();
+  });
+  page.on("requestfinished", onDone);
+  page.on("requestfailed", onDone);
+  userDefaultsTrackers.set(page, tracker);
+};
 const waitForFilterPersist = async (page) => {
-  await page.evaluate(() => window.persistViewFilterOptionOverrides?.());
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  const tracker = userDefaultsTrackers.get(page);
+  await expect
+    .poll(() => tracker.inFlight === 0 && Date.now() - tracker.lastActivityAt >= USER_DEFAULTS_QUIET_MS, {
+      intervals: [25],
+    })
+    .toBe(true);
 };
 
 // "Apply existing GitHub label to selected PR(s)" (the admin dropdown, not
@@ -94,6 +108,7 @@ const collectPageErrors = (page) => {
 };
 
 test.beforeEach(async ({ page }) => {
+  trackUserDefaultsRequests(page);
   await mockRepoLabelsRoute(page);
 });
 
@@ -926,10 +941,10 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   // Context-level watcher in FilterStateProvider.jsx, this time correctly
   // pointed at persistViewFilterOptions (the old, deleted
   // debouncedApplyFilters effect called the wrong, now-dead "apply"
-  // function). Every other test in this file that removes a chip forces
-  // the persist immediately via waitForFilterPersist, for test speed -
-  // this one deliberately does NOT, to prove the production fix holds up
-  // entirely unaided, the way a real user's click actually would.
+  // function). Every other test in this file that removes a chip waits
+  // for the save via waitForFilterPersist - this one deliberately does
+  // NOT, to prove the production fix holds up entirely unaided, the way a
+  // real user's click actually would.
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
@@ -983,12 +998,10 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   const checkbox = page.locator("#change-filter-use-builtin-merge-pattern");
   await expect(checkbox).toBeChecked();
 
-  // waitForFilterPersist calls the real persist function directly and
-  // awaits its own returned Promise, rather than racing a bare "wait for
-  // *a* PUT" network listener - the debounced watcher also redundantly
-  // re-persists once right after the mount-time restore (see that
-  // helper's own comment), so a bare URL/method match could resolve
-  // against that unrelated, earlier write instead of this one.
+  // waitForFilterPersist, not a bare "wait for *a* PUT" listener: the
+  // debounced watcher also re-persists once right after the mount-time
+  // restore (see that helper's own comment), so a bare URL/method match
+  // could resolve against that unrelated, earlier write instead of this one.
   await checkbox.uncheck();
   await waitForFilterPersist(page);
 
@@ -1023,10 +1036,8 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await expect(textarea).toHaveValue("");
   await textarea.fill("^docs:\n^test:");
 
-  // waitForFilterPersist calls the real persist function directly and
-  // awaits its own returned Promise, rather than racing a bare "wait for
-  // *a* PUT" network listener against FilterStateProvider.jsx's own
-  // debounced watcher, which also redundantly re-persists once right
+  // waitForFilterPersist, not a bare "wait for *a* PUT" listener:
+  // FilterStateProvider.jsx's debounced watcher also re-persists once right
   // after the mount-time restore (see that helper's own comment).
   await textarea.blur();
   await waitForFilterPersist(page);

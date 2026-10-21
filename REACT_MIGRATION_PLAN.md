@@ -2768,6 +2768,19 @@ Re-reading Phase 5 for what the new API allows that its only caller doesn't exer
 - **Behavior note, an improvement:** a PR that appears in several sections (e.g. "open" and "in-review") has several rows with the same checkbox. They now all follow the field; with the old one-way `defaultChecked`, only the clicked one changed.
 - Tests: +3 (`filterValuesStore.test.jsx`: new-array selector doesn't loop and re-renders once per change; bounded selector calls; subscription balance). The first two fail against the previous hook. `lint:check`, `test:ci` (2575/2575 + state guards) and `test:e2e` (59/59) pass locally; not yet pushed, so the Windows CI job has not run on Phase 5.
 
+## ✅ **Window-bridge elimination, Phase 6: `window.persistViewFilterOptionOverrides` deleted; tests wait for the real 150 ms debounce (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). The bridge had no production callers; tests used it to force a save instead of waiting for `FilterStateProvider`'s debounced effect.
+
+- **Deleted** the installing `useEffect` and its comments from `FilterStateProvider.jsx`; the header comment now says every save comes from the debounced effect.
+- **Deviation: real timers, not fake ones, in `index.html.test.js` (11 call sites).** The plan said to scope `jest.useFakeTimers()` to each test and advance 150 ms. That doesn't fit this file. Its tests run `userEvent.setup()` on real timers. And switching to fake timers mid-test leaves the earlier debounce timers real: the fake `clearTimeout` that a later change's effect cleanup calls can't cancel them, so stale PUTs would race the asserted one. Instead, a new helper, `waitForPersistedViewFilterOverrides(assertBody)`, waits for the *latest* `/view-prs/user-defaults` PUT and runs the body assertions inside `waitFor`. That tolerates an intermediate save if a test's steps straddle 150 ms, because the debounce always ends on the final state. `fetchMock.mockClear()` moved to *before* each stage's changes (it used to run after them, which would now discard the save). The two reset-stage checks gained one assertion each, so an intermediate save can't satisfy them early.
+- **The "no change filter selections" test changed no field**, so with the bridge gone nothing would save, and nothing does in production either. It now checks and then unchecks a reviewer, so it still ends with every list empty (`changeFilters` omitted).
+- **Stale test comments removed:** they described an `index.page.js` delegated "change" persist listener that was already deleted in H.26. Six test titles still said "when Apply filters clicked" (that button is long gone) and were renamed.
+- **`FilterStateProvider.test.jsx`** (already on fake timers file-wide) follows the plan as written: it asserts no PUT yet, runs `advanceTimersByTimeAsync(150)`, then checks the PUT body.
+- **Not in the plan: e2e.** `e2e/smoke.spec.js`'s `waitForFilterPersist` (38 call sites) also called the bridge. It now waits for the real save. First, a 200 ms timer *inside the page* (page timers fire in due order, so the debounce has fired by then). Then a Node-side tracker (`page.on('request'|'requestfinished'|'requestfailed')`, installed in the suite's `beforeEach`) waits until no user-defaults request is in flight and none has started or finished for 100 ms. That covers the GET→PUT gap inside one save. No app hook, and the call sites are unchanged.
+- **Proved:** with the debounced `persistViewFilterOptions()` call commented out, 13 jest tests fail (the 11 rewritten integration tests, the unit test, and one existing persistence test); restored, all pass.
+- `lint:check` clean; `test:ci` 2574 passed + 1 skipped (same tests as before, renamed only); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

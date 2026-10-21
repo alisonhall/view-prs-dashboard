@@ -252,10 +252,9 @@ describe('FilterStateProvider', () => {
 
     afterEach(() => {
       delete global.fetch;
-      delete window.persistViewFilterOptionOverrides;
     });
 
-    test('given checked values set via each selection Context, when persistViewFilterOptionOverrides runs, then all 3 are included in the persisted overrides', async () => {
+    test('given checked values set via each selection Context, when the 150ms persist debounce fires, then all 3 are included in the persisted overrides', async () => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       render(
         <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
@@ -267,10 +266,12 @@ describe('FilterStateProvider', () => {
       await user.click(screen.getByText('check allowed-user (thread resolution)'));
       await user.click(screen.getByText('check ignored-user (change filter)'));
 
+      expect(putBody).toBeNull();
       await act(async () => {
-        await window.persistViewFilterOptionOverrides();
+        await jest.advanceTimersByTimeAsync(150);
       });
 
+      expect(putBody).not.toBeNull();
       expect(putBody.author).toEqual(['zuser']);
       expect(putBody['attention-author-thread-resolution-allow']).toEqual(['allowed-user']);
       expect(putBody.changeFilters.ignoreCommentsFromAuthors).toEqual(['ignored-user']);
