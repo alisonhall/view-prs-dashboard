@@ -12,6 +12,17 @@ const {
 } = require("../check-deps.js");
 
 describe("check-deps", () => {
+  // isCommandAvailable checks the process PATH before falling back to the
+  // (mocked) login-shell spawn these tests drive - an empty PATH keeps them
+  // from depending on which commands the machine running them has installed.
+  const originalPath = process.env.PATH;
+  beforeEach(() => {
+    process.env.PATH = "";
+  });
+  afterEach(() => {
+    process.env.PATH = originalPath;
+  });
+
   describe("getInstallHint", () => {
     test("returns the platform-specific hint when present", () => {
       const originalPlatform = process.platform;

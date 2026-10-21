@@ -233,7 +233,7 @@ export function PrJsonModal({ target, payload, onClose }) {
 
   const [detailsPayload, setDetailsPayload] = useState(null);
   const [diffData, setDiffData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingState, setLoading] = useState(false);
   const [wrapped, setWrapped] = useState(false);
   const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
   const [copyDiffLabel, setCopyDiffLabel] = useState('Copy diff');
@@ -325,6 +325,13 @@ export function PrJsonModal({ target, payload, onClose }) {
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // detailsPayload is only set by the open effect above, so the very first
+  // render after opening has loadingState=false and no payload yet - without
+  // this it would flash empty JSON blocks for a frame (and a test or
+  // assistive tech reading the dialog in that window sees nothing, not
+  // "Loading..."). No payload yet always means still loading.
+  const loading = loadingState || !detailsPayload;
 
   const diffBlocks = buildDiffBlocks(diffData?.ok === false ? '' : diffData?.diffText || '');
   const diffMeta = loading ? 'Loading diff details...' : formatDiffSummaryLine(diffData);

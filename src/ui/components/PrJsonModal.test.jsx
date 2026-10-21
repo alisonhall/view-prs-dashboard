@@ -35,6 +35,24 @@ describe('PrJsonModal', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  test('given a target, when it is first rendered (before the open effect runs), then the blocks say loading rather than flashing empty', () => {
+    // Server rendering runs no effects, so this is exactly the first render
+    // after opening: detailsPayload is still null there.
+    // jsdom has no TextEncoder, which the browser server build needs.
+    global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
+    const { renderToString } = require('react-dom/server');
+    const html = renderToString(
+      <PrJsonModal
+        target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+        payload={{ byPrNumber: {} }}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).toContain('Loading data file entry...');
+    expect(html).toContain('Loading pr-detail file entry...');
+    expect(html).toContain('Loading user-state entry...');
+  });
+
   test('given a target, when rendering, then shows the dialog with the PR number/repo subtitle and loading placeholders', async () => {
     mockFetchOk();
     const payload = { byPrNumber: {} };

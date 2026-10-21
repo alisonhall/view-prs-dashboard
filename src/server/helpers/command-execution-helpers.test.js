@@ -372,6 +372,75 @@ describe("Command Execution Helpers", () => {
       // Assert
       expect(result).toBe(false);
     });
+
+    describe("and the command is an executable on the process PATH", () => {
+      const fs = require("fs");
+      const os = require("os");
+      const path = require("path");
+      let binDir;
+
+      const helpersWithPath = (pathValue) =>
+        createCommandExecutionHelpers({
+          spawn: mockSpawn,
+          spawnSync: mockSpawnSync,
+          process: { env: { PATH: pathValue }, kill: jest.fn() },
+          viewPrsDir: "/test/view-prs",
+          viewPrsScriptsDir: "/test/scripts",
+          requiredCommands: [],
+          requiredPackages: [],
+          viewPrsProgressTracker: {},
+        });
+
+      beforeEach(() => {
+        binDir = fs.mkdtempSync(path.join(os.tmpdir(), "cmd-avail-"));
+        fs.writeFileSync(path.join(binDir, "fakecmd"), "#!/bin/sh\n", { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, "notexec"), "#!/bin/sh\n", { mode: 0o644 });
+        fs.mkdirSync(path.join(binDir, "adir"), { mode: 0o755 });
+      });
+
+      afterEach(() => {
+        fs.rmSync(binDir, { recursive: true, force: true });
+      });
+
+      test("When found on PATH, Then returns true without starting a shell", () => {
+        const helpers = helpersWithPath(`/nonexistent-dir${path.delimiter}${binDir}`);
+
+        expect(helpers.isCommandAvailable("fakecmd")).toBe(true);
+        expect(mockSpawnSync).not.toHaveBeenCalled();
+      });
+
+      test("When not on PATH, Then falls back to the login-shell check and returns its result", () => {
+        mockSpawnSync.mockReturnValue({ status: 0 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("only-in-login-shell")).toBe(true);
+        expect(mockSpawnSync).toHaveBeenCalledWith(
+          "bash",
+          ["-lc", "command -v only-in-login-shell"],
+          { stdio: "ignore" },
+        );
+
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        expect(helpers.isCommandAvailable("missing-everywhere")).toBe(false);
+      });
+
+      test("When the file is not executable or is a directory, Then it does not count as found on PATH", () => {
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("notexec")).toBe(false);
+        expect(helpers.isCommandAvailable("adir")).toBe(false);
+        expect(mockSpawnSync).toHaveBeenCalledTimes(2);
+      });
+
+      test("When the name contains a path separator, Then it never matches via PATH", () => {
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("../fakecmd")).toBe(false);
+        expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   describe("Given isGhAuthenticated", () => {

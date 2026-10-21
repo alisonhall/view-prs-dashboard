@@ -2619,15 +2619,18 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Mo
 - Unlocks Phase 3: `AppRoot`'s body is now inside both trees.
 - Verification (Node 22.22.0): eslint clean; jest 2488/2488; Playwright 52 pass, 3 fail. The same 3 fail on the pre-Phase-1 baseline (`2a02ebb`): PR JSON modal, Quick check over SSE, Trigger auto run. Root-caused afterwards, see "Playwright pre-existing failures" below.
 
-## 🔎 **Playwright pre-existing failures: root cause is a slow, synchronous dependency check (2026-10-21)**
+## ✅ **Playwright pre-existing failures: root-caused and fixed (2026-10-21)**
 
 Not caused by the window-bridge work (same 3 failures at `2a02ebb`, before Phase 1).
 
 - **Cause:** `isCommandAvailable` in `src/server/helpers/command-execution-helpers.js` (and `check-deps.js`) runs `spawnSync("bash", ["-lc", "command -v <cmd>"])`, a *login* shell per required command, on the request path. `getDependencyStatus()` is called synchronously by `POST /run-auto`. On a machine whose login shell is slow (here ~1.4s per spawn, measured: `bash -lc` 1.4s vs `bash -c` 8ms), the route blocks the whole server event loop for ~5.9s.
 - **Trigger auto run test:** the route answers 202 after 5.9s; the test allows 5s for the button to settle. Fails deterministically on this machine, also with `gh` unauthenticated (ruled out `gh` network time).
-- **Quick check over SSE and PR JSON modal:** both pass in isolation once the dev server's Vite dependency cache is warm; they fail in the full run or on a cold cache while the server is blocked or re-optimizing. The blocked-event-loop link is a strong fit but not proven for these two.
+- **Quick check over SSE:** failed while the server was blocked by the same login-shell spawns (and on a cold Vite cache); passes now.
+- **PR JSON modal (separate real bug, found while chasing the above):** `PrJsonModal`'s first render after opening has `loading=false` and no `detailsPayload` yet (the open effect sets both), so it flashed empty JSON blocks for a frame. The test read the blocks in that window (`toBeVisible` plus `not.toHaveText("Loading...")` both pass on an empty block), hence `Unexpected end of JSON input`, only in the full run. Fixed in the component: no payload yet counts as loading.
 - **Not caused by:** `gh` speed (0.4-1.1s), the dotfiles `PATH` change (sourcing `common.sh` is ~1.4s before and after), or any Phase 1/2 change.
-- **Not fixed.** Options: check availability by scanning `PATH` in Node (no shell), or cache the result for the process lifetime, or at least drop `-l`.
+- **Fix 1 (dependency check):** `isCommandAvailable` (`command-execution-helpers.js`, and the copy in `check-deps.js`) looks the command up on the process `PATH` in Node first (regular executable file, plain command names only), and only falls back to the `bash -lc` login-shell check when that misses, so a command that is only on the login shell's `PATH` still counts (the scripts themselves run under `bash -lc`). `check-deps.test.js` now sets an empty `PATH` so its mocked login-shell fallback decides, instead of depending on what the test machine has installed.
+- **Fix 2 (`PrJsonModal`):** see above.
+- **Tests:** +4 for the `PATH` lookup (found without a shell; fallback result; non-executable/directory ignored; path-separator names never match), +1 first-render "Loading..." regression test for `PrJsonModal` (fails without the fix). Jest 2493/2493 (was 2488), eslint clean, Playwright 55/55 on three consecutive runs (was 52/55; suite ~40s, was ~60s).
 
 ## 📞 **Getting Help**
 

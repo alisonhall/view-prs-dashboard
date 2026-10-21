@@ -606,12 +606,54 @@ function createCommandExecutionHelpers({
     runViewPrsBashCommand([scriptName, ...scriptArgs], maxBufferBytes, options);
 
   /**
+   * Looks a command up on this process's own PATH, without starting a
+   * shell. Only ever returns true for a regular executable file, so a
+   * false here just means "not found this way" - isCommandAvailable falls
+   * back to the login-shell check below for that case.
+   *
+   * @param {string} cmd - Command name (plain names only, no path separators)
+   * @returns {boolean} True if an executable of that name is on PATH
+   */
+  const isExecutableOnProcessPath = (cmd) => {
+    if (!/^[A-Za-z0-9._+-]+$/.test(cmd)) {
+      return false;
+    }
+    const dirs = String((process.env && process.env.PATH) || "")
+      .split(path.delimiter)
+      .filter(Boolean);
+    const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat", ".com"] : [""];
+    return dirs.some((dir) =>
+      extensions.some((extension) => {
+        const candidate = path.join(dir, `${cmd}${extension}`);
+        try {
+          fs.accessSync(candidate, fs.constants.X_OK);
+          return fs.statSync(candidate).isFile();
+        } catch (_error) {
+          return false;
+        }
+      }),
+    );
+  };
+
+  /**
    * Checks if a command is available on the system.
-   * 
+   *
+   * Checks this process's PATH first (instant, no shell). Only when that
+   * misses does it start a login shell (`bash -lc`), which is what the
+   * scripts themselves run under, so a command that is only on the login
+   * shell's PATH still counts. The login-shell spawn is slow (it sources
+   * the user's whole shell profile - ~1.4s on a machine that loads nvm,
+   * pyenv etc.) and getDependencyStatus() runs on the request path of
+   * POST /run-auto and every scheduler tick, so it must not be the common
+   * case: a command found on PATH never reaches it.
+   *
    * @param {string} cmd - Command name
    * @returns {boolean} True if command exists
    */
   const isCommandAvailable = (cmd) => {
+    if (isExecutableOnProcessPath(cmd)) {
+      return true;
+    }
     const check = spawnSync("bash", ["-lc", `command -v ${cmd}`], {
       stdio: "ignore",
     });

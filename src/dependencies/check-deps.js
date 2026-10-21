@@ -118,7 +118,36 @@ const REQUIRED_SYSTEM_COMMANDS = [
 const getInstallHint = (install) =>
   (install && (install[process.platform] || install.default)) || "";
 
+// Looks a command up on this process's own PATH without starting a shell
+// (a login shell sources the whole shell profile - ~1.4s on a machine that
+// loads nvm/pyenv). Same logic as isExecutableOnProcessPath in
+// src/server/helpers/command-execution-helpers.js, duplicated because this
+// CLI script has no shared import path to that module.
+const isExecutableOnProcessPath = (command) => {
+  if (!/^[A-Za-z0-9._+-]+$/.test(command)) {
+    return false;
+  }
+  const dirs = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat", ".com"] : [""];
+  return dirs.some((dir) =>
+    extensions.some((extension) => {
+      const candidate = path.join(dir, `${command}${extension}`);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return fs.statSync(candidate).isFile();
+      } catch (_error) {
+        return false;
+      }
+    }),
+  );
+};
+
+// PATH first, then a login shell (what the scripts themselves run under) only
+// for commands that aren't on PATH.
 const isCommandAvailable = (command) => {
+  if (isExecutableOnProcessPath(command)) {
+    return true;
+  }
   const result = spawnSync("bash", ["-lc", `command -v ${command}`], {
     stdio: "ignore",
   });
