@@ -5,8 +5,8 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
-import { useOutputText } from './OutputTextContext';
-import { usePrData } from './PrDataContext';
+import { useSetOutputText } from './OutputTextContext';
+import { useRequestActivity } from './RequestActivityContext';
 import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - these close over nothing but each other
@@ -43,11 +43,11 @@ export function useSinglePrUpdate() {
   const { showError } = useSnackbar();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps the whole tree from mountAppRoot() now, so this is a genuine descendant -
-  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
   // window.beginRequestActivity/renderRequestActivity.
-  const { beginRequestActivity } = usePrData();
+  const { beginRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
-  const { setOutputText } = useOutputText();
+  const setOutputText = useSetOutputText();
 
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { OutputTextContext } from '../state/OutputTextContext';
+import { OutputTextContext, OutputTextSetterContext } from '../state/OutputTextContext';
 
 /**
  * Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
@@ -30,5 +30,9 @@ export function OutputTextProvider({ children }) {
 
   const value = useMemo(() => ({ outputText, setOutputText }), [outputText]);
 
-  return <OutputTextContext.Provider value={value}>{children}</OutputTextContext.Provider>;
+  return (
+    <OutputTextSetterContext.Provider value={setOutputText}>
+      <OutputTextContext.Provider value={value}>{children}</OutputTextContext.Provider>
+    </OutputTextSetterContext.Provider>
+  );
 }

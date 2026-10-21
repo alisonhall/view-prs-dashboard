@@ -24,7 +24,7 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
-const { PrDataContext } = require("../state/PrDataContext");
+const { RequestActivityContext } = require("../state/RequestActivityContext");
 const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
@@ -488,8 +488,8 @@ function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaC
 // audit" - confirmed to have no remaining readers anywhere.)
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // useRunScript/useAckLabelActions/useBackfillActions now read
-// beginRequestActivity/renderRequestActivity from usePrData(), because in
-// production <PrDataProvider> wraps <AppRoot/> from mountAppRoot(). This
+// beginRequestActivity/renderRequestActivity from useRequestActivity(), which
+// <PrDataProvider> publishes; in production it wraps <AppRoot/> from mountAppRoot(). This
 // suite can't do that: its real PrDataProvider only exists inside
 // MountedPrTableTree, mounted later per table mount with that mount's own
 // initial payload - hoisting it to these harnesses' roots would change how
@@ -503,7 +503,7 @@ const WINDOW_BACKED_PR_ACTIVITY_VALUE = {
   renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
 };
 const WindowBackedPrActivityProvider = ({ children }) =>
-  React.createElement(PrDataContext.Provider, { value: WINDOW_BACKED_PR_ACTIVITY_VALUE }, children);
+  React.createElement(RequestActivityContext.Provider, { value: WINDOW_BACKED_PR_ACTIVITY_VALUE }, children);
 
 function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContainer }) {
   // Window-bridge elimination Phase 3d: the button state is owned by the real

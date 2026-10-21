@@ -4,8 +4,8 @@ const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useAckLabelActions } = require('./useAckLabelActions.jsx');
-const { PrDataContext } = require('./PrDataContext');
-const { OutputTextContext } = require('./OutputTextContext');
+const { RequestActivityContext } = require('./RequestActivityContext');
+const { OutputTextSetterContext } = require('./OutputTextContext');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { StatusTextContext } = require('./StatusTextContext');
@@ -23,7 +23,7 @@ function Probe({ onReady }) {
 // window.updateReactOutputText - tests assign `setOutputText` (reset after
 // each test) instead of stubbing the bridge.
 let setOutputText = () => {};
-const outputTextValue = { outputText: '', setOutputText: (message) => setOutputText(message) };
+const outputTextSetter = (message) => setOutputText(message);
 
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // beginRequestActivity/renderRequestActivity come from usePrData() now, not
@@ -53,10 +53,10 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
           StatusTextContext.Provider,
           { value: { statusText: 'Not run', setStatusText } },
           React.createElement(
-            OutputTextContext.Provider,
-            { value: outputTextValue },
+            OutputTextSetterContext.Provider,
+            { value: outputTextSetter },
             React.createElement(
-              PrDataContext.Provider,
+              RequestActivityContext.Provider,
               { value: activity },
               React.createElement(Probe, { onReady }),
             ),
@@ -201,10 +201,10 @@ describe('useAckLabelActions', () => {
             StatusTextContext.Provider,
             { value: { statusText: 'Not run', setStatusText: () => {} } },
             React.createElement(
-              OutputTextContext.Provider,
-              { value: outputTextValue },
+              OutputTextSetterContext.Provider,
+              { value: outputTextSetter },
               React.createElement(
-                PrDataContext.Provider,
+                RequestActivityContext.Provider,
                 { value: activity },
                 React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
               ),

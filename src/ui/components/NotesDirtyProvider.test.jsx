@@ -1,14 +1,14 @@
 /** @jest-environment jsdom */
 
 const { render: baseRender, cleanup, fireEvent, screen } = require('@testing-library/react');
-const { PrDataContext } = require('../state/PrDataContext');
+const { RequestActivityContext } = require('../state/RequestActivityContext');
 
 // NotesSection (rendered for real by this file's rows) reads
 // beginRequestActivity from usePrData() now, not window.beginRequestActivity
 // (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 const render = (ui, options) =>
   baseRender(
-    <PrDataContext.Provider value={{ beginRequestActivity: () => () => {} }}>{ui}</PrDataContext.Provider>,
+    <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} }}>{ui}</RequestActivityContext.Provider>,
     options,
   );
 require('@testing-library/jest-dom');

@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NotesMultiEntryField } from './NotesMultiEntryField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
-import { usePrData } from '../../state/PrDataContext';
+import { useRequestActivity } from '../../state/RequestActivityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
@@ -90,7 +90,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
   // untracked - a slow/hung notes save had no visibility anywhere outside
   // this component's own "Saving..." status text.
-  const { beginRequestActivity } = usePrData();
+  const { beginRequestActivity } = useRequestActivity();
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const repo = entry?.repo || '';

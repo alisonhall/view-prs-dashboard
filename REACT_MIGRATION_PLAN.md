@@ -2686,6 +2686,19 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Co
 ### Phase 3 summary
 Done: 3a (auto-render blocking via Context; 2 dead bridges deleted), 3b (6 hooks use `usePrData()` for request activity), 3c (output text -> `OutputTextProvider`), 3d (backfill button state -> `BackfillStatusProvider`). **Deliberately left (a real caller remains, none of them fixable from React):** `window.beginRequestActivity`/`renderRequestActivity` (callers: `index.page.js`; the latter also `PrDataProvider`'s own `pollForDataChanges` closure and the two providers that sit outside it), `window.updateReactOutputText` and `updateReactBackfillButtonState` (`index.page.js`), `window.updateReactAutoRenderBlockedLinks` (called only from vanilla code via `pr-auto-render-indicator-links.helpers.js`), and everything `index.page.js` owns (`applyFreshPrPayload`, `loadStoredData`, `getLatestStoredPayload`, `applyLatestPrData`, `summarizeAckRefreshWarnings`) - all Phase 7.
 
+## ✅ **Phase 3 review: three render-cascade regressions I introduced, measured and fixed (2026-10-21)**
+
+Found re-reading Phase 3 for what each new Context read subscribes a component to. Each was measured (a `React.memo` consumer's render count) before and after, and each fix has a regression test that fails when the fix is undone.
+
+1. **`PrDataProvider` subscribed to `AutoRenderBlockingContext` (3a).** That Provider re-renders on every `pushAutoRenderBlockingState`, which vanilla's `recomputeDirtyOnEvent` fires on every input/change/click in the PR table, and its `value` wasn't memoized. `PrDataProvider`'s own value isn't either, so each push re-rendered every `usePrData()` consumer: **20 pushes -> 20 extra renders** (0 at `dcb8db8`, before Phase 3a). Fix: the three stable functions moved to their own `AutoRenderBlockingActionsContext` (`useAutoRenderBlockingActions()`), which `PrDataProvider` reads; the state value is `useMemo`'d, so portal consumers only re-render on real changes.
+2. **The output-text writers subscribed to the text (3c).** `useSinglePrUpdate` runs inside `PrTableApp`, so each output write (every Run/Ack/Backfill action) re-rendered the table (**5 writes -> 5 extra renders**). Fix: the stable `setOutputText` has its own `OutputTextSetterContext` (`useSetOutputText()`); only `AppRoot` reads the text.
+3. **`AppRoot`-level hooks subscribed to all of `PrDataProvider` (3b).** `useRunScript`/`useAckLabelActions`/`useBackfillActions`/`useRequestMoreMerged` (called from `AppRoot`'s body, which never subscribed to PR data before) and `NotesSection` read two never-changing functions through `usePrData()`, so `AppRoot` and every portal it builds re-rendered on each payload/repo/stats update (**5 updates -> 5 extra renders**). Fix: new `RequestActivityContext` (`useRequestActivity()`), published by `PrDataProvider` from its `activityHelpers` memo; the six consumers use it. `useRowCheckboxActions` keeps `usePrData()` (it needs `payload`/`selectedRepo` anyway).
+
+The rule this keeps: a component that only needs stable functions from a changing Provider reads them from a stable, separate Context. `PrDataProvider`'s un-memoized `value` (the amplifier in 1 and 3) is pre-existing and untouched.
+
+- Tests: +8 (ARB: actions-Context test replaced, +2 cascade tests under a real `PrDataProvider`; `OutputTextProvider` +3: setter-only consumer never re-renders, setter identity, inert default; `useRequestMoreMerged` +3: no re-render on PR data updates, stable instances, inert default). Existing tests that supplied a `PrDataContext` just for the two functions now supply `RequestActivityContext`. Verified each regression test fails against the broken version.
+- Jest 2534/2534, eslint clean, Playwright 56/56.
+
 ## 📞 **Getting Help**
 
 **Resources:**

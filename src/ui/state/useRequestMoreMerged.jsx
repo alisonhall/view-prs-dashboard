@@ -4,7 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrMergedRequestMoreActionHelpers } from '../helpers/pr-merged-request-more-action.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
-import { usePrData } from './PrDataContext';
+import { useRequestActivity } from './RequestActivityContext';
 import { useSnackbar } from './SnackbarContext';
 
 /**
@@ -38,9 +38,9 @@ export function useRequestMoreMerged() {
   const { showError } = useSnackbar();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps the whole tree from mountAppRoot() now, so this is a genuine descendant -
-  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
   // window.beginRequestActivity/renderRequestActivity.
-  const { beginRequestActivity, renderRequestActivity } = usePrData();
+  const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   const isPendingRef = useRef(false);
 
   return useCallback(

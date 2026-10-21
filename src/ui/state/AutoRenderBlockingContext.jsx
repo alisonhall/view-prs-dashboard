@@ -27,15 +27,32 @@ export const AutoRenderBlockingContext = createContext({
   isBlocked: false,
   statusText: '',
   discardAndApply: () => {},
-  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // PrDataProvider's polling reads/writes the pending payload through these
-  // instead of window.getHasDirtyPrSectionsFields/getPendingAutoRenderPayload/
-  // setPendingAutoRenderPayload. Stable identities (read the Provider's
-  // ref, never render state), so they're safe in useMemo/useCallback deps.
+});
+
+/**
+ * Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+ * PrDataProvider's polling reads/writes the pending payload through these
+ * instead of window.getHasDirtyPrSectionsFields/getPendingAutoRenderPayload/
+ * setPendingAutoRenderPayload.
+ *
+ * A separate Context from AutoRenderBlockingContext above, on purpose: that
+ * one's value changes whenever blocking state does (isBlocked/statusText),
+ * and index.page.js pushes new state on every input/change/click in the PR
+ * table. PrDataProvider (which wraps the whole table tree) must not
+ * subscribe to that, or each such event re-renders every usePrData()
+ * consumer. This object has a stable identity for the Provider's lifetime
+ * (the functions read the Provider's ref, never render state), so it never
+ * re-renders anything.
+ */
+export const AutoRenderBlockingActionsContext = createContext({
   getHasDirtyPrSectionsFields: () => false,
   getPendingAutoRenderPayload: () => null,
   setPendingAutoRenderPayload: () => {},
 });
+
+export function useAutoRenderBlockingActions() {
+  return useContext(AutoRenderBlockingActionsContext);
+}
 
 export function useAutoRenderBlocking() {
   return useContext(AutoRenderBlockingContext);

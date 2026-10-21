@@ -24,3 +24,17 @@ export const OutputTextContext = createContext({
 export function useOutputText() {
   return useContext(OutputTextContext);
 }
+
+/**
+ * The setter alone, in its own Context: writers (useRunScript/
+ * useSinglePrUpdate/useAckLabelActions/useBackfillActions) must not subscribe
+ * to the text itself. useSinglePrUpdate runs inside PrTableApp, so reading
+ * `useOutputText()` there would re-render the whole table every time any
+ * action writes output. The setter is a stable useState setter, so this
+ * Context's value never changes for the Provider's lifetime.
+ */
+export const OutputTextSetterContext = createContext(() => {});
+
+export function useSetOutputText() {
+  return useContext(OutputTextSetterContext);
+}

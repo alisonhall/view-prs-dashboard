@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AutoRenderBlockingContext } from '../state/AutoRenderBlockingContext';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AutoRenderBlockingActionsContext,
+  AutoRenderBlockingContext,
+} from '../state/AutoRenderBlockingContext';
 import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
@@ -184,16 +187,21 @@ export function AutoRenderBlockingProvider({ children }) {
     blockingAuthorInsightsCount: (blockingState.blockingAuthorInsightsLogins || []).length,
   });
 
-  const value = {
-    isBlocked,
-    statusText,
-    discardAndApply,
-    getHasDirtyPrSectionsFields,
-    getPendingAutoRenderPayload,
-    setPendingAutoRenderPayload,
-  };
+  // Both memoized: each push of blocking state re-renders this Provider, and
+  // an un-memoized value object would re-render every consumer each time
+  // even when nothing they read changed.
+  const value = useMemo(
+    () => ({ isBlocked, statusText, discardAndApply }),
+    [isBlocked, statusText, discardAndApply],
+  );
+  const actions = useMemo(
+    () => ({ getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload }),
+    [getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload],
+  );
 
   return (
-    <AutoRenderBlockingContext.Provider value={value}>{children}</AutoRenderBlockingContext.Provider>
+    <AutoRenderBlockingActionsContext.Provider value={actions}>
+      <AutoRenderBlockingContext.Provider value={value}>{children}</AutoRenderBlockingContext.Provider>
+    </AutoRenderBlockingActionsContext.Provider>
   );
 }

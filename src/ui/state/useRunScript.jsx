@@ -4,8 +4,8 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
-import { useOutputText } from './OutputTextContext';
-import { usePrData } from './PrDataContext';
+import { useSetOutputText } from './OutputTextContext';
+import { useRequestActivity } from './RequestActivityContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 
@@ -51,11 +51,11 @@ export function useRunScript() {
   const { showError } = useSnackbar();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
-  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
   // window.beginRequestActivity/renderRequestActivity.
-  const { beginRequestActivity, renderRequestActivity } = usePrData();
+  const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
-  const { setOutputText } = useOutputText();
+  const setOutputText = useSetOutputText();
 
   return useCallback(async () => {
     const body = getFormBody();

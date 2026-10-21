@@ -12,7 +12,7 @@ jest.mock('../../helpers/pr-http.helpers.js', () => ({
 }));
 
 const { NotesSection } = require('./NotesSection');
-const { PrDataContext } = require('../../state/PrDataContext');
+const { RequestActivityContext } = require('../../state/RequestActivityContext');
 const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
 const { postJson } = require('../../helpers/pr-http.helpers.js');
 
@@ -20,9 +20,9 @@ const { postJson } = require('../../helpers/pr-http.helpers.js');
 // window.beginRequestActivity (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 function render(ui) {
   return baseRender(
-    <PrDataContext.Provider value={{ beginRequestActivity: () => () => {} }}>
+    <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} }}>
       {ui}
-    </PrDataContext.Provider>,
+    </RequestActivityContext.Provider>,
   );
 }
 

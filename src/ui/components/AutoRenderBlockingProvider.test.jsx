@@ -2,7 +2,10 @@
 
 const { render, act } = require('@testing-library/react');
 const { AutoRenderBlockingProvider } = require('./AutoRenderBlockingProvider');
-const { useAutoRenderBlocking } = require('../state/AutoRenderBlockingContext');
+const {
+  useAutoRenderBlocking,
+  useAutoRenderBlockingActions,
+} = require('../state/AutoRenderBlockingContext');
 const { StatusTextContext } = require('../state/StatusTextContext');
 
 function Probe({ onValue }) {
@@ -60,47 +63,107 @@ describe('AutoRenderBlockingProvider', () => {
     expect(latest.isBlocked).toBe(false);
   });
 
-  test('given the Context functions, when blocking state and a pending payload are set, then they read back live and keep stable identities across renders', () => {
-    let latest;
-    const seenGetters = new Set();
-    const seenSetters = new Set();
+  test('given the actions Context, when blocking state and a pending payload are set, then the functions read back live and keep stable identities across renders', () => {
+    let latestState;
+    let latestActions;
+    const seenFunctions = new Set();
+    function ActionsProbe() {
+      const actions = useAutoRenderBlockingActions();
+      latestActions = actions;
+      seenFunctions.add(actions.getHasDirtyPrSectionsFields);
+      seenFunctions.add(actions.getPendingAutoRenderPayload);
+      seenFunctions.add(actions.setPendingAutoRenderPayload);
+      return null;
+    }
     render(
       <AutoRenderBlockingProvider>
-        <Probe
-          onValue={(value) => {
-            latest = value;
-            seenGetters.add(value.getHasDirtyPrSectionsFields);
-            seenGetters.add(value.getPendingAutoRenderPayload);
-            seenSetters.add(value.setPendingAutoRenderPayload);
-          }}
-        />
+        <Probe onValue={(value) => (latestState = value)} />
+        <ActionsProbe />
       </AutoRenderBlockingProvider>,
     );
-    expect(latest.getHasDirtyPrSectionsFields()).toBe(false);
-    expect(latest.getPendingAutoRenderPayload()).toBeNull();
+    expect(latestActions.getHasDirtyPrSectionsFields()).toBe(false);
+    expect(latestActions.getPendingAutoRenderPayload()).toBeNull();
 
     const payload = { byPrNumber: { 7: {} } };
+    const first = latestActions;
     act(() => {
       window.pushAutoRenderBlockingState(DIRTY_STATE);
-      latest.setPendingAutoRenderPayload(payload);
+      latestActions.setPendingAutoRenderPayload(payload);
     });
 
-    // Read through the *first* render's function instances, to prove they
-    // read the Provider's ref (live), not a closure over stale state.
-    const [firstHasDirty, firstGetPending] = [...seenGetters];
-    expect(firstHasDirty()).toBe(true);
-    expect(firstGetPending()).toBe(payload);
-    expect(latest.isBlocked).toBe(true);
-    // The Provider re-rendered at least once, yet each function is one stable
-    // identity (so PrDataProvider can list them in useMemo deps without
-    // rebuilding pollForDataChanges every render).
-    expect(seenGetters.size).toBe(2);
-    expect(seenSetters.size).toBe(1);
+    // Read through the *first* render's functions, to prove they read the
+    // Provider's ref (live), not a closure over stale state.
+    expect(first.getHasDirtyPrSectionsFields()).toBe(true);
+    expect(first.getPendingAutoRenderPayload()).toBe(payload);
+    expect(latestState.isBlocked).toBe(true);
+    // The Provider re-rendered, yet the actions object and each function is
+    // one stable identity (so PrDataProvider can list them in useMemo deps).
+    expect(latestActions).toBe(first);
+    expect(seenFunctions.size).toBe(3);
 
     act(() => {
       window.pushAutoRenderBlockingState(CLEAN_STATE);
     });
-    expect(firstHasDirty()).toBe(false);
+    expect(first.getHasDirtyPrSectionsFields()).toBe(false);
+  });
+
+  // Regression: PrDataProvider wraps the whole table tree. index.page.js pushes
+  // blocking state on every input/change/click in it, so if PrDataProvider
+  // (or anything between) subscribed to this Provider's changing state value,
+  // each of those events re-rendered every usePrData() consumer - 20 extra
+  // renders for 20 pushes when PrDataProvider read useAutoRenderBlocking().
+  describe('blocking-state pushes under a real PrDataProvider', () => {
+    const { PrDataProvider } = require('../state/PrDataProvider');
+    const { usePrData } = require('../state/PrDataContext');
+    const React = require('react');
+    const makeState = (dirtyFieldCount) => ({ ...CLEAN_STATE, dirtyFieldCount });
+
+    const renderWithConsumer = () => {
+      let renders = 0;
+      const Consumer = React.memo(function Consumer() {
+        usePrData();
+        renders += 1;
+        return null;
+      });
+      render(
+        <AutoRenderBlockingProvider>
+          <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+            <Consumer />
+          </PrDataProvider>
+        </AutoRenderBlockingProvider>,
+      );
+      return () => renders;
+    };
+
+    test('given identical blocking state is pushed repeatedly, when a usePrData() consumer is mounted, then it does not re-render', () => {
+      const getRenders = renderWithConsumer();
+      const baseline = getRenders();
+
+      for (let i = 0; i < 20; i += 1) {
+        act(() => {
+          window.pushAutoRenderBlockingState(makeState(0));
+        });
+      }
+
+      expect(getRenders()).toBe(baseline);
+    });
+
+    test('given the blocking state genuinely changes (status text and isBlocked), when a usePrData() consumer is mounted, then it still does not re-render', () => {
+      const getRenders = renderWithConsumer();
+      const baseline = getRenders();
+
+      act(() => {
+        window.pushAutoRenderBlockingState(DIRTY_STATE);
+        window.setPendingAutoRenderPayload({ byPrNumber: {} });
+      });
+      for (let count = 1; count <= 5; count += 1) {
+        act(() => {
+          window.pushAutoRenderBlockingState(makeState(count));
+        });
+      }
+
+      expect(getRenders()).toBe(baseline);
+    });
   });
 
   test('given a payload is pushed while dirty, when read, then isBlocked becomes true and the outer indicator panel unhides', () => {

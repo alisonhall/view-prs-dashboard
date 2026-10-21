@@ -6,9 +6,9 @@ import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useBackfillStatus } from './BackfillStatusContext';
-import { usePrData } from './PrDataContext';
+import { useRequestActivity } from './RequestActivityContext';
 import { useStatusText } from './StatusTextContext';
-import { useOutputText } from './OutputTextContext';
+import { useSetOutputText } from './OutputTextContext';
 import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same "stable, zero-per-render-state"
@@ -89,11 +89,11 @@ export function useBackfillActions() {
   } = useBackfillStatus();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
-  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
   // window.beginRequestActivity/renderRequestActivity.
-  const { beginRequestActivity, renderRequestActivity } = usePrData();
+  const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
-  const { setOutputText } = useOutputText();
+  const setOutputText = useSetOutputText();
 
   return useMemo(() => {
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {

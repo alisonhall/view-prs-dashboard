@@ -11,7 +11,8 @@ import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.hel
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
-import { useAutoRenderBlocking } from './AutoRenderBlockingContext';
+import { useAutoRenderBlockingActions } from './AutoRenderBlockingContext';
+import { RequestActivityContext } from './RequestActivityContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -375,8 +376,12 @@ export function PrDataProvider({
   // AppRoot, i.e. a descendant of this one), so these are real Context
   // reads instead of window.getHasDirtyPrSectionsFields/
   // getPendingAutoRenderPayload/setPendingAutoRenderPayload.
+  // The actions-only Context, not useAutoRenderBlocking(): this Provider wraps
+  // the whole table tree, so it must not re-render (and re-render every
+  // usePrData() consumer) each time blocking *state* changes - see that
+  // Context's own comment.
   const { getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload } =
-    useAutoRenderBlocking();
+    useAutoRenderBlockingActions();
 
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
@@ -713,9 +718,21 @@ export function PrDataProvider({
     };
   }, [viewerContext]);
 
+  // Stable for this Provider's lifetime (activityHelpers is a useMemo([])) -
+  // see RequestActivityContext.jsx for why this isn't just part of `value`.
+  const requestActivity = useMemo(
+    () => ({
+      beginRequestActivity: activityHelpers.beginRequestActivity,
+      renderRequestActivity: activityHelpers.renderRequestActivity,
+    }),
+    [activityHelpers],
+  );
+
   return (
     <PrDataContext.Provider value={value}>
-      <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
+      <RequestActivityContext.Provider value={requestActivity}>
+        <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
+      </RequestActivityContext.Provider>
     </PrDataContext.Provider>
   );
 }

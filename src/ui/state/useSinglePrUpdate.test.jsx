@@ -5,8 +5,8 @@ require('@testing-library/jest-dom');
 const { useSinglePrUpdate } = require('./useSinglePrUpdate.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
-const { PrDataContext } = require('./PrDataContext');
-const { OutputTextContext } = require('./OutputTextContext');
+const { RequestActivityContext } = require('./RequestActivityContext');
+const { OutputTextSetterContext } = require('./OutputTextContext');
 
 function Probe({ onReady }) {
   const runSinglePrUpdate = useSinglePrUpdate();
@@ -19,7 +19,7 @@ function Probe({ onReady }) {
 // window.updateReactOutputText - tests assign `setOutputText` (reset after
 // each test) instead of stubbing the bridge.
 let setOutputText = () => {};
-const outputTextValue = { outputText: '', setOutputText: (message) => setOutputText(message) };
+const outputTextSetter = (message) => setOutputText(message);
 
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // beginRequestActivity/renderRequestActivity come from usePrData() now, not
@@ -40,11 +40,11 @@ const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
       <SnackbarContext.Provider value={{ showError }}>
-        <OutputTextContext.Provider value={outputTextValue}>
-<PrDataContext.Provider value={activity}>
+        <OutputTextSetterContext.Provider value={outputTextSetter}>
+<RequestActivityContext.Provider value={activity}>
           <Probe onReady={onReady} />
-        </PrDataContext.Provider>
-</OutputTextContext.Provider>
+        </RequestActivityContext.Provider>
+</OutputTextSetterContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
