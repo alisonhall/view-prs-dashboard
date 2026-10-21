@@ -4,6 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrMergedRequestMoreActionHelpers } from '../helpers/pr-merged-request-more-action.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { usePrData } from './PrDataContext';
 import { useSnackbar } from './SnackbarContext';
 
 /**
@@ -35,6 +36,11 @@ import { useSnackbar } from './SnackbarContext';
 export function useRequestMoreMerged() {
   const { setStatusText } = useStatusText();
   const { showError } = useSnackbar();
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+  // wraps the whole tree from mountAppRoot() now, so this is a genuine descendant -
+  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // window.beginRequestActivity/renderRequestActivity.
+  const { beginRequestActivity, renderRequestActivity } = usePrData();
   const isPendingRef = useRef(false);
 
   return useCallback(
@@ -45,13 +51,13 @@ export function useRequestMoreMerged() {
           isPendingRef.current = value;
         },
         defaultRepo: DEFAULT_REPO,
-        beginRequestActivity: window.beginRequestActivity || (() => () => {}),
+        beginRequestActivity,
         postJson,
         applyFreshPrPayload: (...args) => window.applyFreshPrPayload?.(...args),
         loadStoredData: (...args) => window.loadStoredData?.(...args),
         setStatusMessage: (message) => {
           setStatusText(message);
-          window.renderRequestActivity?.();
+          renderRequestActivity();
         },
         notifyFailureSnackbar: (title, errorSource, fallbackMessage) => {
           const { title: finalTitle, detail } = buildFailureSnackbarNotification(
@@ -65,6 +71,6 @@ export function useRequestMoreMerged() {
 
       return handleRequestMoreMerged(repoOverride, options);
     },
-    [setStatusText, showError],
+    [setStatusText, showError, beginRequestActivity, renderRequestActivity],
   );
 }

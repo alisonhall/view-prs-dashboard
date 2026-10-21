@@ -6,6 +6,7 @@ import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useBackfillStatus } from './BackfillStatusContext';
+import { usePrData } from './PrDataContext';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 
@@ -81,9 +82,13 @@ export function useBackfillActions() {
   // bridge needed for the tracking flags or their setters.
   const { getBackfillTrackingState, setSupportsBackfillLogPolling, setIsBackfillActionPending } =
     useBackfillStatus();
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+  // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
+  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // window.beginRequestActivity/renderRequestActivity.
+  const { beginRequestActivity, renderRequestActivity } = usePrData();
 
   return useMemo(() => {
-    const beginRequestActivity = window.beginRequestActivity || (() => () => {});
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
       const { title: finalTitle, detail } = buildFailureSnackbarNotification(
         title,
@@ -100,7 +105,7 @@ export function useBackfillActions() {
         beginRequestActivity,
         setStatusMessage: (message) => {
           setStatusText(message);
-          window.renderRequestActivity?.();
+          renderRequestActivity();
         },
         setOutputMessage: (message) => window.updateReactOutputText?.(message),
         setBackfillButtonState: (state) => window.updateReactBackfillButtonState?.(state),
@@ -214,5 +219,7 @@ export function useBackfillActions() {
     getBackfillTrackingState,
     setSupportsBackfillLogPolling,
     setIsBackfillActionPending,
+    beginRequestActivity,
+    renderRequestActivity,
   ]);
 }

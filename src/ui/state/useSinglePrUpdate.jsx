@@ -5,6 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { usePrData } from './PrDataContext';
 import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - these close over nothing but each other
@@ -39,6 +40,11 @@ const { getGithubAuthFailureHint, formatCommandOutputWithAuthHint } =
 export function useSinglePrUpdate() {
   const { setStatusText } = useStatusText();
   const { showError } = useSnackbar();
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+  // wraps the whole tree from mountAppRoot() now, so this is a genuine descendant -
+  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // window.beginRequestActivity/renderRequestActivity.
+  const { beginRequestActivity } = usePrData();
 
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');
@@ -46,8 +52,6 @@ export function useSinglePrUpdate() {
 
     const setStatusMessage = (message) => setStatusText(message);
     const setOutputMessage = (message) => window.updateReactOutputText?.(message);
-    // Same fallback shape NotesSection.jsx already uses for this exact bridge.
-    const beginRequestActivity = window.beginRequestActivity || (() => () => {});
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
       const { title: finalTitle, detail } = buildFailureSnackbarNotification(
         title,
@@ -102,5 +106,5 @@ export function useSinglePrUpdate() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, showError]);
+  }, [setStatusText, showError, beginRequestActivity]);
 }

@@ -31,7 +31,7 @@ import { useSnackbar } from './SnackbarContext';
  * reasoning as statusText above.
  */
 export function useRowCheckboxActions() {
-  const { payload, selectedRepo } = usePrData();
+  const { payload, selectedRepo, beginRequestActivity } = usePrData();
   const { setStatusText } = useStatusText();
   const { showError } = useSnackbar();
 
@@ -51,9 +51,9 @@ export function useRowCheckboxActions() {
       getLatestSelectedRepo: () => selectedRepo,
       applyLatestPrData: (partial) => window.applyLatestPrData?.(partial),
       loadStoredData: (...args) => window.loadStoredData?.(...args),
-      beginRequestActivity: window.beginRequestActivity || (() => () => {}),
+      beginRequestActivity,
     });
 
     return { toggleInReviewForRow, toggleFlaggedForRow };
-  }, [payload, selectedRepo, setStatusText, showError]);
+  }, [payload, selectedRepo, setStatusText, showError, beginRequestActivity]);
 }

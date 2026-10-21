@@ -7,6 +7,7 @@ import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
+import { usePrData } from './PrDataContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 
@@ -79,6 +80,11 @@ export function useAckLabelActions() {
   // outside AppRoot" reasoning as setStatusText/the activity-queue
   // functions above.
   const { showError, showWarning } = useSnackbar();
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+  // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
+  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // window.beginRequestActivity/renderRequestActivity.
+  const { beginRequestActivity, renderRequestActivity } = usePrData();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
@@ -86,10 +92,10 @@ export function useAckLabelActions() {
         postJson,
         setStatusMessage: (message) => {
           setStatusText(message);
-          window.renderRequestActivity?.();
+          renderRequestActivity();
         },
         setOutputMessage: (message) => window.updateReactOutputText?.(message),
-        beginRequestActivity: window.beginRequestActivity || (() => () => {}),
+        beginRequestActivity,
         getGithubAuthFailureHint,
         formatCommandOutput,
         formatCommandOutputWithAuthHint,
@@ -153,6 +159,8 @@ export function useAckLabelActions() {
     setStatusText,
     getFormBody,
     showError,
+    beginRequestActivity,
+    renderRequestActivity,
     showWarning,
   ]);
 }

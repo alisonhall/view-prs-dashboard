@@ -4,6 +4,7 @@ const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useAckLabelActions } = require('./useAckLabelActions.jsx');
+const { PrDataContext } = require('./PrDataContext');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { StatusTextContext } = require('./StatusTextContext');
@@ -15,6 +16,12 @@ function Probe({ onReady }) {
   onReady(ackLabelActions);
   return null;
 }
+
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// beginRequestActivity/renderRequestActivity come from usePrData() now, not
+// window.beginRequestActivity/renderRequestActivity.
+const makeActivity = () => ({ beginRequestActivity: () => () => {}, renderRequestActivity: () => {} });
+let activity = makeActivity();
 
 // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // statusText now comes from StatusTextContext directly, not
@@ -37,7 +44,11 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
         React.createElement(
           StatusTextContext.Provider,
           { value: { statusText: 'Not run', setStatusText } },
-          React.createElement(Probe, { onReady }),
+          React.createElement(
+            PrDataContext.Provider,
+            { value: activity },
+            React.createElement(Probe, { onReady }),
+          ),
         ),
       ),
     ),
@@ -52,7 +63,6 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
 // behavior directly) need no Provider wrapper to keep passing.
 const ACK_LABEL_WINDOW_BRIDGES = [
   'updateReactOutputText',
-  'beginRequestActivity',
   'summarizeAckRefreshWarnings',
   'applyFreshPrPayload',
   'loadStoredData',
@@ -62,6 +72,7 @@ const ACK_LABEL_WINDOW_BRIDGES = [
 describe('useAckLabelActions', () => {
   afterEach(() => {
     ACK_LABEL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
+    activity = makeActivity();
     delete global.fetch;
   });
 
@@ -177,7 +188,11 @@ describe('useAckLabelActions', () => {
           React.createElement(
             StatusTextContext.Provider,
             { value: { statusText: 'Not run', setStatusText: () => {} } },
-            React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+            React.createElement(
+              PrDataContext.Provider,
+              { value: activity },
+              React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+            ),
           ),
         ),
       ),

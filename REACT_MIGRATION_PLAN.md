@@ -2653,6 +2653,16 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Ph
 - **Integration harness:** `index.html.test.js` mounted `AutoRenderBlockingProvider` as a separate sibling root. A `PrDataProvider` outside it sees the inert default, which would have silently disabled the whole blocking path. The real provider now sits in `FilterStateTestRootHarness` as the ancestor of the portaled table tree, mirroring `mountAppRoot()`; `installAutoRenderBlockingProviderBridge` was removed.
 - Tests: +1 (Context functions read live through first-render instances, stable identities); 2 existing assertions updated for the 2 remaining bridges. Jest 2513/2513 (was 2512), eslint clean, Playwright 55/55.
 
+## ✅ **Window-bridge elimination, Phase 3b: 6 hooks read `beginRequestActivity`/`renderRequestActivity` from `usePrData()` (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+
+- `useRunScript`, `useSinglePrUpdate`, `useAckLabelActions`, `useRowCheckboxActions` (already read `usePrData()`; just took `beginRequestActivity` from it), `useRequestMoreMerged` and `useBackfillActions` no longer call `window.beginRequestActivity`/`window.renderRequestActivity`. They're genuine descendants of `PrDataProvider` since Phase 2. Both functions come from `activityHelpers` (a `useMemo([])`), so they're stable; added to each hook's `useMemo`/`useCallback` deps.
+- **Behavior change:** these hooks used to fall back silently (`window.beginRequestActivity || noop`) with no provider; `usePrData()` throws without one. Every real render is inside it now.
+- **Bridges kept (real callers remain):** `window.beginRequestActivity` still has `index.page.js`; `window.renderRequestActivity` still has `index.page.js`, `PrDataProvider`'s own `pollForDataChanges` closure, and two providers that sit *outside* `PrDataProvider` and so can't use `usePrData()`: `BackfillStatusProvider` and `AutoRenderBlockingProvider`. Not deleted.
+- **Tests:** 4 hook test files (`useRunScript`, `useSinglePrUpdate`, `useAckLabelActions`, `useBackfillActions`) now supply a `PrDataContext` and set mocks on it instead of stubbing `window.*`; their existing `finishActivity` assertions now genuinely prove the Context path. New `useRequestMoreMerged.test.jsx` (+2) asserts the hook uses the Context's functions and *not* decoy window bridges. Integration harness: the 3 roots that call these hooks outside its real `PrDataProvider` (which only exists inside the per-mount `MountedPrTableTree`) get a stand-in `WindowBackedPrActivityProvider` forwarding to the bridges the real provider still publishes; hoisting a real one would change how every test's first render starts, so that waits for Phase 7.
+- Jest 2515/2515 (was 2513), eslint clean, Playwright 55/55.
+
 ## 📞 **Getting Help**
 
 **Resources:**

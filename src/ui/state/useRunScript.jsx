@@ -4,6 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { usePrData } from './PrDataContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 
@@ -47,15 +48,19 @@ export function useRunScript() {
   // same "genuine descendant, wrapped from outside AppRoot" reasoning as
   // setStatusText above.
   const { showError } = useSnackbar();
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+  // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
+  // beginRequestActivity/renderRequestActivity come from usePrData() instead of
+  // window.beginRequestActivity/renderRequestActivity.
+  const { beginRequestActivity, renderRequestActivity } = usePrData();
 
   return useCallback(async () => {
     const body = getFormBody();
     const setStatusMessage = (message) => {
       setStatusText(message);
-      window.renderRequestActivity?.();
+      renderRequestActivity();
     };
     const setOutputMessage = (message) => window.updateReactOutputText?.(message);
-    const beginRequestActivity = window.beginRequestActivity || (() => () => {});
 
     if (body.prNumbersInput && !body.prNumber) {
       setStatusMessage('Run script requires numeric PR number(s) in "PR number(s)"');
@@ -131,5 +136,5 @@ export function useRunScript() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, getFormBody, showError]);
+  }, [setStatusText, getFormBody, showError, beginRequestActivity, renderRequestActivity]);
 }

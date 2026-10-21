@@ -24,6 +24,7 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
+const { PrDataContext } = require("../state/PrDataContext");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
@@ -484,6 +485,25 @@ function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaC
 // (window.autoScrollBackfillLogToBottom itself is now deleted outright too
 // - cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
 // audit" - confirmed to have no remaining readers anywhere.)
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// useRunScript/useAckLabelActions/useBackfillActions now read
+// beginRequestActivity/renderRequestActivity from usePrData(), because in
+// production <PrDataProvider> wraps <AppRoot/> from mountAppRoot(). This
+// suite can't do that: its real PrDataProvider only exists inside
+// MountedPrTableTree, mounted later per table mount with that mount's own
+// initial payload - hoisting it to these harnesses' roots would change how
+// every test's first render starts. So the 3 harness roots that call those
+// hooks outside that tree get this stand-in instead, forwarding to the same
+// window bridges the real PrDataProvider (once mounted) still publishes -
+// the exact behavior these hooks had when they called window.* directly,
+// including the no-op before the table mounts.
+const WINDOW_BACKED_PR_ACTIVITY_VALUE = {
+  beginRequestActivity: (...args) => (window.beginRequestActivity || (() => () => {}))(...args),
+  renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
+};
+const WindowBackedPrActivityProvider = ({ children }) =>
+  React.createElement(PrDataContext.Provider, { value: WINDOW_BACKED_PR_ACTIVITY_VALUE }, children);
+
 const DEFAULT_BACKFILL_BUTTON_STATE = {
   startDisabled: false,
   stopDisabled: false,
@@ -726,11 +746,15 @@ function FilterStateTestRootHarness({ initialValues }) {
               // PrActivityQueueProvider instance (no test asserts row-busy
               // state through these 2 buttons specifically, so a separate
               // instance from the main tree's is harmless, same as before).
-              React.createElement(RunScriptActionButtonsTestHarness),
               React.createElement(
-                PrActivityQueueProvider,
+                WindowBackedPrActivityProvider,
                 null,
-                React.createElement(ActionButtonsTestHarness),
+                React.createElement(RunScriptActionButtonsTestHarness),
+                React.createElement(
+                  PrActivityQueueProvider,
+                  null,
+                  React.createElement(ActionButtonsTestHarness),
+                ),
               ),
               React.createElement(
                 AutoRenderBlockingProvider,
@@ -803,7 +827,11 @@ const installBackfillControlsBridge = () => {
       React.createElement(
         BackfillStatusProvider,
         null,
-        React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+        React.createElement(
+          WindowBackedPrActivityProvider,
+          null,
+          React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
+        ),
       ),
     ),
     { container },
@@ -6062,9 +6090,14 @@ describe("index page rendering with Testing Library", () => {
         onRequestMore: requestMoreMerged,
       });
     }
-    rtlRender(React.createElement(MergedRequestMoreActionTestHarness), {
-      container: document.getElementById("merged-request-more-action"),
-    });
+    rtlRender(
+      React.createElement(
+        WindowBackedPrActivityProvider,
+        null,
+        React.createElement(MergedRequestMoreActionTestHarness),
+      ),
+      { container: document.getElementById("merged-request-more-action") },
+    );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Request more" }));
 

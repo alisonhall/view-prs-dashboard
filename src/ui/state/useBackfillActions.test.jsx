@@ -5,6 +5,7 @@ require('@testing-library/jest-dom');
 const { useBackfillActions } = require('./useBackfillActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
+const { PrDataContext } = require('./PrDataContext');
 const { BackfillStatusContext } = require('./BackfillStatusContext');
 
 function Probe({ onReady }) {
@@ -12,6 +13,13 @@ function Probe({ onReady }) {
   onReady(backfillActions);
   return null;
 }
+
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// beginRequestActivity/renderRequestActivity come from usePrData() now, not
+// window.beginRequestActivity/renderRequestActivity - tests set these on
+// `activity` (reset after each test) instead of stubbing the bridges.
+const makeActivity = () => ({ beginRequestActivity: () => () => {}, renderRequestActivity: () => {} });
+let activity = makeActivity();
 
 // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // statusText now comes from StatusTextContext directly, not
@@ -46,7 +54,9 @@ const renderProbe = (
             ...backfillStatus,
           }}
         >
-          <Probe onReady={onReady} />
+          <PrDataContext.Provider value={activity}>
+            <Probe onReady={onReady} />
+          </PrDataContext.Provider>
         </BackfillStatusContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
@@ -58,12 +68,12 @@ const BACKFILL_WINDOW_BRIDGES = [
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
   'renderBackfillStatus',
-  'beginRequestActivity',
 ];
 
 describe('useBackfillActions', () => {
   afterEach(() => {
     BACKFILL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
+    activity = makeActivity();
     delete global.fetch;
   });
 
@@ -77,7 +87,7 @@ describe('useBackfillActions', () => {
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     const setIsBackfillActionPending = jest.fn();
     window.setBackfillLogMessage = jest.fn();
-    window.beginRequestActivity = jest.fn(() => finishActivity);
+    activity.beginRequestActivity = jest.fn(() => finishActivity);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -112,7 +122,7 @@ describe('useBackfillActions', () => {
     const finishActivity = jest.fn();
     window.renderBackfillStatus = renderBackfillStatus;
     window.setBackfillLogMessage = jest.fn();
-    window.beginRequestActivity = () => finishActivity;
+    activity.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -137,7 +147,7 @@ describe('useBackfillActions', () => {
     const updateBackfillStatusFromPayload = jest.fn();
     const beginRequestActivity = jest.fn();
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
-    window.beginRequestActivity = beginRequestActivity;
+    activity.beginRequestActivity = beginRequestActivity;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,

@@ -5,12 +5,20 @@ require('@testing-library/jest-dom');
 const { useSinglePrUpdate } = require('./useSinglePrUpdate.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
+const { PrDataContext } = require('./PrDataContext');
 
 function Probe({ onReady }) {
   const runSinglePrUpdate = useSinglePrUpdate();
   onReady(runSinglePrUpdate);
   return null;
 }
+
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// beginRequestActivity/renderRequestActivity come from usePrData() now, not
+// window.beginRequestActivity/renderRequestActivity - tests set these on
+// `activity` (reset after each test) instead of stubbing the bridges.
+const makeActivity = () => ({ beginRequestActivity: () => () => {}, renderRequestActivity: () => {} });
+let activity = makeActivity();
 
 // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // statusText now comes from StatusTextContext directly, not
@@ -24,7 +32,9 @@ const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
       <SnackbarContext.Provider value={{ showError }}>
-        <Probe onReady={onReady} />
+        <PrDataContext.Provider value={activity}>
+          <Probe onReady={onReady} />
+        </PrDataContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
@@ -32,7 +42,7 @@ const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
 describe('useSinglePrUpdate', () => {
   afterEach(() => {
     delete window.updateReactOutputText;
-    delete window.beginRequestActivity;
+    activity = makeActivity();
     delete window.applyFreshPrPayload;
     delete global.fetch;
   });
@@ -44,7 +54,7 @@ describe('useSinglePrUpdate', () => {
     const finishActivity = jest.fn();
     const beginRequestActivity = jest.fn(() => finishActivity);
     window.updateReactOutputText = (message) => outputMessages.push(message);
-    window.beginRequestActivity = beginRequestActivity;
+    activity.beginRequestActivity = beginRequestActivity;
     window.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -118,7 +128,7 @@ describe('useSinglePrUpdate', () => {
     const snackbarCalls = [];
     const finishActivity = jest.fn();
     window.updateReactOutputText = (message) => outputMessages.push(message);
-    window.beginRequestActivity = () => finishActivity;
+    activity.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let runSinglePrUpdate;

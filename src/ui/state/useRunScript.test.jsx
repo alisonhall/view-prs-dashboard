@@ -7,12 +7,20 @@ const { StatusTextContext } = require('./StatusTextContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 const { SnackbarContext } = require('./SnackbarContext');
+const { PrDataContext } = require('./PrDataContext');
 
 function Probe({ onReady }) {
   const runScript = useRunScript();
   onReady(runScript);
   return null;
 }
+
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// beginRequestActivity/renderRequestActivity come from usePrData() now, not
+// window.beginRequestActivity/renderRequestActivity - tests set these on
+// `activity` (reset after each test) instead of stubbing the bridges.
+const makeActivity = () => ({ beginRequestActivity: () => () => {}, renderRequestActivity: () => {} });
+let activity = makeActivity();
 
 // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // statusText now comes from StatusTextContext directly, not
@@ -36,7 +44,9 @@ const renderProbe = (
       <RowFilterSelectionContext.Provider value={{ checkedByListId }}>
         <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
           <SnackbarContext.Provider value={{ showError }}>
-            <Probe onReady={onReady} />
+            <PrDataContext.Provider value={activity}>
+              <Probe onReady={onReady} />
+            </PrDataContext.Provider>
           </SnackbarContext.Provider>
         </StatusTextContext.Provider>
       </RowFilterSelectionContext.Provider>
@@ -46,7 +56,7 @@ const renderProbe = (
 describe('useRunScript', () => {
   afterEach(() => {
     delete window.updateReactOutputText;
-    delete window.beginRequestActivity;
+    activity = makeActivity();
     delete window.applyFreshPrPayload;
     delete global.fetch;
   });
@@ -57,7 +67,7 @@ describe('useRunScript', () => {
     const applyFreshPrPayload = jest.fn();
     const finishActivity = jest.fn();
     window.updateReactOutputText = (message) => outputMessages.push(message);
-    window.beginRequestActivity = jest.fn(() => finishActivity);
+    activity.beginRequestActivity = jest.fn(() => finishActivity);
     window.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -104,7 +114,7 @@ describe('useRunScript', () => {
     const snackbarCalls = [];
     const finishActivity = jest.fn();
     window.updateReactOutputText = jest.fn();
-    window.beginRequestActivity = () => finishActivity;
+    activity.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     let runScript;
