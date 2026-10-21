@@ -510,19 +510,17 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
   // BackfillStatusProvider this harness is mounted under (same as react-app.jsx's
   // AppRoot reads it), not a local state fed by window.updateReactBackfillButtonState.
   const { backfillButtonState: buttonState } = useBackfillStatus();
-  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillLogControls now owns the #backfill-log content portal itself
-  // (matching react-app.jsx's real AppRoot), so this harness needs its own
-  // logText state - same "push bridge feeds local state, portal the real
-  // component" shape buttonState already uses above. Overrides the generic
-  // textContent-writer installReactStatusTextMountBridges() used to install
-  // for this one bridge name (mounted later, so this wins).
-  const [logText, setLogText] = React.useState("Loading backfill log...");
-  // Mirrors react-app.jsx's own backfillLogUpdateTick - BackfillLogControls'
-  // scroll-sync effect must fire on every refresh, including ones where
-  // the fetched text happens to equal what's already shown (useState bails
-  // out of re-rendering on a same-value update otherwise).
-  const [logUpdateTick, setLogUpdateTick] = React.useState(0);
+  // Window-bridge elimination Phase 4: the log text (+ its update tick, which
+  // BackfillLogControls' scroll-sync effect needs so it fires on every
+  // refresh even for identical text) and the details text are owned by the
+  // real BackfillStatusProvider too, read here exactly as react-app.jsx's
+  // AppRoot reads them - not local states fed by window.updateReactBackfillLogText
+  // / updateReactBackfillDetailsText.
+  const {
+    backfillLogText: logText,
+    backfillLogUpdateTick: logUpdateTick,
+    backfillDetailsText,
+  } = useBackfillStatus();
   const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, triggerBackfillTabLoad } =
     useBackfillActions();
   // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -535,16 +533,7 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
   // assert on the resulting status/log passing.
   useBackfillTabAutoRefresh(triggerBackfillTabLoad);
 
-  React.useEffect(() => {
-    window.updateReactBackfillLogText = (text) => {
-      setLogText(text);
-      setLogUpdateTick((tick) => tick + 1);
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillLogText;
-    };
-  }, []);
+  const backfillDetailsContainer = document.getElementById("backfill-details");
 
   return React.createElement(
     React.Fragment,
@@ -560,6 +549,8 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
         controlsRoot,
         "backfill-controls",
       ),
+    backfillDetailsContainer &&
+      createPortal(backfillDetailsText, backfillDetailsContainer, "backfill-details"),
     logControlsRoot &&
       createPortal(
         React.createElement(BackfillLogControls, {
@@ -943,7 +934,6 @@ const installReactStatusTextMountBridges = () => {
   };
   wireTextBridge("updateReactStatusText", "status");
   wireTextBridge("updateReactOutputText", "output");
-  wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
   // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // updateReactBackfillLogText no longer wired here as a plain
   // textContent-writer - BackfillControlsTestHarness (installed later via

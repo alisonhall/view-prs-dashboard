@@ -5,7 +5,7 @@ import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpe
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
-import { useBackfillStatus } from './BackfillStatusContext';
+import { useBackfillStatusActions } from './BackfillStatusContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';
@@ -80,13 +80,18 @@ export function useBackfillActions() {
   const { showError } = useSnackbar();
   // BackfillStatusProvider wraps AppRoot from mountAppRoot(), so this hook
   // (called from AppRoot's body) is a genuine descendant - no window.*
-  // bridge needed for the tracking flags or their setters.
+  // bridge needed for any of the status functions (Phase 1, 3d and 4). The
+  // actions-only Context, not useBackfillStatus(): these are stable, and this
+  // hook has no use for the changing status/log state.
   const {
     getBackfillTrackingState,
     setSupportsBackfillLogPolling,
     setIsBackfillActionPending,
     setBackfillButtonState,
-  } = useBackfillStatus();
+    updateBackfillStatusFromPayload,
+    renderBackfillStatus,
+    setBackfillLogMessage,
+  } = useBackfillStatusActions();
   // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
   // wraps AppRoot from mountAppRoot() now, so this is a genuine descendant -
   // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
@@ -119,14 +124,13 @@ export function useBackfillActions() {
         notifyFailureSnackbar,
         formatCommandOutput,
         stripAnsi,
-        updateBackfillStatusFromPayload: (...args) =>
-          window.updateBackfillStatusFromPayload?.(...args),
-        setBackfillLogMessage: (...args) => window.setBackfillLogMessage?.(...args),
+        updateBackfillStatusFromPayload,
+        setBackfillLogMessage,
         // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration
         // roadmap"): a no-op here now, not window.autoScrollBackfillLogToBottom -
         // setBackfillLogMessage above already flows into
         // BackfillLogControls.jsx's own logText prop (via
-        // window.updateReactBackfillLogText), which syncs scroll position
+        // BackfillStatusProvider's backfillLogText state), which syncs scroll position
         // itself via a ref in its own useEffect. Calling the real bridge
         // here too would just be redundant for this hook's own (React)
         // caller - index.page.js's own vanilla instance of this same
@@ -150,13 +154,13 @@ export function useBackfillActions() {
       try {
         await loadBackfillStatus({ announce: true, includeLog: true });
       } catch (error) {
-        window.renderBackfillStatus?.({
+        renderBackfillStatus({
           ok: false,
           running: false,
           summary: error?.result?.summary || 'Failed to refresh backfill status',
           error: error?.result?.error || error.message,
         });
-        window.setBackfillLogMessage?.('Failed to load backfill log');
+        setBackfillLogMessage('Failed to load backfill log');
         notifyFailureSnackbar(
           'Failed to refresh backfill status',
           error?.result || error,
@@ -181,13 +185,13 @@ export function useBackfillActions() {
       try {
         await loadBackfillStatus({ includeLog: true });
       } catch (error) {
-        window.renderBackfillStatus?.({
+        renderBackfillStatus({
           ok: false,
           running: false,
           summary: error?.result?.summary || 'Failed to load backfill status',
           error: error?.result?.error || error.message,
         });
-        window.setBackfillLogMessage?.('Failed to load backfill log');
+        setBackfillLogMessage('Failed to load backfill log');
         notifyFailureSnackbar(
           'Failed to load backfill status',
           error?.result || error,
@@ -201,7 +205,7 @@ export function useBackfillActions() {
       try {
         await loadBackfillLogTail();
       } catch (error) {
-        window.setBackfillLogMessage?.(
+        setBackfillLogMessage(
           `Failed to load backfill log\n\n${error.message || String(error)}`,
         );
         notifyFailureSnackbar(
@@ -227,6 +231,9 @@ export function useBackfillActions() {
     setSupportsBackfillLogPolling,
     setIsBackfillActionPending,
     setBackfillButtonState,
+    updateBackfillStatusFromPayload,
+    renderBackfillStatus,
+    setBackfillLogMessage,
     beginRequestActivity,
     renderRequestActivity,
     setOutputText,

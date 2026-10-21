@@ -7,7 +7,7 @@ const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');
 const { OutputTextSetterContext } = require('./OutputTextContext');
-const { BackfillStatusContext } = require('./BackfillStatusContext');
+const { BackfillStatusActionsContext } = require('./BackfillStatusContext');
 
 function Probe({ onReady }) {
   const backfillActions = useBackfillActions();
@@ -38,10 +38,13 @@ let activity = makeActivity();
 // showErrorNotification now comes from useSnackbar() directly, not
 // window.showErrorNotification - same real Provider value approach.
 //
-// Phase 1 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the backfill tracking
-// flags and their setters come from BackfillStatusContext directly, not
-// window.getBackfillTrackingState/setSupportsBackfillLogPolling/
-// setIsBackfillActionPending.
+// Phase 1/3d/4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the backfill tracking
+// flags, their setters and the status functions come from
+// BackfillStatusActionsContext directly, not window.getBackfillTrackingState/
+// setSupportsBackfillLogPolling/setIsBackfillActionPending/
+// updateBackfillStatusFromPayload/renderBackfillStatus/setBackfillLogMessage.
+// Tests set per-test mocks on `actionsOverrides` (reset after each test).
+let actionsOverrides = {};
 const renderProbe = (
   onReady,
   setStatusText = () => {},
@@ -51,36 +54,37 @@ const renderProbe = (
   render(
     <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
       <SnackbarContext.Provider value={{ showError }}>
-        <BackfillStatusContext.Provider
+        <BackfillStatusActionsContext.Provider
           value={{
             getBackfillTrackingState: () => ({
               supportsBackfillLogPolling: true,
               isBackfillRunning: false,
+              isBackfillActionPending: false,
             }),
             setSupportsBackfillLogPolling: () => {},
             setIsBackfillActionPending: () => {},
+            setBackfillButtonState: () => {},
+            updateBackfillStatusFromPayload: () => {},
+            renderBackfillStatus: () => {},
+            setBackfillLogMessage: () => {},
+            ...actionsOverrides,
             ...backfillStatus,
           }}
         >
           <OutputTextSetterContext.Provider value={outputTextSetter}>
-<RequestActivityContext.Provider value={activity}>
-            <Probe onReady={onReady} />
-          </RequestActivityContext.Provider>
-</OutputTextSetterContext.Provider>
-        </BackfillStatusContext.Provider>
+            <RequestActivityContext.Provider value={activity}>
+              <Probe onReady={onReady} />
+            </RequestActivityContext.Provider>
+          </OutputTextSetterContext.Provider>
+        </BackfillStatusActionsContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
 
-const BACKFILL_WINDOW_BRIDGES = [
-  'updateBackfillStatusFromPayload',
-  'setBackfillLogMessage',
-  'renderBackfillStatus',
-];
 
 describe('useBackfillActions', () => {
   afterEach(() => {
-    BACKFILL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
+    actionsOverrides = {};
     activity = makeActivity();
     setOutputText = () => {};
     delete global.fetch;
@@ -92,9 +96,9 @@ describe('useBackfillActions', () => {
     const updateBackfillStatusFromPayload = jest.fn();
     const finishActivity = jest.fn();
     setOutputText = jest.fn();
-    window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
+    actionsOverrides.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     const setIsBackfillActionPending = jest.fn();
-    window.setBackfillLogMessage = jest.fn();
+    actionsOverrides.setBackfillLogMessage = jest.fn();
     activity.beginRequestActivity = jest.fn(() => finishActivity);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -131,8 +135,8 @@ describe('useBackfillActions', () => {
     const renderBackfillStatus = jest.fn();
     const snackbarCalls = [];
     const finishActivity = jest.fn();
-    window.renderBackfillStatus = renderBackfillStatus;
-    window.setBackfillLogMessage = jest.fn();
+    actionsOverrides.renderBackfillStatus = renderBackfillStatus;
+    actionsOverrides.setBackfillLogMessage = jest.fn();
     activity.beginRequestActivity = () => finishActivity;
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
@@ -157,7 +161,7 @@ describe('useBackfillActions', () => {
     const statusMessages = [];
     const updateBackfillStatusFromPayload = jest.fn();
     const beginRequestActivity = jest.fn();
-    window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
+    actionsOverrides.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     activity.beginRequestActivity = beginRequestActivity;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -183,8 +187,8 @@ describe('useBackfillActions', () => {
     const renderBackfillStatus = jest.fn();
     const setBackfillLogMessage = jest.fn();
     const snackbarCalls = [];
-    window.renderBackfillStatus = renderBackfillStatus;
-    window.setBackfillLogMessage = setBackfillLogMessage;
+    actionsOverrides.renderBackfillStatus = renderBackfillStatus;
+    actionsOverrides.setBackfillLogMessage = setBackfillLogMessage;
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,

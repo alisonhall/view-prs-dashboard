@@ -666,14 +666,12 @@ function AppRoot() {
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
   const [prTable, setPrTable] = useState(null);
-  const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
   // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the Backfill tab's button-disabled flags live in <BackfillStatusProvider />
   // now (it computes them via getBackfillStatusViewModel anyway, and used to
   // push them into this component's own state through
   // window.updateReactBackfillButtonState - a bridge from an ancestor down
   // into its own descendant). Read back here for the buttons' props.
-  const { backfillButtonState } = useBackfillStatus();
   const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
   // Activity" section's history of this tab's own finished requests - no
@@ -705,19 +703,18 @@ function AppRoot() {
   // hooks that write it - including useSinglePrUpdate, which runs inside
   // PrTableApp rather than this body - can reach it via useOutputText().
   const { outputText } = useOutputText();
-  const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
-  const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
-  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillLogControls.jsx's own scroll-sync effect needs to fire on
-  // every log refresh, not just ones where the fetched text happens to
-  // differ from what's already shown (a real, common case - polling an
-  // unchanged log returns identical text) - useState bails out of
-  // re-rendering on a same-value update, so a plain [backfillLogText]
-  // effect dependency would silently miss those. This tick increments on
-  // every update regardless of content, passed down alongside
-  // backfillLogText as a separate dependency BackfillLogControls actually
-  // keys its effect on.
-  const [backfillLogUpdateTick, setBackfillLogUpdateTick] = useState(0);
+  // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the Backfill tab's badges/details text/log text (and the log's update
+  // tick - BackfillLogControls' scroll-sync effect must fire on every log
+  // refresh, even identical text, which useState alone would bail out of)
+  // live in <BackfillStatusProvider /> now, read back here for the portals.
+  const {
+    backfillButtonState,
+    backfillBadges,
+    backfillDetailsText,
+    backfillLogText,
+    backfillLogUpdateTick,
+  } = useBackfillStatus();
 
   useEffect(() => {
     window.mountReactPrTable = (containerElement, props) => {
@@ -760,16 +757,6 @@ function AppRoot() {
   // own comment there).
 
   useEffect(() => {
-    window.updateReactBackfillBadges = (badges) => {
-      setBackfillBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillBadges;
-    };
-  }, []);
-
-  useEffect(() => {
     window.updateReactRequestActivityBadges = (badges) => {
       setRequestActivityBadges({ badges });
       return true;
@@ -796,27 +783,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactAutoRenderBlockedLinks;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactBackfillDetailsText = (text) => {
-      setBackfillDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactBackfillLogText = (text) => {
-      setBackfillLogText(text);
-      setBackfillLogUpdateTick((tick) => tick + 1);
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillLogText;
     };
   }, []);
 

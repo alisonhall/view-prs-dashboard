@@ -13,6 +13,7 @@ import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 import { useAutoRenderBlockingActions } from './AutoRenderBlockingContext';
 import { RequestActivityContext } from './RequestActivityContext';
+import { useBackfillStatusActions } from './BackfillStatusContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -382,6 +383,11 @@ export function PrDataProvider({
   // Context's own comment.
   const { getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload } =
     useAutoRenderBlockingActions();
+  // Window-bridge elimination Phase 4: pollBackfillStatus reads the backfill
+  // tracking flags through BackfillStatusProvider's actions-only Context
+  // (stable; subscribing to its changing status/log state would re-render
+  // every usePrData() consumer on each backfill update).
+  const { getBackfillTrackingState } = useBackfillStatusActions();
 
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
@@ -594,7 +600,7 @@ export function PrDataProvider({
     // its own other real vanilla caller (initPage's initial load) this
     // phase doesn't touch.
     const pollBackfillStatus = async () => {
-      const tracking = window.getBackfillTrackingState?.() || {};
+      const tracking = getBackfillTrackingState();
       if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
         return;
       }
@@ -606,7 +612,7 @@ export function PrDataProvider({
     };
 
     return { beginRequestActivity, renderRequestActivity, pollBackfillStatus };
-  }, []);
+  }, [getBackfillTrackingState]);
 
   useEffect(() => {
     window.beginRequestActivity = (...args) => activityHelpers.beginRequestActivity(...args);

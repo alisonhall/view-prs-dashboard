@@ -53,10 +53,10 @@ const renderProbe = (
         <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
           <SnackbarContext.Provider value={{ showError }}>
             <OutputTextSetterContext.Provider value={outputTextSetter}>
-<RequestActivityContext.Provider value={activity}>
-              <Probe onReady={onReady} />
-            </RequestActivityContext.Provider>
-</OutputTextSetterContext.Provider>
+              <RequestActivityContext.Provider value={activity}>
+                <Probe onReady={onReady} />
+              </RequestActivityContext.Provider>
+            </OutputTextSetterContext.Provider>
           </SnackbarContext.Provider>
         </StatusTextContext.Provider>
       </RowFilterSelectionContext.Provider>

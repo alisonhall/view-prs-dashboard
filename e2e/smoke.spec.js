@@ -2173,6 +2173,26 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
 
+test("the Backfill tab's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
+  // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the badges, details text and log text moved out of AppRoot's local state
+  // into <BackfillStatusProvider />, which AppRoot reads back via Context for
+  // the #backfill-details / #backfill-log portals. jsdom covers the Provider
+  // and each consumer separately; this proves the real wired path, from a
+  // real status GET through the Provider's state into the real DOM. Only the
+  // read-only status/log GETs run - the backfill process is never started.
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Backfill" }).click();
+
+  await expect(page.locator("#backfill-details")).not.toHaveText("Loading backfill status...");
+  await expect(page.locator("#backfill-details")).not.toHaveText("");
+  await expect(page.locator("#backfill-log")).not.toHaveText("Loading backfill log...");
+  await expect(page.locator("#backfill-log")).not.toHaveText("");
+
+  // The log's "Refresh log" button is enabled from the Provider's button state.
+  await expect(page.locator("#backfill-log-refresh-btn")).toBeEnabled();
+});
+
 test("Action Log tab loads its entries on its very first visit, not just on a second one", async ({ page }) => {
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
   // ActionLogSection is now lazy-loaded, mounting only once this tab is
