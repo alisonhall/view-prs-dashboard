@@ -55,12 +55,49 @@ One responsibility at a time, each with full eslint+jest+Playwright and a `REACT
 - Full `npx playwright test` green; add e2e coverage where a removal changes observable behavior.
 - `REACT_MIGRATION_PLAN.md` entry + commit per logical group.
 
-## Status
+## Status (last updated 2026-10-21, end of the session that did Phases 1-5)
 
-- **Phase 1** done (`6a910e5`). **Phase 2** done (`1db3f35`).
-- **Phase 3** done as 3a-3d (see `REACT_MIGRATION_PLAN.md`). Two deviations from the text above, both because investigating showed the plan's wording didn't fit:
-  - `AutoRenderBlockingContext` had no getters to call, so they were added to it first (3a).
-  - Output text and backfill button state got Provider-owned Context state instead of "explicit parameters from `AppRoot`", since `useSinglePrUpdate` (in `PrTableApp`) and `BackfillStatusProvider` (an ancestor) can't receive parameters from `AppRoot` (3c, 3d).
-- **Phase 4** done (see `REACT_MIGRATION_PLAN.md`): went further than the text above (also moved badges/details/log text into the Provider, split state from stable functions into two Contexts to avoid the render cascade found in the Phase 3 review).
-- **Phase 5** done as 5a (store + `PrSelectionCell`) and 5b (bridges deleted, ~15 test files moved to a Context probe). The plan's "delete once no other caller remains" turned out to mean fixing the test callers, per the standing policy.
-- Phases 6-7 not started.
+Branch `development`, all work pushed through `f09b2f2`; CI (lint, ubuntu, **windows**, e2e) green at that commit.
+
+### Done
+| Phase | Commits | Notes |
+|---|---|---|
+| 1 | `6a910e5` | JobEventsProvider / useBackfillActions / NotesSection swaps |
+| 2 | `1db3f35` | `AutoRenderBlockingProvider` > `PrDataProvider` now wrap `<AppRoot/>` from `mountAppRoot()` |
+| 3a-3d | `fcea8f7` `85b75ca` `a5c6156` `65167ba` | ARB actions Context; 6 hooks -> request activity; `OutputTextProvider`; backfill button state |
+| 3 review | `ade5377` | three render-cascade regressions fixed (see "Lessons") |
+| 4 | `1aff624`, `964ffcd` | `BackfillStatusProvider` owns all status state; `BackfillStatusActionsContext`; refetch-loop guards |
+| 5a / 5b | `fe67837` `3f8fd59`, review fix `f09b2f2` | per-key `useSyncExternalStore` store; `window.getFilterStateValues`/`setFilterStateValue` deleted |
+| CI fixes | `03dadc1`, `cd077b6` | not part of the plan: the `PATH`-first dependency check must never run on win32 |
+
+Deviations from the plan text (each because investigation showed the wording didn't fit) are in `REACT_MIGRATION_PLAN.md`'s entries for each phase.
+
+### Next: Phase 6 - `persistViewFilterOptionOverrides` tests, then delete the bridge
+- `grep -c persistViewFilterOptionOverrides src/ui/integration-tests/index.html.test.js` = 14 mentions (plan said 11 call sites; some are comments). Also referenced in `state/FilterStateProvider.jsx` (the `useEffect` that installs/removes it, plus header comments) and `state/FilterStateProvider.test.jsx` (a persistence test calls it).
+- Zero production callers (confirmed). It exists only to bypass the 150 ms `useDebouncedEffect` in `FilterStateProvider`.
+- Approach: `jest.useFakeTimers()` scoped to each affected test (mirror the existing narrowly-scoped fake-timer blocks in the same file; check how `userEvent.setup({ advanceTimers })` is used), replace `await window.persistViewFilterOptionOverrides(...)` with `act(() => jest.advanceTimersByTime(150))` (plus awaiting the PUT), re-run each test individually, then delete the bridge and its comments. NB: the file uses real timers almost everywhere; a test that mixes fake timers with `waitFor`/real `fetch` mocks needs care. Prove each rewritten test still asserts the PUT body.
+- The harness's `syncFilterStateFromElement` now writes via `filterStateTestHandle` (+ `flushSync`); the debounce effect keys on `values`, so that path will start the 150 ms timer.
+
+### After that: Phase 7 - move `index.page.js`'s orchestration into React (do it one responsibility at a time)
+Re-grep before starting (`grep -rn "window\.<name>" src/ui | grep -v test`); as of `f09b2f2` the bridges that remain **only because `index.page.js` (vanilla) still calls them** are:
+- request activity: `beginRequestActivity`, `renderRequestActivity` (also used by `PrDataProvider`'s own poll closure, `BackfillStatusProvider`, `AutoRenderBlockingProvider`, which sit outside / inside `PrDataProvider` and can't use `useRequestActivity()`)
+- `updateReactOutputText` (OutputTextProvider), `updateReactBackfillButtonState`, `updateReactBackfillLogText`, `getBackfillTrackingState`, `setSupportsBackfillLogPolling`, `setIsBackfillActionPending`, `updateBackfillStatusFromPayload`, `setBackfillLogMessage`, `renderBackfillStatus` (all BackfillStatusProvider)
+- `setPendingAutoRenderPayload`, `pushAutoRenderBlockingState` (AutoRenderBlockingProvider); `updateReactAutoRenderBlockedLinks` (AppRoot; only caller is `pr-auto-render-indicator-links.helpers.js`, called from vanilla)
+- owned by `index.page.js` and called from React hooks: `applyFreshPrPayload`, `loadStoredData`, `getLatestStoredPayload`, `applyLatestPrData`, `summarizeAckRefreshWarnings`, `renderPrData`, `renderSchedulerStatus`, the polling primitives (`computePrDataManifest`, `getManifestDelta`, `mergeDataDeltaPayload`, `computePrDataFingerprint`, `computePrDataMetaFingerprint`, `getDataPollRenderAction`), `loadBackfillStatus`
+- Suggested order (plan text): data-poll pipeline into `PrDataProvider` first (most referenced), then backfill status bootstrap, then scheduler/request-activity events, then the pure-React reads. Each: full lint + `test:ci` + `test:e2e`, a `REACT_MIGRATION_PLAN.md` entry, a commit.
+- When `index.page.js` goes, also delete: the integration harness's `WindowBackedPrActivityProvider` (index.html.test.js) and hoist a real `PrDataProvider` there; the `viewprs:react-ready` replay listeners; the e2e test that writes through `window.updateReactOutputText`.
+
+### Lessons from Phases 1-5 (apply to every remaining phase)
+1. **A component that only needs stable functions from a changing Provider must read them from a separate, stable Context.** `PrDataProvider` wraps the whole table tree and its `value` object is not memoized, so subscribing it (or anything high up) to a Context that changes re-renders every `usePrData()` consumer. Done so far: `AutoRenderBlockingActionsContext`, `OutputTextSetterContext`, `RequestActivityContext`, `BackfillStatusActionsContext`, `FilterFieldStoreContext`. Measure with a `React.memo` consumer's render count before and after; add a regression test.
+2. **`useBackfillActions()`'s result identity must stay stable** (guards in `useBackfillActions.test.jsx` and an e2e request-count test): `useBackfillTabAutoRefresh` refetches whenever `triggerBackfillTabLoad` changes, so one unstable dependency in the provider chain is a request loop (498 requests/3 s measured). Every function a Provider publishes must be a `useCallback` over refs/setters.
+3. **Windows**: never trust a file on `PATH` there (WSL's `System32\bash.exe` stub); POSIX-only assertions (executable bit) must be skipped on win32; `isCommandAvailable` must tolerate non-string input.
+4. For every new regression test, **break the code and watch the test fail**, then restore (use `cat saved > file`, not `cp`: `cp` is aliased to prompt here and silently refused to restore once).
+5. Run the **exact CI commands** before committing: `npm run lint:check`, `npm run test:ci` (serial + coverage + state guards; it caught a bug bare `jest` missed), `npm run test:e2e`. Use Node 22.22.0: `export PATH=$HOME/.nvm/versions/node/v22.22.0/bin:$PATH` (the default shell had Node 16; Homebrew's Node is 22.1, below the required `>=22.22.0`).
+6. The integration harness (`src/ui/integration-tests/index.html.test.js`) mounts providers as it likes; when a production Provider starts reading another Context, check the harness nests them the same way, or the feature silently goes inert there (hit this with `AutoRenderBlockingProvider` and `PrDataProvider`).
+
+### Known, unrelated, left alone
+- `src/server/integration-tests/app.events-routes.test.js` heartbeat test (50 ms interval, fixed 100 ms wait) flaked once under full-suite load.
+- `PrDataProvider`'s `value` object is not memoized (pre-existing amplifier for lesson 1).
+- `view-prs.code-workspace` has an uncommitted user change (a Peacock `statusBar.inactiveBackground` colour) - not part of this work; don't commit it unasked.
+- The dotfiles repo (`/Users/alihall/Sites/Personal/dotfiles`) has two local commits for the `PATH` fix (`c3a663e`, `7689e5e`, not pushed) and other uncommitted changes of the user's.
+- Policy: don't push without asking; confirm before anything outward-facing.
