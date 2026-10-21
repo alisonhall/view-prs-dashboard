@@ -2643,6 +2643,16 @@ Reported against an older version: the page periodically crashed with "This page
 - **Follow-up (found reviewing this change): `PrJsonModal` stale reopen flash.** The earlier "no payload yet means loading" fix only covered the very first open. After a close, the component keeps its state, so reopening (for a different PR) rendered the *previous* PR's JSON and title for one frame. The open effect's cleanup now clears `detailsPayload`/`diffData`, so a reopen starts from "loading". +1 test (reopen as a different PR; fails without the cleanup).
 - **Verification:** eslint clean; jest 2512/2512 (2511 after the cache fix, 2493 before it); Playwright 55/55.
 
+## ✅ **Window-bridge elimination, Phase 3a: `PrDataProvider` reads auto-render blocking through Context; 2 dead bridges deleted (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Phase 3 is split into 3a (this), 3b (the 6 hooks' `beginRequestActivity`/`renderRequestActivity`), 3c (output text), 3d (backfill button state), because investigating it showed the plan's wording ("`AppRoot`'s locally-owned setters, thread as parameters") doesn't fit every caller.
+
+- `AutoRenderBlockingContext` only exposed `isBlocked`/`statusText`/`discardAndApply`, so the plan's "just call `useAutoRenderBlocking()`" wasn't possible yet. Added `getHasDirtyPrSectionsFields`/`getPendingAutoRenderPayload`/`setPendingAutoRenderPayload` as stable `useCallback`s that read the Provider's ref (never render state), with inert defaults in the Context.
+- `PrDataProvider` uses them (and lists them in `pollForDataChanges`' `useMemo` deps - stable, so no rebuild). Its 3 `window.*` reads are gone.
+- Deleted `window.getHasDirtyPrSectionsFields`/`window.getPendingAutoRenderPayload` (their only caller was `PrDataProvider`). `window.setPendingAutoRenderPayload`/`pushAutoRenderBlockingState` stay: `index.page.js` still calls both.
+- **Integration harness:** `index.html.test.js` mounted `AutoRenderBlockingProvider` as a separate sibling root. A `PrDataProvider` outside it sees the inert default, which would have silently disabled the whole blocking path. The real provider now sits in `FilterStateTestRootHarness` as the ancestor of the portaled table tree, mirroring `mountAppRoot()`; `installAutoRenderBlockingProviderBridge` was removed.
+- Tests: +1 (Context functions read live through first-render instances, stable identities); 2 existing assertions updated for the 2 remaining bridges. Jest 2513/2513 (was 2512), eslint clean, Playwright 55/55.
+
 ## 📞 **Getting Help**
 
 **Resources:**

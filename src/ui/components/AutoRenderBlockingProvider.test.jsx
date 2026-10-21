@@ -39,13 +39,11 @@ describe('AutoRenderBlockingProvider', () => {
   afterEach(() => {
     delete window.setPendingAutoRenderPayload;
     delete window.pushAutoRenderBlockingState;
-    delete window.getHasDirtyPrSectionsFields;
-    delete window.getPendingAutoRenderPayload;
     delete window.applyFreshPrPayload;
     delete window.renderRequestActivity;
   });
 
-  test('given the provider mounts, when read, then it publishes all 4 bridges and starts not blocked', () => {
+  test('given the provider mounts, when read, then it publishes its 2 remaining bridges and starts not blocked', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
@@ -55,9 +53,54 @@ describe('AutoRenderBlockingProvider', () => {
 
     expect(typeof window.setPendingAutoRenderPayload).toBe('function');
     expect(typeof window.pushAutoRenderBlockingState).toBe('function');
-    expect(typeof window.getHasDirtyPrSectionsFields).toBe('function');
-    expect(typeof window.getPendingAutoRenderPayload).toBe('function');
+    // The two getters were deleted (Phase 3): PrDataProvider reads them from
+    // this Provider's Context now, so nothing publishes them on window.
+    expect(window.getHasDirtyPrSectionsFields).toBeUndefined();
+    expect(window.getPendingAutoRenderPayload).toBeUndefined();
     expect(latest.isBlocked).toBe(false);
+  });
+
+  test('given the Context functions, when blocking state and a pending payload are set, then they read back live and keep stable identities across renders', () => {
+    let latest;
+    const seenGetters = new Set();
+    const seenSetters = new Set();
+    render(
+      <AutoRenderBlockingProvider>
+        <Probe
+          onValue={(value) => {
+            latest = value;
+            seenGetters.add(value.getHasDirtyPrSectionsFields);
+            seenGetters.add(value.getPendingAutoRenderPayload);
+            seenSetters.add(value.setPendingAutoRenderPayload);
+          }}
+        />
+      </AutoRenderBlockingProvider>,
+    );
+    expect(latest.getHasDirtyPrSectionsFields()).toBe(false);
+    expect(latest.getPendingAutoRenderPayload()).toBeNull();
+
+    const payload = { byPrNumber: { 7: {} } };
+    act(() => {
+      window.pushAutoRenderBlockingState(DIRTY_STATE);
+      latest.setPendingAutoRenderPayload(payload);
+    });
+
+    // Read through the *first* render's function instances, to prove they
+    // read the Provider's ref (live), not a closure over stale state.
+    const [firstHasDirty, firstGetPending] = [...seenGetters];
+    expect(firstHasDirty()).toBe(true);
+    expect(firstGetPending()).toBe(payload);
+    expect(latest.isBlocked).toBe(true);
+    // The Provider re-rendered at least once, yet each function is one stable
+    // identity (so PrDataProvider can list them in useMemo deps without
+    // rebuilding pollForDataChanges every render).
+    expect(seenGetters.size).toBe(2);
+    expect(seenSetters.size).toBe(1);
+
+    act(() => {
+      window.pushAutoRenderBlockingState(CLEAN_STATE);
+    });
+    expect(firstHasDirty()).toBe(false);
   });
 
   test('given a payload is pushed while dirty, when read, then isBlocked becomes true and the outer indicator panel unhides', () => {
@@ -176,14 +219,12 @@ describe('AutoRenderBlockingProvider', () => {
     expect(applyFreshPrPayload).not.toHaveBeenCalled();
   });
 
-  test('given the provider unmounts, when unmounted, then all 4 bridges are removed', () => {
+  test('given the provider unmounts, when unmounted, then both bridges are removed', () => {
     const { unmount } = render(<AutoRenderBlockingProvider>{null}</AutoRenderBlockingProvider>);
 
     expect(typeof window.setPendingAutoRenderPayload).toBe('function');
     unmount();
     expect(window.setPendingAutoRenderPayload).toBeUndefined();
     expect(window.pushAutoRenderBlockingState).toBeUndefined();
-    expect(window.getHasDirtyPrSectionsFields).toBeUndefined();
-    expect(window.getPendingAutoRenderPayload).toBeUndefined();
   });
 });

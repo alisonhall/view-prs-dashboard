@@ -27,6 +27,14 @@ export const AutoRenderBlockingContext = createContext({
   isBlocked: false,
   statusText: '',
   discardAndApply: () => {},
+  // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // PrDataProvider's polling reads/writes the pending payload through these
+  // instead of window.getHasDirtyPrSectionsFields/getPendingAutoRenderPayload/
+  // setPendingAutoRenderPayload. Stable identities (read the Provider's
+  // ref, never render state), so they're safe in useMemo/useCallback deps.
+  getHasDirtyPrSectionsFields: () => false,
+  getPendingAutoRenderPayload: () => null,
+  setPendingAutoRenderPayload: () => {},
 });
 
 export function useAutoRenderBlocking() {

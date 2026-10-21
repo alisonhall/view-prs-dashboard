@@ -458,33 +458,14 @@ function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaC
   );
 }
 
-// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
-// the REAL AutoRenderBlockingProvider (not a hand-rolled simulation of its
-// bridges) into a detached container - this suite never mounts
-// react-app.jsx, so nothing else would publish window.setPendingAutoRenderPayload/
-// pushAutoRenderBlockingState/getHasDirtyPrSectionsFields/
-// getPendingAutoRenderPayload otherwise, leaving the whole auto-render-
-// blocking mechanism inert. The Provider itself only needs
-// #auto-render-blocked-indicator to exist in the real document (for its
-// own `hidden` toggle side effect) - already true, since that element is
-// part of index.html's own static markup. cleanup() (called at the top of
-// initTestPage(), before this runs) unmounts the previous generation's
-// instance the same way it does for installReactTableMountBridge()'s own
-// PrDataProvider mount.
-const installAutoRenderBlockingProviderBridge = () => {
-  const container = document.createElement("div");
-  const statusRoot = document.getElementById("auto-render-blocked-status-root");
-  const applyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
-  rtlRender(
-    React.createElement(
-      AutoRenderBlockingProvider,
-      null,
-      statusRoot && createPortal(React.createElement(AutoRenderBlockedStatusText), statusRoot, "auto-render-blocked-status"),
-      applyBtnRoot && createPortal(React.createElement(AutoRenderBlockedApplyButton), applyBtnRoot, "auto-render-blocked-apply-btn"),
-    ),
-    { container },
-  );
-};
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
+// below, as the ancestor of MountedPrTableTree's PrDataProvider - the same
+// order react-app.jsx's mountAppRoot() uses. It used to be its own separate,
+// sibling root (installAutoRenderBlockingProviderBridge), which stopped
+// working once PrDataProvider started reading it through Context: a
+// PrDataProvider outside the Provider sees the inert default, so the whole
+// auto-render-blocking path would silently do nothing.
 
 // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
 // the REAL BackfillControls/BackfillLogControls (not a hand-rolled
@@ -683,6 +664,8 @@ function FilterStateTestRootHarness({ initialValues }) {
   }, []);
 
   const errorSnackbarRoot = document.getElementById("error-snackbar-root");
+  const autoRenderBlockedStatusRoot = document.getElementById("auto-render-blocked-status-root");
+  const autoRenderBlockedApplyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
 
   return React.createElement(
     // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
@@ -749,14 +732,30 @@ function FilterStateTestRootHarness({ initialValues }) {
                 null,
                 React.createElement(ActionButtonsTestHarness),
               ),
-              mountRequest &&
-                createPortal(
-                  React.createElement(MountedPrTableTree, {
-                    initialPayload: mountRequest.props?.initialPayload,
-                    selectedRepo: mountRequest.props?.selectedRepo,
-                  }),
-                  mountRequest.containerElement,
-                ),
+              React.createElement(
+                AutoRenderBlockingProvider,
+                null,
+                autoRenderBlockedStatusRoot &&
+                  createPortal(
+                    React.createElement(AutoRenderBlockedStatusText),
+                    autoRenderBlockedStatusRoot,
+                    "auto-render-blocked-status",
+                  ),
+                autoRenderBlockedApplyBtnRoot &&
+                  createPortal(
+                    React.createElement(AutoRenderBlockedApplyButton),
+                    autoRenderBlockedApplyBtnRoot,
+                    "auto-render-blocked-apply-btn",
+                  ),
+                mountRequest &&
+                  createPortal(
+                    React.createElement(MountedPrTableTree, {
+                      initialPayload: mountRequest.props?.initialPayload,
+                      selectedRepo: mountRequest.props?.selectedRepo,
+                    }),
+                    mountRequest.containerElement,
+                  ),
+              ),
             ),
           ),
         ),
@@ -1071,7 +1070,6 @@ const initTestPage = ({
   document.body.innerHTML = extractBodyHtml(indexHtml);
   injectRunFilterFieldElements();
   installReactTableMountBridge();
-  installAutoRenderBlockingProviderBridge();
   installBackfillControlsBridge();
 
   fetchMock = createFetchMock({

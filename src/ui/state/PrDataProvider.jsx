@@ -11,6 +11,7 @@ import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.hel
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
+import { useAutoRenderBlocking } from './AutoRenderBlockingContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -369,6 +370,13 @@ export function PrDataProvider({
   // from useSnackbar() directly now, same "genuine descendant, wrapped
   // from outside AppRoot" reasoning as setStatusText above.
   const { showWarning, hide } = useSnackbar();
+  // Window-bridge elimination Phase 3: AutoRenderBlockingProvider wraps this
+  // Provider from mountAppRoot() now (it used to be rendered *inside*
+  // AppRoot, i.e. a descendant of this one), so these are real Context
+  // reads instead of window.getHasDirtyPrSectionsFields/
+  // getPendingAutoRenderPayload/setPendingAutoRenderPayload.
+  const { getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload } =
+    useAutoRenderBlocking();
 
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
@@ -416,13 +424,11 @@ export function PrDataProvider({
       },
       // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // pendingAutoRenderPayload/hasDirtyPrSectionsFields live in
-      // AutoRenderBlockingProvider.jsx - unchanged, still reached the same
-      // way index.page.js's own pollForDataChanges wiring used to.
-      getHasDirtyPrSectionsFields: () => window.getHasDirtyPrSectionsFields?.() ?? false,
-      getPendingAutoRenderPayload: () => window.getPendingAutoRenderPayload?.() ?? null,
-      setPendingAutoRenderPayload: (value) => {
-        window.setPendingAutoRenderPayload?.(value);
-      },
+      // AutoRenderBlockingProvider.jsx, read via its Context (stable
+      // functions - see AutoRenderBlockingContext.jsx).
+      getHasDirtyPrSectionsFields,
+      getPendingAutoRenderPayload,
+      setPendingAutoRenderPayload,
       renderPrData: (...args) => window.renderPrData?.(...args),
       // Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
       // cluster 1): owned directly now, reading/writing trackingRef - no
@@ -468,7 +474,14 @@ export function PrDataProvider({
       },
     });
     return helpers.pollForDataChanges;
-  }, [setStatusText, showWarning, hide]);
+  }, [
+    setStatusText,
+    showWarning,
+    hide,
+    getHasDirtyPrSectionsFields,
+    getPendingAutoRenderPayload,
+    setPendingAutoRenderPayload,
+  ]);
 
   useEffect(() => {
     window.pollForDataChanges = (...args) => pollForDataChanges(...args);

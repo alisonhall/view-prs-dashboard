@@ -27,7 +27,7 @@ const EMPTY_BLOCKING_STATE = {
  * Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
  * `AutoRenderBlockingContext.jsx`'s own comment for the overall shape.
  *
- * Publishes 4 bridges: `window.setPendingAutoRenderPayload` (the polling
+ * Publishes 2 bridges (was 4 - see Phase 3 note below): `window.setPendingAutoRenderPayload` (the polling
  * orchestrator calls this instead of mutating a vanilla module variable),
  * `window.pushAutoRenderBlockingState` (`index.page.js`'s
  * `recomputeDirtyPrSectionsFields` calls this with the freshly-computed
@@ -142,30 +142,40 @@ export function AutoRenderBlockingProvider({ children }) {
     window.renderRequestActivity?.();
   }, [bump, setStatusText]);
 
-  useEffect(() => {
-    // Plain ref mutation + version-tick bump, not flushSync - see this
-    // file's own header comment for why. Both setters schedule the same
-    // flush check the old debounced flushPendingAutoRender did.
-    window.setPendingAutoRenderPayload = (value) => {
+  // Plain ref mutation + version-tick bump, not flushSync - see this
+  // file's own header comment for why. Both setters schedule the same
+  // flush check the old debounced flushPendingAutoRender did.
+  const setPendingAutoRenderPayload = useCallback(
+    (value) => {
       stateRef.current.pendingAutoRenderPayload = value;
       bump();
       scheduleFlushCheck();
-    };
+    },
+    [bump, scheduleFlushCheck],
+  );
+  const getHasDirtyPrSectionsFields = useCallback(
+    () => computeHasDirtyPrSectionsFields(stateRef.current.blockingState),
+    [],
+  );
+  const getPendingAutoRenderPayload = useCallback(() => stateRef.current.pendingAutoRenderPayload, []);
+
+  // Window-bridge elimination Phase 3: only the two bridges with a real
+  // vanilla caller left (index.page.js's own setPendingAutoRenderPayload(null)
+  // and pushAutoRenderBlockingState) stay on window. The two getters had
+  // PrDataProvider as their only caller, which reads them from this
+  // Context now, so they were deleted.
+  useEffect(() => {
+    window.setPendingAutoRenderPayload = setPendingAutoRenderPayload;
     window.pushAutoRenderBlockingState = (state) => {
       stateRef.current.blockingState = state || EMPTY_BLOCKING_STATE;
       bump();
       scheduleFlushCheck();
     };
-    window.getHasDirtyPrSectionsFields = () =>
-      computeHasDirtyPrSectionsFields(stateRef.current.blockingState);
-    window.getPendingAutoRenderPayload = () => stateRef.current.pendingAutoRenderPayload;
     return () => {
       delete window.setPendingAutoRenderPayload;
       delete window.pushAutoRenderBlockingState;
-      delete window.getHasDirtyPrSectionsFields;
-      delete window.getPendingAutoRenderPayload;
     };
-  }, [bump, scheduleFlushCheck]);
+  }, [bump, scheduleFlushCheck, setPendingAutoRenderPayload]);
 
   const { blockingState } = stateRef.current;
   const statusText = buildAutoRenderBlockedStatusText({
@@ -174,7 +184,14 @@ export function AutoRenderBlockingProvider({ children }) {
     blockingAuthorInsightsCount: (blockingState.blockingAuthorInsightsLogins || []).length,
   });
 
-  const value = { isBlocked, statusText, discardAndApply };
+  const value = {
+    isBlocked,
+    statusText,
+    discardAndApply,
+    getHasDirtyPrSectionsFields,
+    getPendingAutoRenderPayload,
+    setPendingAutoRenderPayload,
+  };
 
   return (
     <AutoRenderBlockingContext.Provider value={value}>{children}</AutoRenderBlockingContext.Provider>
