@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useSyncExternalStore } from 'react';
+import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from 'react';
 
 /**
  * Phase 6 (see REACT_MIGRATION_PLAN.md): shared filter-field state for the
@@ -43,15 +43,35 @@ const identity = (value) => value;
  * that returns a primitive - e.g. `(input) => parse(input).includes(prNumber)`
  * - so a row re-renders when *its own* answer flips, not whenever the field's
  * raw string does. `select` need not be stable: it is read each render.
+ *
+ * `useSyncExternalStore` calls getSnapshot several times per render and
+ * requires the same result each time the store hasn't changed - a selector
+ * that builds a new array/object on every call (`raw.split(',')`) would
+ * otherwise loop forever ("Maximum update depth exceeded"). So the selected
+ * value is cached per (raw value, selector): repeated reads within a render
+ * return the identical result, and `select` runs once per render or store
+ * change, not once per snapshot read. A selector returning a fresh object
+ * still re-renders on every raw change (and on every re-render with a new
+ * inline selector) - prefer primitives, or a `useCallback`'d selector.
  */
 export function useFilterFieldValue(key, select = identity) {
   const context = useContext(FilterFieldStoreContext);
   const store = context?.store;
+  const cacheRef = useRef(null);
   const subscribe = useCallback(
     (listener) => (store ? store.subscribe(key, listener) : () => {}),
     [store, key],
   );
-  const getSnapshot = () => select(store ? store.getSnapshot(key) : undefined);
+  const getSnapshot = () => {
+    const raw = store ? store.getSnapshot(key) : undefined;
+    const cached = cacheRef.current;
+    if (cached && cached.select === select && Object.is(cached.raw, raw)) {
+      return cached.selected;
+    }
+    const selected = select(raw);
+    cacheRef.current = { raw, select, selected };
+    return selected;
+  };
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 

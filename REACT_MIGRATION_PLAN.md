@@ -2758,6 +2758,16 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md). Fo
 - Stale comments describing the bridges as live were corrected (`FilterStateProvider` header, `index.page.js`, `react-app.jsx`); historical "used to" mentions elsewhere left as history.
 - Jest 2572/2572 (2575 before: -4 bridge-specific tests, +1 absence test), `lint:check` clean, `test:ci` + state guards pass, `test:e2e` 59/59.
 
+## ✅ **Phase 5 review: `useFilterFieldValue` crashed on a selector returning a new object; fixed (2026-10-21)**
+
+Re-reading Phase 5 for what the new API allows that its only caller doesn't exercise.
+
+- **Defect:** `useSyncExternalStore` needs `getSnapshot` to return the same value while the store is unchanged, and my hook ran the caller's selector on every snapshot read. A selector that builds a fresh array/object (`raw.split(',')`) therefore crashed with **`Maximum update depth exceeded` after 109 selector calls**. Not triggered today (the only caller, `PrSelectionCell`, returns a boolean), but it is an exported general hook.
+- **Fix:** the selected value is cached per (raw value, selector) in a ref, so repeated reads within a render return the identical result and the selector runs once per render or store change instead of once per snapshot read (the same idea as React's `use-sync-external-store/with-selector`, without taking a transitive dependency). Documented on the hook: prefer primitives or a `useCallback`'d selector, since a fresh object still re-renders on each raw change.
+- **Checked and fine:** subscriptions are balanced across a key change and unmount (2 subscribes, 2 unsubscribes); a primitive selector runs once per store change; the store/`values` mirror is only written in the two places `setValues` is called (covered by tests that break each path); the field-store Context keeps one identity.
+- **Behavior note, an improvement:** a PR that appears in several sections (e.g. "open" and "in-review") has several rows with the same checkbox. They now all follow the field; with the old one-way `defaultChecked`, only the clicked one changed.
+- Tests: +3 (`filterValuesStore.test.jsx`: new-array selector doesn't loop and re-renders once per change; bounded selector calls; subscription balance). The first two fail against the previous hook. `lint:check`, `test:ci` (2575/2575 + state guards) and `test:e2e` (59/59) pass locally; not yet pushed, so the Windows CI job has not run on Phase 5.
+
 ## 📞 **Getting Help**
 
 **Resources:**

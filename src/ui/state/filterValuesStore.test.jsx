@@ -197,6 +197,95 @@ describe('useFilterFieldValue / useFilterFieldActions', () => {
     expect(actions.getFieldValue('n')).toBe('1,2');
   });
 
+  // Regression: useSyncExternalStore needs getSnapshot to return the same value
+  // while the store is unchanged. A selector building a fresh array each call
+  // used to crash with "Maximum update depth exceeded" (109 selector calls).
+  test('given a selector that returns a new array every call, when mounted and the field changes, then it does not loop and re-renders once per change', () => {
+    const context = makeContext({ list: 'a,b' });
+    let renders = 0;
+    let parts;
+    function Reader() {
+      parts = useFilterFieldValue('list', (raw) => raw.split(','));
+      renders += 1;
+      return null;
+    }
+    render(
+      <FilterFieldStoreContext.Provider value={context}>
+        <Reader />
+      </FilterFieldStoreContext.Provider>,
+    );
+    expect(parts).toEqual(['a', 'b']);
+    const baseline = renders;
+
+    act(() => {
+      context.store.setValue('list', 'a,b,c');
+    });
+
+    expect(parts).toEqual(['a', 'b', 'c']);
+    expect(renders).toBe(baseline + 1);
+  });
+
+  test('given a primitive selector, when mounted and the field changes once, then the selector runs a bounded number of times, not once per snapshot read', () => {
+    const context = makeContext({ list: '1,2,3' });
+    let selectorCalls = 0;
+    function Reader() {
+      useFilterFieldValue('list', (raw) => {
+        selectorCalls += 1;
+        return raw.includes('2');
+      });
+      return null;
+    }
+    render(
+      <FilterFieldStoreContext.Provider value={context}>
+        <Reader />
+      </FilterFieldStoreContext.Provider>,
+    );
+    expect(selectorCalls).toBe(1);
+
+    act(() => {
+      context.store.setValue('list', '1,2,3,4');
+    });
+
+    // One for the store-change check; the re-render (result unchanged: no
+    // re-render at all) adds nothing.
+    expect(selectorCalls).toBe(2);
+  });
+
+  test('given a key change and an unmount, when subscriptions are counted, then every subscribe has a matching unsubscribe', () => {
+    const context = makeContext({ a: 1, b: 2 });
+    let subscribes = 0;
+    let unsubscribes = 0;
+    const realSubscribe = context.store.subscribe;
+    context.store.subscribe = (key, listener) => {
+      subscribes += 1;
+      const unsubscribe = realSubscribe(key, listener);
+      return () => {
+        unsubscribes += 1;
+        unsubscribe();
+      };
+    };
+    function Reader({ field }) {
+      useFilterFieldValue(field);
+      return null;
+    }
+    const tree = (field) => (
+      <FilterFieldStoreContext.Provider value={context}>
+        <Reader field={field} />
+      </FilterFieldStoreContext.Provider>
+    );
+    const { rerender, unmount } = render(tree('a'));
+    rerender(tree('b'));
+    for (let i = 0; i < 5; i += 1) {
+      act(() => {
+        context.store.setValue('b', i + 10);
+      });
+    }
+    unmount();
+
+    expect(subscribes).toBe(2);
+    expect(unsubscribes).toBe(2);
+  });
+
   test('given no provider at all, when the hooks are used, then they are inert and never throw', () => {
     let value;
     let actions;
