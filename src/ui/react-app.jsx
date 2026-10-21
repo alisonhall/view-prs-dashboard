@@ -70,6 +70,8 @@ import { FilterOptionsProvider } from './components/FilterOptionsProvider';
 import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
+import { OutputTextProvider } from './components/OutputTextProvider';
+import { useOutputText } from './state/OutputTextContext';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { useRepoLabels } from './state/RepoLabelsContext';
@@ -703,7 +705,11 @@ function AppRoot() {
   // write, not a portal), so hooks called from this component's own body
   // (useRunScript/useBackfillActions/useAckLabelActions below) can read it
   // via useStatusText() instead of bouncing through that bridge.
-  const [outputText, setOutputText] = useState('Run the script to see output');
+  // Window-bridge elimination Phase 3c: the output text itself lives in
+  // <OutputTextProvider /> (wrapping this component, see mountAppRoot) so the
+  // hooks that write it - including useSinglePrUpdate, which runs inside
+  // PrTableApp rather than this body - can reach it via useOutputText().
+  const { outputText } = useOutputText();
   const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
   const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
   // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -811,16 +817,6 @@ function AppRoot() {
     };
     return () => {
       delete window.updateReactAutoRenderBlockedLinks;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactOutputText = (text) => {
-      setOutputText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactOutputText;
     };
   }, []);
 
@@ -1405,6 +1401,9 @@ function mountAppRoot() {
   // reach useSnackbar() directly instead of window.showErrorNotification/
   // showWarningNotification/hideErrorNotification.
   //
+  // Window-bridge elimination Phase 3c: OutputTextProvider wraps from here too
+  // (inside StatusTextProvider, like it; neither depends on the other).
+  //
   // Window-bridge elimination Phase 2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // AutoRenderBlockingProvider and PrDataProvider wrap from here too now
   // (AutoRenderBlockingProvider outside PrDataProvider, so PrDataProvider
@@ -1422,25 +1421,27 @@ function mountAppRoot() {
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
             <StatusTextProvider>
-              <BackfillStatusProvider>
-                <PrActivityQueueProvider>
-                  <TabStateProvider>
-                    <SnackbarProvider>
-                      <AutoRenderBlockingProvider>
-                        <PrDataProvider
-                          initialPayload={{}}
-                          initialSelectedRepo=""
-                          initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
-                        >
-                          <TabPanelVisibilitySync />
-                          <AppRoot />
-                          <PrDataPolling />
-                        </PrDataProvider>
-                      </AutoRenderBlockingProvider>
-                    </SnackbarProvider>
-                  </TabStateProvider>
-                </PrActivityQueueProvider>
-              </BackfillStatusProvider>
+              <OutputTextProvider>
+                <BackfillStatusProvider>
+                  <PrActivityQueueProvider>
+                    <TabStateProvider>
+                      <SnackbarProvider>
+                        <AutoRenderBlockingProvider>
+                          <PrDataProvider
+                            initialPayload={{}}
+                            initialSelectedRepo=""
+                            initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                          >
+                            <TabPanelVisibilitySync />
+                            <AppRoot />
+                            <PrDataPolling />
+                          </PrDataProvider>
+                        </AutoRenderBlockingProvider>
+                      </SnackbarProvider>
+                    </TabStateProvider>
+                  </PrActivityQueueProvider>
+                </BackfillStatusProvider>
+              </OutputTextProvider>
             </StatusTextProvider>
           </FilterStateProvider>
         </ChangeFilterActorSelectionProvider>

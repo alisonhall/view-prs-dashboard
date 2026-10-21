@@ -7,6 +7,7 @@ import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
+import { useOutputText } from './OutputTextContext';
 import { usePrData } from './PrDataContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
@@ -85,6 +86,8 @@ export function useAckLabelActions() {
   // beginRequestActivity/renderRequestActivity come from usePrData() instead of
   // window.beginRequestActivity/renderRequestActivity.
   const { beginRequestActivity, renderRequestActivity } = usePrData();
+  // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
+  const { setOutputText } = useOutputText();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
@@ -94,7 +97,7 @@ export function useAckLabelActions() {
           setStatusText(message);
           renderRequestActivity();
         },
-        setOutputMessage: (message) => window.updateReactOutputText?.(message),
+        setOutputMessage: (message) => setOutputText(message),
         beginRequestActivity,
         getGithubAuthFailureHint,
         formatCommandOutput,
@@ -161,6 +164,7 @@ export function useAckLabelActions() {
     showError,
     beginRequestActivity,
     renderRequestActivity,
+    setOutputText,
     showWarning,
   ]);
 }

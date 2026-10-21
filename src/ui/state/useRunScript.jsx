@@ -4,6 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useOutputText } from './OutputTextContext';
 import { usePrData } from './PrDataContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
@@ -53,6 +54,8 @@ export function useRunScript() {
   // beginRequestActivity/renderRequestActivity come from usePrData() instead of
   // window.beginRequestActivity/renderRequestActivity.
   const { beginRequestActivity, renderRequestActivity } = usePrData();
+  // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
+  const { setOutputText } = useOutputText();
 
   return useCallback(async () => {
     const body = getFormBody();
@@ -60,7 +63,7 @@ export function useRunScript() {
       setStatusText(message);
       renderRequestActivity();
     };
-    const setOutputMessage = (message) => window.updateReactOutputText?.(message);
+    const setOutputMessage = (message) => setOutputText(message);
 
     if (body.prNumbersInput && !body.prNumber) {
       setStatusMessage('Run script requires numeric PR number(s) in "PR number(s)"');
@@ -136,5 +139,5 @@ export function useRunScript() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, getFormBody, showError, beginRequestActivity, renderRequestActivity]);
+  }, [setStatusText, getFormBody, showError, beginRequestActivity, renderRequestActivity, setOutputText]);
 }

@@ -5,6 +5,7 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useAckLabelActions } = require('./useAckLabelActions.jsx');
 const { PrDataContext } = require('./PrDataContext');
+const { OutputTextContext } = require('./OutputTextContext');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { StatusTextContext } = require('./StatusTextContext');
@@ -16,6 +17,13 @@ function Probe({ onReady }) {
   onReady(ackLabelActions);
   return null;
 }
+
+// Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the output text setter comes from OutputTextContext now, not
+// window.updateReactOutputText - tests assign `setOutputText` (reset after
+// each test) instead of stubbing the bridge.
+let setOutputText = () => {};
+const outputTextValue = { outputText: '', setOutputText: (message) => setOutputText(message) };
 
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // beginRequestActivity/renderRequestActivity come from usePrData() now, not
@@ -45,9 +53,13 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
           StatusTextContext.Provider,
           { value: { statusText: 'Not run', setStatusText } },
           React.createElement(
-            PrDataContext.Provider,
-            { value: activity },
-            React.createElement(Probe, { onReady }),
+            OutputTextContext.Provider,
+            { value: outputTextValue },
+            React.createElement(
+              PrDataContext.Provider,
+              { value: activity },
+              React.createElement(Probe, { onReady }),
+            ),
           ),
         ),
       ),
@@ -62,7 +74,6 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
 // automatically, so the 3 tests below (which don't exercise busy/queued
 // behavior directly) need no Provider wrapper to keep passing.
 const ACK_LABEL_WINDOW_BRIDGES = [
-  'updateReactOutputText',
   'summarizeAckRefreshWarnings',
   'applyFreshPrPayload',
   'loadStoredData',
@@ -73,13 +84,14 @@ describe('useAckLabelActions', () => {
   afterEach(() => {
     ACK_LABEL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
     activity = makeActivity();
+    setOutputText = () => {};
     delete global.fetch;
   });
 
   test('given a single PR number from the form, when calling handleAckOnly, then it posts to /view-prs/ack and applies the fresh payload directly', async () => {
     const statusMessages = [];
     const applyFreshPrPayload = jest.fn();
-    window.updateReactOutputText = jest.fn();
+    setOutputText = jest.fn();
     window.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -132,7 +144,7 @@ describe('useAckLabelActions', () => {
     select.appendChild(option);
     document.body.appendChild(select);
 
-    window.updateReactOutputText = jest.fn();
+    setOutputText = jest.fn();
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -160,7 +172,7 @@ describe('useAckLabelActions', () => {
   });
 
   test('given a real PrActivityQueueProvider, when calling handleAckOnly, then the PR is marked busy via Context during the request and cleared after it resolves', async () => {
-    window.updateReactOutputText = jest.fn();
+    setOutputText = jest.fn();
 
     let resolveFetch;
     global.fetch = jest.fn(
@@ -189,9 +201,13 @@ describe('useAckLabelActions', () => {
             StatusTextContext.Provider,
             { value: { statusText: 'Not run', setStatusText: () => {} } },
             React.createElement(
-              PrDataContext.Provider,
-              { value: activity },
-              React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+              OutputTextContext.Provider,
+              { value: outputTextValue },
+              React.createElement(
+                PrDataContext.Provider,
+                { value: activity },
+                React.createElement(PrActivityQueueProvider, null, React.createElement(ProbeWithActivityQueue)),
+              ),
             ),
           ),
         ),

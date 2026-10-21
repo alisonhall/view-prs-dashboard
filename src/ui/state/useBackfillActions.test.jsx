@@ -6,6 +6,7 @@ const { useBackfillActions } = require('./useBackfillActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { PrDataContext } = require('./PrDataContext');
+const { OutputTextContext } = require('./OutputTextContext');
 const { BackfillStatusContext } = require('./BackfillStatusContext');
 
 function Probe({ onReady }) {
@@ -13,6 +14,13 @@ function Probe({ onReady }) {
   onReady(backfillActions);
   return null;
 }
+
+// Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the output text setter comes from OutputTextContext now, not
+// window.updateReactOutputText - tests assign `setOutputText` (reset after
+// each test) instead of stubbing the bridge.
+let setOutputText = () => {};
+const outputTextValue = { outputText: '', setOutputText: (message) => setOutputText(message) };
 
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // beginRequestActivity/renderRequestActivity come from usePrData() now, not
@@ -54,16 +62,17 @@ const renderProbe = (
             ...backfillStatus,
           }}
         >
-          <PrDataContext.Provider value={activity}>
+          <OutputTextContext.Provider value={outputTextValue}>
+<PrDataContext.Provider value={activity}>
             <Probe onReady={onReady} />
           </PrDataContext.Provider>
+</OutputTextContext.Provider>
         </BackfillStatusContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
   );
 
 const BACKFILL_WINDOW_BRIDGES = [
-  'updateReactOutputText',
   'updateReactBackfillButtonState',
   'updateBackfillStatusFromPayload',
   'setBackfillLogMessage',
@@ -74,6 +83,7 @@ describe('useBackfillActions', () => {
   afterEach(() => {
     BACKFILL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
     activity = makeActivity();
+    setOutputText = () => {};
     delete global.fetch;
   });
 
@@ -83,7 +93,7 @@ describe('useBackfillActions', () => {
     const updateBackfillStatusFromPayload = jest.fn();
     const finishActivity = jest.fn();
     window.updateReactBackfillButtonState = (state) => buttonStates.push(state);
-    window.updateReactOutputText = jest.fn();
+    setOutputText = jest.fn();
     window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
     const setIsBackfillActionPending = jest.fn();
     window.setBackfillLogMessage = jest.fn();

@@ -8,6 +8,7 @@ import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar
 import { useBackfillStatus } from './BackfillStatusContext';
 import { usePrData } from './PrDataContext';
 import { useStatusText } from './StatusTextContext';
+import { useOutputText } from './OutputTextContext';
 import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same "stable, zero-per-render-state"
@@ -87,6 +88,8 @@ export function useBackfillActions() {
   // beginRequestActivity/renderRequestActivity come from usePrData() instead of
   // window.beginRequestActivity/renderRequestActivity.
   const { beginRequestActivity, renderRequestActivity } = usePrData();
+  // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
+  const { setOutputText } = useOutputText();
 
   return useMemo(() => {
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
@@ -107,7 +110,7 @@ export function useBackfillActions() {
           setStatusText(message);
           renderRequestActivity();
         },
-        setOutputMessage: (message) => window.updateReactOutputText?.(message),
+        setOutputMessage: (message) => setOutputText(message),
         setBackfillButtonState: (state) => window.updateReactBackfillButtonState?.(state),
         notifyFailureSnackbar,
         formatCommandOutput,
@@ -221,5 +224,6 @@ export function useBackfillActions() {
     setIsBackfillActionPending,
     beginRequestActivity,
     renderRequestActivity,
+    setOutputText,
   ]);
 }

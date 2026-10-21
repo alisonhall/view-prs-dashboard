@@ -2201,6 +2201,28 @@ test("Action Log tab loads its entries on its very first visit, not just on a se
   expect(response.ok()).toBe(true);
 });
 
+test("the Run tab's output panel shows text written through OutputTextProvider's bridge, replacing the placeholder", async ({ page }) => {
+  // Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the output text moved out of AppRoot's local state into
+  // <OutputTextProvider />, which AppRoot reads back via Context to render
+  // #output's portal. jsdom covers the Provider and each hook separately;
+  // this proves the real wired path (the same bridge index.page.js writes
+  // through) lands in the real #output element in a real browser, in place
+  // of the static placeholder rather than appended to it.
+  await page.goto("/");
+  await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+
+  const output = page.locator("#output");
+  await expect(output).toHaveText("Run the script to see output");
+
+  const returned = await page.evaluate(() => window.updateReactOutputText("hello from the bridge"));
+  expect(returned).toBe(true);
+  await expect(output).toHaveText("hello from the bridge");
+
+  await page.evaluate(() => window.updateReactOutputText("second write"));
+  await expect(output).toHaveText("second write");
+});
+
 test("no React-portaled status/log panel shows its old static placeholder text stuck onto the real content", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): found via manual verification while

@@ -2663,6 +2663,17 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
 - **Tests:** 4 hook test files (`useRunScript`, `useSinglePrUpdate`, `useAckLabelActions`, `useBackfillActions`) now supply a `PrDataContext` and set mocks on it instead of stubbing `window.*`; their existing `finishActivity` assertions now genuinely prove the Context path. New `useRequestMoreMerged.test.jsx` (+2) asserts the hook uses the Context's functions and *not* decoy window bridges. Integration harness: the 3 roots that call these hooks outside its real `PrDataProvider` (which only exists inside the per-mount `MountedPrTableTree`) get a stand-in `WindowBackedPrActivityProvider` forwarding to the bridges the real provider still publishes; hoisting a real one would change how every test's first render starts, so that waits for Phase 7.
 - Jest 2515/2515 (was 2513), eslint clean, Playwright 55/55.
 
+## ✅ **Window-bridge elimination, Phase 3c: output text moves into `OutputTextProvider` (2026-10-21)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+
+- **Deviation from the plan, with reason:** the plan said to thread `AppRoot`'s locally-owned setters into the hooks "as explicit parameters". That can't reach `useSinglePrUpdate`, which runs inside `PrTableApp`, not in `AppRoot`'s body. So the Run tab's output text (`window.updateReactOutputText`'s target) moved out of `AppRoot`'s `useState` into a new `OutputTextProvider` + `OutputTextContext` (same shape as `StatusTextProvider`), wrapping `<AppRoot />` from `mountAppRoot()`. `AppRoot` reads `outputText` back via `useOutputText()` for its existing `#output` portal.
+- `useRunScript`, `useSinglePrUpdate`, `useAckLabelActions`, `useBackfillActions` call `setOutputText` from Context instead of `window.updateReactOutputText` (added to their deps; the setter is a stable `useState` setter).
+- **Bridge kept:** `window.updateReactOutputText` is still published, by the Provider now instead of `AppRoot`, for its one remaining caller, `index.page.js` (Phase 7).
+- **Not done (no React caller to fix):** `updateReactAutoRenderBlockedLinks`'s only caller is `pr-auto-render-indicator-links.helpers.js`, called from vanilla code; stays until Phase 7. `updateReactBackfillButtonState` is the next sub-step (3d).
+- **Tests:** +5 `OutputTextProvider.test.jsx` (placeholder, setter + stable identity, bridge write, bridge removed on unmount, inert default); 4 hook test files assign `setOutputText` via an `OutputTextContext` instead of stubbing the bridge; +1 Playwright test writing through the bridge and reading the real `#output` (fails when the provider's write is broken). The integration harness needed no change: no test there asserts `#output`, and `index.page.js`'s writes still reach it through the harness's bridge.
+- Jest 2520/2520 (was 2515), eslint clean, Playwright 56/56 (was 55).
+
 ## 📞 **Getting Help**
 
 **Resources:**

@@ -5,6 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
+import { useOutputText } from './OutputTextContext';
 import { usePrData } from './PrDataContext';
 import { useSnackbar } from './SnackbarContext';
 
@@ -45,13 +46,15 @@ export function useSinglePrUpdate() {
   // beginRequestActivity/renderRequestActivity come from usePrData() instead of
   // window.beginRequestActivity/renderRequestActivity.
   const { beginRequestActivity } = usePrData();
+  // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
+  const { setOutputText } = useOutputText();
 
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');
     const repo = entry?.repo || DEFAULT_REPO;
 
     const setStatusMessage = (message) => setStatusText(message);
-    const setOutputMessage = (message) => window.updateReactOutputText?.(message);
+    const setOutputMessage = (message) => setOutputText(message);
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
       const { title: finalTitle, detail } = buildFailureSnackbarNotification(
         title,
@@ -106,5 +109,5 @@ export function useSinglePrUpdate() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, showError, beginRequestActivity]);
+  }, [setStatusText, showError, beginRequestActivity, setOutputText]);
 }
