@@ -307,6 +307,12 @@ export function PrJsonModal({ target, payload, onClose }) {
 
     return () => {
       cancelled = true;
+      // Drop the previous PR's data on close/target change, so reopening
+      // (possibly for a different PR) starts from "loading" instead of
+      // flashing the last PR's JSON for a frame before the open effect
+      // above replaces it.
+      setDetailsPayload(null);
+      setDiffData(null);
       document.removeEventListener('keydown', handleKeydown);
       if (document.body?.style) {
         document.body.style.overflow = bodyOverflowRef.current;

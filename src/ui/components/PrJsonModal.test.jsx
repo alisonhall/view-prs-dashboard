@@ -53,6 +53,42 @@ describe('PrJsonModal', () => {
     expect(html).toContain('Loading user-state entry...');
   });
 
+  test('given the modal was closed after showing one PR, when it reopens for a different PR, then its first frame is loading, not the previous PR\'s JSON', async () => {
+    const React = require('react');
+    mockFetchOk();
+    const target = (number) => ({ entry: { prNumber: String(number), repo: 'owner/repo' }, pr: { number } });
+    const firstFrames = [];
+    // A layout effect runs in the commit of a render, before the modal's own
+    // passive effect updates its state - so it sees that render's first frame.
+    const FrameReader = ({ tag }) => {
+      React.useLayoutEffect(() => {
+        firstFrames.push({
+          tag,
+          subtitle: document.querySelector('#pr-json-modal-subtitle')?.textContent || null,
+          block: document.querySelector('pre.pr-json-block')?.textContent || null,
+        });
+      });
+      return null;
+    };
+    const App = ({ currentTarget, tag }) => (
+      <>
+        <PrJsonModal target={currentTarget} payload={{ byPrNumber: {} }} onClose={() => {}} />
+        <FrameReader tag={tag} />
+      </>
+    );
+
+    const { rerender } = render(<App currentTarget={target(1)} tag="open-pr-1" />);
+    await waitFor(() => expect(screen.getByText('PR #1 (owner/repo)')).toBeInTheDocument());
+    rerender(<App currentTarget={null} tag="closed" />);
+    firstFrames.length = 0;
+    rerender(<App currentTarget={target(2)} tag="reopen-pr-2" />);
+
+    const reopenFrame = firstFrames.find((frame) => frame.tag === 'reopen-pr-2');
+    expect(reopenFrame.subtitle).not.toBe('PR #1 (owner/repo)');
+    expect(reopenFrame.block).toBe('Loading data file entry...');
+    await waitFor(() => expect(screen.getByText('PR #2 (owner/repo)')).toBeInTheDocument());
+  });
+
   test('given a target, when rendering, then shows the dialog with the PR number/repo subtitle and loading placeholders', async () => {
     mockFetchOk();
     const payload = { byPrNumber: {} };
