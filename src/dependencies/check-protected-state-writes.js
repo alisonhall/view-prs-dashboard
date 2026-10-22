@@ -56,7 +56,7 @@ const ALLOWED_WRITER_FILES = new Set([
 const EXCLUDED_DIRS = new Set(["node_modules", ".git", "data", "coverage"]);
 
 const isTestLikeFile = (name) =>
-  /\.test\.[cm]?[jt]s$/.test(name) || /(^|\.)test\.sh$/.test(name);
+  /\.test\.[cm]?[jt]sx?$/.test(name) || /(^|\.)test\.sh$/.test(name);
 
 const shouldScanFile = (relativePath) => {
   const normalized = relativePath.split(path.sep).join("/");
@@ -64,7 +64,7 @@ const shouldScanFile = (relativePath) => {
     return false;
   }
 
-  return /\.(js|mjs|cjs|sh)$/.test(normalized);
+  return /\.(js|mjs|cjs|jsx|ts|tsx|sh)$/.test(normalized);
 };
 
 const walkFiles = (
