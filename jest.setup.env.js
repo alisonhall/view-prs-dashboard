@@ -30,6 +30,21 @@ if (!process.env.VIEW_PRS_DATA_FILE) {
     tempDir,
     "actor-login-aliases.json",
   );
+  // These also defaulted into the real data/ directory (found
+  // 2026-10-22: app.routes.test.js overwrote the real data/user-defaults.json,
+  // app.integration-extra.test.js wrote data/pr-diffs). app-config.js now
+  // refuses, under NODE_ENV=test, any writable path inside the real data dir.
+  process.env.VIEW_PRS_AUTHOR_COMMENTS_FILE = path.join(tempDir, "author-comments.json");
+  process.env.VIEW_PRS_PR_DIFF_DIR = path.join(tempDir, "pr-diffs");
+  process.env.VIEW_PRS_PR_DETAIL_DIR = path.join(tempDir, "pr-details");
+  process.env.VIEW_PRS_BACKFILL_PID_FILE = path.join(tempDir, "backfill-missing.pid");
+  process.env.VIEW_PRS_BACKFILL_LOG_FILE = path.join(tempDir, "backfill-missing.log");
+  process.env.VIEW_PRS_USER_DEFAULTS_FILE = path.join(tempDir, "user-defaults.json");
+  // check-open-pr-updates.sh (run or sourced by its integration tests)
+  // derives every state path from DATA_DIR, defaulting to the real data/ -
+  // the script tests that didn't set PR_DETAIL_DIR themselves wrote
+  // data/pr-details/owner_repo__pr-{321,501,701}.json there.
+  process.env.DATA_DIR = tempDir;
   process.env.VIEW_PRS_PR_DIFF_CONCURRENCY = "0";
   process.env.VIEW_PRS_DISABLE_BACKGROUND_DIFF_REFRESH = "1";
   process.env.VIEW_PRS_BACKUP_DIR = path.join(tempDir, "backups");

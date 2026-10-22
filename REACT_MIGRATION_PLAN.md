@@ -2925,6 +2925,16 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md), "N
 - **Found, not changed (outside this plan):** `test:ci` writes into the real `data/` directory: `data/user-defaults.json` (now `{}`), `data/pr-diffs` and `data/pr-details` were modified during this session's runs. `jest.setup.env.js` isolates the data/user-state/scheduler/action-log/backup files but not `VIEW_PRS_USER_DEFAULTS_FILE` or `VIEW_PRS_PR_DIFF_DIR`, and app-config's test-env check doesn't cover them. The real data file itself is untouched (46 bytes since Sep 20, hence `guard:state-health`'s "byPrNumber is empty" warning in every run).
 - `lint:check` clean; `test:ci` 2622 passed + 1 skipped; `test:e2e` 59/59. Windows local run.
 
+## ✅ **Test isolation: jest no longer writes into the real `data/` directory (2026-10-22)**
+
+Found during the test-only bridge work (see the entry above); not part of the window-bridge plan.
+
+- **What leaked.** Snapshotting `data/` around each server/script test file found three writers: `app.routes.test.js` wrote the real `data/user-defaults.json` (left as `{}`), `app.integration-extra.test.js` wrote `data/pr-diffs/owner_repo__pr-321.json`, and `check-open-pr-updates.test.js` (the shell-script tests) wrote `data/pr-details/owner_repo__pr-{321,501,701}.json`. `jest.setup.env.js` redirected the data/user-state/scheduler/action-log/actor-cache/backup files to a temp dir, but not `VIEW_PRS_USER_DEFAULTS_FILE`/`PR_DIFF_DIR`/`AUTHOR_COMMENTS_FILE`/`BACKFILL_PID_FILE`/`BACKFILL_LOG_FILE`, nor `DATA_DIR`, which `check-open-pr-updates.sh` derives every state path from (defaulting to the real `data/`). The author-comments default even follows the *default* user-state path, so redirecting user-state didn't move it.
+- **Fix.** `jest.setup.env.js` sets all of those (and `VIEW_PRS_PR_DETAIL_DIR` explicitly) into its temp dir. `app-config.js`'s test-mode check now also refuses, by containment rather than by comparing with each default, any writable path that resolves into the real `data/` directory, naming each one - so a future gap fails loudly instead of writing real state. The e2e server and the heap check already set every path.
+- **Verified:** `data/` unchanged (file list, mtimes, sizes) across a full `test:ci` and `test:e2e`. Removing `VIEW_PRS_USER_DEFAULTS_FILE` from the setup makes `app.routes.test.js` fail with the new error and leaves `data/` untouched. `app-config.test.js` +2 (unset writable paths are each named; one set explicitly into `data/` is refused); tests expecting a test-env config to succeed now pass the full set, and the defaults test passes `env: {}` (it had been reading `process.env`).
+- **Not recoverable:** no backup holds `user-defaults.json` (`data/backups` only has data-file backups). This checkout's `data/` looks unused for real work (its PR data file has been empty since Sep 20). The test-written `owner_repo__pr-*.json` files are still in `data/pr-details`/`data/pr-diffs`; left in place.
+- `lint:check` clean; `test:ci` 2624 passed + 1 skipped (2622 + 2); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

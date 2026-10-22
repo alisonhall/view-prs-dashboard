@@ -111,6 +111,42 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     env.VIEW_PRS_USER_DEFAULTS_FILE ||
     path.join(viewPrsDir, "data/user-defaults.json");
 
+  // Test environment validation, part 2: no other writable path may resolve
+  // into the real data directory either. The checks above only covered the
+  // data/user-state/actor-cache files, so tests silently wrote the real
+  // data/user-defaults.json (app.routes.test.js) and data/pr-diffs
+  // (app.integration-extra.test.js) - found 2026-10-22, with
+  // data/user-defaults.json overwritten to {}. A containment check, not a
+  // comparison with each default, because some defaults derive from other
+  // paths (the author-comments default follows the *default* user-state
+  // file, not the configured one; the PR-detail dir follows the data file).
+  if (isTestEnv) {
+    const realDataDir = path.resolve(viewPrsDir, "data");
+    const isInsideRealDataDir = (filePath) => {
+      const relative = path.relative(realDataDir, path.resolve(filePath));
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    };
+    const pathsInRealDataDir = Object.entries({
+      VIEW_PRS_SCHEDULER_FILE: viewPrsSchedulerFile,
+      VIEW_PRS_AUTHOR_COMMENTS_FILE: viewPrsAuthorCommentsFile,
+      VIEW_PRS_BACKUP_DIR: viewPrsBackupDir,
+      VIEW_PRS_PR_DIFF_DIR: viewPrsPrDiffDir,
+      VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
+      VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
+      VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
+      VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
+      VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
+    })
+      .filter(([, filePath]) => isInsideRealDataDir(filePath))
+      .map(([envName]) => envName);
+    if (pathsInRealDataDir.length > 0) {
+      throw new Error(
+        `[view-prs] NODE_ENV=test but these writable paths resolve into the real data directory (${realDataDir}): ` +
+        `${pathsInRealDataDir.join(", ")}. Set them to temp paths (see jest.setup.env.js).`,
+      );
+    }
+  }
+
   // Timeouts and intervals (with env overrides and validation)
   // Global default auto-refresh cadence - the per-repo dispatcher (see
   // view-prs-dispatcher-helpers.js) falls back to this when a repo has no
