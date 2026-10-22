@@ -550,9 +550,10 @@ export function PrTableApp() {
   // only works when vanilla itself owns that DOM. Under React, that direct
   // mutation left the toggle button claiming "expanded" while the insights
   // content never actually rendered, since React's own expandedInsights
-  // state never changed. See navigateToPrInTable in
-  // pr-author-insights-pr-link.helpers.js, which dispatches this event
-  // instead of mutating the DOM directly when React owns the table.
+  // state never changed. state/useNavigateToPrInTable.jsx (used by Author
+  // Insights'/Review Stats' "View in table" buttons) dispatches this event
+  // instead of mutating the DOM directly (it replaced the vanilla
+  // navigateToPrInTable in pr-author-insights-pr-link.helpers.js, deleted).
   //
   // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // state/useNavigateToPrInTable.jsx (AutoRenderBlockedLinks.jsx's "jump to

@@ -21,7 +21,7 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  * all - `#backfill-log` was a separate sibling portal owned directly by
  * react-app.jsx's AppRoot, which is exactly why scroll-sync needed a
  * DOM-query bridge (`window.autoScrollBackfillLogToBottom`,
- * pr-ui-option-scroll.helpers.js): no single component owned both the
+ * pr-ui-option-scroll.helpers.js, both since deleted): no single component owned both the
  * checkbox and the log container to read/write via refs. Now this
  * component owns both - `logContainer` (the raw `#backfill-log` DOM node)
  * and `logText` (its content) are passed in, and this component renders

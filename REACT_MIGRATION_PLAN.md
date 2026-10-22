@@ -1,4 +1,14 @@
-# React Migration Plan - All Phases Complete (verification sweep 2026-09-20)
+# React Migration Plan - Complete (historical record)
+
+> **Status (2026-10-22): finished.** Every phase below is done, including the
+> later roadmap (Phases A-H), the remaining-effort audit, and the follow-on
+> window-bridge elimination (see `WINDOW_BRIDGE_ELIMINATION_PLAN.md`, kept
+> alongside this file): `index.page.js` is deleted, no `window.*` bridges
+> remain, and `src/ui/react-app.jsx`'s `mountAppRoot()` is the only UI entry
+> point. This file is now a log of how the migration was done and why. 🟡/🚧
+> markers on individual entries reflect the state when each was written. The
+> one thing it names as out of scope, virtual scrolling, lives in
+> `ROADMAP.md` as a separate feature.
 
 ## 🎯 **Overview**
 
@@ -446,7 +456,7 @@ npm run test:coverage       # With coverage
 
 ## 🎯 **Future Phases (Brief Overview)**
 
-### **Phase 2: Filters & Controls** (20-30 hours) — 🟡 Started
+### **Phase 2: Filters & Controls** (20-30 hours) — 🟢 Complete (was "🟡 Started" when this section was written; see the Phase Breakdown table)
 
 **Goal:** Migrate filter controls to React
 
@@ -782,7 +792,7 @@ started, not before.
 
 ---
 
-### **Phase 3: Other Tabs** (20-30 hours) — 🟡 Started
+### **Phase 3: Other Tabs** (20-30 hours) — 🟢 Complete (was "🟡 Started" when this section was written; see the Phase Breakdown table)
 
 **Tabs to migrate, roughly in order of complexity (chosen 2026-09-11 after
 looking at each):**
@@ -1167,7 +1177,7 @@ Verified: `npx eslint .` exits clean (0 errors, 0 warnings) project-wide; full j
 
 ---
 
-## 🚧 **Phase 7: Single React entry point, no `window.*` bridges (in progress, 2026-09-26)**
+## ✅ **Phase 7: Single React entry point, no `window.*` bridges (started 2026-09-26; finished 2026-10-22 by the window-bridge elimination entries below)**
 
 A follow-up audit (3 parallel research agents) scoped what it would take to fold `index.page.js` (~5,500 lines, still owning polling, one-shot loads, user-action fetches, persistence, debounce timers, and the auto-render-blocking system) into React entirely, eliminating the ~125 app-defined `window.*` bridges connecting the two independent entry points. This is a substantially larger effort than any prior single item in this migration - being executed as 8 sequenced sub-phases (7.0-7.7), one at a time with full verification and a check-in after each, per the user's explicit preference. See the plan tool's saved plan for the full sub-phase breakdown.
 
@@ -2953,6 +2963,15 @@ From WINDOW_BRIDGE_ELIMINATION_PLAN.md's "Known, unrelated, left alone" list. It
 - 10 consecutive runs pass, and 3/3 with every core (16) busy.
 - `lint:check` clean; `test:ci` 2625 passed + 1 skipped (unchanged); `test:e2e` 59/59. Windows local run.
 
+## ✅ **Final cleanup: dead helpers and stale docs (2026-10-22)**
+
+Found while confirming both plans were complete.
+
+- **Deleted 6 helper files (and their tests) with no production importer left:** `pr-dom-access`, `pr-dom-traversal`, `pr-dom-visibility`, `pr-render-viewer-filter-setup`, `pr-ui-option-scroll`, `pr-author-insights-pr-link`. Most served `index.page.js`; the rest were superseded by hooks (`useNavigateToPrInTable`) or by `BackfillLogControls`'s own scroll sync. Comments that described them as current now say they're deleted.
+- **Deleted `src/ui/orchestrators/README.md`**, the only file left in that folder; it described orchestrators sitting under `index.page.js`, both gone.
+- **This file:** a completion note at the top; the Phase 2/3 "🟡 Started" and Phase 7 "in progress" headings and the 2026-09-11 footer ("Next Milestone: … Phase 3") corrected.
+- `lint:check` clean; `test:ci` 2606 passed + 1 skipped (19 fewer: the deleted helpers' own tests); `test:e2e` 59/59; `vite build` succeeds. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**
@@ -2969,6 +2988,5 @@ From WINDOW_BRIDGE_ELIMINATION_PLAN.md's "Known, unrelated, left alone" list. It
 
 ---
 
-**Last Updated:** 2026-09-11
-**Phase 1 Progress:** Functionally complete, parity-verified in a real browser; performance not yet formally measured
-**Next Milestone:** Phases 1 and 2 are both complete, including Phase 1's performance measurement (see "Performance Validation" above). Move on to Phase 3 (Other Tabs: Author Insights, Backfill, Review Stats), or Phase 5 (Performance Tuning) to chase the identified optimization opportunity (making the shared render-pipeline side effects delta-aware). Phase 2's state-management cleanup remains deferred to Phase 6, not a blocker
+**Last Updated:** 2026-10-22
+**Status:** Complete - see the note at the top of this file.

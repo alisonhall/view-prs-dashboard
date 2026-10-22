@@ -453,7 +453,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // (state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx). No
   // existing e2e spec drove these chips directly before this test - the 2
   // "View in table" specs elsewhere in this file exercise a different,
-  // untouched sibling implementation (pr-author-insights-pr-link.helpers.js).
+  // sibling implementation (AuthorInsightsPrLink.jsx's "View in table" button).
   // Test-only bridge removal: opens with ?dataPollMs= and makes a real held-back
   // poll (changeServerData) instead of window.setPendingAutoRenderPayload.
   await page.goto("/?dataPollMs=300");
@@ -760,8 +760,8 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await expect(page.locator("#data-meta")).toContainText("scope=last run rows");
 
   // Reset so this test's change doesn't affect whatever loads next. This
-  // change also fires its own auto-persist PUT (registerUiOptionPersistenceHandlers,
-  // pr-ui-option-scroll.helpers.js) debounced 150ms behind the one from
+  // change also fires its own auto-persist PUT (FilterStateProvider's debounced
+  // persistence watcher) debounced 150ms behind the one from
   // "last-run" above - wait for it to actually land (same reasoning as
   // waitForFilterPersist above) so this test can't leak a
   // stale scope-mode value into whatever unrelated test loads next against
@@ -1841,7 +1841,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // direct mutation that does nothing once React owns that row (the same
   // bug class Author Insights' own "View in table" button already hit and
   // was fixed for, via a 'pr-navigate-to-insights' CustomEvent - see
-  // navigateToPrInTable in pr-author-insights-pr-link.helpers.js). Review
+  // state/useNavigateToPrInTable.jsx). Review
   // Stats' button was never fixed the same way; this conversion routes it
   // through that same already-React-safe helper instead of rebuilding the
   // broken version a third time.

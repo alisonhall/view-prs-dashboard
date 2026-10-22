@@ -1,7 +1,7 @@
 /**
  * AuthorInsightsPrLink - React port of the PR-link fragment
  * createAuthorInsightsPrLink() built in
- * helpers/pr-author-insights-pr-link.helpers.js: an external GitHub link
+ * helpers/pr-author-insights-pr-link.helpers.js (since deleted): an external GitHub link
  * plus a "View in table" button that navigates the PR data tab to this
  * row. Shared by AuthorCreatedPrsSection.jsx and
  * AuthorInsightsNotesSection.jsx (Track B, REACT_MIGRATION_PLAN.md).
