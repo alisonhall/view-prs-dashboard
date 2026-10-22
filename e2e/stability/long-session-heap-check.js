@@ -15,7 +15,8 @@
  * Standalone script (not a `.spec.js`/`.test.js` file), so `npx playwright
  * test` never picks it up - it's deliberately long-running and not meant
  * to gate every CI run. Exits 1 when the heap grows more than
- * MAX_GROWTH_RATIO. Runs on demand in CI via the "Heap stability"
+ * MAX_GROWTH_RATIO, or when the page never fetched one of the server data
+ * changes (see below). Runs on demand in CI via the "Heap stability"
  * workflow (.github/workflows/heap-stability.yml, Actions tab -> Run
  * workflow). Run locally via `npm run stability:heap-check`, or
  * directly: `node e2e/stability/long-session-heap-check.js [--cycles=200]
@@ -121,7 +122,7 @@ function buildDataset(n, generation = 0) {
 // Writes the next generation and waits for the page's own poll to fetch
 // it (the delta endpoint, or the full-data fallback). Returns false if no
 // fetch arrived in time, so a run that silently stopped exercising this
-// path is reported rather than passing as "flat".
+// path fails instead of passing as "flat".
 async function applyServerDataChange(page, dataFile, datasetSize, generation) {
   const fetched = page
     .waitForResponse(
@@ -331,9 +332,12 @@ async function main() {
     if (args.dataChangeEvery > 0) {
       console.log(`Server data changes: ${dataChanges} (${missedDataChanges} not fetched by the page within 10s)`);
       if (missedDataChanges > 0) {
+        // A flat heap from a run that never refreshed the payload proves
+        // nothing about the payload-refresh path, so this fails too.
         console.log(
-          "WARNING: some data changes were never fetched, so this run under-exercises the payload-refresh path - check that polling still works.",
+          "FAIL: some data changes were never fetched, so this run under-exercises the payload-refresh path - check that polling still works.",
         );
+        process.exitCode = 1;
       }
     }
     if (ratio > MAX_GROWTH_RATIO) {
