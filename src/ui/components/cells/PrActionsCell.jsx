@@ -89,13 +89,19 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
           <span className="in-review-label flagged-label">Flagged</span>
         </label>
 
-        <button type="button" className="row-action-btn update" onClick={handleUpdateClick}>
+        <button
+          type="button"
+          className="row-action-btn update"
+          aria-label={`Update PR #${prNumber}`}
+          onClick={handleUpdateClick}
+        >
           ↻ Update
         </button>
         <button
           type="button"
           className={isAcknowledged ? 'row-action-btn ack is-acked' : 'row-action-btn ack'}
           aria-pressed={Boolean(isAcknowledged)}
+          aria-label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           title={isAcknowledged ? 'Acknowledged - click to clear' : 'Click to acknowledge'}
           onClick={handleAckToggleClick}
         >

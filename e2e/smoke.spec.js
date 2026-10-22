@@ -443,7 +443,7 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
     await authorSelect.selectOption(secondOptionValue);
     await expect(authorSelect).toHaveValue(secondOptionValue);
   }
-  await notesSection.getByRole("button", { name: "✕ Remove" }).first().click();
+  await notesSection.getByRole("button", { name: /^Remove comment / }).first().click();
 });
 
 test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {

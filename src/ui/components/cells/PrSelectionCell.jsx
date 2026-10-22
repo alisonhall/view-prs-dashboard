@@ -47,6 +47,7 @@ export function PrSelectionCell({ pr }) {
         checked={isSelected}
         data-pr-number={prNumber}
         title={prNumber ? `Select PR #${prNumber}` : 'Select PR'}
+        aria-label={prNumber ? `Select PR #${prNumber}` : 'Select PR'}
         onChange={(e) =>
           setFieldValue(
             PR_NUMBERS_FIELD,

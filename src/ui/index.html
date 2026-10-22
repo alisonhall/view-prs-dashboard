@@ -158,27 +158,27 @@
                                  found earlier in this same sweep. -->
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by label name(s)"></summary>
-                                <div id="label-list" class="multi-select-list"></div>
+                                <div id="label-list" class="multi-select-list" role="group" aria-label="Filter by label name(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Exclude by label name(s)"></summary>
-                                <div id="exclude-label-list" class="multi-select-list"></div>
+                                <div id="exclude-label-list" class="multi-select-list" role="group" aria-label="Exclude by label name(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by PR author(s)"></summary>
-                                <div id="author-list" class="multi-select-list"></div>
+                                <div id="author-list" class="multi-select-list" role="group" aria-label="Filter by PR author(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by Assigned user(s)"></summary>
-                                <div id="assigned-list" class="multi-select-list"></div>
+                                <div id="assigned-list" class="multi-select-list" role="group" aria-label="Filter by Assigned user(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by PR approver(s)"></summary>
-                                <div id="approver-list" class="multi-select-list"></div>
+                                <div id="approver-list" class="multi-select-list" role="group" aria-label="Filter by PR approver(s)"></div>
                             </details>
 
                             <label for="filter-custom-comments">Custom comments</label>
@@ -260,14 +260,14 @@
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-allow-list"
-                                            class="multi-select-list"></div>
+                                            class="multi-select-list" role="group" aria-label="Allow PR authors to resolve threads started by (Actor Names)"></div>
                                     </details>
 
                                     <details id="attention-author-thread-resolution-deny-options"
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-deny-list"
-                                            class="multi-select-list"></div>
+                                            class="multi-select-list" role="group" aria-label="Do not allow PR authors to resolve threads started by (Actor Names)"></div>
                                     </details>
                                 </fieldset>
 
@@ -278,7 +278,7 @@
 
                                     <details class="multi-select-dropdown">
                                         <summary class="multi-select-summary" data-base-label="Ignore comments from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-comment-authors-list" class="multi-select-list">
+                                        <div id="change-filter-ignore-comment-authors-list" class="multi-select-list" role="group" aria-label="Ignore comments from these authors (GitHub logins)">
                                         </div>
                                     </details>
                                     <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
@@ -290,7 +290,7 @@
 
                                     <details class="multi-select-dropdown">
                                         <summary class="multi-select-summary" data-base-label="Ignore reviews from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-review-authors-list" class="multi-select-list">
+                                        <div id="change-filter-ignore-review-authors-list" class="multi-select-list" role="group" aria-label="Ignore reviews from these authors (GitHub logins)">
                                         </div>
                                     </details>
                                     <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
@@ -380,7 +380,7 @@
                 <summary>Latest request output</summary>
                 <!-- Rendered by React (react-app.jsx, plain-string portal) -
                      starts empty, see #request-activity-details above. -->
-                <pre id="output"></pre>
+                <pre id="output" role="region" aria-label="Latest request output"></pre>
             </details>
         </section>
 
@@ -398,7 +398,7 @@
                 <span id="backfill-controls-root"></span>
                 <!-- Rendered by React (react-app.jsx, plain-string portal) -
                      starts empty, see #request-activity-details above. -->
-                <pre id="backfill-details" class="scheduler-details"></pre>
+                <pre id="backfill-details" class="scheduler-details" role="region" aria-label="Backfill status details"></pre>
                 <details class="advanced-options">
                     <summary>Log details</summary>
                     <!-- Rendered by React (BackfillLogControls.jsx, react-app.jsx) -
@@ -406,7 +406,7 @@
                     <span id="backfill-log-controls-root"></span>
                     <!-- Rendered by React (react-app.jsx, plain-string portal) -
                          starts empty, see #request-activity-details above. -->
-                    <pre id="backfill-log" class="backfill-log"></pre>
+                    <pre id="backfill-log" class="backfill-log" role="region" aria-label="Backfill log"></pre>
                 </details>
             </div>
         </section>
@@ -451,12 +451,12 @@
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <!-- Rendered by React (react-app.jsx, plain-string portal) -
                  starts empty, see #request-activity-details above. -->
-            <pre id="data-meta" style="white-space: break-spaces;"></pre>
+            <pre id="data-meta" style="white-space: break-spaces;" role="region" aria-label="PR data summary"></pre>
             <!-- Rendered by React (components/TableFilterChips.jsx) -
                  renders nothing at all when no non-default filter is
                  applied, same precedent as #merged-request-more-action
                  below. -->
-            <div id="table-filter-chips-root"></div>
+            <div id="table-filter-chips-root" role="group" aria-label="Applied table filters"></div>
             <div id="pr-sections"></div>
             <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
                  renders nothing at all (not even this div's own children)
@@ -478,8 +478,8 @@
                      mounted here - createPortal doesn't clear a target's
                      pre-existing content, so the real stats content used to
                      render stuck directly onto the end of "Loading...". -->
-                <div id="stats-controls-root"></div>
-                <div id="stats-content-root"></div>
+                <div id="stats-controls-root" role="group" aria-label="Review statistics controls"></div>
+                <div id="stats-content-root" role="region" aria-label="Review statistics"></div>
             </div>
         </section>
 
@@ -515,7 +515,7 @@
                      target's pre-existing content, so the real composer/list
                      content used to render stuck directly onto the end of
                      "Loading...". -->
-                <div id="author-insights-content-root"></div>
+                <div id="author-insights-content-root" role="region" aria-label="Author comments"></div>
                 <div id="author-insights-notes-root"></div>
                 <div id="author-insights-created-prs-root"></div>
             </div>

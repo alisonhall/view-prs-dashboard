@@ -6434,7 +6434,7 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const clearButton = await screen.findByRole("button", {
-      name: "✓ Ack'd",
+      name: /^Ack'd PR #/,
     });
     expect(clearButton).toBeInTheDocument();
 
@@ -6774,7 +6774,7 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = fetchMock;
 
     const insightsButton = await screen.findByRole("button", {
-      name: "More insights",
+      name: /^More insights for PR #/,
     });
     await user.click(insightsButton);
 
@@ -6872,7 +6872,7 @@ describe("index page rendering with Testing Library", () => {
 
       const localUser = userEvent.setup();
       const insightsButton = await screen.findByRole("button", {
-        name: "More insights",
+        name: /^More insights for PR #/,
       });
       await localUser.click(insightsButton);
 
@@ -7003,7 +7003,7 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    await user.click(await screen.findByRole("button", { name: "More insights" }));
+    await user.click(await screen.findByRole("button", { name: /^More insights for PR #/ }));
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -8484,7 +8484,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const insightsToggle = await screen.findByRole("button", {
-        name: "More insights",
+        name: /^More insights for PR #/,
       });
       // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
       // describe block's fake timers would otherwise hang userEvent's own
@@ -8873,6 +8873,43 @@ describe("index page rendering with Testing Library", () => {
   // render them, so the test is gone. Coverage: ContextRunScriptTextInput.test.jsx,
   // PrNumberFilterInput.test.jsx, react-app.test.jsx and e2e's "all 6
   // React-portaled non-credential-hint fields" test.
+
+  // Accessibility naming (groundwork for role-based e2e queries that survive
+  // a UI redesign): the page's text areas, content areas and multi-select
+  // filter lists in index.html each have a role and a name. Some live in
+  // tab panels that start hidden, hence { hidden: true }.
+  test("index.html's page areas and filter lists are reachable by role and name", () => {
+    initTestPage();
+
+    const regions = [
+      "Latest request output",
+      "Backfill status details",
+      "Backfill log",
+      "PR data summary",
+      "Review statistics",
+      "Author comments",
+    ];
+    regions.forEach((name) => {
+      expect(screen.getByRole("region", { name, hidden: true })).toBeInTheDocument();
+    });
+
+    const groups = [
+      "Applied table filters",
+      "Review statistics controls",
+      "Filter by label name(s)",
+      "Exclude by label name(s)",
+      "Filter by PR author(s)",
+      "Filter by Assigned user(s)",
+      "Filter by PR approver(s)",
+      "Allow PR authors to resolve threads started by (Actor Names)",
+      "Do not allow PR authors to resolve threads started by (Actor Names)",
+      "Ignore comments from these authors (GitHub logins)",
+      "Ignore reviews from these authors (GitHub logins)",
+    ];
+    groups.forEach((name) => {
+      expect(screen.getByRole("group", { name, hidden: true })).toBeInTheDocument();
+    });
+  });
 
   test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
     // Regression test for ActivityTimelineSummary's weekend-filtering AND

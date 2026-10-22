@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render: baseRender, screen, fireEvent, cleanup } = require('@testing-library/react');
+const { render: baseRender, screen, fireEvent, cleanup, within } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 
 // postJson is a plain ES import now (Phase 7, see REACT_MIGRATION_PLAN.md) -
@@ -50,6 +50,22 @@ describe('NotesSection', () => {
     textarea.focus();
     require('@testing-library/react').fireEvent.change(textarea, { target: { value: 'a note' } });
     expect(screen.getByRole('button', { name: 'Save notes' })).toBeEnabled();
+  });
+
+  // Accessibility naming: the section is a group named by its PR, and each
+  // comment row's fields are named within it (they had no labels before).
+  test('given two comment rows, when rendering, then the section is named by its PR and the fields of each row are named by role', () => {
+    render(<NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />);
+    const section = screen.getByRole('group', { name: 'Notes for PR #42' });
+    fireEvent.click(within(section).getByRole('button', { name: '+ Add comment' }));
+    fireEvent.click(within(section).getByRole('button', { name: '+ Add comment' }));
+
+    [1, 2].forEach((n) => {
+      expect(within(section).getByRole('combobox', { name: `Comment ${n} author` })).toBeInTheDocument();
+      expect(within(section).getByRole('combobox', { name: `Comment ${n} tone` })).toBeInTheDocument();
+      expect(within(section).getByRole('textbox', { name: `Comment ${n} note` })).toBeInTheDocument();
+      expect(within(section).getByRole('button', { name: `Remove comment ${n}` })).toBeInTheDocument();
+    });
   });
 
   test('given the "+ Add comment" button, when clicked, then adds a new comment row with an author dropdown', () => {

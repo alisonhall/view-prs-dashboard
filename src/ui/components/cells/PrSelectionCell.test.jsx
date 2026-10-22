@@ -53,6 +53,13 @@ describe('PrSelectionCell', () => {
     expect(screen.getByRole('checkbox')).toHaveAttribute('title', 'Select PR #101');
   });
 
+  // Accessibility naming (so tests and assistive tech can find one PR's
+  // checkbox by role): the name carries the PR number, not just the title.
+  test('given a PR, when rendering, then the checkbox is findable by role with its PR number as its name', () => {
+    renderCells('');
+    expect(screen.getByRole('checkbox', { name: 'Select PR #101' })).toBeInTheDocument();
+  });
+
   test('given a PR in the selected set, when rendering, then the checkbox is checked', () => {
     renderCells('101');
     expect(screen.getByRole('checkbox')).toBeChecked();

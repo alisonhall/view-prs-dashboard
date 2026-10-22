@@ -91,6 +91,7 @@ export function PrSection({
             prs={prs}
             repo={repo}
             sectionKey={key}
+            label={title}
             isSmartGroup={isSmartGroup}
             lifecycleSection={lifecycleSection}
             dateHeader={dateHeader}

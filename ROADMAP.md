@@ -66,9 +66,9 @@
 
 ### Accessibility fixes
 
-- [ ] Add name for each table
-- [ ] Associate PR number with the controls within each table row
-- [ ] Add proper labels to the 'Comments' fields
+- [x] ~~Add name for each table~~ - done (2026-10-22): each PR table is named by its section title (`aria-label`, e.g. "Open PRs")
+- [x] ~~Associate PR number with the controls within each table row~~ - done (2026-10-22): "More insights for PR #N", "Select PR #N", "Update PR #N", "Ack PR #N" join the existing In Review/Flagged/View JSON/Add label names
+- [x] ~~Add proper labels to the 'Comments' fields~~ - done (2026-10-22): the Notes section is a group named "Notes for PR #N", and each comment row's author/tone/note/remove controls are named ("Comment 1 author", etc.)
 
 ### Modernization of code
 

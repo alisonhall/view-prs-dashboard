@@ -44,14 +44,14 @@ describe('PrActionsCell', () => {
 
   test('given isAcknowledged=false, when rendering, then the Ack button reads "Ack", is not styled as selected, and aria-pressed is false', () => {
     renderCell({ isAcknowledged: false });
-    const button = screen.getByRole('button', { name: '✓ Ack' });
+    const button = screen.getByRole('button', { name: 'Ack PR #101' });
     expect(button).toHaveAttribute('aria-pressed', 'false');
     expect(button.className).not.toContain('is-acked');
   });
 
   test('given isAcknowledged=true, when rendering, then the Ack button reads "Ack\'d", is styled as selected, and aria-pressed is true', () => {
     renderCell({ isAcknowledged: true });
-    const button = screen.getByRole('button', { name: "✓ Ack'd" });
+    const button = screen.getByRole('button', { name: "Ack'd PR #101" });
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button.className).toContain('is-acked');
   });
@@ -59,14 +59,14 @@ describe('PrActionsCell', () => {
   test('given isAcknowledged=false, when the Ack button is clicked, then onAckAction fires with isAcked=false (not-yet-acked -> ack)', () => {
     const onAckAction = jest.fn();
     renderCell({ isAcknowledged: false, onAckAction });
-    screen.getByRole('button', { name: '✓ Ack' }).click();
+    screen.getByRole('button', { name: 'Ack PR #101' }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', false, 'owner/repo');
   });
 
   test('given isAcknowledged=true, when the same button is clicked, then onAckAction fires with isAcked=true (already-acked -> clear)', () => {
     const onAckAction = jest.fn();
     renderCell({ isAcknowledged: true, onAckAction });
-    screen.getByRole('button', { name: "✓ Ack'd" }).click();
+    screen.getByRole('button', { name: "Ack'd PR #101" }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', true, 'owner/repo');
   });
 
@@ -75,14 +75,14 @@ describe('PrActionsCell', () => {
     // see REACT_MIGRATION_PLAN.md) - this covers only the isolated-render
     // case where it's omitted.
     renderCell({ pr: { number: '101' } });
-    screen.getByRole('button', { name: '↻ Update' }).click();
+    screen.getByRole('button', { name: 'Update PR #101' }).click();
     await Promise.resolve();
   });
 
   test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr with the PR number and entry', async () => {
     const onUpdatePr = jest.fn().mockResolvedValue(undefined);
     renderCell({ pr: { number: '101' }, onUpdatePr });
-    screen.getByRole('button', { name: '↻ Update' }).click();
+    screen.getByRole('button', { name: 'Update PR #101' }).click();
     await Promise.resolve();
     expect(onUpdatePr).toHaveBeenCalledWith(
       '101',

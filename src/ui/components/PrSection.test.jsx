@@ -37,6 +37,14 @@ describe('PrSection', () => {
     expect(details.querySelector('summary')).toHaveClass('pr-group-section-summary');
   });
 
+  // Accessibility naming: each section's table is named by its title, so it
+  // (and the PR rows inside it) can be found by role. A PR can appear in
+  // more than one section; the table name tells the copies apart.
+  test('given a section with PRs, when rendering, then its table is named by the section title', () => {
+    renderSection({ title: 'Open PRs', prs: [{ data: { number: '1' } }] });
+    expect(screen.getByRole('table', { name: 'Open PRs' })).toBeInTheDocument();
+  });
+
   test('given a title and PR count, when rendering, then the summary shows both', () => {
     renderSection({ title: 'Open PRs', prs: [{ data: { number: '1' } }, { data: { number: '2' } }] });
     expect(screen.getByText('Open PRs')).toHaveClass('pr-group-section-title');

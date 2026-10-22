@@ -44,7 +44,7 @@ function generateCommentId() {
   return `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
+function AutoResizeTextarea({ className, rows, placeholder, value, onChange, ariaLabel }) {
   const ref = useRef(null);
 
   return (
@@ -53,6 +53,7 @@ function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
       className={className}
       rows={rows}
       placeholder={placeholder}
+      aria-label={ariaLabel}
       value={value}
       onChange={(e) => {
         onChange(e.target.value);
@@ -217,14 +218,22 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   };
 
   return (
-    <div className="pr-notes-section" data-pr-number={prNumber}>
+    // Accessibility naming: several PRs' notes can be open at once, so the
+    // section is a group named by its PR, and each comment row's fields are
+    // named within it ("Comment 1 author" etc.) - they had no labels at all
+    // (the note relied on its placeholder; ROADMAP's "Add proper labels to
+    // the 'Comments' fields").
+    <div className="pr-notes-section" data-pr-number={prNumber} role="group" aria-label={`Notes for PR #${prNumber}`}>
       <div className="pr-notes-title">Notes</div>
 
       <div className="pr-notes-subtitle">Comments</div>
       <div className="pr-notes-comments-list">
-        {comments.map((comment) => (
+        {comments.map((comment, index) => (
           <div key={comment.id} className="pr-notes-comment-row">
-            <select className="pr-notes-comment-author" value={comment.author} onChange={(e) => updateComment(comment.id, { author: e.target.value })}>
+            <select
+              className="pr-notes-comment-author"
+              aria-label={`Comment ${index + 1} author`}
+              value={comment.author} onChange={(e) => updateComment(comment.id, { author: e.target.value })}>
               <option value="">— Author —</option>
               {peopleOptions.map(({ login, name }) => (
                 <option key={login} value={login}>
@@ -232,7 +241,10 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
                 </option>
               ))}
             </select>
-            <select className="pr-notes-comment-tone" value={comment.tone} onChange={(e) => updateComment(comment.id, { tone: e.target.value })}>
+            <select
+              className="pr-notes-comment-tone"
+              aria-label={`Comment ${index + 1} tone`}
+              value={comment.tone} onChange={(e) => updateComment(comment.id, { tone: e.target.value })}>
               {TONE_OPTIONS.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
@@ -243,10 +255,16 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
               className="pr-notes-textarea pr-notes-comment-note"
               rows={2}
               placeholder="Note..."
+              ariaLabel={`Comment ${index + 1} note`}
               value={comment.note}
               onChange={(value) => updateComment(comment.id, { note: value })}
             />
-            <button type="button" className="pr-notes-comment-remove" onClick={() => removeComment(comment.id)}>
+            <button
+              type="button"
+              className="pr-notes-comment-remove"
+              aria-label={`Remove comment ${index + 1}`}
+              onClick={() => removeComment(comment.id)}
+            >
               ✕ Remove
             </button>
           </div>
