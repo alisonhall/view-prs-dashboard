@@ -181,26 +181,12 @@ export function PrDataProvider({
     hasRenderedPrData: false,
   });
 
-  // window.getReactPrTablePayload: test-only (e2e's "Auto update paused" chip
-  // test reads the shown payload). It was a read bridge for index.page.js's
-  // DI wirings, all deleted. A ref, so the closure assigned once below always
-  // reads the latest payload.
-  //
   // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // window.getReactPrTableSelectedRepo, window.updateReactPrTable and
-  // window.updateReactSelectedAuthorLogin are deleted. They had no
-  // production caller; tests read and write the same state through Context
-  // (usePrData()'s payload/selectedRepo/applyFreshTablePayload/
+  // window.getReactPrTablePayload, getReactPrTableSelectedRepo,
+  // updateReactPrTable and updateReactSelectedAuthorLogin are deleted. They
+  // had no production caller; tests read and write the same state through
+  // Context (usePrData()'s payload/selectedRepo/applyFreshTablePayload/
   // setSelectedAuthorLogin) via test-fixtures/pr-data-probe.jsx.
-  const payloadRef = useRef(state.payload);
-  payloadRef.current = state.payload;
-
-  useEffect(() => {
-    window.getReactPrTablePayload = () => payloadRef.current;
-    return () => {
-      delete window.getReactPrTablePayload;
-    };
-  }, []);
 
   // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
   // this file's own header comment. A plain ref - nothing renders from
@@ -416,7 +402,7 @@ export function PrDataProvider({
         trackingRef.current.latestPrManifest = value;
       },
       // Deliberately the newest stored payload (latestStoredPayloadRef), not
-      // the displayed one (payloadRef): a deferred poll result must be the
+      // the displayed one (state.payload): a deferred poll result must be the
       // base the next delta merges onto.
       getLatestStoredPayload,
       applyLatestPrData,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { NotesDirtyContext } from '../state/NotesDirtyContext';
 
 /**
@@ -21,7 +21,8 @@ import { NotesDirtyContext } from '../state/NotesDirtyContext';
  * and call window.recomputeDirtyPrSectionsFields (index.page.js) on each
  * change. It now wraps <AppRoot /> from mountAppRoot(), not just the table,
  * so the sync component (inside AppRoot, next to the drafts Provider) can
- * read it. window.getDirtyNotesPrNumbers stays only for e2e.
+ * read it. window.getDirtyNotesPrNumbers, kept for a while as a test-only
+ * observer, is deleted (tests read the Context).
  */
 export function NotesDirtyProvider({ children }) {
   const [dirtyPrNumberSet, setDirtyPrNumberSet] = useState(() => new Set());
@@ -46,14 +47,6 @@ export function NotesDirtyProvider({ children }) {
     () => Array.from(dirtyPrNumberSet).sort((a, b) => Number(a) - Number(b)),
     [dirtyPrNumberSet],
   );
-
-  // Test-only (e2e's unsaved-notes tests read it); see the header comment.
-  useEffect(() => {
-    window.getDirtyNotesPrNumbers = () => dirtyPrNumbers;
-    return () => {
-      delete window.getDirtyNotesPrNumbers;
-    };
-  }, [dirtyPrNumbers]);
 
   const value = useMemo(() => ({ dirtyPrNumbers, setNotesDirty }), [dirtyPrNumbers, setNotesDirty]);
 

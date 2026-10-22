@@ -80,15 +80,13 @@ Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **w
 | 7.5 follow-up | the commit after 7.5 | Review fixes: README's architecture section pointed at the deleted `index.page.js`; two components' identical copies of the credential-hint attributes now use the shared constant; a stale shell-script comment. |
 | test-only 1/3 | the commit after the 7.5 follow-up | `updateReactPrTable`, `getReactPrTableSelectedRepo`, `updateReactSelectedAuthorLogin` deleted; tests use the new `test-fixtures/pr-data-probe.jsx` (Context). |
 | test-only 2/3 | the commit after test-only 1/3 | Snackbar (`showErrorNotification`/`showWarningNotification`/`hideErrorNotification`) and `updateReactOutputText` deleted; e2e drives a real (intercepted) run and a real failing poll instead; new `SnackbarProvider.test.jsx`. |
+| test-only 3/3 | the commit after test-only 2/3 | `setPendingAutoRenderPayload`, `getReactPrTablePayload`, `getDirtyNotesPrNumbers`, `getAuthorInsightsDraftsSnapshot` deleted - **no `window.*` bridges left**. e2e makes a real held-back poll (`changeServerData`, `?dataPollMs=`); workers reuse the runner's temp dir (`VIEW_PRS_E2E_TEMP_DIR`). |
 
 Deviations from the plan text (each because investigation showed the wording didn't fit) are in `REACT_MIGRATION_PLAN.md`'s entries for each phase.
 
-### Next: the test-only bridges (after Phase 7; Phase 6's approach)
+### Done: no window.* bridges left
 
-Phase 7 is complete: `index.page.js` is gone (7.5), and **no production code calls a `window.*` bridge**. The numbered phases end there. What remains is the bridges Providers still publish only for tests, handled the way Phase 6 handled `persistViewFilterOptionOverrides`: fix the tests, then delete. Re-grep before starting (`grep -rn "window\.<name>" src e2e`).
-
-- **Test-only now (no production caller; fix the tests, then delete, as Phase 6 did):** `setPendingAutoRenderPayload` (`AutoRenderBlockingProvider.test.jsx` and e2e's "Auto update paused" chip test use it to simulate a deferred poll, since the e2e server's static data never yields a real new payload), `getReactPrTablePayload` (integration tests and e2e read the shown payload; jest tests can use `test-fixtures/pr-data-probe.jsx`), `getDirtyNotesPrNumbers`/`getAuthorInsightsDraftsSnapshot` (e2e's unsaved-notes/draft observers). Verify each with a whole-repo grep (lesson 9) before calling it test-only.
-- Each: full lint + `test:ci` + `test:e2e`, a `REACT_MIGRATION_PLAN.md` entry, a commit.
+The plan is complete. Phase 7 deleted `index.page.js`, and the three test-only groups after it deleted the last bridges Providers published for tests. No Provider publishes a `window.*` bridge and no production code calls one. A whole-repo grep for `window.[a-zA-Z]+ =` in `src/ui` (non-test) finds none.
 
 ### Lessons from Phases 1-7.5 (apply to every remaining phase)
 1. **A component that only needs stable functions from a changing Provider must read them from a separate, stable Context.** `PrDataProvider` wraps the whole table tree and its `value` object is not memoized, so subscribing it (or anything high up) to a Context that changes re-renders every `usePrData()` consumer. Done so far: `AutoRenderBlockingActionsContext`, `OutputTextSetterContext`, `RequestActivityContext`, `BackfillStatusActionsContext`, `FilterFieldStoreContext`. Measure with a `React.memo` consumer's render count before and after; add a regression test.

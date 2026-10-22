@@ -24,6 +24,11 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
+// harness root's PrDataProvider is read through this probe (mounted below);
+// it was window.getReactPrTablePayload, deleted.
+const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
+const prDataProbe = createPrDataProbe();
 const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
@@ -730,6 +735,7 @@ function FilterStateTestRootHarness({ initialValues }) {
                   React.createElement(
                     PrDataProvider,
                     { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
+                    React.createElement(prDataProbe.PrDataProbe),
                     // Phase H.20 (see REACT_MIGRATION_PLAN.md,
                     // "Remaining-effort audit", cluster 6): these call
                     // useFormBody() (FilterStateContext/
@@ -2629,7 +2635,7 @@ describe("index page rendering with Testing Library", () => {
         expect(getRunCalls().length).toBe(1);
       });
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
           "Fresh after run script",
         );
       });
@@ -2675,7 +2681,7 @@ describe("index page rendering with Testing Library", () => {
         expect(getRunCalls().length).toBe(2);
       });
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
           "Iteration 2",
         );
       });
@@ -2727,7 +2733,7 @@ describe("index page rendering with Testing Library", () => {
         expect(getRunCalls().length).toBe(2);
       });
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
           "Target 42 succeeded",
         );
       });
@@ -2762,7 +2768,7 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      const payloadBefore = window.getReactPrTablePayload();
+      const payloadBefore = prDataProbe.readPayload();
 
       await user.click(screen.getByRole("button", { name: "Run script" }));
 
@@ -2774,7 +2780,7 @@ describe("index page rendering with Testing Library", () => {
           "Completed with failures (0/2 successful)",
         );
       });
-      expect(window.getReactPrTablePayload()).toBe(payloadBefore);
+      expect(prDataProbe.readPayload()).toBe(payloadBefore);
       expect(getDataGetCalls().length).toBe(0);
     });
 
@@ -2814,7 +2820,7 @@ describe("index page rendering with Testing Library", () => {
       });
       expect(JSON.parse(String(getRunCalls()[0][1]?.body || "{}")).prNumber).toBe("");
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["42"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
           "All PRs run",
         );
       });
@@ -8208,7 +8214,7 @@ describe("index page rendering with Testing Library", () => {
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
       });
-      expect(window.getReactPrTablePayload().byPrNumber["101"].data.title).toBe(
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
         "Deferred poll seed",
       );
 
@@ -8272,7 +8278,7 @@ describe("index page rendering with Testing Library", () => {
       // effect (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"),
       // one React commit after the bridge call above - waitFor accounts
       // for that, where this used to be a synchronous vanilla DOM write.
-      expect(window.getReactPrTablePayload().byPrNumber["101"].data.title).toBe(
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
         "Deferred poll seed",
       );
       await waitFor(() => {
@@ -8287,7 +8293,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["101"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["101"]?.data?.title).toBe(
           "Deferred poll applied",
         );
       });
@@ -8396,7 +8402,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       // Still deferred - the dirty field hasn't cleared yet.
-      expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
         "Blur-wait poll seed",
       );
 
@@ -8417,7 +8423,7 @@ describe("index page rendering with Testing Library", () => {
       await act(async () => {
         await jest.advanceTimersByTimeAsync(10);
       });
-      expect(window.getReactPrTablePayload().byPrNumber["102"].data.title).toBe(
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
         "Blur-wait poll seed",
       );
       expect(document.activeElement).toBe(focusedInput);
@@ -8428,7 +8434,7 @@ describe("index page rendering with Testing Library", () => {
       focusedInput.blur();
 
       await waitFor(() => {
-        expect(window.getReactPrTablePayload().byPrNumber["102"]?.data?.title).toBe(
+        expect(prDataProbe.readPayload().byPrNumber["102"]?.data?.title).toBe(
           "Blur-wait poll applied",
         );
       });

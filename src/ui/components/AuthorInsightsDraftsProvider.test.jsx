@@ -45,7 +45,6 @@ const renderProbe = () =>
 
 describe('AuthorInsightsDraftsProvider', () => {
   afterEach(() => {
-    delete window.getAuthorInsightsDraftsSnapshot;
     probeValue = undefined;
     probeVersion = undefined;
     probeRenders = 0;
@@ -110,7 +109,9 @@ describe('AuthorInsightsDraftsProvider', () => {
     expect(probeValue.getManualComments('octocat')).toEqual([{ id: 'c1', note: 'x' }]);
   });
 
-  test('given a dirty composer draft, when window.getAuthorInsightsDraftsSnapshot feeds the real getBlockingAuthorInsightsLogins, then that author is reported as blocking', () => {
+  // Test-only bridge removal: read through Context getDraftsSnapshot (what
+  // AutoRenderBlockingSync uses); it was window.getAuthorInsightsDraftsSnapshot.
+  test('given a dirty composer draft, when Context getDraftsSnapshot feeds the real getBlockingAuthorInsightsLogins, then that author is reported as blocking', () => {
     const { getBlockingAuthorInsightsLogins } = createPrAutoRenderBlockingHelpers({
       isAuthorInsightsComposerDraftDirty: (draft) => Boolean(String(draft?.note || '').trim()),
       getAuthorManualCommentsForLogin: () => [],
@@ -118,35 +119,20 @@ describe('AuthorInsightsDraftsProvider', () => {
     });
     renderProbe();
 
-    expect(getBlockingAuthorInsightsLogins(window.getAuthorInsightsDraftsSnapshot())).toEqual([]);
+    expect(getBlockingAuthorInsightsLogins(probeValue.getDraftsSnapshot())).toEqual([]);
 
     act(() => {
       probeValue.updateComposerDraft('octocat', { note: 'unsaved draft' });
     });
 
-    expect(getBlockingAuthorInsightsLogins(window.getAuthorInsightsDraftsSnapshot())).toEqual(['octocat']);
+    expect(getBlockingAuthorInsightsLogins(probeValue.getDraftsSnapshot())).toEqual(['octocat']);
   });
 
-  test('given a dirty composer draft, when read via Context getDraftsSnapshot, then it matches the window bridge', () => {
+  test('given the provider mounts, when window is checked, then it publishes no bridges', () => {
     renderProbe();
 
-    act(() => {
-      probeValue.updateComposerDraft('octocat', { note: 'unsaved draft' });
-    });
-
-    expect(probeValue.getDraftsSnapshot()).toEqual(window.getAuthorInsightsDraftsSnapshot());
-  });
-
-  test('given the provider unmounts entirely, when checked, then its one (test-only) bridge is removed', () => {
-    const { unmount } = renderProbe();
-
-    expect(typeof window.getAuthorInsightsDraftsSnapshot).toBe('function');
-    // Phase 7.4: deleted with index.page.js's auto-render-blocking code.
-    expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
-
-    unmount();
-
     expect(window.getAuthorInsightsDraftsSnapshot).toBeUndefined();
+    expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
   });
 
   test('given no updates at all, when Context getManualCommentsLoadState is read, then it defaults to not-loading with no error', () => {

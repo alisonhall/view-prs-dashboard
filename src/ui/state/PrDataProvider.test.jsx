@@ -34,8 +34,8 @@ describe('PrDataProvider', () => {
   // used to test window.updateReactPrTable/getReactPrTableSelectedRepo/
   // updateReactSelectedAuthorLogin, bridges with no production caller. The
   // same behaviour is tested through the Context those bridges wrapped.
-  // (window.getReactPrTablePayload is still published - e2e reads it until
-  // its auto-render-blocking test is rewritten - and is tested at the end.)
+  // window.getReactPrTablePayload went in the third group, once e2e made real
+  // held-back polls instead of reading the payload to fake one.
   test('given an initial payload and selectedRepo, when rendering, then usePrData() exposes both', () => {
     const payload = { byPrNumber: { 1: {} } };
     render(
@@ -58,6 +58,7 @@ describe('PrDataProvider', () => {
     expect(window.updateReactPrTable).toBeUndefined();
     expect(window.getReactPrTableSelectedRepo).toBeUndefined();
     expect(window.updateReactSelectedAuthorLogin).toBeUndefined();
+    expect(window.getReactPrTablePayload).toBeUndefined();
   });
 
   // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -134,22 +135,6 @@ describe('PrDataProvider', () => {
     expect(selected).toBe('');
   });
 
-  // e2e still reads this one (see the comment above).
-  test('given a new payload is applied, when window.getReactPrTablePayload is read, then it returns the latest payload, and it is removed on unmount', () => {
-    const { unmount } = render(
-      <PrDataProvider initialPayload={{ byPrNumber: {} }}>
-        <prDataProbe.PrDataProbe />
-      </PrDataProvider>,
-    );
-    const payloadB = { byPrNumber: { 2: {} } };
-    act(() => {
-      prDataProbe.applyFreshTablePayload(payloadB);
-    });
-    expect(window.getReactPrTablePayload()).toBe(payloadB);
-
-    unmount();
-    expect(window.getReactPrTablePayload).toBeUndefined();
-  });
 
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // beginRequestActivity/renderRequestActivity/pollBackfillStatus moved

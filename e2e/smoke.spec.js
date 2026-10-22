@@ -1,4 +1,7 @@
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
 // Vite's dev server transforms each ES module on-demand per request rather
 // than serving a pre-bundled file, so the very first page load (React,
@@ -9,6 +12,37 @@ const { test, expect } = require("@playwright/test");
 // yet the table still not painted 15s later. Give CI runs a more generous
 // budget; keep local runs fast-failing at the original value.
 const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
+
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): makes a
+// real "new data" poll, so the auto-render-blocking tests no longer fake a
+// deferred poll through window.setPendingAutoRenderPayload. Rewrites the
+// e2e server's data file (playwright.config.js exports its temp dir in
+// VIEW_PRS_E2E_TEMP_DIR) with a marker field in one PR's `data`. The poll
+// only queues PRs whose content changed (the per-PR manifest), so touching
+// the mtime alone isn't enough; nothing renders the marker. The server is
+// shared by every test, so the original bytes are put back after the test
+// (afterEach below), pass or fail. Pages under test open with ?dataPollMs=
+// so the poll runs within a second, not 30 s.
+const pendingServerDataRestores = [];
+const changeServerData = async (page) => {
+  const readVersion = async () => (await (await page.request.get("/view-prs/data-meta")).json()).dataVersion;
+  // Only ever the e2e run's own temp copy - never real state.
+  const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
+  if (!process.env.VIEW_PRS_E2E_TEMP_DIR || !tempDir.startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+    throw new Error(`changeServerData: VIEW_PRS_E2E_TEMP_DIR must be a temp dir, got "${process.env.VIEW_PRS_E2E_TEMP_DIR}"`);
+  }
+  const dataFile = path.join(tempDir, "check-open-pr-updates.data.json");
+  const original = fs.readFileSync(dataFile, "utf8");
+  pendingServerDataRestores.push(() => fs.writeFileSync(dataFile, original));
+  const data = JSON.parse(original);
+  data.byPrNumber["3"].data = { ...data.byPrNumber["3"].data, e2eDataChangeMarker: Date.now() };
+  const before = await readVersion();
+  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+  expect(await readVersion()).not.toBe(before);
+};
+test.afterEach(() => {
+  while (pendingServerDataRestores.length) pendingServerDataRestores.pop()();
+});
 
 /**
  * Real-browser smoke tests for the hybrid vanilla/React PR table.
@@ -294,39 +328,40 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
 });
 
-test("editing a PR Notes field in the real React-owned row reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+test("editing a PR Notes field in the real React-owned row holds back a real data poll until the edit is undone", async ({ page }) => {
   // Regression test for Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md):
   // NotesSection.jsx used to report an unsaved edit via a
   // data-has-unsaved-notes DOM attribute, scanned by vanilla
-  // pr-auto-render-unsaved.helpers.js. It's now reported through
-  // NotesDirtyProvider's own React state, which AutoRenderBlockingSync reads
-  // from Context (window-bridge elimination Phase 7.4; index.page.js read it
-  // through window.getDirtyNotesPrNumbers before). That bridge stays as a
-  // test-only observer for this check - this is the one piece of the auto-
-  // render-blocking feature with no other e2e coverage, so it's verified
-  // in a real browser rather than only via jsdom (NotesDirtyProvider.test.jsx
-  // and AutoRenderBlockingSync.test.jsx cover the wiring at the component level).
-  await page.goto("/");
+  // pr-auto-render-unsaved.helpers.js. It's NotesDirtyProvider's React state
+  // now, which AutoRenderBlockingSync turns into the auto-render-blocking
+  // state (window-bridge elimination Phase 7.4). Test-only bridge removal:
+  // this used to read window.getDirtyNotesPrNumbers; it now checks the real
+  // outcome - a real poll (changeServerData) is held back while the field
+  // is dirty, and applied once the edit is undone and the field blurred.
+  await page.goto("/?dataPollMs=300");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  const indicator = page.locator("#auto-render-blocked-indicator");
 
   const insightsToggle = page.locator(".row-insights-toggle:visible").first();
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
-  const notesTextarea = page.locator(".pr-notes-section").first().getByPlaceholder("Other notes...");
+  const notesSection = page.locator(".pr-notes-section").first();
+  const prNumber = await notesSection.getAttribute("data-pr-number");
+  const notesTextarea = notesSection.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
 
-  expect(await page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
-
   await notesTextarea.fill(`${originalValue}a note left during this test`);
-  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
+  await changeServerData(page);
+  await expect(indicator).toBeVisible();
+  await expect(page.getByRole("button", { name: `#${prNumber}`, exact: true })).toBeVisible();
 
-  // Restore the exact original value (not just "clear it") - this suite's
-  // webServer is one long-lived process shared by every test, so leaving
-  // this field genuinely dirty would bleed into whichever test runs next.
+  // Undo the edit (notes are only saved by an explicit Save) and blur the
+  // field: the held-back poll applies and the indicator goes away.
   await notesTextarea.fill(originalValue);
-  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+  await notesTextarea.blur();
+  await expect(indicator).toBeHidden();
 });
 
 test("typing character-by-character into the Rally stories/links inputs keeps every keystroke", async ({ page }) => {
@@ -419,7 +454,9 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // existing e2e spec drove these chips directly before this test - the 2
   // "View in table" specs elsewhere in this file exercise a different,
   // untouched sibling implementation (pr-author-insights-pr-link.helpers.js).
-  await page.goto("/");
+  // Test-only bridge removal: opens with ?dataPollMs= and makes a real held-back
+  // poll (changeServerData) instead of window.setPendingAutoRenderPayload.
+  await page.goto("/?dataPollMs=300");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   // PR #1 may also render in a smart group (membership is non-exclusive -
@@ -447,28 +484,13 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
   await notesTextarea.fill(`${originalValue}a note left during this test`);
-  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).not.toEqual([]);
 
   // The "Auto update paused" indicator (and its chips) only shows once a
-  // real poll's fresh data has actually been deferred, not merely because
-  // a field is dirty (AutoRenderBlockingProvider.jsx's own `isBlocked` -
-  // `pendingAutoRenderPayload` AND dirty fields both have to be true) -
-  // this suite's webServer serves static fixture data, so there's no real
-  // "new" payload for a genuine poll to defer. window.setPendingAutoRenderPayload
-  // is the same bridge a real poll result would call - using it directly
-  // here is the same "call the real bridge instead of orchestrating the
-  // full organic flow" technique this suite already uses for
-  // window.markPrsBusy/clearPrsBusy elsewhere. Uses the REAL current
-  // payload (window.getReactPrTablePayload), not a fake stub - clicking
-  // the "Author Insights" tab below blurs the dirty textarea, which
-  // triggers AutoRenderBlockingProvider's own real "apply once blurred"
-  // behavior (confirmed via a standalone debug run) - a fake/empty
-  // payload would actually get applied at that point and wipe the whole
-  // table, which a harmless same-data "pending" payload avoids.
-  await page.evaluate(() => {
-    const payload = window.getReactPrTablePayload?.();
-    window.setPendingAutoRenderPayload?.(payload);
-  });
+  // real poll's fresh data has actually been held back, not merely because
+  // a field is dirty (AutoRenderBlockingProvider.jsx's `isBlocked` needs
+  // both). Clicking the "Author Insights" tab below blurs the dirty textarea,
+  // but the field is still dirty, so the poll stays held back.
+  await changeServerData(page);
   await expect(page.locator("#auto-render-blocked-indicator")).toBeVisible();
 
   // Switch away from the PR data tab - the row/Notes section stay mounted
@@ -487,16 +509,11 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   const saveButton = page.locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"] .pr-notes-save');
   await expect(saveButton).toBeFocused();
 
-  // Clear the simulated pending payload - this suite's webServer is one
-  // long-lived process shared by every test, so leaving this set would
-  // keep the indicator stuck visible for whichever test runs next.
-  await page.evaluate(() => window.setPendingAutoRenderPayload?.(null));
-
-  // Restore the exact original value - this suite's webServer is one
-  // long-lived process shared by every test, so leaving this field
-  // genuinely dirty would bleed into whichever test runs next.
+  // Undo the edit: with the field clean (and not focused - the save button
+  // has focus), the held-back poll applies and the indicator goes away.
   await notesTextarea.fill(originalValue);
-  await expect.poll(() => page.evaluate(() => window.getDirtyNotesPrNumbers?.())).toEqual([]);
+  await notesTextarea.blur();
+  await expect(page.locator("#auto-render-blocked-indicator")).toBeHidden();
 });
 
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
@@ -2185,46 +2202,36 @@ test("typing in the Author Insights manual comment composer isn't blocked by a s
   await composer.fill("");
 });
 
-test("typing an unsaved Author Insights comment draft reports dirty state to the auto-render-blocking bridge", async ({ page }) => {
+test("typing an unsaved Author Insights comment draft holds back a real data poll until the draft is cleared", async ({ page }) => {
   // Regression test for Phase 7 (see REACT_MIGRATION_PLAN.md): the Author
   // Insights manual-comment composer/edit drafts used to live only in a
   // vanilla module-scope object, read by pr-auto-render-blocking.helpers.js's
   // getBlockingAuthorInsightsLogins to decide whether a background poll
   // must be deferred instead of silently discarding an unsaved comment
-  // draft. They're real AuthorInsightsDraftsProvider Context state now
-  // (read by AutoRenderBlockingSync since window-bridge elimination Phase
-  // 7.4), with window.getAuthorInsightsDraftsSnapshot kept as a test-only
-  // observer for this check - same scope
-  // and reasoning as the sibling "editing a PR Notes field..." test above
-  // (checks the real bridge a real browser actually exercises, not a
-  // full simulated poll-block - AuthorInsightsDraftsProvider.test.jsx
-  // already covers the Context-to-bridge wiring itself at the component
-  // level; this is the one piece with no other e2e coverage at all).
-  await page.goto("/");
+  // draft. They're AuthorInsightsDraftsProvider Context state now, read by
+  // AutoRenderBlockingSync (window-bridge elimination Phase 7.4). Test-only
+  // bridge removal: this used to read window.getAuthorInsightsDraftsSnapshot;
+  // it now checks the real outcome - a real poll (changeServerData) is
+  // held back, with an "Author:" chip, until the draft is cleared.
+  await page.goto("/?dataPollMs=300");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Author Insights" }).click();
+  const indicator = page.locator("#auto-render-blocked-indicator");
 
   const select = page.locator("#author-insights-selector-root select");
   await select.selectOption({ label: "The Octocat" });
 
-  const isBlocking = () =>
-    page.evaluate(() => {
-      const snapshot = window.getAuthorInsightsDraftsSnapshot?.() || {};
-      const draft = snapshot.manualCommentDraftByAuthorLogin?.octocat;
-      return Boolean(String(draft?.note || "").trim());
-    });
-
-  expect(await isBlocking()).toBe(false);
-
   const textarea = page.locator("#author-insights-content-root .author-insights-comment-textarea");
   await textarea.fill("an unsaved draft left during this test");
-  await expect.poll(isBlocking).toBe(true);
+  await changeServerData(page);
+  await expect(indicator).toBeVisible();
+  await expect(page.getByRole("button", { name: "Author: The Octocat" })).toBeVisible();
 
-  // Clear it back out - this suite's webServer is one long-lived process
-  // shared by every test, so leaving this draft dirty would bleed into
-  // whichever test runs next (and would itself start blocking real polls).
+  // Clear it back out (drafts are client-side; nothing to restore on the
+  // server) and blur: the held-back poll applies and the indicator goes away.
   await textarea.fill("");
-  await expect.poll(isBlocking).toBe(false);
+  await textarea.blur();
+  await expect(indicator).toBeHidden();
 });
 
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {

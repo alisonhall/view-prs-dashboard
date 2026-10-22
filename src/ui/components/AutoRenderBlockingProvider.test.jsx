@@ -64,11 +64,10 @@ beforeEach(() => {
 
 describe('AutoRenderBlockingProvider', () => {
   afterEach(() => {
-    delete window.setPendingAutoRenderPayload;
     capturedActions = undefined;
   });
 
-  test('given the provider mounts, when read, then it publishes only its test-only bridge and starts not blocked', () => {
+  test('given the provider mounts, when read, then it publishes no window bridges and starts not blocked', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
@@ -77,7 +76,9 @@ describe('AutoRenderBlockingProvider', () => {
       </AutoRenderBlockingProvider>,
     );
 
-    expect(typeof window.setPendingAutoRenderPayload).toBe('function');
+    // Test-only bridge removal: tests set the pending payload through the
+    // actions Context (it was window.setPendingAutoRenderPayload).
+    expect(window.setPendingAutoRenderPayload).toBeUndefined();
     // Phase 7.4: setBlockingState (actions Context) replaced this bridge.
     expect(window.pushAutoRenderBlockingState).toBeUndefined();
     // The two getters were deleted (Phase 3): PrDataProvider reads them from
@@ -182,7 +183,7 @@ describe('AutoRenderBlockingProvider', () => {
 
       act(() => {
         pushBlockingState(DIRTY_STATE);
-        window.setPendingAutoRenderPayload({ byPrNumber: {} });
+        capturedActions.setPendingAutoRenderPayload({ byPrNumber: {} });
       });
       for (let count = 1; count <= 5; count += 1) {
         act(() => {
@@ -205,7 +206,7 @@ describe('AutoRenderBlockingProvider', () => {
 
     act(() => {
       pushBlockingState(DIRTY_STATE);
-      window.setPendingAutoRenderPayload({ byPrNumber: {} });
+      capturedActions.setPendingAutoRenderPayload({ byPrNumber: {} });
     });
 
     expect(latest.isBlocked).toBe(true);
@@ -227,7 +228,7 @@ describe('AutoRenderBlockingProvider', () => {
 
     act(() => {
       pushBlockingState(CLEAN_STATE);
-      window.setPendingAutoRenderPayload(payload);
+      capturedActions.setPendingAutoRenderPayload(payload);
     });
 
     await act(async () => {
@@ -253,7 +254,7 @@ describe('AutoRenderBlockingProvider', () => {
 
     act(() => {
       pushBlockingState(CLEAN_STATE);
-      window.setPendingAutoRenderPayload(payload);
+      capturedActions.setPendingAutoRenderPayload(payload);
     });
 
     await act(async () => {
@@ -285,7 +286,7 @@ describe('AutoRenderBlockingProvider', () => {
 
     act(() => {
       pushBlockingState(DIRTY_STATE);
-      window.setPendingAutoRenderPayload(payload);
+      capturedActions.setPendingAutoRenderPayload(payload);
     });
     expect(latest.isBlocked).toBe(true);
 
@@ -316,14 +317,6 @@ describe('AutoRenderBlockingProvider', () => {
     });
 
     expect(applyFreshPrPayload).not.toHaveBeenCalled();
-  });
-
-  test('given the provider unmounts, when unmounted, then its bridge is removed', () => {
-    const { unmount } = render(<AutoRenderBlockingProvider>{null}</AutoRenderBlockingProvider>);
-
-    expect(typeof window.setPendingAutoRenderPayload).toBe('function');
-    unmount();
-    expect(window.setPendingAutoRenderPayload).toBeUndefined();
   });
 
   test('given blocking state is set through the actions Context, when read, then the display Context exposes the blocking PRs, authors and label for the chips', () => {

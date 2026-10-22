@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { AuthorInsightsDraftsContext, AuthorInsightsDraftsVersionContext } from '../state/AuthorInsightsDraftsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
@@ -38,8 +38,8 @@ import { postJson } from '../helpers/pr-http.helpers.js';
  * `getAuthorManualCommentsForLogin`/`getAuthorInsightsDraftsSnapshot`, for
  * index.page.js's auto-render-blocking check. Window-bridge elimination
  * Phase 7.4 moved that check into AutoRenderBlockingSync.jsx, which reads
- * this Provider's Context; the first bridge is gone and the snapshot one
- * stays only for e2e. The other 10
+ * this Provider's Context, and both bridges are gone (the snapshot one
+ * after a spell as a test-only e2e observer). The other 10
  * (`getComposerDraft`/`updateComposerDraft`/`resetComposerDraft`/
  * `getEditDraft`/`getEditDraftMap`/`updateEditDraft`/`resetEditDraft`/
  * `setManualComments`/`getManualCommentsLoadState`/`loadManualComments`)
@@ -235,16 +235,9 @@ export function AuthorInsightsDraftsProvider({ children }) {
     [],
   );
 
-  // Window-bridge elimination Phase 7.4: test-only now - e2e's unsaved-draft
-  // test reads it; nothing in production does (AutoRenderBlockingSync uses
-  // the Context). window.getAuthorManualCommentsForLogin went with
-  // index.page.js's auto-render-blocking code.
-  useEffect(() => {
-    window.getAuthorInsightsDraftsSnapshot = getDraftsSnapshot;
-    return () => {
-      delete window.getAuthorInsightsDraftsSnapshot;
-    };
-  }, [getDraftsSnapshot]);
+  // No window bridges: window.getAuthorManualCommentsForLogin went in Phase
+  // 7.4 and window.getAuthorInsightsDraftsSnapshot in the test-only bridge
+  // removal (AutoRenderBlockingSync and the tests use the Context).
 
   const value = useMemo(
     () => ({

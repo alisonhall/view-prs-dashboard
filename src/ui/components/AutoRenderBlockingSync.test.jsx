@@ -57,9 +57,6 @@ describe('AutoRenderBlockingSync', () => {
   afterEach(() => {
     cleanup();
     blockingRenders = 0;
-    delete window.setPendingAutoRenderPayload;
-    delete window.getDirtyNotesPrNumbers;
-    delete window.getAuthorInsightsDraftsSnapshot;
   });
 
   test('given nothing is unsaved, when mounted, then the blocking state is empty and nothing blocks', () => {

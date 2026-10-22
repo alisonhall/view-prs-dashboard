@@ -2911,6 +2911,20 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md), "N
 - **`OutputTextProvider.test.jsx`:** the two bridge tests become one (no bridge published); the setter-only regression test writes through the setter alone.
 - `lint:check` clean; `test:ci` 2625 passed + 1 skipped (2619 + 8 − 1); `test:e2e` 59/59. Windows local run.
 
+## ✅ **Window-bridge elimination, test-only bridges (3 of 3): auto-render-blocking observers; no window.* bridges left (2026-10-22)**
+
+- **Deleted:** `window.setPendingAutoRenderPayload` (`AutoRenderBlockingProvider`), `window.getReactPrTablePayload` (`PrDataProvider`), `window.getDirtyNotesPrNumbers` (`NotesDirtyProvider`), `window.getAuthorInsightsDraftsSnapshot` (`AuthorInsightsDraftsProvider`). **No Provider publishes a `window.*` bridge any more**, and no production code calls one.
+- **e2e now makes a real held-back poll** instead of faking one. The e2e server serves static fixture data, so the tests used to read the shown payload (`getReactPrTablePayload`) and hand it to `setPendingAutoRenderPayload`, and watched dirty state through the two observers. New `changeServerData(page)` in `e2e/smoke.spec.js` rewrites the server's data file with a marker field in PR 3's `data` (pages open with `?dataPollMs=300`). A file-level `afterEach` restores the original bytes, pass or fail, since the server is shared. **Touching the mtime alone wasn't enough** (tried first): the server's `dataVersion` changed, but the poll's per-PR manifest saw no changed rows and queued nothing. The three rewritten tests assert the real outcome:
+  - unsaved Notes edit → "Auto update paused" with that PR's chip; undo + blur → it applies and the indicator hides;
+  - the chip-navigation test makes its held-back poll the same way, and now also checks the indicator clears once the edit is undone;
+  - unsaved Author Insights draft → indicator with an "Author: The Octocat" chip; clear + blur → hides.
+  - Making `AutoRenderBlockingSync` never push its state fails all three.
+- **`playwright.config.js`:** Playwright re-loads the config in each worker, so every worker made (and filled) its own unused temp dir. The runner now exports its dir in `VIEW_PRS_E2E_TEMP_DIR`; workers reuse it, and `changeServerData` finds the server's real data file through it. `changeServerData` refuses to run unless that dir is under `os.tmpdir()`.
+- **`guard:state-writes`** (first step of `test:ci`) flagged `e2e/smoke.spec.js` for writing a `check-open-pr-updates.data.json` path. It's on the allow-list now, with a note, beside `playwright.config.js` and the heap check, which write the same temp copy.
+- **jest:** `AutoRenderBlockingProvider` tests set the pending payload through the actions Context; `NotesDirtyProvider` tests read the dirty set through a `useNotesDirty()` probe; drafts tests use Context `getDraftsSnapshot`; the integration harness reads its payload through a `PrDataProbe` (12 reads). Each Provider's bridge test became a "publishes no bridge" check (`AutoRenderBlockingProvider` and `PrDataProvider` folded theirs into an existing one). Net 2626 → 2623.
+- **Found, not changed (outside this plan):** `test:ci` writes into the real `data/` directory: `data/user-defaults.json` (now `{}`), `data/pr-diffs` and `data/pr-details` were modified during this session's runs. `jest.setup.env.js` isolates the data/user-state/scheduler/action-log/backup files but not `VIEW_PRS_USER_DEFAULTS_FILE` or `VIEW_PRS_PR_DIFF_DIR`, and app-config's test-env check doesn't cover them. The real data file itself is untouched (46 bytes since Sep 20, hence `guard:state-health`'s "byPrNumber is empty" warning in every run).
+- `lint:check` clean; `test:ci` 2622 passed + 1 skipped; `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

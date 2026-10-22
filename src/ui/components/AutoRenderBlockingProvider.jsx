@@ -188,16 +188,10 @@ export function AutoRenderBlockingProvider({ children }) {
     [bump, scheduleFlushCheck],
   );
 
-  // Window-bridge elimination Phase 3 deleted the two getter bridges (now on
-  // the actions Context), and Phase 7.4 pushAutoRenderBlockingState. This one
-  // is test-only: AutoRenderBlockingProvider.test.jsx and e2e's "Auto update
-  // paused" chip test simulate a deferred poll with it.
-  useEffect(() => {
-    window.setPendingAutoRenderPayload = setPendingAutoRenderPayload;
-    return () => {
-      delete window.setPendingAutoRenderPayload;
-    };
-  }, [setPendingAutoRenderPayload]);
+  // No window bridges: Phase 3 moved the two getters to the actions Context,
+  // Phase 7.4 pushAutoRenderBlockingState (now setBlockingState), and the
+  // test-only bridge removal window.setPendingAutoRenderPayload (tests use the
+  // actions Context; e2e makes a real held-back poll).
 
   const { blockingState } = stateRef.current;
   const statusText = buildAutoRenderBlockedStatusText({

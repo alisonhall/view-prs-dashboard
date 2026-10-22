@@ -12,8 +12,7 @@ import { createContext, useContext } from 'react';
  * Phase 7.4: AutoRenderBlockingSync.jsx reads getDraftsSnapshot/
  * getManualComments from here to compute the auto-render-blocking state
  * (index.page.js used to, through window.getAuthorInsightsDraftsSnapshot/
- * getAuthorManualCommentsForLogin). Only window.getAuthorInsightsDraftsSnapshot
- * is still published, and only e2e reads it.
+ * getAuthorManualCommentsForLogin). Neither is published any more.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context
  * in this migration - AuthorInsightsCommentsSection rendered without a
