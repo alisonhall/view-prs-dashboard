@@ -118,8 +118,15 @@ const createFetchMock = ({
   userDefaultsOverrides = {},
   backfillStatusResponse = null,
   authorCommentsGetHandler = null,
-} = {}) =>
-  jest.fn(async (url, init = {}) => {
+} = {}) => {
+  const currentBackfillStatus = () =>
+    backfillStatusResponse || {
+      ok: true,
+      running: false,
+      summary: "Backfill status: not running",
+      output: "Backfill status: not running",
+    };
+  return jest.fn(async (url, init = {}) => {
     const normalizedUrl = String(url || "");
     const method = String(init?.method || "GET").toUpperCase();
 
@@ -132,15 +139,7 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/backfill" && method === "GET") {
-      if (backfillStatusResponse) {
-        return createOkJsonResponse(backfillStatusResponse);
-      }
-      return createOkJsonResponse({
-        ok: true,
-        running: false,
-        summary: "Backfill status: not running",
-        output: "Backfill status: not running",
-      });
+      return createOkJsonResponse(currentBackfillStatus());
     }
 
     if (normalizedUrl === "/view-prs/backfill/start" && method === "POST") {
@@ -212,7 +211,14 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/data" && method === "GET") {
-      return createOkJsonResponse(latestDataPayload);
+      // Like the real server (view-prs-data-routes.js's buildDataPayload), the
+      // data response embeds the same backfill state /view-prs/backfill
+      // returns; a fixture's own `backfill` wins. Window-bridge elimination
+      // Phase 7.2 made this matter: the data load and the Backfill tab's own
+      // status load now both start on mount, so whichever finishes last
+      // renders the backfill status, and a payload without `backfill` makes
+      // updateBackfillStatusFromPayload render the payload itself as one.
+      return createOkJsonResponse({ backfill: currentBackfillStatus(), ...latestDataPayload });
     }
 
     if (
@@ -248,6 +254,7 @@ const createFetchMock = ({
 
     return createOkJsonResponse({ ok: true });
   });
+};
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): index.html no longer has vanilla
 // fallback markup nested inside each "#<id>-root" container for the 26
@@ -838,45 +845,11 @@ function RunScriptActionButtonsTestHarness() {
   return React.createElement(React.Fragment, null, ...portals);
 }
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the remaining status/log panels (#status,
-// #output, #backfill-details, #data-meta) are now React-portaled plain
-// text (react-app.jsx's AppRoot), not written directly by index.page.js.
-// Since this test file exercises index.page.js without react-app.jsx's
-// real <AppRoot/> ever mounting, these bridges are otherwise never
-// assigned - a plain textContent write is a faithful simulation here
-// since the real bridges do nothing more than that
-// (createPortal(text, container, key)), unlike the multi-select/filter-
-// summary bridges above which mount real components. (#scheduler-details/
-// #request-activity-details - and their bridges - were removed as
-// redundant with the activity drawer's own live display, see
-// REACT_MIGRATION_PLAN.md.) #backfill-log is the one exception now (Phase
-// G.4) - BackfillControlsTestHarness below owns that bridge via real
-// React state instead, since BackfillLogControls.jsx renders that portal
-// itself and needs its own scroll-sync effect to see the text change.
-const installReactStatusTextMountBridges = () => {
-  const wireTextBridge = (bridgeName, containerId) => {
-    window[bridgeName] = (text) => {
-      const container = document.getElementById(containerId);
-      if (!container) return false;
-      container.textContent = text;
-      return true;
-    };
-  };
-  wireTextBridge("updateReactStatusText", "status");
-  wireTextBridge("updateReactOutputText", "output");
-  // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // updateReactBackfillLogText no longer wired here as a plain
-  // textContent-writer - BackfillControlsTestHarness (installed later via
-  // FilterStateTestRootHarness, which initTestPage() mounts after this) now
-  // owns it via real React state, matching react-app.jsx's own AppRoot
-  // (BackfillLogControls renders the #backfill-log portal itself now).
-  // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // updateReactDataMetaText no longer wired here either - confirmed dead
-  // in production (no installer anywhere in react-app.jsx), replaced by
-  // mounting the real AppliedFilterSummaryTestLive inside
-  // FilterStateTestRootHarness's PrDataProvider instead (see that component's own comment).
-};
+// Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// installReactStatusTextMountBridges is gone. It stubbed window.updateReactStatusText/
+// updateReactOutputText as plain textContent writers for index.page.js's
+// setStatusTextOnly/setOutputMessage, whose last callers were deleted; every
+// remaining status writer here goes through the real StatusTextProvider.
 
 // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // #trigger-auto-run-btn/#quick-check-btn/#quick-check-all-btn are now fully
@@ -924,7 +897,7 @@ function ActionButtonsTestHarness() {
 
 // Unmounts the previous generation's React roots and installs the window
 // globals this suite still fakes (the helper modules index.html's <script>
-// tags would load, and the plain-text status/output bridges).
+// tags would load).
 //
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // this was installReactTableMountBridge, and also stubbed
@@ -936,7 +909,6 @@ const installReactTestGlobals = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
-  installReactStatusTextMountBridges();
 };
 
 const initTestPage = ({
@@ -7140,6 +7112,27 @@ describe("index page rendering with Testing Library", () => {
   // - no vanilla-DOM fallback left for this jsdom-only suite (which never
   // loads react-app.jsx) to click. e2e/smoke.spec.js clicks this exact
   // tab in a real browser already.
+
+  // Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // index.page.js's initPage made its own status+log load on top of the one
+  // useBackfillTabAutoRefresh fires on mount, so every page load fetched both
+  // twice. Only the React one is left.
+  test("given a fresh page load, when everything settles, then backfill status and log are each fetched exactly once", async () => {
+    initTestPage();
+
+    await waitFor(() => {
+      expect(document.getElementById("backfill-details")?.textContent || "").toContain("Summary:");
+    });
+    // Let any second, slower load land before counting.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const countGets = (path) =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url || "") === path && String(init?.method || "GET").toUpperCase() === "GET",
+      ).length;
+    expect(countGets("/view-prs/backfill")).toBe(1);
+    expect(countGets("/view-prs/backfill/log?lines=120")).toBe(1);
+  });
 
   test("backfill log auto-scrolls to bottom when running and auto-scroll is enabled", async () => {
     initTestPage();

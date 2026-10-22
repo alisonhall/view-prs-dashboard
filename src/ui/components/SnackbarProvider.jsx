@@ -14,15 +14,14 @@ import { SnackbarContext } from '../state/SnackbarContext';
  * default.
  *
  * Still publishes window.showErrorNotification/showWarningNotification/
- * hideErrorNotification - unlike most of this migration's bridges, this
- * one isn't just a leftover: index.page.js's own startup-time
- * notifyFailureSnackbar/showErrorNotification calls (loadStoredData/
- * loadBackfillStatus failure paths in initPage()) run as genuinely vanilla
- * module-level code, outside any React component, possibly before React has
- * even mounted - there is no Context for them to read. Every *React* caller
- * (the 8 hooks + PrDataProvider.jsx that used to reach these same 3 names
- * via window.*) now calls showError/showWarning/hide from this Context
- * directly instead.
+ * hideErrorNotification, but window-bridge elimination Phase 7 removed their
+ * last production caller (index.page.js's startup loadStoredData/
+ * loadBackfillStatus failure paths moved into PrDataProvider, or were
+ * deleted as duplicates). Every caller reads showError/showWarning/hide from
+ * this Context. Only e2e/smoke.spec.js's Snackbar test still calls the
+ * bridges, to trigger a notification directly; they're on
+ * WINDOW_BRIDGE_ELIMINATION_PLAN.md's test-only list, to delete once that
+ * test triggers a real one.
  *
  * flushSync, not a plain setState - unchanged from the original
  * Snackbar.jsx's own reasoning (matching react-app.jsx's own

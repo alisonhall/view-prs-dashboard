@@ -8,17 +8,20 @@ import { createContext, useContext } from 'react';
  * useBackfillActions.jsx (state/) only through the
  * `window.getBackfillTrackingState`/`setSupportsBackfillLogPolling`/
  * `setIsBackfillActionPending` reverse bridges. This Context makes
- * BackfillStatusProvider.jsx the single real owner - both index.page.js's
- * own vanilla `loadBackfillStatus` instance and the React side read/write
- * the exact same state. React code reaches it through this file's two
- * Contexts (state via useBackfillStatus(), stable functions via
- * useBackfillStatusActions()); index.page.js has no Context access, so it
- * still goes through the `window.*` bridges the Provider publishes - see
- * that Provider's own comment.
+ * BackfillStatusProvider.jsx the single real owner. Everything reaches it
+ * through this file's two Contexts (state via useBackfillStatus(), stable
+ * functions via useBackfillStatusActions()). Window-bridge elimination Phase
+ * 7.2: index.page.js's own vanilla `loadBackfillStatus` instance, the last
+ * reader of the `window.*` bridges the Provider used to publish, is gone, and
+ * so are the bridges.
  *
  * Default value (unwrapped) is a safe no-op shape, matching every other
  * Context in this app.
  */
+// How many log lines a status/log load asks for. Shared by the Provider's
+// own loadBackfillStatus and useBackfillActions.jsx's factory instance.
+export const BACKFILL_LOG_TAIL_LINES = 120;
+
 // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the Backfill tab's 4 button-disabled flags used to be AppRoot's own local
 // state, written by BackfillStatusProvider (and useBackfillActions) through
@@ -37,8 +40,7 @@ export const DEFAULT_BACKFILL_BUTTON_STATE = {
 // the same "ancestor pushing down into its own descendant through window"
 // pattern as the button state, for the Backfill tab's status badges, details
 // text and log text - all written only by this Provider's own status render
-// (and, for the log, one vanilla line in index.page.js), so they're owned
-// here and AppRoot reads them back out. `backfillLogUpdateTick` bumps on
+// and log loads, so they're owned here and AppRoot reads them back out. `backfillLogUpdateTick` bumps on
 // *every* log write, even identical text: BackfillLogControls' scroll-sync
 // effect has to fire on every refresh, and useState bails out of a
 // same-value update.
@@ -76,8 +78,14 @@ export function useBackfillStatus() {
  * `getBackfillTrackingState` reads refs, so a caller holding it across an
  * async flow still sees a setter's write immediately - the synchronous-read
  * semantics the old module `let`s (and window.getBackfillTrackingState) had.
+ *
+ * `loadBackfillStatus({ announce, includeLog })` (window-bridge elimination
+ * Phase 7.2) fetches the status (and optionally the log tail) and renders it
+ * here. PrDataProvider's backfill poll calls it; it used to reach
+ * index.page.js's instance through window.loadBackfillStatus.
  */
 export const BackfillStatusActionsContext = createContext({
+  loadBackfillStatus: async () => null,
   getBackfillTrackingState: () => ({
     supportsBackfillLogPolling: true,
     isBackfillRunning: false,

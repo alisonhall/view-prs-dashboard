@@ -35,8 +35,9 @@ import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.
  */
 export function PrTableApp() {
   // PR data payload/selectedRepo/visiblePrNumbers - owned by <PrDataProvider />
-  // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md),
-  // which also owns window.updateReactPrTable itself. Replaces this
+  // (state/PrDataProvider.jsx, Track C slice C2c, REACT_MIGRATION_PLAN.md).
+  // (That Provider still publishes window.updateReactPrTable, but only tests
+  // call it since window-bridge elimination Phase 7.) Replaces this
   // component's own former useState(initialPayload) + prop-resync useEffect.
   const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers

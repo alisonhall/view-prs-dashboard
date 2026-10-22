@@ -5,7 +5,7 @@ import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpe
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
-import { useBackfillStatusActions } from './BackfillStatusContext';
+import { BACKFILL_LOG_TAIL_LINES, useBackfillStatusActions } from './BackfillStatusContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';
@@ -16,11 +16,6 @@ import { useSnackbar } from './SnackbarContext';
 const { stripAnsi } = createPrFormattingHelpers();
 const { formatCommandOutput } = createPrCommandOutputHelpers({ stripAnsi });
 const { formatBackfillLogMessage } = createPrBackfillHelpers();
-
-// Same value as index.page.js's own BACKFILL_LOG_TAIL_LINES - duplicated
-// rather than shared since index.page.js doesn't export it and this is the
-// only other place that needs it.
-const BACKFILL_LOG_TAIL_LINES = 120;
 
 /**
  * Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):

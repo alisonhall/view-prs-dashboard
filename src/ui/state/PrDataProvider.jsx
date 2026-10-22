@@ -181,40 +181,23 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * (`trackingRef` below) - a plain ref, not `useState`: nothing ever
  * renders from this state, it exists purely for the poll's own
  * fingerprint/manifest-diffing, so there's no reason to trigger a
- * re-render on every write. Exposed to `<PrDataPolling />` directly via
- * this Provider's own Context value (no `window.*` indirection for that
- * call site - the actual Phase F goal), and *also* still as
- * `window.pollForDataChanges` - unlike `window.pollSchedulerStatus`
- * (retired outright in Phase H.2, see REACT_MIGRATION_PLAN.md, once its
- * automatic trigger was long dead), this bridge has a genuine, live
- * production caller: `JobEventsProvider.jsx`'s real SSE connection calls
- * it directly for an immediate out-of-band poll on a "data changed"
- * event, outside the interval. Phase H.3 (see REACT_MIGRATION_PLAN.md)
- * converted `index.html.test.js`'s 9 tests to drive polls through a real
- * `<PrDataPolling />` interval (fake timers) instead of calling this
- * bridge directly, but the bridge itself stays - it's not test-only.
- * `applyFreshPrPayload`/`prDataTabOrchestrator`/`loadStoredData`
- * (index.page.js - 3 other vanilla call sites that write pieces of this
- * same tracking state directly) redirect through the new
- * `window.pushPrDataPollingTrackingState(partial)` bridge instead - same
- * "who writes when" structure, only the storage location moved, matching
- * the Phase E precedent of preserving trigger points while simplifying
- * mechanics. `renderPrData`/`markPollSuccess`/`showPollFailureWarning`/
- * `applyLatestPrData` and the pure fingerprint/manifest helpers stay
- * vanilla, reached via new reverse bridges (index.page.js) - same
- * category as every other "vanilla primitive exposed for React" bridge
- * in this migration.
+ * re-render on every write. Its callers - `<PrDataPolling />`'s interval
+ * and `JobEventsProvider.jsx`'s SSE "data changed" poll - read it from this
+ * Provider's Context. (It was also published as `window.pollForDataChanges`
+ * until window-bridge elimination Phase 7 deleted that bridge; the vanilla
+ * writers of this tracking state, which went through
+ * `window.pushPrDataPollingTrackingState`, moved into this Provider then
+ * too - see the last paragraph.)
  *
  * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
  * builds `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`
  * now (inlined directly - unlike `pollForDataChanges`, there was no
  * pre-existing pure DI-factory to wrap), owning the counter/history/
  * scheduler-state bookkeeping they depend on (`activityRef` below) - same
- * plain-ref reasoning as `trackingRef`. `beginRequestActivity` stays
- * bridged as `window.beginRequestActivity` (5 real React consumers -
- * `useSinglePrUpdate.jsx`/`useRunScript.jsx`/`useBackfillActions.jsx`/
- * `useAckLabelActions.jsx`/`NotesSection.jsx` - already read it that way,
- * by design, same precedent as `applyFreshPrPayload`).
+ * plain-ref reasoning as `trackingRef`. (Its React consumers read
+ * `beginRequestActivity` from `RequestActivityContext` since window-bridge
+ * elimination Phase 3; the `window.beginRequestActivity` bridge was deleted in
+ * Phase 7.2 with its last vanilla reader.)
  * `window.pollBackfillStatus`/`window.renderRequestActivity` had no
  * caller left besides `<PrDataPolling />` once it reads them from Context
  * instead - both deleted outright from `index.page.js`, not kept.
@@ -223,9 +206,10 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * vanilla call sites keep working unchanged. `renderSchedulerStatus`
  * (index.page.js, still vanilla) pushes into `activityRef` via a new
  * `window.setLatestSchedulerStateAndRender(scheduler)` bridge instead of
- * writing a bare module `let`. `loadBackfillStatus`/`loadSchedulerStatus`
- * stay vanilla (other real callers beyond polling) - reached via 2 more new
- * reverse bridges, same category as everything else in this paragraph.
+ * writing a bare module `let`. `pollBackfillStatus`'s load came from
+ * index.page.js through `window.loadBackfillStatus` until window-bridge
+ * elimination Phase 7.2; it's `BackfillStatusProvider`'s own now, read from
+ * that Provider's actions Context.
  *
  * Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * `pollSchedulerStatus` itself (this Provider's thin wrapper around
@@ -409,7 +393,8 @@ export function PrDataProvider({
   // tracking flags through BackfillStatusProvider's actions-only Context
   // (stable; subscribing to its changing status/log state would re-render
   // every usePrData() consumer on each backfill update).
-  const { getBackfillTrackingState, updateBackfillStatusFromPayload } = useBackfillStatusActions();
+  const { getBackfillTrackingState, updateBackfillStatusFromPayload, loadBackfillStatus } =
+    useBackfillStatusActions();
   const setOutputText = useSetOutputText();
   // Stable; reads the repo field without subscribing this Provider (and every
   // usePrData() consumer) to filter-field changes.
@@ -737,34 +722,33 @@ export function PrDataProvider({
       };
     };
 
-    // pollBackfillStatus's own guard flags (isBackfillRunning/
-    // isBackfillActionPending) are owned by BackfillStatusProvider.jsx
-    // (Phase H.14, see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 4) - reached the same way useBackfillActions.jsx reaches
-    // them, via window.getBackfillTrackingState, not a direct Context
-    // read, since pollBackfillStatus runs from <PrDataPolling/>'s own
-    // interval effect, a plain function call with no guaranteed Context
-    // ancestry to that Provider. The real fetch work it delegates to
-    // (loadBackfillStatus) stays vanilla-owned in index.page.js - it has
-    // its own other real vanilla caller (initPage's initial load) this
-    // phase doesn't touch.
+    // pollBackfillStatus's guard flags (isBackfillRunning/
+    // isBackfillActionPending) and the load itself are BackfillStatusProvider's,
+    // read through its stable actions Context (this Provider's ancestor).
+    // Window-bridge elimination Phase 7.2: the load used to be
+    // index.page.js's instance, reached via window.loadBackfillStatus.
     const pollBackfillStatus = async () => {
       const tracking = getBackfillTrackingState();
       if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
         return;
       }
       try {
-        await window.loadBackfillStatus?.({ announce: true, includeLog: true });
+        await loadBackfillStatus({ announce: true, includeLog: true });
       } catch (_error) {
         // Ignore polling failures and wait for the next interval.
       }
     };
 
     return { beginRequestActivity, renderRequestActivity, pollBackfillStatus };
-  }, [getBackfillTrackingState]);
+  }, [getBackfillTrackingState, loadBackfillStatus]);
 
+  // Window-bridge elimination Phase 7.2: window.beginRequestActivity (last
+  // reader: index.page.js's proxy, deleted) and window.getLatestSchedulerState
+  // (last reader: the prDataTabOrchestrator deleted in Phase H.23) are gone.
+  // window.renderRequestActivity stays for index.page.js's startup call and
+  // for BackfillStatusProvider/AutoRenderBlockingProvider, which sit above
+  // this Provider and can't read its Context.
   useEffect(() => {
-    window.beginRequestActivity = (...args) => activityHelpers.beginRequestActivity(...args);
     window.renderRequestActivity = (...args) => activityHelpers.renderRequestActivity(...args);
     // Vanilla primitive exposed *for* this Provider: renderSchedulerStatus
     // (index.page.js, still called by loadSchedulerStatus and by
@@ -776,15 +760,9 @@ export function PrDataProvider({
       activityRef.current.latestSchedulerState = scheduler || {};
       activityHelpers.renderRequestActivity();
     };
-    // Read-side counterpart, for index.page.js's prDataTabOrchestrator
-    // (its own stateGetters.getLatestSchedulerState) - the only other
-    // vanilla reader of this state besides renderRequestActivity itself.
-    window.getLatestSchedulerState = () => activityRef.current.latestSchedulerState;
     return () => {
-      delete window.beginRequestActivity;
       delete window.renderRequestActivity;
       delete window.setLatestSchedulerStateAndRender;
-      delete window.getLatestSchedulerState;
     };
   }, [activityHelpers]);
 

@@ -11,9 +11,11 @@ import { OutputTextContext, OutputTextSetterContext } from '../state/OutputTextC
  * `AppRoot` already renders `outputText` into `<pre id="output">` through a
  * portal, which also replaces that element's static placeholder text.
  *
- * Still publishes `window.updateReactOutputText`, because `index.page.js`
- * (vanilla) writes the output text too and has no Context access. That one
- * remaining bridge goes away with `index.page.js` itself (Phase 7).
+ * Still publishes `window.updateReactOutputText`, but since window-bridge
+ * elimination Phase 7.2 nothing in production calls it (index.page.js's
+ * `setOutputMessage` lost its last callers and was deleted). Only
+ * e2e/smoke.spec.js and this Provider's own unit test write through it; it's
+ * on WINDOW_BRIDGE_ELIMINATION_PLAN.md's test-only list.
  */
 export function OutputTextProvider({ children }) {
   const [outputText, setOutputText] = useState('Run the script to see output');

@@ -6,8 +6,6 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
-import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
 import * as prSchedulerStatusHelperFactory from "./helpers/pr-scheduler-status.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
@@ -20,18 +18,11 @@ import * as prAutoRenderIndicatorHelperFactory from "./helpers/pr-auto-render-in
 import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-render-indicator-links.helpers.js";
 import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
 import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
-import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
-import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
-import * as prBackfillHelperFactory from "./helpers/pr-backfill.helpers.js";
-import * as prBackfillActionHelperFactory from "./helpers/pr-backfill-actions.helpers.js";
 import * as prActorIdentityHelperFactory from "./helpers/pr-actor-identity.helpers.js";
 import { inferViewerLoginFromPage } from "./helpers/pr-viewer-login-inference.helpers.js";
 import { asArray } from "./helpers/pr-as-array.helpers.js";
-import {
-  buildFailureSnackbarNotification,
-  isTimeoutFailureMessage,
-} from "./helpers/pr-failure-snackbar.helpers.js";
+import { isTimeoutFailureMessage } from "./helpers/pr-failure-snackbar.helpers.js";
 import { summarizeAckRefreshWarnings } from "./helpers/pr-ack-refresh-warnings.helpers.js";
 // DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
 // 7, see REACT_MIGRATION_PLAN.md) everywhere it's needed -
@@ -42,7 +33,6 @@ import { summarizeAckRefreshWarnings } from "./helpers/pr-ack-refresh-warnings.h
 // too - nothing left in this file needs it.
 const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
-const BACKFILL_LOG_TAIL_LINES = 120;
 
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // latestStoredPayload/latestSelectedRepo/applyLatestPrData, and the render
@@ -73,75 +63,14 @@ const BACKFILL_LOG_TAIL_LINES = 120;
 // deleted outright this phase.
 const formParsingHelpers = formParsingHelpersModule;
 
-const {
-  stripAnsi,
-} = prFormattingHelperFactory.createPrFormattingHelpers();
-
-const setStatusTextOnly = (message) => {
-  window.updateReactStatusText?.(message);
-};
-
-const setStatusMessage = (message) => {
-  setStatusTextOnly(message);
-  renderRequestActivity();
-};
-
-// Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// vanilla primitive exposed for AutoRenderBlockingProvider.jsx's
-// discardAndApply to call, after applying a discarded-and-applied
-// payload - same category as applyFreshPrPayload/beginRequestActivity.
-if (typeof window !== "undefined") {
-  window.setStatusMessage = (...args) => setStatusMessage(...args);
-}
-
-const setOutputMessage = (message) => {
-  window.updateReactOutputText?.(message);
-};
-
-// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// beginRequestActivity/renderRequestActivity's real implementations (the
-// counter/history/scheduler-state bookkeeping, the badge-view-model
-// construction) moved into PrDataProvider.jsx (state/) - these 2 consts
-// become thin proxies to the window.* bridges that Provider now installs,
-// so every one of this file's own existing call sites (the "authorComment"/
-// "dataLoad"/"checkboxToggle"/"backfill" DI wirings below, setStatusMessage,
-// initPage's startup call) keeps working completely unchanged. Same
-// no-op-before-mount fallback shape useSinglePrUpdate.jsx/useRunScript.jsx/
-// etc. already use for this exact bridge.
-const beginRequestActivity = (key) =>
-  (window.beginRequestActivity || (() => () => {}))(key);
-
+// Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// setStatusMessage (and its window.setStatusMessage bridge, which nothing read
+// any more), setOutputMessage, the beginRequestActivity proxy, and
+// showErrorNotification/notifyFailureSnackbar are deleted - their last callers
+// were this file's backfill code and loadStoredData failure path, both gone.
+// renderRequestActivity stays for initPage's startup call.
 const renderRequestActivity = () => {
   window.renderRequestActivity?.();
-};
-
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the snackbar itself is fully React-owned now
-// (components/Snackbar.jsx, mounted into an empty #error-snackbar-root) -
-// this is a thin delegating wrapper around the window.* bridge that
-// component registers, kept under its original name so the ~15+ existing
-// call sites (notifyFailureSnackbar, etc.) don't need to change.
-// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): showWarningNotification/hideErrorNotification (this
-// function's own siblings) are deleted outright - markPollSuccess/
-// showPollFailureWarning, their only callers, moved into
-// PrDataProvider.jsx, which reaches window.showWarningNotification/
-// window.hideErrorNotification directly instead of through a second
-// layer of wrapper here.
-const showErrorNotification = (title, message, autoDismissMs = 8000) =>
-  window.showErrorNotification?.(title, message, autoDismissMs);
-
-const notifyFailureSnackbar = (
-  title,
-  errorSource,
-  fallbackMessage = "Operation failed",
-) => {
-  const { title: finalTitle, detail } = buildFailureSnackbarNotification(
-    title,
-    errorSource,
-    fallbackMessage,
-  );
-  showErrorNotification(finalTitle, detail, 0);
 };
 
 // Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -209,32 +138,15 @@ const isIgnoredCredentialFieldError = (value) => {
   );
 };
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): tracked so 'viewprs:react-ready' can re-invoke
-// this once window.updateReactBackfillLogText actually exists - unlike
-// #status/#output/#scheduler-details/#request-activity-details (all
-// called repeatedly during normal operation, so they self-heal from the
-// same bridge-not-ready-yet race documented for backfill badges above),
-// this only populates on Backfill-tab-visit/refresh-click, so a lost race
-// on the very first load would otherwise never self-correct.
-let latestBackfillLogMessage = null;
-
-// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 4): forwards to window.setBackfillLogMessage (now answered by
-// BackfillStatusProvider.jsx, which just forwards to
-// window.updateReactBackfillLogText itself - same end target as before),
-// instead of writing that downstream bridge directly - this file's own
-// callers (this factory instance's own DI, initPage's catch block below)
-// go through this file's one real owner now, matching
-// useBackfillActions.jsx's own shape. latestBackfillLogMessage's own
-// cache+replay (below, viewprs:react-ready) is untouched - a different,
-// unrelated bridge-not-ready-yet race (window.updateReactBackfillLogText
-// itself, react-app.jsx's AppRoot), not something this phase's migration
-// changes.
-const setBackfillLogMessage = (message) => {
-  latestBackfillLogMessage = message;
-  window.setBackfillLogMessage?.(message);
-};
+// Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// this file's backfill status code is gone - its loadBackfillStatus instance,
+// the setBackfillLogMessage/renderBackfillStatus/updateBackfillStatusFromPayload
+// forwarders (and the latestBackfillLogMessage/latestBackfillStatus caches they
+// kept for the 'viewprs:react-ready' replays), the backfill-log auto-scroll,
+// and window.loadBackfillStatus. initPage's initial status+log load was an
+// exact duplicate of the one useBackfillTabAutoRefresh fires from AppRoot on
+// mount, so it is deleted rather than moved; BackfillStatusProvider builds its
+// own loadBackfillStatus for PrDataProvider's backfill poll.
 
 // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): FILTER_STATE_FIELD_MAP/getFilterStateOverrideForFieldId/
@@ -271,16 +183,6 @@ const setBackfillLogMessage = (message) => {
 // all - AuthorInsightsPrDataMeta.jsx (its one remaining consumer) builds
 // formatChkDisplay directly now instead of parseMarkerState + a buggy
 // formatChkDisplay call (see that file's own comment for the fix).
-
-const {
-  autoScrollBackfillLogToBottom,
-} = prUiOptionScrollHelperFactory.createPrUiOptionScrollHelpers({
-  getOptionalElementById: (...args) => getOptionalElementById(...args),
-  shouldAutoScrollBackfillLogByState: (...args) =>
-    shouldAutoScrollBackfillLogByState(...args),
-  getBackfillScrollTop: (...args) => getBackfillScrollTop(...args),
-  getIsBackfillRunning: () => window.getBackfillTrackingState?.()?.isBackfillRunning ?? false,
-});
 
 const { getOptionalElementById, readElementAttribute } =
   prDomAccessHelperFactory.createPrDomAccessHelpers({
@@ -663,39 +565,6 @@ const { setupMultiSelectDropdownClosing } = prFilterPanelHelperFactory.createPrF
 // Phase H.20, and the functions themselves are deleted now too - see
 // pr-filter-panel.helpers.js's own comment above for the full accounting.
 
-// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 4 "Backfill status rendering"): renderBackfillStatus/
-// updateBackfillStatusFromPayload (the functions) and
-// isBackfillRunning/isBackfillActionPending/supportsBackfillLogPolling/
-// lastBackfillStateKey (the state they wrote) all moved into
-// BackfillStatusProvider.jsx (components/) as real React state - this
-// file no longer owns any of it, it's a pure caller of the
-// window.renderBackfillStatus/updateBackfillStatusFromPayload/
-// getBackfillTrackingState/setSupportsBackfillLogPolling/
-// setIsBackfillActionPending bridges that Provider now answers, the exact
-// same bridges useBackfillActions.jsx (state/) already called through -
-// one real owner now, not two independently-drifting copies.
-//
-// latestBackfillStatus's own cache+replay is kept, repointed at the
-// bridge - the race it exists for (loadBackfillStatus resolving before
-// react-app.jsx has mounted) is unchanged by this move: whatever answers
-// window.renderBackfillStatus (today BackfillStatusProvider, which owns the
-// badges/details/button state it renders) mounts at the same time AppRoot
-// does either way, so the same 'viewprs:react-ready' replay below still
-// closes the gap - see that listener's own comment.
-let latestBackfillStatus = null;
-
-const renderBackfillStatus = (backfillRaw = {}) => {
-  latestBackfillStatus = backfillRaw || {};
-  window.renderBackfillStatus?.(backfillRaw);
-};
-
-const updateBackfillStatusFromPayload = (payload = {}, options = {}) => {
-  const backfill = payload?.backfill || payload || {};
-  latestBackfillStatus = backfill;
-  window.updateBackfillStatusFromPayload?.(payload, options);
-};
-
 // Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): window.loadSchedulerStatus/window.getSupportsSchedulerPolling
 // are deleted outright - the automatic poll loop they used to also serve
@@ -764,21 +633,11 @@ const { loadSchedulerStatus } = prSchedulerStatusHelperFactory.createPrScheduler
 // instead, and nothing else in this file calls this factory's output
 // directly.
 
-const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
-  fetch: (...args) => fetch(...args),
-});
-
 const {
   statusIcon,
 } = prStatusDisplayHelperFactory.createPrStatusDisplayHelpers();
 
 void statusIcon;
-
-const {
-  formatCommandOutput,
-} = prCommandOutputHelperFactory.createPrCommandOutputHelpers({
-  stripAnsi,
-});
 
 // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 3): pr-data-tabs.helpers.js (activateDataTab/initDataTabs) is
@@ -796,80 +655,6 @@ const {
 // see renderPrData's own comment below for what replaced it.
 // initialize()'s own call site (below, initPage) is removed too - it only
 // ever ran initDataTabs(), a no-op since Phase A slice 1.
-
-// Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 4): getBackfillStatusViewModel/getBackfillStateKey no longer
-// destructured here - both only ever fed renderBackfillStatus/
-// updateBackfillStatusFromPayload, now moved wholesale into
-// BackfillStatusProvider.jsx (components/), which creates its own
-// instance of this same pure factory.
-const {
-  shouldAutoScrollBackfillLog: shouldAutoScrollBackfillLogByState,
-  getBackfillScrollTop,
-  formatBackfillLogMessage,
-} = prBackfillHelperFactory.createPrBackfillHelpers();
-
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// handleBackfillAction itself is no longer destructured here -
-// state/useBackfillActions.jsx now owns the only real caller (the Start/
-// Stop buttons) via its own separate factory instance. loadBackfillStatus
-// stays - window.loadBackfillStatus below still has a real caller
-// (PrDataProvider.jsx's pollBackfillStatus). Phase H.11 (see
-// REACT_MIGRATION_PLAN.md, "Full migration roadmap"): loadBackfillLogTail
-// is no longer destructured here - it was only ever called by
-// backfill-tab.orchestrator.js (deleted outright that phase), and this
-// factory instance's own loadBackfillStatus already calls its own
-// internal loadBackfillLogTail when includeLog is true.
-const { loadBackfillStatus } = prBackfillActionHelperFactory.createPrBackfillActionHelpers({
-  fetch: (...args) => fetch(...args),
-  postJson,
-  beginRequestActivity,
-  setStatusMessage,
-  setOutputMessage,
-  // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillControls.jsx/BackfillLogControls.jsx now own the 4 backfill
-  // buttons, fed by window.updateReactBackfillButtonState (same bridge
-  // renderBackfillStatus's own normal reload path already uses) - this
-  // replaces the old direct-by-id setButtonDisabled DI.
-  setBackfillButtonState: (state) =>
-    window.updateReactBackfillButtonState?.(state),
-  notifyFailureSnackbar,
-  formatCommandOutput,
-  stripAnsi,
-  updateBackfillStatusFromPayload,
-  setBackfillLogMessage,
-  autoScrollBackfillLogToBottom,
-  formatBackfillLogMessage,
-  // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 4): reads/writes window.getBackfillTrackingState/
-  // setSupportsBackfillLogPolling/setIsBackfillActionPending (now
-  // answered by BackfillStatusProvider.jsx) instead of this file's own
-  // module-level lets, which are deleted - the exact same bridges
-  // useBackfillActions.jsx's own factory instance already used, so both
-  // instances now share one real source of truth.
-  getSupportsBackfillLogPolling: () =>
-    window.getBackfillTrackingState?.()?.supportsBackfillLogPolling ?? true,
-  setSupportsBackfillLogPolling: (value) =>
-    window.setSupportsBackfillLogPolling?.(value),
-  getIsBackfillRunning: () => window.getBackfillTrackingState?.()?.isBackfillRunning ?? false,
-  setIsBackfillActionPending: (value) => window.setIsBackfillActionPending?.(value),
-  backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
-});
-
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// BackfillControls.jsx/BackfillLogControls.jsx used to reach
-// handleBackfillAction/a refreshBackfillStatus/refreshBackfillLogTail
-// wrapper pair/autoScrollBackfillLogToBottom via window.* bridges - they
-// now call state/useBackfillActions.jsx's own hook directly instead, which
-// builds its own instance of this same factory.
-// Cluster-4 cleanup (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-// audit"): window.autoScrollBackfillLogToBottom itself (the bridge, not
-// the local autoScrollBackfillLogToBottom function below, still used
-// internally by this file's own loadBackfillStatus factory instance) had
-// zero remaining readers - BackfillLogControls.jsx now owns scroll-sync
-// itself via a ref (Phase G.4), and useBackfillActions.jsx's own factory
-// instance passes a no-op for this DI param, not this bridge - deleted
-// outright.
 
 // Action Log's fetch/render AND its own "Refresh" button are both fully
 // React-owned now (ActionLogSection.jsx, mounted into #action-log-container,
@@ -1022,22 +807,6 @@ const {
 // pipeline). state/useVisiblePrNumbers.jsx's own separate instance of this
 // same factory (the real, live row-filtering logic) is untouched.
 
-// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// pollBackfillStatus/pollSchedulerStatus's own guard+wrapper moved into
-// PrDataProvider.jsx (state/), reached directly via <PrDataPolling />'s
-// usePrData() Context - window.pollBackfillStatus/window.renderRequestActivity
-// had no caller left besides that component, so both were deleted outright
-// (pollSchedulerStatus itself was later deleted too, in Phase H.2 - see
-// REACT_MIGRATION_PLAN.md). loadBackfillStatus stays vanilla here -
-// initPage's own initial-load call (below) is another real caller beyond
-// polling. (The backfill tab orchestrator was a 2nd such caller once -
-// deleted outright in Phase H.11, see REACT_MIGRATION_PLAN.md.) Exposed
-// via a new reverse bridge for PrDataProvider's own pollBackfillStatus to
-// reach.
-if (typeof window !== "undefined") {
-  window.loadBackfillStatus = (...args) => loadBackfillStatus(...args);
-}
-
 // Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // <PrDataPolling /> (react-app.jsx) now owns the setInterval lifecycle for
 // these four functions (and the visibility-pause/beforeunload-cleanup
@@ -1161,41 +930,9 @@ const initPage = () => {
   // - a plain "fetch then setState" running inside React's own lifecycle,
   // not vanilla code reaching in, so none of the old queueMicrotask/
   // dual-pass machinery is needed any more.
-  // The Backfill tab's status (badges, details text, button state - all
-  // owned by BackfillStatusProvider, which AppRoot reads) has the exact same
-  // load-order race as the PR table above: loadBackfillStatus() below often
-  // resolves before react-app.jsx has mounted, and the
-  // window.renderBackfillStatus?.(...) call silently no-ops when the
-  // Provider's bridge isn't there yet - with no retry, unlike the PR table
-  // and filter dropdowns, so the badges stayed permanently empty. Only actually
-  // reproduces when React's mount is slow enough to lose the race (a real
-  // CI-only flake - always won locally, confirmed failing intermittently
-  // in CI's slower/shared runners). Re-render once React signals ready.
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => {
-      if (latestBackfillStatus) {
-        renderBackfillStatus(latestBackfillStatus);
-      }
-    },
-    { once: true },
-  );
-  // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): same bridge-not-ready-yet race as backfill
-  // badges/details above, for #backfill-log specifically (see
-  // latestBackfillLogMessage's own comment for why this one needs it and
-  // the others above don't).
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => {
-      if (latestBackfillLogMessage !== null) {
-        window.updateReactBackfillLogText?.(latestBackfillLogMessage);
-      }
-    },
-    { once: true },
-  );
-  // Same bridge-not-ready-yet race as the two listeners above, for
-  // applyNonCredentialFieldHints() below: it reaches for the 5 "Run Script
+  // A bridge-not-ready-yet race for applyNonCredentialFieldHints() below
+  // (the backfill status/log listeners that used to sit above this one were
+  // deleted in window-bridge elimination Phase 7.2): it reaches for the 5 "Run Script
   // options" fields (repo/limit/merged-limit/jobs/pr-numbers) by DOM id,
   // but all 5 are React-portaled (FilterStateProvider, see
   // ContextRunScriptTextInput.jsx) and don't exist in the DOM yet at this
@@ -1215,7 +952,7 @@ const initPage = () => {
   // renderRequestActivity() call (below, this function's very first line)
   // runs before PrDataProvider.jsx has necessarily mounted yet, so the
   // initial "No request in progress" badge push can silently no-op. Re-push
-  // once React signals ready, same shape as the backfill-badges fix above.
+  // once React signals ready.
   window.addEventListener(
     "viewprs:react-ready",
     () => renderRequestActivity(),
@@ -1466,21 +1203,9 @@ const initPage = () => {
   // the initial loadStoredData("") call (and the 'viewprs:react-ready'
   // listener that re-rendered once React's table bridge existed) moved into
   // PrDataProvider's own mount effect, so there is no load-order race left
-  // to cover here.
-  loadBackfillStatus({ includeLog: true }).catch((error) => {
-    renderBackfillStatus({
-      ok: false,
-      running: false,
-      summary: error?.result?.summary || "Failed to load backfill status",
-      error: error?.result?.error || error.message,
-    });
-    setBackfillLogMessage("Failed to load backfill log");
-    notifyFailureSnackbar(
-      "Failed to load backfill status",
-      error?.result || error,
-      "Unable to load backfill status",
-    );
-  });
+  // to cover here. Phase 7.2: so did the initial loadBackfillStatus call -
+  // deleted, since useBackfillTabAutoRefresh already makes the same load on
+  // mount.
 
   loadSchedulerStatus().catch((_error) => {
     // Ignore startup scheduler fetch failures; the next poll will retry.

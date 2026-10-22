@@ -5,6 +5,7 @@ const { render, act } = require('@testing-library/react');
 const { PrDataProvider } = require('./PrDataProvider');
 const { usePrData } = require('./PrDataContext');
 const { usePrDataActions } = require('./PrDataActionsContext');
+const { useRequestActivity } = require('./RequestActivityContext');
 const { BackfillStatusActionsContext } = require('./BackfillStatusContext');
 const { AutoRenderBlockingActionsContext } = require('./AutoRenderBlockingContext');
 const { StatusTextContext } = require('./StatusTextContext');
@@ -12,10 +13,11 @@ const { SnackbarContext } = require('./SnackbarContext');
 
 // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // pollBackfillStatus reads the tracking flags from BackfillStatusProvider's
-// actions Context, not window.getBackfillTrackingState.
-const renderWithBackfillTracking = (tracking, children) =>
+// actions Context, not window.getBackfillTrackingState - and since Phase 7.2
+// the load too, not window.loadBackfillStatus.
+const renderWithBackfillTracking = (tracking, children, loadBackfillStatus = async () => null) =>
   render(
-    <BackfillStatusActionsContext.Provider value={{ getBackfillTrackingState: () => tracking }}>
+    <BackfillStatusActionsContext.Provider value={{ getBackfillTrackingState: () => tracking, loadBackfillStatus }}>
       <PrDataProvider>{children}</PrDataProvider>
     </BackfillStatusActionsContext.Provider>,
   );
@@ -33,7 +35,6 @@ describe('PrDataProvider', () => {
     delete window.getLatestSchedulerState;
     delete window.updateReactRequestActivityBadges;
     delete window.updateReactRecentRequestActivity;
-    delete window.loadBackfillStatus;
   });
 
   test('given an initial payload, when rendering, then window.getReactPrTablePayload returns it', () => {
@@ -193,21 +194,28 @@ describe('PrDataProvider', () => {
   // automatic interval had already been retired in favor of SSE and
   // index.html.test.js's one direct call was its only remaining caller).
   describe('request activity', () => {
-    test('given a call to window.beginRequestActivity, when the returned finish function is called, then the badge bridge fires on begin and end, and the recent-activity bridge fires once on end', () => {
+    test('given a call to beginRequestActivity from the Context, when the returned finish function is called, then the badge bridge fires on begin and end, and the recent-activity bridge fires once on end', () => {
       const badgeCalls = [];
       const recentActivityCalls = [];
       window.updateReactRequestActivityBadges = (badges) => badgeCalls.push(badges);
       window.updateReactRecentRequestActivity = (entries) => recentActivityCalls.push(entries);
 
+      // Window-bridge elimination Phase 7.2: window.beginRequestActivity is
+      // gone; this reads the same function from RequestActivityContext.
+      let beginRequestActivity;
+      function Probe() {
+        ({ beginRequestActivity } = useRequestActivity());
+        return null;
+      }
       render(
         <PrDataProvider>
-          <div />
+          <Probe />
         </PrDataProvider>,
       );
 
       let finishActivity;
       act(() => {
-        finishActivity = window.beginRequestActivity('runScript');
+        finishActivity = beginRequestActivity('runScript');
       });
       expect(badgeCalls).toHaveLength(1);
       expect(recentActivityCalls).toHaveLength(0);
@@ -248,20 +256,20 @@ describe('PrDataProvider', () => {
       });
 
       expect(badgeCalls).toHaveLength(1);
-      expect(window.getLatestSchedulerState().isAutoRunInProgress).toBe(true);
+      // window.getLatestSchedulerState is gone (Phase 7.2); assert the badge itself.
+      expect(badgeCalls[0].some((badge) => String(badge.text).startsWith('Auto run'))).toBe(true);
     });
 
-    test('given the backfill tracking state says a run is in progress, when pollBackfillStatus is called, then it calls the vanilla loadBackfillStatus bridge', async () => {
+    test('given the backfill tracking state says a run is in progress, when pollBackfillStatus is called, then it calls the BackfillStatusProvider loadBackfillStatus', async () => {
       const loadBackfillStatus = jest.fn().mockResolvedValue({});
       const tracking = { isBackfillRunning: true, isBackfillActionPending: false };
-      window.loadBackfillStatus = loadBackfillStatus;
 
       let pollBackfillStatus;
       function Probe() {
         pollBackfillStatus = usePrData().pollBackfillStatus;
         return null;
       }
-      renderWithBackfillTracking(tracking, <Probe />);
+      renderWithBackfillTracking(tracking, <Probe />, loadBackfillStatus);
 
       await act(async () => {
         await pollBackfillStatus();
@@ -273,14 +281,13 @@ describe('PrDataProvider', () => {
     test('given the backfill tracking state says no run is in progress, when pollBackfillStatus is called, then it never calls loadBackfillStatus', async () => {
       const loadBackfillStatus = jest.fn();
       const tracking = { isBackfillRunning: false, isBackfillActionPending: false };
-      window.loadBackfillStatus = loadBackfillStatus;
 
       let pollBackfillStatus;
       function Probe() {
         pollBackfillStatus = usePrData().pollBackfillStatus;
         return null;
       }
-      renderWithBackfillTracking(tracking, <Probe />);
+      renderWithBackfillTracking(tracking, <Probe />, loadBackfillStatus);
 
       await act(async () => {
         await pollBackfillStatus();
@@ -291,13 +298,12 @@ describe('PrDataProvider', () => {
 
     test('given a backfill action is pending, when pollBackfillStatus is called, then it never calls loadBackfillStatus even though a run is in progress', async () => {
       const loadBackfillStatus = jest.fn();
-      window.loadBackfillStatus = loadBackfillStatus;
       let pollBackfillStatus;
       function Probe() {
         pollBackfillStatus = usePrData().pollBackfillStatus;
         return null;
       }
-      renderWithBackfillTracking({ isBackfillRunning: true, isBackfillActionPending: true }, <Probe />);
+      renderWithBackfillTracking({ isBackfillRunning: true, isBackfillActionPending: true }, <Probe />, loadBackfillStatus);
 
       await act(async () => {
         await pollBackfillStatus();
@@ -307,8 +313,7 @@ describe('PrDataProvider', () => {
     });
 
     test('given no BackfillStatusProvider at all, when pollBackfillStatus is called, then the inert default means it does nothing', async () => {
-      const loadBackfillStatus = jest.fn();
-      window.loadBackfillStatus = loadBackfillStatus;
+      global.fetch = jest.fn();
       let pollBackfillStatus;
       function Probe() {
         pollBackfillStatus = usePrData().pollBackfillStatus;
@@ -324,7 +329,8 @@ describe('PrDataProvider', () => {
         await pollBackfillStatus();
       });
 
-      expect(loadBackfillStatus).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+      delete global.fetch;
     });
   });
 

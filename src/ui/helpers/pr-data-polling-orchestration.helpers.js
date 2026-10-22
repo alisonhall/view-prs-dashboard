@@ -5,20 +5,20 @@
 // This is a byte-for-byte-logic-preserving move, not a rewrite - every
 // module-level mutable variable pollForDataChanges used to close over
 // directly is now an injected getter/setter pair instead, and the two
-// variables covered by index.page.js's new centralized applyLatestPrData
-// setter (see its own doc comment) go through that instead of a bare
-// assignment - no other behavior changes. index.html.test.js's direct
-// window.pollForDataChanges() calls (17 call sites) keep working unchanged,
-// since index.page.js's own pollForDataChanges is now a thin wrapper around
-// this factory's pollForDataChanges, still assigned to window the same way.
+// variables covered by a centralized applyLatestPrData setter go through
+// that instead of a bare assignment - no other behavior changes.
 //
 // The pure fingerprint/manifest-delta/render-decision helpers this function
 // calls into (computePrDataManifest, getManifestDelta, mergeDataDeltaPayload,
 // computePrDataFingerprint, computePrDataMetaFingerprint,
-// getDataPollRenderAction) are NOT duplicated here - they're injected from
-// index.page.js's existing prDataPollingHelperFactory.createPrDataPollingHelpers()
-// instance (already wired with the real getOrComputeEntryDerivedValue cache),
-// so this module has zero dependency on pr-data-polling.helpers.js directly.
+// getDataPollRenderAction) are NOT duplicated here - they're injected, so
+// this module has zero dependency on pr-data-polling.helpers.js directly.
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the only instance is state/PrDataProvider.jsx's, which injects its own
+// createPrDataPollingHelpers() instance (with its derived-value cache) and
+// its own applyLatestPrData/renderPrData; index.page.js no longer has any of
+// these, and window.pollForDataChanges is gone.
 export const { createPrDataPollingOrchestrationHelpers } = (() => {
   const createPrDataPollingOrchestrationHelpers = ({
     fetchFn,

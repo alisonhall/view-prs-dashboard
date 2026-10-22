@@ -40,30 +40,40 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 // started or finished for USER_DEFAULTS_QUIET_MS. That covers the gap
 // between a save's GET and its PUT (see FilterStateProvider's
 // persistViewFilterOptions).
+//
+// In-flight requests are tracked as a Set of Request objects, cleared whenever
+// the main frame navigates: a request the old document had in flight when a
+// test reloads (e.g. the restore's own save) is cancelled with the document,
+// and Playwright reports neither requestfinished nor requestfailed for it - a
+// plain counter stayed stuck above zero and the wait never ended.
 const USER_DEFAULTS_QUIET_MS = 100;
 const userDefaultsTrackers = new WeakMap();
 const trackUserDefaultsRequests = (page) => {
-  const tracker = { inFlight: 0, lastActivityAt: 0 };
+  const tracker = { inFlight: new Set(), lastActivityAt: 0 };
   const isUserDefaults = (request) => new URL(request.url()).pathname === "/view-prs/user-defaults";
   const onDone = (request) => {
-    if (!isUserDefaults(request)) return;
-    tracker.inFlight -= 1;
+    if (!tracker.inFlight.delete(request)) return;
     tracker.lastActivityAt = Date.now();
   };
   page.on("request", (request) => {
     if (!isUserDefaults(request)) return;
-    tracker.inFlight += 1;
+    tracker.inFlight.add(request);
     tracker.lastActivityAt = Date.now();
   });
   page.on("requestfinished", onDone);
   page.on("requestfailed", onDone);
+  page.on("framenavigated", (frame) => {
+    if (frame !== page.mainFrame()) return;
+    tracker.inFlight.clear();
+    tracker.lastActivityAt = Date.now();
+  });
   userDefaultsTrackers.set(page, tracker);
 };
 const waitForFilterPersist = async (page) => {
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
   const tracker = userDefaultsTrackers.get(page);
   await expect
-    .poll(() => tracker.inFlight === 0 && Date.now() - tracker.lastActivityAt >= USER_DEFAULTS_QUIET_MS, {
+    .poll(() => tracker.inFlight.size === 0 && Date.now() - tracker.lastActivityAt >= USER_DEFAULTS_QUIET_MS, {
       intervals: [25],
     })
     .toBe(true);
@@ -1117,7 +1127,12 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
 
   // Reset back to defaults so this test's persisted state doesn't affect
   // whatever unrelated test happens to load next against this suite's one
-  // shared webServer.
+  // shared webServer. Wait for the restore's own debounced save to land
+  // first: it reads the overrides (still holding this test's values) and
+  // writes them back merged, so if its read raced ahead of the reset below
+  // and its write landed after, it would put "pr-numbers": "912,921" back -
+  // seen leaking into the bulk-select PR-numbers test.
+  await waitForFilterPersist(page);
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     const overrides = { ...(current?.overrides || {}) };
@@ -1511,7 +1526,11 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   await expect(approverList.getByLabel("The Octocat", { exact: true })).toBeChecked();
 
   // Reset so this test's filters don't affect whatever unrelated test
-  // happens to load next against this suite's one shared webServer.
+  // happens to load next against this suite's one shared webServer. Wait for
+  // the restore's own debounced save to land first - it would otherwise be
+  // able to write these restored filters back after the reset (see the
+  // Run Script options test above).
+  await waitForFilterPersist(page);
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     const overrides = { ...(current?.overrides || {}) };

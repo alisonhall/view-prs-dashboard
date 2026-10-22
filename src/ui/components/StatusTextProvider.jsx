@@ -34,15 +34,11 @@ import { StatusTextContext } from '../state/StatusTextContext';
  * precedent `index.html.test.js`'s own `wireTextBridge` helper already
  * documents for this same container.
  *
- * The `window.updateReactStatusText` bridge stays, for the genuine vanilla
- * callers (`index.page.js`'s own `setStatusTextOnly`/`setStatusMessage`,
- * still called directly by several vanilla DI factories with no React
- * tree position of their own - `pr-merged-request-more-action.helpers.js`,
- * `pr-apply-filters-cache.helpers.js`, `pr-data-polling-orchestration.helpers.js`)
- * - this Provider just becomes the thing that *answers* that bridge now,
- * instead of AppRoot. (The backfill tab orchestrator was a 4th such
- * caller once - deleted outright in Phase H.11, see
- * REACT_MIGRATION_PLAN.md.)
+ * Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+ * the `window.updateReactStatusText` bridge this Provider used to answer is
+ * deleted. Its last caller was index.page.js's own `setStatusMessage`, whose
+ * last users (that file's backfill code and initial-load failure path) are
+ * gone; every other status writer reads this Context.
  */
 export function StatusTextProvider({ children }) {
   const [statusText, setStatusText] = useState('Not run');
@@ -53,16 +49,6 @@ export function StatusTextProvider({ children }) {
       container.textContent = statusText;
     }
   }, [statusText]);
-
-  useEffect(() => {
-    window.updateReactStatusText = (text) => {
-      setStatusText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactStatusText;
-    };
-  }, []);
 
   const value = useMemo(() => ({ statusText, setStatusText }), [statusText]);
 

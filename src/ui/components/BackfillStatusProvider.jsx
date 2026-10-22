@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
+import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import {
+  BACKFILL_LOG_TAIL_LINES,
   BackfillStatusActionsContext,
   BackfillStatusContext,
   DEFAULT_BACKFILL_BADGES,
@@ -10,7 +12,7 @@ import {
 } from '../state/BackfillStatusContext';
 import { useStatusText } from '../state/StatusTextContext';
 
-const { getBackfillStatusViewModel, getBackfillStateKey } = createPrBackfillHelpers();
+const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessage } = createPrBackfillHelpers();
 
 /**
  * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -74,6 +76,17 @@ const { getBackfillStatusViewModel, getBackfillStateKey } = createPrBackfillHelp
  * PrDataProvider can read them without re-rendering on every update), and
  * the state on BackfillStatusContext. The `window.*` bridges that remain
  * exist only for index.page.js's own vanilla callers, and go away with it.
+ *
+ * Window-bridge elimination Phase 7.2: they're gone. index.page.js's backfill
+ * code was its own `loadBackfillStatus` instance, used for (a) an initial
+ * status+log load at page init, an exact duplicate of the one
+ * useBackfillTabAutoRefresh already fires from AppRoot on mount, so every
+ * page load fetched both twice, and (b) PrDataProvider's backfill poll, via
+ * window.loadBackfillStatus. (a) is deleted, along with the
+ * `viewprs:react-ready` replays that existed only because that vanilla load
+ * could finish before this Provider mounted. For (b), this Provider builds
+ * its own `loadBackfillStatus` (below) and exposes it on its actions Context.
+ * The paragraphs above that describe index.page.js's callers are history.
  */
 
 export function BackfillStatusProvider({ children }) {
@@ -162,40 +175,26 @@ export function BackfillStatusProvider({ children }) {
     [renderBackfillStatus, setStatusText],
   );
 
-  // Bridges for index.page.js (vanilla), which has no Context access. Every
-  // caller of these inside React now uses BackfillStatusActionsContext; these
-  // exist only for index.page.js's own loadBackfillStatus/loadStoredData/
-  // payload-apply pipeline and its react-ready replay, and are deleted with
-  // it (Phase 7).
-  useEffect(() => {
-    window.getBackfillTrackingState = getBackfillTrackingState;
-    window.setSupportsBackfillLogPolling = setSupportsBackfillLogPolling;
-    window.setIsBackfillActionPending = setIsBackfillActionPending;
-    window.updateBackfillStatusFromPayload = updateBackfillStatusFromPayload;
-    window.setBackfillLogMessage = setBackfillLogMessage;
-    window.updateReactBackfillLogText = setBackfillLogMessage;
-    window.renderBackfillStatus = renderBackfillStatus;
-    window.updateReactBackfillButtonState = setBackfillButtonState;
-
-    return () => {
-      delete window.getBackfillTrackingState;
-      delete window.setSupportsBackfillLogPolling;
-      delete window.setIsBackfillActionPending;
-      delete window.updateBackfillStatusFromPayload;
-      delete window.setBackfillLogMessage;
-      delete window.updateReactBackfillLogText;
-      delete window.renderBackfillStatus;
-      delete window.updateReactBackfillButtonState;
-    };
-  }, [
-    getBackfillTrackingState,
-    setSupportsBackfillLogPolling,
-    setIsBackfillActionPending,
-    updateBackfillStatusFromPayload,
-    setBackfillLogMessage,
-    renderBackfillStatus,
-    setBackfillButtonState,
-  ]);
+  // Window-bridge elimination Phase 7.2: GET the status (and, with
+  // includeLog, the log tail) and render it here. Only the factory's load
+  // functions are used, so only their DI is passed; the action functions
+  // (handleBackfillAction) live in useBackfillActions.jsx's own instance.
+  // autoScrollBackfillLogToBottom is a no-op for the same reason as there:
+  // BackfillLogControls syncs its scroll position itself on each log update.
+  const loadBackfillStatus = useMemo(
+    () =>
+      createPrBackfillActionHelpers({
+        fetch: (...args) => fetch(...args),
+        updateBackfillStatusFromPayload,
+        setBackfillLogMessage,
+        autoScrollBackfillLogToBottom: () => {},
+        formatBackfillLogMessage,
+        getSupportsBackfillLogPolling: () => supportsBackfillLogPollingRef.current,
+        setSupportsBackfillLogPolling,
+        backfillLogTailLines: BACKFILL_LOG_TAIL_LINES,
+      }).loadBackfillStatus,
+    [updateBackfillStatusFromPayload, setBackfillLogMessage, setSupportsBackfillLogPolling],
+  );
 
   const value = useMemo(
     () => ({
@@ -222,6 +221,7 @@ export function BackfillStatusProvider({ children }) {
 
   const actions = useMemo(
     () => ({
+      loadBackfillStatus,
       getBackfillTrackingState,
       setBackfillButtonState,
       setIsBackfillActionPending,
@@ -231,6 +231,7 @@ export function BackfillStatusProvider({ children }) {
       setBackfillLogMessage,
     }),
     [
+      loadBackfillStatus,
       getBackfillTrackingState,
       setBackfillButtonState,
       setIsBackfillActionPending,
