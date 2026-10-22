@@ -8,23 +8,15 @@
  * @module components/insights/NotesMultiEntryField
  */
 
+import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.js';
 
-// Same attributes ReviewStatsControls.jsx's NON_CREDENTIAL_DATE_ATTRS/
-// form-parsing.helpers.js's NON_CREDENTIAL_INPUT_PROPS set on other text inputs -
-// without them, Chrome's password-manager heuristics misclassify these
+// The shared non-credential-field attributes (form-parsing.helpers.js;
+// window-bridge elimination Phase 7.5 follow-up - this file had its own
+// identical copy) - without them, Chrome's password-manager heuristics misclassify these
 // fields (e.g. "Rally links" looking like a credential field) and can
 // throw inside the browser's own autofill agent on focus, which blocks
 // typing in the field entirely.
-const NON_CREDENTIAL_ATTRS = {
-  autoComplete: 'off',
-  autoCapitalize: 'off',
-  autoCorrect: 'off',
-  spellCheck: false,
-  'data-lpignore': 'true',
-  'data-1p-ignore': 'true',
-  'data-bwignore': 'true',
-  'data-form-type': 'other',
-};
+const NON_CREDENTIAL_ATTRS = NON_CREDENTIAL_INPUT_PROPS;
 
 export function NotesMultiEntryField({ title, placeholder, values, inputClassName, onChange }) {
   const safeValues = values.length ? values : [''];

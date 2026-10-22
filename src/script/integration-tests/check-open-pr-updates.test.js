@@ -883,7 +883,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   // and, since they aren't the PR's author, an incorrect `NO_ACTIVITY`
   // status (which also flags the PR as Needs Attention) - even though the
   // "N open conversations with me" summary elsewhere in the app
-  // (getOpenConversationCountWithMe, index.page.js) already proves the
+  // (getOpenConversationCountWithMe, pr-open-conversation-count.helpers.js) already proves the
   // viewer has recent thread activity on the PR.
   describe("Given a non-author viewer whose only activity is a review-thread reply, when compute_pr_state_json evaluates status and baseline", () => {
     const runComputePrStateJsonWithThreads = (prJson, detailJson, threadsJson) => {

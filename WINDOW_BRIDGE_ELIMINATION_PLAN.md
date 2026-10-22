@@ -57,7 +57,7 @@ One responsibility at a time, each with full eslint+jest+Playwright and a `REACT
 
 ## Status (last updated 2026-10-22, after Phase 7.5)
 
-Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **windows**, e2e) green at that commit. Phases 7.1-7.4 and their follow-ups are pushed through `cb3bead` (local run on Windows before each push: lint, `test:ci`, `test:e2e` all pass); CI hasn't been checked on them yet. Phase 7.5 is committed locally and **not pushed**. Between 7.2 and 7.3, four unrelated commits landed on the branch from a parallel session (`466f7f4` PrTableApp row-handler memory leak / `useStableCallback`, and three `stability:heap-check` commits) - no file overlap with this plan's work.
+Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **windows**, e2e) green at that commit. Phases 7.1-7.4 and their follow-ups are pushed through `cb3bead` (local run on Windows before each push: lint, `test:ci`, `test:e2e` all pass); CI hasn't been checked on them yet. Phase 7.5 and its follow-up are pushed too (local run before pushing: lint, `test:ci`, `test:e2e` all pass). Between 7.2 and 7.3, four unrelated commits landed on the branch from a parallel session (`466f7f4` PrTableApp row-handler memory leak / `useStableCallback`, and three `stability:heap-check` commits) - no file overlap with this plan's work.
 
 ### Done
 | Phase | Commits | Notes |
@@ -77,6 +77,7 @@ Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **w
 | 7.4 | the commit after `7156b89` | New headless `AutoRenderBlockingSync` (inside `AppRoot`'s `AuthorInsightsDraftsProvider`; `NotesDirtyProvider` now wraps `AppRoot`) computes the auto-render-blocking state from Context and pushes it via ARB's new `setBlockingState` action; the chips read it from ARB's display Context. New `AuthorInsightsDraftsVersionContext` (only the sync reads it). The `#pr-sections` listeners and actor-alias cache are gone; `index.page.js` rewritten to its live code, 1191 -> 130 lines, no `__testables`. 4 bridges deleted (`recomputeDirtyPrSectionsFields`, `pushAutoRenderBlockingState`, `updateReactAutoRenderBlockedLinks`, `getAuthorManualCommentsForLogin`); `getDirtyNotesPrNumbers`/`getAuthorInsightsDraftsSnapshot`/`getReactPrTablePayload` now test-only. |
 | 7.4 follow-up | the commit after 7.4 | Review fixes: `AutoRenderBlockedLinksLive` (chip list `hidden`/`aria-label`) exported from `AutoRenderBlockedLinks.jsx` with 4 tests (7.4 had deleted the only tests of that logic); two stale comments. |
 | 7.5 | the commit after `cb3bead` | **`index.page.js` deleted.** Credential-field hints are JSX props (`NON_CREDENTIAL_INPUT_PROPS`) on the six inputs; dropdown closing is `useMultiSelectDropdownClosing` in `AppRoot`; the error filters are installed by `react-app.jsx` before mounting. `viewprs:react-ready` gone. `applyCredentialHints` and `pr-filter-panel.helpers.js` deleted. |
+| 7.5 follow-up | the commit after 7.5 | Review fixes: README's architecture section pointed at the deleted `index.page.js`; two components' identical copies of the credential-hint attributes now use the shared constant; a stale shell-script comment. |
 
 Deviations from the plan text (each because investigation showed the wording didn't fit) are in `REACT_MIGRATION_PLAN.md`'s entries for each phase.
 

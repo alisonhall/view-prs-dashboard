@@ -60,7 +60,7 @@ Compatibility note: migration shims were removed in Phase 3. Use canonical `src/
 
 High-level layering intent:
 
-- UI composition/wiring: `src/ui/index.page.js`
+- UI composition/wiring: `src/ui/react-app.jsx` (`mountAppRoot()` and the Providers it mounts)
 - UI components: `src/ui/components/`
 - UI pure helpers: `src/ui/helpers/`
 - Server routes/orchestration: `src/server/app.js` and `src/server/routes/`
@@ -71,7 +71,7 @@ High-level layering intent:
 
 Target module layout by layer:
 
-- UI composition/orchestration: `src/ui/index.page.js`
+- UI composition/orchestration: `src/ui/react-app.jsx` (Providers in `src/ui/components/` and `src/ui/state/`)
 - UI components (render/event wiring): `src/ui/components/`
 - UI pure helpers (formatters/transformers): `src/ui/helpers/`
 - UI test fixtures/factories: `src/ui/test-fixtures/`
@@ -90,7 +90,7 @@ These boundaries are enforced by ESLint restricted import rules in `eslint.confi
 
 Contribution guidance:
 
-- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/index.page.js`.
+- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/react-app.jsx`.
 - New server behavior should keep routes thin and place reusable logic in helper/service modules.
 - New unit tests should be co-located with source files (`src/ui/components/*.test.js`, `src/ui/helpers/*.test.js`).
 - Integration/wiring tests should remain in `src/ui/integration-tests/` and server integration test folders.
@@ -136,7 +136,7 @@ UI test placement conventions:
 - Shared fixture/factory modules should live under `src/ui/test-fixtures/` and expose reusable builders.
 - Integration/wiring tests should remain centralized under `src/ui/integration-tests/`:
   - `index.html.test.js`
-  - `index.page.memory-leak-prevention.test.js`
+  - `index.page.memory-leak-prevention.test.jsx` (the three `index.page.*` names predate `index.page.js`'s deletion; they now test React/helper code)
   - `index.page.notifications.test.js`
   - `index.page.trends.test.js`
 - `npm run test:ui` discovers all UI tests via `src/ui/**/*.test.js`.

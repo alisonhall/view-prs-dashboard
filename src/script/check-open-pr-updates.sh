@@ -2200,7 +2200,7 @@ compute_pr_state_json() {
   # without submitting a formal review) previously had no activity here at
   # all, leaving effective_last empty below even though the "N open
   # conversations with me" summary (getOpenConversationCountWithMe in
-  # index.page.js) already proves the viewer's own thread comments exist.
+  # src/ui/helpers/pr-open-conversation-count.helpers.js) already proves the viewer's own thread comments exist.
   my_last=$(jq -nr --arg me "$VIEWER_LOGIN" --argjson detail "$detail_json" --argjson threads "${threads_json:-[]}" '
     [
       ($detail.comments[]? | select(.author.login == $me) | .createdAt),

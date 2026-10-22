@@ -2880,6 +2880,16 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md), Ph
 - **Break checks:** props removed from `ContextRunScriptTextInput` (2 fail), dropdowns never closing (3 fail), filters not installed at startup (1 fail). **An incident during these:** the break-check script backed files up with `cp`, which is aliased here to prompt before overwriting (lesson 4). The second and third backups were refused, so "restoring" wrote `ContextRunScriptTextInput.jsx`'s content over `useMultiSelectDropdownClosing.jsx` and `react-app.jsx`. Both were rebuilt (the hook from the version written earlier in the session, `react-app.jsx` from HEAD plus this phase's four edits, verified against `git diff`), and the filter break check, which had run against the broken file, was redone with a per-file `cat` backup.
 - `lint:check` clean; `test:ci` 2620 passed + 1 skipped; `test:e2e` 59/59; `vite build` succeeds. Windows local run, machine idle.
 
+## ✅ **Window-bridge elimination, Phase 7.5 follow-up: README, duplicate attribute sets, stale script comment (2026-10-22)**
+
+Found reviewing Phase 7.5.
+
+- **README.md** still named `src/ui/index.page.js` as the UI composition layer (Architecture Snapshot and Guardrails) and told contributors not to keep growing it. Both now point at `src/ui/react-app.jsx` (`mountAppRoot()` and its Providers). The UI test list gave the memory-leak test a `.js` extension (it's `.jsx`) and now notes that the three `index.page.*` test names predate the file's deletion. The files keep their names.
+- **Duplicate attribute sets:** `NotesMultiEntryField.jsx` (`NON_CREDENTIAL_ATTRS`) and `ReviewStatsControls.jsx` (`NON_CREDENTIAL_DATE_ATTRS`) each had their own copy of the eight credential-hint attributes 7.5 made shared. Both now use `NON_CREDENTIAL_INPUT_PROPS` (only ever spread, so the frozen object is safe).
+- **Stale comment:** `check-open-pr-updates.sh` and its test said `getOpenConversationCountWithMe` lives in `index.page.js`; it's in `pr-open-conversation-count.helpers.js` (already out of date before 7.5, but the named file no longer exists).
+- Not changed: the `act()` warnings in `react-app.test.jsx` are older than 7.5 (a clean `cb3bead` produces the same 7).
+- `lint:check` clean; `test:ci` 2620 passed + 1 skipped (unchanged); `test:e2e` 59/59; `vite build` succeeds. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**
