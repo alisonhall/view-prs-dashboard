@@ -426,21 +426,21 @@ export function PrJsonModal({ target, payload, onClose }) {
         <div id="pr-json-modal-content" className="pr-json-modal-content">
           <details className="pr-json-section" open>
             <summary>Data File Entry</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="Data File Entry">
               {loading ? 'Loading data file entry...' : safeJsonStringify(detailsPayload?.dataFile)}
             </pre>
           </details>
 
           <details className="pr-json-section" open>
             <summary>PR Detail File</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="PR Detail File">
               {loading ? 'Loading pr-detail file entry...' : safeJsonStringify(detailsPayload?.prDetailFile)}
             </pre>
           </details>
 
           <details className="pr-json-section" open>
             <summary>User State Entry</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="User State Entry">
               {loading ? 'Loading user-state entry...' : safeJsonStringify(detailsPayload?.userStateFile)}
             </pre>
           </details>

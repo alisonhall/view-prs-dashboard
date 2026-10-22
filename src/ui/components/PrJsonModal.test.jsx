@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen, waitFor, fireEvent } = require('@testing-library/react');
+const { render, screen, waitFor, fireEvent, within } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrJsonModal } = require('./PrJsonModal');
 const { ActivityDrawer } = require('./ActivityDrawer');
@@ -101,6 +101,23 @@ describe('PrJsonModal', () => {
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('PR #42 (owner/repo)')).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+  });
+
+  // Accessibility naming: each JSON block is a region named by its summary.
+  test('given a target, when rendering, then the three JSON blocks are regions named by their summaries', async () => {
+    mockFetchOk();
+    render(
+      <PrJsonModal
+        target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+        payload={{ byPrNumber: {} }}
+        onClose={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    for (const name of ['Data File Entry', 'PR Detail File', 'User State Entry']) {
+      expect(within(dialog).getByRole('region', { name })).toBeInTheDocument();
+    }
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
   });
 

@@ -25,6 +25,37 @@ const waitForPrTable = (page) =>
     .getByRole("row", { includeHidden: true })
     .first()
     .waitFor({ state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+// A PR section (a <details> named by its title, e.g. "Open PRs").
+const prSection = (page, title) =>
+  prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
+// PR N's insights toggle in either state ("More insights for PR #N" /
+// "Hide insights for PR #N"), so a locator still matches after a click.
+const insightsToggleFor = (scope, prNumber) =>
+  scope.getByRole("button", { name: new RegExp(`^(More|Hide) insights for PR #${prNumber}$`) });
+const prNumberFromLabel = (label) => String(label || "").match(/#(\d+)$/)[1];
+// The first visible "More insights" toggle, pinned to its PR.
+const firstInsightsToggle = async (page) => {
+  const label = await prTables(page)
+    .getByRole("button", { name: /^More insights for PR #\d+$/ })
+    .first()
+    .getAttribute("aria-label");
+  return insightsToggleFor(prTables(page), prNumberFromLabel(label)).first();
+};
+// The insights row under PR N's expanded toggle, in the same table. Found by
+// name ("Insights for PR #N"), hidden included: its own `hidden` is what
+// the tests check, and its section may be collapsed.
+const insightsRowUnderExpandedToggle = async (page) => {
+  const expanded = prTables(page)
+    .getByRole("button", { name: /^Hide insights for PR #\d+$/, includeHidden: true })
+    .first();
+  await expect(expanded).toBeAttached();
+  const prNumber = prNumberFromLabel(await expanded.getAttribute("aria-label"));
+  const table = prTables(page)
+    .getByRole("table", { includeHidden: true })
+    .filter({ has: page.getByRole("button", { name: `Hide insights for PR #${prNumber}`, exact: true, includeHidden: true }) })
+    .first();
+  return table.getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true, includeHidden: true });
+};
 
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): makes a
 // real "new data" poll, so the auto-render-blocking tests no longer fake a
@@ -213,7 +244,7 @@ test("checkbox toggle and More insights expand work", async ({ page }) => {
   await checkbox.click();
   await expect(checkbox).toHaveJSProperty("checked", !before);
 
-  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
@@ -226,9 +257,9 @@ test("lifecycle section expand/collapse and tab switching work", async ({ page }
   await page.goto("/");
   await waitForPrTable(page);
 
-  const openSection = page.locator('[data-pr-section="open"]');
+  const openSection = prSection(page, "Open PRs");
   await expect(openSection).toHaveJSProperty("open", false);
-  await openSection.locator("summary").click();
+  await openSection.getByText("Open PRs", { exact: true }).click();
   await expect(openSection).toHaveJSProperty("open", true);
 
   await page.getByRole("tab", { name: "Review statistics" }).click();
@@ -321,7 +352,7 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   // can shift as other tests in this suite toggle its flagged/in-review
   // state against the same shared dev server) without that being a
   // regression in this feature.
-  const pr1Indicator = page.locator('[data-pr-number="1"] .pr-progress-indicator').first();
+  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
   await expect(pr1Indicator).toHaveJSProperty("hidden", true);
 
   await page.evaluate(() => {
@@ -353,12 +384,12 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await waitForPrTable(page);
   const indicator = page.locator("#auto-render-blocked-indicator");
 
-  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
-  const notesSection = page.locator(".pr-notes-section").first();
-  const prNumber = await notesSection.getAttribute("data-pr-number");
+  const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
+  const prNumber = prNumberFromLabel(await notesSection.getAttribute("aria-label"));
   const notesTextarea = notesSection.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
@@ -397,18 +428,18 @@ test("typing character-by-character into the Rally stories/links inputs keeps ev
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
-  const rallyStoryInput = page.locator(".pr-notes-rally-story-input:visible").first();
+  const rallyStoryInput = prTables(page).getByRole("group", { name: "Rally stories", exact: true }).getByRole("textbox").first();
   await expect(rallyStoryInput).toBeVisible();
   await rallyStoryInput.click();
   await rallyStoryInput.pressSequentially("US12345");
   await expect(rallyStoryInput).toHaveValue("US12345");
   await rallyStoryInput.fill("");
 
-  const rallyLinkInput = page.locator(".pr-notes-rally-link-input:visible").first();
+  const rallyLinkInput = prTables(page).getByRole("group", { name: "Rally links", exact: true }).getByRole("textbox").first();
   await rallyLinkInput.click();
   await rallyLinkInput.pressSequentially("https://rally.example/US12345");
   await expect(rallyLinkInput).toHaveValue("https://rally.example/US12345");
@@ -426,13 +457,13 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = page.locator(".row-insights-toggle:visible").first();
+  const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
-  const notesSection = page.locator(".pr-notes-section:visible").first();
+  const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
 
-  const difficultySelect = notesSection.locator("select.pr-notes-input");
+  const difficultySelect = notesSection.getByRole("combobox", { name: "PR difficulty", exact: true });
   await expect(difficultySelect).toBeVisible();
   const originalDifficulty = await difficultySelect.inputValue();
   const targetDifficulty = originalDifficulty === "4" ? "2" : "4";
@@ -442,15 +473,15 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await expect(difficultySelect).toHaveValue(originalDifficulty);
 
   await notesSection.getByRole("button", { name: "+ Add comment" }).click();
-  const toneSelect = notesSection.locator("select.pr-notes-comment-tone").first();
+  const toneSelect = notesSection.getByRole("combobox", { name: "Comment 1 tone", exact: true });
   await expect(toneSelect).toHaveValue("Neutral");
   await toneSelect.selectOption("Negative");
   await expect(toneSelect).toHaveValue("Negative");
 
-  const authorSelect = notesSection.locator("select.pr-notes-comment-author").first();
-  const authorOptionCount = await authorSelect.locator("option").count();
+  const authorSelect = notesSection.getByRole("combobox", { name: "Comment 1 author", exact: true });
+  const authorOptionCount = await authorSelect.getByRole("option", { includeHidden: true }).count();
   if (authorOptionCount > 1) {
-    const secondOptionValue = await authorSelect.locator("option").nth(1).getAttribute("value");
+    const secondOptionValue = await authorSelect.getByRole("option", { includeHidden: true }).nth(1).getAttribute("value");
     await authorSelect.selectOption(secondOptionValue);
     await expect(authorSelect).toHaveValue(secondOptionValue);
   }
@@ -478,19 +509,19 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // lifecycle section specifically, which is stable, and open that
   // section first (same pattern as the "lifecycle section expand/collapse"
   // test elsewhere in this file - sections default to collapsed).
-  const openSection = page.locator('[data-pr-section="open"]');
+  const openSection = prSection(page, "Open PRs");
   if (!(await openSection.evaluate((el) => el.open))) {
-    await openSection.locator("summary").click();
+    await openSection.getByText("Open PRs", { exact: true }).click();
   }
-  const insightsToggle = page.locator('[data-pr-section="open"] [data-pr-number="1"] .row-insights-toggle');
+  const insightsToggle = insightsToggleFor(prSection(page, "Open PRs"), 1);
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
   // Scoped to the "open" section specifically (not just [data-pr-number="1"])
   // for the same non-exclusive-smart-group reason as insightsToggle above -
   // PR #1's row (and its own Notes section) can render twice.
-  const notesTextarea = page
-    .locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"]')
+  const notesTextarea = prSection(page, "Open PRs")
+    .getByRole("group", { name: "Notes for PR #1", exact: true })
     .getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
@@ -517,7 +548,9 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
-  const saveButton = page.locator('[data-pr-section="open"] .pr-notes-section[data-pr-number="1"] .pr-notes-save');
+  const saveButton = prSection(page, "Open PRs")
+    .getByRole("group", { name: "Notes for PR #1", exact: true })
+    .getByRole("button", { name: "Save notes", exact: true });
   await expect(saveButton).toBeFocused();
 
   // Undo the edit: with the field clean (and not focused - the save button
@@ -543,8 +576,8 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   await page.goto("/");
   await waitForPrTable(page);
 
-  const pr1Indicator = page.locator('[data-pr-number="1"] .pr-progress-indicator').first();
-  const pr2Indicator = page.locator('[data-pr-number="2"] .pr-progress-indicator').first();
+  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
+  const pr2Indicator = prTables(page).getByTitle("PR #2 update in progress", { exact: true }).first();
   await expect(pr1Indicator).toHaveJSProperty("hidden", true);
   await expect(pr2Indicator).toHaveJSProperty("hidden", true);
 
@@ -605,11 +638,7 @@ test("'View in table' from Author Insights actually expands the insights row con
   await tableLink.waitFor();
   await tableLink.click();
 
-  const expandedToggle = page.locator('.row-insights-toggle[aria-expanded="true"]').first();
-  await expect(expandedToggle).toBeAttached();
-  const insightsRow = expandedToggle.locator(
-    "xpath=ancestor::tr[1]/following-sibling::tr[contains(@class,'insights-row')][1]",
-  );
+  const insightsRow = await insightsRowUnderExpandedToggle(page);
   await expect(insightsRow).toHaveJSProperty("hidden", false);
 });
 
@@ -1241,13 +1270,15 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
   // every matching ancestor <details> open directly rather than hunting
   // for the right summary to click, same reasoning the other "PR #1 might
   // be collapsed" tests in this file document.
-  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
-    rows.forEach((row) => {
-      row.closest("details").open = true;
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
     });
-  });
 
-  const selectCheckbox = page.locator('.row-select-checkbox[data-pr-number="1"]').first();
+  const selectCheckbox = prTables(page).getByRole("checkbox", { name: "Select PR #1", exact: true }).first();
   await expect(selectCheckbox).not.toBeChecked();
 
   await selectCheckbox.check();
@@ -1268,12 +1299,14 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
-    rows.forEach((row) => {
-      row.closest("details").open = true;
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
     });
-  });
-  const selectCheckbox = page.locator('.row-select-checkbox[data-pr-number="1"]').first();
+  const selectCheckbox = prTables(page).getByRole("checkbox", { name: "Select PR #1", exact: true }).first();
   await expect(selectCheckbox).not.toBeChecked();
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
@@ -1306,15 +1339,17 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
-    rows.forEach((row) => {
-      row.closest("details").open = true;
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
     });
-  });
 
-  await page.locator('.view-json[aria-label="View PR JSON details for #1"]').first().click();
+  await prTables(page).getByRole("button", { name: "View PR JSON details for #1", exact: true }).first().click();
 
-  const dataFileJson = page.locator("pre.pr-json-block").first();
+  const dataFileJson = page.getByRole("dialog").getByRole("region", { name: "Data File Entry", exact: true });
   await expect(dataFileJson).toBeVisible();
   await expect(dataFileJson).not.toHaveText("Loading data file entry...");
   const jsonText = await dataFileJson.textContent();
@@ -1322,7 +1357,7 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
   expect(parsed.file).toBe("check-open-pr-updates.data.json");
   expect(parsed.entry).not.toBeNull();
 
-  const userStateJson = page.locator("pre.pr-json-block").nth(2);
+  const userStateJson = page.getByRole("dialog").getByRole("region", { name: "User State Entry", exact: true });
   const userStateParsed = JSON.parse(await userStateJson.textContent());
   expect(userStateParsed.file).toBe("check-open-pr-updates.user-state.json");
   expect(Object.keys(userStateParsed.entry).sort()).toEqual(
@@ -1367,11 +1402,13 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
   // (PrActionsCell.jsx's own existing-label filter), leaving just "bug" +
   // the placeholder, proving both the shared-Context wiring and the
   // per-row exclusion logic together.
-  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
-    rows.forEach((row) => {
-      row.closest("details").open = true;
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
     });
-  });
   const rowSelect = page.locator('select[aria-label="Add label to PR #1"]').first();
   await expect(rowSelect.locator("option")).toHaveCount(2);
   await expect(rowSelect.locator('option[value="bug"]')).toHaveCount(1);
@@ -1390,11 +1427,13 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.locator('tr[data-pr-number="1"]').evaluateAll((rows) => {
-    rows.forEach((row) => {
-      row.closest("details").open = true;
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
     });
-  });
 
   const checkbox = page.locator('input[aria-label="In Review for PR #1"]').first();
   const before = await checkbox.isChecked();
@@ -1899,11 +1938,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // earlier tests in this shared-webServer suite did to its flagged/
   // in-review state, without that being a regression in this feature.
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  const expandedToggle = page.locator(".row-insights-toggle[aria-expanded='true']").first();
-  await expect(expandedToggle).toBeAttached();
-  const insightsRow = expandedToggle.locator(
-    "xpath=ancestor::tr[1]/following-sibling::tr[contains(@class,'insights-row')][1]",
-  );
+  const insightsRow = await insightsRowUnderExpandedToggle(page);
   await expect(insightsRow).toHaveJSProperty("hidden", false);
 });
 
