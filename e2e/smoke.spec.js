@@ -13,12 +13,32 @@ const os = require("os");
 // budget; keep local runs fast-failing at the original value.
 const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 
-// Role-based locators (see "Test selectors" at the top of this file's
-// helpers): they find elements by role and accessible name, so they keep
-// working when markup and class names change. The PR tables live in the
-// "Pull requests" region (#pr-sections). Their sections start collapsed,
-// so rows are often hidden - hence includeHidden for "has the table
-// rendered yet?", matching the old waitForSelector(..., { state: "attached" }).
+// Test selectors - how this file finds elements, so the tests keep passing
+// through UI redesigns that change markup and class names (they check
+// behaviour, not structure):
+//   1. By role and accessible name: getByRole("button", { name: "Save notes" }).
+//      For form fields, getByLabel(...) - but for a <select> wrapped in its
+//      <label>, getByRole("combobox", { name }): getByLabel matches the
+//      label's raw text, which includes every option. Pass exact: true -
+//      names otherwise match case-insensitive substrings ("Allow..." is
+//      inside "Do not allow...").
+//   2. By visible text or placeholder, when an element has no useful role.
+//   3. data-testid only when nothing semantic fits - e.g. a button whose
+//      visible name changes while it works ("Quick check" -> "Checking...").
+//   Never by CSS class, element id, DOM structure or xpath, except inside a
+//   named helper below (one place to change if that markup changes).
+// When a UI change needs a new hook, add an accessible name to the component
+// (it helps assistive tech too) rather than a class or id.
+// Hidden elements: getByRole skips them unless includeHidden: true; getByLabel,
+// getByText and getByTitle find them anyway. Use includeHidden where the
+// element can be collapsed or in an inactive tab when the test looks for it.
+// Note accessible names are computed for hidden elements here, but not by
+// Testing Library in jest.
+
+// The PR tables live in the "Pull requests" region (#pr-sections). Their
+// sections start collapsed, so rows are often hidden - hence includeHidden
+// for "has the table rendered yet?", matching the old
+// waitForSelector(..., { state: "attached" }).
 const prTables = (page) => page.getByRole("region", { name: "Pull requests", exact: true });
 const waitForPrTable = (page) =>
   prTables(page)
@@ -638,7 +658,7 @@ test("'View in table' from Author Insights actually expands the insights row con
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Author Insights" }).click();
-  const tableLink = page.locator(".author-insights-table-link").first();
+  const tableLink = page.getByRole("button", { name: "View in table", exact: true }).first();
   await tableLink.waitFor();
   await tableLink.click();
 
@@ -1439,7 +1459,7 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
       });
     });
 
-  const checkbox = page.locator('input[aria-label="In Review for PR #1"]').first();
+  const checkbox = prTables(page).getByRole("checkbox", { name: "In Review for PR #1", exact: true }).first();
   const before = await checkbox.isChecked();
 
   await page.route("**/view-prs/ack", (route) =>
@@ -1925,13 +1945,15 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await startDateInput.blur();
 
   const contentRoot = page.getByRole("region", { name: "Review statistics", exact: true, includeHidden: true });
-  await expect(contentRoot.locator(".stat-card")).toHaveCount(4);
+  for (const cardName of ["Filtered rows", "Comments on others' PRs", "Approvals", "Comment usefulness"]) {
+    await expect(contentRoot.getByRole("group", { name: cardName, exact: true })).toBeVisible();
+  }
 
-  const filteredRowsCard = page.getByText("Filtered rows").locator("xpath=ancestor::div[contains(@class,'stat-card')]");
-  await expect(filteredRowsCard.locator(".stat-card-value")).toHaveText("3");
+  const filteredRowsCard = contentRoot.getByRole("group", { name: "Filtered rows", exact: true });
+  await expect(filteredRowsCard.getByText("3", { exact: true })).toBeVisible();
 
-  await filteredRowsCard.locator("summary").click();
-  const viewInTableButton = filteredRowsCard.locator(".author-insights-table-link").first();
+  await filteredRowsCard.getByText(/^Show sources \(/).click();
+  const viewInTableButton = filteredRowsCard.getByRole("button", { name: "View in table", exact: true }).first();
   await expect(viewInTableButton).toBeVisible();
   await viewInTableButton.click();
 
@@ -1981,7 +2003,7 @@ test("React-owned Author Insights selector renders options, changes the selected
 
   await select.selectOption({ index: 1 });
   const selectedValue = await select.inputValue();
-  await expect(page.locator(".author-insights-selected")).toBeVisible();
+  await expect(page.getByText(/^Showing insights for /)).toBeVisible();
 
   // Force an unrelated author-insights re-render: switch to Run & Filter,
   // apply an unrelated local filter (which re-renders the whole PR data
@@ -2024,7 +2046,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const createdRoot = page.getByRole("region", { name: "Author's created PRs", exact: true, includeHidden: true });
-  await expect(createdRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(createdRoot.getByRole("heading", { name: "PRs created by this author", exact: true })).toBeVisible();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
   const optionCount = await select.getByRole("option", { includeHidden: true }).count();
@@ -2064,7 +2086,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  await expect(createdRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(createdRoot.getByRole("heading", { name: "PRs created by this author", exact: true })).toBeVisible();
   await expect(createdRoot).toHaveText(pr1AuthorText);
 
   // Reset so this test's filter doesn't affect whatever unrelated test
@@ -2090,7 +2112,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const headerRoot = page.getByRole("region", { name: "Selected author", exact: true, includeHidden: true });
-  const header = headerRoot.locator(".author-insights-selected");
+  const header = headerRoot.getByText(/^Showing insights for /);
   await expect(header).toBeVisible();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
@@ -2145,7 +2167,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
   const notesRoot = page.getByRole("region", { name: "Author's PR notes", exact: true, includeHidden: true });
-  await expect(notesRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(notesRoot.getByRole("heading", { name: "PR-linked custom comments and sentiment", exact: true })).toBeVisible();
   await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
 
   // Force an unrelated author-insights re-render: switch to Run & Filter,
@@ -2156,7 +2178,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  await expect(notesRoot.locator(".author-insights-section")).toBeVisible();
+  await expect(notesRoot.getByRole("heading", { name: "PR-linked custom comments and sentiment", exact: true })).toBeVisible();
   await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
 
   // Reset so this test's filter doesn't affect whatever unrelated test
@@ -2186,8 +2208,8 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await select.selectOption({ label: "The Octocat" });
 
   const commentsRoot = page.getByRole("region", { name: "Author comments", exact: true, includeHidden: true });
-  const textarea = commentsRoot.locator(".author-insights-comment-textarea");
-  const saveButton = commentsRoot.locator(".author-insights-comment-save");
+  const textarea = commentsRoot.getByPlaceholder("Add a manual comment about this author...");
+  const saveButton = commentsRoot.getByRole("button", { name: "Save comment", exact: true });
 
   const noteText = `e2e manual comment ${Date.now()}`;
   await textarea.fill(noteText);
@@ -2198,17 +2220,17 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // span), so "Saved." is too ephemeral to reliably observe here - the
   // saved comment actually showing up in the rebuilt list is the real proof
   // the save round-trip worked.
-  const item = commentsRoot.locator(".author-insights-item").filter({ hasText: noteText });
+  const item = commentsRoot.getByRole("listitem").filter({ hasText: noteText });
   await expect(item).toBeVisible();
 
   // Edit the just-saved comment.
-  await item.locator(".author-insights-comment-edit").click();
+  await item.getByRole("button", { name: "Edit", exact: true }).click();
   const editedText = `${noteText} (edited)`;
-  const editTextarea = item.locator(".author-insights-comment-textarea");
+  const editTextarea = item.getByRole("textbox");
   await editTextarea.fill(editedText);
-  await item.locator(".author-insights-comment-save").click();
+  await item.getByRole("button", { name: "Save changes", exact: true }).click();
 
-  const editedItem = commentsRoot.locator(".author-insights-item").filter({ hasText: editedText });
+  const editedItem = commentsRoot.getByRole("listitem").filter({ hasText: editedText });
   await expect(editedItem).toBeVisible();
 
   // Force an unrelated author-insights re-render: switch to Run & Filter,
@@ -2220,8 +2242,8 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  await expect(commentsRoot.locator(".author-insights-section")).toBeVisible();
-  await expect(commentsRoot.locator(".author-insights-item").filter({ hasText: editedText })).toBeVisible();
+  await expect(commentsRoot.getByRole("heading", { name: "Manual author comments", exact: true })).toBeVisible();
+  await expect(commentsRoot.getByRole("listitem").filter({ hasText: editedText })).toBeVisible();
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
@@ -2246,7 +2268,7 @@ test("typing in the Author Insights manual comment composer isn't blocked by a s
   await page.getByRole("tab", { name: "Author Insights" }).click();
   await expect(page.getByRole("tabpanel", { name: "Author Insights", exact: true, includeHidden: true })).toBeVisible();
 
-  const composer = page.locator('.author-insights-comment-textarea[data-draft-kind="composer"]');
+  const composer = page.getByPlaceholder("Add a manual comment about this author...");
   await expect(composer).toBeVisible();
   await composer.click();
 
@@ -2307,7 +2329,7 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await page.getByRole("tab", { name: "Backfill" }).click();
 
   const badgeHost = page.getByRole("group", { name: "Backfill status badges", exact: true, includeHidden: true });
-  const badges = badgeHost.locator(".scheduler-badge");
+  const badges = badgeHost.getByText(/^Backfill: /);
   await expect(badges.first()).toBeVisible();
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 
@@ -2613,7 +2635,7 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
   await waitForPrTable(page);
 
   await page.getByRole("button", { name: /Activity/ }).click();
-  const activityPanel = page.locator(".activity-drawer-panel-content");
+  const activityPanel = page.getByRole("region", { name: "Activity panel", exact: true });
   await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
   await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
   await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
@@ -2621,14 +2643,14 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
   // No "connecting/reconnecting/offline/unsupported" banner should still be
   // showing a few seconds after open - the real EventSource must have
   // actually reached `open`, not be stuck retrying or unsupported.
-  await expect(page.locator(".activity-drawer-connection-banner")).toHaveCount(0, { timeout: 10000 });
+  await expect(activityPanel.getByRole("status", { name: "Connection status", exact: true })).toHaveCount(0, { timeout: 10000 });
 
   // Matched by each row's own label specifically (not the row's full text
   // content) - the Quick check row's "Waiting on auto refresh..." copy
   // would otherwise ambiguously match a loose "Auto refresh" text filter.
   for (const jobLabel of ["Auto refresh", "Quick check", "Merged/closed drain"]) {
     await expect(
-      page.locator(".activity-drawer-job-row").filter({ has: page.locator(".activity-drawer-job-label", { hasText: jobLabel }) }),
+      activityPanel.getByRole("group", { name: jobLabel, exact: true }),
     ).toBeVisible();
   }
 
@@ -2659,14 +2681,14 @@ test("clicking Quick check pushes a real 'running' state into the drawer over SS
 
   await page.getByRole("button", { name: /Activity/ }).click();
   const quickCheckRow = page
-    .locator(".activity-drawer-job-row")
-    .filter({ has: page.locator(".activity-drawer-job-label", { hasText: "Quick check" }) });
-  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Idle");
+    .getByRole("region", { name: "Activity panel", exact: true })
+    .getByRole("group", { name: "Quick check", exact: true });
+  await expect(quickCheckRow.getByRole("status")).toHaveText("Idle");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByTestId("quick-check-button").click();
 
-  await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Running", {
+  await expect(quickCheckRow.getByRole("status")).toHaveText("Running", {
     timeout: 10000,
   });
 });

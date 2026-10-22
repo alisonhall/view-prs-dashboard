@@ -133,6 +133,15 @@ describe('ReviewStatsContent', () => {
     expect(screen.getByText(/Total reviewer activity: 5 events/)).toBeInTheDocument();
   });
 
+  // Accessibility naming: each stat card is a group named by its label.
+  test('given reviewer stats, when rendering, then each of the four cards is a group named by its label', () => {
+    renderContent(buildStats());
+
+    for (const name of ['Filtered rows', "Comments on others' PRs", 'Approvals', 'Comment usefulness']) {
+      expect(screen.getByRole('group', { name })).toBeInTheDocument();
+    }
+  });
+
   test('given a date range, when rendering, then the summary note includes it', () => {
     renderContent(buildStats(), {
       reviewStatsOverrides: {

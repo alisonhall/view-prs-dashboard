@@ -40,6 +40,32 @@ describe('ActivityDrawerSchedulerSection', () => {
     expect(screen.queryByText(/Waiting on auto refresh/)).not.toBeInTheDocument();
   });
 
+  // Accessibility naming: each job row is a group named by its job, with its
+  // Running/Idle state as a status; connection banners are statuses named
+  // "Connection status" (distinct from the job statuses).
+  test('given the jobs, when rendering, then each row is a group named by its job with an Idle status, and no connection status shows while open', () => {
+    const { within } = require('@testing-library/react');
+    renderWithValue({
+      connection: 'open',
+      isStale: false,
+      jobs: { autoRefresh: baseJob(), quickCheck: { ...baseJob(), waitingOn: null }, mergedQueueDrain: baseJob() },
+    });
+
+    for (const name of ['Auto refresh', 'Quick check', 'Merged/closed drain']) {
+      expect(within(screen.getByRole('group', { name })).getByRole('status')).toHaveTextContent('Idle');
+    }
+    expect(screen.queryByRole('status', { name: 'Connection status' })).not.toBeInTheDocument();
+  });
+
+  test('given a lost connection, when rendering, then a status named "Connection status" shows', () => {
+    renderWithValue({
+      connection: 'offline',
+      isStale: false,
+      jobs: { autoRefresh: baseJob(), quickCheck: { ...baseJob(), waitingOn: null }, mergedQueueDrain: baseJob() },
+    });
+    expect(screen.getByRole('status', { name: 'Connection status' })).toHaveTextContent(/disconnected/i);
+  });
+
   test('shows "Waiting on auto refresh" copy (not a queue position) when quickCheck is deferred', () => {
     renderWithValue({
       connection: 'open',

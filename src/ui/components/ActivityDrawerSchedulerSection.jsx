@@ -22,11 +22,12 @@ function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
   const hasPendingWork = pendingOpenCount > 0 || pendingMergedClosedCount > 0;
 
   return (
-    <div className="activity-drawer-job-row">
+    <div className="activity-drawer-job-row" role="group" aria-label={label}>
       <div className="activity-drawer-job-row-header">
         <span className="activity-drawer-job-label">{label}</span>
         <span
           className={`activity-drawer-job-status ${isRunning ? 'is-running' : 'is-idle'}`}
+          role="status"
         >
           {isRunning ? 'Running' : 'Idle'}
         </span>
@@ -90,10 +91,12 @@ export function ActivityDrawerSchedulerSection() {
       </p>
 
       {connectionMessage && (
-        <div className="activity-drawer-connection-banner">{connectionMessage}</div>
+        <div className="activity-drawer-connection-banner" role="status" aria-label="Connection status">
+          {connectionMessage}
+        </div>
       )}
       {connection === 'open' && isStale && (
-        <div className="activity-drawer-connection-banner">
+        <div className="activity-drawer-connection-banner" role="status" aria-label="Connection status">
           Live updates may be stale — no update received recently.
         </div>
       )}

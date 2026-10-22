@@ -78,6 +78,26 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  // Accessibility naming: saved comments form a list (so a test can find the
+  // item holding given text and use its own Edit button); the empty message
+  // is a plain paragraph, so the container is not a list then.
+  test('given saved comments, when rendering, then they are list items; with none, there is no list', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+    });
+    const { unmount } = renderSection('octocat');
+    await waitFor(() => expect(screen.getByRole('list')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('listitem')).toHaveTextContent('Nice work');
+    unmount();
+
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, comments: [] }) });
+    renderSection('octocat');
+    await waitFor(() => expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument());
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
   test('given a selected author with no saved comments, when rendering, then the empty message shows', async () => {
     renderSection('octocat');
     await waitFor(() => expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument());

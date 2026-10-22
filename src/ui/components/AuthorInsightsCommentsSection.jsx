@@ -137,7 +137,7 @@ function ManualCommentItem({ login, comment, editingCommentId, setEditingComment
   const isEditing = editingCommentId === commentId;
 
   return (
-    <div className="author-insights-item">
+    <div className="author-insights-item" role="listitem">
       <div className="author-insights-meta">
         <span className={`author-insights-badge ${getAuthorInsightsSentimentBadgeClassName(comment?.sentiment)}`.trim()}>
           {`Sentiment: ${getAuthorInsightsSentimentLabel(comment?.sentiment)}`}
@@ -277,7 +277,12 @@ export function AuthorInsightsCommentsSection() {
           <span className="author-insights-comment-status">{composerStatus}</span>
         </div>
       </div>
-      <div className="author-insights-list">
+      {/* A list only while it holds comments - the loading/error/empty
+          messages below are plain paragraphs, not list items. */}
+      <div
+        className="author-insights-list"
+        role={!loadState.loading && !loadState.error && comments.length > 0 ? 'list' : undefined}
+      >
         {loadState.loading ? (
           <p className="stats-empty">Loading author comments...</p>
         ) : loadState.error ? (

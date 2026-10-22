@@ -49,6 +49,13 @@ describe('ActivityDrawer', () => {
     expect(screen.getByRole('button', { name: 'Activity (1)' })).toBeInTheDocument();
   });
 
+  // Accessibility naming: the open panel is a region named "Activity panel".
+  test('given the toggle is clicked, when the panel opens, then it is a region named "Activity panel"', () => {
+    renderDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getByRole('region', { name: 'Activity panel' })).toBeInTheDocument();
+  });
+
   test('clicking the toggle opens the panel with all three sections', () => {
     renderDrawer({
       backfillBadges: [{ text: 'Idle', className: 'scheduler-badge-idle' }],

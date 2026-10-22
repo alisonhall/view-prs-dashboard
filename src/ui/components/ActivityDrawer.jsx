@@ -77,7 +77,7 @@ export function ActivityDrawer({
       </button>
 
       {isOpen && (
-        <div className="activity-drawer-panel">
+        <div className="activity-drawer-panel" role="region" aria-label="Activity panel">
           <div className="activity-drawer-panel-header">
             <span className="activity-drawer-panel-title">Activity</span>
             <button

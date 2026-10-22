@@ -113,7 +113,7 @@ function SourcesDetails({ items, formatter }) {
 
 function StatCard({ label, value, detail, sources, formatter }) {
   return (
-    <div className="stat-card">
+    <div className="stat-card" role="group" aria-label={label}>
       <span className="stat-card-label">{label}</span>
       <span className="stat-card-value">{value}</span>
       {detail && <span className="stat-card-detail">{detail}</span>}
