@@ -51,32 +51,14 @@ global.fetch = jest.fn((url) => {
   return Promise.resolve(okJson({ ok: true }));
 });
 
-// Regression guard (recorded here, not in its own test, since the module
-// bootstrap this checks only ever runs once at file scope - see the
-// load-order race described in react-app.jsx's own AppRoot effect
-// comment): 'viewprs:react-ready' must fire only once AppRoot's bridges
-// exist. Dispatching it any earlier (e.g. synchronously right after
-// ReactDOM.createRoot(...).render(), which only schedules the initial commit
-// rather than running it inline) let index.page.js's one-time listeners
-// consume their only retry before the bridge was real.
-// Window-bridge elimination Phase 7.4: AppRoot publishes no window bridge any
-// more (window.updateReactAutoRenderBlockedLinks, which this used to check,
-// is gone). The one listener left, index.page.js's credential hints, needs
-// AppRoot's portaled Run Script inputs, so this checks #repo is in the DOM.
-let reactReadyBridgeWasFunctionWhenDispatched = null;
-window.addEventListener('viewprs:react-ready', () => {
-  reactReadyBridgeWasFunctionWhenDispatched = Boolean(document.getElementById('repo'));
-});
+// Window-bridge elimination Phase 7.5: the 'viewprs:react-ready' ordering
+// guard that lived here is gone with the event (its last listener was
+// index.page.js's credential-hint pass, now props on the inputs). The tests
+// below check what the bootstrap does instead.
 
 const getPrTableApp = () => document.querySelector('#pr-sections [data-testid="pr-table-app"]');
 
 describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has data', () => {
-  // The module require (and its bootstrap dispatch check) live in
-  // beforeAll, not file scope, because 'viewprs:react-ready' dispatches via
-  // queueMicrotask (see that effect's own comment in react-app.jsx - a
-  // flushSync-reentrancy fix) - an actual `await` is needed to let that
-  // microtask run before checking it fired, and only an async Jest
-  // lifecycle hook can do that; top-level file scope can't await.
   beforeAll(async () => {
     // AppRoot resolves its portal containers once, on its first render.
     document.body.innerHTML = '<div id="pr-sections"></div><span id="repo-root"></span>';
@@ -84,9 +66,27 @@ describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has dat
       require('./react-app');
     });
     await Promise.resolve();
-    if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
-      throw new Error("'viewprs:react-ready' fired before AppRoot's portaled inputs were in the DOM");
-    }
+  });
+
+  // Phase 7.5: moved from index.page.js. The Run Script inputs render the
+  // password-manager hints themselves, and the bootstrap installs the
+  // credential-field error filters before mounting.
+  test('given the app has mounted, when the portaled Run Script repo input is read, then it carries the non-credential-field hints and keeps its name', () => {
+    const repo = document.getElementById('repo');
+    expect(repo).not.toBeNull();
+    expect(repo.getAttribute('name')).toBe('repo');
+    expect(repo.getAttribute('autocomplete')).toBe('off');
+    expect(repo.getAttribute('data-lpignore')).toBe('true');
+  });
+
+  test('given the app has mounted, when a password-manager credential-field error reaches window, then it is suppressed, while other errors are not', () => {
+    const ignored = new ErrorEvent('error', { message: 'ControlLooksLikePasswordCredentialField', cancelable: true });
+    window.dispatchEvent(ignored);
+    expect(ignored.defaultPrevented).toBe(true);
+
+    const other = new ErrorEvent('error', { message: 'Some real failure', cancelable: true });
+    window.dispatchEvent(other);
+    expect(other.defaultPrevented).toBe(false);
   });
 
   // These run in order against the one app mounted above.

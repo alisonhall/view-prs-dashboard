@@ -470,7 +470,7 @@
                 <!-- Rendered by React (react-app.jsx) - Phase 3, then Track C
                      (see REACT_MIGRATION_PLAN.md): ReviewStatsContent now computes
                      its own stats from PrDataContext's payload instead of being
-                     pushed a pre-built result, so nothing in index.page.js rebuilds
+                     pushed a pre-built result, so nothing outside React rebuilds
                      either #stats-controls-root or #stats-content-root anymore.
                      Starts empty (found and fixed alongside the full
                      vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the old
@@ -542,34 +542,11 @@
          is treated as untrusted. Re-copy purify.min.js and purify.min.js.map
          together when bumping the "dompurify" dependency version. -->
     <script src="./vendor/purify.min.js"></script>
-    <!-- pr-section-grouping.helpers.js: converted to a real ES module
-         (see REACT_MIGRATION_PLAN.md) - imported directly by index.page.js
-         instead of loaded as its own script tag. -->
-    <!-- pr-entry-derived-cache.helpers.js/pr-multi-select-render-cache.helpers.js:
-         converted to real ES modules (see REACT_MIGRATION_PLAN.md) -
-         imported directly by index.page.js instead of loaded as their own
-         script tags. -->
-    <!-- pr-smart-groups.helpers.js/pr-section-config.helpers.js: converted
-         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
-         directly by PrTableApp.jsx (not index.page.js, which never
-         referenced either) instead of loaded as their own script tags. -->
-    <!-- react-callbacks.helpers.js/form-parsing.helpers.js/
-         pr-data-tab.orchestrator.js/backfill-tab.orchestrator.js: converted
-         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
-         directly by index.page.js instead of loaded as their own script
-         tags. -->
-
-    <!-- ES module cleanup (see REACT_MIGRATION_PLAN.md): type="module" so
-         index.page.js can start using real `import` for its ~81 helper/
-         component/orchestrator dependencies (converted incrementally, one
-         file at a time) instead of the require()/globalThis.ViewPrsX
-         fallback every one of them still uses today. Deferred execution
-         (the default for type="module") is safe here: every still-classic
-         dependency above finishes running - and sets its window.ViewPrsX
-         global - before this deferred script runs, and relative to
-         react-app.jsx (also deferred, positioned after this tag) document
-         order is preserved, so this still runs first. -->
-    <script type="module" src="./index.page.js"></script>
+    <!-- Window-bridge elimination Phase 7.5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+         index.page.js, the last vanilla script, is deleted. Its
+         credential-field hints are props on the React inputs, its dropdown
+         closing is AppRoot's useMultiSelectDropdownClosing, and its error
+         filters are installed by react-app.jsx before mounting. -->
 
     <!-- React App Entry Point (Phase 1: Hybrid Migration) -->
     <script type="module" src="./react-app.jsx"></script>

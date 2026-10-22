@@ -33,6 +33,21 @@ const renderWithProvider = (filterPrNumbers = '') =>
 
 describe('PrNumberFilterInput', () => {
 
+  // Window-bridge elimination Phase 7.5: index.page.js used to add these by
+  // DOM id after React rendered the input.
+  test('given the input renders, when read, then it carries the non-credential-field hints', () => {
+    renderWithProvider('');
+    const input = screen.getByPlaceholderText('912, 921');
+    expect(input).toHaveAttribute('autocomplete', 'off');
+    expect(input).toHaveAttribute('autocapitalize', 'off');
+    expect(input).toHaveAttribute('autocorrect', 'off');
+    expect(input).toHaveAttribute('spellcheck', 'false');
+    expect(input).toHaveAttribute('data-lpignore', 'true');
+    expect(input).toHaveAttribute('data-1p-ignore', 'true');
+    expect(input).toHaveAttribute('data-bwignore', 'true');
+    expect(input).toHaveAttribute('data-form-type', 'other');
+  });
+
   test('given the provider seeds an empty value, when rendering, then renders an empty input with the expected id/name', () => {
     renderWithProvider('');
     const input = screen.getByPlaceholderText('912, 921');

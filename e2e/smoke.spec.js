@@ -1151,8 +1151,11 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   });
 });
 
-test("all 6 React-portaled non-credential-hint fields get their credential-manager-suppressing attributes applied, despite mounting after initPage()'s own first pass", async ({ page }) => {
-  // Regression test for a real race: applyNonCredentialFieldHints()
+test("all 6 React-portaled non-credential-hint fields get their credential-manager-suppressing attributes in a real page load", async ({ page }) => {
+  // Window-bridge elimination Phase 7.5: the inputs now render these
+  // attributes themselves (NON_CREDENTIAL_INPUT_PROPS), so the race below
+  // can't happen any more; this keeps checking the attributes in a real
+  // browser. History - originally a regression test for a real race: applyNonCredentialFieldHints()
   // (index.page.js) is called once, synchronously, from initPage() -
   // which runs to completion before react-app.jsx's own module graph has
   // necessarily finished loading, so these fields (all React-portaled -
@@ -1462,7 +1465,8 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   const authorList = page.locator("#author-list");
   const assignedList = page.locator("#assigned-list");
   const approverList = page.locator("#approver-list");
-  // setupMultiSelectDropdownClosing (pr-filter-panel.helpers.js) closes
+  // useMultiSelectDropdownClosing (AppRoot; was index.page.js's
+  // setupMultiSelectDropdownClosing until window-bridge elimination Phase 7.5) closes
   // every OTHER open <details class="multi-select-dropdown"> on any click
   // outside it - opening one dropdown, leaving it open, and then opening
   // the next closes the first, so each dropdown must be (re-)opened

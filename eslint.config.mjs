@@ -84,8 +84,8 @@ export default defineConfig([
   {
     // These are plain ES modules (import/export), not the UMD
     // (CommonJS + browser-global) wrapper every other src/ui/helpers/*.js
-    // file uses - they're imported directly by both index.page.js and
-    // .jsx components via Vite's ESM bundling only, never require()'d, so
+    // file uses - they're imported directly by .jsx components (and
+    // formerly index.page.js, deleted in window-bridge elimination Phase 7.5) via Vite's ESM bundling only, never require()'d, so
     // UMD's dual-environment support buys them nothing. Same reasoning as
     // vite.config.js above.
     files: [
@@ -107,22 +107,17 @@ export default defineConfig([
       "src/ui/helpers/pr-textarea-autoresize.helpers.js",
       "src/ui/helpers/pr-viewed-files-state.helpers.js",
       "src/ui/helpers/pr-ack-refresh-warnings.helpers.js",
+      "src/ui/helpers/credential-field-error-filter.helpers.js",
     ],
     languageOptions: { sourceType: "module" },
   },
   {
-    // ES module cleanup (see REACT_MIGRATION_PLAN.md): index.page.js and
-    // the src/ui/helpers/*.js files listed here have been converted from
-    // the UMD wrapper to real `export`/`import` (index.page.js's own
-    // <script> tag is now type="module" in index.html) - this list grows
-    // as more files convert, same reasoning as pr-row-keys.js above.
-    // index.page.js itself still has plain `require(...) :
-    // globalThis.ViewPrsXHelpers` conditionals for every not-yet-converted
-    // dependency - those parse fine under sourceType: "module" too, since
-    // `require`/`module` are just ordinary identifiers, not syntax that
-    // sourceType affects.
+    // ES module cleanup (see REACT_MIGRATION_PLAN.md): the
+    // src/ui/helpers/*.js files listed here have been converted from the UMD
+    // wrapper to real `export`/`import` - this list grows as more files
+    // convert, same reasoning as pr-row-keys.js above. (index.page.js was on
+    // it until window-bridge elimination Phase 7.5 deleted it.)
     files: [
-      "src/ui/index.page.js",
       "src/ui/helpers/pr-entry-derived-cache.helpers.js",
       "src/ui/helpers/pr-multi-select-render-cache.helpers.js",
       "src/ui/helpers/pr-section-grouping.helpers.js",
@@ -191,7 +186,6 @@ export default defineConfig([
       "src/ui/helpers/pr-auto-render-indicator.helpers.js",
       "src/ui/helpers/pr-auto-render-state.helpers.js",
       "src/ui/helpers/pr-export.helpers.js",
-      "src/ui/helpers/pr-filter-panel.helpers.js",
       "src/ui/helpers/form-parsing.helpers.js",
       "src/ui/helpers/pr-section-config.helpers.js",
       "src/ui/helpers/pr-smart-groups.helpers.js",

@@ -989,10 +989,9 @@ const initTestPage = ({
   // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
   // lists' "pending selections" now live on a dedicated window-level store
   // (pr-pending-multi-select-selections.helpers.js), not a module-scope
-  // variable inside index.page.js - jest.resetModules() above no longer
-  // resets them for free (a fresh require("../index.page.js") gets fresh
-  // module-scope state, but window itself is shared across every test in
-  // this file). Reset explicitly, same reasoning as the interval/listener
+  // variable inside index.page.js (deleted since) - jest.resetModules()
+  // above doesn't reset them, since window itself is shared across every
+  // test in this file. Reset explicitly, same reasoning as the interval/listener
   // tracking below this function.
   delete window.viewPrsPendingMultiSelectSelections;
   delete window.viewPrsPendingMultiSelectSelectionsListeners;
@@ -1026,7 +1025,9 @@ const initTestPage = ({
   // race against (and miss) this test's userDefaultsOverrides fixture.
   installFilterStateProviderBridge();
 
-  require("../index.page.js");
+  // Window-bridge elimination Phase 7.5: index.page.js is deleted (this used
+  // to require() it here, after the root mounted). Its credential hints are
+  // props on the React inputs this root renders.
 };
 
 // Helper functions for multi-select checkbox lists (label, exclude-label, author, assigned, approver filters)
@@ -1166,6 +1167,9 @@ describe("index page rendering with Testing Library", () => {
   // during a later, unrelated test. Track listeners added to window/
   // document during a test and remove them afterward, same as the
   // interval tracking above.
+  // (Window-bridge elimination Phase 7.5 deleted index.page.js, so nothing
+  // here require()s it any more. The tracking stays: each test still mounts
+  // React roots whose timers and listeners would otherwise outlive it.)
   const realWindowAddEventListener = window.addEventListener.bind(window);
   const realWindowRemoveEventListener = window.removeEventListener.bind(window);
   const realDocumentAddEventListener = document.addEventListener.bind(document);
@@ -2445,36 +2449,13 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("applies non-credential autofill hints without changing existing form field names", () => {
-    const repoField = document.getElementById("repo");
-    const prNumbersField = document.getElementById("pr-numbers");
-    const targetFieldIds = [
-      "repo",
-      "pr-numbers",
-      "limit",
-      "merged-limit",
-      "jobs",
-      "filter-pr-numbers",
-    ];
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-
-    targetFieldIds.forEach((id) => {
-      const field = document.getElementById(id);
-      expect(field).toHaveAttribute("autocomplete", "off");
-      expect(field).toHaveAttribute("autocapitalize", "off");
-      expect(field).toHaveAttribute("autocorrect", "off");
-      expect(field).toHaveAttribute("spellcheck", "false");
-      expect(field).toHaveAttribute("data-lpignore", "true");
-      expect(field).toHaveAttribute("data-1p-ignore", "true");
-      expect(field).toHaveAttribute("data-bwignore", "true");
-      expect(field).toHaveAttribute("data-form-type", "other");
-    });
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-  });
+  // Window-bridge elimination Phase 7.5: a test here checked the
+  // credential-field hints on the Run Script/filter inputs. Those inputs are
+  // stand-in markup in this harness (injectRunFilterFieldElements), which
+  // only got the hints from index.page.js's DOM pass; the real components now
+  // render them, so the test is gone. Coverage: ContextRunScriptTextInput.test.jsx,
+  // PrNumberFilterInput.test.jsx, react-app.test.jsx and e2e's "all 6
+  // React-portaled non-credential-hint fields" test.
 
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): "Apply filters (local)" (the button) is deleted outright -
@@ -3712,8 +3693,6 @@ describe("index page rendering with Testing Library", () => {
       // as the main initTestPage() flow: the root's restore and data-load
       // effects fire their GETs immediately on mount.
       installFilterStateProviderBridge();
-
-      require("../index.page.js");
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there
@@ -8881,31 +8860,13 @@ describe("index page rendering with Testing Library", () => {
   // tests for the equivalent coverage, tested directly against that
   // mechanism instead.
 
-  test("form parsing applies credential hints to filter inputs without changing field names", () => {
-    initTestPage();
-
-    const repoField = document.getElementById("repo");
-    expect(repoField.name).toBe("repo");
-    expect(repoField.getAttribute("data-lpignore")).toBe("true");
-    expect(repoField.getAttribute("data-1p-ignore")).toBe("true");
-    expect(repoField.getAttribute("data-bwignore")).toBe("true");
-    expect(repoField.getAttribute("autocomplete")).toBe("off");
-    expect(repoField.getAttribute("autocapitalize")).toBe("off");
-    expect(repoField.getAttribute("autocorrect")).toBe("off");
-    expect(repoField.getAttribute("spellcheck")).toBe("false");
-    expect(repoField.getAttribute("data-form-type")).toBe("other");
-
-    // Verify field names are preserved (not overridden)
-    expect(repoField.name).toBe("repo");
-
-    const prNumbersField = document.getElementById("pr-numbers");
-    expect(prNumbersField.name).toBe("prNumbers");
-    expect(prNumbersField.getAttribute("data-lpignore")).toBe("true");
-
-    const limitField = document.getElementById("limit");
-    expect(limitField.name).toBe("limit");
-    expect(limitField.getAttribute("data-1p-ignore")).toBe("true");
-  });
+  // Window-bridge elimination Phase 7.5: a test here checked the
+  // credential-field hints on the Run Script/filter inputs. Those inputs are
+  // stand-in markup in this harness (injectRunFilterFieldElements), which
+  // only got the hints from index.page.js's DOM pass; the real components now
+  // render them, so the test is gone. Coverage: ContextRunScriptTextInput.test.jsx,
+  // PrNumberFilterInput.test.jsx, react-app.test.jsx and e2e's "all 6
+  // React-portaled non-credential-hint fields" test.
 
   test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
     // Regression test for ActivityTimelineSummary's weekend-filtering AND

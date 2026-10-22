@@ -7,7 +7,7 @@
  * - Provides bridge between vanilla JS and React
  */
 
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
@@ -60,6 +60,8 @@ import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
 import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
+import { useMultiSelectDropdownClosing } from './state/useMultiSelectDropdownClosing';
+import { installCredentialFieldErrorFilters } from './helpers/credential-field-error-filter.helpers.js';
 import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
 import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
@@ -768,39 +770,15 @@ function AppRoot() {
   // (and the state it set here) is gone - <AutoRenderBlockedLinksLive /> reads
   // the blocking lists from AutoRenderBlockingProvider.
 
-  // Announce readiness only once every window.* bridge above has actually
-  // been assigned. React runs useEffects in declaration order after commit,
-  // so this must be the LAST effect in the component - dispatching from
-  // any earlier effect (even one that itself assigns a real bridge, e.g.
-  // window.mountReactPrTable) fires before later effects in this list have
-  // run, racing them the same way. index.page.js's one-time
-  // 'viewprs:react-ready' listeners have no second chance if they fire
-  // before their specific bridge is real: they re-check the relevant
-  // window.* function, find it still undefined, and permanently give up.
-  // Confirmed two real instances of this: window.mountReactPrTable
-  // undefined left the PR table stuck on "Loading..." forever (CI trace:
-  // valid data fetched in 41ms, zero console errors, table never painted);
-  // window.renderReactMultiSelectList undefined (when dispatch lived in the
-  // mountReactPrTable effect above, which runs before this one) left every
-  // filter multi-select (label/author/assigned/etc.) permanently empty.
-  useEffect(() => {
-    // queueMicrotask, not a direct dispatch: every listener (index.page.js)
-    // is invoked synchronously by dispatchEvent, and several call back into
-    // flushSync-wrapped bridges either
-    // directly or via a fetch
-    // continuation that can resolve fast enough to still be "inside"
-    // React's own effect-flush for this commit. flushSync reentrant with
-    // an in-progress render throws "flushSync was called from inside a
-    // lifecycle method" (confirmed via this exact warning in CI) - queuing
-    // a fresh microtask guarantees this commit (including its own effect
-    // flush) has fully finished before any listener runs, exactly as that
-    // warning's own message suggests ("...scheduler task or micro task").
-    // A plain setTimeout also works in a real browser, but jsdom
-    // integration tests that assert immediately after an awaited user
-    // interaction (no explicit wait) only drain the microtask queue, not
-    // macrotasks, and would see pre-restore state.
-    queueMicrotask(() => window.dispatchEvent(new CustomEvent('viewprs:react-ready')));
-  }, []);
+  // Window-bridge elimination Phase 7.5: the 'viewprs:react-ready' event this
+  // component used to dispatch from its last effect is gone. It told
+  // index.page.js (deleted) that AppRoot's bridges and portaled inputs
+  // existed; its last listener re-ran the credential hints, which the inputs
+  // now render themselves (NON_CREDENTIAL_INPUT_PROPS). See git history for
+  // the load-order races it guarded against.
+  //
+  // Also from index.page.js: outside clicks close the filter dropdowns.
+  useMultiSelectDropdownClosing();
 
   return (
     <>
@@ -1378,9 +1356,9 @@ function mountAppRoot() {
 }
 
 if (typeof window !== 'undefined') {
+  // Window-bridge elimination Phase 7.5: installed here, before mounting -
+  // index.page.js (deleted) installed them at its module load, just before
+  // this module ran.
+  installCredentialFieldErrorFilters(window);
   mountAppRoot();
-  // 'viewprs:react-ready' is now dispatched from inside AppRoot's own
-  // useEffect, once every bridge AppRoot installs is actually assigned - see
-  // that effect's comment for why dispatching it here (immediately after
-  // .render(), which only schedules the initial commit) was a race.
 }

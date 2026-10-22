@@ -4,11 +4,13 @@
 
 const {
   toBoolean,
-  applyCredentialHints,
+  NON_CREDENTIAL_INPUT_PROPS,
   parsePrNumbersInput,
   parseCommitPatterns,
   formatCommitPatternsForTextarea,
 } = require("../helpers/form-parsing.helpers");
+const React = require("react");
+const { render } = require("@testing-library/react");
 
 describe("form-parsing.helpers", () => {
   describe("toBoolean", () => {
@@ -31,12 +33,15 @@ describe("form-parsing.helpers", () => {
     });
   });
 
-  describe("applyCredentialHints", () => {
-    test("given a text input when applying credential hints then ignore and autocomplete attributes are set", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input, "test-field");
+  // Window-bridge elimination Phase 7.5: replaces applyCredentialHints (a DOM
+  // pass index.page.js ran over the inputs). React renders these props as the
+  // same attributes the old function set - checked here through a real render.
+  describe("NON_CREDENTIAL_INPUT_PROPS", () => {
+    test("given an input rendered with the props, when read, then every credential-hint attribute is set as before", () => {
+      const { container } = render(
+        React.createElement("input", { type: "text", name: "repo", ...NON_CREDENTIAL_INPUT_PROPS }),
+      );
+      const input = container.querySelector("input");
 
       expect(input.getAttribute("data-lpignore")).toBe("true");
       expect(input.getAttribute("data-1p-ignore")).toBe("true");
@@ -46,39 +51,11 @@ describe("form-parsing.helpers", () => {
       expect(input.getAttribute("autocorrect")).toBe("off");
       expect(input.getAttribute("spellcheck")).toBe("false");
       expect(input.getAttribute("data-form-type")).toBe("other");
-    });
-
-    test("given a field name when applying credential hints then the input name is set", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input, "repo");
-
       expect(input.name).toBe("repo");
     });
 
-    test("given override disabled when applying credential hints then an existing field name is preserved", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.name = "existing-name";
-
-      applyCredentialHints(input, "new-name", { overrideName: false });
-
-      expect(input.name).toBe("existing-name");
-    });
-
-    test("given no field name when applying credential hints then the input name is unchanged", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input);
-
-      expect(input.name).toBe("");
-    });
-
-    test("given nullish input when applying credential hints then no exception is thrown", () => {
-      expect(() => applyCredentialHints(null, "field")).not.toThrow();
-      expect(() => applyCredentialHints(undefined, "field")).not.toThrow();
+    test("given the shared props object, when a caller tries to change it, then it stays unchanged (frozen)", () => {
+      expect(Object.isFrozen(NON_CREDENTIAL_INPUT_PROPS)).toBe(true);
     });
   });
 

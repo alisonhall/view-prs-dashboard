@@ -10,7 +10,7 @@
 
 
 // Same attributes ReviewStatsControls.jsx's NON_CREDENTIAL_DATE_ATTRS/
-// form-parsing.helpers.js's applyCredentialHints set on other text inputs -
+// form-parsing.helpers.js's NON_CREDENTIAL_INPUT_PROPS set on other text inputs -
 // without them, Chrome's password-manager heuristics misclassify these
 // fields (e.g. "Rally links" looking like a credential field) and can
 // throw inside the browser's own autofill agent on focus, which blocks

@@ -33,6 +33,22 @@ const renderWithProvider = (initialValues, props) =>
 
 describe('ContextRunScriptTextInput', () => {
 
+  // Window-bridge elimination Phase 7.5: index.page.js used to add these by
+  // DOM id after React rendered the input (all five Run Script fields use
+  // this component).
+  test('given the input renders, when read, then it carries the non-credential-field hints', () => {
+    renderWithProvider({}, { id: 'limit', name: 'limit', filterStateKey: 'limit', type: 'number' });
+    const input = document.getElementById('limit');
+    expect(input).toHaveAttribute('autocomplete', 'off');
+    expect(input).toHaveAttribute('autocapitalize', 'off');
+    expect(input).toHaveAttribute('autocorrect', 'off');
+    expect(input).toHaveAttribute('spellcheck', 'false');
+    expect(input).toHaveAttribute('data-lpignore', 'true');
+    expect(input).toHaveAttribute('data-1p-ignore', 'true');
+    expect(input).toHaveAttribute('data-bwignore', 'true');
+    expect(input).toHaveAttribute('data-form-type', 'other');
+  });
+
   test('given the provider seeds a value, when rendering, then the input starts with it', () => {
     renderWithProvider(
       { repo: 'octocat/hello-world' },
