@@ -16,7 +16,16 @@
  * test` never picks it up - it's deliberately long-running and not meant
  * to gate every CI run. Run via `npm run stability:heap-check`, or
  * directly: `node e2e/stability/long-session-heap-check.js [--cycles=200]
- * [--sample-every=10] [--dataset-size=40]`.
+ * [--sample-every=10] [--dataset-size=40] [--data-change-every=1]`.
+ *
+ * Each cycle also (every --data-change-every cycles; 0 disables) rewrites
+ * the server's data file with ~10% of PRs changed and waits for the page's
+ * own poll to fetch it. Interactions alone never deliver a fresh payload
+ * from the server, so they could not catch the leak that retained one full
+ * payload per data change (the Chrome/Edge "Error code: 5" crash, see
+ * REACT_MIGRATION_PLAN.md) - real tabs get one on every auto-refresh and
+ * every other tab's write. The data poll interval is shortened in the page
+ * so this doesn't wait 30s per change.
  */
 
 const fs = require("fs");
@@ -28,7 +37,7 @@ const { chromium } = require("@playwright/test");
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 function parseArgs(argv) {
-  const args = { cycles: 200, sampleEvery: 10, datasetSize: 40 };
+  const args = { cycles: 200, sampleEvery: 10, datasetSize: 40, dataChangeEvery: 1 };
   argv.forEach((arg) => {
     const match = arg.match(/^--([a-z-]+)=(\d+)$/);
     if (!match) return;
@@ -37,30 +46,38 @@ function parseArgs(argv) {
     if (key === "cycles") args.cycles = value;
     if (key === "sample-every") args.sampleEvery = value;
     if (key === "dataset-size") args.datasetSize = value;
+    if (key === "data-change-every") args.dataChangeEvery = value;
   });
   return args;
 }
 
 const REPO = "owner/repo";
+const DATA_POLL_MS = 300;
 
-function buildDataset(n) {
+// `generation` 0 is the initial dataset. Each later generation changes a
+// different ~10% of PRs (new timestamp, fingerprint and title), so the
+// page's poll sees a real delta to fetch and render, like a real refresh.
+function buildDataset(n, generation = 0) {
   const byPrNumber = {};
   for (let i = 1; i <= n; i += 1) {
+    const changed = generation > 0 && (i + generation) % 10 === 0;
+    const version = changed ? generation : 0;
+    const updatedAt = new Date(Date.UTC(2026, 0, 1) + version * 60000).toISOString();
     byPrNumber[String(i)] = {
       prNumber: String(i),
       repo: REPO,
       section: i % 4 === 0 ? "closed" : i % 3 === 0 ? "merged" : "open",
-      updatedAt: "2026-01-01T00:00:00Z",
+      updatedAt,
       rowOrder: i,
       data: {
         number: String(i),
-        title: `PR title ${i}`,
+        title: `PR title ${i} v${version}`,
         titleDisplay: `PR title ${i} [CHK:PASS][MRG:YES]`,
         url: `https://github.com/${REPO}/pull/${i}`,
         mergedAt: "",
         closedAt: "",
-        sourceUpdatedAt: "2026-01-01T00:00:00Z",
-        sourceFingerprint: `fp:${i}`,
+        sourceUpdatedAt: updatedAt,
+        sourceFingerprint: `fp:${i}:${version}`,
         sourceBranch: `feature/${i}`,
         targetBranch: "main",
         checkState: "PASS",
@@ -88,7 +105,28 @@ function buildDataset(n) {
       },
     };
   }
-  return { byPrNumber, lastRun: { repo: REPO, updatedAt: "2026-01-01T00:00:00Z" } };
+  return {
+    byPrNumber,
+    lastRun: { repo: REPO, updatedAt: new Date(Date.UTC(2026, 0, 1) + generation * 60000).toISOString() },
+  };
+}
+
+// Writes the next generation and waits for the page's own poll to fetch
+// it (the delta endpoint, or the full-data fallback). Returns false if no
+// fetch arrived in time, so a run that silently stopped exercising this
+// path is reported rather than passing as "flat".
+async function applyServerDataChange(page, dataFile, datasetSize, generation) {
+  const fetched = page
+    .waitForResponse(
+      (res) => ["/view-prs/data", "/view-prs/data-delta"].includes(new URL(res.url()).pathname),
+      { timeout: 10000 },
+    )
+    .then(() => true, () => false);
+  fs.writeFileSync(dataFile, JSON.stringify(buildDataset(datasetSize, generation)));
+  const ok = await fetched;
+  // Let the render that follows the fetch commit before the next step.
+  await page.waitForTimeout(100);
+  return ok;
 }
 
 async function waitForServer(url, timeoutMs) {
@@ -170,15 +208,14 @@ function summarize(samples) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   console.log(
-    `Long-session heap check: ${args.cycles} cycles, sampling every ${args.sampleEvery}, ${args.datasetSize} PRs`,
+    `Long-session heap check: ${args.cycles} cycles, sampling every ${args.sampleEvery}, ${args.datasetSize} PRs, ` +
+      (args.dataChangeEvery > 0 ? `server data change every ${args.dataChangeEvery} cycle(s)` : "no server data changes"),
   );
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-stability-"));
   fs.mkdirSync(path.join(tempDir, "backups"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tempDir, "check-open-pr-updates.data.json"),
-    JSON.stringify(buildDataset(args.datasetSize)),
-  );
+  const dataFile = path.join(tempDir, "check-open-pr-updates.data.json");
+  fs.writeFileSync(dataFile, JSON.stringify(buildDataset(args.datasetSize)));
   fs.writeFileSync(
     path.join(tempDir, "check-open-pr-updates.user-state.json"),
     JSON.stringify({
@@ -193,7 +230,7 @@ async function main() {
   const isolatedEnv = {
     ...process.env,
     NODE_ENV: "test",
-    VIEW_PRS_DATA_FILE: path.join(tempDir, "check-open-pr-updates.data.json"),
+    VIEW_PRS_DATA_FILE: dataFile,
     VIEW_PRS_USER_STATE_FILE: path.join(tempDir, "check-open-pr-updates.user-state.json"),
     DATA_DIR: tempDir,
     VIEW_PRS_SCHEDULER_FILE: path.join(tempDir, "scheduler.json"),
@@ -210,16 +247,24 @@ async function main() {
     VIEW_PRS_DISABLE_SCHEDULER_STARTUP: "1",
   };
 
-  const serverProc = spawn("node", ["src/server/server.js"], {
+  // Both run on this script's own Node binary, not via `node`/`npx` on
+  // PATH: on Windows `npx` is a .cmd shim that spawn() can't run without a
+  // shell (ENOENT), and going through a shell would leave kill() stopping
+  // the shell instead of the real server/Vite processes.
+  const serverProc = spawn(process.execPath, ["src/server/server.js"], {
     cwd: REPO_ROOT,
     env: isolatedEnv,
     stdio: "ignore",
   });
-  const viteProc = spawn("npx", ["vite", "--port", "3458"], {
-    cwd: REPO_ROOT,
-    env: isolatedEnv,
-    stdio: "ignore",
-  });
+  const viteProc = spawn(
+    process.execPath,
+    [path.join(REPO_ROOT, "node_modules/vite/bin/vite.js"), "--port", "3458", "--strictPort"],
+    {
+      cwd: REPO_ROOT,
+      env: isolatedEnv,
+      stdio: "ignore",
+    },
+  );
 
   let browser;
   try {
@@ -228,6 +273,12 @@ async function main() {
 
     browser = await chromium.launch();
     const page = await browser.newPage();
+    // index.page.js assigns window.AUTO_DATA_POLL_MS at startup; pinning
+    // it with an accessor makes that assignment a no-op, so PrDataPolling
+    // picks up the short interval instead of the real 30s.
+    await page.addInitScript((pollMs) => {
+      Object.defineProperty(window, "AUTO_DATA_POLL_MS", { get: () => pollMs, set: () => {} });
+    }, DATA_POLL_MS);
     await page.goto("http://localhost:3458/");
     await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15000 });
 
@@ -245,8 +296,17 @@ async function main() {
     const samples = [await sample(0)];
     console.log(`cycle=0 heapMB=${(samples[0].jsHeapUsedSize / 1e6).toFixed(2)}`);
 
+    let dataChanges = 0;
+    let missedDataChanges = 0;
     for (let cycle = 1; cycle <= args.cycles; cycle += 1) {
       await runInteractionCycle(page, cycle);
+
+      if (args.dataChangeEvery > 0 && cycle % args.dataChangeEvery === 0) {
+        dataChanges += 1;
+        if (!(await applyServerDataChange(page, dataFile, args.datasetSize, dataChanges))) {
+          missedDataChanges += 1;
+        }
+      }
 
       if (cycle % args.sampleEvery === 0) {
         const s = await sample(cycle);
@@ -261,6 +321,14 @@ async function main() {
     console.log(`First-quartile mean heap: ${(startMean / 1e6).toFixed(2)}MB`);
     console.log(`Last-quartile mean heap: ${(endMean / 1e6).toFixed(2)}MB`);
     console.log(`Ratio (end / start): ${ratio.toFixed(2)}x`);
+    if (args.dataChangeEvery > 0) {
+      console.log(`Server data changes: ${dataChanges} (${missedDataChanges} not fetched by the page within 10s)`);
+      if (missedDataChanges > 0) {
+        console.log(
+          "WARNING: some data changes were never fetched, so this run under-exercises the payload-refresh path - check that polling still works.",
+        );
+      }
+    }
     if (ratio > 1.5) {
       console.log(
         "Heap grew notably across the run - worth a closer look (longer run, more cycles, or heap snapshot diffing) before concluding it's a real leak vs one-run noise.",
