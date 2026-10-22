@@ -425,6 +425,10 @@ Successfully implemented automatic split-storage for heavy PR detail arrays, red
 **Time:** ~13 hours (vs 25-35 hour estimate = **50% time savings**)
 **Objective:** Extract tab and feature orchestrators from monolithic index.page.js (6,886 lines)
 
+> **Note (2026-10-22):** superseded since. The orchestrators described below
+> and `index.page.js` itself have been removed; React components and
+> Contexts own this work now (see `docs/history/WINDOW_BRIDGE_ELIMINATION_PLAN.md`).
+
 ### Solution
 
 Created 4 tab orchestrators that compose existing helpers using dependency injection:
@@ -676,7 +680,12 @@ the full history (including the circular-dependency blocker and its fix).
 ---
 
 ## Phase 9: Component Size Reduction
-**Status:** 📋 PLANNED  
+**Status:** ⛔ SUPERSEDED (2026-10-22) - every target component below was a
+vanilla `*.component.js` that the React migration replaced
+(`docs/history/REACT_MIGRATION_PLAN.md`); `pr-filter-panel` is deleted
+outright. Any React component that grows too large should be split as part
+of the UI rework, not under this plan. The checklists below are kept for
+history and will not be ticked.  
 **Objective:** Extract helpers from 500-800 line components
 
 ### Problem Statement
@@ -1143,22 +1152,19 @@ Use this table in PR descriptions or a task tracker.
 
 **See detailed phase descriptions above for full implementation plans.**
 
-**Phase 7: Page Orchestrator Extraction** ⭐⭐⭐⭐⭐ **HIGHEST PRIORITY**
-- [ ] Extract 9 orchestrators from index.page.js (6,886 → ~700 lines)
-- [ ] 90% file size reduction, clearest feature boundaries
-- [ ] Effort: 3-5 days, Risk: Medium, ROI: Very High
-- [ ] **Recommended to start with this phase**
+**Phase 7: Page Orchestrator Extraction** ✅ **COMPLETE, then superseded**
+- [x] Orchestrators extracted (see Phase 7 above). Since then the React
+  migration and the window-bridge elimination plan (both in docs/history/)
+  removed the orchestrators and deleted `index.page.js` itself (2026-10-22).
 
 **Phase 8: Server Entry Point Refactoring** ⭐⭐⭐⭐ **HIGH PRIORITY**
 - [ ] Extract 5 initialization modules from app.js (2,253 → ~350 lines)
 - [ ] 85% file size reduction, clear separation of concerns
 - [ ] Effort: 2-3 days, Risk: Medium, ROI: High
 
-**Phase 9: Component Size Reduction** ⭐⭐⭐ **GOOD, INCREMENTAL**
-- [ ] Extract helpers from 4 large components (500-800 lines each)
-- [ ] 60-70% component size reduction
-- [ ] Effort: 1-2 days per component, Risk: Low, ROI: Good
-- [ ] **Can be done incrementally alongside other work**
+**Phase 9: Component Size Reduction** ⛔ **SUPERSEDED**
+- Its target components were vanilla and have been rewritten in React (see
+  the Phase 9 section above).
 
 **Phase 10: JSDoc Documentation** ⭐⭐⭐ **GOOD, PREPARES FOR TS**
 - [ ] Add JSDoc to all public APIs (~50+ modules)

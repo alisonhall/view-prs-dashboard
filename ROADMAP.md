@@ -32,7 +32,7 @@
 - [x] ~~Fix consistency on when filters are applied~~ - all filters (scope, PR-number, the 5 row-filtering multi-selects, alwaysShowInReview, the 6 "Any" filters) now apply live/instantly on change, no "Apply filters (local)" click needed for the table itself (see REACT_MIGRATION_PLAN.md, "Live filtering", 2026-10-10). The "Applied filters" chip/summary text now also updates live (same date, follow-up slice) - fully consistent, nothing left lagging.
 - [ ] Rename "Rally" fields to be more generic
 - [ ] Reorganize Notes' Story and Link fields to be linked together
-- [ ] Use pub-sub pattern or something instead of current rerender pattern with internal rescroll/reset issues
+- [x] ~~Use pub-sub pattern or something instead of current rerender pattern with internal rescroll/reset issues~~ - superseded by the React migration (docs/history/REACT_MIGRATION_PLAN.md): React state/Context now drives re-renders, so the old full re-render and its scroll/reset problems are gone.
 - [ ] Modules and functions within unit tests should not be mocked unless they really need to be
 - [ ] Prefer updating/modifying/refactoring existing code rather than just adding extra code
 - [ ] All comments in code match surrounding code

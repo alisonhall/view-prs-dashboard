@@ -44,17 +44,17 @@ been integrated, evidently in a session that was never written up):
 - ✅ Scheduler (`createSchedulerHelpers`)
 - ✅ File I/O (`createFileIoHelpers`)
 - ✅ Command Execution (`createCommandExecutionHelpers`)
-- ⏳ Data Processing (`createDataProcessingHelpers`) - required in `app.js`
-  but never instantiated
+- ⏳ Data Processing (`createDataProcessingHelpers`) - not wired in;
+  `app.js` no longer even requires it (checked 2026-10-22)
 - ⏳ Backfill (`createBackfillHelpers`) - same
 
-**`app.js` is currently 1,671 lines** (down from the original 2,259) -
-already past the numbers the old docs recorded (they described 2,065
-lines / 3 helpers as the "final" state), confirming this integration
-continued in at least one un-documented session after 2026-08-18.
-Re-verify the exact current line count/helper-integration status before
-resuming, rather than trusting even this file blindly after enough time
-has passed - it's a snapshot, not a live dashboard.
+**Update 2026-10-22:** `app.js` is now 3,395 lines. It recorded 1,671 when
+this file was written, but the scheduler dispatcher, circuit breaker and
+other server features added since have grown it again. The two
+unintegrated helpers above still exist with passing tests but are unused.
+Before resuming this phase, re-check whether they still match what
+`app.js` does inline; they may need rewriting rather than wiring in.
+Treat these numbers as a snapshot, not a live dashboard.
 
 ## History (condensed from the 9 originals)
 

@@ -20,6 +20,9 @@
 - **Solution:** Debounce textarea inputs (300ms)
 - **Impact:** Smooth typing, no per-keystroke lag
 - **Implemented:** January 2025
+- **Note (2026-10-22):** `recomputeDirtyPrSectionsFields()` was vanilla-era
+  code and no longer exists. Notes dirty state is now React state
+  (`NotesDirtyProvider`).
 
 ### 3. **Filter Change Performance** ✅ COMPLETED
 - **Issue:** Every filter dropdown/checkbox change triggered full table re-render
@@ -136,7 +139,10 @@ before/after numbers.
 
 ---
 
-### 10. **DOM Manipulation Batching**
+### 10. **DOM Manipulation Batching** ⛔ N/A (superseded by React migration)
+
+> **Note (2026-10-22):** React now builds and reconciles the table, so
+> there is no hand-written DOM loop left to batch. Kept for history only.
 
 **Problem:**
 - Multiple DOM updates in loops
@@ -170,7 +176,7 @@ before/after numbers.
 ### **Not Recommended** (low ROI)
 
 8. Date formatting optimization
-9. DOM batching improvements
+9. ~~DOM batching improvements~~ - N/A since the React migration (see #10)
 10. Auto-refresh fingerprinting
 
 ---
