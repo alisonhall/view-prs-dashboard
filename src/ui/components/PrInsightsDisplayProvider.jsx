@@ -15,7 +15,7 @@ import { createPrApprovalDurationHelpers } from '../helpers/pr-approval-duration
 import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.js';
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.js';
-import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.js';
+import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 

@@ -948,7 +948,7 @@ Currently using CommonJS (`require`/`module.exports`) instead of modern ES modul
 ---
 
 ## Phase 12: TypeScript Migration
-**Status:** 📋 PLANNED  
+**Status:** 🚧 IN PROGRESS - 12A (setup) done 2026-10-22  
 **Objective:** Full TypeScript migration for type safety and better tooling
 
 ### Problem Statement
@@ -1000,13 +1000,24 @@ No static type checking leads to:
 
 ### Checklist
 
-**Phase 12A: TypeScript Setup**
-- [ ] Install TypeScript and @types packages
-- [ ] Create tsconfig.json with appropriate settings
-- [ ] Configure build process (tsc or ts-node)
-- [ ] Configure Jest for TypeScript (ts-jest)
-- [ ] Configure ESLint for TypeScript
-- [ ] Test with one simple file
+**Phase 12A: TypeScript Setup** ✅ (2026-10-22)
+- [x] Install TypeScript and @types packages - `typescript` ~6.0.3 (7.x is
+  outside typescript-eslint's supported range), `typescript-eslint`,
+  `@babel/preset-typescript` ^7 (8.x needs Babel 8), `@types/jest`
+- [x] Create tsconfig.json with appropriate settings - UI only for now,
+  `strict` + `noUncheckedIndexedAccess`, `allowJs` (unconverted files are
+  read for types but not checked)
+- [x] Configure build process - no separate build: Vite already compiles
+  .ts/.tsx, and `tsc` only type-checks (`npm run typecheck`, in CI's lint
+  job and `check:all`)
+- [x] Configure Jest for TypeScript - `@babel/preset-typescript` in
+  babel.config.jest.js rather than ts-jest (same Babel pipeline as JSX)
+- [x] Configure ESLint for TypeScript - typescript-eslint's recommended set
+  for **/*.{ts,tsx}; the guard:state-writes scan now covers .jsx/.ts/.tsx
+- [x] Test with one simple file - `pr-user-initials.helpers.ts` (and its
+  test). Importers name the `.ts` file explicitly (`allowImportingTsExtensions`),
+  because Vite only maps a `.js` import to a `.ts` file when the importer is
+  itself TypeScript.
 
 **Phase 12B: Type Definitions**
 - [ ] Create type definitions for data schemas
@@ -1178,7 +1189,7 @@ Use this table in PR descriptions or a task tracker.
 - [ ] Effort: 2-4 days, Risk: Medium, ROI: Moderate
 - [ ] **Required prerequisite for Phase 12 (TypeScript)**
 
-**Phase 12: TypeScript Migration** ⭐⭐⭐⭐ **LONG-TERM, HIGH VALUE**
+**Phase 12: TypeScript Migration** ⭐⭐⭐⭐ **IN PROGRESS** (12A setup done 2026-10-22)
 - [ ] Full TypeScript migration for type safety
 - [ ] Catch errors at build time, safer refactoring
 - [ ] Effort: 2-3 weeks, Risk: Medium-High, ROI: High

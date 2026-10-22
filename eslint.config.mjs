@@ -5,6 +5,7 @@ import markdown from "@eslint/markdown";
 import { defineConfig } from "eslint/config";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
+import tseslint from "typescript-eslint";
 
 export default defineConfig([
   {
@@ -76,6 +77,34 @@ export default defineConfig([
     },
   },
   {
+    // TypeScript (AI_MODERNIZATION_PLAN.md Phase 12). Type errors are tsc's
+    // job (`npm run typecheck`); this is the non-type-aware recommended set
+    // plus the same two react-hooks rules as the .jsx block above.
+    files: ["**/*.{ts,tsx}"],
+    plugins: { js, "react-hooks": reactHooks },
+    extends: ["js/recommended", tseslint.configs.recommended],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node, ...globals.jest },
+    },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+      // Same options as no-unused-vars for JS below.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          args: "all",
+          argsIgnorePattern: "^_",
+          caughtErrors: "all",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+  {
     // vite.config.js is loaded by Vite as a real ES module regardless of
     // the rest of the project staying CommonJS - override the blanket
     // sourceType: "commonjs" above just for this file.
@@ -83,112 +112,11 @@ export default defineConfig([
     languageOptions: { sourceType: "module" },
   },
   {
-    // These are plain ES modules (import/export), not the UMD
-    // (CommonJS + browser-global) wrapper every other src/ui/helpers/*.js
-    // file uses - they're imported directly by .jsx components (and
-    // formerly index.page.js, deleted in window-bridge elimination Phase 7.5) via Vite's ESM bundling only, never require()'d, so
-    // UMD's dual-environment support buys them nothing. Same reasoning as
-    // vite.config.js above.
-    files: [
-      "src/ui/components/pr-row-keys.js",
-      "src/ui/helpers/pr-viewer-login-inference.helpers.js",
-      "src/ui/helpers/pr-thread-comments.helpers.js",
-      "src/ui/helpers/pr-sortable-time.helpers.js",
-      "src/ui/helpers/pr-filter-label-extraction.helpers.js",
-      "src/ui/helpers/pr-multi-select-checked-state.helpers.js",
-      "src/ui/helpers/pr-pending-multi-select-selections.helpers.js",
-      "src/ui/helpers/pr-row-sorting.helpers.js",
-      "src/ui/helpers/pr-selected-pr-numbers.helpers.js",
-      "src/ui/helpers/pr-as-array.helpers.js",
-      "src/ui/helpers/pr-per-pr-user-state.helpers.js",
-      "src/ui/helpers/pr-default-repo.helpers.js",
-      "src/ui/helpers/pr-repo-labels.helpers.js",
-      "src/ui/helpers/pr-last-checked-indicator.helpers.js",
-      "src/ui/helpers/pr-manual-notes-summary.helpers.js",
-      "src/ui/helpers/pr-textarea-autoresize.helpers.js",
-      "src/ui/helpers/pr-viewed-files-state.helpers.js",
-      "src/ui/helpers/pr-ack-refresh-warnings.helpers.js",
-      "src/ui/helpers/credential-field-error-filter.helpers.js",
-    ],
-    languageOptions: { sourceType: "module" },
-  },
-  {
-    // ES module cleanup (see REACT_MIGRATION_PLAN.md): the
-    // src/ui/helpers/*.js files listed here have been converted from the UMD
-    // wrapper to real `export`/`import` - this list grows as more files
-    // convert, same reasoning as pr-row-keys.js above. (index.page.js was on
-    // it until window-bridge elimination Phase 7.5 deleted it.)
-    files: [
-      "src/ui/helpers/pr-entry-derived-cache.helpers.js",
-      "src/ui/helpers/pr-multi-select-render-cache.helpers.js",
-      "src/ui/helpers/pr-section-grouping.helpers.js",
-      "src/ui/helpers/pr-notes.helpers.js",
-      "src/ui/helpers/pr-data-polling.helpers.js",
-      "src/ui/helpers/pr-data-polling-orchestration.helpers.js",
-      "src/ui/helpers/pr-row-checkbox-actions.helpers.js",
-      "src/ui/helpers/pr-ack-label-actions.helpers.js",
-      "src/ui/helpers/pr-concurrency.helpers.js",
-      "src/ui/helpers/pr-quick-check-actions.helpers.js",
-      "src/ui/helpers/pr-trigger-auto-run-action.helpers.js",
-      "src/ui/helpers/pr-markdown-render.helpers.js",
-      "src/ui/helpers/pr-activity-events.helpers.js",
-      "src/ui/helpers/pr-approval-duration.helpers.js",
-      "src/ui/helpers/pr-notes-people-options.helpers.js",
-      "src/ui/helpers/pr-open-conversation-count.helpers.js",
-      "src/ui/helpers/pr-viewed-files-summary.helpers.js",
-      "src/ui/helpers/pr-user-initials.helpers.js",
-      "src/ui/helpers/pr-review-conversations-ui-state.helpers.js",
-      "src/ui/helpers/pr-http.helpers.js",
-      "src/ui/helpers/pr-status-display.helpers.js",
-      "src/ui/helpers/pr-command-output.helpers.js",
-      "src/ui/helpers/pr-activity-badges.helpers.js",
-      "src/ui/helpers/pr-backfill.helpers.js",
-      "src/ui/helpers/pr-backfill-actions.helpers.js",
-      "src/ui/helpers/pr-formatting.helpers.js",
-      "src/ui/helpers/pr-actor-identity.helpers.js",
-      "src/ui/helpers/pr-actor-identity-style.helpers.js",
-      "src/ui/helpers/pr-actor-identity-render.helpers.js",
-      "src/ui/helpers/pr-requested-reviewers.helpers.js",
-      "src/ui/helpers/pr-assigned-users.helpers.js",
-      "src/ui/helpers/pr-approvers.helpers.js",
-      "src/ui/helpers/pr-insight-badge-class.helpers.js",
-      "src/ui/helpers/pr-insight-metrics-summary.helpers.js",
-      "src/ui/helpers/pr-author-cell.helpers.js",
-      "src/ui/helpers/pr-ui-render-utils.helpers.js",
-      "src/ui/helpers/pr-review-stats-date-bucketing.helpers.js",
-      "src/ui/helpers/pr-review-stats-aggregation.helpers.js",
-      "src/ui/helpers/pr-review-stats-timeline.helpers.js",
-      "src/ui/helpers/pr-author-insights-drafts.helpers.js",
-      "src/ui/helpers/pr-author-insights-identity.helpers.js",
-      "src/ui/helpers/pr-author-insights-display.helpers.js",
-      "src/ui/helpers/pr-author-insights-data.helpers.js",
-      "src/ui/helpers/pr-needs-attention.helpers.js",
-      "src/ui/helpers/pr-ui-option-persistence.helpers.js",
-      "src/ui/helpers/pr-applied-summary.helpers.js",
-      "src/ui/helpers/pr-merged-request-more-config.helpers.js",
-      "src/ui/helpers/pr-merged-request-more-action.helpers.js",
-      "src/ui/helpers/pr-scope-selection.helpers.js",
-      "src/ui/helpers/pr-repo-run-context.helpers.js",
-      "src/ui/helpers/pr-stored-data-load.helpers.js",
-      "src/ui/helpers/pr-viewer-context.helpers.js",
-      "src/ui/helpers/pr-selected-filters.helpers.js",
-      "src/ui/helpers/pr-row-filtering.helpers.js",
-      "src/ui/helpers/pr-row-match-filters.helpers.js",
-      "src/ui/helpers/pr-scheduler-status.helpers.js",
-      "src/ui/helpers/pr-visible-pr-numbers.helpers.js",
-      "src/ui/helpers/pr-auto-render-blocking.helpers.js",
-      "src/ui/helpers/pr-auto-render-unsaved.helpers.js",
-      "src/ui/helpers/pr-auto-render-indicator.helpers.js",
-      "src/ui/helpers/pr-auto-render-state.helpers.js",
-      "src/ui/helpers/pr-export.helpers.js",
-      "src/ui/helpers/form-parsing.helpers.js",
-      "src/ui/helpers/pr-section-config.helpers.js",
-      "src/ui/helpers/pr-smart-groups.helpers.js",
-      "src/ui/helpers/pr-job-events.helpers.js",
-      "src/ui/helpers/pr-bulk-action-batches.helpers.js",
-      "src/ui/helpers/pr-failure-snackbar.helpers.js",
-      "src/ui/helpers/pr-table-filter-chips.helpers.js",
-    ],
+    // Every non-test src/ui/helpers/*.js file (and pr-row-keys.js) is an ES
+    // module, overriding the blanket sourceType: "commonjs" above. Their
+    // tests and the test fixtures still use require(), which Babel handles.
+    files: ["src/ui/helpers/*.js", "src/ui/components/pr-row-keys.js"],
+    ignores: ["**/*.test.js"],
     languageOptions: { sourceType: "module" },
   },
   {
@@ -196,6 +124,11 @@ export default defineConfig([
     plugins: { json },
     language: "json/json",
     extends: ["json/recommended"],
+  },
+  {
+    // tsc reads tsconfig.json as JSON with comments.
+    files: ["tsconfig.json"],
+    language: "json/jsonc",
   },
   {
     files: ["**/*.md"],
@@ -232,7 +165,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["src/ui/**/*.{js,mjs,cjs,jsx}"],
+    files: ["src/ui/**/*.{js,mjs,cjs,jsx,ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "error",

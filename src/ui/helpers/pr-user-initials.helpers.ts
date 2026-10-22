@@ -1,10 +1,18 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction of index.page.js's
-// former getUserInitials/normalizeNameForInitials bodies into a DI-factory
-// module, so PrApprovedCell.jsx can import it directly instead of reading
-// window.getUserInitials. Byte-for-byte-logic-preserving move - genuinely
-// zero-dependency (pure string manipulation), so there's nothing to inject.
-const createPrUserInitialsHelpers = () => {
-  const normalizeNameForInitials = (value) => {
+// Two-letter initials for a person's avatar badge (PrApprovedCell and the
+// insights display), from their display name or, failing that, their login.
+// Pure string manipulation, so the factory takes no dependencies.
+
+export type GetUserInitials = (
+  displayName: string | null | undefined,
+  fallbackLogin?: string | null,
+) => string;
+
+export interface PrUserInitialsHelpers {
+  getUserInitials: GetUserInitials;
+}
+
+const createPrUserInitialsHelpers = (): PrUserInitialsHelpers => {
+  const normalizeNameForInitials = (value: string | null | undefined): string => {
     const raw = String(value || "")
       .replace(/\([^)]*\)/g, " ")
       .replace(/[_-]+/g, " ")
@@ -25,22 +33,22 @@ const createPrUserInitialsHelpers = () => {
     return raw;
   };
 
-  const getUserInitials = (displayName, fallbackLogin = "") => {
+  const getUserInitials: GetUserInitials = (displayName, fallbackLogin = "") => {
     const cleanedName = normalizeNameForInitials(displayName);
-    const words = cleanedName.split(/\s+/).filter(Boolean);
-    if (words.length >= 2) {
-      return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
+    const [firstWord = "", secondWord] = cleanedName.split(/\s+/).filter(Boolean);
+    if (secondWord !== undefined) {
+      return `${firstWord[0] || ""}${secondWord[0] || ""}`.toUpperCase();
     }
-    if (words.length === 1 && words[0].length >= 2) {
-      return words[0].slice(0, 2).toUpperCase();
+    if (firstWord.length >= 2) {
+      return firstWord.slice(0, 2).toUpperCase();
     }
 
     const login = String(fallbackLogin || "")
       .replace(/[_-]+/g, " ")
       .trim();
-    const loginWords = login.split(/\s+/).filter(Boolean);
-    if (loginWords.length >= 2) {
-      return `${loginWords[0][0] || ""}${loginWords[1][0] || ""}`.toUpperCase();
+    const [firstLoginWord = "", secondLoginWord] = login.split(/\s+/).filter(Boolean);
+    if (secondLoginWord !== undefined) {
+      return `${firstLoginWord[0] || ""}${secondLoginWord[0] || ""}`.toUpperCase();
     }
     return login.slice(0, 2).toUpperCase() || "--";
   };

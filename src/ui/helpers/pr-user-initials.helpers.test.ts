@@ -1,6 +1,4 @@
-const {
-  createPrUserInitialsHelpers,
-} = require("./pr-user-initials.helpers.js");
+import { createPrUserInitialsHelpers } from "./pr-user-initials.helpers.ts";
 
 describe("pr user initials helpers", () => {
   test("given a two-word name, when computing initials, then the first letter of each word is used", () => {
