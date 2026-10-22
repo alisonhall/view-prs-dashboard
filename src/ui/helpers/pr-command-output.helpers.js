@@ -1,83 +1,74 @@
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
-// wrapper every other src/ui/helpers file still uses - the factory body
-// below is unchanged, only the export mechanism differs. index.page.js
-// imports this directly instead of using the
-// require()/globalThis.ViewPrsPrCommandOutputHelpers fallback.
-export const { createPrCommandOutputHelpers } = (() => {
-  const createPrCommandOutputHelpers = ({ stripAnsi }) => {
-    const formatCommandOutput = (
-      result,
-      { includeError = true, includeStdout = true, includeStderr = true } = {},
-    ) =>
-      [
-        result?.command ? `Command: ${result.command}` : "",
-        includeError && result?.error ? `Error:\n${result.error}` : "",
-        includeStdout && result?.output
-          ? `Stdout:\n${stripAnsi(result.output)}`
-          : "",
-        includeStderr && result?.stderr
-          ? `Stderr:\n${stripAnsi(result.stderr)}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+const createPrCommandOutputHelpers = ({ stripAnsi }) => {
+  const formatCommandOutput = (
+    result,
+    { includeError = true, includeStdout = true, includeStderr = true } = {},
+  ) =>
+    [
+      result?.command ? `Command: ${result.command}` : "",
+      includeError && result?.error ? `Error:\n${result.error}` : "",
+      includeStdout && result?.output
+        ? `Stdout:\n${stripAnsi(result.output)}`
+        : "",
+      includeStderr && result?.stderr
+        ? `Stderr:\n${stripAnsi(result.stderr)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
-    const getGithubAuthFailureHint = (result = {}) => {
-      const combined = [result?.error, result?.stderr, result?.output]
-        .map((value) => String(value || ""))
-        .join("\n")
-        .toLowerCase();
+  const getGithubAuthFailureHint = (result = {}) => {
+    const combined = [result?.error, result?.stderr, result?.output]
+      .map((value) => String(value || ""))
+      .join("\n")
+      .toLowerCase();
 
-      if (!combined.trim()) {
-        return "";
-      }
+    if (!combined.trim()) {
+      return "";
+    }
 
-      const isSamlError =
-        combined.includes(
-          "resource protected by organization saml enforcement",
-        ) || combined.includes("authorize in your web browser");
-      const isAuthError =
-        combined.includes("gh auth login") ||
-        combined.includes("authentication failed") ||
-        combined.includes("http 401") ||
-        combined.includes("forbidden") ||
-        combined.includes("http 403");
+    const isSamlError =
+      combined.includes(
+        "resource protected by organization saml enforcement",
+      ) || combined.includes("authorize in your web browser");
+    const isAuthError =
+      combined.includes("gh auth login") ||
+      combined.includes("authentication failed") ||
+      combined.includes("http 401") ||
+      combined.includes("forbidden") ||
+      combined.includes("http 403");
 
-      if (!isSamlError && !isAuthError) {
-        return "";
-      }
+    if (!isSamlError && !isAuthError) {
+      return "";
+    }
 
-      if (isSamlError) {
-        return [
-          "GitHub access is blocked by org SAML authorization.",
-          "Authorize the GitHub CLI token in the browser URL shown above, then rerun.",
-        ].join(" ");
-      }
-
+    if (isSamlError) {
       return [
-        "GitHub CLI authentication appears invalid or expired.",
-        "Run gh auth status, refresh/login, then rerun.",
+        "GitHub access is blocked by org SAML authorization.",
+        "Authorize the GitHub CLI token in the browser URL shown above, then rerun.",
       ].join(" ");
-    };
+    }
 
-    const formatCommandOutputWithAuthHint = (result, options = {}) => {
-      const output = formatCommandOutput(result, options);
-      const hint = getGithubAuthFailureHint(result);
-      if (!hint) {
-        return output;
-      }
+    return [
+      "GitHub CLI authentication appears invalid or expired.",
+      "Run gh auth status, refresh/login, then rerun.",
+    ].join(" ");
+  };
 
-      return [output, `Auth hint: ${hint}`].filter(Boolean).join("\n\n");
-    };
+  const formatCommandOutputWithAuthHint = (result, options = {}) => {
+    const output = formatCommandOutput(result, options);
+    const hint = getGithubAuthFailureHint(result);
+    if (!hint) {
+      return output;
+    }
 
-    return {
-      formatCommandOutput,
-      getGithubAuthFailureHint,
-      formatCommandOutputWithAuthHint,
-    };
+    return [output, `Auth hint: ${hint}`].filter(Boolean).join("\n\n");
   };
 
   return {
-    createPrCommandOutputHelpers,
+    formatCommandOutput,
+    getGithubAuthFailureHint,
+    formatCommandOutputWithAuthHint,
   };
-})();
+};
+
+export { createPrCommandOutputHelpers };

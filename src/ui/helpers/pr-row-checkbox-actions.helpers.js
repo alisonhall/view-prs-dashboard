@@ -16,233 +16,229 @@
 // risks a subtle wording bug for a zero-risk pure extraction. Left as two
 // separate functions; deduplicating them is a deliberate follow-up, not
 // bundled into this pass.
-export const { createPrRowCheckboxActionsHelpers } = (() => {
-  const createPrRowCheckboxActionsHelpers = ({
-    fetchFn,
-    setStatusTextOnly,
-    notifyFailureSnackbar,
-    getLatestStoredPayload,
-    getLatestSelectedRepo,
-    applyLatestPrData,
-    loadStoredData,
-    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): these were
-    // previously untracked entirely - a checkbox toggle is normally
-    // near-instant (the server's own isCheckboxOnly path skips any PR
-    // refresh), so there was nothing to see in practice, but a genuinely
-    // slow/hung network request had no visibility anywhere either. Wrapped
-    // the same way every other tracked action already is, so the only
-    // behavior change is a toggle that's taking unusually long becoming
-    // visible in the drawer's "In-flight user actions" section.
-    beginRequestActivity,
-  } = {}) => {
-    const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
-      throw new Error("fetchFn is not available");
-    };
-    const setStatusTextOnlySafe =
-      typeof setStatusTextOnly === "function" ? setStatusTextOnly : () => {};
-    const notifyFailureSnackbarSafe =
-      typeof notifyFailureSnackbar === "function" ? notifyFailureSnackbar : () => {};
-    const getLatestStoredPayloadSafe =
-      typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
-    const getLatestSelectedRepoSafe =
-      typeof getLatestSelectedRepo === "function" ? getLatestSelectedRepo : () => "";
-    const applyLatestPrDataSafe =
-      typeof applyLatestPrData === "function" ? applyLatestPrData : () => {};
-    const loadStoredDataSafe =
-      typeof loadStoredData === "function" ? loadStoredData : async () => {};
-    const beginRequestActivitySafe =
-      typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
+const createPrRowCheckboxActionsHelpers = ({
+  fetchFn,
+  setStatusTextOnly,
+  notifyFailureSnackbar,
+  getLatestStoredPayload,
+  getLatestSelectedRepo,
+  applyLatestPrData,
+  loadStoredData,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): these were
+  // previously untracked entirely - a checkbox toggle is normally
+  // near-instant (the server's own isCheckboxOnly path skips any PR
+  // refresh), so there was nothing to see in practice, but a genuinely
+  // slow/hung network request had no visibility anywhere either. Wrapped
+  // the same way every other tracked action already is, so the only
+  // behavior change is a toggle that's taking unusually long becoming
+  // visible in the drawer's "In-flight user actions" section.
+  beginRequestActivity,
+} = {}) => {
+  const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
+    throw new Error("fetchFn is not available");
+  };
+  const setStatusTextOnlySafe =
+    typeof setStatusTextOnly === "function" ? setStatusTextOnly : () => {};
+  const notifyFailureSnackbarSafe =
+    typeof notifyFailureSnackbar === "function" ? notifyFailureSnackbar : () => {};
+  const getLatestStoredPayloadSafe =
+    typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
+  const getLatestSelectedRepoSafe =
+    typeof getLatestSelectedRepo === "function" ? getLatestSelectedRepo : () => "";
+  const applyLatestPrDataSafe =
+    typeof applyLatestPrData === "function" ? applyLatestPrData : () => {};
+  const loadStoredDataSafe =
+    typeof loadStoredData === "function" ? loadStoredData : async () => {};
+  const beginRequestActivitySafe =
+    typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
 
-    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
-    // exit point returns either null (failure) or { payload, selectedRepo }
-    // (success) instead of a bare return - this is what lets
-    // react-callbacks.helpers.js push the just-computed value into React
-    // directly, without reading latestStoredPayload back synchronously
-    // right after this function writes it (the documented regression class
-    // that deferred this - a setState-backed Context read can't satisfy a
-    // same-tick readback, but using this function's own return value
-    // doesn't go through Context at all).
-    const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
-      const prNumber = String(row.number || entry.prNumber || "").trim();
+  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
+  // exit point returns either null (failure) or { payload, selectedRepo }
+  // (success) instead of a bare return - this is what lets
+  // react-callbacks.helpers.js push the just-computed value into React
+  // directly, without reading latestStoredPayload back synchronously
+  // right after this function writes it (the documented regression class
+  // that deferred this - a setState-backed Context read can't satisfy a
+  // same-tick readback, but using this function's own return value
+  // doesn't go through Context at all).
+  const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
+    const prNumber = String(row.number || entry.prNumber || "").trim();
 
-      if (!prNumber) {
-        checkbox.checked = !nextValue;
-        setStatusTextOnlySafe("Unable to update in-review state: missing PR number");
-        notifyFailureSnackbarSafe(
-          "In-review update failed",
-          "Missing PR number",
-          "Unable to update in-review state",
-        );
-        return null;
-      }
+    if (!prNumber) {
+      checkbox.checked = !nextValue;
+      setStatusTextOnlySafe("Unable to update in-review state: missing PR number");
+      notifyFailureSnackbarSafe(
+        "In-review update failed",
+        "Missing PR number",
+        "Unable to update in-review state",
+      );
+      return null;
+    }
 
-      checkbox.disabled = true;
-      setStatusTextOnlySafe(`${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`);
-      const finishActivity = beginRequestActivitySafe("checkboxToggle");
+    checkbox.disabled = true;
+    setStatusTextOnlySafe(`${nextValue ? "Enabling" : "Disabling"} in-review for #${prNumber}...`);
+    const finishActivity = beginRequestActivitySafe("checkboxToggle");
 
-      try {
-        const payload = {
-          repo: entry.repo || getLatestSelectedRepoSafe() || "",
-          ...(nextValue ? { inReview: prNumber } : { inReviewClear: prNumber }),
-        };
-        const response = await fetchFnSafe("/view-prs/ack", {
-          method: "POST",
-          body: JSON.stringify(payload),
-          headers: { "Content-Type": "application/json" },
-        });
-        const result = await response.json();
+    try {
+      const payload = {
+        repo: entry.repo || getLatestSelectedRepoSafe() || "",
+        ...(nextValue ? { inReview: prNumber } : { inReviewClear: prNumber }),
+      };
+      const response = await fetchFnSafe("/view-prs/ack", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await response.json();
 
-        if (!response.ok || result.ok === false) {
-          checkbox.checked = !nextValue;
-          setStatusTextOnlySafe(`Failed to update in-review for #${prNumber}`);
-          notifyFailureSnackbarSafe(
-            `In-review update failed for #${prNumber}`,
-            result,
-            `Failed to update in-review for #${prNumber}`,
-          );
-          return null;
-        }
-
-        setStatusTextOnlySafe(`${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`);
-
-        const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
-
-        // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
-        // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
-        if (result.flaggedByRepo && result.inReviewByRepo) {
-          // Minimal response: only update flag data. Reassign (don't mutate)
-          // latestStoredPayload so React's reference-equality checks (useState
-          // bail-out, useEffect deps) actually detect the change and re-render.
-          const currentPayload = getLatestStoredPayloadSafe();
-          const updatedPayload = currentPayload
-            ? {
-                ...currentPayload,
-                flaggedByRepo: result.flaggedByRepo,
-                inReviewByRepo: result.inReviewByRepo,
-              }
-            : currentPayload;
-          applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
-          // Don't call renderPrData() - checkbox already updated, UI is correct
-          // Smart groups will update on next full refresh
-          return { payload: updatedPayload, selectedRepo };
-        } else if (result.prData) {
-          // Full response (backward compatibility)
-          applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
-          return { payload: result.prData, selectedRepo };
-        } else {
-          // Fallback to full reload only if no data returned
-          await loadStoredDataSafe(selectedRepo || "");
-          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-        }
-      } catch (_error) {
+      if (!response.ok || result.ok === false) {
         checkbox.checked = !nextValue;
         setStatusTextOnlySafe(`Failed to update in-review for #${prNumber}`);
         notifyFailureSnackbarSafe(
           `In-review update failed for #${prNumber}`,
-          _error,
+          result,
           `Failed to update in-review for #${prNumber}`,
         );
         return null;
-      } finally {
-        checkbox.disabled = false;
-        finishActivity();
-      }
-    };
-
-    const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
-      const prNumber = String(row.number || entry.prNumber || "").trim();
-
-      if (!prNumber) {
-        checkbox.checked = !nextValue;
-        setStatusTextOnlySafe("Unable to update flagged state: missing PR number");
-        notifyFailureSnackbarSafe(
-          "Flagged update failed",
-          "Missing PR number",
-          "Unable to update flagged state",
-        );
-        return null;
       }
 
-      checkbox.disabled = true;
-      setStatusTextOnlySafe(`${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`);
-      const finishActivity = beginRequestActivitySafe("checkboxToggle");
+      setStatusTextOnlySafe(`${nextValue ? "Enabled" : "Disabled"} in-review for #${prNumber}`);
 
-      try {
-        const payload = {
-          repo: entry.repo || getLatestSelectedRepoSafe() || "",
-          ...(nextValue ? { flagged: prNumber } : { flaggedClear: prNumber }),
-        };
-        const response = await fetchFnSafe("/view-prs/ack", {
-          method: "POST",
-          body: JSON.stringify(payload),
-          headers: { "Content-Type": "application/json" },
-        });
-        const result = await response.json();
+      const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
 
-        if (!response.ok || result.ok === false) {
-          checkbox.checked = !nextValue;
-          setStatusTextOnlySafe(`Failed to update flagged state for #${prNumber}`);
-          notifyFailureSnackbarSafe(
-            `Flagged update failed for #${prNumber}`,
-            result,
-            `Failed to update flagged state for #${prNumber}`,
-          );
-          return null;
-        }
+      // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
+      // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
+      if (result.flaggedByRepo && result.inReviewByRepo) {
+        // Minimal response: only update flag data. Reassign (don't mutate)
+        // latestStoredPayload so React's reference-equality checks (useState
+        // bail-out, useEffect deps) actually detect the change and re-render.
+        const currentPayload = getLatestStoredPayloadSafe();
+        const updatedPayload = currentPayload
+          ? {
+              ...currentPayload,
+              flaggedByRepo: result.flaggedByRepo,
+              inReviewByRepo: result.inReviewByRepo,
+            }
+          : currentPayload;
+        applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
+        // Don't call renderPrData() - checkbox already updated, UI is correct
+        // Smart groups will update on next full refresh
+        return { payload: updatedPayload, selectedRepo };
+      } else if (result.prData) {
+        // Full response (backward compatibility)
+        applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
+        return { payload: result.prData, selectedRepo };
+      } else {
+        // Fallback to full reload only if no data returned
+        await loadStoredDataSafe(selectedRepo || "");
+        return { payload: getLatestStoredPayloadSafe(), selectedRepo };
+      }
+    } catch (_error) {
+      checkbox.checked = !nextValue;
+      setStatusTextOnlySafe(`Failed to update in-review for #${prNumber}`);
+      notifyFailureSnackbarSafe(
+        `In-review update failed for #${prNumber}`,
+        _error,
+        `Failed to update in-review for #${prNumber}`,
+      );
+      return null;
+    } finally {
+      checkbox.disabled = false;
+      finishActivity();
+    }
+  };
 
-        setStatusTextOnlySafe(`${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`);
+  const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
+    const prNumber = String(row.number || entry.prNumber || "").trim();
 
-        const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
+    if (!prNumber) {
+      checkbox.checked = !nextValue;
+      setStatusTextOnlySafe("Unable to update flagged state: missing PR number");
+      notifyFailureSnackbarSafe(
+        "Flagged update failed",
+        "Missing PR number",
+        "Unable to update flagged state",
+      );
+      return null;
+    }
 
-        // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
-        // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
-        if (result.flaggedByRepo && result.inReviewByRepo) {
-          // Minimal response: only update flag data. Reassign (don't mutate)
-          // latestStoredPayload so React's reference-equality checks (useState
-          // bail-out, useEffect deps) actually detect the change and re-render.
-          const currentPayload = getLatestStoredPayloadSafe();
-          const updatedPayload = currentPayload
-            ? {
-                ...currentPayload,
-                flaggedByRepo: result.flaggedByRepo,
-                inReviewByRepo: result.inReviewByRepo,
-              }
-            : currentPayload;
-          applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
-          // Don't call renderPrData() - checkbox already updated, UI is correct
-          // Smart groups will update on next full refresh
-          return { payload: updatedPayload, selectedRepo };
-        } else if (result.prData) {
-          // Full response (backward compatibility)
-          applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
-          return { payload: result.prData, selectedRepo };
-        } else {
-          // Fallback to full reload only if no data returned
-          await loadStoredDataSafe(selectedRepo || "");
-          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-        }
-      } catch (_error) {
+    checkbox.disabled = true;
+    setStatusTextOnlySafe(`${nextValue ? "Flagging" : "Unflagging"} #${prNumber}...`);
+    const finishActivity = beginRequestActivitySafe("checkboxToggle");
+
+    try {
+      const payload = {
+        repo: entry.repo || getLatestSelectedRepoSafe() || "",
+        ...(nextValue ? { flagged: prNumber } : { flaggedClear: prNumber }),
+      };
+      const response = await fetchFnSafe("/view-prs/ack", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await response.json();
+
+      if (!response.ok || result.ok === false) {
         checkbox.checked = !nextValue;
         setStatusTextOnlySafe(`Failed to update flagged state for #${prNumber}`);
         notifyFailureSnackbarSafe(
           `Flagged update failed for #${prNumber}`,
-          _error,
+          result,
           `Failed to update flagged state for #${prNumber}`,
         );
         return null;
-      } finally {
-        checkbox.disabled = false;
-        finishActivity();
       }
-    };
 
-    return {
-      toggleInReviewForRow,
-      toggleFlaggedForRow,
-    };
+      setStatusTextOnlySafe(`${nextValue ? "Flagged" : "Unflagged"} #${prNumber}`);
+
+      const selectedRepo = payload.repo || getLatestSelectedRepoSafe();
+
+      // PERFORMANCE OPTIMIZATION: Update in-memory data without full re-render
+      // Server now returns minimal delta (flaggedByRepo/inReviewByRepo) for checkbox operations
+      if (result.flaggedByRepo && result.inReviewByRepo) {
+        // Minimal response: only update flag data. Reassign (don't mutate)
+        // latestStoredPayload so React's reference-equality checks (useState
+        // bail-out, useEffect deps) actually detect the change and re-render.
+        const currentPayload = getLatestStoredPayloadSafe();
+        const updatedPayload = currentPayload
+          ? {
+              ...currentPayload,
+              flaggedByRepo: result.flaggedByRepo,
+              inReviewByRepo: result.inReviewByRepo,
+            }
+          : currentPayload;
+        applyLatestPrDataSafe({ payload: updatedPayload, selectedRepo });
+        // Don't call renderPrData() - checkbox already updated, UI is correct
+        // Smart groups will update on next full refresh
+        return { payload: updatedPayload, selectedRepo };
+      } else if (result.prData) {
+        // Full response (backward compatibility)
+        applyLatestPrDataSafe({ payload: result.prData, selectedRepo });
+        return { payload: result.prData, selectedRepo };
+      } else {
+        // Fallback to full reload only if no data returned
+        await loadStoredDataSafe(selectedRepo || "");
+        return { payload: getLatestStoredPayloadSafe(), selectedRepo };
+      }
+    } catch (_error) {
+      checkbox.checked = !nextValue;
+      setStatusTextOnlySafe(`Failed to update flagged state for #${prNumber}`);
+      notifyFailureSnackbarSafe(
+        `Flagged update failed for #${prNumber}`,
+        _error,
+        `Failed to update flagged state for #${prNumber}`,
+      );
+      return null;
+    } finally {
+      checkbox.disabled = false;
+      finishActivity();
+    }
   };
 
   return {
-    createPrRowCheckboxActionsHelpers,
+    toggleInReviewForRow,
+    toggleFlaggedForRow,
   };
-})();
+};
+
+export { createPrRowCheckboxActionsHelpers };

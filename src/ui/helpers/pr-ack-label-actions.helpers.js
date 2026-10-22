@@ -60,287 +60,153 @@
 // the queued state entirely and goes straight to busy, same as before this
 // state existed - there's no meaningful "queued" phase when there's only
 // ever going to be one request.
-export const { createPrAckLabelActionsHelpers } = (() => {
-  const CHUNK_SIZE = 5;
-  const CONCURRENCY_LIMIT = 3;
+const CHUNK_SIZE = 5;
+const CONCURRENCY_LIMIT = 3;
 
-  const chunkArray = (items, size) => {
-    const list = Array.isArray(items) ? items : [];
-    const safeSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : list.length || 1;
-    const chunks = [];
-    for (let i = 0; i < list.length; i += safeSize) {
-      chunks.push(list.slice(i, i + safeSize));
-    }
-    return chunks;
-  };
+const chunkArray = (items, size) => {
+  const list = Array.isArray(items) ? items : [];
+  const safeSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : list.length || 1;
+  const chunks = [];
+  for (let i = 0; i < list.length; i += safeSize) {
+    chunks.push(list.slice(i, i + safeSize));
+  }
+  return chunks;
+};
 
-  const createPrAckLabelActionsHelpers = ({
-    postJson,
-    setStatusMessage,
-    setOutputMessage,
-    beginRequestActivity,
-    getGithubAuthFailureHint,
-    formatCommandOutput,
-    formatCommandOutputWithAuthHint,
-    showErrorNotification,
-    showWarningNotification,
-    summarizeAckRefreshWarnings,
-    applyFreshPrPayload,
-    loadStoredData,
-    getFormBody,
-    defaultRepo,
-    parseCsvTokens,
-    markPrsBusy,
-    clearPrsBusy,
-    markPrsQueued,
-    clearPrsQueued,
-    // Activity drawer feature (see REACT_MIGRATION_PLAN.md): surfaces the
-    // real chunk order/progress of a multi-chunk batch in the drawer's
-    // queue section. Only called for a genuine multi-chunk batch - see
-    // runAckAction/runApplyLabelAction's own chunks.length <= 1 branch,
-    // which never calls these (matches beginBulkActionBatch's own
-    // single-chunk no-op in pr-bulk-action-batches.helpers.js).
-    beginBulkActionBatch,
-    markBulkActionChunkInFlight,
-    markBulkActionChunkDone,
-    finishBulkActionBatch,
-    runWithConcurrencyLimit,
-    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): only
-    // needed for the loadStoredData-fallback branches below, to read back
-    // the payload loadStoredData itself just wrote via applyLatestPrData -
-    // a synchronous read strictly after that write has already completed,
-    // not the same-tick-as-mutation hazard this whole effort removes.
-    getLatestStoredPayload,
-  } = {}) => {
-    const postJsonSafe = typeof postJson === "function" ? postJson : async () => ({
-      response: { ok: false },
-      result: { ok: false, error: "postJson is not available" },
-    });
-    const setStatusMessageSafe = typeof setStatusMessage === "function" ? setStatusMessage : () => {};
-    const setOutputMessageSafe = typeof setOutputMessage === "function" ? setOutputMessage : () => {};
-    const beginRequestActivitySafe =
-      typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
-    const getGithubAuthFailureHintSafe =
-      typeof getGithubAuthFailureHint === "function" ? getGithubAuthFailureHint : () => "";
-    const formatCommandOutputSafe =
-      typeof formatCommandOutput === "function" ? formatCommandOutput : () => "";
-    const formatCommandOutputWithAuthHintSafe =
-      typeof formatCommandOutputWithAuthHint === "function" ? formatCommandOutputWithAuthHint : () => "";
-    const showErrorNotificationSafe =
-      typeof showErrorNotification === "function" ? showErrorNotification : () => {};
-    const showWarningNotificationSafe =
-      typeof showWarningNotification === "function" ? showWarningNotification : () => {};
-    const summarizeAckRefreshWarningsSafe =
-      typeof summarizeAckRefreshWarnings === "function" ? summarizeAckRefreshWarnings : () => null;
-    const applyFreshPrPayloadSafe =
-      typeof applyFreshPrPayload === "function" ? applyFreshPrPayload : () => {};
-    const loadStoredDataSafe = typeof loadStoredData === "function" ? loadStoredData : async () => {};
-    const getFormBodySafe = typeof getFormBody === "function" ? getFormBody : () => ({});
-    const defaultRepoSafe = typeof defaultRepo === "string" ? defaultRepo : "";
-    const parseCsvTokensSafe =
-      typeof parseCsvTokens === "function"
-        ? parseCsvTokens
-        : (rawValue) => String(rawValue || "").split(",").map((token) => token.trim()).filter(Boolean);
-    const markPrsBusySafe = typeof markPrsBusy === "function" ? markPrsBusy : () => {};
-    const clearPrsBusySafe = typeof clearPrsBusy === "function" ? clearPrsBusy : () => {};
-    const markPrsQueuedSafe = typeof markPrsQueued === "function" ? markPrsQueued : () => {};
-    const clearPrsQueuedSafe = typeof clearPrsQueued === "function" ? clearPrsQueued : () => {};
-    const beginBulkActionBatchSafe =
-      typeof beginBulkActionBatch === "function" ? beginBulkActionBatch : () => {};
-    const markBulkActionChunkInFlightSafe =
-      typeof markBulkActionChunkInFlight === "function" ? markBulkActionChunkInFlight : () => {};
-    const markBulkActionChunkDoneSafe =
-      typeof markBulkActionChunkDone === "function" ? markBulkActionChunkDone : () => {};
-    const finishBulkActionBatchSafe =
-      typeof finishBulkActionBatch === "function" ? finishBulkActionBatch : () => {};
-    const generateBulkActionBatchId = () =>
-      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const runWithConcurrencyLimitSafe =
-      typeof runWithConcurrencyLimit === "function"
-        ? runWithConcurrencyLimit
-        : async (items, _limit, worker) => {
-            const list = Array.isArray(items) ? items : [];
-            const results = [];
-            for (const item of list) {
-              try {
-                results.push(await worker(item));
-              } catch (error) {
-                results.push({ ok: false, error });
-              }
+const createPrAckLabelActionsHelpers = ({
+  postJson,
+  setStatusMessage,
+  setOutputMessage,
+  beginRequestActivity,
+  getGithubAuthFailureHint,
+  formatCommandOutput,
+  formatCommandOutputWithAuthHint,
+  showErrorNotification,
+  showWarningNotification,
+  summarizeAckRefreshWarnings,
+  applyFreshPrPayload,
+  loadStoredData,
+  getFormBody,
+  defaultRepo,
+  parseCsvTokens,
+  markPrsBusy,
+  clearPrsBusy,
+  markPrsQueued,
+  clearPrsQueued,
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): surfaces the
+  // real chunk order/progress of a multi-chunk batch in the drawer's
+  // queue section. Only called for a genuine multi-chunk batch - see
+  // runAckAction/runApplyLabelAction's own chunks.length <= 1 branch,
+  // which never calls these (matches beginBulkActionBatch's own
+  // single-chunk no-op in pr-bulk-action-batches.helpers.js).
+  beginBulkActionBatch,
+  markBulkActionChunkInFlight,
+  markBulkActionChunkDone,
+  finishBulkActionBatch,
+  runWithConcurrencyLimit,
+  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): only
+  // needed for the loadStoredData-fallback branches below, to read back
+  // the payload loadStoredData itself just wrote via applyLatestPrData -
+  // a synchronous read strictly after that write has already completed,
+  // not the same-tick-as-mutation hazard this whole effort removes.
+  getLatestStoredPayload,
+} = {}) => {
+  const postJsonSafe = typeof postJson === "function" ? postJson : async () => ({
+    response: { ok: false },
+    result: { ok: false, error: "postJson is not available" },
+  });
+  const setStatusMessageSafe = typeof setStatusMessage === "function" ? setStatusMessage : () => {};
+  const setOutputMessageSafe = typeof setOutputMessage === "function" ? setOutputMessage : () => {};
+  const beginRequestActivitySafe =
+    typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
+  const getGithubAuthFailureHintSafe =
+    typeof getGithubAuthFailureHint === "function" ? getGithubAuthFailureHint : () => "";
+  const formatCommandOutputSafe =
+    typeof formatCommandOutput === "function" ? formatCommandOutput : () => "";
+  const formatCommandOutputWithAuthHintSafe =
+    typeof formatCommandOutputWithAuthHint === "function" ? formatCommandOutputWithAuthHint : () => "";
+  const showErrorNotificationSafe =
+    typeof showErrorNotification === "function" ? showErrorNotification : () => {};
+  const showWarningNotificationSafe =
+    typeof showWarningNotification === "function" ? showWarningNotification : () => {};
+  const summarizeAckRefreshWarningsSafe =
+    typeof summarizeAckRefreshWarnings === "function" ? summarizeAckRefreshWarnings : () => null;
+  const applyFreshPrPayloadSafe =
+    typeof applyFreshPrPayload === "function" ? applyFreshPrPayload : () => {};
+  const loadStoredDataSafe = typeof loadStoredData === "function" ? loadStoredData : async () => {};
+  const getFormBodySafe = typeof getFormBody === "function" ? getFormBody : () => ({});
+  const defaultRepoSafe = typeof defaultRepo === "string" ? defaultRepo : "";
+  const parseCsvTokensSafe =
+    typeof parseCsvTokens === "function"
+      ? parseCsvTokens
+      : (rawValue) => String(rawValue || "").split(",").map((token) => token.trim()).filter(Boolean);
+  const markPrsBusySafe = typeof markPrsBusy === "function" ? markPrsBusy : () => {};
+  const clearPrsBusySafe = typeof clearPrsBusy === "function" ? clearPrsBusy : () => {};
+  const markPrsQueuedSafe = typeof markPrsQueued === "function" ? markPrsQueued : () => {};
+  const clearPrsQueuedSafe = typeof clearPrsQueued === "function" ? clearPrsQueued : () => {};
+  const beginBulkActionBatchSafe =
+    typeof beginBulkActionBatch === "function" ? beginBulkActionBatch : () => {};
+  const markBulkActionChunkInFlightSafe =
+    typeof markBulkActionChunkInFlight === "function" ? markBulkActionChunkInFlight : () => {};
+  const markBulkActionChunkDoneSafe =
+    typeof markBulkActionChunkDone === "function" ? markBulkActionChunkDone : () => {};
+  const finishBulkActionBatchSafe =
+    typeof finishBulkActionBatch === "function" ? finishBulkActionBatch : () => {};
+  const generateBulkActionBatchId = () =>
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const runWithConcurrencyLimitSafe =
+    typeof runWithConcurrencyLimit === "function"
+      ? runWithConcurrencyLimit
+      : async (items, _limit, worker) => {
+          const list = Array.isArray(items) ? items : [];
+          const results = [];
+          for (const item of list) {
+            try {
+              results.push(await worker(item));
+            } catch (error) {
+              results.push({ ok: false, error });
             }
-            return results;
-          };
-    const getLatestStoredPayloadSafe =
-      typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
-
-    // The original, single-request code path - unchanged behavior, used
-    // whenever a batch fits in one chunk (see the module-level comment).
-    // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
-    // exit point now returns null (failure) or { payload, selectedRepo }
-    // (success) - see pr-row-checkbox-actions.helpers.js's own comment for
-    // why, same reasoning applies here.
-    const runSingleAckRequest = async (payload, actionLabel) => {
-      try {
-        const { response, result } = await postJsonSafe("/view-prs/ack", payload);
-
-        if (!response.ok || result.ok === false) {
-          const authHint = getGithubAuthFailureHintSafe(result);
-          setStatusMessageSafe(
-            authHint
-              ? `Failed (${response.status}) - GitHub auth required`
-              : `Failed (${response.status})`,
-          );
-          setOutputMessageSafe(formatCommandOutputWithAuthHintSafe(result));
-          showErrorNotificationSafe(
-            `${actionLabel} failed`,
-            authHint
-              ? "GitHub authentication or SSO required. Check the output below for authorization link."
-              : `HTTP ${response.status}: Check the output below for details.`,
-            0,
-          );
-          return null;
-        }
-
-        setStatusMessageSafe(`${actionLabel} completed`);
-        setOutputMessageSafe(
-          formatCommandOutputSafe(result, { includeError: false }) ||
-            `${actionLabel} completed.`,
-        );
-
-        const warningSummary = summarizeAckRefreshWarningsSafe(result?.refreshErrors);
-        if (warningSummary) {
-          showWarningNotificationSafe(
-            `${actionLabel} completed with warnings (${warningSummary.summaryText})`,
-            warningSummary.sample,
-          );
-        }
-
-        const selectedRepo = payload.repo || defaultRepoSafe;
-        if (result.prData) {
-          applyFreshPrPayloadSafe(result.prData, selectedRepo);
-          return { payload: result.prData, selectedRepo };
-        } else {
-          await loadStoredDataSafe(selectedRepo);
-          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-        }
-      } catch (error) {
-        setStatusMessageSafe("Failed (network/error)");
-        setOutputMessageSafe(String(error));
-        showErrorNotificationSafe(
-          `${actionLabel} failed`,
-          String(error || "An unknown error occurred"),
-          0,
-        );
-        return null;
-      }
-    };
-
-    // New multi-chunk aggregation path - only reached for a batch larger
-    // than CHUNK_SIZE. Every chunk runs regardless of an earlier chunk's
-    // outcome (no early return on failure, unlike the single-request path
-    // above), then one combined summary is shown at the end.
-    const runChunkedAckRequest = async (actionLabel, chunks, isClear, repo) => {
-      let completedChunks = 0;
-      const failedChunks = [];
-      const allRefreshErrors = [];
-      // Collected across every successful chunk, not just the last one to
-      // resolve - a chunk-count-many response bodies each have their own
-      // command output, and showing only the last chunk's would silently
-      // drop the others (found during a post-hoc review of this feature).
-      const successfulChunkOutputs = [];
-
-      const batchId = generateBulkActionBatchId();
-      beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
-
-      try {
-        await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
-          clearPrsQueuedSafe(chunkPrNumbers, repo);
-          markPrsBusySafe(chunkPrNumbers, repo);
-          markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
-          const chunkPayload = {
-            repo,
-            [isClear ? "ackClear" : "ack"]: chunkPrNumbers.join(","),
-          };
-          let chunkOk = true;
-          try {
-            const { response, result } = await postJsonSafe("/view-prs/ack", chunkPayload);
-            if (!response.ok || result.ok === false) {
-              failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
-              chunkOk = false;
-            } else {
-              const formattedOutput = formatCommandOutputSafe(result, { includeError: false });
-              if (formattedOutput) {
-                successfulChunkOutputs.push(`PR(s) ${chunkPrNumbers.join(", ")}:\n${formattedOutput}`);
-              }
-              if (Array.isArray(result?.refreshErrors)) {
-                allRefreshErrors.push(...result.refreshErrors);
-              }
-            }
-          } catch (error) {
-            failedChunks.push({ prNumbers: chunkPrNumbers, error });
-            chunkOk = false;
-          } finally {
-            clearPrsBusySafe(chunkPrNumbers, repo);
-            markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
-            completedChunks += 1;
-            setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
           }
-        });
-      } finally {
-        finishBulkActionBatchSafe({ batchId });
-      }
+          return results;
+        };
+  const getLatestStoredPayloadSafe =
+    typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
 
-      const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-      const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
-      const succeededPrCount = totalPrCount - failedPrCount;
+  // The original, single-request code path - unchanged behavior, used
+  // whenever a batch fits in one chunk (see the module-level comment).
+  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
+  // exit point now returns null (failure) or { payload, selectedRepo }
+  // (success) - see pr-row-checkbox-actions.helpers.js's own comment for
+  // why, same reasoning applies here.
+  const runSingleAckRequest = async (payload, actionLabel) => {
+    try {
+      const { response, result } = await postJsonSafe("/view-prs/ack", payload);
 
-      if (failedChunks.length === chunks.length) {
-        const first = failedChunks[0];
-        const authHint = first.result ? getGithubAuthFailureHintSafe(first.result) : "";
+      if (!response.ok || result.ok === false) {
+        const authHint = getGithubAuthFailureHintSafe(result);
         setStatusMessageSafe(
-          first.response
-            ? authHint
-              ? `Failed (${first.response.status}) - GitHub auth required`
-              : `Failed (${first.response.status})`
-            : "Failed (network/error)",
+          authHint
+            ? `Failed (${response.status}) - GitHub auth required`
+            : `Failed (${response.status})`,
         );
-        setOutputMessageSafe(
-          first.result ? formatCommandOutputWithAuthHintSafe(first.result) : String(first.error || ""),
-        );
+        setOutputMessageSafe(formatCommandOutputWithAuthHintSafe(result));
         showErrorNotificationSafe(
           `${actionLabel} failed`,
           authHint
             ? "GitHub authentication or SSO required. Check the output below for authorization link."
-            : first.response
-              ? `HTTP ${first.response.status}: Check the output below for details.`
-              : String(first.error || "An unknown error occurred"),
+            : `HTTP ${response.status}: Check the output below for details.`,
           0,
         );
         return null;
       }
 
-      if (failedChunks.length > 0) {
-        setStatusMessageSafe(
-          `${actionLabel} completed with failures (${succeededPrCount} of ${totalPrCount} PR(s) succeeded)`,
-        );
-        showWarningNotificationSafe(
-          `${actionLabel} completed with ${failedChunks.length} of ${chunks.length} chunk(s) failing`,
-          failedChunks
-            .map(
-              (entry) =>
-                `PR(s) ${entry.prNumbers.join(", ")}: ${entry.result?.error || entry.error || "request failed"}`,
-            )
-            .join("\n"),
-        );
-      } else {
-        setStatusMessageSafe(`${actionLabel} completed (${totalPrCount} PR(s))`);
-      }
+      setStatusMessageSafe(`${actionLabel} completed`);
+      setOutputMessageSafe(
+        formatCommandOutputSafe(result, { includeError: false }) ||
+          `${actionLabel} completed.`,
+      );
 
-      if (successfulChunkOutputs.length) {
-        setOutputMessageSafe(successfulChunkOutputs.join("\n\n"));
-      }
-
-      const warningSummary = summarizeAckRefreshWarningsSafe(allRefreshErrors);
+      const warningSummary = summarizeAckRefreshWarningsSafe(result?.refreshErrors);
       if (warningSummary) {
         showWarningNotificationSafe(
           `${actionLabel} completed with warnings (${warningSummary.summaryText})`,
@@ -348,282 +214,412 @@ export const { createPrAckLabelActionsHelpers } = (() => {
         );
       }
 
-      const selectedRepo = repo || defaultRepoSafe;
-      await loadStoredDataSafe(selectedRepo);
-      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-    };
-
-    const runAckAction = async (payload, actionLabel) => {
-      setStatusMessageSafe(`${actionLabel}...`);
-      setOutputMessageSafe("");
-      const finishActivity = beginRequestActivitySafe("ackClear");
-      const isClear = Boolean(payload && Object.prototype.hasOwnProperty.call(payload, "ackClear"));
-      const prNumbers = parseCsvTokensSafe(payload?.ack || payload?.ackClear || "");
-      const repo = payload?.repo;
-      const chunks = chunkArray(prNumbers, CHUNK_SIZE);
-
-      try {
-        if (chunks.length <= 1) {
-          markPrsBusySafe(prNumbers, repo);
-          try {
-            return await runSingleAckRequest(payload, actionLabel);
-          } finally {
-            clearPrsBusySafe(prNumbers, repo);
-          }
-        } else {
-          markPrsQueuedSafe(prNumbers, repo);
-          return await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
-        }
-      } finally {
-        finishActivity();
+      const selectedRepo = payload.repo || defaultRepoSafe;
+      if (result.prData) {
+        applyFreshPrPayloadSafe(result.prData, selectedRepo);
+        return { payload: result.prData, selectedRepo };
+      } else {
+        await loadStoredDataSafe(selectedRepo);
+        return { payload: getLatestStoredPayloadSafe(), selectedRepo };
       }
-    };
+    } catch (error) {
+      setStatusMessageSafe("Failed (network/error)");
+      setOutputMessageSafe(String(error));
+      showErrorNotificationSafe(
+        `${actionLabel} failed`,
+        String(error || "An unknown error occurred"),
+        0,
+      );
+      return null;
+    }
+  };
 
-    const runAckOnlyWorkflow = async (ackValue = "", repoOverride = "") => {
-      const body = getFormBodySafe();
+  // New multi-chunk aggregation path - only reached for a batch larger
+  // than CHUNK_SIZE. Every chunk runs regardless of an earlier chunk's
+  // outcome (no early return on failure, unlike the single-request path
+  // above), then one combined summary is shown at the end.
+  const runChunkedAckRequest = async (actionLabel, chunks, isClear, repo) => {
+    let completedChunks = 0;
+    const failedChunks = [];
+    const allRefreshErrors = [];
+    // Collected across every successful chunk, not just the last one to
+    // resolve - a chunk-count-many response bodies each have their own
+    // command output, and showing only the last chunk's would silently
+    // drop the others (found during a post-hoc review of this feature).
+    const successfulChunkOutputs = [];
 
-      const ack = String(ackValue || body.prNumbers || "").trim();
-      if (!ack) {
-        setStatusMessageSafe('Ack only requires numeric value(s) in "PR number(s)"');
-        return null;
-      }
+    const batchId = generateBulkActionBatchId();
+    beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
 
-      const repo = String(repoOverride || body.repo || "").trim();
-      return await runAckAction({ repo, ack }, "Ack only");
-    };
-
-    const runClearOnlyWorkflow = async (ackClearValue = "", repoOverride = "") => {
-      const body = getFormBodySafe();
-
-      const ackClear = String(ackClearValue || body.prNumbers || "").trim();
-      if (!ackClear) {
-        setStatusMessageSafe('Clear only requires numeric value(s) in "PR number(s)"');
-        return null;
-      }
-
-      const repo = String(repoOverride || body.repo || "").trim();
-      return await runAckAction({ repo, ackClear }, "Clear only");
-    };
-
-    // The original, single-request code path - unchanged behavior, used
-    // whenever a batch fits in one chunk (see the module-level comment).
-    const runSingleApplyLabelRequest = async ({ repo, label, prNumbers }, actionLabel) => {
-      try {
-        const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
+    try {
+      await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
+        clearPrsQueuedSafe(chunkPrNumbers, repo);
+        markPrsBusySafe(chunkPrNumbers, repo);
+        markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
+        const chunkPayload = {
           repo,
-          label,
-          prNumbers,
-        });
-
-        if (!response.ok || result.ok === false) {
-          const authHint = getGithubAuthFailureHintSafe(result);
-          setStatusMessageSafe(
-            authHint
-              ? `Failed (${response.status}) - GitHub auth required`
-              : `Failed (${response.status})`,
-          );
-          setOutputMessageSafe(formatCommandOutputWithAuthHintSafe(result));
-          showErrorNotificationSafe(
-            `${actionLabel} failed`,
-            authHint
-              ? "GitHub authentication or SSO required. Check the output below for authorization link."
-              : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
-            0,
-          );
-          return null;
-        }
-
-        setStatusMessageSafe(result.summary || `${actionLabel} completed`);
-
-        const combinedErrors = [
-          ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
-          ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
-        ];
-        if (combinedErrors.length) {
-          showWarningNotificationSafe(
-            `${actionLabel} completed with ${combinedErrors.length} error(s)`,
-            combinedErrors
-              .map((entry) => `#${entry.prNumber}: ${entry.error}`)
-              .join("\n"),
-          );
-        }
-
-        const selectedRepo = repo || defaultRepoSafe;
-        if (result.prData) {
-          applyFreshPrPayloadSafe(result.prData, selectedRepo);
-          return { payload: result.prData, selectedRepo };
-        } else {
-          await loadStoredDataSafe(selectedRepo);
-          return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-        }
-      } catch (error) {
-        setStatusMessageSafe("Failed (network/error)");
-        setOutputMessageSafe(String(error));
-        showErrorNotificationSafe(
-          `${actionLabel} failed`,
-          String(error || "An unknown error occurred"),
-          0,
-        );
-        return null;
-      }
-    };
-
-    // New multi-chunk aggregation path - only reached for a batch larger
-    // than CHUNK_SIZE. Every chunk runs regardless of an earlier chunk's
-    // outcome (no early return on failure, unlike the single-request path
-    // above), then one combined summary is shown at the end.
-    const runChunkedApplyLabelRequest = async (actionLabel, chunks, label, repo) => {
-      let completedChunks = 0;
-      const failedChunks = [];
-      const allCombinedErrors = [];
-
-      const batchId = generateBulkActionBatchId();
-      beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
-
-      try {
-        await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
-          clearPrsQueuedSafe(chunkPrNumbers, repo);
-          markPrsBusySafe(chunkPrNumbers, repo);
-          markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
-          let chunkOk = true;
-          try {
-            const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
-              repo,
-              label,
-              prNumbers: chunkPrNumbers.join(","),
-            });
-            if (!response.ok || result.ok === false) {
-              failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
-              chunkOk = false;
-            } else {
-              allCombinedErrors.push(
-                ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
-                ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
-              );
-            }
-          } catch (error) {
-            failedChunks.push({ prNumbers: chunkPrNumbers, error });
+          [isClear ? "ackClear" : "ack"]: chunkPrNumbers.join(","),
+        };
+        let chunkOk = true;
+        try {
+          const { response, result } = await postJsonSafe("/view-prs/ack", chunkPayload);
+          if (!response.ok || result.ok === false) {
+            failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
             chunkOk = false;
-          } finally {
-            clearPrsBusySafe(chunkPrNumbers, repo);
-            markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
-            completedChunks += 1;
-            setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
+          } else {
+            const formattedOutput = formatCommandOutputSafe(result, { includeError: false });
+            if (formattedOutput) {
+              successfulChunkOutputs.push(`PR(s) ${chunkPrNumbers.join(", ")}:\n${formattedOutput}`);
+            }
+            if (Array.isArray(result?.refreshErrors)) {
+              allRefreshErrors.push(...result.refreshErrors);
+            }
           }
-        });
-      } finally {
-        finishBulkActionBatchSafe({ batchId });
+        } catch (error) {
+          failedChunks.push({ prNumbers: chunkPrNumbers, error });
+          chunkOk = false;
+        } finally {
+          clearPrsBusySafe(chunkPrNumbers, repo);
+          markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
+          completedChunks += 1;
+          setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
+        }
+      });
+    } finally {
+      finishBulkActionBatchSafe({ batchId });
+    }
+
+    const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
+    const succeededPrCount = totalPrCount - failedPrCount;
+
+    if (failedChunks.length === chunks.length) {
+      const first = failedChunks[0];
+      const authHint = first.result ? getGithubAuthFailureHintSafe(first.result) : "";
+      setStatusMessageSafe(
+        first.response
+          ? authHint
+            ? `Failed (${first.response.status}) - GitHub auth required`
+            : `Failed (${first.response.status})`
+          : "Failed (network/error)",
+      );
+      setOutputMessageSafe(
+        first.result ? formatCommandOutputWithAuthHintSafe(first.result) : String(first.error || ""),
+      );
+      showErrorNotificationSafe(
+        `${actionLabel} failed`,
+        authHint
+          ? "GitHub authentication or SSO required. Check the output below for authorization link."
+          : first.response
+            ? `HTTP ${first.response.status}: Check the output below for details.`
+            : String(first.error || "An unknown error occurred"),
+        0,
+      );
+      return null;
+    }
+
+    if (failedChunks.length > 0) {
+      setStatusMessageSafe(
+        `${actionLabel} completed with failures (${succeededPrCount} of ${totalPrCount} PR(s) succeeded)`,
+      );
+      showWarningNotificationSafe(
+        `${actionLabel} completed with ${failedChunks.length} of ${chunks.length} chunk(s) failing`,
+        failedChunks
+          .map(
+            (entry) =>
+              `PR(s) ${entry.prNumbers.join(", ")}: ${entry.result?.error || entry.error || "request failed"}`,
+          )
+          .join("\n"),
+      );
+    } else {
+      setStatusMessageSafe(`${actionLabel} completed (${totalPrCount} PR(s))`);
+    }
+
+    if (successfulChunkOutputs.length) {
+      setOutputMessageSafe(successfulChunkOutputs.join("\n\n"));
+    }
+
+    const warningSummary = summarizeAckRefreshWarningsSafe(allRefreshErrors);
+    if (warningSummary) {
+      showWarningNotificationSafe(
+        `${actionLabel} completed with warnings (${warningSummary.summaryText})`,
+        warningSummary.sample,
+      );
+    }
+
+    const selectedRepo = repo || defaultRepoSafe;
+    await loadStoredDataSafe(selectedRepo);
+    return { payload: getLatestStoredPayloadSafe(), selectedRepo };
+  };
+
+  const runAckAction = async (payload, actionLabel) => {
+    setStatusMessageSafe(`${actionLabel}...`);
+    setOutputMessageSafe("");
+    const finishActivity = beginRequestActivitySafe("ackClear");
+    const isClear = Boolean(payload && Object.prototype.hasOwnProperty.call(payload, "ackClear"));
+    const prNumbers = parseCsvTokensSafe(payload?.ack || payload?.ackClear || "");
+    const repo = payload?.repo;
+    const chunks = chunkArray(prNumbers, CHUNK_SIZE);
+
+    try {
+      if (chunks.length <= 1) {
+        markPrsBusySafe(prNumbers, repo);
+        try {
+          return await runSingleAckRequest(payload, actionLabel);
+        } finally {
+          clearPrsBusySafe(prNumbers, repo);
+        }
+      } else {
+        markPrsQueuedSafe(prNumbers, repo);
+        return await runChunkedAckRequest(actionLabel, chunks, isClear, repo);
       }
+    } finally {
+      finishActivity();
+    }
+  };
 
-      const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-      const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
-      const succeededPrCount = totalPrCount - failedPrCount;
+  const runAckOnlyWorkflow = async (ackValue = "", repoOverride = "") => {
+    const body = getFormBodySafe();
 
-      if (failedChunks.length === chunks.length) {
-        const first = failedChunks[0];
-        const authHint = first.result ? getGithubAuthFailureHintSafe(first.result) : "";
+    const ack = String(ackValue || body.prNumbers || "").trim();
+    if (!ack) {
+      setStatusMessageSafe('Ack only requires numeric value(s) in "PR number(s)"');
+      return null;
+    }
+
+    const repo = String(repoOverride || body.repo || "").trim();
+    return await runAckAction({ repo, ack }, "Ack only");
+  };
+
+  const runClearOnlyWorkflow = async (ackClearValue = "", repoOverride = "") => {
+    const body = getFormBodySafe();
+
+    const ackClear = String(ackClearValue || body.prNumbers || "").trim();
+    if (!ackClear) {
+      setStatusMessageSafe('Clear only requires numeric value(s) in "PR number(s)"');
+      return null;
+    }
+
+    const repo = String(repoOverride || body.repo || "").trim();
+    return await runAckAction({ repo, ackClear }, "Clear only");
+  };
+
+  // The original, single-request code path - unchanged behavior, used
+  // whenever a batch fits in one chunk (see the module-level comment).
+  const runSingleApplyLabelRequest = async ({ repo, label, prNumbers }, actionLabel) => {
+    try {
+      const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
+        repo,
+        label,
+        prNumbers,
+      });
+
+      if (!response.ok || result.ok === false) {
+        const authHint = getGithubAuthFailureHintSafe(result);
         setStatusMessageSafe(
-          first.response
-            ? authHint
-              ? `Failed (${first.response.status}) - GitHub auth required`
-              : `Failed (${first.response.status})`
-            : "Failed (network/error)",
+          authHint
+            ? `Failed (${response.status}) - GitHub auth required`
+            : `Failed (${response.status})`,
         );
-        setOutputMessageSafe(
-          first.result ? formatCommandOutputWithAuthHintSafe(first.result) : String(first.error || ""),
-        );
+        setOutputMessageSafe(formatCommandOutputWithAuthHintSafe(result));
         showErrorNotificationSafe(
           `${actionLabel} failed`,
           authHint
             ? "GitHub authentication or SSO required. Check the output below for authorization link."
-            : first.response
-              ? `HTTP ${first.response.status}: Check the output below for details.`
-              : String(first.error || "An unknown error occurred"),
+            : String(result?.error || `HTTP ${response.status}: Check the output below for details.`),
           0,
         );
         return null;
       }
 
-      if (failedChunks.length > 0) {
-        setStatusMessageSafe(
-          `${actionLabel} completed with failures (${succeededPrCount} of ${totalPrCount} PR(s) succeeded)`,
-        );
-      } else {
-        setStatusMessageSafe(`${actionLabel} completed (${totalPrCount} PR(s))`);
-      }
+      setStatusMessageSafe(result.summary || `${actionLabel} completed`);
 
       const combinedErrors = [
-        ...allCombinedErrors,
-        ...failedChunks.map((entry) => ({
-          prNumber: entry.prNumbers.join(", "),
-          error: entry.result?.error || String(entry.error || "request failed"),
-        })),
+        ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
+        ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
       ];
       if (combinedErrors.length) {
         showWarningNotificationSafe(
           `${actionLabel} completed with ${combinedErrors.length} error(s)`,
-          combinedErrors.map((entry) => `#${entry.prNumber}: ${entry.error}`).join("\n"),
+          combinedErrors
+            .map((entry) => `#${entry.prNumber}: ${entry.error}`)
+            .join("\n"),
         );
       }
 
       const selectedRepo = repo || defaultRepoSafe;
-      await loadStoredDataSafe(selectedRepo);
-      return { payload: getLatestStoredPayloadSafe(), selectedRepo };
-    };
+      if (result.prData) {
+        applyFreshPrPayloadSafe(result.prData, selectedRepo);
+        return { payload: result.prData, selectedRepo };
+      } else {
+        await loadStoredDataSafe(selectedRepo);
+        return { payload: getLatestStoredPayloadSafe(), selectedRepo };
+      }
+    } catch (error) {
+      setStatusMessageSafe("Failed (network/error)");
+      setOutputMessageSafe(String(error));
+      showErrorNotificationSafe(
+        `${actionLabel} failed`,
+        String(error || "An unknown error occurred"),
+        0,
+      );
+      return null;
+    }
+  };
 
-    const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
-      setStatusMessageSafe(`${actionLabel}...`);
-      setOutputMessageSafe("");
-      const finishActivity = beginRequestActivitySafe("labelApply");
-      const prNumberList = parseCsvTokensSafe(prNumbers);
-      const chunks = chunkArray(prNumberList, CHUNK_SIZE);
+  // New multi-chunk aggregation path - only reached for a batch larger
+  // than CHUNK_SIZE. Every chunk runs regardless of an earlier chunk's
+  // outcome (no early return on failure, unlike the single-request path
+  // above), then one combined summary is shown at the end.
+  const runChunkedApplyLabelRequest = async (actionLabel, chunks, label, repo) => {
+    let completedChunks = 0;
+    const failedChunks = [];
+    const allCombinedErrors = [];
 
-      try {
-        if (chunks.length <= 1) {
-          markPrsBusySafe(prNumberList, repo);
-          try {
-            return await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
-          } finally {
-            clearPrsBusySafe(prNumberList, repo);
+    const batchId = generateBulkActionBatchId();
+    beginBulkActionBatchSafe({ batchId, actionLabel, repo, chunks });
+
+    try {
+      await runWithConcurrencyLimitSafe(chunks, CONCURRENCY_LIMIT, async (chunkPrNumbers, chunkIndex) => {
+        clearPrsQueuedSafe(chunkPrNumbers, repo);
+        markPrsBusySafe(chunkPrNumbers, repo);
+        markBulkActionChunkInFlightSafe({ batchId, chunkIndex });
+        let chunkOk = true;
+        try {
+          const { response, result } = await postJsonSafe("/view-prs/labels/apply", {
+            repo,
+            label,
+            prNumbers: chunkPrNumbers.join(","),
+          });
+          if (!response.ok || result.ok === false) {
+            failedChunks.push({ prNumbers: chunkPrNumbers, response, result });
+            chunkOk = false;
+          } else {
+            allCombinedErrors.push(
+              ...(Array.isArray(result.applyErrors) ? result.applyErrors : []),
+              ...(Array.isArray(result.refreshErrors) ? result.refreshErrors : []),
+            );
           }
-        } else {
-          markPrsQueuedSafe(prNumberList, repo);
-          return await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
+        } catch (error) {
+          failedChunks.push({ prNumbers: chunkPrNumbers, error });
+          chunkOk = false;
+        } finally {
+          clearPrsBusySafe(chunkPrNumbers, repo);
+          markBulkActionChunkDoneSafe({ batchId, chunkIndex, ok: chunkOk });
+          completedChunks += 1;
+          setStatusMessageSafe(`${actionLabel}: ${completedChunks} of ${chunks.length} chunks done...`);
         }
-      } finally {
-        finishActivity();
+      });
+    } finally {
+      finishBulkActionBatchSafe({ batchId });
+    }
+
+    const totalPrCount = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const failedPrCount = failedChunks.reduce((sum, entry) => sum + entry.prNumbers.length, 0);
+    const succeededPrCount = totalPrCount - failedPrCount;
+
+    if (failedChunks.length === chunks.length) {
+      const first = failedChunks[0];
+      const authHint = first.result ? getGithubAuthFailureHintSafe(first.result) : "";
+      setStatusMessageSafe(
+        first.response
+          ? authHint
+            ? `Failed (${first.response.status}) - GitHub auth required`
+            : `Failed (${first.response.status})`
+          : "Failed (network/error)",
+      );
+      setOutputMessageSafe(
+        first.result ? formatCommandOutputWithAuthHintSafe(first.result) : String(first.error || ""),
+      );
+      showErrorNotificationSafe(
+        `${actionLabel} failed`,
+        authHint
+          ? "GitHub authentication or SSO required. Check the output below for authorization link."
+          : first.response
+            ? `HTTP ${first.response.status}: Check the output below for details.`
+            : String(first.error || "An unknown error occurred"),
+        0,
+      );
+      return null;
+    }
+
+    if (failedChunks.length > 0) {
+      setStatusMessageSafe(
+        `${actionLabel} completed with failures (${succeededPrCount} of ${totalPrCount} PR(s) succeeded)`,
+      );
+    } else {
+      setStatusMessageSafe(`${actionLabel} completed (${totalPrCount} PR(s))`);
+    }
+
+    const combinedErrors = [
+      ...allCombinedErrors,
+      ...failedChunks.map((entry) => ({
+        prNumber: entry.prNumbers.join(", "),
+        error: entry.result?.error || String(entry.error || "request failed"),
+      })),
+    ];
+    if (combinedErrors.length) {
+      showWarningNotificationSafe(
+        `${actionLabel} completed with ${combinedErrors.length} error(s)`,
+        combinedErrors.map((entry) => `#${entry.prNumber}: ${entry.error}`).join("\n"),
+      );
+    }
+
+    const selectedRepo = repo || defaultRepoSafe;
+    await loadStoredDataSafe(selectedRepo);
+    return { payload: getLatestStoredPayloadSafe(), selectedRepo };
+  };
+
+  const runApplyLabelAction = async ({ repo, label, prNumbers }, actionLabel) => {
+    setStatusMessageSafe(`${actionLabel}...`);
+    setOutputMessageSafe("");
+    const finishActivity = beginRequestActivitySafe("labelApply");
+    const prNumberList = parseCsvTokensSafe(prNumbers);
+    const chunks = chunkArray(prNumberList, CHUNK_SIZE);
+
+    try {
+      if (chunks.length <= 1) {
+        markPrsBusySafe(prNumberList, repo);
+        try {
+          return await runSingleApplyLabelRequest({ repo, label, prNumbers }, actionLabel);
+        } finally {
+          clearPrsBusySafe(prNumberList, repo);
+        }
+      } else {
+        markPrsQueuedSafe(prNumberList, repo);
+        return await runChunkedApplyLabelRequest(actionLabel, chunks, label, repo);
       }
-    };
+    } finally {
+      finishActivity();
+    }
+  };
 
-    const runApplyLabelWorkflow = async (prNumbersValue = "", labelValue = "", repoOverride = "") => {
-      const body = getFormBodySafe();
+  const runApplyLabelWorkflow = async (prNumbersValue = "", labelValue = "", repoOverride = "") => {
+    const body = getFormBodySafe();
 
-      const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
-      if (!prNumbers) {
-        setStatusMessageSafe('Apply label requires numeric value(s) in "PR number(s)"');
-        return null;
-      }
+    const prNumbers = String(prNumbersValue || body.prNumbers || "").trim();
+    if (!prNumbers) {
+      setStatusMessageSafe('Apply label requires numeric value(s) in "PR number(s)"');
+      return null;
+    }
 
-      const label = String(labelValue || "").trim();
-      if (!label) {
-        setStatusMessageSafe("Choose a label to apply");
-        return null;
-      }
+    const label = String(labelValue || "").trim();
+    if (!label) {
+      setStatusMessageSafe("Choose a label to apply");
+      return null;
+    }
 
-      const repo = String(repoOverride || body.repo || "").trim();
-      return await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
-    };
-
-    return {
-      runAckAction,
-      runAckOnlyWorkflow,
-      runClearOnlyWorkflow,
-      runApplyLabelAction,
-      runApplyLabelWorkflow,
-    };
+    const repo = String(repoOverride || body.repo || "").trim();
+    return await runApplyLabelAction({ repo, label, prNumbers }, "Apply label");
   };
 
   return {
-    createPrAckLabelActionsHelpers,
+    runAckAction,
+    runAckOnlyWorkflow,
+    runClearOnlyWorkflow,
+    runApplyLabelAction,
+    runApplyLabelWorkflow,
   };
-})();
+};
+
+export { createPrAckLabelActionsHelpers };

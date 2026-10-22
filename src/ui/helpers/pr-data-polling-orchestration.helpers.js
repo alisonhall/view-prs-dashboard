@@ -19,288 +19,284 @@
 // createPrDataPollingHelpers() instance (with its derived-value cache) and
 // its own applyLatestPrData/renderPrData; index.page.js no longer has any of
 // these, and window.pollForDataChanges is gone.
-export const { createPrDataPollingOrchestrationHelpers } = (() => {
-  const createPrDataPollingOrchestrationHelpers = ({
-    fetchFn,
-    documentRef,
-    computePrDataManifest,
-    getManifestDelta,
-    mergeDataDeltaPayload,
-    computePrDataFingerprint,
-    computePrDataMetaFingerprint,
-    getDataPollRenderAction,
-    getSupportsDataMetaPolling,
-    setSupportsDataMetaPolling,
-    getSupportsDataManifestPolling,
-    setSupportsDataManifestPolling,
-    getLastSeenDataVersion,
-    setLastSeenDataVersion,
-    getLatestPrManifest,
-    setLatestPrManifest,
-    getLatestStoredPayload,
-    applyLatestPrData,
-    getLastRenderedPrFingerprint,
-    setLastRenderedPrFingerprint,
-    getLastRenderedMetaFingerprint,
-    setLastRenderedMetaFingerprint,
-    getLastRenderedRunStamp,
-    setLastRenderedRunStamp,
-    getHasDirtyPrSectionsFields,
-    getPendingAutoRenderPayload,
-    setPendingAutoRenderPayload,
-    renderPrData,
-    markPollSuccess,
-    showPollFailureWarning,
-    setStatusMessage,
-  } = {}) => {
-    const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
-      throw new Error("fetchFn is not available");
-    };
-    const getDocumentSafe = () =>
-      documentRef || (typeof document !== "undefined" ? document : null);
-    const computePrDataManifestSafe =
-      typeof computePrDataManifest === "function" ? computePrDataManifest : () => ({});
-    const getManifestDeltaSafe =
-      typeof getManifestDelta === "function"
-        ? getManifestDelta
-        : () => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false });
-    const mergeDataDeltaPayloadSafe =
-      typeof mergeDataDeltaPayload === "function" ? mergeDataDeltaPayload : ({ basePayload } = {}) => basePayload || {};
-    const computePrDataFingerprintSafe =
-      typeof computePrDataFingerprint === "function" ? computePrDataFingerprint : () => "";
-    const computePrDataMetaFingerprintSafe =
-      typeof computePrDataMetaFingerprint === "function" ? computePrDataMetaFingerprint : () => "";
-    const getDataPollRenderActionSafe =
-      typeof getDataPollRenderAction === "function"
-        ? getDataPollRenderAction
-        : ({ result } = {}) => ({ type: "render", payload: result });
-    const getSupportsDataMetaPollingSafe =
-      typeof getSupportsDataMetaPolling === "function" ? getSupportsDataMetaPolling : () => true;
-    const setSupportsDataMetaPollingSafe =
-      typeof setSupportsDataMetaPolling === "function" ? setSupportsDataMetaPolling : () => {};
-    const getSupportsDataManifestPollingSafe =
-      typeof getSupportsDataManifestPolling === "function" ? getSupportsDataManifestPolling : () => true;
-    const setSupportsDataManifestPollingSafe =
-      typeof setSupportsDataManifestPolling === "function" ? setSupportsDataManifestPolling : () => {};
-    const getLastSeenDataVersionSafe =
-      typeof getLastSeenDataVersion === "function" ? getLastSeenDataVersion : () => "";
-    const setLastSeenDataVersionSafe =
-      typeof setLastSeenDataVersion === "function" ? setLastSeenDataVersion : () => {};
-    const getLatestPrManifestSafe =
-      typeof getLatestPrManifest === "function" ? getLatestPrManifest : () => ({});
-    const setLatestPrManifestSafe =
-      typeof setLatestPrManifest === "function" ? setLatestPrManifest : () => {};
-    const getLatestStoredPayloadSafe =
-      typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
-    const applyLatestPrDataSafe =
-      typeof applyLatestPrData === "function" ? applyLatestPrData : () => {};
-    const getLastRenderedPrFingerprintSafe =
-      typeof getLastRenderedPrFingerprint === "function" ? getLastRenderedPrFingerprint : () => "";
-    const setLastRenderedPrFingerprintSafe =
-      typeof setLastRenderedPrFingerprint === "function" ? setLastRenderedPrFingerprint : () => {};
-    const getLastRenderedMetaFingerprintSafe =
-      typeof getLastRenderedMetaFingerprint === "function" ? getLastRenderedMetaFingerprint : () => "";
-    const setLastRenderedMetaFingerprintSafe =
-      typeof setLastRenderedMetaFingerprint === "function" ? setLastRenderedMetaFingerprint : () => {};
-    const getLastRenderedRunStampSafe =
-      typeof getLastRenderedRunStamp === "function" ? getLastRenderedRunStamp : () => "";
-    const setLastRenderedRunStampSafe =
-      typeof setLastRenderedRunStamp === "function" ? setLastRenderedRunStamp : () => {};
-    const getHasDirtyPrSectionsFieldsSafe =
-      typeof getHasDirtyPrSectionsFields === "function" ? getHasDirtyPrSectionsFields : () => false;
-    const getPendingAutoRenderPayloadSafe =
-      typeof getPendingAutoRenderPayload === "function" ? getPendingAutoRenderPayload : () => null;
-    const setPendingAutoRenderPayloadSafe =
-      typeof setPendingAutoRenderPayload === "function" ? setPendingAutoRenderPayload : () => {};
-    const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
-    const markPollSuccessSafe = typeof markPollSuccess === "function" ? markPollSuccess : () => {};
-    const showPollFailureWarningSafe =
-      typeof showPollFailureWarning === "function" ? showPollFailureWarning : () => {};
-    const setStatusMessageSafe = typeof setStatusMessage === "function" ? setStatusMessage : () => {};
+const createPrDataPollingOrchestrationHelpers = ({
+  fetchFn,
+  documentRef,
+  computePrDataManifest,
+  getManifestDelta,
+  mergeDataDeltaPayload,
+  computePrDataFingerprint,
+  computePrDataMetaFingerprint,
+  getDataPollRenderAction,
+  getSupportsDataMetaPolling,
+  setSupportsDataMetaPolling,
+  getSupportsDataManifestPolling,
+  setSupportsDataManifestPolling,
+  getLastSeenDataVersion,
+  setLastSeenDataVersion,
+  getLatestPrManifest,
+  setLatestPrManifest,
+  getLatestStoredPayload,
+  applyLatestPrData,
+  getLastRenderedPrFingerprint,
+  setLastRenderedPrFingerprint,
+  getLastRenderedMetaFingerprint,
+  setLastRenderedMetaFingerprint,
+  getLastRenderedRunStamp,
+  setLastRenderedRunStamp,
+  getHasDirtyPrSectionsFields,
+  getPendingAutoRenderPayload,
+  setPendingAutoRenderPayload,
+  renderPrData,
+  markPollSuccess,
+  showPollFailureWarning,
+  setStatusMessage,
+} = {}) => {
+  const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
+    throw new Error("fetchFn is not available");
+  };
+  const getDocumentSafe = () =>
+    documentRef || (typeof document !== "undefined" ? document : null);
+  const computePrDataManifestSafe =
+    typeof computePrDataManifest === "function" ? computePrDataManifest : () => ({});
+  const getManifestDeltaSafe =
+    typeof getManifestDelta === "function"
+      ? getManifestDelta
+      : () => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false });
+  const mergeDataDeltaPayloadSafe =
+    typeof mergeDataDeltaPayload === "function" ? mergeDataDeltaPayload : ({ basePayload } = {}) => basePayload || {};
+  const computePrDataFingerprintSafe =
+    typeof computePrDataFingerprint === "function" ? computePrDataFingerprint : () => "";
+  const computePrDataMetaFingerprintSafe =
+    typeof computePrDataMetaFingerprint === "function" ? computePrDataMetaFingerprint : () => "";
+  const getDataPollRenderActionSafe =
+    typeof getDataPollRenderAction === "function"
+      ? getDataPollRenderAction
+      : ({ result } = {}) => ({ type: "render", payload: result });
+  const getSupportsDataMetaPollingSafe =
+    typeof getSupportsDataMetaPolling === "function" ? getSupportsDataMetaPolling : () => true;
+  const setSupportsDataMetaPollingSafe =
+    typeof setSupportsDataMetaPolling === "function" ? setSupportsDataMetaPolling : () => {};
+  const getSupportsDataManifestPollingSafe =
+    typeof getSupportsDataManifestPolling === "function" ? getSupportsDataManifestPolling : () => true;
+  const setSupportsDataManifestPollingSafe =
+    typeof setSupportsDataManifestPolling === "function" ? setSupportsDataManifestPolling : () => {};
+  const getLastSeenDataVersionSafe =
+    typeof getLastSeenDataVersion === "function" ? getLastSeenDataVersion : () => "";
+  const setLastSeenDataVersionSafe =
+    typeof setLastSeenDataVersion === "function" ? setLastSeenDataVersion : () => {};
+  const getLatestPrManifestSafe =
+    typeof getLatestPrManifest === "function" ? getLatestPrManifest : () => ({});
+  const setLatestPrManifestSafe =
+    typeof setLatestPrManifest === "function" ? setLatestPrManifest : () => {};
+  const getLatestStoredPayloadSafe =
+    typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => null;
+  const applyLatestPrDataSafe =
+    typeof applyLatestPrData === "function" ? applyLatestPrData : () => {};
+  const getLastRenderedPrFingerprintSafe =
+    typeof getLastRenderedPrFingerprint === "function" ? getLastRenderedPrFingerprint : () => "";
+  const setLastRenderedPrFingerprintSafe =
+    typeof setLastRenderedPrFingerprint === "function" ? setLastRenderedPrFingerprint : () => {};
+  const getLastRenderedMetaFingerprintSafe =
+    typeof getLastRenderedMetaFingerprint === "function" ? getLastRenderedMetaFingerprint : () => "";
+  const setLastRenderedMetaFingerprintSafe =
+    typeof setLastRenderedMetaFingerprint === "function" ? setLastRenderedMetaFingerprint : () => {};
+  const getLastRenderedRunStampSafe =
+    typeof getLastRenderedRunStamp === "function" ? getLastRenderedRunStamp : () => "";
+  const setLastRenderedRunStampSafe =
+    typeof setLastRenderedRunStamp === "function" ? setLastRenderedRunStamp : () => {};
+  const getHasDirtyPrSectionsFieldsSafe =
+    typeof getHasDirtyPrSectionsFields === "function" ? getHasDirtyPrSectionsFields : () => false;
+  const getPendingAutoRenderPayloadSafe =
+    typeof getPendingAutoRenderPayload === "function" ? getPendingAutoRenderPayload : () => null;
+  const setPendingAutoRenderPayloadSafe =
+    typeof setPendingAutoRenderPayload === "function" ? setPendingAutoRenderPayload : () => {};
+  const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
+  const markPollSuccessSafe = typeof markPollSuccess === "function" ? markPollSuccess : () => {};
+  const showPollFailureWarningSafe =
+    typeof showPollFailureWarning === "function" ? showPollFailureWarning : () => {};
+  const setStatusMessageSafe = typeof setStatusMessage === "function" ? setStatusMessage : () => {};
 
-    const pollForDataChanges = async () => {
-      const pollAttemptedAt = new Date().toISOString();
-      try {
-        let latestVersion = "";
-        let shouldTryManifestDelta = false;
-        let dataResult = null;
+  const pollForDataChanges = async () => {
+    const pollAttemptedAt = new Date().toISOString();
+    try {
+      let latestVersion = "";
+      let shouldTryManifestDelta = false;
+      let dataResult = null;
 
-        if (getSupportsDataMetaPollingSafe()) {
-          const metaResponse = await fetchFnSafe("/view-prs/data-meta");
-          if (metaResponse.status === 404) {
-            setSupportsDataMetaPollingSafe(false);
-          } else {
-            const metaResult = await metaResponse.json();
-            if (!metaResponse.ok || metaResult.ok === false) {
-              throw new Error(
-                metaResult?.error ||
-                  `Polling metadata request failed (HTTP ${metaResponse.status || "unknown"})`,
-              );
-            }
+      if (getSupportsDataMetaPollingSafe()) {
+        const metaResponse = await fetchFnSafe("/view-prs/data-meta");
+        if (metaResponse.status === 404) {
+          setSupportsDataMetaPollingSafe(false);
+        } else {
+          const metaResult = await metaResponse.json();
+          if (!metaResponse.ok || metaResult.ok === false) {
+            throw new Error(
+              metaResult?.error ||
+                `Polling metadata request failed (HTTP ${metaResponse.status || "unknown"})`,
+            );
+          }
 
-            latestVersion = String(metaResult?.dataVersion || "").trim();
-            if (!latestVersion || latestVersion === getLastSeenDataVersionSafe()) {
+          latestVersion = String(metaResult?.dataVersion || "").trim();
+          if (!latestVersion || latestVersion === getLastSeenDataVersionSafe()) {
+            markPollSuccessSafe(pollAttemptedAt);
+            return;
+          }
+
+          if (
+            metaResult?.supportsDataManifest === true &&
+            getSupportsDataManifestPollingSafe() &&
+            getLatestStoredPayloadSafe()
+          ) {
+            shouldTryManifestDelta = true;
+          }
+        }
+      }
+
+      if (shouldTryManifestDelta) {
+        const manifestResponse = await fetchFnSafe("/view-prs/data-manifest");
+        if (manifestResponse.status === 404) {
+          setSupportsDataManifestPollingSafe(false);
+        } else {
+          const manifestResult = await manifestResponse.json();
+          if (manifestResponse.ok && manifestResult?.ok !== false) {
+            const nextManifest = manifestResult?.manifest || {};
+            const currentManifest = getLatestPrManifestSafe();
+            const previousManifest =
+              currentManifest && Object.keys(currentManifest).length > 0
+                ? currentManifest
+                : computePrDataManifestSafe(getLatestStoredPayloadSafe());
+            const manifestDelta = getManifestDeltaSafe({
+              previousManifest,
+              nextManifest,
+            });
+
+            if (!manifestDelta.hasChanges) {
+              setLatestPrManifestSafe(nextManifest);
+              const manifestVersion = String(
+                manifestResult?.dataMeta?.dataVersion || latestVersion,
+              ).trim();
+              if (manifestVersion) {
+                setLastSeenDataVersionSafe(manifestVersion);
+              }
               markPollSuccessSafe(pollAttemptedAt);
               return;
             }
 
-            if (
-              metaResult?.supportsDataManifest === true &&
-              getSupportsDataManifestPollingSafe() &&
-              getLatestStoredPayloadSafe()
-            ) {
-              shouldTryManifestDelta = true;
-            }
-          }
-        }
-
-        if (shouldTryManifestDelta) {
-          const manifestResponse = await fetchFnSafe("/view-prs/data-manifest");
-          if (manifestResponse.status === 404) {
-            setSupportsDataManifestPollingSafe(false);
-          } else {
-            const manifestResult = await manifestResponse.json();
-            if (manifestResponse.ok && manifestResult?.ok !== false) {
-              const nextManifest = manifestResult?.manifest || {};
-              const currentManifest = getLatestPrManifestSafe();
-              const previousManifest =
-                currentManifest && Object.keys(currentManifest).length > 0
-                  ? currentManifest
-                  : computePrDataManifestSafe(getLatestStoredPayloadSafe());
-              const manifestDelta = getManifestDeltaSafe({
-                previousManifest,
+            const deltaResponse = await fetchFnSafe("/view-prs/data-delta", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
+            });
+            const deltaResult = await deltaResponse.json();
+            if (deltaResponse.ok && deltaResult?.ok !== false) {
+              dataResult = mergeDataDeltaPayloadSafe({
+                basePayload: getLatestStoredPayloadSafe(),
+                deltaByPrNumber: deltaResult?.byPrNumber || {},
+                removedPrNumbers: manifestDelta.removedPrNumbers,
+                nextDataMeta: manifestResult?.dataMeta || null,
+                nextScheduler: deltaResult?.scheduler || null,
+                nextLastRun: deltaResult?.lastRun || null,
                 nextManifest,
               });
-
-              if (!manifestDelta.hasChanges) {
-                setLatestPrManifestSafe(nextManifest);
-                const manifestVersion = String(
-                  manifestResult?.dataMeta?.dataVersion || latestVersion,
-                ).trim();
-                if (manifestVersion) {
-                  setLastSeenDataVersionSafe(manifestVersion);
-                }
-                markPollSuccessSafe(pollAttemptedAt);
-                return;
-              }
-
-              const deltaResponse = await fetchFnSafe("/view-prs/data-delta", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
-              });
-              const deltaResult = await deltaResponse.json();
-              if (deltaResponse.ok && deltaResult?.ok !== false) {
-                dataResult = mergeDataDeltaPayloadSafe({
-                  basePayload: getLatestStoredPayloadSafe(),
-                  deltaByPrNumber: deltaResult?.byPrNumber || {},
-                  removedPrNumbers: manifestDelta.removedPrNumbers,
-                  nextDataMeta: manifestResult?.dataMeta || null,
-                  nextScheduler: deltaResult?.scheduler || null,
-                  nextLastRun: deltaResult?.lastRun || null,
-                  nextManifest,
-                });
-                setLatestPrManifestSafe(nextManifest);
-              }
+              setLatestPrManifestSafe(nextManifest);
             }
           }
         }
-
-        if (!dataResult) {
-          const response = await fetchFnSafe("/view-prs/data");
-          const result = await response.json();
-          if (!response.ok || result.ok === false) {
-            throw new Error(
-              result?.error ||
-                `Polling data request failed (HTTP ${response.status || "unknown"})`,
-            );
-          }
-          dataResult = result;
-        }
-
-        const fullDataVersion = String(
-          dataResult?.dataMeta?.dataVersion || latestVersion,
-        ).trim();
-        if (fullDataVersion && fullDataVersion === getLastSeenDataVersionSafe()) {
-          markPollSuccessSafe(pollAttemptedAt);
-          return;
-        }
-        if (fullDataVersion) {
-          setLastSeenDataVersionSafe(fullDataVersion);
-        }
-
-        const latestStamp = String(dataResult?.lastRun?.updatedAt || "").trim();
-        applyLatestPrDataSafe({ payload: dataResult });
-        setLatestPrManifestSafe(
-          dataResult?.dataManifest || computePrDataManifestSafe(dataResult),
-        );
-
-        const newFingerprint = computePrDataFingerprintSafe(dataResult);
-        const newMetaFingerprint = computePrDataMetaFingerprintSafe(dataResult);
-        const doc = getDocumentSafe();
-        const renderAction = getDataPollRenderActionSafe({
-          newFingerprint,
-          lastRenderedPrFingerprint: getLastRenderedPrFingerprintSafe(),
-          newMetaFingerprint,
-          lastRenderedMetaFingerprint: getLastRenderedMetaFingerprintSafe(),
-          focusedElement: doc?.activeElement,
-          hasDirtyPrSectionsFields: getHasDirtyPrSectionsFieldsSafe(),
-          hasPendingAutoRender: getPendingAutoRenderPayloadSafe() != null,
-          result: dataResult,
-        });
-        if (renderAction.type === "skip-render") {
-          return;
-        }
-
-        // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-        // "queue-render" and "queue-render-and-listen" used to need
-        // different handling here (the latter also rendering the
-        // indicator immediately and arming its own blur listener) - both
-        // are now equivalent from this call site's perspective, since
-        // setPendingAutoRenderPayloadSafe (the bridge to
-        // AutoRenderBlockingProvider.jsx) triggers that Provider's own
-        // reactive effect, which re-derives the exact same
-        // apply/wait-for-blur/wait-for-clean decision itself (including
-        // the blur-listener attachment) as soon as the payload changes -
-        // doing it again here would just attach a second, redundant
-        // listener. getDataPollRenderAction's own distinction between the
-        // two types is preserved (still a real, tested branch), just no
-        // longer needs differentiated handling at this one call site.
-        if (
-          renderAction.type === "queue-render" ||
-          renderAction.type === "queue-render-and-listen"
-        ) {
-          setPendingAutoRenderPayloadSafe(renderAction.payload);
-          markPollSuccessSafe(pollAttemptedAt);
-          return;
-        }
-
-        setLastRenderedPrFingerprintSafe(newFingerprint);
-        setLastRenderedMetaFingerprintSafe(newMetaFingerprint);
-        renderPrDataSafe(renderAction.payload);
-        markPollSuccessSafe(pollAttemptedAt);
-
-        if (latestStamp && latestStamp !== getLastRenderedRunStampSafe()) {
-          setLastRenderedRunStampSafe(latestStamp);
-          setStatusMessageSafe(`Auto-updated from latest run at ${latestStamp}`);
-          return;
-        }
-
-        setStatusMessageSafe("Auto-updated from latest stored data changes");
-      } catch (error) {
-        showPollFailureWarningSafe({
-          errorSource: error,
-          attemptedAt: pollAttemptedAt,
-        });
       }
-    };
 
-    return {
-      pollForDataChanges,
-    };
+      if (!dataResult) {
+        const response = await fetchFnSafe("/view-prs/data");
+        const result = await response.json();
+        if (!response.ok || result.ok === false) {
+          throw new Error(
+            result?.error ||
+              `Polling data request failed (HTTP ${response.status || "unknown"})`,
+          );
+        }
+        dataResult = result;
+      }
+
+      const fullDataVersion = String(
+        dataResult?.dataMeta?.dataVersion || latestVersion,
+      ).trim();
+      if (fullDataVersion && fullDataVersion === getLastSeenDataVersionSafe()) {
+        markPollSuccessSafe(pollAttemptedAt);
+        return;
+      }
+      if (fullDataVersion) {
+        setLastSeenDataVersionSafe(fullDataVersion);
+      }
+
+      const latestStamp = String(dataResult?.lastRun?.updatedAt || "").trim();
+      applyLatestPrDataSafe({ payload: dataResult });
+      setLatestPrManifestSafe(
+        dataResult?.dataManifest || computePrDataManifestSafe(dataResult),
+      );
+
+      const newFingerprint = computePrDataFingerprintSafe(dataResult);
+      const newMetaFingerprint = computePrDataMetaFingerprintSafe(dataResult);
+      const doc = getDocumentSafe();
+      const renderAction = getDataPollRenderActionSafe({
+        newFingerprint,
+        lastRenderedPrFingerprint: getLastRenderedPrFingerprintSafe(),
+        newMetaFingerprint,
+        lastRenderedMetaFingerprint: getLastRenderedMetaFingerprintSafe(),
+        focusedElement: doc?.activeElement,
+        hasDirtyPrSectionsFields: getHasDirtyPrSectionsFieldsSafe(),
+        hasPendingAutoRender: getPendingAutoRenderPayloadSafe() != null,
+        result: dataResult,
+      });
+      if (renderAction.type === "skip-render") {
+        return;
+      }
+
+      // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // "queue-render" and "queue-render-and-listen" used to need
+      // different handling here (the latter also rendering the
+      // indicator immediately and arming its own blur listener) - both
+      // are now equivalent from this call site's perspective, since
+      // setPendingAutoRenderPayloadSafe (the bridge to
+      // AutoRenderBlockingProvider.jsx) triggers that Provider's own
+      // reactive effect, which re-derives the exact same
+      // apply/wait-for-blur/wait-for-clean decision itself (including
+      // the blur-listener attachment) as soon as the payload changes -
+      // doing it again here would just attach a second, redundant
+      // listener. getDataPollRenderAction's own distinction between the
+      // two types is preserved (still a real, tested branch), just no
+      // longer needs differentiated handling at this one call site.
+      if (
+        renderAction.type === "queue-render" ||
+        renderAction.type === "queue-render-and-listen"
+      ) {
+        setPendingAutoRenderPayloadSafe(renderAction.payload);
+        markPollSuccessSafe(pollAttemptedAt);
+        return;
+      }
+
+      setLastRenderedPrFingerprintSafe(newFingerprint);
+      setLastRenderedMetaFingerprintSafe(newMetaFingerprint);
+      renderPrDataSafe(renderAction.payload);
+      markPollSuccessSafe(pollAttemptedAt);
+
+      if (latestStamp && latestStamp !== getLastRenderedRunStampSafe()) {
+        setLastRenderedRunStampSafe(latestStamp);
+        setStatusMessageSafe(`Auto-updated from latest run at ${latestStamp}`);
+        return;
+      }
+
+      setStatusMessageSafe("Auto-updated from latest stored data changes");
+    } catch (error) {
+      showPollFailureWarningSafe({
+        errorSource: error,
+        attemptedAt: pollAttemptedAt,
+      });
+    }
   };
 
   return {
-    createPrDataPollingOrchestrationHelpers,
+    pollForDataChanges,
   };
-})();
+};
+
+export { createPrDataPollingOrchestrationHelpers };

@@ -13,74 +13,70 @@ import { createPrFormattingHelpers } from "./pr-formatting.helpers.js";
 // getEffectiveViewerLogin(row) (ActorIdentityContext) is that exact same
 // derivation, already Context-native, so it's injected here instead of
 // reimplementing the chain.
-export const { createPrOpenConversationCountHelpers } = (() => {
-  const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
-  const { toCount } = createPrFormattingHelpers();
+const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
+const { toCount } = createPrFormattingHelpers();
 
-  const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray } = {}) => {
-    const getEffectiveViewerLoginSafe =
-      typeof getEffectiveViewerLogin === "function" ? getEffectiveViewerLogin : () => "";
-    const asArraySafe =
-      typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
+const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray } = {}) => {
+  const getEffectiveViewerLoginSafe =
+    typeof getEffectiveViewerLogin === "function" ? getEffectiveViewerLogin : () => "";
+  const asArraySafe =
+    typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
 
-    const getOpenConversationCount = (row) => {
-      const openConversationCountRaw = row?.openConversationCount;
-      const metrics = normalizeRowMetrics(row);
-      const fallbackOpenConversations =
-        metrics.conversationSummary.estimatedOpenConversations ||
-        metrics.counts.openConversations ||
-        metrics.conversationSummary.openThreads;
+  const getOpenConversationCount = (row) => {
+    const openConversationCountRaw = row?.openConversationCount;
+    const metrics = normalizeRowMetrics(row);
+    const fallbackOpenConversations =
+      metrics.conversationSummary.estimatedOpenConversations ||
+      metrics.counts.openConversations ||
+      metrics.conversationSummary.openThreads;
 
-      return Number.isFinite(Number(openConversationCountRaw))
-        ? Number(openConversationCountRaw)
-        : toCount(fallbackOpenConversations);
-    };
+    return Number.isFinite(Number(openConversationCountRaw))
+      ? Number(openConversationCountRaw)
+      : toCount(fallbackOpenConversations);
+  };
 
-    const getOpenConversationCountWithMe = (row) => {
-      const viewerLogin = String(getEffectiveViewerLoginSafe(row) || "")
-        .trim()
-        .toLowerCase();
+  const getOpenConversationCountWithMe = (row) => {
+    const viewerLogin = String(getEffectiveViewerLoginSafe(row) || "")
+      .trim()
+      .toLowerCase();
 
-      if (!viewerLogin) {
-        return {
-          count: getOpenConversationCount(row),
-          isViewerSpecific: false,
-        };
-      }
-
-      const openThreads = asArraySafe(row?.reviewThreads).filter(
-        (thread) => thread && thread.isResolved !== true,
-      );
-
+    if (!viewerLogin) {
       return {
-        count: openThreads.filter((thread) => {
-          const participants = asArraySafe(thread?.participants).map((p) =>
-            String(p || "")
-              .trim()
-              .toLowerCase(),
-          );
-          if (participants.includes(viewerLogin)) {
-            return true;
-          }
-
-          return asArraySafe(thread?.comments).some(
-            (comment) =>
-              String(comment?.authorLogin || "")
-                .trim()
-                .toLowerCase() === viewerLogin,
-          );
-        }).length,
-        isViewerSpecific: true,
+        count: getOpenConversationCount(row),
+        isViewerSpecific: false,
       };
-    };
+    }
+
+    const openThreads = asArraySafe(row?.reviewThreads).filter(
+      (thread) => thread && thread.isResolved !== true,
+    );
 
     return {
-      getOpenConversationCount,
-      getOpenConversationCountWithMe,
+      count: openThreads.filter((thread) => {
+        const participants = asArraySafe(thread?.participants).map((p) =>
+          String(p || "")
+            .trim()
+            .toLowerCase(),
+        );
+        if (participants.includes(viewerLogin)) {
+          return true;
+        }
+
+        return asArraySafe(thread?.comments).some(
+          (comment) =>
+            String(comment?.authorLogin || "")
+              .trim()
+              .toLowerCase() === viewerLogin,
+        );
+      }).length,
+      isViewerSpecific: true,
     };
   };
 
   return {
-    createPrOpenConversationCountHelpers,
+    getOpenConversationCount,
+    getOpenConversationCountWithMe,
   };
-})();
+};
+
+export { createPrOpenConversationCountHelpers };

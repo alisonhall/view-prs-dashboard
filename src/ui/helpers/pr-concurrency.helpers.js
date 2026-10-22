@@ -13,42 +13,38 @@
 // result rather than throwing, so `runWithConcurrencyLimit` doesn't need
 // to know anything about what a "successful" result looks like for a
 // given caller.
-export const { createPrConcurrencyHelpers } = (() => {
-  const createPrConcurrencyHelpers = () => {
-    const runWithConcurrencyLimit = async (items, limit, worker) => {
-      const list = Array.isArray(items) ? items : [];
-      const workerSafe = typeof worker === "function" ? worker : async () => undefined;
-      const concurrency = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : list.length || 1;
+const createPrConcurrencyHelpers = () => {
+  const runWithConcurrencyLimit = async (items, limit, worker) => {
+    const list = Array.isArray(items) ? items : [];
+    const workerSafe = typeof worker === "function" ? worker : async () => undefined;
+    const concurrency = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : list.length || 1;
 
-      const results = new Array(list.length);
-      let nextIndex = 0;
+    const results = new Array(list.length);
+    let nextIndex = 0;
 
-      const runNext = async () => {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        if (currentIndex >= list.length) {
-          return;
-        }
-        try {
-          results[currentIndex] = await workerSafe(list[currentIndex], currentIndex);
-        } catch (error) {
-          results[currentIndex] = { ok: false, error };
-        }
-        await runNext();
-      };
-
-      const runnerCount = Math.min(concurrency, list.length);
-      await Promise.all(Array.from({ length: runnerCount }, () => runNext()));
-
-      return results;
+    const runNext = async () => {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= list.length) {
+        return;
+      }
+      try {
+        results[currentIndex] = await workerSafe(list[currentIndex], currentIndex);
+      } catch (error) {
+        results[currentIndex] = { ok: false, error };
+      }
+      await runNext();
     };
 
-    return {
-      runWithConcurrencyLimit,
-    };
+    const runnerCount = Math.min(concurrency, list.length);
+    await Promise.all(Array.from({ length: runnerCount }, () => runNext()));
+
+    return results;
   };
 
   return {
-    createPrConcurrencyHelpers,
+    runWithConcurrencyLimit,
   };
-})();
+};
+
+export { createPrConcurrencyHelpers };

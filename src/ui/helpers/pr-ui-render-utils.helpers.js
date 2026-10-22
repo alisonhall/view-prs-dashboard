@@ -1,8 +1,3 @@
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
-// wrapper every other src/ui/helpers file still uses - the factory body
-// below is unchanged, only the export mechanism differs. index.page.js
-// imports this directly instead of using the
-// require()/globalThis.ViewPrsUiRenderUtilsHelpers fallback.
 //
 // Phase 7 (see REACT_MIGRATION_PLAN.md): safeJsonStringify hoisted to a
 // bare module-scope export, alongside the factory - it's genuinely
@@ -21,22 +16,18 @@ export const safeJsonStringify = (value) => {
   }
 };
 
-export const { createPrUiRenderUtilsHelpers } = (() => {
-  const createPrUiRenderUtilsHelpers = () => {
-    const parseMarkerState = (titleDisplay = "", marker = "CHK") => {
-      const match = String(titleDisplay || "").match(
-        new RegExp(`\\[${marker}:([^\\]]+)\\]`),
-      );
-      return match && match[1] ? String(match[1]).trim().toUpperCase() : "-";
-    };
-
-    return {
-      parseMarkerState,
-      safeJsonStringify,
-    };
+const createPrUiRenderUtilsHelpers = () => {
+  const parseMarkerState = (titleDisplay = "", marker = "CHK") => {
+    const match = String(titleDisplay || "").match(
+      new RegExp(`\\[${marker}:([^\\]]+)\\]`),
+    );
+    return match && match[1] ? String(match[1]).trim().toUpperCase() : "-";
   };
 
   return {
-    createPrUiRenderUtilsHelpers,
+    parseMarkerState,
+    safeJsonStringify,
   };
-})();
+};
+
+export { createPrUiRenderUtilsHelpers };

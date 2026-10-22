@@ -6,41 +6,37 @@
 // closure over index.page.js's own module-level actor-identity functions
 // (it genuinely needs actor identity - confirmed by reading the body
 // directly, not a zero-dependency function despite first appearances).
-export const { createPrNotesPeopleOptionsHelpers } = (() => {
-  const createPrNotesPeopleOptionsHelpers = ({ resolveActorDisplayName, asArray } = {}) => {
-    const resolveActorDisplayNameSafe =
-      typeof resolveActorDisplayName === "function"
-        ? resolveActorDisplayName
-        : (login, _actorsMap, fallbackName) => String(fallbackName || login || "").trim();
-    const asArraySafe =
-      typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
+const createPrNotesPeopleOptionsHelpers = ({ resolveActorDisplayName, asArray } = {}) => {
+  const resolveActorDisplayNameSafe =
+    typeof resolveActorDisplayName === "function"
+      ? resolveActorDisplayName
+      : (login, _actorsMap, fallbackName) => String(fallbackName || login || "").trim();
+  const asArraySafe =
+    typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
 
-    const buildPrPeopleOptions = (row, actorsMap = {}) => {
-      const people = new Map();
-      const addPerson = (login, name) => {
-        const l = String(login || "").trim();
-        if (!l) return;
-        if (!people.has(l)) {
-          people.set(l, resolveActorDisplayNameSafe(l, actorsMap, name));
-        }
-      };
-      addPerson(row?.authorLogin, row?.author);
-      asArraySafe(row?.metrics?.commentsByActor).forEach((p) =>
-        addPerson(p.login, p.name),
-      );
-      asArraySafe(row?.metrics?.reviewsByActor).forEach((p) =>
-        addPerson(p.login, p.name),
-      );
-      asArraySafe(row?.approvers).forEach((p) => addPerson(p.login, p.name));
-      return Array.from(people.entries()).map(([login, name]) => ({ login, name }));
+  const buildPrPeopleOptions = (row, actorsMap = {}) => {
+    const people = new Map();
+    const addPerson = (login, name) => {
+      const l = String(login || "").trim();
+      if (!l) return;
+      if (!people.has(l)) {
+        people.set(l, resolveActorDisplayNameSafe(l, actorsMap, name));
+      }
     };
-
-    return {
-      buildPrPeopleOptions,
-    };
+    addPerson(row?.authorLogin, row?.author);
+    asArraySafe(row?.metrics?.commentsByActor).forEach((p) =>
+      addPerson(p.login, p.name),
+    );
+    asArraySafe(row?.metrics?.reviewsByActor).forEach((p) =>
+      addPerson(p.login, p.name),
+    );
+    asArraySafe(row?.approvers).forEach((p) => addPerson(p.login, p.name));
+    return Array.from(people.entries()).map(([login, name]) => ({ login, name }));
   };
 
   return {
-    createPrNotesPeopleOptionsHelpers,
+    buildPrPeopleOptions,
   };
-})();
+};
+
+export { createPrNotesPeopleOptionsHelpers };

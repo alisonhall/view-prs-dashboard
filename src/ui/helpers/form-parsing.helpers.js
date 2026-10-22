@@ -30,55 +30,47 @@ export const NON_CREDENTIAL_INPUT_PROPS = Object.freeze({
   "data-form-type": "other",
 });
 
+export const createFormParsingHelpers = () => {
+  const toBoolean = (value) => value === true || value === "on";
+
+  // Accept comma and/or whitespace separators while preserving numeric-only IDs.
+  const parsePrNumbersInput = (input) => {
+    if (!input || typeof input !== "string") return [];
+
+    return String(input)
+      .split(/[\s,]+/)
+      .map((s) => String(s || "").trim())
+      .filter((token) => /^\d+$/.test(token));
+  };
+
+  // Parse commit patterns from textarea (one pattern per line).
+  const parseCommitPatterns = (textarea) => {
+    const value = textarea?.value || "";
+    if (!value || typeof value !== "string") return [];
+
+    return String(value)
+      .split("\n")
+      .map((line) => String(line || "").trim())
+      .filter(Boolean);
+  };
+
+  // Format commit patterns array for textarea display (one per line).
+  const formatCommitPatternsForTextarea = (patterns) => {
+    if (!Array.isArray(patterns)) return "";
+    return patterns.join("\n");
+  };
+
+  return {
+    toBoolean,
+    parsePrNumbersInput,
+    parseCommitPatterns,
+    formatCommitPatternsForTextarea,
+  };
+};
+
 export const {
-  createFormParsingHelpers,
   toBoolean,
   parsePrNumbersInput,
   parseCommitPatterns,
   formatCommitPatternsForTextarea,
-} = (() => {
-  const createFormParsingHelpers = () => {
-    const toBoolean = (value) => value === true || value === "on";
-
-    // Accept comma and/or whitespace separators while preserving numeric-only IDs.
-    const parsePrNumbersInput = (input) => {
-      if (!input || typeof input !== "string") return [];
-
-      return String(input)
-        .split(/[\s,]+/)
-        .map((s) => String(s || "").trim())
-        .filter((token) => /^\d+$/.test(token));
-    };
-
-    // Parse commit patterns from textarea (one pattern per line).
-    const parseCommitPatterns = (textarea) => {
-      const value = textarea?.value || "";
-      if (!value || typeof value !== "string") return [];
-
-      return String(value)
-        .split("\n")
-        .map((line) => String(line || "").trim())
-        .filter(Boolean);
-    };
-
-    // Format commit patterns array for textarea display (one per line).
-    const formatCommitPatternsForTextarea = (patterns) => {
-      if (!Array.isArray(patterns)) return "";
-      return patterns.join("\n");
-    };
-
-    return {
-      toBoolean,
-      parsePrNumbersInput,
-      parseCommitPatterns,
-      formatCommitPatternsForTextarea,
-    };
-  };
-
-  const defaultHelpers = createFormParsingHelpers();
-
-  return {
-    createFormParsingHelpers,
-    ...defaultHelpers,
-  };
-})();
+} = createFormParsingHelpers();

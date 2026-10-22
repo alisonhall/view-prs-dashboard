@@ -7,34 +7,30 @@
 // Drops the old 404 branch's supportsSchedulerPolling write entirely -
 // confirmed via grep to have had zero remaining reader anywhere (its own
 // window.getSupportsSchedulerPolling bridge was deleted the same phase).
-export const { createPrSchedulerStatusHelpers } = (() => {
-  const createPrSchedulerStatusHelpers = ({ fetch, renderSchedulerStatus } = {}) => {
-    const fetchSafe =
-      typeof fetch === "function" ? fetch : () => Promise.reject(new Error("fetch is not available"));
-    const renderSchedulerStatusSafe =
-      typeof renderSchedulerStatus === "function" ? renderSchedulerStatus : () => {};
+const createPrSchedulerStatusHelpers = ({ fetch, renderSchedulerStatus } = {}) => {
+  const fetchSafe =
+    typeof fetch === "function" ? fetch : () => Promise.reject(new Error("fetch is not available"));
+  const renderSchedulerStatusSafe =
+    typeof renderSchedulerStatus === "function" ? renderSchedulerStatus : () => {};
 
-    const loadSchedulerStatus = async () => {
-      const response = await fetchSafe("/view-prs/scheduler");
-      if (response.status === 404) {
-        return { ok: false, scheduler: null };
-      }
+  const loadSchedulerStatus = async () => {
+    const response = await fetchSafe("/view-prs/scheduler");
+    if (response.status === 404) {
+      return { ok: false, scheduler: null };
+    }
 
-      const result = await response.json();
-      if (!response.ok || result.ok === false) {
-        throw new Error(result.error || "Failed to fetch scheduler status");
-      }
+    const result = await response.json();
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || "Failed to fetch scheduler status");
+    }
 
-      renderSchedulerStatusSafe(result.scheduler || {});
-      return result;
-    };
-
-    return {
-      loadSchedulerStatus,
-    };
+    renderSchedulerStatusSafe(result.scheduler || {});
+    return result;
   };
 
   return {
-    createPrSchedulerStatusHelpers,
+    loadSchedulerStatus,
   };
-})();
+};
+
+export { createPrSchedulerStatusHelpers };
