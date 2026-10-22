@@ -51,19 +51,28 @@
 
 import { useEffect } from 'react';
 import { usePrData } from '../state/PrDataContext';
+import { useRequestActivity } from '../state/RequestActivityContext';
 
 const ACTIVITY_RENDER_MS = 1000;
+// Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// plain constants here now; index.page.js used to publish them as
+// window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, and this was their only reader.
+export const AUTO_DATA_POLL_MS = 30000;
+export const AUTO_BACKFILL_POLL_MS = 5000;
 
 export function PrDataPolling() {
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see
   // react-app.jsx) and reached directly via Context now, not window.*.
-  const { pollForDataChanges, pollBackfillStatus, renderRequestActivity } = usePrData();
+  // Window-bridge elimination Phase 7.3: renderRequestActivity is
+  // RequestActivityProvider's now (an ancestor of PrDataProvider).
+  const { pollForDataChanges, pollBackfillStatus } = usePrData();
+  const { renderRequestActivity } = useRequestActivity();
 
   useEffect(() => {
-    const dataPollMs = window.AUTO_DATA_POLL_MS || 30000;
-    const backfillPollMs = window.AUTO_BACKFILL_POLL_MS || 5000;
+    const dataPollMs = AUTO_DATA_POLL_MS;
+    const backfillPollMs = AUTO_BACKFILL_POLL_MS;
 
     let dataInterval = null;
     let backfillInterval = null;

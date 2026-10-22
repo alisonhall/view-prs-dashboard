@@ -5,6 +5,7 @@ import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 import { usePrDataActions } from './PrDataActionsContext';
+import { useRequestActivity } from './RequestActivityContext';
 
 /**
  * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -32,7 +33,10 @@ import { usePrDataActions } from './PrDataActionsContext';
  * reasoning as statusText above.
  */
 export function useRowCheckboxActions() {
-  const { payload, selectedRepo, beginRequestActivity } = usePrData();
+  const { payload, selectedRepo } = usePrData();
+  // Window-bridge elimination Phase 7.3: request activity is
+  // RequestActivityProvider's now, not part of usePrData().
+  const { beginRequestActivity } = useRequestActivity();
   const { setStatusText } = useStatusText();
   const { showError } = useSnackbar();
   // Window-bridge elimination Phase 7: was window.applyLatestPrData/

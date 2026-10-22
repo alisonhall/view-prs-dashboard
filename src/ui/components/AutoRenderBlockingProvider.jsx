@@ -7,6 +7,7 @@ import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
 import { useStatusText } from '../state/StatusTextContext';
+import { useRequestActivity } from '../state/RequestActivityContext';
 
 // Each factory call below is genuinely zero-dependency for the pieces this
 // Provider needs (computeHasDirtyPrSectionsFields/getPendingAutoRenderAction/
@@ -69,6 +70,9 @@ const EMPTY_BLOCKING_STATE = {
  */
 export function AutoRenderBlockingProvider({ children }) {
   const { setStatusText } = useStatusText();
+  // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps this
+  // Provider, so its renderRequestActivity comes from Context, not window.
+  const { renderRequestActivity } = useRequestActivity();
   const stateRef = useRef({
     pendingAutoRenderPayload: null,
     blockingState: EMPTY_BLOCKING_STATE,
@@ -145,13 +149,13 @@ export function AutoRenderBlockingProvider({ children }) {
     // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // statusText via useStatusText() directly (this component is a
     // genuine descendant of StatusTextProvider - see that Provider's own
-    // header comment), composed with window.renderRequestActivity - same
+    // header comment), composed with renderRequestActivity - same
     // reasoning as useRunScript.jsx's own comment on this exact
     // composition (nothing else re-renders the activity badges for this
     // one-shot action).
     setStatusText('Applied latest updates and discarded unsaved edits.');
-    window.renderRequestActivity?.();
-  }, [bump, setStatusText]);
+    renderRequestActivity();
+  }, [bump, setStatusText, renderRequestActivity]);
 
   // Plain ref mutation + version-tick bump, not flushSync - see this
   // file's own header comment for why. Both setters schedule the same

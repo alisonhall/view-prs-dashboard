@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthorInsightsDraftsContext } from '../state/AuthorInsightsDraftsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
-import { usePrData } from '../state/PrDataContext';
+import { useRequestActivity } from '../state/RequestActivityContext';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.js';
 import { postJson } from '../helpers/pr-http.helpers.js';
@@ -28,9 +28,9 @@ import { postJson } from '../helpers/pr-http.helpers.js';
  * same dataHelpers instance's saveAuthorManualComment/
  * updateAuthorManualComment with beginRequestActivity("authorComment")
  * tracking; this Provider does the identical wrapping itself, reading
- * beginRequestActivity from usePrData() (this Provider is mounted inside
- * <PrDataProvider>, a genuine descendant) instead of index.page.js's own
- * module-level copy. AuthorInsightsCommentsSection.jsx calls these two
+ * beginRequestActivity from Context (useRequestActivity() since window-bridge
+ * elimination Phase 7.3; it was usePrData() before) instead of index.page.js's
+ * own module-level copy. AuthorInsightsCommentsSection.jsx calls these two
  * directly via useAuthorInsightsDrafts() now, no window.* round-trip.
  *
  * Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
@@ -103,7 +103,9 @@ export function AuthorInsightsDraftsProvider({ children }) {
   // open edit form. A ref keeps every callback below stable for this
   // Provider's entire mount, exactly like NotesDirtyProvider's own
   // permanently-stable callbacks.
-  const { beginRequestActivity } = usePrData();
+  // Window-bridge elimination Phase 7.3: request activity is
+  // RequestActivityProvider's now, not part of usePrData().
+  const { beginRequestActivity } = useRequestActivity();
   const { normalizeActorLogin } = useActorIdentity();
   const normalizeActorLoginRef = useRef(normalizeActorLogin);
   normalizeActorLoginRef.current = normalizeActorLogin;

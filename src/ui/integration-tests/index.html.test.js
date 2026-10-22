@@ -58,6 +58,8 @@ const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../co
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
 const { BackfillStatusProvider } = require("../components/BackfillStatusProvider");
+const { RequestActivityProvider } = require("../components/RequestActivityProvider");
+const { useRequestActivity } = require("../state/RequestActivityContext");
 const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
@@ -112,6 +114,11 @@ let fetchMock;
 // until the harness tree mounts (and after it unmounts), like the bridges
 // were.
 let filterStateTestHandle = null;
+// Window-bridge elimination Phase 7.3: the real RequestActivityProvider's
+// functions, captured by RequestActivityTestHandle below - the scheduler test
+// drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
+// does in production (it used to call window.renderSchedulerStatus).
+let requestActivityTestHandle = null;
 const readFilterStateValues = () => filterStateTestHandle?.values;
 
 const createFetchMock = ({
@@ -611,6 +618,17 @@ function PrTablePortalTestLive() {
 }
 
 // Captures the real FilterStateProvider's Context value for the helpers above.
+function RequestActivityTestHandle() {
+  requestActivityTestHandle = useRequestActivity();
+  React.useEffect(
+    () => () => {
+      requestActivityTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
 function FilterStateTestHandle() {
   const state = useFilterState();
   filterStateTestHandle = state;
@@ -660,7 +678,14 @@ function FilterStateTestRootHarness({ initialValues }) {
       // wraps the whole tree, same as react-app.jsx's mountAppRoot.
       StatusTextProvider,
       null,
+      // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps
+      // BackfillStatusProvider/AutoRenderBlockingProvider/PrDataProvider, as in
+      // mountAppRoot(); loadOnMount makes the startup scheduler load.
       React.createElement(
+        RequestActivityProvider,
+        { loadOnMount: true },
+        React.createElement(RequestActivityTestHandle),
+        React.createElement(
         BackfillStatusProvider,
         null,
         React.createElement(
@@ -744,6 +769,7 @@ function FilterStateTestRootHarness({ initialValues }) {
             ),
           ),
         ),
+      ),
       ),
     ),
     errorSnackbarRoot && createPortal(React.createElement(Snackbar), errorSnackbarRoot),
@@ -3682,14 +3708,15 @@ describe("index page rendering with Testing Library", () => {
       // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // window.pollSchedulerStatus (a poll wrapper around a now-retired
       // setInterval, see PrDataPolling.jsx's own comment) is gone - the
-      // progress indicator is driven by window.renderSchedulerStatus in
-      // production too, called directly by JobEventsProvider.jsx's real
-      // SSE connection on every scheduler-status push. Calling it directly
+      // progress indicator is driven by renderSchedulerStatus in production
+      // too (RequestActivityProvider's, via Context since window-bridge
+      // elimination Phase 7.3), called by JobEventsProvider.jsx's real SSE
+      // connection on every scheduler-status push. Calling it directly
       // here with the same payload shape exercises that real remaining
       // path instead of a bridge with no caller left.
       schedulerActivePrNumbers = [{ repo: "owner/repo", prNumber: "1" }];
       act(() => {
-        window.renderSchedulerStatus({
+        requestActivityTestHandle.renderSchedulerStatus({
           intervalMinutes: 15,
           manualCooldownMinutes: 15,
           isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
@@ -3705,7 +3732,7 @@ describe("index page rendering with Testing Library", () => {
 
       schedulerActivePrNumbers = [];
       act(() => {
-        window.renderSchedulerStatus({
+        requestActivityTestHandle.renderSchedulerStatus({
           intervalMinutes: 15,
           manualCooldownMinutes: 15,
           isAutoRunInProgress: schedulerActivePrNumbers.length > 0,

@@ -7,6 +7,7 @@ import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 import { usePrDataActions } from './PrDataActionsContext';
+import { useRequestActivity } from './RequestActivityContext';
 
 const QUICK_CHECK_BUTTON_LABEL = 'Quick check';
 const QUICK_CHECK_ALL_BUTTON_LABEL = 'Quick check all';
@@ -63,6 +64,9 @@ export function useQuickCheckActions() {
   // Window-bridge elimination Phase 7: was window.getLatestStoredPayload
   // (index.page.js); the newest stored payload is PrDataProvider's now.
   const { getLatestStoredPayload } = usePrDataActions();
+  // Window-bridge elimination Phase 7.3: was window.renderSchedulerStatus
+  // (index.page.js); RequestActivityProvider owns it now.
+  const { renderSchedulerStatus } = useRequestActivity();
 
   return useMemo(() => {
     const notifyFailureSnackbar = (title, errorSource, fallbackMessage) => {
@@ -76,7 +80,7 @@ export function useQuickCheckActions() {
 
     const { loadSchedulerStatus } = createPrSchedulerStatusHelpers({
       fetch: (...args) => fetch(...args),
-      renderSchedulerStatus: (...args) => window.renderSchedulerStatus?.(...args),
+      renderSchedulerStatus,
     });
 
     const { runQuickCheckWorkflow, runQuickCheckAllWorkflow } = createPrQuickCheckActionsHelpers({
@@ -111,5 +115,5 @@ export function useQuickCheckActions() {
       });
 
     return { handleQuickCheck, handleQuickCheckAll };
-  }, [markPrBusy, clearPrBusy, getFormBody, showError, showWarning, getLatestStoredPayload]);
+  }, [markPrBusy, clearPrBusy, getFormBody, showError, showWarning, getLatestStoredPayload, renderSchedulerStatus]);
 }

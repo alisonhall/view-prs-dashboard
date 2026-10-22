@@ -6,9 +6,7 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as prSchedulerStatusHelperFactory from "./helpers/pr-scheduler-status.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
-import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
@@ -31,9 +29,6 @@ import { summarizeAckRefreshWarnings } from "./helpers/pr-ack-refresh-warnings.h
 // the now-deleted vanilla handleRequestMoreMerged instance, ninth
 // follow-up, see REACT_MIGRATION_PLAN.md "Remaining-effort audit") is gone
 // too - nothing left in this file needs it.
-const AUTO_DATA_POLL_MS = 30000;
-const AUTO_BACKFILL_POLL_MS = 5000;
-
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // latestStoredPayload/latestSelectedRepo/applyLatestPrData, and the render
 // pipeline that wrote them (renderPrData/applyFreshPrPayload/loadStoredData,
@@ -68,10 +63,9 @@ const formParsingHelpers = formParsingHelpersModule;
 // any more), setOutputMessage, the beginRequestActivity proxy, and
 // showErrorNotification/notifyFailureSnackbar are deleted - their last callers
 // were this file's backfill code and loadStoredData failure path, both gone.
-// renderRequestActivity stays for initPage's startup call.
-const renderRequestActivity = () => {
-  window.renderRequestActivity?.();
-};
+// Phase 7.3: so is renderRequestActivity, with its startup call and
+// 'viewprs:react-ready' re-push - RequestActivityProvider starts with the
+// idle badges as its own state, so there is nothing to push.
 
 // Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): describePollFailure/showPollFailureWarning/markPollSuccess
@@ -184,18 +178,10 @@ const isIgnoredCredentialFieldError = (value) => {
 // formatChkDisplay directly now instead of parseMarkerState + a buggy
 // formatChkDisplay call (see that file's own comment for the fix).
 
-const { getOptionalElementById, readElementAttribute } =
+const { getOptionalElementById } =
   prDomAccessHelperFactory.createPrDomAccessHelpers({
     documentRef: typeof document !== "undefined" ? document : null,
   });
-
-// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): still real - applyActivePrProgressIndicators (below) is a
-// live, independent consumer of this, unrelated to the deleted
-// capturePrSectionOpenState (this factory's other, now-deleted consumer in
-// this file).
-const { collectNodesByClass } =
-  prDomTraversalHelperFactory.createPrDomTraversalHelpers();
 
 // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): collectNodesByClass/capturePrSectionOpenState/
@@ -451,84 +437,13 @@ const recomputeDirtyPrSectionsFields = () => {
 // populate, and nothing else in this file calls it, so it's not
 // re-instantiated here at all.
 
-// Activity drawer feature (see REACT_MIGRATION_PLAN.md): #scheduler-badges/
-// #scheduler-details (the Status tab's old "Auto Refresh Scheduler" display)
-// were removed as redundant once the drawer's own live "Scheduled background
-// jobs" section covered the same ground - this function's only remaining
-// jobs are driving the per-row progress indicator and keeping
-// latestSchedulerState current (Phase F.2: now PrDataProvider.jsx's own
-// activityRef, pushed via window.setLatestSchedulerStateAndRender, which
-// also triggers the request-activity re-render that used to happen here
-// directly).
-const renderSchedulerStatus = (schedulerRaw = {}) => {
-  const scheduler = schedulerRaw || {};
-  applyActivePrProgressIndicators(scheduler.activePrNumbers || []);
-  window.setLatestSchedulerStateAndRender?.(scheduler);
-};
-
-// The server (app.js's buildActivePrKey) sends activePrNumbers as
-// { repo, prNumber } pairs, not bare numbers - PR numbers are only unique
-// within a repo, and several repos can have PRs actively refreshing at
-// once (see getViewPrsAutoRefreshRepos' multi-repo fan-out). The set this
-// builds is keyed the same "repo::prNumber" way so a lookup needs both,
-// not just the number, to match.
-const ACTIVE_PR_KEY_SEPARATOR = "::";
-
-const buildActivePrKey = (prNumber, repo) =>
-  `${String(repo || "").trim()}${ACTIVE_PR_KEY_SEPARATOR}${prNumber}`;
-
-const normalizeActivePrNumberSet = (activePrNumbersRaw = []) => {
-  const activeValues = Array.isArray(activePrNumbersRaw)
-    ? activePrNumbersRaw
-    : [];
-  return new Set(
-    activeValues
-      .map((entry) => ({
-        repo: String(entry?.repo || "").trim(),
-        prNumber: String(entry?.prNumber || "").trim(),
-      }))
-      .filter((entry) => /^\d+$/.test(entry.prNumber))
-      .map((entry) => buildActivePrKey(entry.prNumber, entry.repo)),
-  );
-};
-
-const applyActivePrProgressIndicators = (activePrNumbersRaw = []) => {
-  // Dispatched unconditionally (harmless no-op with no listener) so the
-  // React rendering path can show the same "PR update in progress"
-  // indicator the vanilla DOM manipulation below applies directly - React
-  // owns #pr-sections' markup when it's mounted, so that direct
-  // manipulation wouldn't reach (or would be clobbered by) React-rendered
-  // cells. This is also called from its own scheduler-status poll loop
-  // (see renderSchedulerStatus), independent of the main data render, so it
-  // needs its own live-update channel rather than piggybacking on
-  // updateReactTable()'s payload/selectedRepo plumbing.
-  window.dispatchEvent(
-    new CustomEvent("pr-active-progress-update", {
-      detail: {
-        activePrNumbers: Array.isArray(activePrNumbersRaw) ? activePrNumbersRaw : [],
-      },
-    }),
-  );
-
-  const sectionsHost = getOptionalElementById("pr-sections");
-  if (!sectionsHost) {
-    return;
-  }
-
-  const activePrKeys = normalizeActivePrNumberSet(activePrNumbersRaw);
-  const prNumberCells = collectNodesByClass(sectionsHost, "pr-number-cell");
-  prNumberCells.forEach((cell) => {
-    const prNumber = readElementAttribute(cell, "data-pr-number").trim();
-    const repo = readElementAttribute(cell, "data-repo").trim();
-    const indicator = collectNodesByClass(cell, "pr-progress-indicator")[0];
-    if (!indicator) {
-      return;
-    }
-
-    const isActive = activePrKeys.has(buildActivePrKey(prNumber, repo));
-    indicator.hidden = !isActive;
-  });
-};
+// Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// renderSchedulerStatus and applyActivePrProgressIndicators moved to
+// components/RequestActivityProvider.jsx (with window.renderSchedulerStatus and
+// the window.setLatestSchedulerStateAndRender bridge they fed). The
+// 'pr-active-progress-update' event dispatch moved with them; the direct
+// `hidden` toggling of each row's .pr-progress-indicator is dropped, since
+// PrNumberCell already renders that attribute from PrTableApp's own state.
 
 // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 5
 // populateXOptions functions this factory used to also provide have moved
@@ -564,22 +479,6 @@ const { setupMultiSelectDropdownClosing } = prFilterPanelHelperFactory.createPrF
 // underlying functions as plain calls) was itself deleted outright in
 // Phase H.20, and the functions themselves are deleted now too - see
 // pr-filter-panel.helpers.js's own comment above for the full accounting.
-
-// Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): window.loadSchedulerStatus/window.getSupportsSchedulerPolling
-// are deleted outright - the automatic poll loop they used to also serve
-// (PrDataProvider.jsx's own pollSchedulerStatus) was already retired in
-// Phase H.2, and supportsSchedulerPolling itself (the 404 flag) had zero
-// remaining reader anywhere (confirmed via grep - window.getSupportsSchedulerPolling
-// had no caller either). loadSchedulerStatus's own implementation moved to
-// helpers/pr-scheduler-status.helpers.js - this file builds its own
-// instance for the startup call below; useQuickCheckActions.jsx builds a
-// separate instance for its own forced-refresh call, instead of reading
-// this file's vanilla closure through a window.* bridge.
-const { loadSchedulerStatus } = prSchedulerStatusHelperFactory.createPrSchedulerStatusHelpers({
-  fetch: (...args) => fetch(...args),
-  renderSchedulerStatus: (...args) => renderSchedulerStatus(...args),
-});
 
 // getViewedFilesSummary (helpers/pr-viewed-files-summary.helpers.js) no
 // longer built here at all (Phase 7, see REACT_MIGRATION_PLAN.md) -
@@ -807,29 +706,10 @@ const {
 // pipeline). state/useVisiblePrNumbers.jsx's own separate instance of this
 // same factory (the real, live row-filtering logic) is untouched.
 
-// Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// <PrDataPolling /> (react-app.jsx) now owns the setInterval lifecycle for
-// these four functions (and the visibility-pause/beforeunload-cleanup
-// behavior that used to live in index.page.js's cleanupIntervals/
-// restartIntervals) - it calls them via these bridges on the same cadence
-// (AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, also exposed here so the
-// interval timing has one source of truth).
-// window.pollForDataChanges/pollBackfillStatus/renderRequestActivity used
-// to also be bridged here - Phase F/F.2 (see REACT_MIGRATION_PLAN.md,
-// "Full migration roadmap") moved them into PrDataProvider.jsx, which
-// used to also set window.pollSchedulerStatus itself (deleted outright
-// in Phase H.2 - see that file's own header comment for why).
-if (typeof window !== "undefined") {
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
-  // retirement" section): JobEventsProvider.jsx calls this directly with
-  // the scheduler object bundled into every SSE frame, replacing the old
-  // schedulerInterval poll (removed from PrDataPolling.jsx) as the trigger
-  // for this same rendering - the function itself (badges, details text,
-  // the pr-active-progress-update dispatch) is unchanged.
-  window.renderSchedulerStatus = (...args) => renderSchedulerStatus(...args);
-  window.AUTO_DATA_POLL_MS = AUTO_DATA_POLL_MS;
-  window.AUTO_BACKFILL_POLL_MS = AUTO_BACKFILL_POLL_MS;
-}
+// Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// window.renderSchedulerStatus/AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS are
+// gone - RequestActivityProvider owns renderSchedulerStatus, and the two
+// interval constants live in components/PrDataPolling.jsx, their only reader.
 
 // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 6): getFormBody() (this used to be its definition) and the
@@ -921,7 +801,6 @@ if (typeof window !== "undefined") {
  */
 
 const initPage = () => {
-  renderRequestActivity();
   // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // restoreUiOptionOverrides() used to be called here (twice - once
   // immediately, once on 'viewprs:react-ready' - see git history for the
@@ -931,13 +810,13 @@ const initPage = () => {
   // not vanilla code reaching in, so none of the old queueMicrotask/
   // dual-pass machinery is needed any more.
   // A bridge-not-ready-yet race for applyNonCredentialFieldHints() below
-  // (the backfill status/log listeners that used to sit above this one were
-  // deleted in window-bridge elimination Phase 7.2): it reaches for the 5 "Run Script
+  // (this is the last 'viewprs:react-ready' listener; the backfill and
+  // request-activity ones went in window-bridge elimination Phases 7.2-7.3): it reaches for the 5 "Run Script
   // options" fields (repo/limit/merged-limit/jobs/pr-numbers) by DOM id,
   // but all 5 are React-portaled (FilterStateProvider, see
   // ContextRunScriptTextInput.jsx) and don't exist in the DOM yet at this
   // point in a real page load - react-app.jsx's own module graph is still
-  // loading, same race the other listeners in this block exist for. The
+  // loading. The
   // initial call below is harmless-but-ineffective until this fires (finds
   // nothing, silently no-ops via getOptionalElementById) - kept anyway for
   // any environment where React happens to already be mounted (e.g. a test
@@ -945,17 +824,6 @@ const initPage = () => {
   window.addEventListener(
     "viewprs:react-ready",
     () => applyNonCredentialFieldHints(),
-    { once: true },
-  );
-  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): same
-  // bridge-not-ready-yet race as the listeners above - initPage's own
-  // renderRequestActivity() call (below, this function's very first line)
-  // runs before PrDataProvider.jsx has necessarily mounted yet, so the
-  // initial "No request in progress" badge push can silently no-op. Re-push
-  // once React signals ready.
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => renderRequestActivity(),
     { once: true },
   );
   // Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
@@ -1205,12 +1073,9 @@ const initPage = () => {
   // PrDataProvider's own mount effect, so there is no load-order race left
   // to cover here. Phase 7.2: so did the initial loadBackfillStatus call -
   // deleted, since useBackfillTabAutoRefresh already makes the same load on
-  // mount.
+  // mount. Phase 7.3: and the startup loadSchedulerStatus() call, now
+  // RequestActivityProvider's mount effect.
 
-  loadSchedulerStatus().catch((_error) => {
-    // Ignore startup scheduler fetch failures; the next poll will retry.
-  });
-  
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): debouncedApplyFilters/window.debouncedApplyFilters are
   // deleted outright, along with the "Apply filters (local)" button

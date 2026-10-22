@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { JobEventsContext } from '../state/JobEventsContext';
 import { PrDataContext } from '../state/PrDataContext';
+import { useRequestActivity } from '../state/RequestActivityContext';
 import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.js';
 
 const STALENESS_CHECK_INTERVAL_MS = 30000;
@@ -27,7 +28,9 @@ const {
  * rather than letting each consumer re-derive it.
  *
  * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
- * window.renderSchedulerStatus with the bundled scheduler object - that
+ * renderSchedulerStatus (RequestActivityProvider's, via Context since
+ * window-bridge elimination Phase 7.3 - it was window.renderSchedulerStatus) with
+ * the bundled scheduler object - that
  * function's only remaining job (since #scheduler-badges/#scheduler-details
  * were removed as redundant with this drawer's own live display) is keeping
  * the per-row progress indicator and #request-activity-badges current, both
@@ -54,6 +57,10 @@ export function JobEventsProvider({ children }) {
   // function's identity.
   const pollForDataChangesRef = useRef(null);
   pollForDataChangesRef.current = prDataContext?.pollForDataChanges;
+  // Same ref reasoning. Stable anyway (RequestActivityProvider's value never
+  // changes), and the inert default without a Provider is a no-op.
+  const renderSchedulerStatusRef = useRef(null);
+  renderSchedulerStatusRef.current = useRequestActivity().renderSchedulerStatus;
   const [jobEventsState, setJobEventsState] = useState(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
   const lastEventAtRef = useRef(null);
@@ -71,7 +78,7 @@ export function JobEventsProvider({ children }) {
     let stopped = false;
 
     const applySchedulerSideEffects = (scheduler) => {
-      window.renderSchedulerStatus?.(scheduler);
+      renderSchedulerStatusRef.current?.(scheduler);
     };
 
     const handleSnapshot = (event) => {

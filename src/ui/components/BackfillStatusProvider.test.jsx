@@ -54,7 +54,6 @@ const DELETED_BRIDGES = [
 // through window.updateReactBackfill* bridges.
 describe('BackfillStatusProvider', () => {
   afterEach(() => {
-    delete window.renderRequestActivity;
     delete global.fetch;
   });
 
@@ -121,17 +120,22 @@ describe('BackfillStatusProvider', () => {
     });
 
     test('given updateBackfillStatusFromPayload with announce, when the state key changes, then it renders the status and announces the summary once', () => {
-      window.renderRequestActivity = jest.fn();
+      // Window-bridge elimination Phase 7.3: renderRequestActivity comes from
+      // RequestActivityProvider's Context, not window.renderRequestActivity.
+      const renderRequestActivity = jest.fn();
       let statusMessages = [];
       const { StatusTextContext } = require('../state/StatusTextContext');
+      const { RequestActivityContext } = require('../state/RequestActivityContext');
       let latest;
       render(
         <StatusTextContext.Provider
           value={{ statusText: '', setStatusText: (message) => statusMessages.push(message) }}
         >
-          <BackfillStatusProvider>
-            <Probe onValue={(value) => (latest = value)} />
-          </BackfillStatusProvider>
+          <RequestActivityContext.Provider value={{ renderRequestActivity }}>
+            <BackfillStatusProvider>
+              <Probe onValue={(value) => (latest = value)} />
+            </BackfillStatusProvider>
+          </RequestActivityContext.Provider>
         </StatusTextContext.Provider>,
       );
 
@@ -150,7 +154,7 @@ describe('BackfillStatusProvider', () => {
       });
 
       expect(statusMessages).toEqual(['Backfill running']);
-      expect(window.renderRequestActivity).toHaveBeenCalledTimes(1);
+      expect(renderRequestActivity).toHaveBeenCalledTimes(1);
       expect(latest.isBackfillRunning).toBe(true);
     });
   });

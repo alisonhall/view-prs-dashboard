@@ -12,13 +12,12 @@ import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpe
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.js';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
-import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 import { useSetOutputText } from './OutputTextContext';
 import { useAutoRenderBlockingActions } from './AutoRenderBlockingContext';
-import { RequestActivityContext } from './RequestActivityContext';
+import { useRequestActivity } from './RequestActivityContext';
 import { PrDataActionsContext } from './PrDataActionsContext';
 import { useBackfillStatusActions } from './BackfillStatusContext';
 import { useFilterFieldActions } from './FilterStateContext';
@@ -62,80 +61,9 @@ const describePollFailure = (errorSource) => {
 const { formatIsoDatetime } = createPrFormattingHelpers();
 const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
 
-// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// default state for the request-activity-counter/history/scheduler-state
-// bookkeeping below - matches index.page.js's old module-scope
-// requestActivityCounters/requestActivityStartedAtMs/
-// recentRequestActivityEntries/latestSchedulerState defaults exactly.
-const REQUEST_ACTIVITY_LABELS = {
-  runScript: 'Run script',
-  ackClear: 'Ack/Clear',
-  singlePr: 'Single PR update',
-  dataLoad: 'Data refresh',
-  backfill: 'Backfill request',
-  labelApply: 'Apply label',
-  checkboxToggle: 'Checkbox toggle',
-  notesSave: 'Notes save',
-  authorComment: 'Author comment',
-};
-const DEFAULT_REQUEST_ACTIVITY_STATE = {
-  counters: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
-  startedAtMs: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
-  recentEntries: [],
-  latestSchedulerState: {},
-};
-const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
-const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
-const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
-
-const formatElapsedLabel = (elapsedMs) => {
-  const totalSeconds = Math.max(
-    0,
-    Math.floor(Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) / 1000 : 0),
-  );
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-  }
-  return `${seconds}s`;
-};
-
-const getElapsedFromStartMs = (startMs) => {
-  const parsedStart = Number(startMs || 0);
-  if (!Number.isFinite(parsedStart) || parsedStart <= 0) {
-    return null;
-  }
-  return Math.max(0, Date.now() - parsedStart);
-};
-
-const withElapsedSuffix = (label, elapsedMs) => {
-  if (!Number.isFinite(Number(elapsedMs)) || Number(elapsedMs) < 0) {
-    return label;
-  }
-  return `${label} (${formatElapsedLabel(elapsedMs)})`;
-};
-
-const getRequestActivitySeverityClass = (elapsedMs) => {
-  const safeElapsedMs = Number(elapsedMs);
-  if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
-    return '';
-  }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_CRITICAL_MS) {
-    return 'scheduler-badge-critical';
-  }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_WARN_MS) {
-    return 'scheduler-badge-warning';
-  }
-  return '';
-};
-
-// Built once, not per-render - same "stable, zero-per-render-state"
-// precedent as useSinglePrUpdate.jsx's own module-level instantiation.
-const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
-  withElapsedSuffix,
-  getRequestActivitySeverityClass,
-});
+// Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the request-activity bookkeeping that used to be defined here (labels,
+// counters, badges) moved to components/RequestActivityProvider.jsx.
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -190,26 +118,14 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * too - see the last paragraph.)
  *
  * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
- * builds `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`
- * now (inlined directly - unlike `pollForDataChanges`, there was no
- * pre-existing pure DI-factory to wrap), owning the counter/history/
- * scheduler-state bookkeeping they depend on (`activityRef` below) - same
- * plain-ref reasoning as `trackingRef`. (Its React consumers read
- * `beginRequestActivity` from `RequestActivityContext` since window-bridge
- * elimination Phase 3; the `window.beginRequestActivity` bridge was deleted in
- * Phase 7.2 with its last vanilla reader.)
- * `window.pollBackfillStatus`/`window.renderRequestActivity` had no
- * caller left besides `<PrDataPolling />` once it reads them from Context
- * instead - both deleted outright from `index.page.js`, not kept.
- * `index.page.js`'s own `beginRequestActivity`/`renderRequestActivity`
- * consts become thin proxies to these same bridges, so their 9+ existing
- * vanilla call sites keep working unchanged. `renderSchedulerStatus`
- * (index.page.js, still vanilla) pushes into `activityRef` via a new
- * `window.setLatestSchedulerStateAndRender(scheduler)` bridge instead of
- * writing a bare module `let`. `pollBackfillStatus`'s load came from
- * index.page.js through `window.loadBackfillStatus` until window-bridge
- * elimination Phase 7.2; it's `BackfillStatusProvider`'s own now, read from
- * that Provider's actions Context.
+ * built `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`.
+ * Window-bridge elimination Phase 7.3 moved the first two (and their
+ * counter/history/scheduler-state bookkeeping) out to
+ * `components/RequestActivityProvider.jsx`, an ancestor, because two of their
+ * callers sit above this Provider; this Provider now reads them from
+ * `useRequestActivity()` like everyone else. `pollBackfillStatus` stays here
+ * (`<PrDataPolling />` reads it from this Context); its load is
+ * `BackfillStatusProvider`'s since Phase 7.2.
  *
  * Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * `pollSchedulerStatus` itself (this Provider's thin wrapper around
@@ -363,11 +279,10 @@ export function PrDataProvider({
   // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // setStatusMessage below writes statusText via useStatusText() directly
   // (this Provider is a genuine descendant of StatusTextProvider - see
-  // react-app.jsx's mountAppRoot), composed with window.renderRequestActivity
-  // - same reasoning as useRunScript.jsx's own comment on this exact
-  // composition (renderRequestActivity itself stays bridged - it's this
-  // same component's own activityHelpers, declared below, reached the
-  // same way every other still-vanilla-adjacent caller does).
+  // react-app.jsx's mountAppRoot), composed with renderRequestActivity -
+  // same reasoning as useRunScript.jsx's own comment on this exact
+  // composition (renderRequestActivity is RequestActivityProvider's, read
+  // below, since window-bridge elimination Phase 7.3).
   const { setStatusText } = useStatusText();
   // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
   // markPollSuccess/showPollFailureWarning below call hide/showWarning
@@ -396,6 +311,8 @@ export function PrDataProvider({
   const { getBackfillTrackingState, updateBackfillStatusFromPayload, loadBackfillStatus } =
     useBackfillStatusActions();
   const setOutputText = useSetOutputText();
+  // Window-bridge elimination Phase 7.3: RequestActivityProvider (an ancestor).
+  const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   // Stable; reads the repo field without subscribing this Provider (and every
   // usePrData() consumer) to filter-field changes.
   const { getFieldValue } = useFilterFieldActions();
@@ -616,7 +533,7 @@ export function PrDataProvider({
       },
       setStatusMessage: (message) => {
         setStatusText(message);
-        window.renderRequestActivity?.();
+        renderRequestActivity();
       },
     });
     return helpers.pollForDataChanges;
@@ -626,6 +543,7 @@ export function PrDataProvider({
     applyLatestPrData,
     renderPrData,
     setStatusText,
+    renderRequestActivity,
     showWarning,
     hide,
     getHasDirtyPrSectionsFields,
@@ -639,139 +557,35 @@ export function PrDataProvider({
   // writers (index.page.js's renderPrData/applyFreshPrPayload/loadStoredData)
   // now live in this Provider and write trackingRef directly.
 
-  // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
-  // this file's own header comment. A plain ref, same reasoning as
-  // trackingRef above - nothing ever renders directly from this state;
-  // renderRequestActivity/recordRecentRequestActivity already push derived
-  // view-models out via their own window.updateReactRequestActivityBadges/
-  // window.updateReactRecentRequestActivity bridges.
-  const activityRef = useRef({ ...DEFAULT_REQUEST_ACTIVITY_STATE });
-
-  // useMemo, not useEffect - same reasoning as pollForDataChanges above:
-  // every piece here is a stable ref/bridge read, and the result needs to
-  // be in this Provider's own Context value during render.
-  const activityHelpers = useMemo(() => {
-    const setRequestActivityCounter = (key, delta = 0) => {
-      const activityState = activityRef.current;
-      if (!Object.prototype.hasOwnProperty.call(activityState.counters, key)) {
-        return;
-      }
-      const next =
-        Number(activityState.counters[key] || 0) +
-        (Number.isFinite(Number(delta)) ? Number(delta) : 0);
-      const safeNext = Math.max(0, next);
-      activityState.counters[key] = safeNext;
-      if (safeNext > 0 && Number(activityState.startedAtMs[key] || 0) <= 0) {
-        activityState.startedAtMs[key] = Date.now();
-      }
-      if (safeNext === 0) {
-        activityState.startedAtMs[key] = 0;
-      }
-    };
-
-    // Iterates REQUEST_ACTIVITY_LABELS generically rather than one
-    // hand-written branch per key - see index.page.js's git history for why
-    // (a hand-written-branch shape silently dropped the "labelApply" key
-    // for a while before this plan's own predecessor caught it).
-    const getActiveRequestActivityEntries = () => {
-      const activityState = activityRef.current;
-      return Object.keys(REQUEST_ACTIVITY_LABELS)
-        .filter((key) => activityState.counters[key] > 0)
-        .map((key) => ({
-          label: `${REQUEST_ACTIVITY_LABELS[key]} x${activityState.counters[key]}`,
-          elapsedMs: getElapsedFromStartMs(activityState.startedAtMs[key]),
-        }));
-    };
-
-    const renderRequestActivity = () => {
-      const activityState = activityRef.current;
-      const activeEntries = getActiveRequestActivityEntries();
-      const isAutoRunInProgress = Boolean(activityState.latestSchedulerState?.isAutoRunInProgress);
-      const autoRunElapsedMs = isAutoRunInProgress
-        ? getElapsedFromStartMs(
-            Date.parse(String(activityState.latestSchedulerState?.lastAutoAttemptAt || '')),
-          )
-        : null;
-      window.updateReactRequestActivityBadges?.(
-        getRequestActivityBadges({ activeEntries, isAutoRunInProgress, autoRunElapsedMs }),
-      );
-    };
-
-    const recordRecentRequestActivity = (key) => {
-      const activityState = activityRef.current;
-      const label = REQUEST_ACTIVITY_LABELS[key] || key;
-      activityState.recentEntries = [
-        { key, label, finishedAt: new Date().toISOString() },
-        ...activityState.recentEntries,
-      ].slice(0, RECENT_REQUEST_ACTIVITY_LIMIT);
-      window.updateReactRecentRequestActivity?.(activityState.recentEntries);
-    };
-
-    const beginRequestActivity = (key) => {
-      setRequestActivityCounter(key, 1);
-      renderRequestActivity();
-      let ended = false;
-      return () => {
-        if (ended) {
-          return;
-        }
-        ended = true;
-        setRequestActivityCounter(key, -1);
-        renderRequestActivity();
-        recordRecentRequestActivity(key);
-      };
-    };
-
-    // pollBackfillStatus's guard flags (isBackfillRunning/
-    // isBackfillActionPending) and the load itself are BackfillStatusProvider's,
-    // read through its stable actions Context (this Provider's ancestor).
-    // Window-bridge elimination Phase 7.2: the load used to be
-    // index.page.js's instance, reached via window.loadBackfillStatus.
-    const pollBackfillStatus = async () => {
-      const tracking = getBackfillTrackingState();
-      if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
-        return;
-      }
-      try {
-        await loadBackfillStatus({ announce: true, includeLog: true });
-      } catch (_error) {
-        // Ignore polling failures and wait for the next interval.
-      }
-    };
-
-    return { beginRequestActivity, renderRequestActivity, pollBackfillStatus };
+  // Window-bridge elimination Phase 7.3: request activity (beginRequestActivity/
+  // renderRequestActivity, their bookkeeping, and the window.renderRequestActivity/
+  // setLatestSchedulerStateAndRender bridges) moved out to RequestActivityProvider,
+  // an ancestor - its callers include two of this Provider's ancestors. Only
+  // the backfill poll stays here.
+  //
+  // pollBackfillStatus's guard flags (isBackfillRunning/
+  // isBackfillActionPending) and the load itself are BackfillStatusProvider's,
+  // read through its stable actions Context (this Provider's ancestor).
+  // Window-bridge elimination Phase 7.2: the load used to be
+  // index.page.js's instance, reached via window.loadBackfillStatus.
+  const pollBackfillStatus = useCallback(async () => {
+    const tracking = getBackfillTrackingState();
+    if (!tracking.isBackfillRunning || tracking.isBackfillActionPending) {
+      return;
+    }
+    try {
+      await loadBackfillStatus({ announce: true, includeLog: true });
+    } catch (_error) {
+      // Ignore polling failures and wait for the next interval.
+    }
   }, [getBackfillTrackingState, loadBackfillStatus]);
-
-  // Window-bridge elimination Phase 7.2: window.beginRequestActivity (last
-  // reader: index.page.js's proxy, deleted) and window.getLatestSchedulerState
-  // (last reader: the prDataTabOrchestrator deleted in Phase H.23) are gone.
-  // window.renderRequestActivity stays for index.page.js's startup call and
-  // for BackfillStatusProvider/AutoRenderBlockingProvider, which sit above
-  // this Provider and can't read its Context.
-  useEffect(() => {
-    window.renderRequestActivity = (...args) => activityHelpers.renderRequestActivity(...args);
-    // Vanilla primitive exposed *for* this Provider: renderSchedulerStatus
-    // (index.page.js, still called by loadSchedulerStatus and by
-    // JobEventsProvider.jsx's real-time SSE path) pushes a fresh scheduler
-    // object here instead of writing a bare module `let` - combines the
-    // write + the re-render in one call, same "who writes when" structure
-    // renderSchedulerStatus already had.
-    window.setLatestSchedulerStateAndRender = (scheduler) => {
-      activityRef.current.latestSchedulerState = scheduler || {};
-      activityHelpers.renderRequestActivity();
-    };
-    return () => {
-      delete window.renderRequestActivity;
-      delete window.setLatestSchedulerStateAndRender;
-    };
-  }, [activityHelpers]);
 
   // Window-bridge elimination Phase 7: index.page.js's loadStoredData instance
   // (same factory, same DI), now writing this Provider's refs directly.
   const loadStoredData = useMemo(() => {
     const helpers = createPrStoredDataLoadHelpers({
       fetch: (...args) => fetch(...args),
-      beginRequestActivity: activityHelpers.beginRequestActivity,
+      beginRequestActivity,
       setLastSeenDataVersion: (value) => {
         trackingRef.current.lastSeenDataVersion = value;
       },
@@ -785,7 +599,7 @@ export function PrDataProvider({
       renderPrData,
     });
     return helpers.loadStoredData;
-  }, [activityHelpers, applyLatestPrData, updateBackfillStatusFromPayload, renderPrData]);
+  }, [beginRequestActivity, applyLatestPrData, updateBackfillStatusFromPayload, renderPrData]);
 
   const prDataActions = useMemo(
     () => ({ loadStoredData, applyFreshPrPayload, applyLatestPrData, getLatestStoredPayload }),
@@ -812,7 +626,7 @@ export function PrDataProvider({
     hasStartedInitialLoadRef.current = true;
     loadStoredData('').catch((error) => {
       setStatusText('Failed to load stored data');
-      activityHelpers.renderRequestActivity();
+      renderRequestActivity();
       setOutputText(String(error));
       const { title, detail } = buildFailureSnackbarNotification(
         'Failed to load stored data',
@@ -821,7 +635,7 @@ export function PrDataProvider({
       );
       showError(title, detail, 0);
     });
-  }, [loadOnMount, loadStoredData, setStatusText, activityHelpers, setOutputText, showError]);
+  }, [loadOnMount, loadStoredData, setStatusText, renderRequestActivity, setOutputText, showError]);
 
   const setPayload = useCallback((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));
@@ -871,9 +685,7 @@ export function PrDataProvider({
     setStatsViewState,
     setSelectedAuthorLogin,
     pollForDataChanges,
-    beginRequestActivity: activityHelpers.beginRequestActivity,
-    renderRequestActivity: activityHelpers.renderRequestActivity,
-    pollBackfillStatus: activityHelpers.pollBackfillStatus,
+    pollBackfillStatus,
   };
 
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): derives the same
@@ -908,22 +720,10 @@ export function PrDataProvider({
     };
   }, [viewerContext]);
 
-  // Stable for this Provider's lifetime (activityHelpers is a useMemo([])) -
-  // see RequestActivityContext.jsx for why this isn't just part of `value`.
-  const requestActivity = useMemo(
-    () => ({
-      beginRequestActivity: activityHelpers.beginRequestActivity,
-      renderRequestActivity: activityHelpers.renderRequestActivity,
-    }),
-    [activityHelpers],
-  );
-
   return (
     <PrDataContext.Provider value={value}>
       <PrDataActionsContext.Provider value={prDataActions}>
-        <RequestActivityContext.Provider value={requestActivity}>
-          <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
-        </RequestActivityContext.Provider>
+        <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
       </PrDataActionsContext.Provider>
     </PrDataContext.Provider>
   );

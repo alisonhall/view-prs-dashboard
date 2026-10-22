@@ -11,6 +11,7 @@ import {
   DEFAULT_BACKFILL_LOG_TEXT,
 } from '../state/BackfillStatusContext';
 import { useStatusText } from '../state/StatusTextContext';
+import { useRequestActivity } from '../state/RequestActivityContext';
 
 const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessage } = createPrBackfillHelpers();
 
@@ -91,6 +92,9 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
 
 export function BackfillStatusProvider({ children }) {
   const { setStatusText } = useStatusText();
+  // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps this
+  // Provider, so its renderRequestActivity comes from Context, not window.
+  const { renderRequestActivity } = useRequestActivity();
   const [isBackfillRunning, setIsBackfillRunningState] = useState(false);
   const [isBackfillActionPending, setIsBackfillActionPendingState] = useState(false);
   const [supportsBackfillLogPolling, setSupportsBackfillLogPollingState] = useState(true);
@@ -169,10 +173,10 @@ export function BackfillStatusProvider({ children }) {
 
       if (announce && nextStateKey !== previousStateKey) {
         setStatusText(backfill.summary || 'Backfill status updated');
-        window.renderRequestActivity?.();
+        renderRequestActivity();
       }
     },
-    [renderBackfillStatus, setStatusText],
+    [renderBackfillStatus, setStatusText, renderRequestActivity],
   );
 
   // Window-bridge elimination Phase 7.2: GET the status (and, with

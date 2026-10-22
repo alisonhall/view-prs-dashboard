@@ -71,6 +71,8 @@ import { JobEventsProvider } from './components/JobEventsProvider';
 import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
 import { OutputTextProvider } from './components/OutputTextProvider';
+import { RequestActivityProvider } from './components/RequestActivityProvider';
+import { useRequestActivityDisplay } from './state/RequestActivityContext';
 import { useOutputText } from './state/OutputTextContext';
 import { useBackfillStatus } from './state/BackfillStatusContext';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
@@ -695,13 +697,14 @@ function AppRoot() {
   // push them into this component's own state through
   // window.updateReactBackfillButtonState - a bridge from an ancestor down
   // into its own descendant). Read back here for the buttons' props.
-  const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): the "Recent
-  // Activity" section's history of this tab's own finished requests - no
-  // DOM container/portal needed, same as requestActivityBadges above once
-  // #request-activity-badges itself was removed from the Status tab; this
-  // only ever reaches the drawer as a prop.
-  const [recentRequestActivity, setRecentRequestActivity] = useState([]);
+  //
+  // Window-bridge elimination Phase 7.3: the same goes for the activity
+  // drawer's request-activity badges and "Recent Activity" list - they were
+  // this component's own state, pushed in by PrDataProvider (an ancestor)
+  // through window.updateReactRequestActivityBadges/
+  // updateReactRecentRequestActivity. RequestActivityProvider owns them now;
+  // read back here only to pass to the drawer.
+  const { requestActivityBadges, recentRequestActivity } = useRequestActivityDisplay();
   const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
 
   // Deferred-items follow-up (full vanilla-to-React sweep, see
@@ -756,26 +759,6 @@ function AppRoot() {
   // this file), left wired only because index.html.test.js's own test
   // harness faked them (fixed below, see installReactFilterPanelMountBridges's
   // own comment there).
-
-  useEffect(() => {
-    window.updateReactRequestActivityBadges = (badges) => {
-      setRequestActivityBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactRequestActivityBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactRecentRequestActivity = (entries) => {
-      setRecentRequestActivity(Array.isArray(entries) ? entries : []);
-      return true;
-    };
-    return () => {
-      delete window.updateReactRecentRequestActivity;
-    };
-  }, []);
 
   useEffect(() => {
     window.updateReactAutoRenderBlockedLinks = (prNumbers, authorLogins) => {
@@ -886,7 +869,7 @@ function AppRoot() {
                 <ActivityDrawer
                   backfillBadges={backfillBadges.badges}
                   backfillDetailsText={backfillDetailsText}
-                  requestActivityBadges={requestActivityBadges.badges}
+                  requestActivityBadges={requestActivityBadges}
                   recentRequestActivity={recentRequestActivity}
                   onBumpDispatcherEntry={(repo, taskType) =>
                     activityDrawerActions.handleDispatcherBump(repo, taskType)
@@ -1348,6 +1331,12 @@ function mountAppRoot() {
   // AppRoot's sibling instead of a child of the Provider AppRoot rendered.
   // Neither Provider reads anything AppRoot's own JSX used to render
   // between them: both only need StatusText/Snackbar, already outer.
+  //
+  // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps from here
+  // too, above BackfillStatusProvider/AutoRenderBlockingProvider/PrDataProvider -
+  // all three call renderRequestActivity, and the first two used to reach it
+  // through window.* because it lived in PrDataProvider, below them. It needs no
+  // other Context. loadOnMount runs the startup scheduler-status load.
   ReactDOM.createRoot(anchor).render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
@@ -1355,26 +1344,28 @@ function mountAppRoot() {
           <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
             <StatusTextProvider>
               <OutputTextProvider>
-                <BackfillStatusProvider>
-                  <PrActivityQueueProvider>
-                    <TabStateProvider>
-                      <SnackbarProvider>
-                        <AutoRenderBlockingProvider>
-                          <PrDataProvider
-                            initialPayload={{}}
-                            initialSelectedRepo=""
-                            initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
-                            loadOnMount
-                          >
-                            <TabPanelVisibilitySync />
-                            <AppRoot />
-                            <PrDataPolling />
-                          </PrDataProvider>
-                        </AutoRenderBlockingProvider>
-                      </SnackbarProvider>
-                    </TabStateProvider>
-                  </PrActivityQueueProvider>
-                </BackfillStatusProvider>
+                <RequestActivityProvider loadOnMount>
+                  <BackfillStatusProvider>
+                    <PrActivityQueueProvider>
+                      <TabStateProvider>
+                        <SnackbarProvider>
+                          <AutoRenderBlockingProvider>
+                            <PrDataProvider
+                              initialPayload={{}}
+                              initialSelectedRepo=""
+                              initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                              loadOnMount
+                            >
+                              <TabPanelVisibilitySync />
+                              <AppRoot />
+                              <PrDataPolling />
+                            </PrDataProvider>
+                          </AutoRenderBlockingProvider>
+                        </SnackbarProvider>
+                      </TabStateProvider>
+                    </PrActivityQueueProvider>
+                  </BackfillStatusProvider>
+                </RequestActivityProvider>
               </OutputTextProvider>
             </StatusTextProvider>
           </FilterStateProvider>

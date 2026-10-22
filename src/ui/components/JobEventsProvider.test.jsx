@@ -5,6 +5,7 @@ require('@testing-library/jest-dom');
 const { JobEventsProvider } = require('./JobEventsProvider');
 const { useJobEvents } = require('../state/JobEventsContext');
 const { PrDataContext } = require('../state/PrDataContext');
+const { RequestActivityContext } = require('../state/RequestActivityContext');
 
 // jsdom does not implement EventSource, and there is no existing
 // EventSource/WebSocket usage anywhere in this repo to copy a mock from -
@@ -75,7 +76,6 @@ describe('JobEventsProvider', () => {
     } else {
       window.EventSource = originalEventSource;
     }
-    delete window.renderSchedulerStatus;
     jest.useRealTimers();
   });
 
@@ -181,12 +181,16 @@ describe('JobEventsProvider', () => {
     });
   });
 
-  test('a job frame updates state and calls window.renderSchedulerStatus with the bundled scheduler object', () => {
-    window.renderSchedulerStatus = jest.fn();
+  // Window-bridge elimination Phase 7.3: renderSchedulerStatus comes from
+  // RequestActivityProvider's Context now, not window.renderSchedulerStatus.
+  test('a job frame updates state and calls renderSchedulerStatus with the bundled scheduler object', () => {
+    const renderSchedulerStatus = jest.fn();
     render(
-      <JobEventsProvider>
-        <Probe />
-      </JobEventsProvider>,
+      <RequestActivityContext.Provider value={{ renderSchedulerStatus }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </RequestActivityContext.Provider>,
     );
     const instance = FakeEventSource.instances[0];
 
@@ -202,7 +206,7 @@ describe('JobEventsProvider', () => {
     });
 
     expect(ProbeLastValue.jobs.autoRefresh.status).toBe('running');
-    expect(window.renderSchedulerStatus).toHaveBeenCalledWith({ isAutoRunInProgress: true });
+    expect(renderSchedulerStatus).toHaveBeenCalledWith({ isAutoRunInProgress: true });
   });
 
   test('an autoRefresh finish event triggers an immediate pollForDataChanges call', () => {

@@ -5,7 +5,6 @@ const { render, act } = require('@testing-library/react');
 const { PrDataProvider } = require('./PrDataProvider');
 const { usePrData } = require('./PrDataContext');
 const { usePrDataActions } = require('./PrDataActionsContext');
-const { useRequestActivity } = require('./RequestActivityContext');
 const { BackfillStatusActionsContext } = require('./BackfillStatusContext');
 const { AutoRenderBlockingActionsContext } = require('./AutoRenderBlockingContext');
 const { StatusTextContext } = require('./StatusTextContext');
@@ -29,12 +28,7 @@ describe('PrDataProvider', () => {
     delete window.getReactPrTableSelectedRepo;
     delete window.updateReactSelectedAuthorLogin;
     delete window.updateReactStatsViewState;
-    delete window.beginRequestActivity;
-    delete window.renderRequestActivity;
-    delete window.setLatestSchedulerStateAndRender;
     delete window.getLatestSchedulerState;
-    delete window.updateReactRequestActivityBadges;
-    delete window.updateReactRecentRequestActivity;
   });
 
   test('given an initial payload, when rendering, then window.getReactPrTablePayload returns it', () => {
@@ -193,73 +187,10 @@ describe('PrDataProvider', () => {
   // outright in Phase H.2 - see REACT_MIGRATION_PLAN.md - once its own
   // automatic interval had already been retired in favor of SSE and
   // index.html.test.js's one direct call was its only remaining caller).
-  describe('request activity', () => {
-    test('given a call to beginRequestActivity from the Context, when the returned finish function is called, then the badge bridge fires on begin and end, and the recent-activity bridge fires once on end', () => {
-      const badgeCalls = [];
-      const recentActivityCalls = [];
-      window.updateReactRequestActivityBadges = (badges) => badgeCalls.push(badges);
-      window.updateReactRecentRequestActivity = (entries) => recentActivityCalls.push(entries);
-
-      // Window-bridge elimination Phase 7.2: window.beginRequestActivity is
-      // gone; this reads the same function from RequestActivityContext.
-      let beginRequestActivity;
-      function Probe() {
-        ({ beginRequestActivity } = useRequestActivity());
-        return null;
-      }
-      render(
-        <PrDataProvider>
-          <Probe />
-        </PrDataProvider>,
-      );
-
-      let finishActivity;
-      act(() => {
-        finishActivity = beginRequestActivity('runScript');
-      });
-      expect(badgeCalls).toHaveLength(1);
-      expect(recentActivityCalls).toHaveLength(0);
-
-      act(() => {
-        finishActivity();
-      });
-      expect(badgeCalls).toHaveLength(2);
-      expect(recentActivityCalls).toHaveLength(1);
-      expect(recentActivityCalls[0][0]).toEqual(
-        expect.objectContaining({ key: 'runScript', label: 'Run script' }),
-      );
-
-      // Calling the same finish function again is a no-op (same guard
-      // beginRequestActivity always had) - no extra badge/history pushes.
-      act(() => {
-        finishActivity();
-      });
-      expect(badgeCalls).toHaveLength(2);
-      expect(recentActivityCalls).toHaveLength(1);
-    });
-
-    test('given window.setLatestSchedulerStateAndRender pushes an in-progress auto-run, when renderRequestActivity next fires, then the badge view model reflects it', () => {
-      const badgeCalls = [];
-      window.updateReactRequestActivityBadges = (badges) => badgeCalls.push(badges);
-
-      render(
-        <PrDataProvider>
-          <div />
-        </PrDataProvider>,
-      );
-
-      act(() => {
-        window.setLatestSchedulerStateAndRender({
-          isAutoRunInProgress: true,
-          lastAutoAttemptAt: new Date().toISOString(),
-        });
-      });
-
-      expect(badgeCalls).toHaveLength(1);
-      // window.getLatestSchedulerState is gone (Phase 7.2); assert the badge itself.
-      expect(badgeCalls[0].some((badge) => String(badge.text).startsWith('Auto run'))).toBe(true);
-    });
-
+  describe('backfill poll', () => {
+    // Window-bridge elimination Phase 7.3: the beginRequestActivity/badge and
+    // scheduler-state tests moved to components/RequestActivityProvider.test.jsx
+    // with the code; only the backfill poll is still this Provider's.
     test('given the backfill tracking state says a run is in progress, when pollBackfillStatus is called, then it calls the BackfillStatusProvider loadBackfillStatus', async () => {
       const loadBackfillStatus = jest.fn().mockResolvedValue({});
       const tracking = { isBackfillRunning: true, isBackfillActionPending: false };

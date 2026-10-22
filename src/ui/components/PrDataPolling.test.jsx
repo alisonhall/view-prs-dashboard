@@ -4,6 +4,7 @@ const React = require('react');
 const { render } = require('@testing-library/react');
 const { PrDataPolling } = require('./PrDataPolling');
 const { PrDataContext } = require('../state/PrDataContext');
+const { RequestActivityContext } = require('../state/RequestActivityContext');
 
 // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // pollForDataChanges/pollBackfillStatus/renderRequestActivity now all come
@@ -20,10 +21,15 @@ const renderPrDataPolling = () =>
         value: {
           pollForDataChanges: (...args) => window.pollForDataChanges?.(...args),
           pollBackfillStatus: (...args) => window.pollBackfillStatus?.(...args),
-          renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
         },
       },
-      React.createElement(PrDataPolling),
+      // Window-bridge elimination Phase 7.3: renderRequestActivity comes from
+      // RequestActivityProvider's Context now; same window.* mock delegation.
+      React.createElement(
+        RequestActivityContext.Provider,
+        { value: { renderRequestActivity: (...args) => window.renderRequestActivity?.(...args) } },
+        React.createElement(PrDataPolling),
+      ),
     ),
   );
 
@@ -34,8 +40,6 @@ describe('PrDataPolling', () => {
     window.pollSchedulerStatus = jest.fn();
     window.pollBackfillStatus = jest.fn();
     window.renderRequestActivity = jest.fn();
-    window.AUTO_DATA_POLL_MS = 30000;
-    window.AUTO_BACKFILL_POLL_MS = 5000;
   });
 
   afterEach(() => {
@@ -44,8 +48,6 @@ describe('PrDataPolling', () => {
     delete window.pollSchedulerStatus;
     delete window.pollBackfillStatus;
     delete window.renderRequestActivity;
-    delete window.AUTO_DATA_POLL_MS;
-    delete window.AUTO_BACKFILL_POLL_MS;
   });
 
   test('given the component mounts, when the data poll interval elapses, then the bridge fires', () => {
