@@ -35,6 +35,14 @@ const renderSelector = ({ selectedAuthorLogin = '', hasRows = true, buildAuthorI
   );
 
 describe('AuthorInsightsSelector', () => {
+  // The select's accessible name is exactly the visible label: naming a control from
+  // its wrapping <label> leaves the control's own option text out. e2e finds
+  // it by role and name; a label-text lookup would fold the options in.
+  test('given options, when rendering, then the select is named exactly "Author"', () => {
+    renderSelector({ selectedAuthorLogin: 'octocat' });
+    expect(screen.getByRole('combobox', { name: 'Author' })).toHaveValue('octocat');
+  });
+
   test('given options, when rendering, then the select shows each author by display name', () => {
     renderSelector({ selectedAuthorLogin: 'octocat' });
 
