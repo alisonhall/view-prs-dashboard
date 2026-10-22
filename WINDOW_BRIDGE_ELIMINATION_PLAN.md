@@ -79,6 +79,7 @@ Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **w
 | 7.5 | the commit after `cb3bead` | **`index.page.js` deleted.** Credential-field hints are JSX props (`NON_CREDENTIAL_INPUT_PROPS`) on the six inputs; dropdown closing is `useMultiSelectDropdownClosing` in `AppRoot`; the error filters are installed by `react-app.jsx` before mounting. `viewprs:react-ready` gone. `applyCredentialHints` and `pr-filter-panel.helpers.js` deleted. |
 | 7.5 follow-up | the commit after 7.5 | Review fixes: README's architecture section pointed at the deleted `index.page.js`; two components' identical copies of the credential-hint attributes now use the shared constant; a stale shell-script comment. |
 | test-only 1/3 | the commit after the 7.5 follow-up | `updateReactPrTable`, `getReactPrTableSelectedRepo`, `updateReactSelectedAuthorLogin` deleted; tests use the new `test-fixtures/pr-data-probe.jsx` (Context). |
+| test-only 2/3 | the commit after test-only 1/3 | Snackbar (`showErrorNotification`/`showWarningNotification`/`hideErrorNotification`) and `updateReactOutputText` deleted; e2e drives a real (intercepted) run and a real failing poll instead; new `SnackbarProvider.test.jsx`. |
 
 Deviations from the plan text (each because investigation showed the wording didn't fit) are in `REACT_MIGRATION_PLAN.md`'s entries for each phase.
 
@@ -86,7 +87,7 @@ Deviations from the plan text (each because investigation showed the wording did
 
 Phase 7 is complete: `index.page.js` is gone (7.5), and **no production code calls a `window.*` bridge**. The numbered phases end there. What remains is the bridges Providers still publish only for tests, handled the way Phase 6 handled `persistViewFilterOptionOverrides`: fix the tests, then delete. Re-grep before starting (`grep -rn "window\.<name>" src e2e`).
 
-- **Test-only now (no production caller; fix the tests, then delete, as Phase 6 did):** `setPendingAutoRenderPayload` (`AutoRenderBlockingProvider.test.jsx` and e2e's "Auto update paused" chip test use it to simulate a deferred poll, since the e2e server's static data never yields a real new payload), `getReactPrTablePayload` (integration tests and e2e read the shown payload; jest tests can use `test-fixtures/pr-data-probe.jsx`), `getDirtyNotesPrNumbers`/`getAuthorInsightsDraftsSnapshot` (e2e's unsaved-notes/draft observers), `showErrorNotification`/`showWarningNotification`/`hideErrorNotification` (e2e Snackbar test), `updateReactOutputText` (e2e output-panel test + its unit test). Verify each with a whole-repo grep (lesson 9) before calling it test-only.
+- **Test-only now (no production caller; fix the tests, then delete, as Phase 6 did):** `setPendingAutoRenderPayload` (`AutoRenderBlockingProvider.test.jsx` and e2e's "Auto update paused" chip test use it to simulate a deferred poll, since the e2e server's static data never yields a real new payload), `getReactPrTablePayload` (integration tests and e2e read the shown payload; jest tests can use `test-fixtures/pr-data-probe.jsx`), `getDirtyNotesPrNumbers`/`getAuthorInsightsDraftsSnapshot` (e2e's unsaved-notes/draft observers). Verify each with a whole-repo grep (lesson 9) before calling it test-only.
 - Each: full lint + `test:ci` + `test:e2e`, a `REACT_MIGRATION_PLAN.md` entry, a commit.
 
 ### Lessons from Phases 1-7.5 (apply to every remaining phase)

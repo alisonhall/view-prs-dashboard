@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { OutputTextContext, OutputTextSetterContext } from '../state/OutputTextContext';
 
 /**
@@ -11,24 +11,13 @@ import { OutputTextContext, OutputTextSetterContext } from '../state/OutputTextC
  * `AppRoot` already renders `outputText` into `<pre id="output">` through a
  * portal, which also replaces that element's static placeholder text.
  *
- * Still publishes `window.updateReactOutputText`, but since window-bridge
- * elimination Phase 7.2 nothing in production calls it (index.page.js's
- * `setOutputMessage` lost its last callers and was deleted). Only
- * e2e/smoke.spec.js and this Provider's own unit test write through it; it's
- * on WINDOW_BRIDGE_ELIMINATION_PLAN.md's test-only list.
+ * It published `window.updateReactOutputText` until the test-only bridge
+ * removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): nothing in production had
+ * called it since Phase 7.2 deleted index.page.js's `setOutputMessage`. e2e
+ * now drives the output through a real (intercepted) "Run script" click.
  */
 export function OutputTextProvider({ children }) {
   const [outputText, setOutputText] = useState('Run the script to see output');
-
-  useEffect(() => {
-    window.updateReactOutputText = (text) => {
-      setOutputText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactOutputText;
-    };
-  }, []);
 
   const value = useMemo(() => ({ outputText, setOutputText }), [outputText]);
 

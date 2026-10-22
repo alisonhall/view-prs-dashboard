@@ -2901,6 +2901,16 @@ Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md), "N
 - **Two tests could pass vacuously** (`FilterOptionsProvider`/`ReviewStatsContent` assert that an update does *not* recompute, which a dropped update also satisfies; true with the old bridge too). Breaking `applyFreshTablePayload` into a no-op failed 9 tests in 4 suites but not those two, so each now asserts the update landed first; with that guard, the same break fails both.
 - `lint:check` clean; `test:ci` 2618 passed + 1 skipped (2621 − 2); `test:e2e` 59/59. Windows local run.
 
+## ✅ **Window-bridge elimination, test-only bridges (2 of 3): snackbar and output text (2026-10-22)**
+
+- **Deleted:** `window.showErrorNotification`, `showWarningNotification`, `hideErrorNotification` (`SnackbarProvider`) and `window.updateReactOutputText` (`OutputTextProvider`). Nothing in production called them; e2e used them to trigger a notification and to write the output panel.
+- **e2e now drives real paths, with requests intercepted (`page.route`) so nothing real runs or breaks:**
+  - Output panel: clicks the real "Run script" button with `/view-prs/run` returning canned output; asserts the output text replaces the placeholder. It asserts only on the stdout text, which appears however many PRs the shared server's persisted PR-numbers field targets (lesson 8).
+  - Snackbar: opens `/?dataPollMs=300`. A failing "Run script" (`/view-prs/run` → 500) shows the error variant, which the close button hides. A failing `/view-prs/data-meta` poll shows `PrDataProvider`'s "Auto-refresh warning" (warning variant, with the error message), and removing the route lets the next successful poll hide it (`markPollSuccess`). Breaking that hide fails the test's last assertion.
+- **New `SnackbarProvider.test.jsx` (+8).** The Provider had no unit tests, and the old e2e test was the only coverage of the warning variant and the auto-dismiss timer; no production caller passes a non-zero duration explicitly, so the timer is now covered here instead: hidden on mount with no bridges; error with title/detail; warning without detail; close button; auto-dismiss at the given time and none at 0; the 8 s/12 s defaults; a new notification cancels the old timer; unmount clears the timer. Broke it three ways (auto-dismiss ignored, no unmount cleanup, old timer not cleared); each fails tests (2, 1, 1). `SnackbarProvider` keeps its effect only to clear the timer on unmount.
+- **`OutputTextProvider.test.jsx`:** the two bridge tests become one (no bridge published); the setter-only regression test writes through the setter alone.
+- `lint:check` clean; `test:ci` 2625 passed + 1 skipped (2619 + 8 − 1); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

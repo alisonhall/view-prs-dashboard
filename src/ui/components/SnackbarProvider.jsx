@@ -13,20 +13,17 @@ import { SnackbarContext } from '../state/SnackbarContext';
  * resolve useSnackbar() to anything other than this Context's own no-op
  * default.
  *
- * Still publishes window.showErrorNotification/showWarningNotification/
- * hideErrorNotification, but window-bridge elimination Phase 7 removed their
- * last production caller (index.page.js's startup loadStoredData/
- * loadBackfillStatus failure paths moved into PrDataProvider, or were
- * deleted as duplicates). Every caller reads showError/showWarning/hide from
- * this Context. Only e2e/smoke.spec.js's Snackbar test still calls the
- * bridges, to trigger a notification directly; they're on
- * WINDOW_BRIDGE_ELIMINATION_PLAN.md's test-only list, to delete once that
- * test triggers a real one.
+ * Every caller reads showError/showWarning/hide from this Context. The
+ * window.showErrorNotification/showWarningNotification/hideErrorNotification
+ * bridges it used to publish are deleted (test-only bridge removal, see
+ * WINDOW_BRIDGE_ELIMINATION_PLAN.md): window-bridge elimination Phase 7
+ * removed their last production caller, and e2e's Snackbar test now
+ * triggers real failures instead.
  *
  * flushSync, not a plain setState - unchanged from the original
  * Snackbar.jsx's own reasoning (matching react-app.jsx's own
- * renderReactMultiSelectList): every caller, Context-based or window-bridge,
- * triggers this from outside a synchronous React event handler (an async
+ * renderReactMultiSelectList): every caller triggers this from outside a
+ * synchronous React event handler (an async
  * fetch .then/.catch, a setTimeout poll callback), so React 18 won't flush
  * the update on its own - several existing tests read
  * document.getElementById(...) immediately after calling one of these and
@@ -60,17 +57,8 @@ export function SnackbarProvider({ children }) {
     flushSync(() => setState((previous) => ({ ...previous, visible: false })));
   }, []);
 
-  useEffect(() => {
-    window.showErrorNotification = showError;
-    window.showWarningNotification = showWarning;
-    window.hideErrorNotification = hide;
-    return () => {
-      clearTimeout(dismissTimeoutRef.current);
-      delete window.showErrorNotification;
-      delete window.showWarningNotification;
-      delete window.hideErrorNotification;
-    };
-  }, [showError, showWarning, hide]);
+  // A pending auto-dismiss must not fire after unmount.
+  useEffect(() => () => clearTimeout(dismissTimeoutRef.current), []);
 
   const value = useMemo(
     () => ({ state, showError, showWarning, hide }),

@@ -2329,26 +2329,35 @@ test("Action Log tab loads its entries on its very first visit, not just on a se
   expect(response.ok()).toBe(true);
 });
 
-test("the Run tab's output panel shows text written through OutputTextProvider's bridge, replacing the placeholder", async ({ page }) => {
+test("the Run tab's output panel shows a real run's output from OutputTextProvider, replacing the placeholder", async ({ page }) => {
   // Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the output text moved out of AppRoot's local state into
-  // <OutputTextProvider />, which AppRoot reads back via Context to render
-  // #output's portal. jsdom covers the Provider and each hook separately;
-  // this proves the real wired path (the same bridge index.page.js writes
-  // through) lands in the real #output element in a real browser, in place
-  // of the static placeholder rather than appended to it.
+  // the output text lives in <OutputTextProvider />, which AppRoot reads back
+  // via Context to render #output's portal. jsdom covers the Provider and each
+  // hook separately; this proves the real wired path lands in the real
+  // #output element in a real browser, in place of the static placeholder
+  // rather than appended to it. Test-only bridge removal: this used to write
+  // through window.updateReactOutputText (deleted); it now clicks the real
+  // "Run script" button, with /view-prs/run intercepted so no script runs.
+  // Asserts only on the stdout text, which appears however many PRs the
+  // (shared-server, possibly persisted) PR-numbers field targets.
+  await page.route("**/view-prs/run", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, output: "hello from an intercepted run" }),
+    }),
+  );
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
   const output = page.locator("#output");
   await expect(output).toHaveText("Run the script to see output");
 
-  const returned = await page.evaluate(() => window.updateReactOutputText("hello from the bridge"));
-  expect(returned).toBe(true);
-  await expect(output).toHaveText("hello from the bridge");
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByRole("button", { name: "Run script" }).click();
 
-  await page.evaluate(() => window.updateReactOutputText("second write"));
-  await expect(output).toHaveText("second write");
+  await expect(output).toContainText("hello from an intercepted run");
+  await expect(output).not.toContainText("Run the script to see output");
 });
 
 test("no React-portaled status/log panel shows its old static placeholder text stuck onto the real content", async ({ page }) => {
@@ -2463,33 +2472,53 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   expect(exportPayload.prs[0]).toHaveProperty("prNumber");
 });
 
-test("Snackbar (error/warning notifications) shows, has the right variant class, closes, and auto-dismisses", async ({ page }) => {
+test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): the snackbar is now fully React-owned
-  // (Snackbar.jsx), replacing index.page.js's own
-  // showErrorNotification/showWarningNotification/hideErrorNotification -
-  // no e2e coverage existed for it before this conversion at all.
-  await page.goto("/");
+  // REACT_MIGRATION_PLAN.md): the snackbar is fully React-owned
+  // (Snackbar.jsx/SnackbarProvider.jsx). Test-only bridge removal: this used
+  // to call window.showErrorNotification/showWarningNotification (deleted);
+  // it now drives both variants through real app paths, with requests
+  // intercepted. The auto-dismiss timer (no production caller passes a
+  // non-zero duration explicitly) is covered by SnackbarProvider.test.jsx.
+  await page.goto("/?dataPollMs=300");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+  const snackbar = page.locator("#error-snackbar");
+  const message = page.locator("#error-snackbar-message");
+  await expect(snackbar).toBeHidden();
 
-  await expect(page.locator("#error-snackbar")).toBeHidden();
-
-  await page.evaluate(() => window.showErrorNotification("Test error title", "Test error detail", 0));
-  await expect(page.locator("#error-snackbar")).toBeVisible();
-  await expect(page.locator("#error-snackbar")).not.toHaveClass(/error-snackbar-warning/);
-  await expect(page.locator("#error-snackbar-message")).toContainText("Test error title");
-  await expect(page.locator("#error-snackbar-message")).toContainText("Test error detail");
+  // Error: a failed "Run script" request (useRunScript shows a persistent error).
+  await page.route("**/view-prs/run", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "simulated run failure" }),
+    }),
+  );
+  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await page.getByRole("button", { name: "Run script" }).click();
+  await expect(snackbar).toBeVisible();
+  await expect(snackbar).not.toHaveClass(/error-snackbar-warning/);
+  await expect(message).toContainText("Request failed for:");
 
   await page.locator("#error-snackbar-close").click();
-  await expect(page.locator("#error-snackbar")).toBeHidden();
+  await expect(snackbar).toBeHidden();
 
-  await page.evaluate(() => window.showWarningNotification("Test warning title", "", 0));
-  await expect(page.locator("#error-snackbar")).toBeVisible();
-  await expect(page.locator("#error-snackbar")).toHaveClass(/error-snackbar-warning/);
+  // Warning: a failing background poll (PrDataProvider's showPollFailureWarning),
+  // cleared by the next successful poll (markPollSuccess).
+  await page.route("**/view-prs/data-meta", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "simulated poll failure" }),
+    }),
+  );
+  await expect(snackbar).toBeVisible();
+  await expect(snackbar).toHaveClass(/error-snackbar-warning/);
+  await expect(message).toContainText("Auto-refresh warning");
+  await expect(message).toContainText("simulated poll failure");
 
-  await page.evaluate(() => window.showErrorNotification("Auto dismiss test", "", 300));
-  await expect(page.locator("#error-snackbar")).toBeVisible();
-  await expect(page.locator("#error-snackbar")).toBeHidden({ timeout: 2000 });
+  await page.unroute("**/view-prs/data-meta");
+  await expect(snackbar).toBeHidden();
 });
 
 test("the activity drawer opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {

@@ -11,10 +11,6 @@ function Probe({ onValue }) {
 }
 
 describe('OutputTextProvider', () => {
-  afterEach(() => {
-    delete window.updateReactOutputText;
-  });
-
   test('given the provider mounts, when read, then it starts with the Run tab placeholder text', () => {
     let latest;
     render(
@@ -47,28 +43,12 @@ describe('OutputTextProvider', () => {
     expect(seenSetters.size).toBe(1);
   });
 
-  test('given index.page.js (vanilla) writes through window.updateReactOutputText, when called, then Context readers see it and the call reports success', () => {
-    let latest;
-    render(
-      <OutputTextProvider>
-        <Probe onValue={(value) => (latest = value)} />
-      </OutputTextProvider>,
-    );
+  // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
+  // provider no longer publishes window.updateReactOutputText (nothing in
+  // production called it).
+  test('given the provider mounts, when window is checked, then it publishes no output-text bridge', () => {
+    render(<OutputTextProvider>{null}</OutputTextProvider>);
 
-    let returned;
-    act(() => {
-      returned = window.updateReactOutputText('from vanilla');
-    });
-
-    expect(returned).toBe(true);
-    expect(latest.outputText).toBe('from vanilla');
-  });
-
-  test('given the provider unmounts, when unmounted, then the bridge is removed', () => {
-    const { unmount } = render(<OutputTextProvider>{null}</OutputTextProvider>);
-
-    expect(typeof window.updateReactOutputText).toBe('function');
-    unmount();
     expect(window.updateReactOutputText).toBeUndefined();
   });
 
@@ -104,11 +84,8 @@ describe('OutputTextProvider', () => {
     for (let i = 0; i < 5; i += 1) {
       act(() => setter(`line ${i}`));
     }
-    act(() => {
-      window.updateReactOutputText('from vanilla');
-    });
 
-    expect(latest.outputText).toBe('from vanilla');
+    expect(latest.outputText).toBe('line 4');
     expect(renders).toBe(baseline);
   });
 
