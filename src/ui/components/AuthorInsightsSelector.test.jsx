@@ -5,6 +5,10 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsSelector } = require('./AuthorInsightsSelector');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { usePrData } = require('../state/PrDataContext');
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
@@ -22,6 +26,7 @@ function SelectedAuthorLoginProbe() {
 const renderSelector = ({ selectedAuthorLogin = '', hasRows = true, buildAuthorInsightsEntries = () => OPTIONS } = {}) =>
   render(
     <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, buildAuthorInsightsEntries }}>
         <SelectedAuthorLoginProbe />
         <AuthorInsightsSelector />
@@ -69,7 +74,7 @@ describe('AuthorInsightsSelector', () => {
     expect(screen.getByLabelText('Author')).toHaveValue('octocat');
 
     act(() => {
-      window.updateReactSelectedAuthorLogin('hubot');
+      prDataProbe.setSelectedAuthorLogin('hubot');
     });
 
     expect(screen.getByLabelText('Author')).toHaveValue('hubot');

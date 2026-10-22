@@ -82,17 +82,18 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * version in production) before this fix. Only react-app.test.jsx's
  * isolated unit test (PrTableApp mocked out, so its competing effect never
  * ran) exercised the "real" multi-argument merging logic - meaning it was
- * tested but never actually reachable end-to-end. This Provider is now the
- * single place that assigns window.updateReactPrTable, so there's no more
- * competing assignment.
+ * tested but never actually reachable end-to-end. This Provider became the
+ * single place that assigned window.updateReactPrTable, so there was no more
+ * competing assignment (the bridge itself is deleted now - see below).
  *
  * `initialPayload`/`initialSelectedRepo` seed the state once at mount
- * (mountReactPrTable, react-app.jsx) - all updates after that go through
- * window.updateReactPrTable (index.page.js's updateReactTable, Track C
- * slice C2b) or the exposed `setPayload` (used by descendants like
- * NotesSection.jsx's onDataRefresh, which applies a fresh payload from its
- * own direct POST /view-prs/notes response, bypassing the vanilla bridge
- * entirely).
+ * (mountAppRoot, react-app.jsx) - all updates after that go through this
+ * Provider's own functions: its data pipeline (renderPrData/
+ * applyFreshPrPayload), `applyFreshTablePayload`, or `setPayload` (used by
+ * descendants like NotesSection.jsx's onDataRefresh, which applies a fresh
+ * payload from its own direct POST /view-prs/notes response). They used to
+ * also arrive through window.updateReactPrTable (index.page.js's
+ * updateReactTable, Track C slice C2b), deleted once only tests used it.
  *
  * Used to also own `visiblePrNumbers`, imperatively pushed by the vanilla
  * filter-apply pipeline - removed (see REACT_MIGRATION_PLAN.md, "live
@@ -180,17 +181,17 @@ export function PrDataProvider({
     hasRenderedPrData: false,
   });
 
-  // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md): a read
-  // bridge mirroring window.updateReactPrTable's write side, letting a
-  // handful of index.page.js DI wirings prefer the same payload the visible
-  // UI is currently showing over the raw, always-freshest vanilla
-  // `latestStoredPayload` (see that item's own writeup for why this is the
-  // more-correct choice for those specific consumers - it respects
-  // pollForDataChanges' deliberate "don't disturb an in-progress edit"
-  // deferral, which the raw vanilla variable doesn't). A ref, not `state`
-  // captured directly, so the closure below (assigned once, via the `[]`
-  // effect) always reads the latest payload rather than whatever `state`
-  // was at mount time.
+  // window.getReactPrTablePayload: test-only (e2e's "Auto update paused" chip
+  // test reads the shown payload). It was a read bridge for index.page.js's
+  // DI wirings, all deleted. A ref, so the closure assigned once below always
+  // reads the latest payload.
+  //
+  // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // window.getReactPrTableSelectedRepo, window.updateReactPrTable and
+  // window.updateReactSelectedAuthorLogin are deleted. They had no
+  // production caller; tests read and write the same state through Context
+  // (usePrData()'s payload/selectedRepo/applyFreshTablePayload/
+  // setSelectedAuthorLogin) via test-fixtures/pr-data-probe.jsx.
   const payloadRef = useRef(state.payload);
   payloadRef.current = state.payload;
 
@@ -198,61 +199,6 @@ export function PrDataProvider({
     window.getReactPrTablePayload = () => payloadRef.current;
     return () => {
       delete window.getReactPrTablePayload;
-    };
-  }, []);
-
-  // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): a dedicated read
-  // bridge for `selectedRepo` alone, mirroring getReactPrTablePayload above
-  // (same ref-based reasoning - the `[]`-effect closure must always read
-  // the latest value, not whatever `state` was at mount time). Kept
-  // separate from getReactPrTablePayload rather than changing its return
-  // shape, since existing callers (index.page.js) already depend on it
-  // returning the payload directly.
-  const selectedRepoRef = useRef(state.selectedRepo);
-  selectedRepoRef.current = state.selectedRepo;
-
-  useEffect(() => {
-    window.getReactPrTableSelectedRepo = () => selectedRepoRef.current;
-    return () => {
-      delete window.getReactPrTableSelectedRepo;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactPrTable = (newPayload, newSelectedRepo) => {
-      setState((previous) => ({
-        ...previous,
-        payload: newPayload !== undefined ? newPayload : previous.payload,
-        selectedRepo: newSelectedRepo || previous.selectedRepo,
-      }));
-    };
-    return () => {
-      delete window.updateReactPrTable;
-    };
-  }, []);
-
-  // Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): the
-  // Author Insights tab's "which author is currently selected" value.
-  // Read directly by AuthorInsightsSelector/AuthorInsightsHeader/
-  // AuthorCreatedPrsSection/AuthorInsightsNotesSection/
-  // AuthorInsightsCommentsSection.
-  //
-  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 2): this bridge used to be the only write path, pushed from
-  // pr-author-insights.component.js's renderAuthorInsights on every
-  // render (both explicit user picks and its own
-  // auto-select-first-author fallback) - that component is deleted
-  // outright now. AuthorInsightsSelector.jsx owns both explicit picks and
-  // the fallback itself, writing setSelectedAuthorLogin (below) directly
-  // - this bridge has no remaining production caller, kept only as a
-  // test-utility "simulate an external Context write" shortcut (several
-  // test files still use it that way).
-  useEffect(() => {
-    window.updateReactSelectedAuthorLogin = (login) => {
-      setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
-    };
-    return () => {
-      delete window.updateReactSelectedAuthorLogin;
     };
   }, []);
 
@@ -643,7 +589,7 @@ export function PrDataProvider({
   }, []);
 
   // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // same merge semantics as window.updateReactPrTable below (newPayload
+  // same merge semantics the deleted window.updateReactPrTable had (newPayload
   // falls back to the previous payload if undefined, newSelectedRepo falls
   // back to the previous selectedRepo if falsy) - PrTableApp.jsx's own
   // per-row Ack/Apply-Label handlers need both fields updated together.
@@ -670,8 +616,8 @@ export function PrDataProvider({
   }, []);
 
   // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // same write target window.updateReactSelectedAuthorLogin already uses
-  // (above) - exposed directly via Context too now, so
+  // same write target the deleted window.updateReactSelectedAuthorLogin
+  // used - exposed directly via Context, so
   // state/useNavigateToAuthorInsights.jsx can write the validated author
   // login without going through a window.* bridge for a React-to-React
   // call.

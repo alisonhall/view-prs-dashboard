@@ -9,6 +9,10 @@ const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');
 const React = require('react');
 const { PrDataProvider } = require('./PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): a sibling
+// probe pushes PR-data updates (it was window.updateReactPrTable).
+const prDataProbe = createPrDataProbe();
 const { useRequestActivity } = require('./RequestActivityContext');
 
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
@@ -131,6 +135,7 @@ describe('useRequestMoreMerged', () => {
     });
     render(
       <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+        <prDataProbe.PrDataProbe />
         <AppRootLike />
       </PrDataProvider>,
     );
@@ -138,7 +143,7 @@ describe('useRequestMoreMerged', () => {
 
     for (let i = 1; i <= 5; i += 1) {
       act(() => {
-        window.updateReactPrTable({ byPrNumber: { [i]: { prNumber: String(i) } } }, 'owner/repo');
+        prDataProbe.applyFreshTablePayload({ byPrNumber: { [i]: { prNumber: String(i) } } }, 'owner/repo');
       });
     }
 
@@ -155,11 +160,12 @@ describe('useRequestMoreMerged', () => {
     }
     render(
       <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+        <prDataProbe.PrDataProbe />
         <Capture />
       </PrDataProvider>,
     );
     act(() => {
-      window.updateReactPrTable({ byPrNumber: { 1: { prNumber: '1' } } }, 'owner/repo');
+      prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: { prNumber: '1' } } }, 'owner/repo');
     });
 
     expect(seen.size).toBe(2);

@@ -6,6 +6,10 @@ const { RepoLabelsProvider } = require('./RepoLabelsProvider');
 const { ApplyLabelSelect } = require('./ApplyLabelSelect');
 const { PrActionsCell } = require('./cells/PrActionsCell');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { FilterStateProvider } = require('../state/FilterStateProvider');
 const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
@@ -34,6 +38,7 @@ function TestProviders({ initialSelectedRepo, initialFilterValues = {}, children
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={{ repo: '', ...initialFilterValues }}>
             <PrDataProvider initialSelectedRepo={initialSelectedRepo}>
+              <prDataProbe.PrDataProbe />
               <RepoLabelsProvider>{children}</RepoLabelsProvider>
             </PrDataProvider>
           </FilterStateProvider>
@@ -68,7 +73,7 @@ const labelsFetchCalls = () => fetch.mock.calls.filter(([url]) => String(url).st
 
 describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
   afterEach(() => {
-    delete window.getReactPrTableSelectedRepo;
+    prDataProbe.reset();
     jest.restoreAllMocks();
   });
 
@@ -182,7 +187,7 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
 // lives here now.
 describe('RepoLabelsProvider repo-change trigger', () => {
   afterEach(() => {
-    delete window.getReactPrTableSelectedRepo;
+    prDataProbe.reset();
     jest.restoreAllMocks();
   });
 
@@ -228,7 +233,7 @@ describe('RepoLabelsProvider repo-change trigger', () => {
     await waitFor(() => expect(labelsFetchCalls().length).toBe(1));
 
     act(() => {
-      window.updateReactPrTable({ byPrNumber: {} }, 'owner/repo');
+      prDataProbe.applyFreshTablePayload({ byPrNumber: {} }, 'owner/repo');
     });
 
     expect(labelsFetchCalls().length).toBe(1);
@@ -245,7 +250,7 @@ describe('RepoLabelsProvider repo-change trigger', () => {
     await waitFor(() => expect(labelsFetchCalls().length).toBe(1));
 
     act(() => {
-      window.updateReactPrTable(undefined, 'owner/repo-b');
+      prDataProbe.applyFreshTablePayload(undefined, 'owner/repo-b');
     });
 
     await waitFor(() => expect(labelsFetchCalls().length).toBe(2));

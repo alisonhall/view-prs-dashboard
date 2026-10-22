@@ -107,12 +107,16 @@ describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has dat
     expect(capturedContext.at(-1).selectedRepo).toBe('owner/repo');
   });
 
-  test('given a mounted table, when window.updateReactPrTable is called with a new payload but no repo, then PrTableApp re-renders with the new payload and keeps the previous selectedRepo', () => {
+  // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): pushes
+  // the update through the mounted PrDataProvider's own applyFreshTablePayload
+  // (read from the captured Context) - it was window.updateReactPrTable.
+  test('given a mounted table, when applyFreshTablePayload is called with a new payload but no repo, then PrTableApp re-renders with the new payload and keeps the previous selectedRepo', () => {
+    const { applyFreshTablePayload } = capturedContext.at(-1);
     capturedContext.length = 0;
 
     const nextPayload = { byPrNumber: { 2: { prNumber: '2' } } };
     React.act(() => {
-      window.updateReactPrTable(nextPayload);
+      applyFreshTablePayload(nextPayload);
     });
 
     expect(capturedContext.at(-1).payload).toBe(nextPayload);

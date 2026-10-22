@@ -4,6 +4,10 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorCreatedPrsSection } = require('./AuthorCreatedPrsSection');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 
 const buildEntry = (overrides = {}) => ({
   prNumber: '1',
@@ -29,6 +33,7 @@ const renderSection = (rows, selectedAuthorLogin) => {
   });
   return render(
     <PrDataProvider initialPayload={{ byPrNumber }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorCreatedPrsSection />
     </PrDataProvider>,
   );
@@ -74,6 +79,7 @@ describe('AuthorCreatedPrsSection', () => {
     };
     render(
       <PrDataProvider initialPayload={{ byPrNumber }} initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
         <AuthorCreatedPrsSection />
       </PrDataProvider>,
     );
@@ -82,7 +88,7 @@ describe('AuthorCreatedPrsSection', () => {
 
     const { act } = require('@testing-library/react');
     act(() => {
-      window.updateReactSelectedAuthorLogin('other');
+      prDataProbe.setSelectedAuthorLogin('other');
     });
 
     expect(screen.queryByText('#1 Fix the thing')).not.toBeInTheDocument();

@@ -7,6 +7,10 @@ const { AuthorInsightsCommentsSection } = require('./AuthorInsightsCommentsSecti
 const { AuthorInsightsProvider } = require('./AuthorInsightsProvider');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 const { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } = require('../state/AuthorInsightsDraftsContext');
 
@@ -44,6 +48,7 @@ const authorInsightsOverrides = {
 const renderSection = (selectedAuthorLogin) =>
   render(
     <PrDataProvider initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorInsightsDraftsProvider>
         <DraftsProbe />
         <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
@@ -188,6 +193,7 @@ describe('AuthorInsightsCommentsSection', () => {
 
     render(
       <PrDataProvider initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
         <AuthorInsightsDraftsProvider>
           <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
             <AuthorInsightsCommentsSection />
@@ -223,6 +229,7 @@ describe('AuthorInsightsCommentsSection', () => {
 
     render(
       <PrDataProvider initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
         <AuthorInsightsDraftsProvider>
           <DraftsProbe />
           <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
@@ -263,6 +270,7 @@ describe('AuthorInsightsCommentsSection', () => {
     // rebuilt on a payload change - a static mock value can't reproduce it.
     render(
       <PrDataProvider initialSelectedAuthorLogin="octocat" initialPayload={{ byPrNumber: {} }}>
+        <prDataProbe.PrDataProbe />
         <AuthorInsightsDraftsProvider>
           <AuthorInsightsProvider>
             <AuthorInsightsCommentsSection />
@@ -276,7 +284,7 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
 
     act(() => {
-      window.updateReactPrTable({ byPrNumber: { 1: {} } });
+      prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: {} } });
     });
 
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
@@ -296,7 +304,7 @@ describe('AuthorInsightsCommentsSection', () => {
     await waitFor(() => expect(screen.getByText('For octocat')).toBeInTheDocument());
 
     act(() => {
-      window.updateReactSelectedAuthorLogin('other');
+      prDataProbe.setSelectedAuthorLogin('other');
     });
     await waitFor(() => expect(screen.getByText('For other')).toBeInTheDocument());
     expect(screen.queryByText('For octocat')).not.toBeInTheDocument();

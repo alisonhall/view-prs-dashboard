@@ -4,10 +4,15 @@ const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsHeader } = require('./AuthorInsightsHeader');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 
 const renderHeader = (selectedAuthorLogin, actorsMap = {}) =>
   render(
     <PrDataProvider initialPayload={{ actorsMap }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorInsightsHeader />
     </PrDataProvider>,
   );
@@ -32,7 +37,7 @@ describe('AuthorInsightsHeader', () => {
     );
 
     act(() => {
-      window.updateReactSelectedAuthorLogin('author-two');
+      prDataProbe.setSelectedAuthorLogin('author-two');
     });
     expect(container.querySelector('.author-insights-selected')?.textContent).toBe(
       'Showing insights for Author Two',

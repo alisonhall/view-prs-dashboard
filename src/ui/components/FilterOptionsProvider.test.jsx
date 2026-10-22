@@ -17,6 +17,10 @@ const { extractRowLabelNames } = require('../helpers/pr-filter-label-extraction.
 const { FilterOptionsProvider } = require('./FilterOptionsProvider');
 const { useFilterOptions } = require('../state/FilterOptionsContext');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): writes
+// PrDataProvider through this probe, not window.updateReactPrTable.
+const prDataProbe = createPrDataProbe();
 
 function OptionsProbe() {
   const options = useFilterOptions();
@@ -109,6 +113,7 @@ describe('FilterOptionsProvider', () => {
 
     render(
       <PrDataProvider initialPayload={{ byPrNumber, actorsMap: {} }} initialSelectedRepo="">
+        <prDataProbe.PrDataProbe />
         <FilterOptionsProvider>
           <OptionsProbe />
         </FilterOptionsProvider>
@@ -117,14 +122,17 @@ describe('FilterOptionsProvider', () => {
     expect(extractRowLabelNames).toHaveBeenCalledTimes(1);
 
     // A new top-level payload object pushed through the real update path
-    // (window.updateReactPrTable, published by PrDataProvider itself) -
+    // (applyFreshTablePayload, PrDataProvider's own Context setter) -
     // mimicking a real poll tick - but entryA is still the exact same
     // object reference, matching mergeDataDeltaPayload's own shallow
     // merge, which keeps an unchanged entry's reference stable.
+    const nextPayload = { byPrNumber: { ...byPrNumber }, actorsMap: {} };
     act(() => {
-      window.updateReactPrTable({ byPrNumber: { ...byPrNumber }, actorsMap: {} });
+      prDataProbe.applyFreshTablePayload(nextPayload);
     });
 
+    // Guard against a vacuous pass: the update really landed.
+    expect(prDataProbe.readPayload()).toBe(nextPayload);
     expect(extractRowLabelNames).toHaveBeenCalledTimes(1);
   });
 

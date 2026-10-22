@@ -223,6 +223,11 @@ describe('useBackfillActions', () => {
     const { OutputTextProvider } = require('../components/OutputTextProvider');
     const { BackfillStatusProvider } = require('../components/BackfillStatusProvider');
     const { PrDataProvider } = require('./PrDataProvider');
+    // Test-only bridge removal: a sibling probe pushes the PR-data update
+    // (it was window.updateReactPrTable), so Caller's own subscriptions stay
+    // exactly what the hook under test needs.
+    const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+    const prDataProbe = createPrDataProbe();
     const { useStatusText } = require('./StatusTextContext');
     const { useSnackbar } = require('./SnackbarContext');
     const { useOutputText } = require('./OutputTextContext');
@@ -253,6 +258,7 @@ describe('useBackfillActions', () => {
             <OutputTextProvider>
               <BackfillStatusProvider>
                 <PrDataProvider initialPayload={{}} initialSelectedRepo="">
+                  <prDataProbe.PrDataProbe />
                   <Caller />
                 </PrDataProvider>
               </BackfillStatusProvider>
@@ -269,7 +275,7 @@ describe('useBackfillActions', () => {
       act(() => controls.backfill.setIsBackfillActionPending(true));
       act(() => controls.snackbar.showError('title', 'detail', 0));
       act(() => {
-        window.updateReactPrTable({ byPrNumber: { 1: { prNumber: '1' } } }, 'owner/repo');
+        prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: { prNumber: '1' } } }, 'owner/repo');
       });
 
       // Guard against a vacuous pass: the caller really did re-render.

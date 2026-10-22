@@ -2890,6 +2890,17 @@ Found reviewing Phase 7.5.
 - Not changed: the `act()` warnings in `react-app.test.jsx` are older than 7.5 (a clean `cb3bead` produces the same 7).
 - `lint:check` clean; `test:ci` 2620 passed + 1 skipped (unchanged); `test:e2e` 59/59; `vite build` succeeds. Windows local run.
 
+## ✅ **Window-bridge elimination, test-only bridges (1 of 3): PrDataProvider's write/read bridges (2026-10-22)**
+
+Plan: [WINDOW_BRIDGE_ELIMINATION_PLAN.md](WINDOW_BRIDGE_ELIMINATION_PLAN.md), "Next: the test-only bridges" (Phase 6's approach: fix the tests, then delete).
+
+- **Deleted:** `window.updateReactPrTable`, `window.getReactPrTableSelectedRepo`, `window.updateReactSelectedAuthorLogin`. `PrDataProvider` published them with no production caller left; tests used them to push payloads, select an author, and read the repo back. Each had a Context equivalent already: `usePrData()`'s `applyFreshTablePayload` (same merge semantics), `setSelectedAuthorLogin`, `selectedRepo`.
+- **New `test-fixtures/pr-data-probe.jsx`** (`createPrDataProbe()`), same shape as Phase 5b's `filter-state-probe.jsx`: mount `<PrDataProbe />` inside the real `PrDataProvider`, then `applyFreshTablePayload`/`setSelectedAuthorLogin`/`readPayload`/`readSelectedRepo`.
+- **Converted (12 files):** 9 by a script that refuses anything it can't do mechanically (it adds the probe inside each single-line `<PrDataProvider>` tag and rewrites the calls; it refused 4 files, which were done by hand). `useBackfillActions`/`useRequestMoreMerged` mount the probe as a sibling, so the component under test keeps exactly its own subscriptions. `react-app.test.jsx` mounts the real app, so it calls `applyFreshTablePayload` from the Context its mocked `PrTableApp` already captures.
+- **`PrDataProvider.test.jsx`:** the 9 bridge tests become 7 Context tests (initial values; the three removed bridges aren't published; `applyFreshTablePayload`'s three merge cases; `setSelectedAuthorLogin` sets and clears; `window.getReactPrTablePayload` still tracks the latest payload and is removed on unmount - e2e reads it until the third group).
+- **Two tests could pass vacuously** (`FilterOptionsProvider`/`ReviewStatsContent` assert that an update does *not* recompute, which a dropped update also satisfies; true with the old bridge too). Breaking `applyFreshTablePayload` into a no-op failed 9 tests in 4 suites but not those two, so each now asserts the update landed first; with that guard, the same break fails both.
+- `lint:check` clean; `test:ci` 2618 passed + 1 skipped (2621 − 2); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

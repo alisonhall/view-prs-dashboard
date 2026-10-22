@@ -6,6 +6,10 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 const { TabStateContext } = require('../state/TabStateContext');
 
@@ -102,6 +106,7 @@ const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
       }}
     >
       <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
+        <prDataProbe.PrDataProbe />
         <ReviewStatsContext.Provider
           value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats), ...reviewStatsOverrides }}
         >
@@ -213,6 +218,7 @@ describe('ReviewStatsContent', () => {
       renderWithActiveDataTab(
         'pr-data',
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+          <prDataProbe.PrDataProbe />
           <ReviewStatsContext.Provider
             value={{
               ...defaultReviewStats,
@@ -230,10 +236,13 @@ describe('ReviewStatsContent', () => {
       expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
 
+      const nextPayload = { byPrNumber: { 1: {}, 2: {} } };
       React.act(() => {
-        window.updateReactPrTable({ byPrNumber: { 1: {}, 2: {} } });
+        prDataProbe.applyFreshTablePayload(nextPayload);
       });
 
+      // Guard against a vacuous pass: the update really landed.
+      expect(prDataProbe.readPayload()).toBe(nextPayload);
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
       expect(screen.getByText('No filtered rows available for review statistics.')).toBeInTheDocument();
     });
@@ -244,6 +253,7 @@ describe('ReviewStatsContent', () => {
 
       const tree = (
         <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+          <prDataProbe.PrDataProbe />
           <ReviewStatsContext.Provider
             value={{
               ...defaultReviewStats,

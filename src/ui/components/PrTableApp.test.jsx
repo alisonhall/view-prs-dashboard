@@ -64,6 +64,11 @@ const { PrTableApp } = require('./PrTableApp');
 const { postJson } = require('../helpers/pr-http.helpers.js');
 const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): pushes
+// payloads through this probe (PrDataProvider's applyFreshTablePayload), not
+// window.updateReactPrTable.
+const prDataProbe = createPrDataProbe();
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
 const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
@@ -107,8 +112,9 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // PrTableApp reads payload/selectedRepo/visiblePrNumbers from
 // <PrDataProvider /> now, not as direct props - this wraps every render the
 // same way mountReactPrTable (react-app.jsx) really does. Updates after the
-// initial render go through window.updateReactPrTable (the Provider's own
-// bridge), not a `rerender` with new props - see the "delivers a fresh
+// initial render go through the Provider's own applyFreshTablePayload (via
+// prDataProbe; it was the window.updateReactPrTable bridge), not a
+// `rerender` with new props - see the "delivers a fresh
 // payload" test below for the real post-mount update path.
 //
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `needsAttention`
@@ -149,6 +155,7 @@ const renderPrTableApp = ({
         initialPayload={initialPayload}
         initialSelectedRepo={selectedRepo}
       >
+        <prDataProbe.PrDataProbe />
         <FilterStateProvider
           initialValues={{
             scopeMode: 'all',
@@ -233,7 +240,7 @@ function clearWindowHelpers() {
   // that) - this cleanup just avoids the value leaking across tests, it
   // has no effect on PrTableApp's own behavior either way.
   delete window.isInReviewEnabled;
-  delete window.updateReactPrTable;
+  prDataProbe.reset();
 }
 
 function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
@@ -375,7 +382,7 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps[0].getPrFlags('1')).toEqual({ isFlagged: false, isInReview: false, isAcknowledged: false });
   });
 
-  test('given window.updateReactPrTable delivers a fresh payload (the real post-mount update path - see PrDataProvider.jsx, Track C slice C2c), when called, then the new payload is reflected', () => {
+  test('given applyFreshTablePayload delivers a fresh payload (the real post-mount update path - see PrDataProvider.jsx, Track C slice C2c), when called, then the new payload is reflected', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     const payloadB = {
       byPrNumber: {
@@ -388,7 +395,7 @@ describe('PrTableApp', () => {
 
     capturedSectionProps.length = 0;
     React.act(() => {
-      window.updateReactPrTable(payloadB);
+      prDataProbe.applyFreshTablePayload(payloadB);
     });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(2);
   });
@@ -418,19 +425,19 @@ describe('PrTableApp', () => {
     for (let count = 2; count <= 5; count += 1) {
       capturedSectionProps.length = 0;
       React.act(() => {
-        window.updateReactPrTable(makePayload(count));
+        prDataProbe.applyFreshTablePayload(makePayload(count));
       });
       expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(count);
       handlerNames.forEach((name) => expect(pickHandlers()[name]).toBe(initialHandlers[name]));
     }
   });
 
-  test('given window.updateReactPrTable is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
+  test('given applyFreshTablePayload is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     capturedSectionProps.length = 0;
     React.act(() => {
-      window.updateReactPrTable(payload);
+      prDataProbe.applyFreshTablePayload(payload);
     });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(1);
   });

@@ -4,6 +4,8 @@ const { memo } = require('react');
 const { render, act } = require('@testing-library/react');
 const { PrDataProvider } = require('./PrDataProvider');
 const { usePrData } = require('./PrDataContext');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+const prDataProbe = createPrDataProbe();
 const { usePrDataActions } = require('./PrDataActionsContext');
 const { BackfillStatusActionsContext } = require('./BackfillStatusContext');
 const { AutoRenderBlockingActionsContext } = require('./AutoRenderBlockingContext');
@@ -23,162 +25,130 @@ const renderWithBackfillTracking = (tracking, children, loadBackfillStatus = asy
 
 describe('PrDataProvider', () => {
   afterEach(() => {
-    delete window.updateReactPrTable;
-    delete window.getReactPrTablePayload;
-    delete window.getReactPrTableSelectedRepo;
-    delete window.updateReactSelectedAuthorLogin;
+    prDataProbe.reset();
     delete window.updateReactStatsViewState;
     delete window.getLatestSchedulerState;
   });
 
-  test('given an initial payload, when rendering, then window.getReactPrTablePayload returns it', () => {
+  // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): these
+  // used to test window.updateReactPrTable/getReactPrTableSelectedRepo/
+  // updateReactSelectedAuthorLogin, bridges with no production caller. The
+  // same behaviour is tested through the Context those bridges wrapped.
+  // (window.getReactPrTablePayload is still published - e2e reads it until
+  // its auto-render-blocking test is rewritten - and is tested at the end.)
+  test('given an initial payload and selectedRepo, when rendering, then usePrData() exposes both', () => {
     const payload = { byPrNumber: { 1: {} } };
     render(
-      <PrDataProvider initialPayload={payload}>
-        <div />
+      <PrDataProvider initialPayload={payload} initialSelectedRepo="owner/repo">
+        <prDataProbe.PrDataProbe />
       </PrDataProvider>,
     );
 
-    expect(window.getReactPrTablePayload()).toBe(payload);
+    expect(prDataProbe.readPayload()).toBe(payload);
+    expect(prDataProbe.readSelectedRepo()).toBe('owner/repo');
   });
 
-  // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md): this
-  // read bridge exists specifically so a handful of index.page.js DI
-  // wirings can read the same payload the visible React table is showing,
-  // instead of a second, independently-timed vanilla copy - it must always
-  // return the LATEST payload, not whatever was current when the bridge was
-  // first assigned (a stale closure here would defeat the entire point).
-  test('given window.updateReactPrTable pushes a new payload, when getReactPrTablePayload is called again, then it returns the new payload, not a stale one', () => {
-    const payloadA = { byPrNumber: { 1: {} } };
+  test('given the provider mounts, when window is checked, then the removed test-only bridges are not published', () => {
     render(
-      <PrDataProvider initialPayload={payloadA}>
-        <div />
-      </PrDataProvider>,
-    );
-    expect(window.getReactPrTablePayload()).toBe(payloadA);
-
-    const payloadB = { byPrNumber: { 1: {}, 2: {} } };
-    act(() => {
-      window.updateReactPrTable(payloadB);
-    });
-
-    expect(window.getReactPrTablePayload()).toBe(payloadB);
-  });
-
-  test('given the provider unmounts, when getReactPrTablePayload is checked, then the bridge is removed', () => {
-    const { unmount } = render(
       <PrDataProvider initialPayload={{}}>
         <div />
       </PrDataProvider>,
     );
-    expect(typeof window.getReactPrTablePayload).toBe('function');
 
-    unmount();
-
-    expect(window.getReactPrTablePayload).toBeUndefined();
-  });
-
-  // Sub-phase 7.2 follow-up (see REACT_MIGRATION_PLAN.md): a dedicated
-  // read bridge for selectedRepo alone, mirroring getReactPrTablePayload's
-  // own tests above.
-  test('given an initial selectedRepo, when rendering, then window.getReactPrTableSelectedRepo returns it', () => {
-    render(
-      <PrDataProvider initialSelectedRepo="owner/repo">
-        <div />
-      </PrDataProvider>,
-    );
-
-    expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo');
-  });
-
-  test('given window.updateReactPrTable pushes a new selectedRepo, when getReactPrTableSelectedRepo is called again, then it returns the new value, not a stale one', () => {
-    render(
-      <PrDataProvider initialSelectedRepo="owner/repo-a">
-        <div />
-      </PrDataProvider>,
-    );
-    expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-a');
-
-    act(() => {
-      window.updateReactPrTable(undefined, 'owner/repo-b');
-    });
-
-    expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-b');
-  });
-
-  test('given the provider unmounts, when getReactPrTableSelectedRepo is checked, then the bridge is removed', () => {
-    const { unmount } = render(
-      <PrDataProvider initialSelectedRepo="owner/repo">
-        <div />
-      </PrDataProvider>,
-    );
-    expect(typeof window.getReactPrTableSelectedRepo).toBe('function');
-
-    unmount();
-
+    expect(window.updateReactPrTable).toBeUndefined();
     expect(window.getReactPrTableSelectedRepo).toBeUndefined();
+    expect(window.updateReactSelectedAuthorLogin).toBeUndefined();
   });
 
   // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // same merge semantics window.updateReactPrTable already has (above) -
   // PrTableApp.jsx's own per-row Ack/Apply-Label handlers call this
-  // directly via Context instead of the window bridge.
+  // directly via Context. (It had the same merge semantics as the deleted
+  // window.updateReactPrTable.)
   describe('applyFreshTablePayload', () => {
-    let applyFreshTablePayload;
-    function Probe() {
-      applyFreshTablePayload = usePrData().applyFreshTablePayload;
-      return null;
-    }
-
-    test('given a new payload and selectedRepo, when called, then both update together', () => {
-      const payloadA = { byPrNumber: { 1: {} } };
+    const renderWith = (payload, repo) =>
       render(
-        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
-          <Probe />
+        <PrDataProvider initialPayload={payload} initialSelectedRepo={repo}>
+          <prDataProbe.PrDataProbe />
         </PrDataProvider>,
       );
 
+    test('given a new payload and selectedRepo, when called, then both update together', () => {
+      renderWith({ byPrNumber: { 1: {} } }, 'owner/repo-a');
+
       const payloadB = { byPrNumber: { 1: {}, 2: {} } };
       act(() => {
-        applyFreshTablePayload(payloadB, 'owner/repo-b');
+        prDataProbe.applyFreshTablePayload(payloadB, 'owner/repo-b');
       });
 
-      expect(window.getReactPrTablePayload()).toBe(payloadB);
-      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-b');
+      expect(prDataProbe.readPayload()).toBe(payloadB);
+      expect(prDataProbe.readSelectedRepo()).toBe('owner/repo-b');
     });
 
     test('given newPayload is undefined, when called, then the previous payload is kept', () => {
       const payloadA = { byPrNumber: { 1: {} } };
-      render(
-        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
-          <Probe />
-        </PrDataProvider>,
-      );
+      renderWith(payloadA, 'owner/repo-a');
 
       act(() => {
-        applyFreshTablePayload(undefined, 'owner/repo-b');
+        prDataProbe.applyFreshTablePayload(undefined, 'owner/repo-b');
       });
 
-      expect(window.getReactPrTablePayload()).toBe(payloadA);
-      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-b');
+      expect(prDataProbe.readPayload()).toBe(payloadA);
+      expect(prDataProbe.readSelectedRepo()).toBe('owner/repo-b');
     });
 
     test('given newSelectedRepo is falsy, when called, then the previous selectedRepo is kept', () => {
-      const payloadA = { byPrNumber: { 1: {} } };
-      render(
-        <PrDataProvider initialPayload={payloadA} initialSelectedRepo="owner/repo-a">
-          <Probe />
-        </PrDataProvider>,
-      );
+      renderWith({ byPrNumber: { 1: {} } }, 'owner/repo-a');
 
       const payloadB = { byPrNumber: { 1: {}, 2: {} } };
       act(() => {
-        applyFreshTablePayload(payloadB, '');
+        prDataProbe.applyFreshTablePayload(payloadB, '');
       });
 
-      expect(window.getReactPrTablePayload()).toBe(payloadB);
-      expect(window.getReactPrTableSelectedRepo()).toBe('owner/repo-a');
+      expect(prDataProbe.readPayload()).toBe(payloadB);
+      expect(prDataProbe.readSelectedRepo()).toBe('owner/repo-a');
     });
+  });
+
+  test('given setSelectedAuthorLogin, when called with a login and then with nothing, then a consumer sees the author update and then clear', () => {
+    let selected;
+    function Read() {
+      selected = usePrData().selectedAuthorLogin;
+      return null;
+    }
+    render(
+      <PrDataProvider initialPayload={{}} initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
+        <Read />
+      </PrDataProvider>,
+    );
+    expect(selected).toBe('octocat');
+
+    act(() => {
+      prDataProbe.setSelectedAuthorLogin('hubot');
+    });
+    expect(selected).toBe('hubot');
+
+    act(() => {
+      prDataProbe.setSelectedAuthorLogin(undefined);
+    });
+    expect(selected).toBe('');
+  });
+
+  // e2e still reads this one (see the comment above).
+  test('given a new payload is applied, when window.getReactPrTablePayload is read, then it returns the latest payload, and it is removed on unmount', () => {
+    const { unmount } = render(
+      <PrDataProvider initialPayload={{ byPrNumber: {} }}>
+        <prDataProbe.PrDataProbe />
+      </PrDataProvider>,
+    );
+    const payloadB = { byPrNumber: { 2: {} } };
+    act(() => {
+      prDataProbe.applyFreshTablePayload(payloadB);
+    });
+    expect(window.getReactPrTablePayload()).toBe(payloadB);
+
+    unmount();
+    expect(window.getReactPrTablePayload).toBeUndefined();
   });
 
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
