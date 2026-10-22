@@ -393,6 +393,38 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(2);
   });
 
+  test('given a series of fresh payloads, when each is delivered, then the row action handlers keep the same identity (regression: Chrome/Edge "Error code: 5" renderer OOM)', () => {
+    // useCallback handlers with differing deps chained older render
+    // scopes together through the memoized rows that hold them, each
+    // pinning that render's payload - one full payload leaked per data
+    // change. Stable identities mean no older render is reachable.
+    const makePayload = (count) => ({
+      byPrNumber: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          index + 1,
+          makeEntry({ prNumber: String(index + 1), repo: 'owner/repo', section: 'open' }),
+        ]),
+      ),
+    });
+    const handlerNames = ['onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'];
+    const pickHandlers = () => {
+      const props = capturedSectionProps.find((p) => p.section.key === 'open');
+      return Object.fromEntries(handlerNames.map((name) => [name, props[name]]));
+    };
+    renderPrTableApp({ initialPayload: makePayload(1), selectedRepo: 'owner/repo' });
+    const initialHandlers = pickHandlers();
+    handlerNames.forEach((name) => expect(typeof initialHandlers[name]).toBe('function'));
+
+    for (let count = 2; count <= 5; count += 1) {
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        window.updateReactPrTable(makePayload(count));
+      });
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(count);
+      handlerNames.forEach((name) => expect(pickHandlers()[name]).toBe(initialHandlers[name]));
+    }
+  });
+
   test('given window.updateReactPrTable is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });

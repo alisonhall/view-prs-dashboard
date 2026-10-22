@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
@@ -16,6 +16,7 @@ import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
+import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
@@ -118,7 +119,7 @@ export function PrTableApp() {
   // reading its real definition), it doesn't touch React - this handler's
   // own applyFreshTablePayload call afterward is the actual push into
   // Context, same two-step shape handleAckAction/handleApplyLabel use.
-  const handleCheckboxChange = useCallback(
+  const handleCheckboxChange = useStableCallback(
     async (prNumber, type, checked, repoOverride) => {
       try {
         const repo = repoOverride || selectedRepo;
@@ -140,14 +141,13 @@ export function PrTableApp() {
         console.error('[PrTableApp] Error handling checkbox change:', error);
       }
     },
-    [toggleFlaggedForRow, toggleInReviewForRow, applyFreshTablePayload, selectedRepo],
   );
 
   // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel
   // exactly, including the try/catch - a thrown/rejected workflow is caught
   // and logged here, not propagated to withPrBusy's caller (byte-for-byte
   // behavior parity, not just the happy path).
-  const handleAckAction = useCallback(
+  const handleAckAction = useStableCallback(
     async (prNumber, isAcked, repoOverride) => {
       try {
         const prNumberStr = String(prNumber);
@@ -162,10 +162,9 @@ export function PrTableApp() {
         console.error('[PrTableApp] Error handling Ack action:', error);
       }
     },
-    [runAckOnlyWorkflow, runClearOnlyWorkflow, applyFreshTablePayload, selectedRepo],
   );
 
-  const handleApplyLabel = useCallback(
+  const handleApplyLabel = useStableCallback(
     async (prNumber, label, repoOverride) => {
       try {
         const repo = repoOverride || selectedRepo;
@@ -177,17 +176,19 @@ export function PrTableApp() {
         console.error('[PrTableApp] Error handling Apply Label action:', error);
       }
     },
-    [runApplyLabelWorkflow, applyFreshTablePayload, selectedRepo],
   );
 
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
-  // outcome (success, failure, or thrown error). useCallback keeps these
-  // (and the wrapped handlers below) referentially stable across renders
-  // that don't touch busy state - PrRow is memoized, so a fresh function
-  // identity on every PrTableApp render would defeat that memoization for
-  // every row, not just the busy one.
-  const withPrBusy = useCallback(
+  // outcome (success, failure, or thrown error). useStableCallback keeps
+  // these (and the wrapped handlers above) referentially stable across
+  // every render - PrRow is memoized, so a fresh function identity on every
+  // PrTableApp render would defeat that memoization for every row, not just
+  // the busy one. Not useCallback: these handlers are held by every
+  // memoized row, and useCallbacks with differing deps chained older render
+  // scopes together, each pinning that render's payload - one full payload
+  // leaked per data change (see useStableCallback.jsx).
+  const withPrBusy = useStableCallback(
     (prNumber, repo, action) => async (...args) => {
       markPrBusy(prNumber, repo);
       try {
@@ -196,19 +197,16 @@ export function PrTableApp() {
         clearPrBusy(prNumber, repo);
       }
     },
-    [markPrBusy, clearPrBusy],
   );
 
-  const handleAckActionBusy = useCallback(
+  const handleAckActionBusy = useStableCallback(
     (prNumber, isAcked, repoOverride) =>
       withPrBusy(prNumber, repoOverride, handleAckAction)(prNumber, isAcked, repoOverride),
-    [withPrBusy, handleAckAction],
   );
 
-  const handleApplyLabelBusy = useCallback(
+  const handleApplyLabelBusy = useStableCallback(
     (prNumber, label, repoOverride) =>
       withPrBusy(prNumber, repoOverride, handleApplyLabel)(prNumber, label, repoOverride),
-    [withPrBusy, handleApplyLabel],
   );
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"): the "↻
@@ -216,10 +214,9 @@ export function PrTableApp() {
   // bridge is gone now, this hook is the real implementation (its only
   // real caller was already this component).
   const runSinglePrUpdate = useSinglePrUpdate();
-  const handleUpdatePrBusy = useCallback(
+  const handleUpdatePrBusy = useStableCallback(
     (prNumber, entry, pr) =>
       withPrBusy(prNumber, entry?.repo, runSinglePrUpdate)(entry, pr),
-    [withPrBusy, runSinglePrUpdate],
   );
 
   const combinedActivePrNumbers = useMemo(
