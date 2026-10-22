@@ -8882,6 +8882,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const regions = [
+      "Pull requests",
       "Latest request output",
       "Backfill status details",
       "Backfill log",
