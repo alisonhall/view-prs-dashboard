@@ -611,15 +611,31 @@ export function PrDataProvider({
     setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
   }, []);
 
-  const value = {
-    ...state,
-    setPayload,
-    applyFreshTablePayload,
-    setStatsViewState,
-    setSelectedAuthorLogin,
-    pollForDataChanges,
-    pollBackfillStatus,
-  };
+  // Memoized: this Provider re-renders on every status message and
+  // notification (it reads useStatusText()/useSnackbar(), whose values change
+  // each time), and a value rebuilt on every render re-rendered every
+  // usePrData() consumer - the whole PR table - with it. Every function here is
+  // a stable useCallback/useMemo, so the value changes only with `state`.
+  const value = useMemo(
+    () => ({
+      ...state,
+      setPayload,
+      applyFreshTablePayload,
+      setStatsViewState,
+      setSelectedAuthorLogin,
+      pollForDataChanges,
+      pollBackfillStatus,
+    }),
+    [
+      state,
+      setPayload,
+      applyFreshTablePayload,
+      setStatsViewState,
+      setSelectedAuthorLogin,
+      pollForDataChanges,
+      pollBackfillStatus,
+    ],
+  );
 
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): derives the same
   // { currentActorLoginAliases, currentViewerLogin } index.page.js's own

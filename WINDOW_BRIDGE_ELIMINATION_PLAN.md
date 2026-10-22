@@ -57,7 +57,7 @@ One responsibility at a time, each with full eslint+jest+Playwright and a `REACT
 
 ## Status (last updated 2026-10-22, after Phase 7.5)
 
-Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **windows**, e2e) green at that commit. Phases 7.1-7.4 and their follow-ups are pushed through `cb3bead` (local run on Windows before each push: lint, `test:ci`, `test:e2e` all pass); CI hasn't been checked on them yet. Phase 7.5 and its follow-up are pushed too (local run before pushing: lint, `test:ci`, `test:e2e` all pass). The test-only bridge work is committed locally, one commit per group, and **not pushed**. Between 7.2 and 7.3, four unrelated commits landed on the branch from a parallel session (`466f7f4` PrTableApp row-handler memory leak / `useStableCallback`, and three `stability:heap-check` commits) - no file overlap with this plan's work.
+Branch `development`. Phases 1-6 pushed through `7f2bbfe`; CI (lint, ubuntu, **windows**, e2e) green at that commit. Phases 7.1-7.4 and their follow-ups are pushed through `cb3bead` (local run on Windows before each push: lint, `test:ci`, `test:e2e` all pass); CI hasn't been checked on them yet. Phase 7.5 and its follow-up are pushed too (local run before pushing: lint, `test:ci`, `test:e2e` all pass). The test-only bridge work and the test-isolation fix are pushed too, through `47effd7`. Between 7.2 and 7.3, four unrelated commits landed on the branch from a parallel session (`466f7f4` PrTableApp row-handler memory leak / `useStableCallback`, and three `stability:heap-check` commits) - no file overlap with this plan's work.
 
 ### Done
 | Phase | Commits | Notes |
@@ -102,7 +102,7 @@ The plan is complete. Phase 7 deleted `index.page.js`, and the three test-only g
 
 ### Known, unrelated, left alone
 - `src/server/integration-tests/app.events-routes.test.js` heartbeat test (50 ms interval, fixed 100 ms wait) flaked once under full-suite load.
-- `PrDataProvider`'s `value` object is not memoized (pre-existing amplifier for lesson 1).
+- ~~`PrDataProvider`'s `value` object is not memoized (pre-existing amplifier for lesson 1).~~ Fixed after the plan: memoized, with a regression test (see `REACT_MIGRATION_PLAN.md`).
 - `view-prs.code-workspace` has an uncommitted user change (a Peacock `statusBar.inactiveBackground` colour) - not part of this work; don't commit it unasked.
 - The dotfiles repo (`/Users/alihall/Sites/Personal/dotfiles`) has two local commits for the `PATH` fix (`c3a663e`, `7689e5e`, not pushed) and other uncommitted changes of the user's.
 - Policy: don't push without asking; confirm before anything outward-facing.

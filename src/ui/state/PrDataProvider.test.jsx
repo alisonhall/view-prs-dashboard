@@ -23,6 +23,62 @@ const renderWithBackfillTracking = (tracking, children, loadBackfillStatus = asy
     </BackfillStatusActionsContext.Provider>,
   );
 
+// Regression (lesson 1 in WINDOW_BRIDGE_ELIMINATION_PLAN.md): PrDataProvider
+// reads useStatusText() and useSnackbar(), whose values change on every status
+// message and notification, so it re-renders on each one. Its Context value
+// was rebuilt on every render, which re-rendered every usePrData() consumer -
+// the whole PR table - each time. It's memoized now; a memo consumer must only
+// re-render when PR data itself changes.
+describe('PrDataProvider Context value identity', () => {
+  const { StatusTextProvider } = require('../components/StatusTextProvider');
+  const { SnackbarProvider } = require('../components/SnackbarProvider');
+  const { useStatusText } = require('./StatusTextContext');
+  const { useSnackbar } = require('./SnackbarContext');
+
+  test('given status-text and snackbar updates, when the provider re-renders for them, then a memo usePrData() consumer does not re-render, but a real data change still reaches it', () => {
+    document.body.innerHTML = '<div id="status"></div>';
+    let renders = 0;
+    let latestPayload;
+    const Consumer = memo(function Consumer() {
+      latestPayload = usePrData().payload;
+      renders += 1;
+      return null;
+    });
+    let controls;
+    function Controls() {
+      controls = { status: useStatusText(), snackbar: useSnackbar() };
+      return null;
+    }
+    const probe = createPrDataProbe();
+    render(
+      <StatusTextProvider>
+        <SnackbarProvider>
+          <Controls />
+          <PrDataProvider initialPayload={{ byPrNumber: {} }} initialSelectedRepo="owner/repo">
+            <probe.PrDataProbe />
+            <Consumer />
+          </PrDataProvider>
+        </SnackbarProvider>
+      </StatusTextProvider>,
+    );
+    const baseline = renders;
+
+    for (let i = 0; i < 5; i += 1) {
+      act(() => controls.status.setStatusText(`status ${i}`));
+    }
+    act(() => controls.snackbar.showError('title', 'detail', 0));
+    act(() => controls.snackbar.hide());
+
+    expect(renders).toBe(baseline);
+
+    // Guard against a vacuous pass: a real PR-data change does reach it.
+    const nextPayload = { byPrNumber: { 1: {} } };
+    act(() => probe.applyFreshTablePayload(nextPayload));
+    expect(renders).toBe(baseline + 1);
+    expect(latestPayload).toBe(nextPayload);
+  });
+});
+
 describe('PrDataProvider', () => {
   afterEach(() => {
     prDataProbe.reset();

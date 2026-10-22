@@ -2935,6 +2935,15 @@ Found during the test-only bridge work (see the entry above); not part of the wi
 - **Not recoverable:** no backup holds `user-defaults.json` (`data/backups` only has data-file backups). This checkout's `data/` looks unused for real work (its PR data file has been empty since Sep 20). The test-written `owner_repo__pr-*.json` files are still in `data/pr-details`/`data/pr-diffs`; left in place.
 - `lint:check` clean; `test:ci` 2624 passed + 1 skipped (2622 + 2); `test:e2e` 59/59. Windows local run.
 
+## ✅ **`PrDataProvider`'s Context value is memoized (2026-10-22)**
+
+From WINDOW_BRIDGE_ELIMINATION_PLAN.md's "Known, unrelated, left alone" list (the amplifier behind its lesson 1).
+
+- **Problem.** `PrDataProvider` reads `useStatusText()` and `useSnackbar()`, whose values change on every status message and notification, so it re-renders on each. Its Context value was a fresh object literal every render, so every `usePrData()` consumer - the whole PR table, `AutoRenderBlockingSync`, the Author Insights portals - re-rendered with it, even with no PR-data change.
+- **Fix.** The value is a `useMemo` over `state` and the six functions it carries, all already stable (`useCallback`/`useMemo` over refs and stable setters).
+- **Test** (`PrDataProvider.test.jsx`, +1): under the real `StatusTextProvider`/`SnackbarProvider`, five status updates plus a snackbar show/hide don't re-render a `React.memo` `usePrData()` consumer, and an actual payload change still reaches it exactly once. Before the fix: 7 extra renders.
+- `lint:check` clean; `test:ci` 2625 passed + 1 skipped (2624 + 1); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**
