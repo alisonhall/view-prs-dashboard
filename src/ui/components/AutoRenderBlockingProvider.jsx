@@ -45,10 +45,12 @@ const EMPTY_BLOCKING_STATE = {
  * blocking-state themselves - the same "mutate a ref in place, force a
  * re-render via a version tick" pattern `AuthorInsightsDraftsProvider.jsx`
  * already established for the identical reason: this state doesn't
- * genuinely originate inside this component's own React tree, it's pushed
- * in from vanilla/other-Provider callers via a bridge, and the read bridges
- * above need to see a write immediately, in the same synchronous call stack,
- * regardless of whether React has re-rendered yet. An earlier version of
+ * genuinely originate inside this component's own React tree - it's pushed
+ * in by other components (PrDataProvider's polling, AutoRenderBlockingSync)
+ * through the actions Context, and the actions' read functions need to see
+ * a write immediately, in the same synchronous call stack, regardless of
+ * whether React has re-rendered yet. (Those were window.* bridges before
+ * window-bridge elimination Phases 3 and 7.4.) An earlier version of
  * this file used plain `useState` + `flushSync` to get that same same-tick
  * freshness - that broke in the real app (not caught by jsdom/jest) because
  * the blocking-state push is invoked from *inside* another component's own

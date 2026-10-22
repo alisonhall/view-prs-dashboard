@@ -8240,8 +8240,8 @@ describe("index page rendering with Testing Library", () => {
       });
 
       // The indicator only becomes visible once a poll actually has a
-      // payload queued (renderAutoRenderBlockedIndicator's own isBlocked
-      // check requires both pendingAutoRenderPayload and
+      // payload queued (AutoRenderBlockingProvider's isBlocked requires
+      // both pendingAutoRenderPayload and
       // hasDirtyPrSectionsFields) - not from the dirty flag alone.
       const indicator = document.getElementById("auto-render-blocked-indicator");
       expect(indicator).toHaveAttribute("hidden");

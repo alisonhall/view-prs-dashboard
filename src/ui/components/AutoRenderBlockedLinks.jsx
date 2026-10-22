@@ -19,7 +19,10 @@
  * @module components/AutoRenderBlockedLinks
  */
 
+import { useEffect } from 'react';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { useAutoRenderBlocking } from '../state/AutoRenderBlockingContext';
+import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 import { useNavigateToAuthorInsights } from '../state/useNavigateToAuthorInsights';
 
@@ -57,4 +60,33 @@ export function AutoRenderBlockedLinks({ prNumbers = [], authorLogins = [] }) {
       })}
     </>
   );
+}
+
+/**
+ * Window-bridge elimination Phase 7.4: the chips as react-app.jsx mounts them
+ * (portaled into the static #auto-render-blocked-pr-links element, passed
+ * here as `container`). Reads the blocking PRs/authors from
+ * AutoRenderBlockingProvider, and sets the container's own `hidden` (when
+ * nothing blocks) and `aria-label` (the PR label, or the blocking authors'
+ * display names). Both used to come from index.page.js: the attributes from
+ * renderAutoRenderBlockedLinks, the lists through
+ * window.updateReactAutoRenderBlockedLinks into AppRoot state. Needs an
+ * AuthorInsightsProvider ancestor for the display names.
+ */
+export function AutoRenderBlockedLinksLive({ container }) {
+  const { blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel } = useAutoRenderBlocking();
+  const { getAuthorInsightsDisplayName } = useAuthorInsights();
+
+  useEffect(() => {
+    const { buildAutoRenderBlockedLinksAriaLabel } = createPrAutoRenderIndicatorHelpers({
+      getAuthorInsightsDisplayName,
+    });
+    container.hidden = blockingPrNumbers.length === 0 && blockingAuthorInsightsLogins.length === 0;
+    container.setAttribute(
+      'aria-label',
+      buildAutoRenderBlockedLinksAriaLabel({ blockingPrLabel, blockingAuthorInsightsLogins }),
+    );
+  }, [container, blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel, getAuthorInsightsDisplayName]);
+
+  return <AutoRenderBlockedLinks prNumbers={blockingPrNumbers} authorLogins={blockingAuthorInsightsLogins} />;
 }

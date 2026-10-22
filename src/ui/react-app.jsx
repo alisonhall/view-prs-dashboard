@@ -24,7 +24,7 @@ import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './compone
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
-import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
+import { AutoRenderBlockedLinksLive } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { BackfillControls } from './components/BackfillControls';
@@ -60,9 +60,6 @@ import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
 import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
-import { useAutoRenderBlocking } from './state/AutoRenderBlockingContext';
-import { useAuthorInsights } from './state/AuthorInsightsContext';
-import { createPrAutoRenderIndicatorHelpers } from './helpers/pr-auto-render-indicator.helpers.js';
 import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
 import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
@@ -635,29 +632,9 @@ function PrTablePortal({ container }) {
   );
 }
 
-// Window-bridge elimination Phase 7.4: the "jump to unsaved" chips read the
-// blocking PRs/authors from AutoRenderBlockingProvider, and this sets the
-// chip list's own `hidden`/`aria-label` (a static index.html element, the
-// portal's container). Both used to come from index.page.js: the
-// attributes from renderAutoRenderBlockedLinks, the lists through
-// window.updateReactAutoRenderBlockedLinks into AppRoot state.
-function AutoRenderBlockedLinksLive({ container }) {
-  const { blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel } = useAutoRenderBlocking();
-  const { getAuthorInsightsDisplayName } = useAuthorInsights();
-
-  useEffect(() => {
-    const { buildAutoRenderBlockedLinksAriaLabel } = createPrAutoRenderIndicatorHelpers({
-      getAuthorInsightsDisplayName,
-    });
-    container.hidden = blockingPrNumbers.length === 0 && blockingAuthorInsightsLogins.length === 0;
-    container.setAttribute(
-      'aria-label',
-      buildAutoRenderBlockedLinksAriaLabel({ blockingPrLabel, blockingAuthorInsightsLogins }),
-    );
-  }, [container, blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel, getAuthorInsightsDisplayName]);
-
-  return <AutoRenderBlockedLinks prNumbers={blockingPrNumbers} authorLogins={blockingAuthorInsightsLogins} />;
-}
+// Window-bridge elimination Phase 7.4: AutoRenderBlockedLinksLive (in
+// AutoRenderBlockedLinks.jsx) renders the "jump to unsaved" chips from
+// AutoRenderBlockingProvider and sets the chip list's `hidden`/`aria-label`.
 
 function MergedRequestMoreActionLive() {
   const { isVisible, repo } = useMergedRequestMoreActionOptions();
