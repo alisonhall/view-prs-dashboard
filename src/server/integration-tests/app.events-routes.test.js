@@ -58,6 +58,20 @@ const readFramesUntil = async (response, until, { maxChunks = 50 } = {}) => {
   return { text, reader };
 };
 
+// Polls `check` until it returns true or the deadline passes, instead of
+// sleeping a fixed time. The server notices a dropped connection (its
+// req "close" handler) only after the abort reaches it, and a fixed 100 ms
+// wait here failed once under full-suite load (with a 1 ms wait it fails
+// every time). Returns the last result so the caller's assertion still
+// reports a clear failure.
+const waitForCondition = async (check, { timeoutMs = 5000, intervalMs = 10 } = {}) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!check() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return check();
+};
+
 describe("GET /view-prs/events", () => {
   jest.setTimeout(20000);
 
@@ -82,12 +96,16 @@ describe("GET /view-prs/events", () => {
     const { server, emit } = createTestServer();
     try {
       const response = await fetch(`${baseUrl(server)}/view-prs/events`);
-      const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let text = "";
-      // Drain the initial snapshot frame first.
-      const { value: first } = await reader.read();
-      text += decoder.decode(first, { stream: true });
+      // Drain the initial snapshot frame first - read until it's complete
+      // (its blank-line terminator), not just the first chunk, which isn't
+      // guaranteed to hold the whole frame.
+      const snapshot = await readFramesUntil(
+        response,
+        (acc) => acc.includes("event: snapshot") && acc.includes("\n\n"),
+      );
+      const { reader } = snapshot;
+      let { text } = snapshot;
       expect(text).toContain("event: snapshot");
 
       emit({ type: "job", job: "autoRefresh", phase: "start", seq: 1 });
@@ -154,7 +172,7 @@ describe("GET /view-prs/events", () => {
       expect(getJobEventsSubscriberCount()).toBe(1);
 
       controller.abort();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForCondition(() => getJobEventsSubscriberCount() === 0);
 
       expect(getJobEventsSubscriberCount()).toBe(0);
     } finally {

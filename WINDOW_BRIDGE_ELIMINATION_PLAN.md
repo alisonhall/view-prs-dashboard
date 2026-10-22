@@ -101,7 +101,7 @@ The plan is complete. Phase 7 deleted `index.page.js`, and the three test-only g
 10. **When e2e fails in clusters of `page.goto`/`waitForSelector` timeouts, check machine load before debugging** (`Get-CimInstance Win32_Processor` LoadPercentage, then the top processes). In 7.4, another local session's CPU stress test (a busy loop on every core) made two full runs fail 9 and 7 tests; an unmodified worktree of the previous commit failed the same tests under that load. Compare against a clean worktree under the same conditions (junction `node_modules` into it), and rerun once the machine is idle.
 
 ### Known, unrelated, left alone
-- `src/server/integration-tests/app.events-routes.test.js` heartbeat test (50 ms interval, fixed 100 ms wait) flaked once under full-suite load.
+- ~~`src/server/integration-tests/app.events-routes.test.js` heartbeat test (50 ms interval, fixed 100 ms wait) flaked once under full-suite load.~~ Fixed after the plan: the fixed wait was in the neighbouring "dropping the connection unsubscribes" test; it polls now (see `REACT_MIGRATION_PLAN.md`).
 - ~~`PrDataProvider`'s `value` object is not memoized (pre-existing amplifier for lesson 1).~~ Fixed after the plan: memoized, with a regression test (see `REACT_MIGRATION_PLAN.md`).
 - `view-prs.code-workspace` has an uncommitted user change (a Peacock `statusBar.inactiveBackground` colour) - not part of this work; don't commit it unasked.
 - The dotfiles repo (`/Users/alihall/Sites/Personal/dotfiles`) has two local commits for the `PATH` fix (`c3a663e`, `7689e5e`, not pushed) and other uncommitted changes of the user's.

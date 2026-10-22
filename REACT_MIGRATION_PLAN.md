@@ -2944,6 +2944,15 @@ From WINDOW_BRIDGE_ELIMINATION_PLAN.md's "Known, unrelated, left alone" list (th
 - **Test** (`PrDataProvider.test.jsx`, +1): under the real `StatusTextProvider`/`SnackbarProvider`, five status updates plus a snackbar show/hide don't re-render a `React.memo` `usePrData()` consumer, and an actual payload change still reaches it exactly once. Before the fix: 7 extra renders.
 - `lint:check` clean; `test:ci` 2625 passed + 1 skipped (2624 + 1); `test:e2e` 59/59. Windows local run.
 
+## ✅ **`app.events-routes.test.js` flake fixed (2026-10-22)**
+
+From WINDOW_BRIDGE_ELIMINATION_PLAN.md's "Known, unrelated, left alone" list. It was recorded as "the heartbeat test (50 ms interval, fixed 100 ms wait)", but the heartbeat test has no time window (it reads until `: keep-alive` arrives). The fixed 100 ms wait is in the next test, "dropping the connection unsubscribes the listener": it aborts the request, sleeps 100 ms, and expects the server's `close` cleanup to have run. Which test failed that one time wasn't recorded, so the fix covers both timing assumptions in the file.
+
+- **Fixed wait → polling.** New `waitForCondition` polls until the subscriber count is 0 (5 s deadline) instead of sleeping. Shrinking the old wait to 1 ms failed 3/3, so it passed only while the server saw the close within 100 ms. With polling, a route that never unsubscribes still fails (expected 0, received 1, after the deadline).
+- **Snapshot read.** "delivers an emitted job event" assumed the first chunk held the whole snapshot frame; it now reads until the frame's blank-line terminator.
+- 10 consecutive runs pass, and 3/3 with every core (16) busy.
+- `lint:check` clean; `test:ci` 2625 passed + 1 skipped (unchanged); `test:e2e` 59/59. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**
