@@ -13,7 +13,8 @@ export default defineConfig([
     // the ESLintIgnoreWarning) - migrated here so they're actually honored.
     // REACT_MIGRATION_PLAN.md is new: one of its lines has grown past 150K
     // characters, which sends the markdown parser into a multi-hour hang -
-    // confirmed by timing `eslint REACT_MIGRATION_PLAN.md` alone against a
+    // confirmed by timing `eslint REACT_MIGRATION_PLAN.md` (now under
+    // docs/history/) alone against a
     // 20s timeout with no completion, vs. a normal few seconds once excluded.
     ignores: [
       "**/package-lock.json",
@@ -24,7 +25,7 @@ export default defineConfig([
       "PHASE_*.md",
       "PHASES_*.md",
       "ROADMAP.md",
-      "REACT_MIGRATION_PLAN.md",
+      "docs/history/REACT_MIGRATION_PLAN.md",
       "src/ui/vendor/**",
       // Tool scaffolding/sample content, not authored project docs - its
       // sample prompt deliberately lists literal special characters

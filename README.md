@@ -55,7 +55,8 @@ Compatibility note: migration shims were removed in Phase 3. Use canonical `src/
 ## Architecture Snapshot
 
 - Planning and phased modernization checklist: `AI_MODERNIZATION_PLAN.md`
-- Vanilla-to-React UI migration (complete): `REACT_MIGRATION_PLAN.md`
+- Vanilla-to-React UI migration (complete): `docs/history/REACT_MIGRATION_PLAN.md`
+- Window-bridge elimination, the migration's last step (complete): `docs/history/WINDOW_BRIDGE_ELIMINATION_PLAN.md`
 - Server-side helper extraction/integration status: `PHASE_8_STATUS.md`
 
 High-level layering intent:

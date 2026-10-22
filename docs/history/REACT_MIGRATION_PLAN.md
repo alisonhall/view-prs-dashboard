@@ -8,7 +8,9 @@
 > point. This file is now a log of how the migration was done and why. 🟡/🚧
 > markers on individual entries reflect the state when each was written. The
 > one thing it names as out of scope, virtual scrolling, lives in
-> `ROADMAP.md` as a separate feature.
+> `ROADMAP.md` (repo root) as a separate feature. Moved to `docs/history/`
+> on 2026-10-22; code comments still cite it by bare filename ("see
+> REACT_MIGRATION_PLAN.md"), which a filename search finds.
 
 ## 🎯 **Overview**
 

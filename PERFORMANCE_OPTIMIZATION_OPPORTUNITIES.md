@@ -1,7 +1,7 @@
 # Performance Optimization Opportunities
 
 > **Note (2026-09-15):** the PR table has since been migrated to React (see
-> `REACT_MIGRATION_PLAN.md`, now complete). That migration's own Phase 5
+> `docs/history/REACT_MIGRATION_PLAN.md`, now complete). That migration's own Phase 5
 > ("Performance Tuning") superseded #7 and #8 below with a different
 > mechanism than either originally proposed - see those items for details.
 > Everything else here (the completed vanilla debouncing work, and the

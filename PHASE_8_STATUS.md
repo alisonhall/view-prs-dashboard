@@ -1,7 +1,7 @@
 # Phase 8: Server Entry Point Refactoring - Status
 
 **Part of:** `AI_MODERNIZATION_PLAN.md`'s Phase 8 (server-side, unrelated to
-`REACT_MIGRATION_PLAN.md`'s client-UI work - do not confuse the two).
+`docs/history/REACT_MIGRATION_PLAN.md`'s client-UI work - do not confuse the two).
 
 **This single file replaces 9 separate session-snapshot docs** (`PHASE_8_FINAL_INTEGRATION_PLAN.md`,
 `PHASE_8_FINAL_STATUS.md`, `PHASE_8_FINAL_SUMMARY.md`, `PHASE_8_GATE_VALIDATION.md`,

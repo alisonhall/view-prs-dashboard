@@ -1,5 +1,9 @@
 # Eliminate remaining window.* bridges: vanilla callers, perf-avoidance pattern, and test-only bridge
 
+> **Status (2026-10-22): complete; historical record.** Moved to `docs/history/`
+> alongside `REACT_MIGRATION_PLAN.md`. Code comments cite both by bare
+> filename. The "Lessons" section below is still useful working guidance.
+
 Policy: no bridge may be declared "structurally necessary" without proof. Bridges with a vanilla caller get that caller migrated; bridges kept to dodge a Context re-render get a real React pattern; the test-only bridge (`persistViewFilterOptionOverrides`) gets its tests fixed and is deleted.
 
 ## Context

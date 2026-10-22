@@ -92,4 +92,4 @@ For detailed performance analysis, see [`PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.
 
 ### React Migration
 
-For planned steps, see [`REACT_MIGRATION_PLAN.md`](REACT_MIGRATION_PLAN.md).
+The React migration is complete; its history is in [`docs/history/REACT_MIGRATION_PLAN.md`](docs/history/REACT_MIGRATION_PLAN.md).
