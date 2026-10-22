@@ -1,9 +1,14 @@
 /** @jest-environment jsdom */
 
+const { memo } = require('react');
 const { render, act } = require('@testing-library/react');
 const { PrDataProvider } = require('./PrDataProvider');
 const { usePrData } = require('./PrDataContext');
+const { usePrDataActions } = require('./PrDataActionsContext');
 const { BackfillStatusActionsContext } = require('./BackfillStatusContext');
+const { AutoRenderBlockingActionsContext } = require('./AutoRenderBlockingContext');
+const { StatusTextContext } = require('./StatusTextContext');
+const { SnackbarContext } = require('./SnackbarContext');
 
 // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // pollBackfillStatus reads the tracking flags from BackfillStatusProvider's
@@ -320,6 +325,179 @@ describe('PrDataProvider', () => {
       });
 
       expect(loadBackfillStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the data pipeline (loadStoredData/renderPrData/applyFreshPrPayload/...)
+  // moved here from index.page.js.
+  describe('data pipeline', () => {
+    const PAYLOAD = {
+      ok: true,
+      byPrNumber: { 7: { prNumber: '7' } },
+      lastRun: { repo: 'owner/repo', updatedAt: '2026-10-21T10:00:00Z' },
+      dataMeta: { dataVersion: 'v1' },
+    };
+
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    let latest;
+    let actions;
+    function Probe() {
+      latest = usePrData();
+      actions = usePrDataActions();
+      return null;
+    }
+
+    const renderWithContexts = ({
+      loadOnMount = false,
+      setStatusText = () => {},
+      showError = () => {},
+      autoRenderActions = {},
+      backfillActions = {},
+      children = <Probe />,
+    } = {}) =>
+      render(
+        <StatusTextContext.Provider value={{ statusText: '', setStatusText }}>
+          <SnackbarContext.Provider value={{ showError, showWarning: () => {}, hide: () => {} }}>
+            <BackfillStatusActionsContext.Provider
+              value={{
+                getBackfillTrackingState: () => ({ isBackfillRunning: false, isBackfillActionPending: false }),
+                updateBackfillStatusFromPayload: () => {},
+                ...backfillActions,
+              }}
+            >
+              <AutoRenderBlockingActionsContext.Provider
+                value={{
+                  getHasDirtyPrSectionsFields: () => false,
+                  getPendingAutoRenderPayload: () => null,
+                  setPendingAutoRenderPayload: () => {},
+                  setFreshPayloadApplier: () => {},
+                  ...autoRenderActions,
+                }}
+              >
+                <PrDataProvider loadOnMount={loadOnMount}>{children}</PrDataProvider>
+              </AutoRenderBlockingActionsContext.Provider>
+            </BackfillStatusActionsContext.Provider>
+          </SnackbarContext.Provider>
+        </StatusTextContext.Provider>,
+      );
+
+    test('given loadOnMount, when mounted, then it fetches /view-prs/data once and renders that payload with its resolved repo', async () => {
+      const updateBackfillStatusFromPayload = jest.fn();
+      global.fetch = jest.fn(async () => ({ ok: true, json: async () => PAYLOAD }));
+
+      renderWithContexts({ loadOnMount: true, backfillActions: { updateBackfillStatusFromPayload } });
+      expect(latest.hasRenderedPrData).toBe(false);
+      await act(async () => {});
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith('/view-prs/data');
+      expect(latest.payload).toEqual(PAYLOAD);
+      expect(latest.selectedRepo).toBe('owner/repo');
+      expect(latest.hasRenderedPrData).toBe(true);
+      expect(actions.getLatestStoredPayload()).toEqual(PAYLOAD);
+      expect(updateBackfillStatusFromPayload).toHaveBeenCalledWith(PAYLOAD);
+    });
+
+    test('given no loadOnMount, when mounted, then it never fetches', async () => {
+      global.fetch = jest.fn();
+
+      renderWithContexts();
+      await act(async () => {});
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(latest.hasRenderedPrData).toBe(false);
+    });
+
+    test('given the initial fetch fails, when mounted with loadOnMount, then it sets the failure status and shows an error snackbar, without rendering', async () => {
+      const setStatusText = jest.fn();
+      const showError = jest.fn();
+      global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({ ok: false, error: 'boom' }) }));
+
+      renderWithContexts({ loadOnMount: true, setStatusText, showError });
+      await act(async () => {});
+
+      expect(setStatusText).toHaveBeenCalledWith('Failed to load stored data');
+      expect(showError).toHaveBeenCalledTimes(1);
+      expect(showError.mock.calls[0][0]).toBe('Failed to load stored data');
+      expect(latest.hasRenderedPrData).toBe(false);
+    });
+
+    test('given applyFreshPrPayload, when called, then it displays the payload, clears the pending auto-render payload, and pushes its backfill status', () => {
+      const setPendingAutoRenderPayload = jest.fn();
+      const updateBackfillStatusFromPayload = jest.fn();
+      renderWithContexts({
+        autoRenderActions: { setPendingAutoRenderPayload },
+        backfillActions: { updateBackfillStatusFromPayload },
+      });
+
+      act(() => {
+        actions.applyFreshPrPayload(PAYLOAD, 'other/repo');
+      });
+
+      expect(latest.payload).toBe(PAYLOAD);
+      expect(latest.selectedRepo).toBe('other/repo');
+      expect(latest.hasRenderedPrData).toBe(true);
+      expect(actions.getLatestStoredPayload()).toBe(PAYLOAD);
+      expect(setPendingAutoRenderPayload).toHaveBeenCalledWith(null);
+      expect(updateBackfillStatusFromPayload).toHaveBeenCalledWith(PAYLOAD);
+    });
+
+    test('given applyLatestPrData, when called, then the newest stored payload changes but the displayed one does not', () => {
+      renderWithContexts();
+      const displayedBefore = latest.payload;
+
+      act(() => {
+        actions.applyLatestPrData({ payload: PAYLOAD });
+      });
+
+      expect(actions.getLatestStoredPayload()).toBe(PAYLOAD);
+      expect(latest.payload).toBe(displayedBefore);
+    });
+
+    test('given the auto-render-blocking Provider above it, when mounted and unmounted, then it registers its applyFreshPrPayload and then clears it', () => {
+      const setFreshPayloadApplier = jest.fn();
+      const { unmount } = renderWithContexts({ autoRenderActions: { setFreshPayloadApplier } });
+
+      expect(setFreshPayloadApplier).toHaveBeenLastCalledWith(actions.applyFreshPrPayload);
+      unmount();
+      expect(setFreshPayloadApplier).toHaveBeenLastCalledWith(null);
+    });
+
+    // Lessons 1-2 of the plan: hooks in AppRoot's body read these actions, so
+    // an identity change on every payload update would re-render AppRoot and
+    // (via useBackfillTabAutoRefresh-style effects) can start request loops.
+    test('given repeated payload updates, when the actions are read, then their identity never changes and a memoized consumer of them does not re-render', () => {
+      let renders = 0;
+      let firstActions;
+      const ActionsConsumer = memo(function ActionsConsumer() {
+        const consumed = usePrDataActions();
+        renders += 1;
+        firstActions = firstActions || consumed;
+        return null;
+      });
+      renderWithContexts({
+        children: (
+          <>
+            <Probe />
+            <ActionsConsumer />
+          </>
+        ),
+      });
+      const rendersAfterMount = renders;
+
+      act(() => {
+        actions.applyFreshPrPayload(PAYLOAD, 'owner/repo');
+      });
+      act(() => {
+        actions.applyFreshPrPayload({ ...PAYLOAD, byPrNumber: {} }, 'owner/repo');
+      });
+
+      expect(actions).toBe(firstActions);
+      expect(renders).toBe(rendersAfterMount);
     });
   });
 });

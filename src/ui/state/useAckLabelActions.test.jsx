@@ -11,6 +11,7 @@ const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { StatusTextContext } = require('./StatusTextContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
+const { PrDataActionsContext } = require('./PrDataActionsContext');
 
 function Probe({ onReady }) {
   const ackLabelActions = useAckLabelActions();
@@ -58,7 +59,11 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
             React.createElement(
               RequestActivityContext.Provider,
               { value: activity },
-              React.createElement(Probe, { onReady }),
+              React.createElement(
+                PrDataActionsContext.Provider,
+                { value: prDataActions },
+                React.createElement(Probe, { onReady }),
+              ),
             ),
           ),
         ),
@@ -73,16 +78,23 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
 // Context's own no-op defaults (PrActivityQueueContext.jsx) are used
 // automatically, so the 3 tests below (which don't exercise busy/queued
 // behavior directly) need no Provider wrapper to keep passing.
-const ACK_LABEL_WINDOW_BRIDGES = [
-  'summarizeAckRefreshWarnings',
-  'applyFreshPrPayload',
-  'loadStoredData',
-  'getLatestStoredPayload',
-];
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// applyFreshPrPayload/loadStoredData/getLatestStoredPayload come from
+// PrDataActionsContext now, not window.* bridges - tests assign fields on
+// `prDataActions` (reset after each test) before rendering.
+// summarizeAckRefreshWarnings is a plain import, so it's the real one here.
+const makePrDataActions = () => ({
+  loadStoredData: async () => null,
+  applyFreshPrPayload: () => {},
+  applyLatestPrData: () => {},
+  getLatestStoredPayload: () => null,
+});
+let prDataActions = makePrDataActions();
 
 describe('useAckLabelActions', () => {
   afterEach(() => {
-    ACK_LABEL_WINDOW_BRIDGES.forEach((name) => delete window[name]);
+    prDataActions = makePrDataActions();
     activity = makeActivity();
     setOutputText = () => {};
     delete global.fetch;
@@ -92,7 +104,7 @@ describe('useAckLabelActions', () => {
     const statusMessages = [];
     const applyFreshPrPayload = jest.fn();
     setOutputText = jest.fn();
-    window.applyFreshPrPayload = applyFreshPrPayload;
+    prDataActions.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -150,8 +162,8 @@ describe('useAckLabelActions', () => {
       status: 200,
       json: async () => ({ ok: true, prData: null }),
     });
-    window.loadStoredData = jest.fn().mockResolvedValue(undefined);
-    window.getLatestStoredPayload = jest.fn().mockReturnValue({ byPrNumber: {} });
+    prDataActions.loadStoredData = jest.fn().mockResolvedValue(undefined);
+    prDataActions.getLatestStoredPayload = jest.fn().mockReturnValue({ byPrNumber: {} });
 
     let ackLabelActions;
     renderProbe((value) => { ackLabelActions = value; }, {

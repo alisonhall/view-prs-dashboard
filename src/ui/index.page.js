@@ -6,16 +6,12 @@
 // to work unmodified (this file's own <script> tag is now type="module",
 // see index.html) until it's converted too.
 import * as formParsingHelpersModule from "./helpers/form-parsing.helpers.js";
-import * as prEntryDerivedCacheHelperFactory from "./helpers/pr-entry-derived-cache.helpers.js";
 import * as prFormattingHelperFactory from "./helpers/pr-formatting.helpers.js";
 import * as prUiOptionScrollHelperFactory from "./helpers/pr-ui-option-scroll.helpers.js";
 import * as prSchedulerStatusHelperFactory from "./helpers/pr-scheduler-status.helpers.js";
 import * as prDomAccessHelperFactory from "./helpers/pr-dom-access.helpers.js";
 import * as prDomTraversalHelperFactory from "./helpers/pr-dom-traversal.helpers.js";
-import * as prRepoRunContextHelperFactory from "./helpers/pr-repo-run-context.helpers.js";
 import * as prViewerContextHelperFactory from "./helpers/pr-viewer-context.helpers.js";
-import * as prStoredDataLoadHelperFactory from "./helpers/pr-stored-data-load.helpers.js";
-import * as prRenderViewerFilterSetupHelperFactory from "./helpers/pr-render-viewer-filter-setup.helpers.js";
 import * as prAutoRenderUnsavedHelperFactory from "./helpers/pr-auto-render-unsaved.helpers.js";
 import * as prAuthorInsightsIdentityHelperFactory from "./helpers/pr-author-insights-identity.helpers.js";
 import * as prAuthorInsightsDraftsHelperFactory from "./helpers/pr-author-insights-drafts.helpers.js";
@@ -24,7 +20,6 @@ import * as prAutoRenderIndicatorHelperFactory from "./helpers/pr-auto-render-in
 import * as prAutoRenderIndicatorLinksHelperFactory from "./helpers/pr-auto-render-indicator-links.helpers.js";
 import * as prAutoRenderStateHelperFactory from "./helpers/pr-auto-render-state.helpers.js";
 import * as prFilterPanelHelperFactory from "./helpers/pr-filter-panel.helpers.js";
-import * as prDataPollingHelperFactory from "./helpers/pr-data-polling.helpers.js";
 import * as prHttpHelperFactory from "./helpers/pr-http.helpers.js";
 import * as prStatusDisplayHelperFactory from "./helpers/pr-status-display.helpers.js";
 import * as prCommandOutputHelperFactory from "./helpers/pr-command-output.helpers.js";
@@ -37,6 +32,7 @@ import {
   buildFailureSnackbarNotification,
   isTimeoutFailureMessage,
 } from "./helpers/pr-failure-snackbar.helpers.js";
+import { summarizeAckRefreshWarnings } from "./helpers/pr-ack-refresh-warnings.helpers.js";
 // DEFAULT_REPO now imported from helpers/pr-default-repo.helpers.js (Phase
 // 7, see REACT_MIGRATION_PLAN.md) everywhere it's needed -
 // PrJsonModal.jsx/AuthorInsightsPrLink.jsx import it directly instead of
@@ -48,48 +44,13 @@ const AUTO_DATA_POLL_MS = 30000;
 const AUTO_BACKFILL_POLL_MS = 5000;
 const BACKFILL_LOG_TAIL_LINES = 120;
 
-// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// lastRenderedRunStamp/lastSeenDataVersion/lastRenderedPrFingerprint/
-// lastRenderedMetaFingerprint/latestPrManifest/supportsDataMetaPolling/
-// supportsDataManifestPolling used to be module `let`s here - moved into
-// PrDataProvider.jsx's own trackingRef, which now builds pollForDataChanges
-// itself. Every former write site redirects through the new
-// window.pushPrDataPollingTrackingState(partial) bridge instead.
-// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): lastSuccessfulRenderedCheckAt (which used to stay here as
-// prDataTabOrchestrator's own tab-activation-catch-up concern) is deleted
-// too, along with the orchestrator itself - its only reader was that
-// orchestrator's own stateGetters.getLastSuccessfulRenderedCheckAt.
-// Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): lastSuccessfulPollCheckAt/lastPollErrorAt/hasActivePollWarning
-// moved into PrDataProvider.jsx's own trackingRef - markPollSuccess/
-// showPollFailureWarning (their only reader/writer) moved there too, since
-// pollForDataChanges (their only real caller) already lives there.
-let latestStoredPayload = null;
-let latestSelectedRepo = "";
-
-// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md):
-// centralizes every write to the latestStoredPayload/latestSelectedRepo
-// pair, which used to be assigned independently at 8+ call sites with no
-// coordination between them (the original migration audit's flagged
-// highest-risk gap - "no request-generation guard beyond content
-// fingerprinting"). Passing `undefined` for either field leaves it
-// unchanged, matching each call site's own existing behavior exactly (e.g.
-// applyResolvedRepo only ever updated the repo, never the payload). This is
-// a pure call-site consolidation, not a behavior change - every caller
-// still computes its own next value (including any `x || previousValue`
-// fallback) the same way it did before, just passes the result in here
-// instead of assigning the module `let`s directly.
-const applyLatestPrData = ({ payload, selectedRepo } = {}) => {
-  if (payload !== undefined) {
-    latestStoredPayload = payload;
-  }
-  if (selectedRepo !== undefined) {
-    latestSelectedRepo = selectedRepo;
-  }
-};
-
-let currentActorLoginAliases = {};
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// latestStoredPayload/latestSelectedRepo/applyLatestPrData, and the render
+// pipeline that wrote them (renderPrData/applyFreshPrPayload/loadStoredData,
+// the fingerprint/manifest helpers, mountReactTable/updateReactTable), moved
+// into state/PrDataProvider.jsx, which owns the PR data now and published it
+// on PrDataActionsContext. Their window.* bridges are deleted, and so is the
+// initial loadStoredData() call in initPage: the Provider fetches on mount.
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 4): supportsBackfillLogPolling/lastBackfillStateKey/
 // isBackfillActionPending/isBackfillRunning moved into
@@ -189,46 +150,10 @@ const notifyFailureSnackbar = (
 // own comment), the only place either function's one real caller
 // (pollForDataChanges) has ever lived.
 
-const summarizeAckRefreshWarnings = (
-  refreshErrors = [],
-  maxSampleItems = 5,
-) => {
-  const normalizedErrors = Array.isArray(refreshErrors)
-    ? refreshErrors.filter((entry) => entry && typeof entry === "object")
-    : [];
-
-  if (normalizedErrors.length === 0) {
-    return null;
-  }
-
-  const skippedCount = normalizedErrors.filter((entry) =>
-    String(entry?.error || "")
-      .trim()
-      .toLowerCase()
-      .startsWith("skipped:"),
-  ).length;
-  const failedCount = Math.max(0, normalizedErrors.length - skippedCount);
-  const sample = normalizedErrors
-    .slice(0, Math.max(1, Number(maxSampleItems) || 5))
-    .map((entry) => {
-      const pr = String(entry?.prNumber || "?").trim();
-      const reason = String(entry?.error || "").trim() || "Refresh issue";
-      return `#${pr}: ${reason}`;
-    })
-    .join("\n");
-
-  const summaryParts = [];
-  if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
-  if (failedCount > 0) summaryParts.push(`${failedCount} failed`);
-
-  return {
-    skippedCount,
-    failedCount,
-    summaryText:
-      summaryParts.join(", ") || `${normalizedErrors.length} issue(s)`,
-    sample,
-  };
-};
+// summarizeAckRefreshWarnings now lives in helpers/pr-ack-refresh-warnings.helpers.js
+// (window-bridge elimination Phase 7) - useAckLabelActions.jsx imports it
+// directly instead of reading window.summarizeAckRefreshWarnings. Imported
+// here only for __testables (below).
 
 const markInputAsNonCredentialField = (
   input,
@@ -370,9 +295,6 @@ const { getOptionalElementById, readElementAttribute } =
 const { collectNodesByClass } =
   prDomTraversalHelperFactory.createPrDomTraversalHelpers();
 
-const { deriveRepoRunContext } =
-  prRepoRunContextHelperFactory.createPrRepoRunContextHelpers();
-
 // Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 1): collectNodesByClass/capturePrSectionOpenState/
 // buildAppliedSummaryViewModel/buildGroupedPrSections/normalizeSelectedScope/
@@ -388,37 +310,17 @@ const { deriveRepoRunContext } =
 // other reader anywhere (confirmed via grep, not assumed - several of
 // these functions' own doc comments already claimed a surviving purpose
 // that turned out stale once actually traced, e.g. getNeedsAttentionConfig
-// was superseded by NeedsAttentionProvider.jsx back in H.18). deriveRepoRunContext
-// above and deriveViewerContext/deriveViewerFilterSetup below are the only
-// 2 survivors from this same original factory cluster - both still feed
-// real, live behavior (repo resolution, and actor-login-alias/viewer-login
-// bookkeeping genuinely read elsewhere, see deriveViewerFilterSetup's own
-// comment), so renderPrData now calls them directly instead of through the
-// deleted pipeline. See Phase H.23's own plan entry for the full accounting.
+// was superseded by NeedsAttentionProvider.jsx back in H.18). See Phase
+// H.23's own plan entry for the full accounting. Of the 2 survivors H.23
+// left, deriveRepoRunContext moved to PrDataProvider with renderPrData
+// (window-bridge elimination Phase 7); deriveViewerContext (below) still
+// feeds this file's actor-login aliases (see getCurrentActorLoginAliases).
 
 const { deriveViewerContext } =
   prViewerContextHelperFactory.createPrViewerContextHelpers({
     normalizeActorLoginAliases: (...args) => normalizeActorLoginAliases(...args),
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     inferViewerLoginFromPage: (...args) => inferViewerLoginFromPage(...args),
-  });
-
-const { loadStoredData } =
-  prStoredDataLoadHelperFactory.createPrStoredDataLoadHelpers({
-    fetch: (...args) => fetch(...args),
-    beginRequestActivity: (...args) => beginRequestActivity(...args),
-    setLastSeenDataVersion: (value) => {
-      window.pushPrDataPollingTrackingState?.({ lastSeenDataVersion: value });
-    },
-    setLastRenderedRunStamp: (value) => {
-      window.pushPrDataPollingTrackingState?.({ lastRenderedRunStamp: value });
-    },
-    setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
-    getLatestSelectedRepo: () => latestSelectedRepo,
-    setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
-    updateBackfillStatusFromPayload: (...args) =>
-      updateBackfillStatusFromPayload(...args),
-    renderPrData: (...args) => renderPrData(...args),
   });
 
 // Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
@@ -442,47 +344,32 @@ const { loadStoredData } =
 // only forces a wasteful whole-app re-render, nothing else. See Phase
 // H.26's own plan entry for the full writeup.
 
-// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): the real, still-live reason this survives the rest of the
-// deleted pipeline - currentActorLoginAliases/currentViewerLogin (written
-// by commitViewerContext below) are read elsewhere in this file by
-// normalizeActorLogin's own default-param closure (helpers/
-// pr-actor-identity.helpers.js's getActorLoginAliases DI, instantiated
-// further down), which getAuthorInsightsDisplayName/
-// getBlockingAuthorInsightsLogins both call with no explicit aliases
-// argument - a real, subtle dependency a first pass at this cluster missed
-// (the pipeline's only OTHER reader, getEffectiveViewerLogin, genuinely was
-// dead - see the deleted-functions comment above). Called directly from
-// renderPrData below now (with allEntries derived the same way
-// captureRenderContext used to: Object.values(payload?.byPrNumber || {})),
-// instead of through the deleted deriveRunPrDataContext/
-// deriveRenderPipelineState chain.
-const { deriveViewerFilterSetup } =
-  prRenderViewerFilterSetupHelperFactory.createPrRenderViewerFilterSetupHelpers({
-    deriveViewerContext: (...args) => deriveViewerContext(...args),
-    // currentViewerLogin (the sibling field this callback also receives)
-    // has zero readers left in this file - its only one,
-    // getEffectiveViewerLogin, was deleted outright this phase (Phase
-    // H.23) - so it's intentionally not captured here, unlike
-    // currentActorLoginAliases.
-    commitViewerContext: ({ currentActorLoginAliases: nextActorLoginAliases }) => {
-      currentActorLoginAliases =
-        nextActorLoginAliases && typeof nextActorLoginAliases === "object"
-          ? nextActorLoginAliases
-          : {};
-    },
-  });
-
-// Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): one
-// shared cache instance for the page's whole lifetime, not recreated per
-// render - its value comes entirely from persisting across renders (an
-// unchanged entry's derived values/filter-match result stay cached from
-// one render to the next). Still a real, live DI param of
-// prDataPollingHelperFactory below (its own getOrCompute) - unaffected by
-// Phase H.23's deletion of this file's OWN buildRowFilterCriteria/
-// applyRowUiFilters instance, which was this cache's only other consumer.
-const { getOrCompute: getOrComputeEntryDerivedValue } =
-  prEntryDerivedCacheHelperFactory.createEntryDerivedCache();
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// renderPrData (moved to PrDataProvider) used to commit currentActorLoginAliases
+// here, via deriveViewerFilterSetup, as a side effect of every render. Its
+// reader is normalizeActorLogin's default aliases (getAuthorInsightsDisplayName/
+// getBlockingAuthorInsightsLogins below), so derive it on demand from the
+// payload the table is showing instead, cached per payload so repeated calls
+// between renders don't re-walk every entry. The cache is claimed before
+// deriving: deriveViewerContext is wired to normalizeActorLogin, whose default
+// aliases come back here, so a nested call must get the previous aliases (as
+// the old module variable gave it) rather than recurse.
+let actorLoginAliasesCache = { payload: undefined, aliases: {} };
+const getCurrentActorLoginAliases = () => {
+  const payload = window.getReactPrTablePayload?.();
+  if (payload === actorLoginAliasesCache.payload) {
+    return actorLoginAliasesCache.aliases;
+  }
+  actorLoginAliasesCache = { payload, aliases: actorLoginAliasesCache.aliases };
+  const { currentActorLoginAliases } = payload
+    ? deriveViewerContext({ payload, allEntries: Object.values(payload.byPrNumber || {}) })
+    : {};
+  actorLoginAliasesCache.aliases =
+    currentActorLoginAliases && typeof currentActorLoginAliases === "object"
+      ? currentActorLoginAliases
+      : {};
+  return actorLoginAliasesCache.aliases;
+};
 
 // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // expandAncestorDetailsElements/ensureInsightsRowVisibleForElement (this
@@ -521,7 +408,7 @@ const { getAuthorInsightsDisplayName } =
     normalizeActorLogin: (...args) => normalizeActorLogin(...args),
     resolveActorDisplayName: (...args) => resolveActorDisplayName(...args),
     getLatestActorsMap: () =>
-      (window.getReactPrTablePayload?.() ?? latestStoredPayload)?.actorsMap || {},
+      window.getReactPrTablePayload?.()?.actorsMap || {},
   });
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): the draft/comment-cache CRUD
@@ -877,17 +764,6 @@ const { loadSchedulerStatus } = prSchedulerStatusHelperFactory.createPrScheduler
 // instead, and nothing else in this file calls this factory's output
 // directly.
 
-const {
-  computePrDataFingerprint,
-  computePrDataMetaFingerprint,
-  computePrDataManifest,
-  getManifestDelta,
-  mergeDataDeltaPayload,
-  getDataPollRenderAction,
-} = prDataPollingHelperFactory.createPrDataPollingHelpers({
-  getOrCompute: getOrComputeEntryDerivedValue,
-});
-
 const { postJson } = prHttpHelperFactory.createPrHttpHelpers({
   fetch: (...args) => fetch(...args),
 });
@@ -1085,7 +961,7 @@ const {
   resolveActorDisplayName,
 } = prActorIdentityHelperFactory.createPrActorIdentityHelpers({
   asArray,
-  getActorLoginAliases: () => currentActorLoginAliases,
+  getActorLoginAliases: () => getCurrentActorLoginAliases(),
 });
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): buildActivityEventKey/
@@ -1145,330 +1021,6 @@ const {
 // is also deleted (both only ever fed the now-deleted renderPrData
 // pipeline). state/useVisiblePrNumbers.jsx's own separate instance of this
 // same factory (the real, live row-filtering logic) is untouched.
-
-// Phase 6 (see REACT_MIGRATION_PLAN.md): renderPrData's two genuine
-// mount-failure branches used to fall back to a full vanilla table build,
-// treating a real React failure the same as the merely-not-loaded-yet
-// race. That vanilla table-build code has been removed - a real mount
-// failure (React threw while rendering, or its bundle never finished
-// loading at all) means the whole app is likely broken well beyond the
-// table, and a one-shot vanilla snapshot wouldn't get live updates from
-// there anyway, so this just surfaces a minimal, honest error state
-// instead of pretending to recover.
-const renderPrTableMountError = () => {
-  const container = getOptionalElementById("pr-sections");
-  if (!container) return;
-  container.innerHTML =
-    '<p class="pr-table-mount-error">Failed to load the PR table. Please refresh the page.</p>';
-};
-
-// Track C, slice C2b (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// replaces react-mount-bridge.js (deleted, along with its dedicated test
-// file) - that module was just a thin wrapper around
-// window.mountReactPrTable/window.updateReactPrTable (both still owned and
-// exposed by react-app.jsx) plus an isMounted() flag and a console-logging
-// layer; inlining it here removes one indirection layer with identical
-// behavior. Its unmount() was confirmed dead code (no production caller
-// anywhere in the app) and isn't ported.
-let reactTableMounted = false;
-
-const mountReactTable = (container, initialData) => {
-  if (!container) {
-    console.error("[ReactBridge] Cannot mount: no container element");
-    return false;
-  }
-  if (typeof window.mountReactPrTable !== "function") {
-    console.error(
-      "[ReactBridge] mountReactPrTable not available - is react-app.jsx loaded?",
-    );
-    return false;
-  }
-
-  try {
-    container.innerHTML = "";
-    window.mountReactPrTable(container, {
-      initialPayload: initialData.payload || {},
-      selectedRepo: initialData.selectedRepo || "",
-    });
-    reactTableMounted = true;
-    return true;
-  } catch (error) {
-    console.error("[ReactBridge] Error mounting React:", error);
-    return false;
-  }
-};
-
-const updateReactTable = (payload, selectedRepo) => {
-  if (!reactTableMounted || typeof window.updateReactPrTable !== "function") {
-    console.warn(
-      "[ReactBridge] Cannot update: React not mounted or update callback unavailable",
-    );
-    return;
-  }
-
-  try {
-    window.updateReactPrTable(payload, selectedRepo);
-  } catch (error) {
-    console.error("[ReactBridge] Error updating React:", error);
-  }
-};
-
-const isReactTableMounted = () => reactTableMounted;
-
-// Applies the render pipeline's actually-resolved repo (payload.repo ||
-// #repo input value || lastRun.repo - see deriveRepoRunContext) to
-// latestSelectedRepo/the label-refresh trigger. Pulled out of renderPrData
-// so both the React and non-React-yet branches (which each separately call
-// prDataTabOrchestrator.renderPrData) apply it identically, instead of only
-// the caller-supplied `selectedRepo` (frequently empty - e.g. the initial
-// page-load render passes ""), which is what let latestSelectedRepo/the
-// React table's own selectedRepo prop stay empty indefinitely, silently
-// falling back to lastRun.repo (whichever repo the background scheduler
-// most recently refreshed - not necessarily the user's configured repo)
-// while the just-computed visiblePrNumbers filter still reflected the
-// correct repo, filtering every row out.
-// Phase G.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// "refetch labels when the selected repo changes" trigger this function
-// used to also own (comparing against labelsFetchedForRepo, now deleted)
-// moved into RepoLabelsProvider.jsx's own effect - it's a real descendant
-// of <PrDataProvider /> and reads selectedRepo via usePrData() directly,
-// instead of this vanilla code deciding it and calling
-// refreshAvailableRepoLabels imperatively. A later cleanup pass moved the
-// fetch itself (and its dedup/cache state) into that same Provider too,
-// with no window.* bridge left anywhere in the label-fetch path - see
-// RepoLabelsProvider.jsx's own comment.
-const applyResolvedRepo = (resolvedRepo) => {
-  if (!resolvedRepo) {
-    return;
-  }
-  applyLatestPrData({ selectedRepo: resolvedRepo });
-};
-
-// Phase 7 (see REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
-// renders"): for a caller that already has a direct, authoritative fresh
-// payload in hand (no refetch needed) - a research pass confirmed almost
-// everything prDataTabOrchestrator.renderPrData's full pipeline computes
-// today is now dead (filter dropdowns, chip text, #data-meta text, the
-// merged-request-more-action push, visiblePrNumbers/filteredRows for the
-// table - each already superseded by a live Context derivation elsewhere).
-// Exactly 3 things are still genuinely live: fingerprint/manifest/version
-// bookkeeping the next poll tick's skip-render dedup depends on, repo
-// resolution + conditional label refresh, and Author Insights' own live
-// re-render if that tab is open. This is exactly those 3 things, reusing
-// every existing piece directly rather than reimplementing any of them -
-// used by runSinglePrUpdate (replacing its own redundant loadStoredData()
-// re-fetch) and, via the window.applyFreshPrPayload bridge, by
-// AutoRenderBlockingProvider.jsx's own apply/discard paths (replacing the
-// old vanilla flushPendingAutoRenderNow's identical call, see
-// REACT_MIGRATION_PLAN.md's Phase B entry).
-const applyFreshPrPayload = (payload, repo) => {
-  const resolvedRepo =
-    repo ||
-    deriveRepoRunContext({
-      selectedRepo: latestSelectedRepo,
-      inputRepo: getOptionalElementById("repo")?.value,
-      lastRun: payload?.lastRun,
-    }).repoFilter;
-
-  // selectedRepo deliberately omitted here (unlike applyResolvedRepo's own
-  // call below) - matching renderPrData's own applyLatestPrData({ payload })
-  // call exactly, so an empty resolvedRepo (no explicit repo, no #repo
-  // input value, no payload.lastRun.repo) can never clobber a
-  // previously-known-good latestSelectedRepo. applyResolvedRepo's own
-  // `if (!resolvedRepo) return;` guard is the sole gate for that write.
-  applyLatestPrData({ payload });
-  // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // fingerprint/manifest/version/run-stamp bookkeeping now lives in
-  // PrDataProvider.jsx's own trackingRef, pushed via this one combined
-  // bridge instead of direct module-variable assignment - same "who
-  // writes when" structure, only the storage location changed.
-  const trackingPatch = {
-    lastRenderedPrFingerprint: computePrDataFingerprint(payload),
-    lastRenderedMetaFingerprint: computePrDataMetaFingerprint(payload),
-    latestPrManifest: computePrDataManifest(payload),
-  };
-  window.setPendingAutoRenderPayload?.(null);
-
-  // Same dataVersion/runStamp/backfill bookkeeping loadStoredData does with
-  // its own GET response (pr-stored-data-load.helpers.js) - needed because
-  // this primitive also replaces that function for runSinglePrUpdate's
-  // case, not just renderPrData. result.prData (POST /view-prs/run's
-  // response) doesn't include dataMeta - lastSeenDataVersion simply isn't
-  // updated from that path, which is self-correcting (the next poll's own
-  // meta/manifest check finds the real version mismatch and fetches
-  // normally), not a lasting staleness bug.
-  const dataVersion = String(payload?.dataMeta?.dataVersion || "").trim();
-  if (dataVersion) {
-    trackingPatch.lastSeenDataVersion = dataVersion;
-  }
-  const updatedAt = String(payload?.lastRun?.updatedAt || "").trim();
-  if (updatedAt) {
-    trackingPatch.lastRenderedRunStamp = payload.lastRun.updatedAt;
-  }
-  window.pushPrDataPollingTrackingState?.(trackingPatch);
-  updateBackfillStatusFromPayload(payload);
-
-  applyResolvedRepo(resolvedRepo);
-  // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 2): used to call applyFreshAuthorInsightsIfVisible here, to
-  // refresh the latestAllStoredRows/latestActorsMap cache that fed
-  // renderAuthorInsights - both deleted outright this phase.
-  // AuthorInsightsSelector.jsx now reads rows/actorsMap straight from
-  // PrDataContext's own payload, which updateReactTable below keeps
-  // current - no separate cache to refresh.
-  updateReactTable(payload, resolvedRepo);
-};
-
-// Phase H.23 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): a dedicated research pass confirmed prDataTabOrchestrator's
-// full renderPrData pipeline (deriveRunPrDataContext/deriveRenderPipelineState)
-// is now entirely dead weight here - every side effect it used to compute
-// (filter dropdowns, chip text, #data-meta text, the merged-request-more-
-// action push, visiblePrNumbers/filteredRows for the table, viewer-context/
-// needs-attention bookkeeping) is either already superseded by a live
-// Context derivation elsewhere, or has zero remaining reader at all left in
-// this file (confirmed by grep, not assumed - see Phase H.23's own plan
-// entry). Only 2 things the orchestrator call used to produce here are
-// still real: repo resolution and fingerprint/manifest bookkeeping for the
-// next poll tick's skip-render dedup - both computed directly below, the
-// exact same way applyFreshPrPayload (above) already does for its own
-// callers, instead of running the dead pipeline just to get the same 2
-// outputs. The `options` param (`useLastRunScope`/`skipTableRender`) only
-// ever fed that pipeline - dropped entirely, not just unused, since nothing
-// else ever read it.
-const renderPrData = (payload, selectedRepo = "") => {
-  // Update global state
-  if (payload) {
-    applyLatestPrData({ payload });
-  }
-
-  // Get container element
-  const container = document.getElementById('pr-sections');
-  if (!container) {
-    console.error('[renderPrData] pr-sections container not found');
-    return;
-  }
-
-  const repoFilter = deriveRepoRunContext({
-    selectedRepo,
-    inputRepo: getOptionalElementById("repo")?.value,
-    lastRun: payload?.lastRun,
-  }).repoFilter;
-
-  if (payload) {
-    window.pushPrDataPollingTrackingState?.({
-      lastRenderedPrFingerprint: computePrDataFingerprint(payload),
-      lastRenderedMetaFingerprint: computePrDataMetaFingerprint(payload),
-      latestPrManifest: computePrDataManifest(payload),
-    });
-    // See deriveViewerFilterSetup's own comment (above) for why this
-    // specific side effect survives - currentActorLoginAliases/
-    // currentViewerLogin feed normalizeActorLogin's default param
-    // elsewhere in this file (getAuthorInsightsDisplayName/
-    // getBlockingAuthorInsightsLogins), a real dependency independent of
-    // the rest of the deleted pipeline. allEntries computed the same way
-    // the deleted captureRenderContext used to: Object.values(payload.byPrNumber).
-    deriveViewerFilterSetup({
-      payload,
-      allEntries: Object.values(payload?.byPrNumber || {}),
-    });
-  }
-
-  // Check if React is available
-  const hasReactApp = window.mountReactPrTable && typeof window.mountReactPrTable === 'function';
-
-  if (!hasReactApp) {
-    // Phase 6 (see REACT_MIGRATION_PLAN.md): this branch used to run the
-    // full vanilla table-build fallback whenever React's deferred module
-    // hadn't loaded/mounted yet - covering both a genuine React failure
-    // and the ordinary load-order race (react-app.jsx not done loading
-    // when the first payload arrives). With vanilla fallback markup now
-    // gone from Phase 2/3's fields, and per explicit sign-off to accept a
-    // brief empty #pr-sections during that race rather than keep building
-    // a whole vanilla table just to immediately discard/replace it once
-    // React does mount, this leaves the table itself empty. The
-    // `viewprs:react-ready` listener (below) re-invokes renderPrData once
-    // React actually mounts, taking the REACT RENDERING PATH at that
-    // point. Note this is distinct from the "mount failed"/"callbacks
-    // failed" branches further down, which stay as genuine vanilla-
-    // fallback recovery for a real React failure, not this race.
-    applyResolvedRepo(repoFilter);
-    return;
-  }
-
-  // ========================================
-  // REACT RENDERING PATH
-  // ========================================
-
-  // The React table owns rendering the PR rows/sections itself; everything
-  // else the vanilla pipeline used to also do as a side effect of building
-  // that table (the data-meta summary line, filter chips, export field
-  // catalog, author insights panel, stats view, and the filter dropdown
-  // options themselves) has each been superseded by its own live Context
-  // derivation - see Phase H.23's own plan entry for the full accounting.
-  const resolvedRepo = repoFilter || latestSelectedRepo || '';
-  applyResolvedRepo(resolvedRepo);
-
-  // Check if already mounted
-  if (isReactTableMounted()) {
-    // Already mounted: just update data
-    updateReactTable(
-      latestStoredPayload || payload,
-      resolvedRepo
-    );
-    return;
-  }
-
-  // First time: mount React
-  const success = mountReactTable(container, {
-    payload: latestStoredPayload || payload || {},
-    selectedRepo: resolvedRepo,
-  });
-
-  if (!success) {
-    console.error('[renderPrData] React mount failed - cannot render table');
-    renderPrTableMountError();
-  }
-};
-
-// Track C, slice C2a (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// pushPayloadToReactTable (this used to be its definition) is deleted
-// outright now too - a consolidated `if (isReactTableMounted())
-// updateReactTable(...)` guard that was originally shared by the
-// checkbox/Ack/Apply-Label React callbacks and the label-dropdown refresh,
-// but each of those migrated to its own real Context/hook path long before
-// this cleanup pass looked for its caller (confirmed via grep - zero
-// remaining callers anywhere, not even a window.* bridge), and the label-
-// dropdown refresh (its last real use) is gone too, moved into
-// RepoLabelsProvider.jsx (see that block's own comment above).
-
-// Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// pollForDataChanges itself (the createPrDataPollingOrchestrationHelpers
-// instance) now lives in PrDataProvider.jsx, which owns the
-// fingerprint/manifest/version/polling-support tracking state this
-// factory needs - index.page.js just exposes the vanilla pieces that
-// Provider's own DI still needs to reach (the pure fingerprint/manifest
-// helpers below, already wired with the real getOrComputeEntryDerivedValue
-// cache; applyLatestPrData/renderPrData - vanilla render-pipeline
-// primitives exposed *for* that Provider, same category as every other
-// "vanilla primitive exposed for React" bridge in this migration).
-// window.pollForDataChanges itself is now assigned by PrDataProvider.jsx
-// instead, but stays the same name/shape - index.html.test.js's 17 direct
-// call sites still work unchanged. Phase H.25 (see REACT_MIGRATION_PLAN.md,
-// "Remaining-effort audit", cluster 1): markPollSuccess/showPollFailureWarning
-// are gone from this list too - both now live directly inside
-// PrDataProvider.jsx, no window.* bridge needed at all.
-if (typeof window !== "undefined") {
-  window.computePrDataManifest = (...args) => computePrDataManifest(...args);
-  window.getManifestDelta = (...args) => getManifestDelta(...args);
-  window.mergeDataDeltaPayload = (...args) => mergeDataDeltaPayload(...args);
-  window.computePrDataFingerprint = (...args) => computePrDataFingerprint(...args);
-  window.computePrDataMetaFingerprint = (...args) => computePrDataMetaFingerprint(...args);
-  window.getDataPollRenderAction = (...args) => getDataPollRenderAction(...args);
-  window.getLatestStoredPayload = () => latestStoredPayload;
-  window.applyLatestPrData = (...args) => applyLatestPrData(...args);
-  window.renderPrData = (...args) => renderPrData(...args);
-}
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // pollBackfillStatus/pollSchedulerStatus's own guard+wrapper moved into
@@ -1574,19 +1126,6 @@ if (typeof window !== "undefined") {
 // handleApplyLabelClick's definition moved into
 // state/useAckLabelActions.jsx - its only caller was the "Apply label"
 // button, now a hook instead of a window.* bridge.
-
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// state/useAckLabelActions.jsx's own createPrAckLabelActionsHelpers
-// instance needs these 2 reverse bridges to reach this file's real
-// summarizeAckRefreshWarnings/loadStoredData, instead of forking its own
-// copy (loadStoredData especially: forking a second instance here would
-// mean a second independent dataVersion/runStamp tracker, duplicating
-// Phase F's own chicken-and-egg bug class).
-if (typeof window !== "undefined") {
-  window.summarizeAckRefreshWarnings = (...args) =>
-    summarizeAckRefreshWarnings(...args);
-  window.loadStoredData = (...args) => loadStoredData(...args);
-}
 
 // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap")/Phase D.2:
 // #run-script-btn/#ack-only-btn/#clear-only-btn/#apply-label-btn are
@@ -1853,10 +1392,8 @@ const initPage = () => {
     // Phase 7 (see REACT_MIGRATION_PLAN.md, "useSinglePrUpdate"):
     // runSinglePrUpdate used to be bridged here too - PrTableApp.jsx now
     // calls a real useSinglePrUpdate() hook instead (state/useSinglePrUpdate.jsx).
-    // That hook needs applyFreshPrPayload the same way NotesSection.jsx
-    // already reaches beginRequestActivity/postJson - a vanilla primitive
-    // exposed *for* a React consumer, not a bridge being closed.
-    applyFreshPrPayload,
+    // applyFreshPrPayload (which that hook needed) was bridged here as well,
+    // until window-bridge elimination Phase 7 moved it into PrDataProvider.
     // ---- "More insights" panel (see components/PrInsightsRow.jsx and
     // components/insights/*) ----
     // Phase 7 (see REACT_MIGRATION_PLAN.md): formatApproversDisplay/
@@ -1925,47 +1462,11 @@ const initPage = () => {
     // caller, so it was deleted outright, not just un-bridged.
   });
 
-  // The initial loadStoredData() fetch below often resolves before the
-  // deferred react-app.jsx module (and its full import graph) finishes
-  // loading, so the first renderPrData() call falls back to vanilla
-  // rendering. Re-render once React signals it's actually ready.
-  //
-  // Guard on latestStoredPayload (not just isReactTableMounted()): now that
-  // 'viewprs:react-ready' only fires once window.mountReactPrTable is truly
-  // assigned (see react-app.jsx's AppRoot effect), this listener typically
-  // fires *before* loadStoredData() below has resolved, not after. Without
-  // this guard, that made renderPrData(undefined, "") run here and, since
-  // hasReactApp is now already true, take the REACT RENDERING PATH and
-  // mount the table with an empty payload - marking isReactTableMounted()
-  // true before the real data arrived. The real data's later renderPrData
-  // call would then see "already mounted" and skip straight to
-  // updateReactTable, re-running the vanilla filter-dropdown population a
-  // second time in the process (once for this empty mount, once for the
-  // real update) - exactly the stale-DOM-read double-populate race the
-  // multi-select lists' own render-cache (createMultiSelectRenderCache,
-  // MultiSelectListPortals.jsx) exists to guard against, just one extra
-  // time. Only re-render here once real data has actually loaded;
-  // otherwise loadStoredData()'s own renderPrData call below already
-  // lands on the correct (mount, not update) path unaided.
-  window.addEventListener(
-    "viewprs:react-ready",
-    () => {
-      if (!isReactTableMounted() && latestStoredPayload) {
-        renderPrData(latestStoredPayload, latestSelectedRepo);
-      }
-    },
-    { once: true },
-  );
-
-  loadStoredData("").catch((error) => {
-    setStatusMessage("Failed to load stored data");
-    setOutputMessage(String(error));
-    notifyFailureSnackbar(
-      "Failed to load stored data",
-      error,
-      "Unable to load stored PR data",
-    );
-  });
+  // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the initial loadStoredData("") call (and the 'viewprs:react-ready'
+  // listener that re-rendered once React's table bridge existed) moved into
+  // PrDataProvider's own mount effect, so there is no load-order race left
+  // to cover here.
   loadBackfillStatus({ includeLog: true }).catch((error) => {
     renderBackfillStatus({
       ok: false,

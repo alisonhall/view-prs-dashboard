@@ -5,10 +5,12 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
+import { summarizeAckRefreshWarnings } from '../helpers/pr-ack-refresh-warnings.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';
 import { useRequestActivity } from './RequestActivityContext';
+import { usePrDataActions } from './PrDataActionsContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 
@@ -88,6 +90,11 @@ export function useAckLabelActions() {
   const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
   const setOutputText = useSetOutputText();
+  // Window-bridge elimination Phase 7: the data pipeline moved from
+  // index.page.js into PrDataProvider (window.applyFreshPrPayload/
+  // loadStoredData/getLatestStoredPayload are gone), and
+  // summarizeAckRefreshWarnings is a plain import now.
+  const { applyFreshPrPayload, loadStoredData, getLatestStoredPayload } = usePrDataActions();
 
   return useMemo(() => {
     const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } =
@@ -104,9 +111,9 @@ export function useAckLabelActions() {
         formatCommandOutputWithAuthHint,
         showErrorNotification: showError,
         showWarningNotification: showWarning,
-        summarizeAckRefreshWarnings: (...args) => window.summarizeAckRefreshWarnings?.(...args),
-        applyFreshPrPayload: (...args) => window.applyFreshPrPayload?.(...args),
-        loadStoredData: (...args) => window.loadStoredData?.(...args),
+        summarizeAckRefreshWarnings,
+        applyFreshPrPayload,
+        loadStoredData,
         getFormBody,
         defaultRepo: DEFAULT_REPO,
         parseCsvTokens,
@@ -123,7 +130,7 @@ export function useAckLabelActions() {
         markBulkActionChunkDone: (...args) => markBulkActionChunkDone(...args),
         finishBulkActionBatch: (...args) => finishBulkActionBatch(...args),
         runWithConcurrencyLimit,
-        getLatestStoredPayload: () => window.getLatestStoredPayload?.(),
+        getLatestStoredPayload,
       });
 
     const handleAckOnly = async () => {
@@ -166,5 +173,8 @@ export function useAckLabelActions() {
     renderRequestActivity,
     setOutputText,
     showWarning,
+    applyFreshPrPayload,
+    loadStoredData,
+    getLatestStoredPayload,
   ]);
 }

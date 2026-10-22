@@ -2,12 +2,25 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+const { PrDataActionsContext } = require('./PrDataActionsContext');
 const { useQuickCheckActions } = require('./useQuickCheckActions.jsx');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 const { SnackbarContext } = require('./SnackbarContext');
+
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the data-pipeline functions come from PrDataActionsContext now, not
+// window.* bridges - tests assign fields on `prDataActions` (reset after
+// each test) before rendering.
+const makePrDataActions = () => ({
+  loadStoredData: async () => null,
+  applyFreshPrPayload: () => {},
+  applyLatestPrData: () => {},
+  getLatestStoredPayload: () => null,
+});
+let prDataActions = makePrDataActions();
 
 function Probe({ onReady }) {
   const actions = useQuickCheckActions();
@@ -27,7 +40,9 @@ const renderProbe = (onReady, values = {}, snackbar = {}) =>
     <FilterStateContext.Provider value={{ values }}>
       <RowFilterSelectionContext.Provider value={{ checkedByListId: {} }}>
         <SnackbarContext.Provider value={snackbar}>
-          <Probe onReady={onReady} />
+          <PrDataActionsContext.Provider value={prDataActions}>
+            <Probe onReady={onReady} />
+          </PrDataActionsContext.Provider>
         </SnackbarContext.Provider>
       </RowFilterSelectionContext.Provider>
     </FilterStateContext.Provider>,
@@ -93,7 +108,7 @@ describe('useQuickCheckActions', () => {
   });
 
   test('given nothing loaded, when handleQuickCheckAll is called, then it reports nothing to check without firing a request', async () => {
-    window.getLatestStoredPayload = () => ({ byPrNumber: {} });
+    prDataActions.getLatestStoredPayload = () => ({ byPrNumber: {} });
     global.fetch = jest.fn();
 
     let actions;
@@ -109,7 +124,7 @@ describe('useQuickCheckActions', () => {
   });
 
   test('given PRs loaded across multiple repos, when handleQuickCheckAll is called, then each repo is marked busy via Context during the request and cleared after it resolves', async () => {
-    window.getLatestStoredPayload = () => ({
+    prDataActions.getLatestStoredPayload = () => ({
       byPrNumber: {
         1: { repo: 'owner/repo-a', data: { number: '1' } },
         2: { repo: 'owner/repo-b', data: { number: '2' } },
@@ -136,7 +151,9 @@ describe('useQuickCheckActions', () => {
       <FilterStateContext.Provider value={{ values: {} }}>
         <RowFilterSelectionContext.Provider value={{ checkedByListId: {} }}>
           <PrActivityQueueProvider>
-            <ProbeWithActivityQueue />
+            <PrDataActionsContext.Provider value={prDataActions}>
+              <ProbeWithActivityQueue />
+            </PrDataActionsContext.Provider>
           </PrActivityQueueProvider>
         </RowFilterSelectionContext.Provider>
       </FilterStateContext.Provider>,

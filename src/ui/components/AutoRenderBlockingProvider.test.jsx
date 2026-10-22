@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 
+const { useEffect } = require('react');
 const { render, act } = require('@testing-library/react');
 const { AutoRenderBlockingProvider } = require('./AutoRenderBlockingProvider');
 const {
@@ -11,6 +12,19 @@ const { StatusTextContext } = require('../state/StatusTextContext');
 function Probe({ onValue }) {
   const value = useAutoRenderBlocking();
   onValue(value);
+  return null;
+}
+
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the Provider applies payloads through the function PrDataProvider (its
+// descendant) registers, no longer window.applyFreshPrPayload - this stands
+// in for PrDataProvider's registration.
+function RegisterApplier({ applier }) {
+  const { setFreshPayloadApplier } = useAutoRenderBlockingActions();
+  useEffect(() => {
+    setFreshPayloadApplier(applier);
+    return () => setFreshPayloadApplier(null);
+  }, [setFreshPayloadApplier, applier]);
   return null;
 }
 
@@ -42,7 +56,6 @@ describe('AutoRenderBlockingProvider', () => {
   afterEach(() => {
     delete window.setPendingAutoRenderPayload;
     delete window.pushAutoRenderBlockingState;
-    delete window.applyFreshPrPayload;
     delete window.renderRequestActivity;
   });
 
@@ -184,13 +197,13 @@ describe('AutoRenderBlockingProvider', () => {
     expect(latest.statusText).toContain('note section');
   });
 
-  test('given no field is focused and nothing is dirty, when a payload is pushed, then it applies immediately via window.applyFreshPrPayload', async () => {
+  test('given no field is focused and nothing is dirty, when a payload is pushed, then it applies immediately via the registered applier', async () => {
     const applyFreshPrPayload = jest.fn();
-    window.applyFreshPrPayload = applyFreshPrPayload;
     const payload = { byPrNumber: { 1: {} } };
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <RegisterApplier applier={applyFreshPrPayload} />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );
@@ -210,12 +223,15 @@ describe('AutoRenderBlockingProvider', () => {
 
   test('given a text field is focused, when a payload becomes eligible to apply, then it waits for blur before applying', async () => {
     const applyFreshPrPayload = jest.fn();
-    window.applyFreshPrPayload = applyFreshPrPayload;
     const focusedInput = document.createElement('input');
     document.body.appendChild(focusedInput);
     focusedInput.focus();
     const payload = { byPrNumber: { 2: {} } };
-    render(<AutoRenderBlockingProvider>{null}</AutoRenderBlockingProvider>);
+    render(
+      <AutoRenderBlockingProvider>
+        <RegisterApplier applier={applyFreshPrPayload} />
+      </AutoRenderBlockingProvider>,
+    );
 
     act(() => {
       window.pushAutoRenderBlockingState(CLEAN_STATE);
@@ -237,12 +253,12 @@ describe('AutoRenderBlockingProvider', () => {
   test('given a pending payload, when discardAndApply is called, then it clears the payload, applies it, and sets a status message', () => {
     const applyFreshPrPayload = jest.fn();
     const setStatusText = jest.fn();
-    window.applyFreshPrPayload = applyFreshPrPayload;
     const payload = { byPrNumber: { 3: {} } };
     let latest;
     render(
       <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
         <AutoRenderBlockingProvider>
+          <RegisterApplier applier={applyFreshPrPayload} />
           <Probe onValue={(value) => (latest = value)} />
         </AutoRenderBlockingProvider>
       </StatusTextContext.Provider>,
@@ -267,10 +283,10 @@ describe('AutoRenderBlockingProvider', () => {
 
   test('given no pending payload, when discardAndApply is called, then nothing happens', () => {
     const applyFreshPrPayload = jest.fn();
-    window.applyFreshPrPayload = applyFreshPrPayload;
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <RegisterApplier applier={applyFreshPrPayload} />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );

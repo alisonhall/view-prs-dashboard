@@ -7,13 +7,21 @@ import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-
 import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpers.js';
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
+import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
+import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
+import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.js';
+import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
+import { useSetOutputText } from './OutputTextContext';
 import { useAutoRenderBlockingActions } from './AutoRenderBlockingContext';
 import { RequestActivityContext } from './RequestActivityContext';
+import { PrDataActionsContext } from './PrDataActionsContext';
 import { useBackfillStatusActions } from './BackfillStatusContext';
+import { useFilterFieldActions } from './FilterStateContext';
 
 // Phase F (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for pollForDataChanges' own render-tracking bookkeeping -
@@ -52,6 +60,7 @@ const describePollFailure = (errorSource) => {
 };
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
 // default state for the request-activity-counter/history/scheduler-state
@@ -240,19 +249,34 @@ const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
  * bridge at all. `renderSchedulerStatus` itself (the one piece still
  * vanilla/SSE-shared, called by `JobEventsProvider.jsx` above) is
  * unaffected.
+ *
+ * Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+ * the paragraphs above that call `renderPrData`/`applyLatestPrData`/
+ * `loadStoredData`/the fingerprint helpers "vanilla, reached via reverse
+ * bridges" are history. That pipeline (and `applyFreshPrPayload`) now lives
+ * in this Provider, published on `PrDataActionsContext`, and the initial
+ * page-load fetch runs from this Provider's own mount effect (`loadOnMount`).
+ * `window.pollForDataChanges`/`pushPrDataPollingTrackingState` are deleted.
  */
 export function PrDataProvider({
   initialPayload,
   initialSelectedRepo,
   initialSelectedAuthorLogin,
   initialStatsViewState,
+  loadOnMount = false,
   children,
 }) {
+  // hasRenderedPrData: false until the first payload is rendered (the initial
+  // loadStoredData, or an earlier applyFreshPrPayload). AppRoot only mounts
+  // the PR table after that, as index.page.js's renderPrData used to
+  // (mountReactPrTable on the first render), so the table never flashes an
+  // empty "no PRs" state before the data arrives.
   const [state, setState] = useState({
     payload: initialPayload || {},
     selectedRepo: initialSelectedRepo || '',
     selectedAuthorLogin: initialSelectedAuthorLogin || '',
     statsViewState: initialStatsViewState || {},
+    hasRenderedPrData: false,
   });
 
   // Deferred-items follow-up, item 6 (see REACT_MIGRATION_PLAN.md): a read
@@ -336,16 +360,10 @@ export function PrDataProvider({
   // this state, it's pure diffing bookkeeping for pollForDataChanges.
   //
   // Seeded from initialPayload (same dataVersion/updatedAt extraction
-  // pr-stored-data-load.helpers.js's own loadStoredData uses), not left
-  // at the bare defaults: loadStoredData calls
-  // setLastSeenDataVersion/setLastRenderedRunStamp (now
-  // window.pushPrDataPollingTrackingState) *before* renderPrData, which
-  // is what eventually mounts this very Provider - those calls always
-  // race a bridge that doesn't exist yet on the very first load, so the
-  // seed has to come from the payload this Provider already receives as
-  // a prop instead. Confirmed via a real integration-test failure
-  // ("skips full data fetch when polling sees an unchanged data
-  // version") that this isn't just theoretical.
+  // pr-stored-data-load.helpers.js's own loadStoredData uses), so a Provider
+  // mounted with data already in hand (component tests) polls against it.
+  // In the app the initial payload is empty and loadStoredData (below, owned
+  // by this Provider since window-bridge elimination Phase 7) fills these in.
   const trackingRef = useRef({
     ...DEFAULT_POLLING_TRACKING_STATE,
     lastSeenDataVersion: String(initialPayload?.dataMeta?.dataVersion || '').trim(),
@@ -371,7 +389,7 @@ export function PrDataProvider({
   // markPollSuccess/showPollFailureWarning below call hide/showWarning
   // from useSnackbar() directly now, same "genuine descendant, wrapped
   // from outside AppRoot" reasoning as setStatusText above.
-  const { showWarning, hide } = useSnackbar();
+  const { showError, showWarning, hide } = useSnackbar();
   // Window-bridge elimination Phase 3: AutoRenderBlockingProvider wraps this
   // Provider from mountAppRoot() now (it used to be rendered *inside*
   // AppRoot, i.e. a descendant of this one), so these are real Context
@@ -381,24 +399,157 @@ export function PrDataProvider({
   // the whole table tree, so it must not re-render (and re-render every
   // usePrData() consumer) each time blocking *state* changes - see that
   // Context's own comment.
-  const { getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload } =
-    useAutoRenderBlockingActions();
+  const {
+    getHasDirtyPrSectionsFields,
+    getPendingAutoRenderPayload,
+    setPendingAutoRenderPayload,
+    setFreshPayloadApplier,
+  } = useAutoRenderBlockingActions();
   // Window-bridge elimination Phase 4: pollBackfillStatus reads the backfill
   // tracking flags through BackfillStatusProvider's actions-only Context
   // (stable; subscribing to its changing status/log state would re-render
   // every usePrData() consumer on each backfill update).
-  const { getBackfillTrackingState } = useBackfillStatusActions();
+  const { getBackfillTrackingState, updateBackfillStatusFromPayload } = useBackfillStatusActions();
+  const setOutputText = useSetOutputText();
+  // Stable; reads the repo field without subscribing this Provider (and every
+  // usePrData() consumer) to filter-field changes.
+  const { getFieldValue } = useFilterFieldActions();
+
+  // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the data pipeline index.page.js used to own and publish as
+  // window.renderPrData/applyFreshPrPayload/applyLatestPrData/
+  // getLatestStoredPayload/loadStoredData (plus the pure fingerprint/manifest
+  // helpers, and window.pushPrDataPollingTrackingState for its writes into
+  // trackingRef) lives here now. Same functions, same "who writes when";
+  // only the owner changed.
+  //
+  // latestStoredPayloadRef/latestSelectedRepoRef are index.page.js's former
+  // latestStoredPayload/latestSelectedRepo module variables. They are not
+  // `state.payload`/`state.selectedRepo`: a background poll records the
+  // newest payload here while auto-render-blocking defers showing it (see
+  // pollForDataChanges), so this can be ahead of what the table displays.
+  // Starts null, like the module variable did; an initialPayload with data
+  // (component tests) seeds it.
+  const latestStoredPayloadRef = useRef(
+    initialPayload && Object.keys(initialPayload).length > 0 ? initialPayload : null,
+  );
+  const latestSelectedRepoRef = useRef(initialSelectedRepo || '');
+
+  // One shared derived-value cache for this Provider's lifetime: it pays off
+  // only by persisting across polls (an unchanged entry's fingerprint stays
+  // cached from one poll to the next).
+  const pollingHelpers = useMemo(
+    () => createPrDataPollingHelpers({ getOrCompute: createEntryDerivedCache().getOrCompute }),
+    [],
+  );
+
+  const applyLatestPrData = useCallback(({ payload, selectedRepo } = {}) => {
+    if (payload !== undefined) {
+      latestStoredPayloadRef.current = payload;
+    }
+    if (selectedRepo !== undefined) {
+      latestSelectedRepoRef.current = selectedRepo;
+    }
+  }, []);
+
+  const getLatestStoredPayload = useCallback(() => latestStoredPayloadRef.current, []);
+
+  // The repo the render pipeline actually resolves: explicit repo, else the
+  // Run & Filter "repo" field, else payload.lastRun.repo (see
+  // deriveRepoRunContext). index.page.js read the field's DOM <input>; this
+  // reads the same value from FilterStateProvider's store.
+  const resolveRepoFilter = useCallback(
+    (selectedRepo, payload) =>
+      deriveRepoRunContext({
+        selectedRepo,
+        inputRepo: getFieldValue('repo'),
+        lastRun: payload?.lastRun,
+      }).repoFilter,
+    [getFieldValue],
+  );
+
+  const recordRenderedPayload = useCallback(
+    (payload) => {
+      trackingRef.current = {
+        ...trackingRef.current,
+        lastRenderedPrFingerprint: pollingHelpers.computePrDataFingerprint(payload),
+        lastRenderedMetaFingerprint: pollingHelpers.computePrDataMetaFingerprint(payload),
+        latestPrManifest: pollingHelpers.computePrDataManifest(payload),
+      };
+    },
+    [pollingHelpers],
+  );
+
+  // Puts a payload on screen. Same merge as applyFreshTablePayload (below):
+  // an undefined payload or empty repo keeps the previous one.
+  const showPayload = useCallback((payload, selectedRepo) => {
+    setState((previous) => ({
+      ...previous,
+      payload: payload !== undefined ? payload : previous.payload,
+      selectedRepo: selectedRepo || previous.selectedRepo,
+      hasRenderedPrData: true,
+    }));
+  }, []);
+
+  // index.page.js's renderPrData, minus what only the deleted vanilla
+  // mount/update bridge needed. Renders the newest stored payload, which the
+  // caller has normally just recorded. An empty resolved repo never
+  // overwrites a known-good latestSelectedRepo.
+  const renderPrData = useCallback(
+    (payload, selectedRepo = '') => {
+      if (payload) {
+        latestStoredPayloadRef.current = payload;
+        recordRenderedPayload(payload);
+      }
+      const resolvedRepo = resolveRepoFilter(selectedRepo, payload) || latestSelectedRepoRef.current || '';
+      if (resolvedRepo) {
+        latestSelectedRepoRef.current = resolvedRepo;
+      }
+      showPayload(latestStoredPayloadRef.current || payload || {}, resolvedRepo);
+    },
+    [recordRenderedPayload, resolveRepoFilter, showPayload],
+  );
+
+  // index.page.js's applyFreshPrPayload: for a caller that already has an
+  // authoritative fresh payload in hand (a POST response, or a payload the
+  // auto-render-blocking Provider was holding), so no refetch is needed.
+  const applyFreshPrPayload = useCallback(
+    (payload, repo) => {
+      const resolvedRepo = repo || resolveRepoFilter(latestSelectedRepoRef.current, payload);
+      latestStoredPayloadRef.current = payload;
+      recordRenderedPayload(payload);
+      // Same dataVersion/runStamp bookkeeping loadStoredData does with its own
+      // GET response. POST /view-prs/run's prData has no dataMeta, so
+      // lastSeenDataVersion isn't updated from that path; the next poll's
+      // meta/manifest check finds the mismatch and fetches normally.
+      const dataVersion = String(payload?.dataMeta?.dataVersion || '').trim();
+      if (dataVersion) {
+        trackingRef.current.lastSeenDataVersion = dataVersion;
+      }
+      const updatedAt = String(payload?.lastRun?.updatedAt || '').trim();
+      if (updatedAt) {
+        trackingRef.current.lastRenderedRunStamp = payload.lastRun.updatedAt;
+      }
+      setPendingAutoRenderPayload(null);
+      updateBackfillStatusFromPayload(payload);
+      if (resolvedRepo) {
+        latestSelectedRepoRef.current = resolvedRepo;
+      }
+      showPayload(payload, resolvedRepo);
+    },
+    [recordRenderedPayload, resolveRepoFilter, setPendingAutoRenderPayload, showPayload, updateBackfillStatusFromPayload],
+  );
 
   const pollForDataChanges = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
       fetchFn: (...args) => fetch(...args),
       documentRef: typeof document !== 'undefined' ? document : null,
-      computePrDataManifest: (...args) => window.computePrDataManifest?.(...args),
-      getManifestDelta: (...args) => window.getManifestDelta?.(...args),
-      mergeDataDeltaPayload: (...args) => window.mergeDataDeltaPayload?.(...args),
-      computePrDataFingerprint: (...args) => window.computePrDataFingerprint?.(...args),
-      computePrDataMetaFingerprint: (...args) => window.computePrDataMetaFingerprint?.(...args),
-      getDataPollRenderAction: (...args) => window.getDataPollRenderAction?.(...args),
+      computePrDataManifest: pollingHelpers.computePrDataManifest,
+      getManifestDelta: pollingHelpers.getManifestDelta,
+      mergeDataDeltaPayload: pollingHelpers.mergeDataDeltaPayload,
+      computePrDataFingerprint: pollingHelpers.computePrDataFingerprint,
+      computePrDataMetaFingerprint: pollingHelpers.computePrDataMetaFingerprint,
+      getDataPollRenderAction: pollingHelpers.getDataPollRenderAction,
       getSupportsDataMetaPolling: () => trackingRef.current.supportsDataMetaPolling,
       setSupportsDataMetaPolling: (value) => {
         trackingRef.current.supportsDataMetaPolling = value;
@@ -415,12 +566,11 @@ export function PrDataProvider({
       setLatestPrManifest: (value) => {
         trackingRef.current.latestPrManifest = value;
       },
-      // Deliberately the vanilla mirror (window.getLatestStoredPayload,
-      // index.page.js's own latestStoredPayload), not this Provider's own
-      // payloadRef - matches pollForDataChanges' original DI exactly (see
-      // index.page.js's old comment, preserved in git history).
-      getLatestStoredPayload: () => window.getLatestStoredPayload?.(),
-      applyLatestPrData: (...args) => window.applyLatestPrData?.(...args),
+      // Deliberately the newest stored payload (latestStoredPayloadRef), not
+      // the displayed one (payloadRef): a deferred poll result must be the
+      // base the next delta merges onto.
+      getLatestStoredPayload,
+      applyLatestPrData,
       getLastRenderedPrFingerprint: () => trackingRef.current.lastRenderedPrFingerprint,
       setLastRenderedPrFingerprint: (value) => {
         trackingRef.current.lastRenderedPrFingerprint = value;
@@ -440,7 +590,7 @@ export function PrDataProvider({
       getHasDirtyPrSectionsFields,
       getPendingAutoRenderPayload,
       setPendingAutoRenderPayload,
-      renderPrData: (...args) => window.renderPrData?.(...args),
+      renderPrData,
       // Phase H.25 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
       // cluster 1): owned directly now, reading/writing trackingRef - no
       // window.* bridge needed at all, since pollForDataChanges (the only
@@ -486,6 +636,10 @@ export function PrDataProvider({
     });
     return helpers.pollForDataChanges;
   }, [
+    pollingHelpers,
+    getLatestStoredPayload,
+    applyLatestPrData,
+    renderPrData,
     setStatusText,
     showWarning,
     hide,
@@ -494,16 +648,11 @@ export function PrDataProvider({
     setPendingAutoRenderPayload,
   ]);
 
-  useEffect(() => {
-    window.pollForDataChanges = (...args) => pollForDataChanges(...args);
-    window.pushPrDataPollingTrackingState = (partial) => {
-      trackingRef.current = { ...trackingRef.current, ...(partial || {}) };
-    };
-    return () => {
-      delete window.pollForDataChanges;
-      delete window.pushPrDataPollingTrackingState;
-    };
-  }, [pollForDataChanges]);
+  // Window-bridge elimination Phase 7: window.pollForDataChanges and
+  // window.pushPrDataPollingTrackingState are gone. Every caller of the first
+  // reads it from this Context (PrDataPolling, JobEventsProvider); the second's
+  // writers (index.page.js's renderPrData/applyFreshPrPayload/loadStoredData)
+  // now live in this Provider and write trackingRef directly.
 
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
   // this file's own header comment. A plain ref, same reasoning as
@@ -639,6 +788,63 @@ export function PrDataProvider({
     };
   }, [activityHelpers]);
 
+  // Window-bridge elimination Phase 7: index.page.js's loadStoredData instance
+  // (same factory, same DI), now writing this Provider's refs directly.
+  const loadStoredData = useMemo(() => {
+    const helpers = createPrStoredDataLoadHelpers({
+      fetch: (...args) => fetch(...args),
+      beginRequestActivity: activityHelpers.beginRequestActivity,
+      setLastSeenDataVersion: (value) => {
+        trackingRef.current.lastSeenDataVersion = value;
+      },
+      setLastRenderedRunStamp: (value) => {
+        trackingRef.current.lastRenderedRunStamp = value;
+      },
+      setLatestStoredPayload: (value) => applyLatestPrData({ payload: value }),
+      getLatestSelectedRepo: () => latestSelectedRepoRef.current,
+      setLatestSelectedRepo: (value) => applyLatestPrData({ selectedRepo: value }),
+      updateBackfillStatusFromPayload,
+      renderPrData,
+    });
+    return helpers.loadStoredData;
+  }, [activityHelpers, applyLatestPrData, updateBackfillStatusFromPayload, renderPrData]);
+
+  const prDataActions = useMemo(
+    () => ({ loadStoredData, applyFreshPrPayload, applyLatestPrData, getLatestStoredPayload }),
+    [loadStoredData, applyFreshPrPayload, applyLatestPrData, getLatestStoredPayload],
+  );
+
+  // AutoRenderBlockingProvider is this Provider's ancestor, so it can't read
+  // this Context; it calls the applier registered here instead.
+  useEffect(() => {
+    setFreshPayloadApplier(applyFreshPrPayload);
+    return () => setFreshPayloadApplier(null);
+  }, [setFreshPayloadApplier, applyFreshPrPayload]);
+
+  // The initial page-load fetch, which index.page.js's initPage used to make.
+  // Opt-in (`loadOnMount`, set by mountAppRoot): the many component tests that
+  // mount this Provider with their own initialPayload must not have it
+  // replaced by whatever their fetch mock returns. Once per mount (the ref),
+  // even though the error path's dependencies are listed for the linter.
+  const hasStartedInitialLoadRef = useRef(false);
+  useEffect(() => {
+    if (!loadOnMount || hasStartedInitialLoadRef.current) {
+      return;
+    }
+    hasStartedInitialLoadRef.current = true;
+    loadStoredData('').catch((error) => {
+      setStatusText('Failed to load stored data');
+      activityHelpers.renderRequestActivity();
+      setOutputText(String(error));
+      const { title, detail } = buildFailureSnackbarNotification(
+        'Failed to load stored data',
+        error,
+        'Unable to load stored PR data',
+      );
+      showError(title, detail, 0);
+    });
+  }, [loadOnMount, loadStoredData, setStatusText, activityHelpers, setOutputText, showError]);
+
   const setPayload = useCallback((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));
   }, []);
@@ -736,9 +942,11 @@ export function PrDataProvider({
 
   return (
     <PrDataContext.Provider value={value}>
-      <RequestActivityContext.Provider value={requestActivity}>
-        <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
-      </RequestActivityContext.Provider>
+      <PrDataActionsContext.Provider value={prDataActions}>
+        <RequestActivityContext.Provider value={requestActivity}>
+          <ActorIdentityContext.Provider value={actorIdentity}>{children}</ActorIdentityContext.Provider>
+        </RequestActivityContext.Provider>
+      </PrDataActionsContext.Provider>
     </PrDataContext.Provider>
   );
 }

@@ -8,18 +8,20 @@ const React = require('react');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
-// react-app.jsx no longer exports a standalone mountReactPrTable function -
 // every mount function was folded into one <AppRoot /> component, mounted
 // once (via mountAppRoot(), called at module load time below) into a
-// single shared root. window.mountReactPrTable/window.updateReactPrTable
-// are still the real external contract index.page.js calls - these tests
-// exercise them the same way as before, just reached via window instead of
-// an imported function. PrTableApp is mocked so these tests exercise
-// AppRoot's own mounting/update-bridge logic without depending on
-// PrTableApp's own render tree - that's covered by PrTableApp.test.jsx.
-// Mocked to call
-// the *real* usePrData() and capture its result, so this still exercises
-// the real <PrDataProvider />'s merge semantics.
+// single shared root. PrTableApp is mocked so these tests exercise
+// AppRoot's own mounting logic without depending on PrTableApp's own render
+// tree - that's covered by PrTableApp.test.jsx. Mocked to call the *real*
+// usePrData() and capture its result, so this still exercises the real
+// <PrDataProvider />'s state.
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// window.mountReactPrTable is gone. index.page.js used to fetch the data and
+// then call it; PrDataProvider now fetches /view-prs/data itself on mount
+// (loadOnMount) and AppRoot's PrTablePortal mounts the table into
+// #pr-sections once that first payload is rendered. These tests drive that
+// through a fetch mock whose /view-prs/data response the test resolves.
 const capturedContext = [];
 jest.mock('./components/PrTableApp', () => {
   const ReactForMock = require('react');
@@ -32,79 +34,78 @@ jest.mock('./components/PrTableApp', () => {
   };
 });
 
-// AppRoot's window.mountReactPrTable/etc. assignments happen inside
-// useEffect, which React only flushes once the initial render commits -
-// wrap the module's own top-level mountAppRoot() call in act() so those
-// bridges are already assigned by the time the first test runs.
-//
+const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
+let resolveDataFetch;
+const dataFetched = new Promise((resolve) => {
+  resolveDataFetch = resolve;
+});
+const initialPayload = {
+  ok: true,
+  byPrNumber: { 1: { prNumber: '1' } },
+  lastRun: { repo: 'owner/repo', updatedAt: '2026-10-21T10:00:00Z' },
+};
+global.fetch = jest.fn((url) => {
+  if (String(url) === '/view-prs/data') {
+    return dataFetched.then(() => okJson(initialPayload));
+  }
+  return Promise.resolve(okJson({ ok: true }));
+});
+
 // Regression guard (recorded here, not in its own test, since the module
 // bootstrap this checks only ever runs once at file scope - see the
 // load-order race described in react-app.jsx's own AppRoot effect
-// comment): 'viewprs:react-ready' must fire only once
-// window.mountReactPrTable actually exists. Dispatching it any earlier
-// (e.g. synchronously right after ReactDOM.createRoot(...).render(), which
-// only schedules the initial commit rather than running it inline) let
-// index.page.js's one-time listener consume its only retry before the
-// bridge was real, permanently leaving the PR table on "Loading..." even
-// though data had fetched fine - a real bug this same top-level bootstrap
-// call didn't previously guard against.
+// comment): 'viewprs:react-ready' must fire only once AppRoot's bridges
+// exist. Dispatching it any earlier (e.g. synchronously right after
+// ReactDOM.createRoot(...).render(), which only schedules the initial commit
+// rather than running it inline) let index.page.js's one-time listeners
+// consume their only retry before the bridge was real.
+// window.updateReactAutoRenderBlockedLinks is assigned by AppRoot's last
+// bridge effect before the dispatch.
 let reactReadyBridgeWasFunctionWhenDispatched = null;
 window.addEventListener('viewprs:react-ready', () => {
-  reactReadyBridgeWasFunctionWhenDispatched = typeof window.mountReactPrTable === 'function';
+  reactReadyBridgeWasFunctionWhenDispatched = typeof window.updateReactAutoRenderBlockedLinks === 'function';
 });
 
-describe('react-app.jsx: window.mountReactPrTable / window.updateReactPrTable bridge (AppRoot)', () => {
+const getPrTableApp = () => document.querySelector('#pr-sections [data-testid="pr-table-app"]');
+
+describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has data', () => {
   // The module require (and its bootstrap dispatch check) live in
-  // beforeAll, not file scope, because 'viewprs:react-ready' now dispatches
-  // via queueMicrotask (see that effect's own comment in react-app.jsx - a
+  // beforeAll, not file scope, because 'viewprs:react-ready' dispatches via
+  // queueMicrotask (see that effect's own comment in react-app.jsx - a
   // flushSync-reentrancy fix) - an actual `await` is needed to let that
   // microtask run before checking it fired, and only an async Jest
   // lifecycle hook can do that; top-level file scope can't await.
   beforeAll(async () => {
+    // AppRoot resolves its portal containers once, on its first render.
+    document.body.innerHTML = '<div id="pr-sections"></div>';
     React.act(() => {
       require('./react-app');
     });
     await Promise.resolve();
     if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
-      throw new Error(
-        "'viewprs:react-ready' fired before window.mountReactPrTable was assigned",
-      );
+      throw new Error("'viewprs:react-ready' fired before AppRoot's bridges were assigned");
     }
   });
 
-  beforeEach(() => {
-    capturedContext.length = 0;
-    document.body.innerHTML = '';
+  // These run in order against the one app mounted above.
+  test('given the initial data fetch is still pending, when the app has mounted, then the PR table is not rendered yet', () => {
+    expect(global.fetch).toHaveBeenCalledWith('/view-prs/data');
+    expect(getPrTableApp()).toBeNull();
+    expect(capturedContext).toHaveLength(0);
   });
 
-  test('given no container element, when mounting, then logs an error and returns null without throwing', () => {
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const result = window.mountReactPrTable(null, { initialPayload: {}, selectedRepo: '' });
-    expect(result).toBeNull();
-    expect(errorSpy).toHaveBeenCalled();
-    errorSpy.mockRestore();
-  });
-
-  test('given a container and initial props, when mounted, then renders PrTableApp with the Provider-supplied state', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const payload = { byPrNumber: { 1: { prNumber: '1' } } };
-
-    React.act(() => {
-      window.mountReactPrTable(container, { initialPayload: payload, selectedRepo: 'owner/repo' });
+  test('given the initial data fetch resolves, when it is rendered, then PrTableApp mounts in #pr-sections with that payload and its resolved repo', async () => {
+    await React.act(async () => {
+      resolveDataFetch();
+      await dataFetched;
     });
 
-    expect(capturedContext.at(-1).payload).toBe(payload);
+    expect(getPrTableApp()).not.toBeNull();
+    expect(capturedContext.at(-1).payload).toEqual(initialPayload);
     expect(capturedContext.at(-1).selectedRepo).toBe('owner/repo');
-    expect(container.querySelector('[data-testid="pr-table-app"]')).not.toBeNull();
   });
 
   test('given a mounted table, when window.updateReactPrTable is called with a new payload but no repo, then PrTableApp re-renders with the new payload and keeps the previous selectedRepo', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    React.act(() => {
-      window.mountReactPrTable(container, { initialPayload: { byPrNumber: {} }, selectedRepo: 'owner/repo' });
-    });
     capturedContext.length = 0;
 
     const nextPayload = { byPrNumber: { 2: { prNumber: '2' } } };

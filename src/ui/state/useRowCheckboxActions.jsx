@@ -4,6 +4,7 @@ import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-ac
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
+import { usePrDataActions } from './PrDataActionsContext';
 
 /**
  * Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -34,6 +35,9 @@ export function useRowCheckboxActions() {
   const { payload, selectedRepo, beginRequestActivity } = usePrData();
   const { setStatusText } = useStatusText();
   const { showError } = useSnackbar();
+  // Window-bridge elimination Phase 7: was window.applyLatestPrData/
+  // loadStoredData (index.page.js); PrDataProvider owns both now.
+  const { applyLatestPrData, loadStoredData } = usePrDataActions();
 
   return useMemo(() => {
     const { toggleInReviewForRow, toggleFlaggedForRow } = createPrRowCheckboxActionsHelpers({
@@ -49,11 +53,11 @@ export function useRowCheckboxActions() {
       },
       getLatestStoredPayload: () => payload,
       getLatestSelectedRepo: () => selectedRepo,
-      applyLatestPrData: (partial) => window.applyLatestPrData?.(partial),
-      loadStoredData: (...args) => window.loadStoredData?.(...args),
+      applyLatestPrData,
+      loadStoredData,
       beginRequestActivity,
     });
 
     return { toggleInReviewForRow, toggleFlaggedForRow };
-  }, [payload, selectedRepo, setStatusText, showError, beginRequestActivity]);
+  }, [payload, selectedRepo, setStatusText, showError, beginRequestActivity, applyLatestPrData, loadStoredData]);
 }

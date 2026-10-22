@@ -2,6 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+const { PrDataActionsContext } = require('./PrDataActionsContext');
 const { useRequestMoreMerged } = require('./useRequestMoreMerged.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
@@ -9,6 +10,18 @@ const { RequestActivityContext } = require('./RequestActivityContext');
 const React = require('react');
 const { PrDataProvider } = require('./PrDataProvider');
 const { useRequestActivity } = require('./RequestActivityContext');
+
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the data-pipeline functions come from PrDataActionsContext now, not
+// window.* bridges - tests assign fields on `prDataActions` (reset after
+// each test) before rendering.
+const makePrDataActions = () => ({
+  loadStoredData: async () => null,
+  applyFreshPrPayload: () => {},
+  applyLatestPrData: () => {},
+  getLatestStoredPayload: () => null,
+});
+let prDataActions = makePrDataActions();
 
 function Probe({ onReady }) {
   onReady(useRequestMoreMerged());
@@ -24,7 +37,9 @@ const renderProbe = (onReady, { activity, setStatusText = () => {}, showError = 
     <StatusTextContext.Provider value={{ statusText: '', setStatusText }}>
       <SnackbarContext.Provider value={{ showError }}>
         <RequestActivityContext.Provider value={activity}>
-          <Probe onReady={onReady} />
+          <PrDataActionsContext.Provider value={prDataActions}>
+            <Probe onReady={onReady} />
+          </PrDataActionsContext.Provider>
         </RequestActivityContext.Provider>
       </SnackbarContext.Provider>
     </StatusTextContext.Provider>,
@@ -34,8 +49,7 @@ describe('useRequestMoreMerged', () => {
   afterEach(() => {
     delete window.beginRequestActivity;
     delete window.renderRequestActivity;
-    delete window.applyFreshPrPayload;
-    delete window.loadStoredData;
+    prDataActions = makePrDataActions();
     delete global.fetch;
   });
 
@@ -47,8 +61,8 @@ describe('useRequestMoreMerged', () => {
     // Sentinels that must NOT be used: the old window bridges.
     window.beginRequestActivity = jest.fn(() => jest.fn());
     window.renderRequestActivity = jest.fn();
-    window.applyFreshPrPayload = jest.fn();
-    window.loadStoredData = jest.fn().mockResolvedValue(undefined);
+    prDataActions.applyFreshPrPayload = jest.fn();
+    prDataActions.loadStoredData = jest.fn().mockResolvedValue(undefined);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,

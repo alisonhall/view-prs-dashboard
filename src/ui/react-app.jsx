@@ -470,6 +470,7 @@ function computeStaticContainers() {
     tabExport: document.getElementById('tab-export-root'),
     autoRenderBlockedStatus: document.getElementById('auto-render-blocked-status-root'),
     autoRenderBlockedApplyBtn: document.getElementById('auto-render-blocked-apply-btn-root'),
+    prSections: document.getElementById('pr-sections'),
   };
 }
 
@@ -489,10 +490,10 @@ function computeStaticContainers() {
  * reads via the same window.* bridges as before, this slice only unifies
  * *where* everything renders, not yet *how* each piece gets its data.
  *
- * PrTableApp is the one consumer that doesn't mount eagerly (index.page.js
- * calls window.mountReactPrTable(container, props) lazily, once PR data
- * first loads) - `prTable` state starts null and the portal only renders
- * once that bridge call has actually happened.
+ * PrTableApp is the one consumer that doesn't mount eagerly: <PrTablePortal />
+ * only renders it once PrDataProvider has rendered its first payload
+ * (window-bridge elimination Phase 7 - index.page.js used to trigger this via
+ * window.mountReactPrTable).
  */
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): same default as
@@ -605,6 +606,29 @@ function RefreshLabelsButtonLive({ container }) {
 // Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // also calls useRequestMoreMerged(), passing its returned function as
 // onRequestMore - replaces window.handleRequestMoreMerged.
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the PR table, mounted once PrDataProvider has rendered its first payload -
+// replaces window.mountReactPrTable, which index.page.js's renderPrData called
+// on its first render. Its own component so only it (not AppRoot and every
+// portal AppRoot builds) subscribes to the PR-data Context.
+function PrTablePortal({ container }) {
+  const { hasRenderedPrData } = usePrData();
+  if (!container || !hasRenderedPrData) return null;
+  return createPortal(
+    <NeedsAttentionProvider>
+      <NotesDirtyProvider>
+        <PrInsightsDisplayProvider>
+          <ReviewConversationsUiStateProvider>
+            <PrTableApp />
+          </ReviewConversationsUiStateProvider>
+        </PrInsightsDisplayProvider>
+      </NotesDirtyProvider>
+    </NeedsAttentionProvider>,
+    container,
+    'pr-table',
+  );
+}
+
 function MergedRequestMoreActionLive() {
   const { isVisible, repo } = useMergedRequestMoreActionOptions();
   const requestMoreMerged = useRequestMoreMerged();
@@ -665,7 +689,6 @@ function AppRoot() {
   const hasExportBeenVisible = useHasTabPanelBeenVisible('tab-panel-export');
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
-  const [prTable, setPrTable] = useState(null);
   // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the Backfill tab's button-disabled flags live in <BackfillStatusProvider />
   // now (it computes them via getBackfillStatusViewModel anyway, and used to
@@ -716,32 +739,10 @@ function AppRoot() {
     backfillLogUpdateTick,
   } = useBackfillStatus();
 
-  useEffect(() => {
-    window.mountReactPrTable = (containerElement, props) => {
-      if (!containerElement) {
-        console.error('[React Migration] Cannot mount: container element not found');
-        return null;
-      }
-      // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // onAckAction/onApplyLabel/onCheckboxChange no longer threaded
-      // through here - PrTableApp.jsx now builds its own real handlers
-      // directly (see its own comment). props?.onAckAction/onApplyLabel/
-      // onCheckboxChange, if still passed by a caller, are ignored.
-      setPrTable({
-        container: containerElement,
-      });
-      // Seed the initial payload through the same path every later update
-      // uses (window.updateReactPrTable, owned by <PrDataProvider />, which
-      // is always mounted below - see its own file) rather than threading
-      // initialPayload/selectedRepo through this function as a second,
-      // parallel way to get data in.
-      window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo);
-      return { unmount: () => setPrTable(null) };
-    };
-    return () => {
-      delete window.mountReactPrTable;
-    };
-  }, []);
+  // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // window.mountReactPrTable is gone. index.page.js's renderPrData called it on
+  // the first data render; PrDataProvider renders the data itself now, and
+  // <PrTablePortal /> (below) mounts the table once it has.
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
   // window.renderReactFilterSummary (the push bridge this useEffect used
@@ -896,20 +897,7 @@ function AppRoot() {
                 'activity-drawer',
               )}
 
-          {prTable &&
-            createPortal(
-              <NeedsAttentionProvider>
-                <NotesDirtyProvider>
-                  <PrInsightsDisplayProvider>
-                    <ReviewConversationsUiStateProvider>
-                      <PrTableApp />
-                    </ReviewConversationsUiStateProvider>
-                  </PrInsightsDisplayProvider>
-                </NotesDirtyProvider>
-              </NeedsAttentionProvider>,
-              prTable.container,
-              'pr-table',
-            )}
+          <PrTablePortal container={containers.prSections} />
 
         {containers.filterFields.portals}
 
@@ -1376,6 +1364,7 @@ function mountAppRoot() {
                             initialPayload={{}}
                             initialSelectedRepo=""
                             initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                            loadOnMount
                           >
                             <TabPanelVisibilitySync />
                             <AppRoot />
@@ -1398,7 +1387,7 @@ function mountAppRoot() {
 if (typeof window !== 'undefined') {
   mountAppRoot();
   // 'viewprs:react-ready' is now dispatched from inside AppRoot's own
-  // useEffect, once window.mountReactPrTable is actually assigned - see
+  // useEffect, once every bridge AppRoot installs is actually assigned - see
   // that effect's comment for why dispatching it here (immediately after
   // .render(), which only schedules the initial commit) was a race.
 }

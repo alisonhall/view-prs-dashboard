@@ -8,6 +8,7 @@ import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useSnackbar } from './SnackbarContext';
+import { usePrDataActions } from './PrDataActionsContext';
 
 // Built once, not per-render - these close over nothing but each other
 // (same "stable, zero-per-render-state" precedent as AuthorInsightsProvider.jsx's
@@ -48,6 +49,9 @@ export function useSinglePrUpdate() {
   const { beginRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
   const setOutputText = useSetOutputText();
+  // Window-bridge elimination Phase 7: was window.applyFreshPrPayload
+  // (index.page.js); PrDataProvider owns it now.
+  const { applyFreshPrPayload } = usePrDataActions();
 
   return useCallback(async (entry, row) => {
     const prNumber = String(row?.number || entry?.prNumber || '');
@@ -96,7 +100,7 @@ export function useSinglePrUpdate() {
 
       const latestData = result.prData || null;
       if (latestData) {
-        window.applyFreshPrPayload?.(latestData, repo);
+        applyFreshPrPayload(latestData, repo);
       }
     } catch (error) {
       setStatusMessage(`Failed to update PR #${prNumber}`);
@@ -109,5 +113,5 @@ export function useSinglePrUpdate() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, showError, beginRequestActivity, setOutputText]);
+  }, [setStatusText, showError, beginRequestActivity, setOutputText, applyFreshPrPayload]);
 }

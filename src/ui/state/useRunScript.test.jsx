@@ -2,6 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+const { PrDataActionsContext } = require('./PrDataActionsContext');
 const { useRunScript } = require('./useRunScript.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { FilterStateContext } = require('./FilterStateContext');
@@ -9,6 +10,18 @@ const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');
 const { OutputTextSetterContext } = require('./OutputTextContext');
+
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the data-pipeline functions come from PrDataActionsContext now, not
+// window.* bridges - tests assign fields on `prDataActions` (reset after
+// each test) before rendering.
+const makePrDataActions = () => ({
+  loadStoredData: async () => null,
+  applyFreshPrPayload: () => {},
+  applyLatestPrData: () => {},
+  getLatestStoredPayload: () => null,
+});
+let prDataActions = makePrDataActions();
 
 function Probe({ onReady }) {
   const runScript = useRunScript();
@@ -54,7 +67,9 @@ const renderProbe = (
           <SnackbarContext.Provider value={{ showError }}>
             <OutputTextSetterContext.Provider value={outputTextSetter}>
               <RequestActivityContext.Provider value={activity}>
-                <Probe onReady={onReady} />
+                <PrDataActionsContext.Provider value={prDataActions}>
+                  <Probe onReady={onReady} />
+                </PrDataActionsContext.Provider>
               </RequestActivityContext.Provider>
             </OutputTextSetterContext.Provider>
           </SnackbarContext.Provider>
@@ -67,7 +82,7 @@ describe('useRunScript', () => {
   afterEach(() => {
     setOutputText = () => {};
     activity = makeActivity();
-    delete window.applyFreshPrPayload;
+    prDataActions = makePrDataActions();
     delete global.fetch;
   });
 
@@ -78,7 +93,7 @@ describe('useRunScript', () => {
     const finishActivity = jest.fn();
     setOutputText = (message) => outputMessages.push(message);
     activity.beginRequestActivity = jest.fn(() => finishActivity);
-    window.applyFreshPrPayload = applyFreshPrPayload;
+    prDataActions.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, output: 'done', prData: { byPrNumber: { 7: {} } } }),

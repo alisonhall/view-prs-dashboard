@@ -6,6 +6,7 @@ import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar
 import { useStatusText } from './StatusTextContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useSnackbar } from './SnackbarContext';
+import { usePrDataActions } from './PrDataActionsContext';
 
 /**
  * Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
@@ -41,6 +42,9 @@ export function useRequestMoreMerged() {
   // beginRequestActivity/renderRequestActivity come from useRequestActivity() instead of
   // window.beginRequestActivity/renderRequestActivity.
   const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
+  // Window-bridge elimination Phase 7: was window.applyFreshPrPayload/
+  // loadStoredData (index.page.js); PrDataProvider owns both now.
+  const { applyFreshPrPayload, loadStoredData } = usePrDataActions();
   const isPendingRef = useRef(false);
 
   return useCallback(
@@ -53,8 +57,8 @@ export function useRequestMoreMerged() {
         defaultRepo: DEFAULT_REPO,
         beginRequestActivity,
         postJson,
-        applyFreshPrPayload: (...args) => window.applyFreshPrPayload?.(...args),
-        loadStoredData: (...args) => window.loadStoredData?.(...args),
+        applyFreshPrPayload,
+        loadStoredData,
         setStatusMessage: (message) => {
           setStatusText(message);
           renderRequestActivity();
@@ -71,6 +75,6 @@ export function useRequestMoreMerged() {
 
       return handleRequestMoreMerged(repoOverride, options);
     },
-    [setStatusText, showError, beginRequestActivity, renderRequestActivity],
+    [setStatusText, showError, beginRequestActivity, renderRequestActivity, applyFreshPrPayload, loadStoredData],
   );
 }

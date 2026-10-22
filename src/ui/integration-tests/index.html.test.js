@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const React = require("react");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite mounts the real
-// PrTableApp (see installReactTableMountBridge() below) via
+// PrTableApp (see installReactTestGlobals() below) via
 // @testing-library/react's own render()/cleanup() rather than a hand-rolled
 // ReactDOM.createRoot() bridge - see that function's own comment for why.
 // Importing it also configures @testing-library/dom's *shared* global
@@ -24,7 +24,6 @@ const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js")
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
-const { RequestActivityContext } = require("../state/RequestActivityContext");
 const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
 const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
@@ -105,22 +104,6 @@ let actionLogEntries = [];
 let actorNameCacheEntries = {};
 let actorLoginAliasEntries = {};
 let fetchMock;
-// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// installFilterStateProviderBridge() and window.mountReactPrTable used to
-// be two independent rtlRender trees - harmless while FilterStateProvider
-// read the 9 multi-select lists' checked-state via window.* DOM-scan
-// bridges, but broken once it reads RowFilterSelectionContext/
-// AuthorThreadResolutionSelectionContext/ChangeFilterActorSelectionContext
-// directly (two separate React trees can never share a Context instance,
-// no matter how their DOM output is nested - Context flows through the
-// component tree, not the DOM). FilterStateTestRootHarness (below) is now
-// the single persistent root that owns all 3 selection Providers plus
-// FilterStateProvider; this holds the "mount a PR table into this
-// container" request so window.mountReactPrTable can trigger a
-// createPortal from *inside* that same tree instead of starting a second,
-// disconnected one.
-let mountReactPrTableSlotController = null;
-
 // Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the real FilterStateProvider's Context value, captured by
 // FilterStateTestHandle below. This suite's own helpers (and a few assertions)
@@ -396,13 +379,11 @@ const injectRunFilterFieldElements = () => {
 // That branch (and the vanilla table-build code it called) is gone now, so
 // this suite needs a real React-rendered table to keep exercising real
 // row/checkbox/Ack DOM the same way a real browser does. Rather than
-// importing the whole react-app.jsx module, this reimplements just its
-// mountReactPrTable/updateReactPrTable pairing directly against the same
-// PrTableApp component real production mounts - see react-app.jsx's real
-// mountReactPrTable, and index.page.js's mountReactTable/updateReactTable
-// (Track C slice C2b, REACT_MIGRATION_PLAN.md) for the real callers.
-// Called both from initTestPage() and from the one test below that builds
-// its own page setup from scratch instead of using it.
+// importing the whole react-app.jsx module, FilterStateTestRootHarness
+// (below) mounts the same Providers and PrTableApp component real
+// production mounts, nested the same way. Installed both from
+// initTestPage() and from the one test below that builds its own page setup
+// from scratch instead of using it.
 //
 // Mounts via @testing-library/react's own render()/cleanup() rather than a
 // hand-rolled ReactDOM.createRoot() bridge. An earlier version of this
@@ -428,7 +409,7 @@ const injectRunFilterFieldElements = () => {
 // react-app.jsx's own AppRoot. buildMultiSelectContainers() resolves the
 // real DOM containers these portal into, matching react-app.jsx's own
 // computeStaticContainers resolution, for use by
-// installReactTableMountBridge() below (which mounts this inside the SAME
+// FilterStateTestRootHarness below (which mounts this inside the SAME
 // <PrDataProvider> instance the PR table uses, so both read the identical
 // payload/selectedRepo - the real react-app.jsx structure, not two
 // independent trees).
@@ -450,7 +431,7 @@ const buildMultiSelectContainers = () => {
 // AppliedFilterSummaryLive derives the same summary/chips/#data-meta text
 // live, reactively, from Context instead. This suite's own equivalent,
 // AppliedFilterSummaryTestLive (below), replaces this function - it has
-// to be mounted *inside* MountedPrTableTree (not as its own independent
+// to be mounted *inside* the harness's PrDataProvider (not as its own independent
 // root the way this used to be) since it needs a real <PrDataProvider/>
 // ancestor, which only exists there.
 function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
@@ -472,7 +453,7 @@ function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaC
 
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
-// below, as the ancestor of MountedPrTableTree's PrDataProvider - the same
+// below, as the ancestor of the harness's PrDataProvider - the same
 // order react-app.jsx's mountAppRoot() uses. It used to be its own separate,
 // sibling root (installAutoRenderBlockingProviderBridge), which stopped
 // working once PrDataProvider started reading it through Context: a
@@ -496,26 +477,19 @@ function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaC
 // (window.autoScrollBackfillLogToBottom itself is now deleted outright too
 // - cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
 // audit" - confirmed to have no remaining readers anywhere.)
-// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// useRunScript/useAckLabelActions/useBackfillActions now read
-// beginRequestActivity/renderRequestActivity from useRequestActivity(), which
-// <PrDataProvider> publishes; in production it wraps <AppRoot/> from mountAppRoot(). This
-// suite can't do that: its real PrDataProvider only exists inside
-// MountedPrTableTree, mounted later per table mount with that mount's own
-// initial payload - hoisting it to these harnesses' roots would change how
-// every test's first render starts. So the 3 harness roots that call those
-// hooks outside that tree get this stand-in instead, forwarding to the same
-// window bridges the real PrDataProvider (once mounted) still publishes -
-// the exact behavior these hooks had when they called window.* directly,
-// including the no-op before the table mounts.
-const WINDOW_BACKED_PR_ACTIVITY_VALUE = {
-  beginRequestActivity: (...args) => (window.beginRequestActivity || (() => () => {}))(...args),
-  renderRequestActivity: (...args) => window.renderRequestActivity?.(...args),
-};
-const WindowBackedPrActivityProvider = ({ children }) =>
-  React.createElement(RequestActivityContext.Provider, { value: WINDOW_BACKED_PR_ACTIVITY_VALUE }, children);
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// WindowBackedPrActivityProvider (a RequestActivityContext stand-in that
+// forwarded to window.beginRequestActivity) is gone. Its harness roots
+// called those hooks outside this suite's real PrDataProvider, which used to
+// mount lazily with the PR table; the Provider now mounts once at the root
+// of FilterStateTestRootHarness (it loads the data itself, as in
+// production), so every hook below is a genuine descendant of it.
 
-function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContainer }) {
+// Reads the container ids at render time, like react-app.jsx's AppRoot.
+function BackfillControlsTestHarness() {
+  const controlsRoot = document.getElementById("backfill-controls-root");
+  const logControlsRoot = document.getElementById("backfill-log-controls-root");
+  const logContainer = document.getElementById("backfill-log");
   // Window-bridge elimination Phase 3d: the button state is owned by the real
   // BackfillStatusProvider this harness is mounted under (same as react-app.jsx's
   // AppRoot reads it), not a local state fed by window.updateReactBackfillButtonState.
@@ -578,7 +552,7 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
 
 // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
 // the REAL FilterStateProvider - this suite's own comment on
-// installReactTableMountBridge's RowFilterSelectionProvider block
+// installReactTestGlobals's RowFilterSelectionProvider block
 // explains why it was deliberately NOT mounted before (its bridges would
 // win over this suite's own plain DOM writes); persistence now living
 // inside this Provider makes mounting it unavoidable, since there is no
@@ -600,18 +574,17 @@ function BackfillControlsTestHarness({ controlsRoot, logControlsRoot, logContain
 // `false`) and incorrectly treat an untouched checkbox as a non-default
 // override.
 //
-// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// MountedPrTableTree is the same PrDataProvider > (NeedsAttentionProvider >
-// NotesDirtyProvider > PrTableApp) + (FilterOptionsProvider >
-// MultiSelectListPortals) tree window.mountReactPrTable used to rtlRender
-// as its own, separate top-level root - extracted here so it can instead
-// be the child of a createPortal called from inside
-// FilterStateTestRootHarness's single persistent tree (see that
-// component's own comment, and mountReactPrTableSlotController's).
-function MountedPrTableTree({ initialPayload, selectedRepo }) {
-  return React.createElement(
-    PrDataProvider,
-    { initialPayload, initialSelectedRepo: selectedRepo },
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the PR table subtree, portaled into #pr-sections once the real
+// PrDataProvider has rendered its first payload - the same gate as
+// react-app.jsx's PrTablePortal. Replaces MountedPrTableTree, which this
+// suite's window.mountReactPrTable stub used to portal in (with its own
+// PrDataProvider) when index.page.js's renderPrData asked for a mount.
+function PrTablePortalTestLive() {
+  const { hasRenderedPrData } = usePrData();
+  const container = document.getElementById("pr-sections");
+  if (!container || !hasRenderedPrData) return null;
+  return createPortal(
     React.createElement(
       NeedsAttentionProvider,
       null,
@@ -625,46 +598,11 @@ function MountedPrTableTree({ initialPayload, selectedRepo }) {
         React.createElement(PrTableApp),
       ),
     ),
-    // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // mounted the same way react-app.jsx's real AppRoot does (as a sibling
-    // of PrTableApp, inside the same PrDataProvider) so the "data polling
-    // (via real PrDataPolling interval)" tests below can drive
-    // pollForDataChanges via a real setInterval + fake timers, instead of
-    // calling the window.pollForDataChanges bridge directly.
-    React.createElement(PrDataPolling, null),
-    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): mounted inside
-    // the SAME <PrDataProvider /> instance as PrTableApp above - matching
-    // react-app.jsx's real AppRoot structure, so FilterOptionsProvider
-    // derives its 9 option lists from the exact payload/selectedRepo the
-    // table itself is showing, not a second, independently-fed copy.
-    React.createElement(
-      FilterOptionsProvider,
-      null,
-      React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
-    ),
-    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // mounted inside the SAME <PrDataProvider/> instance as PrTableApp
-    // above, matching react-app.jsx's real AppRoot structure - needs a
-    // real PrDataProvider ancestor for usePrData(), which only exists
-    // here (not at FilterStateTestRootHarness's own top level).
-    React.createElement(AppliedFilterSummaryTestLive, {
-      appliedFilterSummaryContainer: document.getElementById("management-filter-summary-root"),
-      dataMetaContainer: document.getElementById("data-meta"),
-    }),
+    container,
+    "pr-table",
   );
 }
 
-// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// single persistent root for both FilterStateProvider and (once
-// window.mountReactPrTable is actually called) MountedPrTableTree above,
-// replacing 2 previously-independent rtlRender trees - see
-// mountReactPrTableSlotController's own comment for why that merge was
-// necessary. Nesting order matches react-app.jsx's real AppRoot
-// (RowFilterSelectionProvider > AuthorThreadResolutionSelectionProvider >
-// ChangeFilterActorSelectionProvider > ... > FilterStateProvider) so
-// FilterStateProvider's buildOverrides() resolves the exact same Context
-// instances MultiSelectListPortals (inside the portaled MountedPrTableTree)
-// writes into.
 // Captures the real FilterStateProvider's Context value for the helpers above.
 function FilterStateTestHandle() {
   const state = useFilterState();
@@ -678,18 +616,24 @@ function FilterStateTestHandle() {
   return null;
 }
 
+// The suite's single persistent root, nested like react-app.jsx's
+// mountAppRoot(): the 3 selection Providers > FilterStateProvider (so
+// FilterStateProvider's buildOverrides() resolves the same Context instances
+// MultiSelectListPortals writes into) > AutoRenderBlockingProvider >
+// PrDataProvider, with every harness that calls a data/activity hook below
+// it.
+//
+// Window-bridge elimination Phase 7: PrDataProvider mounts here, once, with
+// loadOnMount - it fetches /view-prs/data itself, as in production, instead
+// of index.page.js fetching and then asking this suite's
+// window.mountReactPrTable stub to mount a per-table Provider. So this root
+// must mount after initTestPage() points fetch at the test's fetchMock (see
+// installFilterStateProviderBridge's callers). BackfillStatusProvider wraps
+// from here too now, inside StatusTextProvider like production: it used to
+// be a separate root (installBackfillControlsBridge, deleted), which can't
+// work once PrDataProvider pushes each payload's backfill status to it
+// through Context.
 function FilterStateTestRootHarness({ initialValues }) {
-  const [mountRequest, setMountRequest] = React.useState(null);
-
-  React.useEffect(() => {
-    mountReactPrTableSlotController = {
-      mount: (containerElement, props) => setMountRequest({ containerElement, props }),
-    };
-    return () => {
-      mountReactPrTableSlotController = null;
-    };
-  }, []);
-
   const errorSnackbarRoot = document.getElementById("error-snackbar-root");
   const autoRenderBlockedStatusRoot = document.getElementById("auto-render-blocked-status-root");
   const autoRenderBlockedApplyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
@@ -697,96 +641,98 @@ function FilterStateTestRootHarness({ initialValues }) {
   return React.createElement(
     // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
     // audit"): wraps the whole tree, outside StatusTextProvider (order
-    // between the two is arbitrary - neither depends on the other, same
-    // reasoning TabStateProvider's own header comment gives for its own
-    // position in react-app.jsx's mountAppRoot). useQuickCheckActions/
-    // useRunScript/useAckLabelActions/useTriggerAutoRun/useSinglePrUpdate/
-    // PrDataProvider's own poll-warning path (all exercised below) now call
-    // useSnackbar() directly instead of window.showErrorNotification/
-    // showWarningNotification/hideErrorNotification, so they need a real
-    // Provider ancestor - and the real <Snackbar/> UI (portaled into
-    // #error-snackbar-root just below, replacing its own former
-    // independent rtlRender tree) needs to be the SAME instance, so that
-    // calling one of these hooks actually updates the #error-snackbar-message
-    // DOM text this suite's own tests assert on.
+    // between the two is arbitrary - neither depends on the other). The
+    // real <Snackbar/> UI (portaled into #error-snackbar-root just below)
+    // must be the SAME instance every useSnackbar() caller writes to, so
+    // this suite's #error-snackbar-message assertions see their text.
     SnackbarProvider,
     null,
     React.createElement(
       // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // useAckLabelActions()/useSinglePrUpdate() (both called from inside
-      // MountedPrTableTree's PrTableApp) now read/write statusText via
-      // useStatusText() directly, not window.setStatusMessage/
-      // updateReactStatusText - wraps the whole tree, same reasoning as
-      // react-app.jsx's own mountAppRoot wrapping <AppRoot />.
+      // the hooks below read/write statusText via useStatusText() directly -
+      // wraps the whole tree, same as react-app.jsx's mountAppRoot.
       StatusTextProvider,
       null,
       React.createElement(
-        RowFilterSelectionProvider,
+        BackfillStatusProvider,
         null,
         React.createElement(
-          AuthorThreadResolutionSelectionProvider,
+          RowFilterSelectionProvider,
           null,
           React.createElement(
-            ChangeFilterActorSelectionProvider,
+            AuthorThreadResolutionSelectionProvider,
             null,
             React.createElement(
-              FilterStateProvider,
-              { initialValues },
-              // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
-              // roadmap"): the allow/deny <details> visibility is now owned by
-              // this headless component (renders nothing, no container needed)
-              // instead of a vanilla bridge - matches react-app.jsx's own
-              // buildFilterStateFieldPortals(), which mounts it as a plain
-              // child the same way.
-              React.createElement(AuthorThreadResolutionRuleVisibility),
-              React.createElement(FilterStateTestHandle),
-              // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-              // audit", cluster 6): RunScriptActionButtonsTestHarness/
-              // ActionButtonsTestHarness used to each mount via their own,
-              // separate rtlRender tree (installRunScriptActionButtonsBridge/
-              // installReactActionButtonMountBridges) - useRunScript/
-              // useAckLabelActions/useQuickCheckActions now call useFormBody()
-              // (FilterStateContext/RowFilterSelectionContext), so they need
-              // to be genuine descendants of THIS tree's Providers instead,
-              // same "merge into the one persistent root" move G.3 already
-              // made for MountedPrTableTree (see this component's own header
-              // comment). ActionButtonsTestHarness keeps its own isolated
-              // PrActivityQueueProvider instance (no test asserts row-busy
-              // state through these 2 buttons specifically, so a separate
-              // instance from the main tree's is harmless, same as before).
+              ChangeFilterActorSelectionProvider,
+              null,
               React.createElement(
-                WindowBackedPrActivityProvider,
-                null,
-                React.createElement(RunScriptActionButtonsTestHarness),
+                FilterStateProvider,
+                { initialValues },
+                // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
+                // roadmap"): the allow/deny <details> visibility is owned by
+                // this headless component - matches react-app.jsx's own
+                // buildFilterStateFieldPortals(), which mounts it as a plain
+                // child the same way.
+                React.createElement(AuthorThreadResolutionRuleVisibility),
+                React.createElement(FilterStateTestHandle),
                 React.createElement(
-                  PrActivityQueueProvider,
+                  AutoRenderBlockingProvider,
                   null,
-                  React.createElement(ActionButtonsTestHarness),
-                ),
-              ),
-              React.createElement(
-                AutoRenderBlockingProvider,
-                null,
-                autoRenderBlockedStatusRoot &&
-                  createPortal(
-                    React.createElement(AutoRenderBlockedStatusText),
-                    autoRenderBlockedStatusRoot,
-                    "auto-render-blocked-status",
-                  ),
-                autoRenderBlockedApplyBtnRoot &&
-                  createPortal(
-                    React.createElement(AutoRenderBlockedApplyButton),
-                    autoRenderBlockedApplyBtnRoot,
-                    "auto-render-blocked-apply-btn",
-                  ),
-                mountRequest &&
-                  createPortal(
-                    React.createElement(MountedPrTableTree, {
-                      initialPayload: mountRequest.props?.initialPayload,
-                      selectedRepo: mountRequest.props?.selectedRepo,
+                  React.createElement(
+                    PrDataProvider,
+                    { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
+                    // Phase H.20 (see REACT_MIGRATION_PLAN.md,
+                    // "Remaining-effort audit", cluster 6): these call
+                    // useFormBody() (FilterStateContext/
+                    // RowFilterSelectionContext), so they must be genuine
+                    // descendants of this tree's Providers.
+                    // ActionButtonsTestHarness keeps its own isolated
+                    // PrActivityQueueProvider instance (no test asserts
+                    // row-busy state through these 2 buttons specifically).
+                    React.createElement(RunScriptActionButtonsTestHarness),
+                    React.createElement(
+                      PrActivityQueueProvider,
+                      null,
+                      React.createElement(ActionButtonsTestHarness),
+                    ),
+                    React.createElement(BackfillControlsTestHarness),
+                    autoRenderBlockedStatusRoot &&
+                      createPortal(
+                        React.createElement(AutoRenderBlockedStatusText),
+                        autoRenderBlockedStatusRoot,
+                        "auto-render-blocked-status",
+                      ),
+                    autoRenderBlockedApplyBtnRoot &&
+                      createPortal(
+                        React.createElement(AutoRenderBlockedApplyButton),
+                        autoRenderBlockedApplyBtnRoot,
+                        "auto-render-blocked-apply-btn",
+                      ),
+                    React.createElement(PrTablePortalTestLive),
+                    // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration
+                    // roadmap"): mounted like react-app.jsx's real AppRoot
+                    // does, so the "data polling (via real PrDataPolling
+                    // interval)" tests below drive pollForDataChanges via a
+                    // real setInterval + fake timers.
+                    React.createElement(PrDataPolling, null),
+                    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md):
+                    // inside the SAME PrDataProvider as PrTableApp, so
+                    // FilterOptionsProvider derives its 9 option lists from
+                    // the exact payload/selectedRepo the table is showing.
+                    React.createElement(
+                      FilterOptionsProvider,
+                      null,
+                      React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+                    ),
+                    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration
+                    // roadmap"): needs a real PrDataProvider ancestor for
+                    // usePrData().
+                    React.createElement(AppliedFilterSummaryTestLive, {
+                      appliedFilterSummaryContainer: document.getElementById("management-filter-summary-root"),
+                      dataMetaContainer: document.getElementById("data-meta"),
                     }),
-                    mountRequest.containerElement,
                   ),
+                ),
               ),
             ),
           ),
@@ -807,48 +753,9 @@ const installFilterStateProviderBridge = () => {
   );
 };
 
-const installBackfillControlsBridge = () => {
-  const container = document.createElement("div");
-  const controlsRoot = document.getElementById("backfill-controls-root");
-  const logControlsRoot = document.getElementById("backfill-log-controls-root");
-  const logContainer = document.getElementById("backfill-log");
-  rtlRender(
-    // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // useBackfillActions() now reads/writes statusText via
-    // useStatusText() directly, not window.setStatusMessage - wraps its
-    // own real StatusTextProvider (resolves #status itself, same as
-    // react-app.jsx's real mountAppRoot) so this independent tree's
-    // status updates still reach the real DOM node.
-    //
-    // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-    // cluster 4): also wraps its own real BackfillStatusProvider, nested
-    // inside StatusTextProvider (it needs useStatusText() itself) - this
-    // suite never mounts react-app.jsx's real mountAppRoot, so without
-    // this, window.getBackfillTrackingState/updateBackfillStatusFromPayload/
-    // etc. (now answered only by that Provider) wouldn't exist at all,
-    // and BackfillLogControls.jsx's own useBackfillStatus() read would
-    // only ever see the Context's unwrapped default (isBackfillRunning:
-    // false), breaking the "auto-scrolls when running" test below.
-    React.createElement(
-      StatusTextProvider,
-      null,
-      React.createElement(
-        BackfillStatusProvider,
-        null,
-        React.createElement(
-          WindowBackedPrActivityProvider,
-          null,
-          React.createElement(BackfillControlsTestHarness, { controlsRoot, logControlsRoot, logContainer }),
-        ),
-      ),
-    ),
-    { container },
-  );
-};
-
 // Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
 // the 5 REAL RunScriptActionButton instances into a detached container,
-// same reasoning as installBackfillControlsBridge above - this suite
+// same reasoning as BackfillControlsTestHarness above - this suite
 // never mounts react-app.jsx, so without this, "Run script" (43/8
 // existing role-based click tests) and the other 3 buttons would all
 // become empty, unclickable portal roots.
@@ -961,14 +868,14 @@ const installReactStatusTextMountBridges = () => {
   // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // updateReactBackfillLogText no longer wired here as a plain
   // textContent-writer - BackfillControlsTestHarness (installed later via
-  // installBackfillControlsBridge(), always called right after this) now
+  // FilterStateTestRootHarness, which initTestPage() mounts after this) now
   // owns it via real React state, matching react-app.jsx's own AppRoot
   // (BackfillLogControls renders the #backfill-log portal itself now).
   // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // updateReactDataMetaText no longer wired here either - confirmed dead
   // in production (no installer anywhere in react-app.jsx), replaced by
   // mounting the real AppliedFilterSummaryTestLive inside
-  // MountedPrTableTree instead (see that component's own comment).
+  // FilterStateTestRootHarness's PrDataProvider instead (see that component's own comment).
 };
 
 // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -1015,56 +922,21 @@ function ActionButtonsTestHarness() {
   );
 }
 
-// Track C, slices C2b/C2c (post-Phase-6 follow-up, see
-// REACT_MIGRATION_PLAN.md): index.page.js no longer calls
-// window.ReactMountBridge (that module was deleted - it was just a thin
-// wrapper around window.mountReactPrTable/window.updateReactPrTable plus an
-// isMounted() flag, now inlined directly into index.page.js as
-// mountReactTable/updateReactTable/isReactTableMounted). This stub now
-// defines window.mountReactPrTable/window.updateReactPrTable themselves -
-// the same functions react-app.jsx really exposes - using real RTL
-// rendering, matching mountReactPrTable's own real contract: it mounts the
-// real <PrDataProvider /> (state/PrDataProvider.jsx) wrapping PrTableApp,
-// exactly like react-app.jsx's own mountReactPrTable does, and lets the
-// Provider's own useEffect assign window.updateReactPrTable - this stub no
-// longer reimplements that merge logic itself.
-const installReactTableMountBridge = () => {
+// Unmounts the previous generation's React roots and installs the window
+// globals this suite still fakes (the helper modules index.html's <script>
+// tags would load, and the plain-text status/output bridges).
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// this was installReactTableMountBridge, and also stubbed
+// window.mountReactPrTable for index.page.js's renderPrData to call. Both
+// that bridge and renderPrData are gone: the PR table now mounts from
+// FilterStateTestRootHarness's own PrDataProvider (PrTablePortalTestLive),
+// as react-app.jsx's does.
+const installReactTestGlobals = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   installReactStatusTextMountBridges();
-
-  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
-  // Snackbar no longer gets its own independent rtlRender tree here either
-  // (installReactSnackbarMountBridge, deleted) - several hooks that call
-  // useSnackbar() directly now (useQuickCheckActions/useSinglePrUpdate/
-  // PrDataProvider's own poll-warning path, all exercised by tests in this
-  // file that assert real #error-snackbar-message text) need a genuine
-  // SnackbarProvider ancestor, which a separate, disconnected RTL tree
-  // can't give them - FilterStateTestRootHarness now wraps with
-  // SnackbarProvider and portals <Snackbar/> into #error-snackbar-root
-  // itself (see that component's own comment).
-  //
-  // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): no
-  // longer its own independent rtlRender tree - renders MountedPrTableTree
-  // (installFilterStateProviderBridge's own comment) via createPortal from
-  // *inside* FilterStateTestRootHarness's single persistent tree instead,
-  // so it shares one RowFilterSelectionProvider/
-  // AuthorThreadResolutionSelectionProvider/ChangeFilterActorSelectionProvider/
-  // FilterStateProvider instance with it (two separate rtlRender trees
-  // can never share a Context instance). act() flushes the resulting
-  // setState synchronously, matching this bridge's previous
-  // rtlRender-backed synchronous-mount contract. Every real call site
-  // calls installFilterStateProviderBridge() first (initTestPage(), and
-  // the one other installReactTableMountBridge() call site below) so
-  // mountReactPrTableSlotController is always set by the time this runs.
-  window.mountReactPrTable = (containerElement, props) => {
-    if (!containerElement) return null;
-    act(() => {
-      mountReactPrTableSlotController.mount(containerElement, props);
-    });
-    return { unmount: () => {} };
-  };
 };
 
 const initTestPage = ({
@@ -1078,7 +950,7 @@ const initTestPage = ({
 } = {}) => {
   // Unmount the previous generation's React root(s) while their container
   // is still attached to the document (about to be replaced below) rather
-  // than after - see installReactTableMountBridge()'s own cleanup() call
+  // than after - see installReactTestGlobals()'s own cleanup() call
   // for why unmounting matters here; doing it before detaching the
   // container gives React's own commit/cleanup work a normally-connected
   // DOM to run against.
@@ -1104,8 +976,7 @@ const initTestPage = ({
     : {};
   document.body.innerHTML = extractBodyHtml(indexHtml);
   injectRunFilterFieldElements();
-  installReactTableMountBridge();
-  installBackfillControlsBridge();
+  installReactTestGlobals();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
@@ -3795,7 +3666,7 @@ describe("index page rendering with Testing Library", () => {
       actionLogEntries = [];
       document.body.innerHTML = extractBodyHtml(indexHtml);
       injectRunFilterFieldElements();
-      installReactTableMountBridge();
+      installReactTestGlobals();
 
       let schedulerActivePrNumbers = [];
       fetchMock = createFetchMock();
@@ -3805,18 +3676,11 @@ describe("index page rendering with Testing Library", () => {
         parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
       };
 
-      // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // this standalone test (unlike the main initTestPage() flow) didn't
-      // previously need installFilterStateProviderBridge() at all, since
-      // window.mountReactPrTable used to be its own independent tree - now
-      // that it portals into FilterStateTestRootHarness's tree instead
-      // (see mountReactPrTableSlotController's own comment),
-      // window.mountReactPrTable requires this to have run first. Must
-      // come after the fetchMock assignment above, same ordering reason
-      // installFilterStateProviderBridge()'s own comment gives for the
-      // main flow (its restore effect fires a GET immediately on mount) -
-      // this test's fetchMock already falls through to baseFetch for
-      // /view-prs/user-defaults.
+      // Mounts the harness root, whose PrDataProvider renders the table
+      // (window-bridge elimination Phase 7 - it loads /view-prs/data itself).
+      // Must come after the fetchMock assignment above, same ordering reason
+      // as the main initTestPage() flow: the root's restore and data-load
+      // effects fire their GETs immediately on mount.
       installFilterStateProviderBridge();
 
       require("../index.page.js");
@@ -6025,14 +5889,11 @@ describe("index page rendering with Testing Library", () => {
         onRequestMore: requestMoreMerged,
       });
     }
-    rtlRender(
-      React.createElement(
-        WindowBackedPrActivityProvider,
-        null,
-        React.createElement(MergedRequestMoreActionTestHarness),
-      ),
-      { container: document.getElementById("merged-request-more-action") },
-    );
+    // Its own root, so the hook sees the inert default PrData/request-activity
+    // Contexts - enough here, since this test only asserts the POST body.
+    rtlRender(React.createElement(MergedRequestMoreActionTestHarness), {
+      container: document.getElementById("merged-request-more-action"),
+    });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Request more" }));
 
@@ -7393,7 +7254,7 @@ describe("index page rendering with Testing Library", () => {
 
   // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
   // 9 tests below used to call window.pollForDataChanges() directly -
-  // MountedPrTableTree now mounts a real <PrDataPolling />, so these drive
+  // FilterStateTestRootHarness mounts a real <PrDataPolling />, so these drive
   // the same real orchestration function through its actual setInterval
   // instead, via fake timers scoped to just this describe block (doNotFake:
   // ['Date'] - this suite's fixtures/assertions rely on real Date/ISO
@@ -9587,34 +9448,6 @@ describe("index page rendering with Testing Library", () => {
           "^Merge branch .* into .*$",
         ]);
       });
-    });
-  });
-
-  describe("React mount failure (Phase 6 - see REACT_MIGRATION_PLAN.md)", () => {
-    test("given window.mountReactPrTable genuinely throws, when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
-      // Distinct from the ordinary "React's deferred module hasn't finished
-      // loading yet" race (which this suite's installReactTableMountBridge
-      // pairing never simulates - see renderPrData's own comment on why that
-      // race now leaves #pr-sections empty rather than falling back to a
-      // vanilla table build). This is the other branch: mountReactTable's
-      // (index.page.js) try/catch around window.mountReactPrTable() catches
-      // a genuine failure - renderPrData must surface
-      // renderPrTableMountError()'s honest error state, not pretend to
-      // recover.
-      initTestPage({
-        dataPayload: createMultiPrPayload({
-          prs: [{ scenario: "open-no-change", prNumber: 1 }],
-        }),
-      });
-      window.mountReactPrTable = () => {
-        throw new Error("React mount failed");
-      };
-
-      const errorMessage = await screen.findByText(
-        "Failed to load the PR table. Please refresh the page.",
-      );
-      expect(errorMessage).toHaveClass("pr-table-mount-error");
-      expect(screen.queryByText("#1")).toBeNull();
     });
   });
 });

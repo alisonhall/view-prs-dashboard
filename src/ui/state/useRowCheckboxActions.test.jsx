@@ -6,25 +6,27 @@ const { PrDataProvider } = require('./PrDataProvider');
 const { useRowCheckboxActions } = require('./useRowCheckboxActions.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
+const { usePrDataActions } = require('./PrDataActionsContext');
 
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// applyLatestPrData/loadStoredData are the real PrDataProvider's now (no
+// window.* bridge to stub), so tests assert on its stored payload instead.
+let getLatestStoredPayload;
 function Probe({ onReady }) {
   const actions = useRowCheckboxActions();
+  ({ getLatestStoredPayload } = usePrDataActions());
   onReady(actions);
   return null;
 }
 
 describe('useRowCheckboxActions', () => {
   afterEach(() => {
-    delete window.applyLatestPrData;
-    delete window.loadStoredData;
     delete window.beginRequestActivity;
     delete global.fetch;
   });
 
-  test('given toggleInReviewForRow succeeds with a full prData response, when called, then it posts the real request and syncs the vanilla mirror', async () => {
+  test('given toggleInReviewForRow succeeds with a full prData response, when called, then it posts the real request and records the payload as the newest stored one', async () => {
     const statusMessages = [];
-    const applyLatestPrData = jest.fn();
-    window.applyLatestPrData = applyLatestPrData;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, prData: { byPrNumber: { 7: {} } } }),
@@ -53,10 +55,7 @@ describe('useRowCheckboxActions', () => {
       }),
     );
     expect(statusMessages).toEqual(['Enabling in-review for #7...', 'Enabled in-review for #7']);
-    expect(applyLatestPrData).toHaveBeenCalledWith({
-      payload: { byPrNumber: { 7: {} } },
-      selectedRepo: 'owner/repo',
-    });
+    expect(getLatestStoredPayload()).toEqual({ byPrNumber: { 7: {} } });
     expect(result).toEqual({ payload: { byPrNumber: { 7: {} } }, selectedRepo: 'owner/repo' });
   });
 

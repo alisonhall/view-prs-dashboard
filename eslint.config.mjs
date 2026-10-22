@@ -106,6 +106,7 @@ export default defineConfig([
       "src/ui/helpers/pr-manual-notes-summary.helpers.js",
       "src/ui/helpers/pr-textarea-autoresize.helpers.js",
       "src/ui/helpers/pr-viewed-files-state.helpers.js",
+      "src/ui/helpers/pr-ack-refresh-warnings.helpers.js",
     ],
     languageOptions: { sourceType: "module" },
   },

@@ -81,6 +81,14 @@ export function AutoRenderBlockingProvider({ children }) {
 
   const flushTimerRef = useRef(null);
 
+  // Window-bridge elimination Phase 7: PrDataProvider (a descendant) registers
+  // its applyFreshPrPayload via setFreshPayloadApplier (below) - this used to
+  // be window.applyFreshPrPayload, index.page.js's.
+  const freshPayloadApplierRef = useRef(null);
+  const setFreshPayloadApplier = useCallback((applier) => {
+    freshPayloadApplierRef.current = typeof applier === 'function' ? applier : null;
+  }, []);
+
   // The actual apply/wait-for-blur/wait-for-clean decision - mirrors
   // index.page.js's old flushPendingAutoRender exactly, including the
   // self-attaching one-time native blur listener (now covered by
@@ -101,7 +109,7 @@ export function AutoRenderBlockingProvider({ children }) {
     if (action.type === 'render') {
       stateRef.current.pendingAutoRenderPayload = null;
       bump();
-      window.applyFreshPrPayload?.(action.payload);
+      freshPayloadApplierRef.current?.(action.payload);
     }
     // 'none' / 'wait-for-clean': no-op, wait for the next state change.
   }, [bump]);
@@ -133,7 +141,7 @@ export function AutoRenderBlockingProvider({ children }) {
     }
     stateRef.current.pendingAutoRenderPayload = null;
     bump();
-    window.applyFreshPrPayload?.(payload);
+    freshPayloadApplierRef.current?.(payload);
     // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // statusText via useStatusText() directly (this component is a
     // genuine descendant of StatusTextProvider - see that Provider's own
@@ -195,8 +203,13 @@ export function AutoRenderBlockingProvider({ children }) {
     [isBlocked, statusText, discardAndApply],
   );
   const actions = useMemo(
-    () => ({ getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload }),
-    [getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload],
+    () => ({
+      getHasDirtyPrSectionsFields,
+      getPendingAutoRenderPayload,
+      setPendingAutoRenderPayload,
+      setFreshPayloadApplier,
+    }),
+    [getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload, setFreshPayloadApplier],
   );
 
   return (

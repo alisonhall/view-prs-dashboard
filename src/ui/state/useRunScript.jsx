@@ -8,6 +8,7 @@ import { useSetOutputText } from './OutputTextContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
+import { usePrDataActions } from './PrDataActionsContext';
 
 // Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
 // module-level instantiation.
@@ -56,6 +57,9 @@ export function useRunScript() {
   const { beginRequestActivity, renderRequestActivity } = useRequestActivity();
   // OutputTextProvider wraps the whole tree from mountAppRoot() (Phase 3c).
   const setOutputText = useSetOutputText();
+  // Window-bridge elimination Phase 7: was window.applyFreshPrPayload
+  // (index.page.js); PrDataProvider owns it now.
+  const { applyFreshPrPayload } = usePrDataActions();
 
   return useCallback(async () => {
     const body = getFormBody();
@@ -105,7 +109,7 @@ export function useRunScript() {
 
         const latestData = result.prData || null;
         if (latestData) {
-          window.applyFreshPrPayload?.(latestData, effectiveRepo);
+          applyFreshPrPayload(latestData, effectiveRepo);
         }
       }
 
@@ -139,5 +143,13 @@ export function useRunScript() {
     } finally {
       finishActivity();
     }
-  }, [setStatusText, getFormBody, showError, beginRequestActivity, renderRequestActivity, setOutputText]);
+  }, [
+    setStatusText,
+    getFormBody,
+    showError,
+    beginRequestActivity,
+    renderRequestActivity,
+    setOutputText,
+    applyFreshPrPayload,
+  ]);
 }

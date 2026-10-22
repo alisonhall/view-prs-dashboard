@@ -2,11 +2,24 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
+const { PrDataActionsContext } = require('./PrDataActionsContext');
 const { useSinglePrUpdate } = require('./useSinglePrUpdate.jsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');
 const { OutputTextSetterContext } = require('./OutputTextContext');
+
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the data-pipeline functions come from PrDataActionsContext now, not
+// window.* bridges - tests assign fields on `prDataActions` (reset after
+// each test) before rendering.
+const makePrDataActions = () => ({
+  loadStoredData: async () => null,
+  applyFreshPrPayload: () => {},
+  applyLatestPrData: () => {},
+  getLatestStoredPayload: () => null,
+});
+let prDataActions = makePrDataActions();
 
 function Probe({ onReady }) {
   const runSinglePrUpdate = useSinglePrUpdate();
@@ -42,7 +55,9 @@ const renderProbe = (onReady, setStatusText = () => {}, showError = () => {}) =>
       <SnackbarContext.Provider value={{ showError }}>
         <OutputTextSetterContext.Provider value={outputTextSetter}>
           <RequestActivityContext.Provider value={activity}>
-            <Probe onReady={onReady} />
+            <PrDataActionsContext.Provider value={prDataActions}>
+              <Probe onReady={onReady} />
+            </PrDataActionsContext.Provider>
           </RequestActivityContext.Provider>
         </OutputTextSetterContext.Provider>
       </SnackbarContext.Provider>
@@ -53,7 +68,7 @@ describe('useSinglePrUpdate', () => {
   afterEach(() => {
     setOutputText = () => {};
     activity = makeActivity();
-    delete window.applyFreshPrPayload;
+    prDataActions = makePrDataActions();
     delete global.fetch;
   });
 
@@ -65,7 +80,7 @@ describe('useSinglePrUpdate', () => {
     const beginRequestActivity = jest.fn(() => finishActivity);
     setOutputText = (message) => outputMessages.push(message);
     activity.beginRequestActivity = beginRequestActivity;
-    window.applyFreshPrPayload = applyFreshPrPayload;
+    prDataActions.applyFreshPrPayload = applyFreshPrPayload;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({

@@ -43,11 +43,17 @@ export const AutoRenderBlockingContext = createContext({
  * consumer. This object has a stable identity for the Provider's lifetime
  * (the functions read the Provider's ref, never render state), so it never
  * re-renders anything.
+ *
+ * Window-bridge elimination Phase 7: `setFreshPayloadApplier(fn)` -
+ * PrDataProvider (a descendant) registers its applyFreshPrPayload here, and
+ * this Provider calls it to apply a pending payload. It used to call
+ * window.applyFreshPrPayload (index.page.js) instead.
  */
 export const AutoRenderBlockingActionsContext = createContext({
   getHasDirtyPrSectionsFields: () => false,
   getPendingAutoRenderPayload: () => null,
   setPendingAutoRenderPayload: () => {},
+  setFreshPayloadApplier: () => {},
 });
 
 export function useAutoRenderBlockingActions() {
