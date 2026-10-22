@@ -3,7 +3,7 @@
 const { render, cleanup, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
-const { useAuthorInsightsDrafts } = require('../state/AuthorInsightsDraftsContext');
+const { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } = require('../state/AuthorInsightsDraftsContext');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render-blocking.helpers.js');
 
@@ -14,8 +14,17 @@ const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render
 // AuthorInsightsDraftsProvider instance and the window.* bridge
 // pr-auto-render-blocking.helpers.js actually reads.
 let probeValue;
+let probeVersion;
+let probeRenders = 0;
 function Probe() {
   probeValue = useAuthorInsightsDrafts();
+  probeRenders += 1;
+  return null;
+}
+// Window-bridge elimination Phase 7.4: AutoRenderBlockingSync reads the
+// version Context to recompute on every draft change.
+function VersionProbe() {
+  probeVersion = useAuthorInsightsDraftsVersion();
   return null;
 }
 
@@ -29,16 +38,17 @@ const renderProbe = () =>
     <PrDataProvider>
       <AuthorInsightsDraftsProvider>
         <Probe />
+        <VersionProbe />
       </AuthorInsightsDraftsProvider>
     </PrDataProvider>,
   );
 
 describe('AuthorInsightsDraftsProvider', () => {
   afterEach(() => {
-    delete window.getAuthorManualCommentsForLogin;
     delete window.getAuthorInsightsDraftsSnapshot;
-    delete window.recomputeDirtyPrSectionsFields;
     probeValue = undefined;
+    probeVersion = undefined;
+    probeRenders = 0;
     cleanup();
   });
 
@@ -62,15 +72,20 @@ describe('AuthorInsightsDraftsProvider', () => {
     });
   });
 
-  test('given a composer draft update, when written, then window.recomputeDirtyPrSectionsFields is called', () => {
-    window.recomputeDirtyPrSectionsFields = jest.fn();
+  // Phase 7.4: replaces "window.recomputeDirtyPrSectionsFields is called".
+  test('given a composer draft update, when written, then the version Context bumps while the drafts Context value (and its consumers) stay put', () => {
     renderProbe();
+    const firstValue = probeValue;
+    const firstVersion = probeVersion;
+    const rendersBefore = probeRenders;
 
     act(() => {
       probeValue.updateComposerDraft('octocat', { note: 'hello' });
     });
 
-    expect(window.recomputeDirtyPrSectionsFields).toHaveBeenCalled();
+    expect(probeVersion).toBeGreaterThan(firstVersion);
+    expect(probeValue).toBe(firstValue);
+    expect(probeRenders).toBe(rendersBefore);
   });
 
   test('given an edit draft update via Context, when read back via Context, then it reflects the same value', () => {
@@ -122,15 +137,15 @@ describe('AuthorInsightsDraftsProvider', () => {
     expect(probeValue.getDraftsSnapshot()).toEqual(window.getAuthorInsightsDraftsSnapshot());
   });
 
-  test('given the provider unmounts entirely, when checked, then every published bridge is removed', () => {
+  test('given the provider unmounts entirely, when checked, then its one (test-only) bridge is removed', () => {
     const { unmount } = renderProbe();
 
-    expect(typeof window.getAuthorManualCommentsForLogin).toBe('function');
     expect(typeof window.getAuthorInsightsDraftsSnapshot).toBe('function');
+    // Phase 7.4: deleted with index.page.js's auto-render-blocking code.
+    expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
 
     unmount();
 
-    expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
     expect(window.getAuthorInsightsDraftsSnapshot).toBeUndefined();
   });
 

@@ -8,22 +8,12 @@ import { createContext, useContext } from 'react';
  * manualCommentsByAuthorLogin/manualCommentsLoadingByAuthorLogin/
  * manualCommentsErrorByAuthorLogin).
  *
- * Owned by AuthorInsightsDraftsProvider.jsx. Eleventh follow-up (see
- * REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): of this Context's
- * original 12 window.* bridge names, only `getAuthorManualCommentsForLogin`/
- * `getAuthorInsightsDraftsSnapshot` still get published - `index.page.js`'s
- * fully-vanilla `getBlockingAuthorInsightsLogins` (feeds the real auto-
- * render-blocking/data-loss-prevention check) still needs to read "is
- * there an unsaved author-comment draft" from outside any single
- * AuthorInsightsCommentsSection instance's own lifetime. The other 10 were
- * a stale leftover - AuthorInsightsCommentsSection.jsx (their only real
- * consumer) already calls every one of them via useAuthorInsightsDrafts()
- * directly, confirmed by grep to have zero remaining window.* callers.
- *
- * getDraftsSnapshot (Phase G.2) is the one bridge whose Context-exposed
- * form and window-bridge form both stay, for the same reason: a future
- * real React consumer can read it reactively via useAuthorInsightsDrafts(),
- * while getBlockingAuthorInsightsLogins's own caller stays vanilla.
+ * Owned by AuthorInsightsDraftsProvider.jsx. Window-bridge elimination
+ * Phase 7.4: AutoRenderBlockingSync.jsx reads getDraftsSnapshot/
+ * getManualComments from here to compute the auto-render-blocking state
+ * (index.page.js used to, through window.getAuthorInsightsDraftsSnapshot/
+ * getAuthorManualCommentsForLogin). Only window.getAuthorInsightsDraftsSnapshot
+ * is still published, and only e2e reads it.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context
  * in this migration - AuthorInsightsCommentsSection rendered without a
@@ -56,4 +46,16 @@ export const AuthorInsightsDraftsContext = createContext({
 
 export function useAuthorInsightsDrafts() {
   return useContext(AuthorInsightsDraftsContext);
+}
+
+/**
+ * Window-bridge elimination Phase 7.4: the Provider's write counter, bumped on
+ * every draft/comment-cache change. A separate Context so only the one
+ * component that needs to react to every change (AutoRenderBlockingSync)
+ * re-renders on each keystroke - the Context above stays stable.
+ */
+export const AuthorInsightsDraftsVersionContext = createContext(0);
+
+export function useAuthorInsightsDraftsVersion() {
+  return useContext(AuthorInsightsDraftsVersionContext);
 }

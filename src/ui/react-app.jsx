@@ -59,6 +59,10 @@ import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
 import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
+import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
+import { useAutoRenderBlocking } from './state/AutoRenderBlockingContext';
+import { useAuthorInsights } from './state/AuthorInsightsContext';
+import { createPrAutoRenderIndicatorHelpers } from './helpers/pr-auto-render-indicator.helpers.js';
 import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
 import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
@@ -616,19 +620,43 @@ function RefreshLabelsButtonLive({ container }) {
 function PrTablePortal({ container }) {
   const { hasRenderedPrData } = usePrData();
   if (!container || !hasRenderedPrData) return null;
+  // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up to wrap
+  // <AppRoot /> (mountAppRoot), so AutoRenderBlockingSync can read it too.
   return createPortal(
     <NeedsAttentionProvider>
-      <NotesDirtyProvider>
-        <PrInsightsDisplayProvider>
-          <ReviewConversationsUiStateProvider>
-            <PrTableApp />
-          </ReviewConversationsUiStateProvider>
-        </PrInsightsDisplayProvider>
-      </NotesDirtyProvider>
+      <PrInsightsDisplayProvider>
+        <ReviewConversationsUiStateProvider>
+          <PrTableApp />
+        </ReviewConversationsUiStateProvider>
+      </PrInsightsDisplayProvider>
     </NeedsAttentionProvider>,
     container,
     'pr-table',
   );
+}
+
+// Window-bridge elimination Phase 7.4: the "jump to unsaved" chips read the
+// blocking PRs/authors from AutoRenderBlockingProvider, and this sets the
+// chip list's own `hidden`/`aria-label` (a static index.html element, the
+// portal's container). Both used to come from index.page.js: the
+// attributes from renderAutoRenderBlockedLinks, the lists through
+// window.updateReactAutoRenderBlockedLinks into AppRoot state.
+function AutoRenderBlockedLinksLive({ container }) {
+  const { blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel } = useAutoRenderBlocking();
+  const { getAuthorInsightsDisplayName } = useAuthorInsights();
+
+  useEffect(() => {
+    const { buildAutoRenderBlockedLinksAriaLabel } = createPrAutoRenderIndicatorHelpers({
+      getAuthorInsightsDisplayName,
+    });
+    container.hidden = blockingPrNumbers.length === 0 && blockingAuthorInsightsLogins.length === 0;
+    container.setAttribute(
+      'aria-label',
+      buildAutoRenderBlockedLinksAriaLabel({ blockingPrLabel, blockingAuthorInsightsLogins }),
+    );
+  }, [container, blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel, getAuthorInsightsDisplayName]);
+
+  return <AutoRenderBlockedLinks prNumbers={blockingPrNumbers} authorLogins={blockingAuthorInsightsLogins} />;
 }
 
 function MergedRequestMoreActionLive() {
@@ -705,7 +733,6 @@ function AppRoot() {
   // updateReactRecentRequestActivity. RequestActivityProvider owns them now;
   // read back here only to pass to the drawer.
   const { requestActivityBadges, recentRequestActivity } = useRequestActivityDisplay();
-  const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
 
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the 7 remaining vanilla `.textContent =`
@@ -760,15 +787,9 @@ function AppRoot() {
   // harness faked them (fixed below, see installReactFilterPanelMountBridges's
   // own comment there).
 
-  useEffect(() => {
-    window.updateReactAutoRenderBlockedLinks = (prNumbers, authorLogins) => {
-      setAutoRenderBlockedLinks({ prNumbers, authorLogins });
-      return true;
-    };
-    return () => {
-      delete window.updateReactAutoRenderBlockedLinks;
-    };
-  }, []);
+  // Window-bridge elimination Phase 7.4: window.updateReactAutoRenderBlockedLinks
+  // (and the state it set here) is gone - <AutoRenderBlockedLinksLive /> reads
+  // the blocking lists from AutoRenderBlockingProvider.
 
   // Announce readiness only once every window.* bridge above has actually
   // been assigned. React runs useEffects in declaration order after commit,
@@ -845,6 +866,11 @@ function AppRoot() {
             every one of those remounts (author/tab switches), and nothing
             about it is specific to any single portal. */}
         <AuthorInsightsDraftsProvider>
+        {/* Window-bridge elimination Phase 7.4: computes the auto-render-
+            blocking state from the drafts above and NotesDirtyProvider
+            (wrapping AppRoot) - replaces index.page.js's
+            recomputeDirtyPrSectionsFields. */}
+        <AutoRenderBlockingSync />
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
             JobEventsProvider widened from "just the drawer portal" (its own
             prior comment here predicted this) to wrap everything
@@ -1218,10 +1244,7 @@ function AppRoot() {
         {containers.autoRenderBlockedLinks &&
           createPortal(
             <AuthorInsightsProvider>
-              <AutoRenderBlockedLinks
-                prNumbers={autoRenderBlockedLinks.prNumbers}
-                authorLogins={autoRenderBlockedLinks.authorLogins}
-              />
+              <AutoRenderBlockedLinksLive container={containers.autoRenderBlockedLinks} />
             </AuthorInsightsProvider>,
             containers.autoRenderBlockedLinks,
             'auto-render-blocked-links',
@@ -1357,7 +1380,9 @@ function mountAppRoot() {
                               loadOnMount
                             >
                               <TabPanelVisibilitySync />
-                              <AppRoot />
+                              <NotesDirtyProvider>
+                                <AppRoot />
+                              </NotesDirtyProvider>
                               <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                             </PrDataProvider>
                           </AutoRenderBlockingProvider>

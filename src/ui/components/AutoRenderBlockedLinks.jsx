@@ -2,14 +2,11 @@
  * AutoRenderBlockedLinks - the clickable "jump to unsaved PR/author" chips
  * shown inside the "Auto update paused" indicator, one per PR number with
  * unsaved field edits and one per author with an unsaved manual-comment
- * draft. Matches vanilla's renderAutoRenderBlockedLinks
- * (helpers/pr-auto-render-indicator-links.helpers.js), which now only
- * toggles this list's container's `hidden`/`aria-label` attributes (via
- * index.page.js's renderAutoRenderBlockedIndicator) and calls this
- * component's own window.updateReactAutoRenderBlockedLinks bridge for the
- * actual button list - the same "vanilla chrome still drives it, React owns
- * the content" shape every other container-split conversion in this
- * migration has used.
+ * draft. Presentational: react-app.jsx's AutoRenderBlockedLinksLive passes
+ * the lists from AutoRenderBlockingProvider and sets the container's
+ * `hidden`/`aria-label` (window-bridge elimination Phase 7.4). Before that,
+ * index.page.js's renderAutoRenderBlockedLinks set those attributes and
+ * pushed the lists through window.updateReactAutoRenderBlockedLinks.
  *
  * getAuthorInsightsDisplayName comes from useAuthorInsights() (Phase 7,
  * sub-phase 7.0 - see REACT_MIGRATION_PLAN.md).

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AuthorInsightsDraftsContext } from '../state/AuthorInsightsDraftsContext';
+import { AuthorInsightsDraftsContext, AuthorInsightsDraftsVersionContext } from '../state/AuthorInsightsDraftsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
@@ -34,14 +34,12 @@ import { postJson } from '../helpers/pr-http.helpers.js';
  * directly via useAuthorInsightsDrafts() now, no window.* round-trip.
  *
  * Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
- * audit"): publishes only 2 of its former 12 window.* bridge names now -
- * `getAuthorManualCommentsForLogin`/`getAuthorInsightsDraftsSnapshot`,
- * because `pr-auto-render-blocking.helpers.js`'s `getBlockingAuthorInsightsLogins`
- * (feeds the real auto-render-blocking/data-loss-prevention check) needs
- * to read "is there an unsaved author-comment draft" from outside any
- * single `AuthorInsightsCommentsSection` instance's own lifetime, and is
- * itself fully vanilla with no render-tree position - confirmed via grep
- * that `index.page.js` still genuinely reads both. The other 10
+ * audit"): published only 2 of its former 12 window.* bridge names -
+ * `getAuthorManualCommentsForLogin`/`getAuthorInsightsDraftsSnapshot`, for
+ * index.page.js's auto-render-blocking check. Window-bridge elimination
+ * Phase 7.4 moved that check into AutoRenderBlockingSync.jsx, which reads
+ * this Provider's Context; the first bridge is gone and the snapshot one
+ * stays only for e2e. The other 10
  * (`getComposerDraft`/`updateComposerDraft`/`resetComposerDraft`/
  * `getEditDraft`/`getEditDraftMap`/`updateEditDraft`/`resetEditDraft`/
  * `setManualComments`/`getManualCommentsLoadState`/`loadManualComments`)
@@ -52,16 +50,11 @@ import { postJson } from '../helpers/pr-http.helpers.js';
  * called every one of them via `useAuthorInsightsDrafts()` directly since
  * this Provider was written - a grep confirmed zero remaining `window.*`
  * references to any of the 10 outside this file's own (now rewritten)
- * tests. Every write still bumps a version tick, and a useEffect reacting
- * to that tick
- * calls window.recomputeDirtyPrSectionsFields?.() (same as
- * NotesDirtyProvider's own write path) - deferred to after React commits/
- * paints, not called synchronously inside the write itself, since a
- * draft change can flip the auto-render-blocking decision
- * pr-auto-render-blocking.helpers.js's getBlockingAuthorInsightsLogins
- * computes, and that recompute is real work (a scan plus a DOM
- * re-render) that must not block the composer/edit textarea's own
- * per-keystroke repaint.
+ * tests. Every write bumps a version tick, published through
+ * AuthorInsightsDraftsVersionContext (Phase 7.4; it used to drive a
+ * window.recomputeDirtyPrSectionsFields?.() effect here), so
+ * AutoRenderBlockingSync recomputes in its own effect, after React has
+ * committed and painted the keystroke.
  */
 export function AuthorInsightsDraftsProvider({ children }) {
   // Pre-initialize all 5 fields explicitly (matching index.page.js's old
@@ -128,21 +121,12 @@ export function AuthorInsightsDraftsProvider({ children }) {
     setVersion((previous) => previous + 1);
   }, []);
 
-  // window.recomputeDirtyPrSectionsFields?.() used to be called
-  // synchronously inside bump() itself - but bump() is called directly
-  // from AuthorInsightsCommentsSection's onChange handlers (updateComposerDraft/
-  // updateEditDraft), in the SAME synchronous call stack as the composer/
-  // edit textarea's own local setState for the keystroke just typed. React
-  // batches both together and can't paint the typed character until that
-  // whole handler returns - and recomputeDirtyPrSectionsFields() does a
-  // real scan plus a DOM re-render of #auto-render-blocked-pr-links, which
-  // was making every keystroke visibly laggy. Deferred to a useEffect
-  // (reacting to the version tick, after React has already committed/
-  // painted) instead - the same pattern NotesDirtyProvider.jsx's own write
-  // path already uses correctly.
-  useEffect(() => {
-    window.recomputeDirtyPrSectionsFields?.();
-  }, [version]);
+  // The auto-render-blocking recompute must not run synchronously inside
+  // bump(): bump() is called from AuthorInsightsCommentsSection's onChange
+  // handlers, in the same call stack as the textarea's own setState for the
+  // keystroke, and a synchronous recompute made every keystroke visibly
+  // laggy. `version` is published through AuthorInsightsDraftsVersionContext
+  // instead (below), and AutoRenderBlockingSync recomputes in an effect.
 
   const getComposerDraft = useCallback((login) => draftsHelpers.getAuthorInsightsComposerDraft(login), [draftsHelpers]);
   const updateComposerDraft = useCallback(
@@ -238,13 +222,11 @@ export function AuthorInsightsDraftsProvider({ children }) {
     [dataHelpers, beginRequestActivity],
   );
 
-  // Phase 7 (see REACT_MIGRATION_PLAN.md): a dedicated read bridge, not
-  // individual getters - pr-auto-render-blocking.helpers.js's
+  // A snapshot, not individual getters - pr-auto-render-blocking.helpers.js's
   // getBlockingAuthorInsightsLogins takes the whole
   // manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin
   // maps as one positional argument (it iterates every author's draft, not
-  // just one), so index.page.js's own wiring needs a snapshot shaped the
-  // same way the old authorInsightsState object was, not a per-login read.
+  // just one), shaped the way the old authorInsightsState object was.
   const getDraftsSnapshot = useCallback(
     () => ({
       manualCommentDraftByAuthorLogin: stateRef.current.manualCommentDraftByAuthorLogin,
@@ -253,14 +235,16 @@ export function AuthorInsightsDraftsProvider({ children }) {
     [],
   );
 
+  // Window-bridge elimination Phase 7.4: test-only now - e2e's unsaved-draft
+  // test reads it; nothing in production does (AutoRenderBlockingSync uses
+  // the Context). window.getAuthorManualCommentsForLogin went with
+  // index.page.js's auto-render-blocking code.
   useEffect(() => {
-    window.getAuthorManualCommentsForLogin = getManualComments;
     window.getAuthorInsightsDraftsSnapshot = getDraftsSnapshot;
     return () => {
-      delete window.getAuthorManualCommentsForLogin;
       delete window.getAuthorInsightsDraftsSnapshot;
     };
-  }, [getManualComments, getDraftsSnapshot]);
+  }, [getDraftsSnapshot]);
 
   const value = useMemo(
     () => ({
@@ -297,5 +281,9 @@ export function AuthorInsightsDraftsProvider({ children }) {
     ],
   );
 
-  return <AuthorInsightsDraftsContext.Provider value={value}>{children}</AuthorInsightsDraftsContext.Provider>;
+  return (
+    <AuthorInsightsDraftsContext.Provider value={value}>
+      <AuthorInsightsDraftsVersionContext.Provider value={version}>{children}</AuthorInsightsDraftsVersionContext.Provider>
+    </AuthorInsightsDraftsContext.Provider>
+  );
 }

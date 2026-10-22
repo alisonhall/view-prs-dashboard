@@ -17,8 +17,10 @@ const { NotesSection } = require('./insights/NotesSection');
 
 // Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): closes a real
 // coverage gap - no existing test exercised the actual wiring between a
-// real NotesSection instance and index.page.js's window.getDirtyNotesPrNumbers
-// bridge (NotesSection.test.jsx tests NotesSection in isolation with a mock
+// real NotesSection instance and the window.getDirtyNotesPrNumbers bridge
+// (test-only since window-bridge elimination Phase 7.4, which moved its
+// production reader into AutoRenderBlockingSync - see
+// AutoRenderBlockingSync.test.jsx) (NotesSection.test.jsx tests NotesSection in isolation with a mock
 // setNotesDirty; this mounts the real Provider too). This is exactly the
 // class of gap that let a prior auto-render-blocking bug (the
 // getBlockingAuthorInsightsLogins bare-shorthand-property bug, see

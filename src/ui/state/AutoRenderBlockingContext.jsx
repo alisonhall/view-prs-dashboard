@@ -10,15 +10,12 @@ import { createContext, useContext } from 'react';
  * `flushPendingAutoRender`/`renderAutoRenderBlockedIndicator` functions
  * that used to own this decision.
  *
- * `NotesDirtyProvider.jsx`/`AuthorInsightsDraftsProvider.jsx` still call
- * `window.recomputeDirtyPrSectionsFields?.()` exactly as before - that
- * function's own body changed (it now pushes the freshly-computed
- * blocking state into this Provider via `window.pushAutoRenderBlockingState`
- * instead of mutating a vanilla module variable), but the "who notifies
- * whom" structure is unchanged. See `AutoRenderBlockingProvider.jsx`'s own
- * comment for why this bridge isn't fully closeable yet
- * (`AuthorInsightsDraftsContext.jsx`'s own header comment already flags
- * that specific extension as a separate, later step).
+ * The blocking state (which PRs/authors have unsaved edits) is computed by
+ * `AutoRenderBlockingSync.jsx` from `NotesDirtyContext` and the drafts
+ * Context, and pushed in through the actions Context's `setBlockingState`
+ * (window-bridge elimination Phase 7.4; it was `index.page.js`'s
+ * `recomputeDirtyPrSectionsFields`, called by both Providers through
+ * window, pushing via `window.pushAutoRenderBlockingState`).
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context
  * in this migration.
@@ -27,6 +24,9 @@ export const AutoRenderBlockingContext = createContext({
   isBlocked: false,
   statusText: '',
   discardAndApply: () => {},
+  blockingPrNumbers: [],
+  blockingAuthorInsightsLogins: [],
+  blockingPrLabel: '',
 });
 
 /**
@@ -48,12 +48,17 @@ export const AutoRenderBlockingContext = createContext({
  * PrDataProvider (a descendant) registers its applyFreshPrPayload here, and
  * this Provider calls it to apply a pending payload. It used to call
  * window.applyFreshPrPayload (index.page.js) instead.
+ *
+ * Window-bridge elimination Phase 7.4: `setBlockingState(state)` -
+ * AutoRenderBlockingSync pushes the computed blocking state here. It was
+ * window.pushAutoRenderBlockingState.
  */
 export const AutoRenderBlockingActionsContext = createContext({
   getHasDirtyPrSectionsFields: () => false,
   getPendingAutoRenderPayload: () => null,
   setPendingAutoRenderPayload: () => {},
   setFreshPayloadApplier: () => {},
+  setBlockingState: () => {},
 });
 
 export function useAutoRenderBlockingActions() {

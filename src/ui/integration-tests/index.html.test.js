@@ -31,6 +31,9 @@ const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { useFilterState } = require("../state/FilterStateContext");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { useNotesDirty } = require("../state/NotesDirtyContext");
+const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
+const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
 const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlockedStatusText");
 const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
@@ -119,6 +122,11 @@ let filterStateTestHandle = null;
 // drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
 // does in production (it used to call window.renderSchedulerStatus).
 let requestActivityTestHandle = null;
+// Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
+// captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
+// notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
+// call window.recomputeDirtyPrSectionsFields, both index.page.js's).
+let notesDirtyTestHandle = null;
 const readFilterStateValues = () => filterStateTestHandle?.values;
 
 const createFetchMock = ({
@@ -598,23 +606,32 @@ function PrTablePortalTestLive() {
   const { hasRenderedPrData } = usePrData();
   const container = document.getElementById("pr-sections");
   if (!container || !hasRenderedPrData) return null;
+  // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up (it
+  // wraps the harness's data-level children, like mountAppRoot wraps AppRoot).
   return createPortal(
     React.createElement(
       NeedsAttentionProvider,
       null,
-      React.createElement(
-        NotesDirtyProvider,
-        null,
-        // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
-        // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
-        // onCheckboxChange as props - it builds its own real handlers via
-        // useAckLabelActions()/useRowCheckboxActions().
-        React.createElement(PrTableApp),
-      ),
+      // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
+      // onCheckboxChange as props - it builds its own real handlers via
+      // useAckLabelActions()/useRowCheckboxActions().
+      React.createElement(PrTableApp),
     ),
     container,
     "pr-table",
   );
+}
+
+function NotesDirtyTestHandle() {
+  notesDirtyTestHandle = useNotesDirty();
+  React.useEffect(
+    () => () => {
+      notesDirtyTestHandle = null;
+    },
+    [],
+  );
+  return null;
 }
 
 // Captures the real FilterStateProvider's Context value for the helpers above.
@@ -740,7 +757,22 @@ function FilterStateTestRootHarness({ initialValues }) {
                         autoRenderBlockedApplyBtnRoot,
                         "auto-render-blocked-apply-btn",
                       ),
-                    React.createElement(PrTablePortalTestLive),
+                    // Window-bridge elimination Phase 7.4: production's
+                    // NotesDirtyProvider > (AppRoot's)
+                    // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
+                    // which computes the blocking state the deferred-poll
+                    // tests below depend on. index.page.js used to compute it.
+                    React.createElement(
+                      NotesDirtyProvider,
+                      null,
+                      React.createElement(
+                        AuthorInsightsDraftsProvider,
+                        null,
+                        React.createElement(AutoRenderBlockingSync),
+                        React.createElement(NotesDirtyTestHandle),
+                        React.createElement(PrTablePortalTestLive),
+                      ),
+                    ),
                     // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration
                     // roadmap"): mounted like react-app.jsx's real AppRoot
                     // does, so the "data polling (via real PrDataPolling
@@ -8165,9 +8197,11 @@ describe("index page rendering with Testing Library", () => {
     // renders"): no existing test (jest or Playwright) exercised the full
     // dirty -> queued -> clean -> flush cycle end to end - only the dirty
     // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
-    // proves flushPendingAutoRenderNow's new applyFreshPrPayload call
-    // actually reaches the real, mounted React table.
-    try {
+    // proves the flush's applyFreshPrPayload call actually reaches the
+    // real, mounted React table. Window-bridge elimination Phase 7.4: the
+    // dirty state now flows NotesDirtyProvider -> AutoRenderBlockingSync ->
+    // AutoRenderBlockingProvider, all real here.
+    {
       initTestPage({
         dataPayload: {
           dataMeta: { dataVersion: "seed-version" },
@@ -8199,12 +8233,11 @@ describe("index page rendering with Testing Library", () => {
         "Deferred poll seed",
       );
 
-      // Simulate a dirty Notes field the same way NotesDirtyProvider.jsx
-      // really reports one - that Provider never mounts in this harness,
-      // so this is the one legitimate way to drive
-      // getAutoRenderBlockingState's real "unsaved notes" input here.
-      window.getDirtyNotesPrNumbers = () => [101];
-      window.recomputeDirtyPrSectionsFields();
+      // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
+      // NotesSection does on an edit.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", true);
+      });
 
       // The indicator only becomes visible once a poll actually has a
       // payload queued (renderAutoRenderBlockedIndicator's own isBlocked
@@ -8267,10 +8300,12 @@ describe("index page rendering with Testing Library", () => {
         expect(indicator).not.toHaveAttribute("hidden");
       });
 
-      // Field becomes clean - recomputeDirtyPrSectionsFields notices
-      // !hasDirtyPrSectionsFields && pendingAutoRenderPayload and flushes.
-      window.getDirtyNotesPrNumbers = () => [];
-      window.recomputeDirtyPrSectionsFields();
+      // Field becomes clean - AutoRenderBlockingSync pushes the clean state,
+      // and the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and flushes.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", false);
+      });
 
       await waitFor(() => {
         expect(window.getReactPrTablePayload().byPrNumber["101"]?.data?.title).toBe(
@@ -8280,8 +8315,6 @@ describe("index page rendering with Testing Library", () => {
       await waitFor(() => {
         expect(indicator).toHaveAttribute("hidden");
       });
-    } finally {
-      delete window.getDirtyNotesPrNumbers;
     }
   });
 
@@ -8335,10 +8368,11 @@ describe("index page rendering with Testing Library", () => {
       focusedInput.focus();
       expect(document.activeElement).toBe(focusedInput);
 
-      // Same "simulate a dirty Notes field" trick the sibling test above
-      // uses - NotesDirtyProvider.jsx never mounts in this harness.
-      window.getDirtyNotesPrNumbers = () => [102];
-      window.recomputeDirtyPrSectionsFields();
+      // Mark PR 102's notes dirty through the real NotesDirtyProvider, as
+      // the sibling test above does.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", true);
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -8387,13 +8421,13 @@ describe("index page rendering with Testing Library", () => {
         "Blur-wait poll seed",
       );
 
-      // Field becomes clean - recomputeDirtyPrSectionsFields notices
-      // !hasDirtyPrSectionsFields && pendingAutoRenderPayload and calls
-      // flushPendingAutoRender, which (after its setTimeout(0)) finds
-      // document.activeElement is still our focused text input and
-      // chooses "wait-for-blur" instead of applying.
-      window.getDirtyNotesPrNumbers = () => [];
-      window.recomputeDirtyPrSectionsFields();
+      // Field becomes clean - the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and runs its flush check, which (after its
+      // setTimeout(0)) finds document.activeElement is still our focused
+      // text input and chooses "wait-for-blur" instead of applying.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", false);
+      });
 
       // Give the setTimeout(0) a chance to run, then confirm the payload
       // is still NOT applied - the focused field must not be clobbered.
@@ -8420,7 +8454,6 @@ describe("index page rendering with Testing Library", () => {
         );
       });
     } finally {
-      delete window.getDirtyNotesPrNumbers;
       focusedInput?.remove();
     }
   });

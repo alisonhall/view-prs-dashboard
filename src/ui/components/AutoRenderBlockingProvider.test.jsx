@@ -28,6 +28,16 @@ function RegisterApplier({ applier }) {
   return null;
 }
 
+// Window-bridge elimination Phase 7.4: blocking state arrives through the
+// actions Context (AutoRenderBlockingSync calls setBlockingState), no longer
+// window.pushAutoRenderBlockingState. CaptureActions sits in each tree below.
+let capturedActions;
+function CaptureActions() {
+  capturedActions = useAutoRenderBlockingActions();
+  return null;
+}
+const pushBlockingState = (state) => capturedActions.setBlockingState(state);
+
 const DIRTY_STATE = {
   dirtyFieldCount: 0,
   unsavedNotesCount: 1,
@@ -55,20 +65,21 @@ beforeEach(() => {
 describe('AutoRenderBlockingProvider', () => {
   afterEach(() => {
     delete window.setPendingAutoRenderPayload;
-    delete window.pushAutoRenderBlockingState;
-    delete window.renderRequestActivity;
+    capturedActions = undefined;
   });
 
-  test('given the provider mounts, when read, then it publishes its 2 remaining bridges and starts not blocked', () => {
+  test('given the provider mounts, when read, then it publishes only its test-only bridge and starts not blocked', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );
 
     expect(typeof window.setPendingAutoRenderPayload).toBe('function');
-    expect(typeof window.pushAutoRenderBlockingState).toBe('function');
+    // Phase 7.4: setBlockingState (actions Context) replaced this bridge.
+    expect(window.pushAutoRenderBlockingState).toBeUndefined();
     // The two getters were deleted (Phase 3): PrDataProvider reads them from
     // this Provider's Context now, so nothing publishes them on window.
     expect(window.getHasDirtyPrSectionsFields).toBeUndefined();
@@ -86,10 +97,12 @@ describe('AutoRenderBlockingProvider', () => {
       seenFunctions.add(actions.getHasDirtyPrSectionsFields);
       seenFunctions.add(actions.getPendingAutoRenderPayload);
       seenFunctions.add(actions.setPendingAutoRenderPayload);
+      seenFunctions.add(actions.setBlockingState);
       return null;
     }
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <Probe onValue={(value) => (latestState = value)} />
         <ActionsProbe />
       </AutoRenderBlockingProvider>,
@@ -100,7 +113,7 @@ describe('AutoRenderBlockingProvider', () => {
     const payload = { byPrNumber: { 7: {} } };
     const first = latestActions;
     act(() => {
-      window.pushAutoRenderBlockingState(DIRTY_STATE);
+      pushBlockingState(DIRTY_STATE);
       latestActions.setPendingAutoRenderPayload(payload);
     });
 
@@ -112,16 +125,17 @@ describe('AutoRenderBlockingProvider', () => {
     // The Provider re-rendered, yet the actions object and each function is
     // one stable identity (so PrDataProvider can list them in useMemo deps).
     expect(latestActions).toBe(first);
-    expect(seenFunctions.size).toBe(3);
+    expect(seenFunctions.size).toBe(4);
 
     act(() => {
-      window.pushAutoRenderBlockingState(CLEAN_STATE);
+      pushBlockingState(CLEAN_STATE);
     });
     expect(first.getHasDirtyPrSectionsFields()).toBe(false);
   });
 
-  // Regression: PrDataProvider wraps the whole table tree. index.page.js pushes
-  // blocking state on every input/change/click in it, so if PrDataProvider
+  // Regression: PrDataProvider wraps the whole table tree. Blocking state is
+  // pushed on every unsaved-edit change in it (index.page.js pushed it on every
+  // input/change/click before Phase 7.4), so if PrDataProvider
   // (or anything between) subscribed to this Provider's changing state value,
   // each of those events re-rendered every usePrData() consumer - 20 extra
   // renders for 20 pushes when PrDataProvider read useAutoRenderBlocking().
@@ -140,6 +154,7 @@ describe('AutoRenderBlockingProvider', () => {
       });
       render(
         <AutoRenderBlockingProvider>
+          <CaptureActions />
           <PrDataProvider initialPayload={{}} initialSelectedRepo="">
             <Consumer />
           </PrDataProvider>
@@ -154,7 +169,7 @@ describe('AutoRenderBlockingProvider', () => {
 
       for (let i = 0; i < 20; i += 1) {
         act(() => {
-          window.pushAutoRenderBlockingState(makeState(0));
+          pushBlockingState(makeState(0));
         });
       }
 
@@ -166,12 +181,12 @@ describe('AutoRenderBlockingProvider', () => {
       const baseline = getRenders();
 
       act(() => {
-        window.pushAutoRenderBlockingState(DIRTY_STATE);
+        pushBlockingState(DIRTY_STATE);
         window.setPendingAutoRenderPayload({ byPrNumber: {} });
       });
       for (let count = 1; count <= 5; count += 1) {
         act(() => {
-          window.pushAutoRenderBlockingState(makeState(count));
+          pushBlockingState(makeState(count));
         });
       }
 
@@ -183,12 +198,13 @@ describe('AutoRenderBlockingProvider', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );
 
     act(() => {
-      window.pushAutoRenderBlockingState(DIRTY_STATE);
+      pushBlockingState(DIRTY_STATE);
       window.setPendingAutoRenderPayload({ byPrNumber: {} });
     });
 
@@ -203,13 +219,14 @@ describe('AutoRenderBlockingProvider', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <RegisterApplier applier={applyFreshPrPayload} />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );
 
     act(() => {
-      window.pushAutoRenderBlockingState(CLEAN_STATE);
+      pushBlockingState(CLEAN_STATE);
       window.setPendingAutoRenderPayload(payload);
     });
 
@@ -229,12 +246,13 @@ describe('AutoRenderBlockingProvider', () => {
     const payload = { byPrNumber: { 2: {} } };
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <RegisterApplier applier={applyFreshPrPayload} />
       </AutoRenderBlockingProvider>,
     );
 
     act(() => {
-      window.pushAutoRenderBlockingState(CLEAN_STATE);
+      pushBlockingState(CLEAN_STATE);
       window.setPendingAutoRenderPayload(payload);
     });
 
@@ -258,6 +276,7 @@ describe('AutoRenderBlockingProvider', () => {
     render(
       <StatusTextContext.Provider value={{ statusText: 'Not run', setStatusText }}>
         <AutoRenderBlockingProvider>
+          <CaptureActions />
           <RegisterApplier applier={applyFreshPrPayload} />
           <Probe onValue={(value) => (latest = value)} />
         </AutoRenderBlockingProvider>
@@ -265,7 +284,7 @@ describe('AutoRenderBlockingProvider', () => {
     );
 
     act(() => {
-      window.pushAutoRenderBlockingState(DIRTY_STATE);
+      pushBlockingState(DIRTY_STATE);
       window.setPendingAutoRenderPayload(payload);
     });
     expect(latest.isBlocked).toBe(true);
@@ -286,6 +305,7 @@ describe('AutoRenderBlockingProvider', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
+        <CaptureActions />
         <RegisterApplier applier={applyFreshPrPayload} />
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
@@ -298,12 +318,31 @@ describe('AutoRenderBlockingProvider', () => {
     expect(applyFreshPrPayload).not.toHaveBeenCalled();
   });
 
-  test('given the provider unmounts, when unmounted, then both bridges are removed', () => {
+  test('given the provider unmounts, when unmounted, then its bridge is removed', () => {
     const { unmount } = render(<AutoRenderBlockingProvider>{null}</AutoRenderBlockingProvider>);
 
     expect(typeof window.setPendingAutoRenderPayload).toBe('function');
     unmount();
     expect(window.setPendingAutoRenderPayload).toBeUndefined();
-    expect(window.pushAutoRenderBlockingState).toBeUndefined();
+  });
+
+  test('given blocking state is set through the actions Context, when read, then the display Context exposes the blocking PRs, authors and label for the chips', () => {
+    let latest;
+    render(
+      <AutoRenderBlockingProvider>
+        <CaptureActions />
+        <Probe onValue={(value) => (latest = value)} />
+      </AutoRenderBlockingProvider>,
+    );
+    expect(latest.blockingPrNumbers).toEqual([]);
+    expect(latest.blockingAuthorInsightsLogins).toEqual([]);
+
+    act(() => {
+      pushBlockingState({ ...DIRTY_STATE, blockingAuthorInsightsLogins: ['octocat'] });
+    });
+
+    expect(latest.blockingPrNumbers).toEqual(['42']);
+    expect(latest.blockingAuthorInsightsLogins).toEqual(['octocat']);
+    expect(latest.blockingPrLabel).toBe('Blocking PRs: #42');
   });
 });

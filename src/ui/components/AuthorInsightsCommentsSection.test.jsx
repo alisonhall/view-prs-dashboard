@@ -8,15 +8,17 @@ const { AuthorInsightsProvider } = require('./AuthorInsightsProvider');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
-const { useAuthorInsightsDrafts } = require('../state/AuthorInsightsDraftsContext');
+const { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } = require('../state/AuthorInsightsDraftsContext');
 
 // Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
 // audit"): window.getAuthorInsightsComposerDraft is gone - this probe
 // reads the same Context value directly, the same way the component
 // itself does via useAuthorInsightsDrafts().
 let draftsProbeValue;
+let draftsProbeVersion;
 function DraftsProbe() {
   draftsProbeValue = useAuthorInsightsDrafts();
+  draftsProbeVersion = useAuthorInsightsDraftsVersion();
   return null;
 }
 
@@ -64,7 +66,6 @@ describe('AuthorInsightsCommentsSection', () => {
 
   afterEach(() => {
     delete global.fetch;
-    delete window.recomputeDirtyPrSectionsFields;
   });
 
   test('given no selected author, when rendering, then nothing renders', () => {
@@ -98,16 +99,19 @@ describe('AuthorInsightsCommentsSection', () => {
     delete global.fetch;
   });
 
-  test('given text typed into the composer, when typing, then the draft Context is updated and dirty-tracking recomputed', async () => {
-    window.recomputeDirtyPrSectionsFields = jest.fn();
+  // Window-bridge elimination Phase 7.4: the drafts version Context bump is
+  // what makes AutoRenderBlockingSync recompute (it was a
+  // window.recomputeDirtyPrSectionsFields call).
+  test('given text typed into the composer, when typing, then the draft Context is updated and the drafts version bumps', async () => {
     const user = userEvent.setup();
     renderSection('octocat');
+    const versionBefore = draftsProbeVersion;
 
     const textarea = screen.getByPlaceholderText('Add a manual comment about this author...');
     await user.type(textarea, 'Hi');
 
     expect(draftsProbeValue.getComposerDraft('octocat').note).toBe('Hi');
-    expect(window.recomputeDirtyPrSectionsFields).toHaveBeenCalled();
+    expect(draftsProbeVersion).toBeGreaterThan(versionBefore);
   });
 
   test('given an empty composer note, when Save comment is clicked, then a validation message shows and nothing is saved', async () => {
@@ -149,7 +153,7 @@ describe('AuthorInsightsCommentsSection', () => {
       }),
     );
     expect(screen.getByText('Nice work')).toBeInTheDocument();
-    expect(window.getAuthorManualCommentsForLogin('octocat')).toHaveLength(1);
+    expect(draftsProbeValue.getManualComments('octocat')).toHaveLength(1);
   });
 
   test('given a save failure, when Save comment is clicked, then the error message shows', async () => {
@@ -220,6 +224,7 @@ describe('AuthorInsightsCommentsSection', () => {
     render(
       <PrDataProvider initialSelectedAuthorLogin="octocat">
         <AuthorInsightsDraftsProvider>
+          <DraftsProbe />
           <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
             <AuthorInsightsCommentsSection />
           </AuthorInsightsContext.Provider>
@@ -243,7 +248,7 @@ describe('AuthorInsightsCommentsSection', () => {
         body: JSON.stringify({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' }),
       }),
     );
-    expect(window.getAuthorManualCommentsForLogin('octocat')[0].note).toBe('Updated text');
+    expect(draftsProbeValue.getManualComments('octocat')[0].note).toBe('Updated text');
   });
 
   test('given a comment is being edited, when an unrelated payload update lands, then the edit form stays open (regression: AuthorInsightsProvider must not hand out a new sortAuthorInsightsManualCommentsDesc reference just because payload changed)', async () => {

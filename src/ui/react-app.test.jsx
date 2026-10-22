@@ -59,11 +59,13 @@ global.fetch = jest.fn((url) => {
 // ReactDOM.createRoot(...).render(), which only schedules the initial commit
 // rather than running it inline) let index.page.js's one-time listeners
 // consume their only retry before the bridge was real.
-// window.updateReactAutoRenderBlockedLinks is assigned by AppRoot's last
-// bridge effect before the dispatch.
+// Window-bridge elimination Phase 7.4: AppRoot publishes no window bridge any
+// more (window.updateReactAutoRenderBlockedLinks, which this used to check,
+// is gone). The one listener left, index.page.js's credential hints, needs
+// AppRoot's portaled Run Script inputs, so this checks #repo is in the DOM.
 let reactReadyBridgeWasFunctionWhenDispatched = null;
 window.addEventListener('viewprs:react-ready', () => {
-  reactReadyBridgeWasFunctionWhenDispatched = typeof window.updateReactAutoRenderBlockedLinks === 'function';
+  reactReadyBridgeWasFunctionWhenDispatched = Boolean(document.getElementById('repo'));
 });
 
 const getPrTableApp = () => document.querySelector('#pr-sections [data-testid="pr-table-app"]');
@@ -77,13 +79,13 @@ describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has dat
   // lifecycle hook can do that; top-level file scope can't await.
   beforeAll(async () => {
     // AppRoot resolves its portal containers once, on its first render.
-    document.body.innerHTML = '<div id="pr-sections"></div>';
+    document.body.innerHTML = '<div id="pr-sections"></div><span id="repo-root"></span>';
     React.act(() => {
       require('./react-app');
     });
     await Promise.resolve();
     if (reactReadyBridgeWasFunctionWhenDispatched !== true) {
-      throw new Error("'viewprs:react-ready' fired before AppRoot's bridges were assigned");
+      throw new Error("'viewprs:react-ready' fired before AppRoot's portaled inputs were in the DOM");
     }
   });
 

@@ -15,13 +15,13 @@ import { NotesDirtyContext } from '../state/NotesDirtyContext';
  * originates inside this component itself, not from an ancestor's Context
  * value changing underneath a stably-referenced child.
  *
- * Publishes `window.getDirtyNotesPrNumbers()` so index.page.js's vanilla
- * auto-render-blocking pipeline (pr-auto-render-unsaved.helpers.js) can
- * read the current dirty set - a dedicated, single-purpose bridge rather
- * than FilterStateProvider's generic window.getFilterStateValues/
- * setFilterStateValue (whose mere existence changes ~25 unrelated fields'
- * restore behavior, per sub-phase 7.4's own finding) - no such risk here,
- * since nothing else reads or writes this bridge name.
+ * Window-bridge elimination Phase 7.4: AutoRenderBlockingSync.jsx reads
+ * `dirtyPrNumbers` from this Context to compute the auto-render-blocking
+ * state. This Provider used to publish it as window.getDirtyNotesPrNumbers
+ * and call window.recomputeDirtyPrSectionsFields (index.page.js) on each
+ * change. It now wraps <AppRoot /> from mountAppRoot(), not just the table,
+ * so the sync component (inside AppRoot, next to the drafts Provider) can
+ * read it. window.getDirtyNotesPrNumbers stays only for e2e.
  */
 export function NotesDirtyProvider({ children }) {
   const [dirtyPrNumberSet, setDirtyPrNumberSet] = useState(() => new Set());
@@ -47,9 +47,9 @@ export function NotesDirtyProvider({ children }) {
     [dirtyPrNumberSet],
   );
 
+  // Test-only (e2e's unsaved-notes tests read it); see the header comment.
   useEffect(() => {
     window.getDirtyNotesPrNumbers = () => dirtyPrNumbers;
-    window.recomputeDirtyPrSectionsFields?.();
     return () => {
       delete window.getDirtyNotesPrNumbers;
     };

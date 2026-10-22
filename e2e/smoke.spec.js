@@ -299,11 +299,13 @@ test("editing a PR Notes field in the real React-owned row reports dirty state t
   // NotesSection.jsx used to report an unsaved edit via a
   // data-has-unsaved-notes DOM attribute, scanned by vanilla
   // pr-auto-render-unsaved.helpers.js. It's now reported through
-  // NotesDirtyProvider's own React state, read back by vanilla via
-  // window.getDirtyNotesPrNumbers() - this is the one piece of the auto-
+  // NotesDirtyProvider's own React state, which AutoRenderBlockingSync reads
+  // from Context (window-bridge elimination Phase 7.4; index.page.js read it
+  // through window.getDirtyNotesPrNumbers before). That bridge stays as a
+  // test-only observer for this check - this is the one piece of the auto-
   // render-blocking feature with no other e2e coverage, so it's verified
   // in a real browser rather than only via jsdom (NotesDirtyProvider.test.jsx
-  // already covers the same wiring at the component level).
+  // and AutoRenderBlockingSync.test.jsx cover the wiring at the component level).
   await page.goto("/");
   await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
 
@@ -329,7 +331,9 @@ test("editing a PR Notes field in the real React-owned row reports dirty state t
 
 test("typing character-by-character into the Rally stories/links inputs keeps every keystroke", async ({ page }) => {
   // Regression coverage for a real bug only a real browser could catch:
-  // index.page.js's recomputeDirtyOnEvent is attached directly to
+  // index.page.js's recomputeDirtyOnEvent (deleted in window-bridge
+  // elimination Phase 7.4 - the blocking state is now recomputed in
+  // AutoRenderBlockingSync's effect, after React commits) was attached to
   // #pr-sections - the same DOM node React's own table root mounts into -
   // and was registered in initPage(), before React ever mounts, so it
   // fired *before* React's own delegated listener for the same native
@@ -2183,8 +2187,10 @@ test("typing an unsaved Author Insights comment draft reports dirty state to the
   // vanilla module-scope object, read by pr-auto-render-blocking.helpers.js's
   // getBlockingAuthorInsightsLogins to decide whether a background poll
   // must be deferred instead of silently discarding an unsaved comment
-  // draft. They're real AuthorInsightsDraftsProvider Context state now,
-  // republished via window.getAuthorInsightsDraftsSnapshot - same scope
+  // draft. They're real AuthorInsightsDraftsProvider Context state now
+  // (read by AutoRenderBlockingSync since window-bridge elimination Phase
+  // 7.4), with window.getAuthorInsightsDraftsSnapshot kept as a test-only
+  // observer for this check - same scope
   // and reasoning as the sibling "editing a PR Notes field..." test above
   // (checks the real bridge a real browser actually exercises, not a
   // full simulated poll-block - AuthorInsightsDraftsProvider.test.jsx

@@ -189,7 +189,6 @@ export default defineConfig([
       "src/ui/helpers/pr-auto-render-blocking.helpers.js",
       "src/ui/helpers/pr-auto-render-unsaved.helpers.js",
       "src/ui/helpers/pr-auto-render-indicator.helpers.js",
-      "src/ui/helpers/pr-auto-render-indicator-links.helpers.js",
       "src/ui/helpers/pr-auto-render-state.helpers.js",
       "src/ui/helpers/pr-export.helpers.js",
       "src/ui/helpers/pr-filter-panel.helpers.js",

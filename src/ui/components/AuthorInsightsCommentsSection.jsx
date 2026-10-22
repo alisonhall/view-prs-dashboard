@@ -12,11 +12,11 @@
  * and writes AuthorInsightsDraftsContext directly now (useAuthorInsightsDrafts())
  * instead of mirroring into local useState while also calling through
  * window.* bridges - that Context *is* the shared state other code outside
- * this component's own lifetime needs (pr-auto-render-blocking.helpers.js's
- * getBlockingAuthorInsightsLogins, still vanilla, reads it via the
- * window.* bridges AuthorInsightsDraftsProvider.jsx republishes), so no
- * local mirroring or explicit recomputeDirtyPrSectionsFields() calls are
- * needed here any more - every Context write already triggers that itself.
+ * this component's own lifetime needs (AutoRenderBlockingSync.jsx reads it
+ * to decide whether a poll must wait - window-bridge elimination Phase 7.4;
+ * index.page.js read it through window.* bridges before), so no local
+ * mirroring or explicit recompute calls are needed here - every Context
+ * write bumps the drafts version that sync component recomputes on.
  * Genuinely component-local UI state (composerSaving/composerStatus/
  * loadState/comments/editingCommentId) stays as local useState.
  *

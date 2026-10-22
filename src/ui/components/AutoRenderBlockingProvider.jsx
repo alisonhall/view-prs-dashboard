@@ -31,14 +31,15 @@ const EMPTY_BLOCKING_STATE = {
  * Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): see
  * `AutoRenderBlockingContext.jsx`'s own comment for the overall shape.
  *
- * Publishes 2 bridges (was 4 - see Phase 3 note below): `window.setPendingAutoRenderPayload` (the polling
- * orchestrator calls this instead of mutating a vanilla module variable),
- * `window.pushAutoRenderBlockingState` (`index.page.js`'s
- * `recomputeDirtyPrSectionsFields` calls this with the freshly-computed
- * blocking state instead of mutating `hasDirtyPrSectionsFields` directly),
- * and `window.getHasDirtyPrSectionsFields`/`window.getPendingAutoRenderPayload`
- * (read bridges for the polling orchestrator's own "should I even queue
- * this?" checks).
+ * Originally published 4 bridges: `window.setPendingAutoRenderPayload` (the
+ * polling orchestrator calls this instead of mutating a vanilla module
+ * variable), `window.pushAutoRenderBlockingState` (`index.page.js`'s
+ * `recomputeDirtyPrSectionsFields` pushed the freshly-computed blocking
+ * state), and two read bridges for the polling orchestrator. Window-bridge
+ * elimination Phase 3 moved the read bridges to the actions Context, and
+ * Phase 7.4 did the same for the blocking state: `setBlockingState`, called
+ * by AutoRenderBlockingSync.jsx. Only `window.setPendingAutoRenderPayload`
+ * is left, and only tests call it.
  *
  * A `useRef`-held plain object, not `useState` directly for the payload/
  * blocking-state themselves - the same "mutate a ref in place, force a
@@ -50,9 +51,10 @@ const EMPTY_BLOCKING_STATE = {
  * regardless of whether React has re-rendered yet. An earlier version of
  * this file used plain `useState` + `flushSync` to get that same same-tick
  * freshness - that broke in the real app (not caught by jsdom/jest) because
- * `window.pushAutoRenderBlockingState` can be invoked from *inside* another
- * component's own `useEffect` (`NotesDirtyProvider`/`AuthorInsightsDraftsProvider`
- * calling `window.recomputeDirtyPrSectionsFields?.()`), and React disallows
+ * the blocking-state push is invoked from *inside* another component's own
+ * `useEffect` (then `NotesDirtyProvider`/`AuthorInsightsDraftsProvider`
+ * calling `window.recomputeDirtyPrSectionsFields?.()`; now
+ * `AutoRenderBlockingSync`'s effect), and React disallows
  * `flushSync` from inside a lifecycle method - caught by the full Playwright
  * suite as a console-warning-as-error failure. Reading/writing a ref
  * directly sidesteps the problem entirely: no React commit needs to happen
@@ -173,24 +175,27 @@ export function AutoRenderBlockingProvider({ children }) {
     [],
   );
   const getPendingAutoRenderPayload = useCallback(() => stateRef.current.pendingAutoRenderPayload, []);
-
-  // Window-bridge elimination Phase 3: only the two bridges with a real
-  // vanilla caller left (index.page.js's own setPendingAutoRenderPayload(null)
-  // and pushAutoRenderBlockingState) stay on window. The two getters had
-  // PrDataProvider as their only caller, which reads them from this
-  // Context now, so they were deleted.
-  useEffect(() => {
-    window.setPendingAutoRenderPayload = setPendingAutoRenderPayload;
-    window.pushAutoRenderBlockingState = (state) => {
+  // Window-bridge elimination Phase 7.4: was window.pushAutoRenderBlockingState,
+  // called by index.page.js's recomputeDirtyPrSectionsFields.
+  const setBlockingState = useCallback(
+    (state) => {
       stateRef.current.blockingState = state || EMPTY_BLOCKING_STATE;
       bump();
       scheduleFlushCheck();
-    };
+    },
+    [bump, scheduleFlushCheck],
+  );
+
+  // Window-bridge elimination Phase 3 deleted the two getter bridges (now on
+  // the actions Context), and Phase 7.4 pushAutoRenderBlockingState. This one
+  // is test-only: AutoRenderBlockingProvider.test.jsx and e2e's "Auto update
+  // paused" chip test simulate a deferred poll with it.
+  useEffect(() => {
+    window.setPendingAutoRenderPayload = setPendingAutoRenderPayload;
     return () => {
       delete window.setPendingAutoRenderPayload;
-      delete window.pushAutoRenderBlockingState;
     };
-  }, [bump, scheduleFlushCheck, setPendingAutoRenderPayload]);
+  }, [setPendingAutoRenderPayload]);
 
   const { blockingState } = stateRef.current;
   const statusText = buildAutoRenderBlockedStatusText({
@@ -202,9 +207,20 @@ export function AutoRenderBlockingProvider({ children }) {
   // Both memoized: each push of blocking state re-renders this Provider, and
   // an un-memoized value object would re-render every consumer each time
   // even when nothing they read changed.
+  // blockingPrNumbers/blockingAuthorInsightsLogins/blockingPrLabel feed the
+  // "jump to unsaved" chips (react-app.jsx's AutoRenderBlockedLinksLive) -
+  // Phase 7.4; index.page.js used to push them to AppRoot through
+  // window.updateReactAutoRenderBlockedLinks.
   const value = useMemo(
-    () => ({ isBlocked, statusText, discardAndApply }),
-    [isBlocked, statusText, discardAndApply],
+    () => ({
+      isBlocked,
+      statusText,
+      discardAndApply,
+      blockingPrNumbers: blockingState.blockingPrNumbers || [],
+      blockingAuthorInsightsLogins: blockingState.blockingAuthorInsightsLogins || [],
+      blockingPrLabel: blockingState.blockingPrLabel || '',
+    }),
+    [isBlocked, statusText, discardAndApply, blockingState],
   );
   const actions = useMemo(
     () => ({
@@ -212,8 +228,9 @@ export function AutoRenderBlockingProvider({ children }) {
       getPendingAutoRenderPayload,
       setPendingAutoRenderPayload,
       setFreshPayloadApplier,
+      setBlockingState,
     }),
-    [getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload, setFreshPayloadApplier],
+    [getHasDirtyPrSectionsFields, getPendingAutoRenderPayload, setPendingAutoRenderPayload, setFreshPayloadApplier, setBlockingState],
   );
 
   return (
