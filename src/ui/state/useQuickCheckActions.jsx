@@ -53,9 +53,11 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
  * builds its own instance of helpers/pr-scheduler-status.helpers.js
  * directly (same "every live consumer builds its own separate instance"
  * pattern every other Context in this migration already uses), reading
- * window.renderSchedulerStatus only for the one genuinely-vanilla,
- * SSE-shared side effect (the active-PR progress indicator) that instance
- * still needs - not for loadSchedulerStatus's own control flow.
+ * renderSchedulerStatus only for the side effect that instance still needs
+ * (scheduler state and the active-PR progress indicator) - not for
+ * loadSchedulerStatus's own control flow. It's RequestActivityProvider's,
+ * read from Context since window-bridge elimination Phase 7.3 (it was
+ * window.renderSchedulerStatus, index.page.js's).
  */
 export function useQuickCheckActions() {
   const { markPrBusy, clearPrBusy } = usePrActivityQueue();

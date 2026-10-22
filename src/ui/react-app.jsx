@@ -41,7 +41,7 @@ import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
-import { PrDataPolling } from './components/PrDataPolling';
+import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { useBackfillActions } from './state/useBackfillActions';
 import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
 import { useRunScript } from './state/useRunScript';
@@ -1358,7 +1358,7 @@ function mountAppRoot() {
                             >
                               <TabPanelVisibilitySync />
                               <AppRoot />
-                              <PrDataPolling />
+                              <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                             </PrDataProvider>
                           </AutoRenderBlockingProvider>
                         </SnackbarProvider>

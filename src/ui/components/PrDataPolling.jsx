@@ -15,29 +15,25 @@
  * window.pollForDataChanges indirection for this call site.
  *
  * Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
- * pollBackfillStatus/renderRequestActivity now live in <PrDataProvider />
- * too, reached the same way - window.pollBackfillStatus/
- * window.renderRequestActivity had no caller left besides this component
- * once that happened, so both bridges were deleted outright (not kept
- * "for tests" - neither had a test dependency to begin with).
- * window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS (the interval timing)
- * are still exposed by index.page.js the same way.
+ * pollBackfillStatus moved into <PrDataProvider /> too, reached the same
+ * way. renderRequestActivity is <RequestActivityProvider />'s since
+ * window-bridge elimination Phase 7.3, read with useRequestActivity(). The
+ * interval timing is this module's own constants (index.page.js used to
+ * publish it as window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS), with an
+ * optional `?dataPollMs=` page-URL override for the data poll - see
+ * readDataPollMsOverride below.
  *
  * The scheduler-status poll this component used to also own
  * (schedulerInterval, calling window.pollSchedulerStatus) was retired by
  * the activity-drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
- * retirement" section): JobEventsProvider.jsx's SSE connection now drives
- * the same window.renderSchedulerStatus rendering directly, so a separate
- * 30s fetch for it is no longer needed. Phase H.2 (see
- * REACT_MIGRATION_PLAN.md) deleted window.pollSchedulerStatus/
- * PrDataProvider.jsx's own pollSchedulerStatus outright too, once
- * index.html.test.js's one remaining direct call (its only caller left)
- * was rewritten to call window.renderSchedulerStatus directly instead -
- * the same real path SSE already uses.
+ * retirement" section): JobEventsProvider.jsx's SSE connection drives the
+ * scheduler rendering directly (RequestActivityProvider's
+ * renderSchedulerStatus, via Context since window-bridge elimination Phase
+ * 7.3), so a separate 30s fetch for it is no longer needed.
  *
- * Mounted once as a headless React root (see react-app.jsx's
- * mountPrDataPolling) - it renders null, so it doesn't need a specific
- * DOM container the way every other Phase 1-3 conversion did.
+ * Mounted once by react-app.jsx's mountAppRoot(), as AppRoot's sibling
+ * inside PrDataProvider - it renders null, so it doesn't need a DOM
+ * container.
  *
  * Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * also mounted in index.html.test.js's own harness now (inside
@@ -59,8 +55,27 @@ const ACTIVITY_RENDER_MS = 1000;
 // window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, and this was their only reader.
 export const AUTO_DATA_POLL_MS = 30000;
 export const AUTO_BACKFILL_POLL_MS = 5000;
+// Floor for the override below, so a typo can't make the page hammer the
+// server.
+export const MIN_DATA_POLL_MS = 100;
 
-export function PrDataPolling() {
+// A `dataPollMs` query parameter on the page URL (e.g. `/?dataPollMs=300`)
+// shortens the data poll. For tooling: `npm run stability:heap-check` needs
+// the page to fetch each server data change within seconds, not 30s, and used
+// to get that by pinning window.AUTO_DATA_POLL_MS, a global window-bridge
+// elimination Phase 7.3 deleted.
+// Returns undefined (use the default) unless it's a whole number of ms >=
+// MIN_DATA_POLL_MS. mountAppRoot() reads it once and passes it as a prop.
+export function readDataPollMsOverride(search) {
+  const raw = new URLSearchParams(search || '').get('dataPollMs');
+  if (raw === null || !/^\d+$/.test(raw)) {
+    return undefined;
+  }
+  const value = Number(raw);
+  return value >= MIN_DATA_POLL_MS ? value : undefined;
+}
+
+export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }) {
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see
@@ -71,7 +86,6 @@ export function PrDataPolling() {
   const { renderRequestActivity } = useRequestActivity();
 
   useEffect(() => {
-    const dataPollMs = AUTO_DATA_POLL_MS;
     const backfillPollMs = AUTO_BACKFILL_POLL_MS;
 
     let dataInterval = null;
@@ -116,7 +130,7 @@ export function PrDataPolling() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', stopIntervals);
     };
-  }, [pollForDataChanges, pollBackfillStatus, renderRequestActivity]);
+  }, [pollForDataChanges, pollBackfillStatus, renderRequestActivity, dataPollMs]);
 
   return null;
 }

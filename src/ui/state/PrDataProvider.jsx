@@ -135,9 +135,10 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * remaining direct call was its only caller of any kind (confirmed:
  * `<PrDataPolling />` never destructured it from this Context either).
  * The real production behavior it exercised (the active-PR progress
- * indicator) is unaffected - `window.renderSchedulerStatus`
- * (`index.page.js`, still vanilla) is the one real remaining path,
- * called directly by `JobEventsProvider.jsx`'s SSE connection.
+ * indicator) is unaffected - `renderSchedulerStatus` is the one real
+ * remaining path, called by `JobEventsProvider.jsx`'s SSE connection
+ * (`RequestActivityProvider`'s, via Context, since window-bridge elimination
+ * Phase 7.3; it was `index.page.js`'s `window.renderSchedulerStatus`).
  *
  * Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 1): the paragraph above's "`loadSchedulerStatus` stays vanilla -

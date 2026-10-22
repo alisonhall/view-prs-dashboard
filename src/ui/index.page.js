@@ -39,11 +39,9 @@ import { summarizeAckRefreshWarnings } from "./helpers/pr-ack-refresh-warnings.h
 // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
 // cluster 4): supportsBackfillLogPolling/lastBackfillStateKey/
 // isBackfillActionPending/isBackfillRunning moved into
-// BackfillStatusProvider.jsx (components/) as real React state - this
-// file reaches them via the window.getBackfillTrackingState/
-// setSupportsBackfillLogPolling/setIsBackfillActionPending bridges that
-// Provider now answers, same as useBackfillActions.jsx (state/) already
-// did before this phase.
+// BackfillStatusProvider.jsx (components/) as real React state. (This
+// file's own readers of them went with its backfill code in window-bridge
+// elimination Phase 7.2, and the window.* bridges with them.)
 // Phase 7 (see REACT_MIGRATION_PLAN.md): manualCommentsByAuthorLogin/
 // manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin/
 // manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin used
@@ -1141,16 +1139,12 @@ const initPage = () => {
   // the four auto-polling intervals (data/scheduler/backfill/activity-
   // render) and their visibility-pause/beforeunload-cleanup lifecycle used
   // to be owned here (setInterval/cleanupIntervals/restartIntervals). That
-  // ownership moved to <PrDataPolling /> (react-app.jsx, mounted as a
-  // headless React root with no visible UI) - Phase F/F.2 (see
-  // REACT_MIGRATION_PLAN.md) moved pollForDataChanges/pollBackfillStatus/
-  // renderRequestActivity themselves into PrDataProvider.jsx too, reached
-  // directly via usePrData() Context (no window.* indirection left for any
-  // of the 3). window.pollSchedulerStatus (its own automatic interval
-  // already retired, below) was deleted outright in Phase H.2 (see
-  // REACT_MIGRATION_PLAN.md) - index.html.test.js was its only remaining
-  // caller, and that test now calls window.renderSchedulerStatus
-  // directly instead, the same real path SSE uses.
+  // ownership moved to <PrDataPolling /> (react-app.jsx, headless, no
+  // visible UI), which reads pollForDataChanges/pollBackfillStatus from
+  // PrDataProvider and renderRequestActivity from RequestActivityProvider
+  // (window-bridge elimination Phase 7.3). window.pollSchedulerStatus was
+  // deleted outright in Phase H.2 (see REACT_MIGRATION_PLAN.md); the
+  // scheduler state arrives over SSE (JobEventsProvider).
 };
 
 if (typeof window !== "undefined") {

@@ -2,7 +2,13 @@
 
 const React = require('react');
 const { render } = require('@testing-library/react');
-const { PrDataPolling } = require('./PrDataPolling');
+const {
+  PrDataPolling,
+  AUTO_DATA_POLL_MS,
+  AUTO_BACKFILL_POLL_MS,
+  MIN_DATA_POLL_MS,
+  readDataPollMsOverride,
+} = require('./PrDataPolling');
 const { PrDataContext } = require('../state/PrDataContext');
 const { RequestActivityContext } = require('../state/RequestActivityContext');
 
@@ -13,7 +19,7 @@ const { RequestActivityContext } = require('../state/RequestActivityContext');
 // directly - this harness provides a minimal Context whose 3 functions
 // each delegate to the matching window.* mock every assertion below
 // already checks, so the rest of this file's tests need no other changes.
-const renderPrDataPolling = () =>
+const renderPrDataPolling = (props = {}) =>
   render(
     React.createElement(
       PrDataContext.Provider,
@@ -28,7 +34,7 @@ const renderPrDataPolling = () =>
       React.createElement(
         RequestActivityContext.Provider,
         { value: { renderRequestActivity: (...args) => window.renderRequestActivity?.(...args) } },
-        React.createElement(PrDataPolling),
+        React.createElement(PrDataPolling, props),
       ),
     ),
   );
@@ -118,13 +124,55 @@ describe('PrDataPolling', () => {
     expect(window.pollForDataChanges).not.toHaveBeenCalled();
   });
 
-  test('given no window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, when mounting, then it falls back to the default cadences', () => {
-    delete window.AUTO_DATA_POLL_MS;
-    delete window.AUTO_BACKFILL_POLL_MS;
-
+  // Window-bridge elimination Phase 7.3: the cadences are this module's own
+  // constants now (index.page.js used to publish them as window.AUTO_*).
+  test('given the exported cadences, when each elapses, then its poll fires exactly then', () => {
+    expect(AUTO_DATA_POLL_MS).toBe(30000);
+    expect(AUTO_BACKFILL_POLL_MS).toBe(5000);
     renderPrDataPolling();
 
-    jest.advanceTimersByTime(30000);
+    jest.advanceTimersByTime(AUTO_BACKFILL_POLL_MS - 1);
+    expect(window.pollBackfillStatus).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    expect(window.pollBackfillStatus).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS - AUTO_BACKFILL_POLL_MS - 1);
+    expect(window.pollForDataChanges).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
+  test('given a dataPollMs prop, when it elapses, then the data poll fires on that cadence instead', () => {
+    renderPrDataPolling({ dataPollMs: 300 });
+
+    jest.advanceTimersByTime(299);
+    expect(window.pollForDataChanges).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(600);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(3);
+  });
+
+  describe('readDataPollMsOverride', () => {
+    test.each([
+      ['?dataPollMs=300', 300],
+      ['?foo=1&dataPollMs=1500', 1500],
+      [`?dataPollMs=${MIN_DATA_POLL_MS}`, MIN_DATA_POLL_MS],
+    ])('given %s, when read, then it returns %d', (search, expected) => {
+      expect(readDataPollMsOverride(search)).toBe(expected);
+    });
+
+    test.each([
+      [''],
+      ['?foo=1'],
+      ['?dataPollMs='],
+      ['?dataPollMs=abc'],
+      ['?dataPollMs=-5'],
+      ['?dataPollMs=1.5'],
+      [`?dataPollMs=${MIN_DATA_POLL_MS - 1}`],
+      [undefined],
+    ])('given %p, when read, then it falls back to the default (undefined)', (search) => {
+      expect(readDataPollMsOverride(search)).toBeUndefined();
+    });
   });
 });

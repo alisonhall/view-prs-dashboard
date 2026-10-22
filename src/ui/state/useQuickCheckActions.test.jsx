@@ -60,8 +60,8 @@ describe('useQuickCheckActions', () => {
   // cluster 1): window.loadSchedulerStatus is gone - the hook now builds
   // its own real pr-scheduler-status.helpers.js instance, which calls
   // fetch("/view-prs/scheduler") directly and forwards the result to
-  // window.renderSchedulerStatus (the one piece of this still genuinely
-  // vanilla/SSE-shared). Asserting the forced scheduler refresh fires
+  // renderSchedulerStatus (RequestActivityProvider's since window-bridge
+  // elimination Phase 7.3; unwrapped here, so the inert default). Asserting the forced scheduler refresh fires
   // means asserting that fetch call, not a mocked bridge function.
   test('given a non-empty "PR number(s)" field, when handleQuickCheck is called, then it scopes the request to that repo/PR list, returns the success label, and forces a scheduler-status refresh', async () => {
     global.fetch = jest.fn().mockResolvedValue({

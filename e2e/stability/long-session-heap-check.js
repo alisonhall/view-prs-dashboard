@@ -159,7 +159,7 @@ async function runInteractionCycle(page, cycleIndex) {
   // Toggle an in-review checkbox on the first visible row - the cheapest
   // way to exercise a real render/update per cycle (real click -> real
   // POST /view-prs/ack -> real renderPrData update), without waiting on
-  // AUTO_DATA_POLL_MS's real interval.
+  // the data poll's interval.
   const checkbox = page
     .locator('#pr-sections input[type="checkbox"][aria-label^="In Review for PR"]:visible')
     .first();
@@ -281,13 +281,11 @@ async function main() {
 
     browser = await chromium.launch();
     const page = await browser.newPage();
-    // index.page.js assigns window.AUTO_DATA_POLL_MS at startup; pinning
-    // it with an accessor makes that assignment a no-op, so PrDataPolling
-    // picks up the short interval instead of the real 30s.
-    await page.addInitScript((pollMs) => {
-      Object.defineProperty(window, "AUTO_DATA_POLL_MS", { get: () => pollMs, set: () => {} });
-    }, DATA_POLL_MS);
-    await page.goto("http://localhost:3458/");
+    // ?dataPollMs= makes PrDataPolling poll every DATA_POLL_MS instead of the
+    // real 30s (see readDataPollMsOverride in components/PrDataPolling.jsx).
+    // This used to pin window.AUTO_DATA_POLL_MS with an init script; that
+    // global was removed by the window-bridge elimination work.
+    await page.goto(`http://localhost:3458/?dataPollMs=${DATA_POLL_MS}`);
     await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15000 });
 
     const cdp = await page.context().newCDPSession(page);

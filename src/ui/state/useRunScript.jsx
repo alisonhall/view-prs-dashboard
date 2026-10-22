@@ -34,13 +34,13 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
  * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * setStatusMessage now writes statusText via useStatusText() directly
  * (this hook's only caller, AppRoot's own body in react-app.jsx, is a
- * genuine descendant of StatusTextProvider), composed with the existing
- * window.renderRequestActivity bridge - the vanilla setStatusMessage this
- * used to call also triggered that re-render (so the request-activity
- * badge's elapsed time updates on every intermediate progress message,
- * not just at begin/finish), and that half isn't in scope to close yet
- * (beginRequestActivity/renderRequestActivity stay bridged - see
- * PrDataProvider.jsx's own comment for why).
+ * genuine descendant of StatusTextProvider), composed with
+ * renderRequestActivity - the vanilla setStatusMessage this used to call
+ * also triggered that re-render (so the request-activity badge's elapsed
+ * time updates on every intermediate progress message, not just at
+ * begin/finish). renderRequestActivity comes from useRequestActivity()
+ * (RequestActivityProvider's since window-bridge elimination Phase 7.3; the
+ * window.renderRequestActivity bridge is gone).
  */
 export function useRunScript() {
   const { setStatusText } = useStatusText();

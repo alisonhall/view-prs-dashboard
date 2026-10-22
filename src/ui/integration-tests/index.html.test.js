@@ -7280,7 +7280,7 @@ describe("index page rendering with Testing Library", () => {
   // ['Date'] - this suite's fixtures/assertions rely on real Date/ISO
   // timestamps elsewhere and must not be affected).
   describe("data polling (via real PrDataPolling interval)", () => {
-    const DATA_POLL_MS = 30000; // matches window.AUTO_DATA_POLL_MS (index.page.js's own init)
+    const DATA_POLL_MS = 30000; // PrDataPolling's AUTO_DATA_POLL_MS (no ?dataPollMs= override here)
 
     beforeEach(() => {
       jest.useFakeTimers({ doNotFake: ["Date"] });

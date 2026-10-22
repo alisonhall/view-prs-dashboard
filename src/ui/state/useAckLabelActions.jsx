@@ -69,8 +69,8 @@ export function useAckLabelActions() {
   // setStatusMessage below now writes statusText via useStatusText()
   // directly (both this hook's callers - AppRoot's own body and
   // PrTableApp.jsx's per-row instance - are genuine descendants of
-  // StatusTextProvider), composed with window.renderRequestActivity - same
-  // reasoning as useRunScript.jsx's own comment on this exact composition.
+  // StatusTextProvider), composed with renderRequestActivity (from Context -
+  // see useRunScript.jsx's own comment on this exact composition).
   const { setStatusText } = useStatusText();
   // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 6): window.getFormBody is gone - useFormBody() reads the same

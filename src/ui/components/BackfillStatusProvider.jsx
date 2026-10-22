@@ -35,7 +35,8 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
  * phase doesn't remove - see its own inline comments) - this Provider
  * doesn't eliminate index.page.js's vanilla pipeline, it just gives both
  * that pipeline and useBackfillActions.jsx (state/) one shared, real
- * source of truth instead of two independently-drifting copies.
+ * source of truth instead of two independently-drifting copies. (Both
+ * paragraphs are history: see the Phase 7.2 note below.)
  *
  * The badges/button state/details text this Provider's status render
  * produces used to be pushed into react-app.jsx's AppRoot through
@@ -136,7 +137,7 @@ export function BackfillStatusProvider({ children }) {
 
   // Reads the refs (not the state above), so a caller holding this across an
   // async flow still sees a setter's write immediately - same synchronous-read
-  // semantics window.getBackfillTrackingState has.
+  // semantics the old window.getBackfillTrackingState bridge had.
   const getBackfillTrackingState = useCallback(
     () => ({
       supportsBackfillLogPolling: supportsBackfillLogPollingRef.current,

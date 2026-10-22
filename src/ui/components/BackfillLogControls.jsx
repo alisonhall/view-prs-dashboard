@@ -39,8 +39,9 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  * `window.autoScrollBackfillLogToBottom` itself (the bridge) is deleted -
  * confirmed to have no remaining readers (cluster-4 cleanup, see
  * REACT_MIGRATION_PLAN.md, "Remaining-effort audit"). index.page.js's own
- * loadBackfillStatus still auto-scrolls internally via the local
- * autoScrollBackfillLogToBottom function directly, not through a bridge.
+ * loadBackfillStatus, the last caller of a direct auto-scroll, was deleted in
+ * window-bridge elimination Phase 7.2 - every log update now reaches this
+ * component's own scroll sync (logUpdateTick).
  *
  * @module components/BackfillLogControls
  */

@@ -26,11 +26,12 @@ const { formatBackfillLogMessage } = createPrBackfillHelpers();
  * instance of the same pure factory directly instead - same shape as
  * useSinglePrUpdate.jsx.
  *
- * A handful of DI params still read/write shared state via
- * window.getBackfillTrackingState/setSupportsBackfillLogPolling/
+ * A handful of DI params read/write shared state owned by
+ * BackfillStatusProvider (getBackfillTrackingState/setSupportsBackfillLogPolling/
  * setIsBackfillActionPending/updateBackfillStatusFromPayload/
- * setBackfillLogMessage/renderBackfillStatus, rather than this hook
- * forking its own independent copy - a second independent copy here would
+ * setBackfillLogMessage/renderBackfillStatus - through its actions Context;
+ * the window.* bridges with these names were deleted in window-bridge
+ * elimination Phase 7.2), rather than this hook forking its own independent copy - a second independent copy here would
  * silently drift from what the real owner sees (e.g. a 404'd log endpoint
  * staying "supported" in this hook's copy after the real one already
  * disabled it).
@@ -63,8 +64,8 @@ const { formatBackfillLogMessage } = createPrBackfillHelpers();
  * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * setStatusMessage now writes statusText via useStatusText() directly
  * (this hook's only caller, AppRoot's own body, is a genuine descendant of
- * StatusTextProvider), composed with window.renderRequestActivity - same
- * reasoning as useRunScript.jsx's own comment on this exact composition.
+ * StatusTextProvider), composed with renderRequestActivity (from Context -
+ * see useRunScript.jsx's own comment on this exact composition).
  */
 export function useBackfillActions() {
   const { setStatusText } = useStatusText();
