@@ -14,7 +14,14 @@ const path = require("path");
 // Only create a new temp dir if this worker hasn't done so already.
 // With --runInBand a single process handles all suites sequentially, so the
 // env vars survive across suites and we reuse the same temp dir.
-if (!process.env.VIEW_PRS_DATA_FILE) {
+//
+// Keyed on VIEW_PRS_TEST_STATE_DIR, which only this file sets - not on
+// VIEW_PRS_DATA_FILE, as it used to be. A developer shell that already
+// exports VIEW_PRS_DATA_FILE (say, for a custom data file) used to skip this
+// whole block, so DATA_DIR stayed unset and the check-open-pr-updates.sh
+// tests wrote into the real data/pr-details again (confirmed 2026-10-22).
+// Now every path below is always replaced with a temp one.
+if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-test-"));
   fs.mkdirSync(path.join(tempDir, "backups"), { recursive: true });
 

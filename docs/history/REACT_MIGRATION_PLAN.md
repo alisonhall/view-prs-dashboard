@@ -2974,6 +2974,14 @@ Found while confirming both plans were complete.
 - **This file:** a completion note at the top; the Phase 2/3 "🟡 Started" and Phase 7 "in progress" headings and the 2026-09-11 footer ("Next Milestone: … Phase 3") corrected.
 - `lint:check` clean; `test:ci` 2606 passed + 1 skipped (19 fewer: the deleted helpers' own tests); `test:e2e` 59/59; `vite build` succeeds. Windows local run.
 
+## ✅ **Test isolation follow-up: a pre-set `VIEW_PRS_DATA_FILE` no longer switches it off (2026-10-22)**
+
+Found reviewing the test-isolation fix above.
+
+- `jest.setup.env.js` used `VIEW_PRS_DATA_FILE` being unset to mean "not set up yet in this worker". From a shell that already exported `VIEW_PRS_DATA_FILE`, the whole block was skipped: `DATA_DIR` stayed unset and the `check-open-pr-updates.sh` tests wrote `data/pr-details/owner_repo__pr-{321,501,701}.json` into the real `data/` again (reproduced with `VIEW_PRS_DATA_FILE` pointed at a throwaway file; the server side would have failed loudly via app-config's check, the script side has no such check). It now keys on `VIEW_PRS_TEST_STATE_DIR`, which only that file sets, so every path is always replaced with a temp one. The same run with the fix: 191/191 pass, `data/` unchanged, and the pre-set path untouched.
+- `AI_MODERNIZATION_PLAN.md`: its two TypeScript-migration items for `src/ui/orchestrators/` are marked N/A (the folder is gone).
+- `lint:check` clean; `test:ci` 2606 passed + 1 skipped (unchanged); `test:e2e` 59/59; `data/` unchanged across both. Windows local run.
+
 ## 📞 **Getting Help**
 
 **Resources:**

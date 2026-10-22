@@ -887,7 +887,7 @@ Currently using CommonJS (`require`/`module.exports`) instead of modern ES modul
 
 **Phase 11C: UI Components Migration**
 - [ ] Migrate all files in `src/ui/components/`
-- [ ] Migrate all files in `src/ui/orchestrators/`
+- [ ] Migrate all files in `src/ui/orchestrators/` - **N/A (2026-10-22):** the orchestrators were deleted during the React migration and the folder no longer exists (see `docs/history/REACT_MIGRATION_PLAN.md`).
 - [ ] Run integration tests
 
 **Phase 11D: Server Migration**
@@ -1017,7 +1017,7 @@ No static type checking leads to:
 - [ ] Add proper type annotations
 - [ ] Test component rendering
 
-**Phase 12E: Orchestrator Migration**
+**Phase 12E: Orchestrator Migration** - **N/A (2026-10-22):** `src/ui/orchestrators/` no longer exists; its orchestrators were deleted during the React migration (see `docs/history/REACT_MIGRATION_PLAN.md`).
 - [ ] Migrate all `src/ui/orchestrators/*.js` → `*.ts`
 - [ ] Add proper type annotations
 - [ ] Test integration
