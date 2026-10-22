@@ -19,7 +19,7 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 // "Pull requests" region (#pr-sections). Their sections start collapsed,
 // so rows are often hidden - hence includeHidden for "has the table
 // rendered yet?", matching the old waitForSelector(..., { state: "attached" }).
-const prTables = (page) => page.getByRole("region", { name: "Pull requests" });
+const prTables = (page) => page.getByRole("region", { name: "Pull requests", exact: true });
 const waitForPrTable = (page) =>
   prTables(page)
     .getByRole("row", { includeHidden: true })
@@ -270,7 +270,7 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
 
@@ -284,7 +284,7 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   // (see setNativeValueAndDispatch in index.page.js), so a leftover
   // persisted filter here isn't just cosmetic for the next test anymore.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -561,8 +561,8 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   // an earlier test in this shared-webServer suite having already
   // persisted it.
   await page.getByText("Run Script options (rarely changed)").click();
-  await page.locator("#repo").fill("octocat/hello-world");
-  await page.locator("#pr-numbers").fill("1,2");
+  await page.getByLabel("Repo (owner/name)", { exact: true }).fill("octocat/hello-world");
+  await page.getByLabel("PR number(s) (comma-separated)", { exact: true }).fill("1,2");
   await page.getByRole("button", { name: "Apply ack only" }).click();
 
   await expect(pr1Indicator).toHaveJSProperty("hidden", false);
@@ -629,7 +629,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const input = page.locator("#filter-pr-numbers");
+  const input = page.getByLabel("Filter by PR number(s)", { exact: true });
   await input.fill("1");
   await waitForFilterPersist(page);
 
@@ -637,12 +637,12 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
-  await expect(page.locator("#filter-pr-numbers")).toHaveValue("1");
+  await expect(page.getByLabel("Filter by PR number(s)", { exact: true })).toHaveValue("1");
 
   // Clear it and leave that persisted too, so this test's filter doesn't
   // hide PR #2/#3 from whatever unrelated test happens to load next
   // against this suite's one shared webServer.
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -687,7 +687,7 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
-  const checkbox = page.locator("#always-show-in-review");
+  const checkbox = page.getByLabel("Always show PRs In Review", { exact: true });
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
   await waitForFilterPersist(page);
@@ -697,15 +697,15 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  await expect(page.locator("#always-show-in-review")).toBeChecked();
+  await expect(page.getByLabel("Always show PRs In Review", { exact: true })).toBeChecked();
 
   // Confirm the restored control still works, and leave it back at the
   // unchecked default so this test's persisted state doesn't affect
   // whatever unrelated test happens to load next against this suite's one
   // shared webServer.
-  await page.locator("#always-show-in-review").uncheck();
+  await page.getByLabel("Always show PRs In Review", { exact: true }).uncheck();
   await waitForFilterPersist(page);
-  await expect(page.locator("#always-show-in-review")).not.toBeChecked();
+  await expect(page.getByLabel("Always show PRs In Review", { exact: true })).not.toBeChecked();
 });
 
 test("React-owned Needs Attention rule controls (select + checkbox batch) survive a persisted restore together", async ({ page }) => {
@@ -722,8 +722,8 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.getByText("Advanced visibility and attention rules").click();
 
   await page.selectOption("#attention-no-activity-mode", "none");
-  await page.locator("#attention-include-pending-comments").uncheck();
-  await page.locator("#attention-include-draft-no-activity").check();
+  await page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true }).uncheck();
+  await page.getByLabel("Apply NO_ACTIVITY attention rules to draft PRs", { exact: true }).check();
   await waitForFilterPersist(page);
 
   await page.reload();
@@ -731,17 +731,17 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  await expect(page.locator("#attention-no-activity-mode")).toHaveValue("none");
-  await expect(page.locator("#attention-include-pending-comments")).not.toBeChecked();
-  await expect(page.locator("#attention-include-draft-no-activity")).toBeChecked();
+  await expect(page.getByLabel("NO_ACTIVITY handling", { exact: true })).toHaveValue("none");
+  await expect(page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("Apply NO_ACTIVITY attention rules to draft PRs", { exact: true })).toBeChecked();
   // Untouched field - should still show its unpersisted default (checked).
-  await expect(page.locator("#attention-include-closed-merged")).toBeChecked();
+  await expect(page.getByLabel("Include closed/merged sections in attention logic", { exact: true })).toBeChecked();
 
   // Reset everything back to defaults so this test's persisted state
   // doesn't affect whatever unrelated test loads next.
   await page.selectOption("#attention-no-activity-mode", "all");
-  await page.locator("#attention-include-pending-comments").check();
-  await page.locator("#attention-include-draft-no-activity").uncheck();
+  await page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true }).check();
+  await page.getByLabel("Apply NO_ACTIVITY attention rules to draft PRs", { exact: true }).uncheck();
   await waitForFilterPersist(page);
 });
 
@@ -802,7 +802,7 @@ test("typing a PR-number filter updates the rendered React table live, with no \
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
 
   await page.getByRole("tab", { name: "PR data" }).click();
   await expect(prTables(page)).toContainText("Add welcome banner");
@@ -812,7 +812,7 @@ test("typing a PR-number filter updates the rendered React table live, with no \
   // test happens to load next against this suite's one shared webServer -
   // clearing is ALSO live, same as filling above.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await page.getByRole("tab", { name: "PR data" }).click();
   await expect(prTables(page)).toContainText("Fix flaky test");
 });
@@ -836,10 +836,10 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
   await labelDropdownSummary.click();
 
-  const labelList = page.locator("#label-list");
+  const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
   await labelList.getByLabel("enhancement", { exact: true }).check();
 
   await page.getByRole("tab", { name: "PR data" }).click();
@@ -880,15 +880,15 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
   await expect(summary).toContainText("repo=");
   await expect(summary).toContainText("scope=all stored rows");
 
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await expect(summary).toContainText("pr-numbers=1");
   await expect(summary).toContainText("Rows: 1");
 
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
 
-  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
   await labelDropdownSummary.click();
-  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
   await expect(summary).toContainText("label=enhancement");
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
@@ -899,7 +899,7 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
   // for the clear to actually land, or a slow-to-complete fire-and-forget
   // PUT from this uncheck can race the next test's own page load and
   // leave "enhancement" checked there instead.
-  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).uncheck();
+  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).uncheck();
   await waitForFilterPersist(page);
 });
 
@@ -917,7 +917,7 @@ test("a removable filter chip appears above the table for each non-default filte
   await expect(chips).toBeEmpty();
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
 
   await page.getByRole("tab", { name: "PR data" }).click();
   await expect(chips).toContainText("PR #: 1");
@@ -942,12 +942,12 @@ test("a removable filter chip appears above the table for each non-default filte
   await waitForFilterPersist(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await expect(page.locator("#filter-pr-numbers")).toHaveValue("");
+  await expect(page.getByLabel("Filter by PR number(s)", { exact: true })).toHaveValue("");
 
   // A checked label filter gets its own chip too, removable the same way.
-  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
   await labelDropdownSummary.click();
-  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
 
   await page.getByRole("tab", { name: "PR data" }).click();
   await expect(chips).toContainText("Label: enhancement");
@@ -957,7 +957,7 @@ test("a removable filter chip appears above the table for each non-default filte
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await labelDropdownSummary.click();
-  await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
+  await expect(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true })).not.toBeChecked();
 
   // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
   // audit", cluster 1): a chip's "x" clears the filter via a direct
@@ -991,9 +991,9 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
   await labelDropdownSummary.click();
-  await page.locator("#label-list").getByLabel("enhancement", { exact: true }).check();
+  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
   await waitForFilterPersist(page);
 
   await page.getByRole("tab", { name: "PR data" }).click();
@@ -1020,7 +1020,7 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await labelDropdownSummary.click();
-  await expect(page.locator("#label-list").getByLabel("enhancement", { exact: true })).not.toBeChecked();
+  await expect(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true })).not.toBeChecked();
 });
 
 test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
@@ -1037,7 +1037,7 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  const checkbox = page.locator("#change-filter-use-builtin-merge-pattern");
+  const checkbox = page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true });
   await expect(checkbox).toBeChecked();
 
   // waitForFilterPersist, not a bare "wait for *a* PUT" listener: the
@@ -1052,11 +1052,11 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  await expect(page.locator("#change-filter-use-builtin-merge-pattern")).not.toBeChecked();
+  await expect(page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true })).not.toBeChecked();
 
   // Reset so this test's persisted state doesn't affect whatever unrelated
   // test happens to load next against this suite's one shared webServer.
-  await page.locator("#change-filter-use-builtin-merge-pattern").check();
+  await page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true }).check();
   await waitForFilterPersist(page);
 });
 
@@ -1074,7 +1074,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  const textarea = page.locator("#change-filter-ignore-commit-patterns");
+  const textarea = page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true });
   await expect(textarea).toHaveValue("");
   await textarea.fill("^docs:\n^test:");
 
@@ -1089,11 +1089,11 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  await expect(page.locator("#change-filter-ignore-commit-patterns")).toHaveValue("^docs:\n^test:");
+  await expect(page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true })).toHaveValue("^docs:\n^test:");
 
   // Reset so this test's persisted state doesn't affect whatever unrelated
   // test happens to load next against this suite's one shared webServer.
-  const restoredTextarea = page.locator("#change-filter-ignore-commit-patterns");
+  const restoredTextarea = page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true });
   await restoredTextarea.fill("");
   await restoredTextarea.blur();
   await waitForFilterPersist(page);
@@ -1147,11 +1147,11 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Run Script options (rarely changed)").click();
 
-  await expect(page.locator("#repo")).toHaveValue("octocat/hello-world");
+  await expect(page.getByLabel("Repo (owner/name)", { exact: true })).toHaveValue("octocat/hello-world");
   await expect(page.locator("#limit")).toHaveValue("50");
   await expect(page.locator("#merged-limit")).toHaveValue("10");
   await expect(page.locator("#jobs")).toHaveValue("3");
-  await expect(page.locator("#pr-numbers")).toHaveValue("912,921");
+  await expect(page.getByLabel("PR number(s) (comma-separated)", { exact: true })).toHaveValue("912,921");
   await expect(page.locator("#open-mode")).toHaveValue("changed");
   await expect(page.locator("#ack-changed")).toBeChecked();
   await expect(page.locator("#show-reason")).not.toBeChecked();
@@ -1247,7 +1247,7 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Run Script options (rarely changed)").click();
-  await expect(page.locator("#pr-numbers")).toHaveValue("1");
+  await expect(page.getByLabel("PR number(s) (comma-separated)", { exact: true })).toHaveValue("1");
 });
 
 test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
@@ -1271,7 +1271,7 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Run Script options (rarely changed)").click();
-  const prNumbers = page.locator("#pr-numbers");
+  const prNumbers = page.getByLabel("PR number(s) (comma-separated)", { exact: true });
 
   await prNumbers.fill("1");
   await expect(selectCheckbox).toBeChecked();
@@ -1433,10 +1433,10 @@ test("React-owned label multi-select renders options from payload data and filte
   // markup the very first time it runs (pre-existing behavior, unrelated
   // to this conversion) - the on-screen text is "Filter by label name"
   // from then on, not the initial HTML's "(s)".
-  const labelDropdownSummary = page.locator("#label-list").locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
   await labelDropdownSummary.click();
 
-  const labelList = page.locator("#label-list");
+  const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
   await expect(labelList.locator("input[type='checkbox']")).toHaveCount(3);
   await expect(labelList).toContainText("enhancement");
   await expect(labelList).toContainText("bug");
@@ -1489,10 +1489,10 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
-  const excludeLabelList = page.locator("#exclude-label-list");
-  const authorList = page.locator("#author-list");
-  const assignedList = page.locator("#assigned-list");
-  const approverList = page.locator("#approver-list");
+  const excludeLabelList = page.getByRole("group", { name: "Exclude by label name(s)", exact: true, includeHidden: true });
+  const authorList = page.getByRole("group", { name: "Filter by PR author(s)", exact: true, includeHidden: true });
+  const assignedList = page.getByRole("group", { name: "Filter by Assigned user(s)", exact: true, includeHidden: true });
+  const approverList = page.getByRole("group", { name: "Filter by PR approver(s)", exact: true, includeHidden: true });
   // useMultiSelectDropdownClosing (AppRoot; was index.page.js's
   // setupMultiSelectDropdownClosing until window-bridge elimination Phase 7.5) closes
   // every OTHER open <details class="multi-select-dropdown"> on any click
@@ -1599,10 +1599,10 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // shown, which updateAuthorThreadResolutionRuleVisibility ties to the
   // mode select's value (see the dedicated test for that behavior below) -
   // switch modes to reveal each list in turn.
-  const allowList = page.locator("#attention-author-thread-resolution-allow-list");
-  const denyList = page.locator("#attention-author-thread-resolution-deny-list");
-  const ignoreCommentAuthorsList = page.locator("#change-filter-ignore-comment-authors-list");
-  const ignoreReviewAuthorsList = page.locator("#change-filter-ignore-review-authors-list");
+  const allowList = page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
+  const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
+  const ignoreCommentAuthorsList = page.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
+  const ignoreReviewAuthorsList = page.getByRole("group", { name: "Ignore reviews from these authors (GitHub logins)", exact: true, includeHidden: true });
   const openDropdown = (list) => list.locator("xpath=ancestor::details[1]/summary").click();
 
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
@@ -1819,7 +1819,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // local filter (which re-renders the whole PR data view, including
   // review stats), then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Review statistics" }).click();
@@ -1835,7 +1835,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // unrelated test happens to load next against this suite's one shared
   // webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -1938,7 +1938,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // view, including author insights via the same pipeline as review
   // stats), then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -1949,7 +1949,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2009,7 +2009,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // see the sibling Author Insights selector test above for the same
   // class of bug caught the same way).
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -2020,7 +2020,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2062,7 +2062,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // Force an unrelated author-insights re-render: switch to Run & Filter,
   // apply an unrelated local filter, then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -2073,7 +2073,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2101,7 +2101,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // Force an unrelated author-insights re-render: switch to Run & Filter,
   // apply an unrelated local filter, then come back.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -2112,7 +2112,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2165,7 +2165,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // apply an unrelated local filter, then come back - the comments
   // container must not vanish, and the saved comment must still be there.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("1");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "PR data" }).click();
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -2176,7 +2176,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#filter-pr-numbers").fill("");
+  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2434,11 +2434,11 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   // MultiSelectCheckboxList.jsx started portaling its own copy in.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await assertNoStalePrefix(
-    page.locator("#label-list").locator("xpath=ancestor::details[1]/summary"),
+    page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary"),
     "Filter by label name(s)",
   );
   await assertNoStalePrefix(
-    page.locator("#attention-author-thread-resolution-allow-list").locator("xpath=ancestor::details[1]/summary"),
+    page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary"),
     "Allow PR authors to resolve threads started by (Actor Names)",
   );
 });
