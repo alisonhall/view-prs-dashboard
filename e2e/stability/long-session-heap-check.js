@@ -14,7 +14,10 @@
  *
  * Standalone script (not a `.spec.js`/`.test.js` file), so `npx playwright
  * test` never picks it up - it's deliberately long-running and not meant
- * to gate every CI run. Run via `npm run stability:heap-check`, or
+ * to gate every CI run. Exits 1 when the heap grows more than
+ * MAX_GROWTH_RATIO. Runs on demand in CI via the "Heap stability"
+ * workflow (.github/workflows/heap-stability.yml, Actions tab -> Run
+ * workflow). Run locally via `npm run stability:heap-check`, or
  * directly: `node e2e/stability/long-session-heap-check.js [--cycles=200]
  * [--sample-every=10] [--dataset-size=40] [--data-change-every=1]`.
  *
@@ -53,6 +56,10 @@ function parseArgs(argv) {
 
 const REPO = "owner/repo";
 const DATA_POLL_MS = 300;
+// Last-quartile mean heap over first-quartile mean above this exits 1.
+// Measured on the default run: 1.11x with the payload-chaining leak fixed,
+// 1.72x with it (see REACT_MIGRATION_PLAN.md).
+const MAX_GROWTH_RATIO = 1.5;
 
 // `generation` 0 is the initial dataset. Each later generation changes a
 // different ~10% of PRs (new timestamp, fingerprint and title), so the
@@ -329,10 +336,13 @@ async function main() {
         );
       }
     }
-    if (ratio > 1.5) {
+    if (ratio > MAX_GROWTH_RATIO) {
       console.log(
-        "Heap grew notably across the run - worth a closer look (longer run, more cycles, or heap snapshot diffing) before concluding it's a real leak vs one-run noise.",
+        `FAIL: heap grew more than ${MAX_GROWTH_RATIO}x across the run - worth a closer look (longer run, more cycles, or heap snapshot diffing) before concluding it's a real leak vs one-run noise.`,
       );
+      // exitCode, not process.exit(): the finally below still has to stop
+      // the browser, server and Vite.
+      process.exitCode = 1;
     } else {
       console.log("Heap stayed roughly flat across the run - no signal of a leak at this cycle count.");
     }
