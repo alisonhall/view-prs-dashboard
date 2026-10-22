@@ -19,7 +19,7 @@ export function AppliedFilterSummary({ summaryText, filterChips }) {
 
   return (
     <>
-      <pre id="management-filter-summary" className="management-filter-summary">
+      <pre id="management-filter-summary" className="management-filter-summary" role="region" aria-label="Applied filters summary">
         {summaryText || 'Applied filters summary unavailable.'}
       </pre>
       <div id="management-filter-chips" className="applied-filter-chips">

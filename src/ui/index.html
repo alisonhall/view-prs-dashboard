@@ -18,7 +18,7 @@
          the collapsible background-activity panel. Always mounted so its
          toggle's live count stays accurate while the panel is closed. -->
     <div id="activity-drawer-root"></div>
-    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-live="polite"
+    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-label="Auto update paused" aria-live="polite"
         aria-atomic="true" hidden>
         <div class="auto-render-blocked-title">Auto update paused</div>
         <span id="auto-render-blocked-status-root"></span>
@@ -63,7 +63,7 @@
                          starts empty; React's own initial state supplies the
                          placeholder text, since createPortal doesn't clear
                          pre-existing static content in its target. -->
-                    <pre id="status" style="white-space: break-spaces;"></pre>
+                    <pre id="status" style="white-space: break-spaces;" role="region" aria-label="Status message"></pre>
                 </section>
             </div>
 
@@ -256,14 +256,14 @@
                                     <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
                                     <span id="attention-author-thread-resolution-mode-root"></span>
 
-                                    <details id="attention-author-thread-resolution-allow-options"
+                                    <details id="attention-author-thread-resolution-allow-options" aria-label="Thread-resolution allow-list options"
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-allow-list"
                                             class="multi-select-list" role="group" aria-label="Allow PR authors to resolve threads started by (Actor Names)"></div>
                                     </details>
 
-                                    <details id="attention-author-thread-resolution-deny-options"
+                                    <details id="attention-author-thread-resolution-deny-options" aria-label="Thread-resolution deny-list options"
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-deny-list"
@@ -392,7 +392,7 @@
                      Phase 3, see REACT_MIGRATION_PLAN.md. Falls back to a
                      vanilla-built <span> per badge if React fails to
                      load/mount. -->
-                <div id="backfill-badges" class="scheduler-badges"></div>
+                <div id="backfill-badges" class="scheduler-badges" role="group" aria-label="Backfill status badges"></div>
                 <!-- Rendered by React (BackfillControls.jsx, react-app.jsx) -
                      Phase C, see REACT_MIGRATION_PLAN.md. -->
                 <span id="backfill-controls-root"></span>
@@ -500,7 +500,7 @@
                      without a persisted override) if React fails to
                      load/mount. -->
                 <div id="author-insights-selector-root"></div>
-                <div id="author-insights-header-root"></div>
+                <div id="author-insights-header-root" role="region" aria-label="Selected author"></div>
                 <!-- Manual comments composer/list - real JSX
                      (AuthorInsightsCommentsSection.jsx). Its mutable draft
                      state and save/edit POST side effects go through the
@@ -516,8 +516,8 @@
                      content used to render stuck directly onto the end of
                      "Loading...". -->
                 <div id="author-insights-content-root" role="region" aria-label="Author comments"></div>
-                <div id="author-insights-notes-root"></div>
-                <div id="author-insights-created-prs-root"></div>
+                <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes"></div>
+                <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs"></div>
             </div>
         </section>
     </div>

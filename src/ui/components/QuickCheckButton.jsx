@@ -49,6 +49,9 @@ export function QuickCheckButton({ onCheck }) {
     <button
       type="button"
       id="quick-check-btn"
+      // A test hook: the visible name changes while it works ("Checking..."),
+      // so tests can't find it by name throughout a click.
+      data-testid="quick-check-button"
       title={
         'Cheap listing-only pass: checks whether anything changed without fetching full PR details.\n' +
         'Relies on GitHub\'s own "updated at" timestamp, so it won\'t catch a CI check finishing, ' +

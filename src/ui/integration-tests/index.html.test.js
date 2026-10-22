@@ -8889,6 +8889,10 @@ describe("index page rendering with Testing Library", () => {
       "PR data summary",
       "Review statistics",
       "Author comments",
+      "Status message",
+      "Selected author",
+      "Author's PR notes",
+      "Author's created PRs",
     ];
     regions.forEach((name) => {
       expect(screen.getByRole("region", { name, hidden: true })).toBeInTheDocument();
@@ -8896,6 +8900,7 @@ describe("index page rendering with Testing Library", () => {
 
     const groups = [
       "Applied table filters",
+      "Backfill status badges",
       "Review statistics controls",
       "Filter by label name(s)",
       "Exclude by label name(s)",

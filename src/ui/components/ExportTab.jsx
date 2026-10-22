@@ -326,7 +326,7 @@ export function ExportTab() {
         </button>
       </div>
 
-      <div className="export-field-list" id="export-field-list">
+      <div className="export-field-list" id="export-field-list" role="group" aria-label="Export fields">
         {catalog.dataPaths.length === 0 && catalog.userStatePaths.length === 0 ? (
           <p className="stats-empty">No exportable fields found in current payload.</p>
         ) : (
@@ -348,10 +348,10 @@ export function ExportTab() {
           Download JSON
         </button>
       </div>
-      <pre className="scheduler-details">{status}</pre>
+      <pre className="scheduler-details" role="region" aria-label="Export status">{status}</pre>
       <details className="advanced-options section-card low-emphasis-card" open>
         <summary>Export preview</summary>
-        <pre id="export-preview">{preview}</pre>
+        <pre id="export-preview" role="region" aria-label="Export preview">{preview}</pre>
       </details>
     </>
   );

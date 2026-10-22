@@ -78,6 +78,16 @@ describe('ExportTab', () => {
     jest.restoreAllMocks();
   });
 
+  // Accessibility naming: the field list, status and preview are findable by
+  // role and name (e2e uses these instead of ids/classes).
+  test('given the tab, when rendered, then the field list, status and preview are named', async () => {
+    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Export fields' })).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'Export status' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Export preview' })).toBeInTheDocument();
+  });
+
   test('given a populated field catalog, when rendered, then it lists data and user-state checkboxes, all selected by default', async () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 

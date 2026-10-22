@@ -25,6 +25,10 @@ const waitForPrTable = (page) =>
     .getByRole("row", { includeHidden: true })
     .first()
     .waitFor({ state: "attached", timeout: PR_TABLE_READY_TIMEOUT_MS });
+// The <summary> that opens a multi-select filter dropdown, given its list
+// (a named group). <summary> has no standard role, so this one helper holds
+// the structural lookup - the place to change if the dropdown markup does.
+const filterDropdownSummary = (list) => list.locator("xpath=ancestor::details[1]/summary");
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
   prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
@@ -277,7 +281,7 @@ test("Run & Filter dropdowns populate from loaded PR data", async ({ page }) => 
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
-  const authorOptionCount = await page.locator("#author-list input[type='checkbox']").count();
+  const authorOptionCount = await page.getByRole("group", { name: "Filter by PR author(s)", exact: true, includeHidden: true }).getByRole("checkbox", { includeHidden: true }).count();
   expect(authorOptionCount).toBeGreaterThan(0);
 });
 
@@ -329,7 +333,7 @@ test("Request more merged PRs button renders (lives outside the React-owned tabl
   await page.goto("/");
   await waitForPrTable(page);
 
-  await expect(page.locator("#merged-request-more-btn")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Request more", exact: true })).toBeVisible();
 });
 
 test("scheduler-driven active-PR progress indicator reaches the React-rendered row", async ({ page }) => {
@@ -382,7 +386,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   // is dirty, and applied once the edit is undone and the field blurred.
   await page.goto("/?dataPollMs=300");
   await waitForPrTable(page);
-  const indicator = page.locator("#auto-render-blocked-indicator");
+  const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
   const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
@@ -533,7 +537,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // both). Clicking the "Author Insights" tab below blurs the dirty textarea,
   // but the field is still dirty, so the poll stays held back.
   await changeServerData(page);
-  await expect(page.locator("#auto-render-blocked-indicator")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeVisible();
 
   // Switch away from the PR data tab - the row/Notes section stay mounted
   // underneath (only the panel's `hidden` attribute changes), so the dirty
@@ -557,7 +561,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // has focus), the held-back poll applies and the indicator goes away.
   await notesTextarea.fill(originalValue);
   await notesTextarea.blur();
-  await expect(page.locator("#auto-render-blocked-indicator")).toBeHidden();
+  await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeHidden();
 });
 
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
@@ -865,7 +869,7 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
   await labelDropdownSummary.click();
 
   const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
@@ -905,7 +909,7 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
 
-  const summary = page.locator("#management-filter-summary");
+  const summary = page.getByRole("region", { name: "Applied filters summary", exact: true, includeHidden: true });
   await expect(summary).toContainText("repo=");
   await expect(summary).toContainText("scope=all stored rows");
 
@@ -915,7 +919,7 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
 
   await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
 
-  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
   await labelDropdownSummary.click();
   await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
   await expect(summary).toContainText("label=enhancement");
@@ -974,7 +978,7 @@ test("a removable filter chip appears above the table for each non-default filte
   await expect(page.getByLabel("Filter by PR number(s)", { exact: true })).toHaveValue("");
 
   // A checked label filter gets its own chip too, removable the same way.
-  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
   await labelDropdownSummary.click();
   await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
 
@@ -1020,7 +1024,7 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
   await labelDropdownSummary.click();
   await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
   await waitForFilterPersist(page);
@@ -1391,11 +1395,11 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
   );
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#refresh-labels-btn").click();
+  await page.getByRole("button", { name: "↻ Labels", exact: true }).click();
 
   const runFilterSelect = page.getByLabel("Apply existing GitHub label to selected PR(s)", { exact: true });
-  await expect(runFilterSelect.locator("option")).toHaveCount(3);
-  await expect(runFilterSelect.locator('option[value="bug"]')).toHaveCount(1);
+  await expect(runFilterSelect.getByRole("option", { includeHidden: true })).toHaveCount(3);
+  await expect(runFilterSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
 
   // PR #1's own fixture already carries the "enhancement" label (see
   // e2e/fixtures/data.json) - its row select correctly excludes that one
@@ -1409,10 +1413,10 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
         checkbox.closest("details").open = true;
       });
     });
-  const rowSelect = page.locator('select[aria-label="Add label to PR #1"]').first();
-  await expect(rowSelect.locator("option")).toHaveCount(2);
-  await expect(rowSelect.locator('option[value="bug"]')).toHaveCount(1);
-  await expect(rowSelect.locator('option[value="enhancement"]')).toHaveCount(0);
+  const rowSelect = prTables(page).getByRole("combobox", { name: "Add label to PR #1", exact: true }).first();
+  await expect(rowSelect.getByRole("option", { includeHidden: true })).toHaveCount(2);
+  await expect(rowSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
+  await expect(rowSelect.getByRole("option", { name: "enhancement", exact: true, includeHidden: true })).toHaveCount(0);
 });
 
 test("a failed In Review toggle reverts the checkbox back to its real state, instead of leaving it stuck on the click", async ({ page }) => {
@@ -1479,11 +1483,11 @@ test("React-owned label multi-select renders options from payload data and filte
   // markup the very first time it runs (pre-existing behavior, unrelated
   // to this conversion) - the on-screen text is "Filter by label name"
   // from then on, not the initial HTML's "(s)".
-  const labelDropdownSummary = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary");
+  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
   await labelDropdownSummary.click();
 
   const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
-  await expect(labelList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(labelList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   await expect(labelList).toContainText("enhancement");
   await expect(labelList).toContainText("bug");
   await expect(labelList).toContainText("dependencies");
@@ -1545,13 +1549,13 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   // outside it - opening one dropdown, leaving it open, and then opening
   // the next closes the first, so each dropdown must be (re-)opened
   // immediately before the interaction that needs it visible.
-  const openDropdown = (list) => list.locator("xpath=ancestor::details[1]/summary").click();
+  const openDropdown = (list) => filterDropdownSummary(list).click();
 
   await openDropdown(excludeLabelList);
-  await expect(excludeLabelList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(excludeLabelList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
 
   await openDropdown(authorList);
-  await expect(authorList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(authorList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   // Display names come from resolveActorDisplayName, which resolves via a
   // server-side actor-name-cache learned from *any* occurrence of a login
   // (assignee/approver/author alike) - since this fixture also lists
@@ -1562,11 +1566,11 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   await expect(authorList).toContainText("Hubot");
 
   await openDropdown(assignedList);
-  await expect(assignedList.locator("input[type='checkbox']")).toHaveCount(1);
+  await expect(assignedList.getByRole("checkbox", { includeHidden: true })).toHaveCount(1);
   await expect(assignedList).toContainText("The Octocat");
 
   await openDropdown(approverList);
-  await expect(approverList.locator("input[type='checkbox']")).toHaveCount(2);
+  await expect(approverList.getByRole("checkbox", { includeHidden: true })).toHaveCount(2);
   await expect(approverList).toContainText("The Octocat");
   await expect(approverList).toContainText("Hubot");
 
@@ -1649,20 +1653,20 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
   const ignoreCommentAuthorsList = page.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
   const ignoreReviewAuthorsList = page.getByRole("group", { name: "Ignore reviews from these authors (GitHub logins)", exact: true, includeHidden: true });
-  const openDropdown = (list) => list.locator("xpath=ancestor::details[1]/summary").click();
+  const openDropdown = (list) => filterDropdownSummary(list).click();
 
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
-  await expect(allowList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(allowList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   await expect(allowList).toContainText("The Octocat");
 
   await page.selectOption("#attention-author-thread-resolution-mode", "deny-only");
-  await expect(denyList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   await expect(denyList).toContainText("Hubot");
 
   await openDropdown(ignoreCommentAuthorsList);
-  await expect(ignoreCommentAuthorsList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   await openDropdown(ignoreReviewAuthorsList);
-  await expect(ignoreReviewAuthorsList.locator("input[type='checkbox']")).toHaveCount(3);
+  await expect(ignoreReviewAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
 
   // Persist directly via the same /view-prs/user-defaults shape
   // restoreUiOptionOverrides expects (allow/deny are top-level array keys;
@@ -1803,8 +1807,8 @@ test("PR author thread resolution policy select shows/hides its dependent allow/
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  const allowOptions = page.locator("#attention-author-thread-resolution-allow-options");
-  const denyOptions = page.locator("#attention-author-thread-resolution-deny-options");
+  const allowOptions = page.getByRole("group", { name: "Thread-resolution allow-list options", exact: true, includeHidden: true });
+  const denyOptions = page.getByRole("group", { name: "Thread-resolution deny-list options", exact: true, includeHidden: true });
   await expect(allowOptions).toBeHidden();
   await expect(denyOptions).toBeHidden();
 
@@ -1840,7 +1844,12 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   await page.getByRole("tab", { name: "Review statistics" }).click();
 
   const controlsRoot = page.getByRole("group", { name: "Review statistics controls", exact: true, includeHidden: true });
-  await expect(controlsRoot.locator("select, input")).toHaveCount(6);
+  for (const name of ["Sort by", "Filter"]) {
+    await expect(controlsRoot.getByRole("combobox", { name, exact: true })).toHaveCount(1);
+  }
+  for (const name of ["Min comments", "Top reviewers", "Start date", "End date"]) {
+    await expect(controlsRoot.getByLabel(name, { exact: true })).toHaveCount(1);
+  }
 
   const sortSelect = page.getByRole("combobox", { name: "Sort by", exact: true, includeHidden: true });
   await expect(sortSelect).toHaveValue("riskyApprovals");
@@ -1965,10 +1974,9 @@ test("React-owned Author Insights selector renders options, changes the selected
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  const selectorRoot = page.locator("#author-insights-selector-root");
-  const select = selectorRoot.locator("select");
+  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
   await expect(select).toBeVisible();
-  const optionCount = await select.locator("option").count();
+  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
   expect(optionCount).toBeGreaterThan(1);
 
   await select.selectOption({ index: 1 });
@@ -2015,11 +2023,11 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  const createdRoot = page.locator("#author-insights-created-prs-root");
+  const createdRoot = page.getByRole("region", { name: "Author's created PRs", exact: true, includeHidden: true });
   await expect(createdRoot.locator(".author-insights-section")).toBeVisible();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  const optionCount = await select.locator("option").count();
+  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
   expect(optionCount).toBeGreaterThan(1);
 
   const textForEachAuthor = [];
@@ -2081,12 +2089,12 @@ test("React-owned Author Insights header updates on author switch and survives a
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  const headerRoot = page.locator("#author-insights-header-root");
+  const headerRoot = page.getByRole("region", { name: "Selected author", exact: true, includeHidden: true });
   const header = headerRoot.locator(".author-insights-selected");
   await expect(header).toBeVisible();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  const optionCount = await select.locator("option").count();
+  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
   expect(optionCount).toBeGreaterThan(1);
 
   const textForEachAuthor = [];
@@ -2136,7 +2144,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Author Insights" }).click();
 
-  const notesRoot = page.locator("#author-insights-notes-root");
+  const notesRoot = page.getByRole("region", { name: "Author's PR notes", exact: true, includeHidden: true });
   await expect(notesRoot.locator(".author-insights-section")).toBeVisible();
   await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
 
@@ -2269,7 +2277,7 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
   await page.goto("/?dataPollMs=300");
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Author Insights" }).click();
-  const indicator = page.locator("#auto-render-blocked-indicator");
+  const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
   await select.selectOption({ label: "The Octocat" });
@@ -2298,7 +2306,7 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await page.goto("/");
   await page.getByRole("tab", { name: "Backfill" }).click();
 
-  const badgeHost = page.locator("#backfill-badges");
+  const badgeHost = page.getByRole("group", { name: "Backfill status badges", exact: true, includeHidden: true });
   const badges = badgeHost.locator(".scheduler-badge");
   await expect(badges.first()).toBeVisible();
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
@@ -2307,7 +2315,7 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   // per-run server, not a destructive action - and confirm the badges are
   // still there afterward (not vanished, the structural regression class
   // every other Phase 3 conversion's own tests guard against).
-  await page.locator("#backfill-refresh-btn").click();
+  await page.getByRole("button", { name: "Refresh status", exact: true }).click();
   await expect(badges.first()).toBeVisible();
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
@@ -2329,7 +2337,7 @@ test("the Backfill tab's details and log text replace their loading placeholders
   await expect(page.getByRole("region", { name: "Backfill log", exact: true, includeHidden: true })).not.toHaveText("");
 
   // The log's "Refresh log" button is enabled from the Provider's button state.
-  await expect(page.locator("#backfill-log-refresh-btn")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Refresh log", exact: true, includeHidden: true })).toBeEnabled();
 });
 
 test("opening the Backfill tab and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
@@ -2457,7 +2465,7 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   };
 
   await assertNoStalePrefix(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true }), "Loading...");
-  await assertNoStalePrefix(page.locator("#status"), "Not run");
+  await assertNoStalePrefix(page.getByRole("region", { name: "Status message", exact: true, includeHidden: true }), "Not run");
   await assertNoStalePrefix(page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true }), "Run the script to see output");
 
   await page.getByRole("tab", { name: "Backfill" }).click();
@@ -2476,11 +2484,11 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   // MultiSelectCheckboxList.jsx started portaling its own copy in.
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await assertNoStalePrefix(
-    page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary"),
+    filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true })),
     "Filter by label name(s)",
   );
   await assertNoStalePrefix(
-    page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }).locator("xpath=ancestor::details[1]/summary"),
+    filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true })),
     "Allow PR authors to resolve threads started by (Actor Names)",
   );
 });
@@ -2516,15 +2524,15 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Export" }).click();
-  const fieldList = page.locator("#export-field-list");
-  await expect(fieldList.locator('input[type="checkbox"]')).not.toHaveCount(0);
+  const fieldList = page.getByRole("group", { name: "Export fields", exact: true, includeHidden: true });
+  await expect(fieldList.getByRole("checkbox", { includeHidden: true })).not.toHaveCount(0);
 
   await page.getByRole("button", { name: "Preview JSON" }).click();
 
-  const statusText = page.locator("#tab-panel-export pre.scheduler-details");
+  const statusText = page.getByRole("tabpanel", { name: "Export", exact: true, includeHidden: true }).getByRole("region", { name: "Export status", exact: true, includeHidden: true });
   await expect(statusText).toHaveText(/Prepared export JSON for \d+ visible PRs?\./);
 
-  const previewText = await page.locator("#export-preview").textContent();
+  const previewText = await page.getByRole("region", { name: "Export preview", exact: true, includeHidden: true }).textContent();
   const exportPayload = JSON.parse(previewText);
   expect(exportPayload.prCount).toBeGreaterThan(0);
   expect(Array.isArray(exportPayload.prs)).toBe(true);
@@ -2542,8 +2550,8 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
   // non-zero duration explicitly) is covered by SnackbarProvider.test.jsx.
   await page.goto("/?dataPollMs=300");
   await waitForPrTable(page);
-  const snackbar = page.locator("#error-snackbar");
-  const message = page.locator("#error-snackbar-message");
+  const snackbar = page.getByRole("alert", { includeHidden: true });
+  const message = page.getByRole("alert", { includeHidden: true });
   await expect(snackbar).toBeHidden();
 
   // Error: a failed "Run script" request (useRunScript shows a persistent error).
@@ -2560,7 +2568,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
   await expect(snackbar).not.toHaveClass(/error-snackbar-warning/);
   await expect(message).toContainText("Request failed for:");
 
-  await page.locator("#error-snackbar-close").click();
+  await page.getByRole("button", { name: "Close notification", exact: true }).click();
   await expect(snackbar).toBeHidden();
 
   // Warning: a failing background poll (PrDataProvider's showPollFailureWarning),
@@ -2656,7 +2664,7 @@ test("clicking Quick check pushes a real 'running' state into the drawer over SS
   await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Idle");
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.locator("#quick-check-btn").click();
+  await page.getByTestId("quick-check-button").click();
 
   await expect(quickCheckRow.locator(".activity-drawer-job-status")).toHaveText("Running", {
     timeout: 10000,
@@ -2672,14 +2680,14 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
   await page.goto("/");
   await waitForPrTable(page);
 
-  const triggerBtn = page.locator("#trigger-auto-run-btn");
+  const triggerBtn = page.getByTestId("trigger-auto-run-button");
   await expect(triggerBtn).toHaveText("Trigger auto run");
   await triggerBtn.click();
   await expect(triggerBtn).toHaveText("Trigger auto run", { timeout: 5000 });
   await expect(triggerBtn).toBeEnabled();
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const quickCheckBtn = page.locator("#quick-check-btn");
+  const quickCheckBtn = page.getByTestId("quick-check-button");
   await expect(quickCheckBtn).toHaveText("Quick check");
   await quickCheckBtn.click();
   await expect(quickCheckBtn).toBeEnabled({ timeout: 5000 });
