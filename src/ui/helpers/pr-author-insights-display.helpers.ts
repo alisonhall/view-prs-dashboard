@@ -1,49 +1,81 @@
-/**
- * Author Insights Display and Formatting Helpers
- * 
- * Provides helpers for formatting author insights data, building author
- * options, and sorting/matching entries. The DOM-building badge/meta helpers
- * that used to live here were ported to AuthorInsightsPrDataMeta.jsx.
- * UMD pattern for browser + Jest compatibility.
- */
+import type { PrEntry } from "../types/pr-data.ts";
+import type {
+  ActorsMap,
+  GetPreferredActorKey,
+  NormalizeActorLogin,
+  ResolveActorDisplayName,
+} from "./pr-actor-identity.helpers.ts";
+import type { AuthorManualComment } from "./pr-author-insights-data.helpers.ts";
 
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): converted from the UMD
-// wrapper every other src/ui/helpers file still uses - the factory body
-// below is unchanged, only the export mechanism differs. index.page.js
-// imports this directly instead of using the
-// require()/globalThis.ViewPrsAuthorInsightsDisplayHelpers fallback.
-const createPrAuthorInsightsDisplayHelpers = ({
-  resolveActorDisplayName,
-  getPreferredActorKey,
-  normalizeActorLogin,
-  normalizeAuthorInsightsSentiment,
-  isChangedStatus,
-  asArray,
-  parseSortableTime,
-  formatIsoDatetime,
-} = {}) => {
-  /**
-   * Builds a list of author options from rows and actorsMap.
-   * 
-   * @param {Array} rows - PR row entries
-   * @param {Object} actorsMap - Actor ID to name mapping
-   * @returns {Array} Sorted array of {login, name} objects
-   */
-  const buildAuthorInsightsEntries = (rows, actorsMap = {}) => {
-    const authors = new Map();
-    const addAuthorOption = (login, fallbackName = "") => {
+// Author Insights' display helpers: the author dropdown's options, whether
+// a note was written about the selected author, sentiment and status
+// badge labels/classes, and newest-first sorting of comments, notes and
+// created PRs.
+//
+// noteAuthorMatchesSelection is the same rule as
+// pr-author-insights-identity.helpers.ts's; both copies predate the
+// TypeScript conversion.
+
+export interface AuthorOption {
+  login: string;
+  name: string;
+}
+
+export interface SelectedAuthor {
+  login?: string;
+  name?: string;
+}
+
+// A note comment found on a PR, with the PR entry it belongs to.
+export interface AuthorNoteMatch {
+  entry?: PrEntry & { updatedAt?: string };
+  comment?: { createdAt?: string; updatedAt?: string };
+}
+
+// The functions are required by the helpers that use them; the argument
+// itself stays optional, as before conversion.
+export interface PrAuthorInsightsDisplayDeps {
+  resolveActorDisplayName?: ResolveActorDisplayName;
+  getPreferredActorKey?: GetPreferredActorKey;
+  normalizeActorLogin?: NormalizeActorLogin;
+  normalizeAuthorInsightsSentiment?: (value: unknown) => string;
+  isChangedStatus?: (status: unknown) => boolean;
+  asArray?: (value: unknown) => unknown[];
+  parseSortableTime?: (value: unknown) => number;
+  formatIsoDatetime?: (value: unknown) => string;
+}
+
+// Entries plus the data fields only these sorts read.
+type CreatedPrEntry = PrEntry & { data?: PrEntry["data"] & { updatedAt?: string } };
+
+const createPrAuthorInsightsDisplayHelpers = (deps: PrAuthorInsightsDisplayDeps = {}) => {
+  const { getPreferredActorKey, formatIsoDatetime, asArray } = deps;
+  // Called without fallbacks, as before conversion: a helper whose
+  // dependency is missing throws.
+  const resolveActorDisplayName = deps.resolveActorDisplayName as ResolveActorDisplayName;
+  const getPreferredActorKeyFn = getPreferredActorKey as GetPreferredActorKey;
+  const normalizeActorLogin = deps.normalizeActorLogin as NormalizeActorLogin;
+  const normalizeAuthorInsightsSentiment = deps.normalizeAuthorInsightsSentiment as (value: unknown) => string;
+  const isChangedStatus = deps.isChangedStatus as (status: unknown) => boolean;
+  const parseSortableTime = deps.parseSortableTime as (value: unknown) => number;
+  const formatIsoDatetimeFn = formatIsoDatetime as (value: unknown) => string;
+
+  // Every PR author plus everyone in actorsMap, sorted by display name.
+  const buildAuthorInsightsEntries = (rows: PrEntry[], actorsMap: ActorsMap = {}): AuthorOption[] => {
+    const authors = new Map<string, string>();
+    const addAuthorOption = (login: unknown, fallbackName: unknown = "") => {
       const authorLogin = String(login || "").trim();
       if (!authorLogin) return;
       if (authors.has(authorLogin)) return;
       authors.set(
         authorLogin,
-        resolveActorDisplayName(authorLogin, actorsMap, fallbackName),
+        resolveActorDisplayName(authorLogin, actorsMap, fallbackName as string),
       );
     };
 
     rows.forEach((entry) => {
       const row = entry?.data || {};
-      addAuthorOption(getPreferredActorKey(row.authorLogin, row.author), row.author);
+      addAuthorOption(getPreferredActorKeyFn(row.authorLogin, row.author), row.author);
     });
 
     Object.entries(actorsMap || {}).forEach(([login, name]) => {
@@ -57,19 +89,11 @@ const createPrAuthorInsightsDisplayHelpers = ({
       );
   };
 
-  /**
-   * Checks if a note author matches the selected author.
-   * 
-   * @param {string} noteAuthorValue - Author value from note
-   * @param {Object} selectedAuthor - Selected author {login, name}
-   * @param {Object} actorsMap - Actor ID to name mapping
-   * @returns {boolean} True if note author matches selected author
-   */
   const noteAuthorMatchesSelection = (
-    noteAuthorValue,
-    selectedAuthor,
-    actorsMap,
-  ) => {
+    noteAuthorValue: unknown,
+    selectedAuthor: SelectedAuthor | null | undefined,
+    actorsMap: ActorsMap,
+  ): boolean => {
     const rawAuthor = String(noteAuthorValue || "").trim();
     if (!rawAuthor || !selectedAuthor) return false;
 
@@ -90,37 +114,19 @@ const createPrAuthorInsightsDisplayHelpers = ({
     );
   };
 
-  /**
-   * Gets the sentiment label for a sentiment value.
-   * 
-   * @param {string} value - Sentiment value (positive/negative/neutral)
-   * @returns {string} Sentiment label
-   */
-  const getAuthorInsightsSentimentLabel = (value) => {
+  const getAuthorInsightsSentimentLabel = (value: unknown): string => {
     const sentiment = normalizeAuthorInsightsSentiment(value);
     if (sentiment === "positive") return "Positive";
     if (sentiment === "negative") return "Negative";
     return "Neutral";
   };
 
-  /**
-   * Gets the badge CSS class for a sentiment value.
-   * 
-   * @param {string} value - Sentiment value
-   * @returns {string} Badge CSS class
-   */
-  const getAuthorInsightsSentimentBadgeClassName = (value) => {
+  const getAuthorInsightsSentimentBadgeClassName = (value: unknown): string => {
     const sentiment = normalizeAuthorInsightsSentiment(value);
     return `author-insights-badge-sentiment-${sentiment}`;
   };
 
-  /**
-   * Gets the badge CSS class for a PR status.
-   * 
-   * @param {string} value - PR status value
-   * @returns {string} Badge CSS class
-   */
-  const getAuthorInsightsStatusBadgeClassName = (value) => {
+  const getAuthorInsightsStatusBadgeClassName = (value: unknown): string => {
     const status = String(value || "").trim().toUpperCase();
     if (status === "MERGED") {
       return "author-insights-badge-status-merged";
@@ -140,13 +146,8 @@ const createPrAuthorInsightsDisplayHelpers = ({
     return "author-insights-badge-status-default";
   };
 
-  /**
-   * Determines the PR status for an author insights entry.
-   * 
-   * @param {Object} entry - PR entry
-   * @returns {string} PR status (MERGED/CLOSED/status)
-   */
-  const getAuthorInsightsCreatedPrStatus = (entry) => {
+  // MERGED or CLOSED when the PR is, otherwise the script's status.
+  const getAuthorInsightsCreatedPrStatus = (entry: PrEntry | null | undefined): string => {
     if (String(entry?.data?.mergedAt || "").trim()) {
       return "MERGED";
     }
@@ -159,13 +160,9 @@ const createPrAuthorInsightsDisplayHelpers = ({
     return String(entry?.data?.status || "-").trim().toUpperCase() || "-";
   };
 
-  /**
-   * Sorts manual comments in descending order by date.
-   * 
-   * @param {Array} comments - Array of comment objects
-   * @returns {Array} Sorted comments
-   */
-  const sortAuthorInsightsManualCommentsDesc = (comments) =>
+  const sortAuthorInsightsManualCommentsDesc = (
+    comments: AuthorManualComment[] | null | undefined,
+  ): AuthorManualComment[] =>
     (Array.isArray(comments) ? comments.slice() : []).sort((a, b) => {
       const dateA = parseSortableTime(a?.createdAt || a?.updatedAt || "");
       const dateB = parseSortableTime(b?.createdAt || b?.updatedAt || "");
@@ -175,13 +172,7 @@ const createPrAuthorInsightsDisplayHelpers = ({
       return String(b?.id || "").localeCompare(String(a?.id || ""));
     });
 
-  /**
-   * Sorts note matches in descending order by date.
-   * 
-   * @param {Array} matches - Array of {entry, comment} objects
-   * @returns {Array} Sorted matches
-   */
-  const sortAuthorInsightsNoteMatchesDesc = (matches) =>
+  const sortAuthorInsightsNoteMatchesDesc = <M extends AuthorNoteMatch>(matches: M[] | null | undefined): M[] =>
     (Array.isArray(matches) ? matches.slice() : []).sort((a, b) => {
       const dateA = parseSortableTime(
         a?.comment?.createdAt || a?.comment?.updatedAt || a?.entry?.updatedAt || "",
@@ -195,14 +186,11 @@ const createPrAuthorInsightsDisplayHelpers = ({
       return Number(b?.entry?.prNumber || 0) - Number(a?.entry?.prNumber || 0);
     });
 
-  /**
-   * Gets the display timestamp for a note.
-   * 
-   * @param {Object} comment - Comment object
-   * @param {Object} entry - PR entry
-   * @returns {string} Formatted timestamp
-   */
-  const getAuthorInsightsNoteDisplayTimestamp = (comment, entry) => {
+  // The first parseable timestamp among the note's and its PR's dates.
+  const getAuthorInsightsNoteDisplayTimestamp = (
+    comment: { createdAt?: string; updatedAt?: string } | null | undefined,
+    entry: CreatedPrEntry | null | undefined,
+  ): string => {
     const candidates = [
       comment?.createdAt,
       comment?.updatedAt,
@@ -213,16 +201,10 @@ const createPrAuthorInsightsDisplayHelpers = ({
     const valid = candidates.find((value) =>
       Number.isFinite(Date.parse(String(value || "").trim())),
     );
-    return formatIsoDatetime(valid || "-");
+    return formatIsoDatetimeFn(valid || "-");
   };
 
-  /**
-   * Sorts created PRs in descending order by date.
-   * 
-   * @param {Array} rows - Array of PR entries
-   * @returns {Array} Sorted rows
-   */
-  const sortAuthorInsightsCreatedPrsDesc = (rows) =>
+  const sortAuthorInsightsCreatedPrsDesc = <E extends CreatedPrEntry>(rows: E[] | null | undefined): E[] =>
     (Array.isArray(rows) ? rows.slice() : []).sort((a, b) => {
       const dateA = parseSortableTime(
         a?.data?.mergedAt ||
@@ -256,7 +238,7 @@ const createPrAuthorInsightsDisplayHelpers = ({
     getAuthorInsightsNoteDisplayTimestamp,
     sortAuthorInsightsCreatedPrsDesc,
     // Pass-through dependencies
-    resolveActorDisplayName,
+    resolveActorDisplayName: deps.resolveActorDisplayName,
     getPreferredActorKey,
     formatIsoDatetime,
     asArray,
@@ -265,23 +247,20 @@ const createPrAuthorInsightsDisplayHelpers = ({
 
 export { createPrAuthorInsightsDisplayHelpers };
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md, navigateToAuthorInsights's own
-// entry): zero-dependency pure function - bare export, no createXHelpers()
-// wrapper needed (same precedent as pr-row-sorting.helpers.ts). Shared by
-// useNavigateToAuthorInsights.jsx (state/, the "jump to unsaved author
-// draft" navigation path) and AuthorInsightsSelector.jsx (components/,
-// the Author dropdown's own validation/auto-select-first-author rule,
-// Phase H.17 - see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 2 - previously pr-author-insights.component.js's
-// renderAuthorInsights, deleted outright that phase), so both validate a
-// requested author login against the same current options the same way
-// instead of one reimplementing the other's rule.
-export const resolveValidAuthorLogin = (authorOptions, requestedLogin) => {
+// Shared by useNavigateToAuthorInsights.jsx (the "jump to unsaved author
+// draft" navigation path) and AuthorInsightsSelector.jsx (the Author
+// dropdown's own validation/auto-select-first-author rule), so both
+// validate a requested author login against the same current options the
+// same way: the requested login if it's an option, else the first option.
+export const resolveValidAuthorLogin = (
+  authorOptions: AuthorOption[] | null | undefined,
+  requestedLogin: string,
+): string => {
   if (!Array.isArray(authorOptions) || authorOptions.length === 0) {
     return "";
   }
   if (authorOptions.some((option) => option.login === requestedLogin)) {
     return requestedLogin;
   }
-  return authorOptions[0].login;
+  return (authorOptions[0] as AuthorOption).login;
 };

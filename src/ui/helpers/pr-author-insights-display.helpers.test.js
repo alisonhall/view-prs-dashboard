@@ -9,7 +9,7 @@
 const {
   createPrAuthorInsightsDisplayHelpers,
   resolveValidAuthorLogin,
-} = require("./pr-author-insights-display.helpers.js");
+} = require("./pr-author-insights-display.helpers.ts");
 const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.js");
 
 describe("pr author insights display helpers", () => {

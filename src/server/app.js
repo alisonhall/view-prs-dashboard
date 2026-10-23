@@ -183,7 +183,7 @@ const viewPrsSchedulerState = {
   // True whenever quickCheckSkippedRepos (below) is non-empty - kept as a
   // plain boolean (rather than removed) since it's part of the public
   // scheduler state surfaced to the UI (see getViewPrsSchedulerPublicState/
-  // pr-job-events.helpers.js's "waitingOn" display) - consumed by
+  // pr-job-events.helpers.ts's "waitingOn" display) - consumed by
   // runViewPrsAutoRefresh's finally block to fire an immediate catch-up
   // quick check as soon as the blocking refresh finishes, instead of
   // leaving detection of anything that changed in the meantime (e.g. a

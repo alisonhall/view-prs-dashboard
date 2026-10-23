@@ -34,7 +34,7 @@ const DEFAULT_FILTER_STATE_VALUES = {
  * - FilterStateContext's openMode/alwaysShowInReview (cosmetic-only
  *   openMode is still Context-backed even though it plays no row-filtering
  *   role - see pr-row-match-filters.helpers.ts's own comment).
- * - useJobEvents().schedulerSummary (see pr-job-events.helpers.js's
+ * - useJobEvents().schedulerSummary (see pr-job-events.helpers.ts's
  *   extractSchedulerSummary) for the scheduler portion of the text - the
  *   one piece that previously had NO reactive source at all anywhere,
  *   landed as its own prerequisite slice before this hook could exist.

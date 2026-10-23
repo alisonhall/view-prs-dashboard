@@ -1,10 +1,86 @@
-// Pure reducer for the activity drawer's SSE-fed job state (see
-// REACT_MIGRATION_PLAN.md's notification-drawer plan). No React/DOM - all
-// the "honest, not a fake queue" semantics live here so they're unit
+// Pure reducer for the activity drawer's SSE-fed job state. No React/DOM -
+// all the "honest, not a fake queue" semantics live here so they're unit
 // testable without a real EventSource. JobEventsProvider.jsx is the only
 // caller; it owns the live connection and EventSource lifecycle, this
 // module only owns what a given frame does to state.
-const createJobState = () => ({
+
+export type JobKey = "autoRefresh" | "quickCheck" | "mergedQueueDrain";
+
+export interface JobState {
+  status: "idle" | "running";
+  startedAt: string | null;
+  lastFinishedAt: string | null;
+  lastOk: boolean | null;
+  lastError: unknown;
+  lastSkip: { reason: string | null; at: string } | null;
+  // Only quickCheck: the job it's waiting for, when deferred.
+  waitingOn?: { job: string | null; since: string } | null;
+}
+
+export interface SchedulerSummary {
+  intervalMinutes: number;
+  manualCooldownMinutes: number;
+  lastManualRunAt: unknown;
+  lastAutoRunAt: unknown;
+  lastAutoSkipReason: unknown;
+  lastAutoError: unknown;
+}
+
+export interface FinishedJob {
+  job: string;
+  at: string;
+  ok: boolean | null;
+  detail: Record<string, unknown>;
+}
+
+export interface JobEventsState {
+  connection: string;
+  lastEventAt: string | null;
+  lastSnapshotAt: string | null;
+  lastSeq: number;
+  jobs: Record<JobKey, JobState>;
+  pendingOpenCount: number;
+  pendingMergedClosedCount: number;
+  recentFinished: FinishedJob[];
+  dispatcherQueue: unknown[];
+  openAutoCircuitRepos: unknown[];
+  schedulerSummary: SchedulerSummary;
+}
+
+// The scheduler state the server bundles with every SSE frame.
+export interface SchedulerSnapshot {
+  isAutoRunInProgress?: boolean;
+  isQuickCheckInProgress?: boolean;
+  isMergedDrainInProgress?: boolean;
+  quickCheckSkippedWhileAutoRunInProgress?: boolean;
+  lastAutoRunAt?: string | null;
+  lastAutoError?: unknown;
+  lastQuickCheckAt?: string | null;
+  lastQuickCheckError?: unknown;
+  lastMergedDrainAt?: string | null;
+  lastManualRunAt?: unknown;
+  lastAutoSkipReason?: unknown;
+  intervalMinutes?: unknown;
+  manualCooldownMinutes?: unknown;
+  pendingOpenCount?: unknown;
+  pendingMergedClosedCount?: unknown;
+  dispatcherQueue?: unknown;
+  openAutoCircuitRepos?: unknown;
+}
+
+// A `job` envelope ({job, phase, ok, detail, seq}) or a job-agnostic
+// `scheduler` envelope ({seq} only) - see view-prs-job-events-helpers.js.
+export interface JobEventEnvelope {
+  seq?: number;
+  at?: string;
+  job?: string;
+  phase?: "start" | "finish" | "skipped" | "deferred" | string;
+  ok?: boolean | null;
+  detail?: { error?: unknown; reason?: string; waitingOn?: string; [field: string]: unknown };
+  scheduler?: SchedulerSnapshot;
+}
+
+const createJobState = (): JobState => ({
   status: "idle",
   startedAt: null,
   lastFinishedAt: null,
@@ -13,10 +89,13 @@ const createJobState = () => ({
   lastSkip: null,
 });
 
-const createPrJobEventsHelpers = ({ now } = {}) => {
+const isJobKey = (value: unknown): value is JobKey =>
+  value === "autoRefresh" || value === "quickCheck" || value === "mergedQueueDrain";
+
+const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
   const nowSafe = typeof now === "function" ? now : () => new Date().toISOString();
 
-  const getInitialJobEventsState = () => ({
+  const getInitialJobEventsState = (): JobEventsState => ({
     connection: "connecting",
     lastEventAt: null,
     lastSnapshotAt: null,
@@ -26,13 +105,10 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
       quickCheck: { ...createJobState(), waitingOn: null },
       mergedQueueDrain: createJobState(),
     },
-    // Flagged by quick-check, drained by mergedQueueDrain - this is the
-    // one piece of the old (now-removed) #scheduler-badges display that
-    // had no equivalent anywhere in the drawer, so it's carried here
-    // instead of being silently dropped. Read off every envelope's own
-    // bundled scheduler object (every frame carries it, not just a
-    // mergedQueueDrain-specific one), so it stays current regardless of
-    // which job most recently emitted.
+    // Flagged by quick-check, drained by mergedQueueDrain. Read off every
+    // envelope's own bundled scheduler object (every frame carries it, not
+    // just a mergedQueueDrain-specific one), so it stays current
+    // regardless of which job most recently emitted.
     pendingOpenCount: 0,
     pendingMergedClosedCount: 0,
     recentFinished: [],
@@ -45,15 +121,10 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
-    // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
-    // the fields AppliedFilterSummary's "Applied filters" chip text
-    // needs for its scheduler-summary portion (intervalMinutes/
-    // manualCooldownMinutes/lastManualRunAt/lastAutoRunAt/
-    // lastAutoSkipReason/lastAutoError) - previously only available as
-    // a vanilla module-level `let` (index.page.js's latestSchedulerState,
-    // mutated by renderSchedulerStatus), not reactive anywhere. Same
-    // job-agnostic, whole-scheduler-snapshot category as the fields
-    // above - read off every envelope's own bundled scheduler object.
+    // The scheduler fields AppliedFilterSummary's "Applied filters" text
+    // shows (interval, cooldown, last manual/auto run, last skip reason
+    // and error) - same whole-scheduler-snapshot category, read off every
+    // envelope's bundled scheduler object.
     schedulerSummary: {
       intervalMinutes: 15,
       manualCooldownMinutes: 15,
@@ -64,18 +135,22 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
     },
   });
 
-  const extractDispatcherQueue = (scheduler) =>
+  const extractDispatcherQueue = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.dispatcherQueue) ? scheduler.dispatcherQueue : [];
 
-  const extractOpenAutoCircuitRepos = (scheduler) =>
+  const extractOpenAutoCircuitRepos = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
 
-  const extractSchedulerSummary = (scheduler, previous) => ({
+  // Missing fields keep their previous values.
+  const extractSchedulerSummary = (
+    scheduler: SchedulerSnapshot | undefined,
+    previous: SchedulerSummary,
+  ): SchedulerSummary => ({
     intervalMinutes: Number.isFinite(Number(scheduler?.intervalMinutes))
-      ? Number(scheduler.intervalMinutes)
+      ? Number(scheduler?.intervalMinutes)
       : previous.intervalMinutes,
     manualCooldownMinutes: Number.isFinite(Number(scheduler?.manualCooldownMinutes))
-      ? Number(scheduler.manualCooldownMinutes)
+      ? Number(scheduler?.manualCooldownMinutes)
       : previous.manualCooldownMinutes,
     lastManualRunAt:
       scheduler?.lastManualRunAt !== undefined ? scheduler.lastManualRunAt : previous.lastManualRunAt,
@@ -89,22 +164,28 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
       scheduler?.lastAutoError !== undefined ? scheduler.lastAutoError : previous.lastAutoError,
   });
 
-  const extractPendingCounts = (scheduler) => ({
+  const extractPendingCounts = (scheduler: SchedulerSnapshot | undefined) => ({
     pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
     pendingMergedClosedCount: Number(scheduler?.pendingMergedClosedCount) || 0,
   });
 
-  const setConnectionState = (state, connection) => ({ ...state, connection });
+  const setConnectionState = (state: JobEventsState, connection: string): JobEventsState => ({
+    ...state,
+    connection,
+  });
 
   // Always authoritative regardless of seq - a fresh connect-time (or
   // reconnect-time) snapshot resets the dedupe counter and seeds every
   // job's current status/waitingOn straight from the server's own
   // in-memory scheduler state, not from replaying missed events.
-  const applyJobEventsSnapshot = (state, payload) => {
-    const scheduler = payload?.scheduler || {};
+  const applyJobEventsSnapshot = (
+    state: JobEventsState,
+    payload: { scheduler?: SchedulerSnapshot; at?: string } | null | undefined,
+  ): JobEventsState => {
+    const scheduler: SchedulerSnapshot = payload?.scheduler || {};
     const at = payload?.at || nowSafe();
 
-    const jobs = {
+    const jobs: Record<JobKey, JobState> = {
       autoRefresh: {
         ...state.jobs.autoRefresh,
         status: scheduler.isAutoRunInProgress ? "running" : "idle",
@@ -147,13 +228,11 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
     };
   };
 
-  // envelope is either a `job` envelope ({job, phase, ok, detail, seq})
-  // or a job-agnostic `scheduler` envelope ({seq} only, no job/phase) -
-  // see view-prs-job-events-helpers.js. The latter only bumps lastEventAt/
-  // lastSeq/pendingCounts; the drawer's own per-job rows don't change from
-  // it (it drives the per-row progress indicator instead - see
-  // JobEventsProvider).
-  const applyJobEvent = (state, envelope) => {
+  // A job-agnostic `scheduler` envelope only bumps lastEventAt/lastSeq and
+  // the scheduler-snapshot fields; the drawer's own per-job rows don't
+  // change from it (it drives the per-row progress indicator instead -
+  // see JobEventsProvider). Envelopes at or below the last seq are dropped.
+  const applyJobEvent = (state: JobEventsState, envelope: JobEventEnvelope | null | undefined): JobEventsState => {
     if (!envelope || typeof envelope !== "object") {
       return state;
     }
@@ -164,13 +243,14 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
     const at = envelope.at || nowSafe();
     const nextSeq = typeof envelope.seq === "number" ? envelope.seq : state.lastSeq;
     const jobKey = envelope.job;
-    const previousJob = jobKey ? state.jobs[jobKey] : null;
+    // Unknown job names are treated like a scheduler envelope.
+    const previousJob = isJobKey(jobKey) ? state.jobs[jobKey] : null;
     const pendingCounts = extractPendingCounts(envelope.scheduler);
     const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
     const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
     const schedulerSummary = extractSchedulerSummary(envelope.scheduler, state.schedulerSummary);
 
-    if (!previousJob) {
+    if (!previousJob || !isJobKey(jobKey)) {
       return {
         ...state,
         connection: "open",
@@ -184,7 +264,7 @@ const createPrJobEventsHelpers = ({ now } = {}) => {
     }
 
     const isQuickCheck = jobKey === "quickCheck";
-    let nextJob = previousJob;
+    let nextJob: JobState = previousJob;
 
     switch (envelope.phase) {
       case "start":

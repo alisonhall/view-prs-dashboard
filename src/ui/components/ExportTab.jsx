@@ -22,7 +22,7 @@
  * trusting that framing (this migration's own track record of finding
  * "deliberate" window.* bridges that were actually just unexamined
  * defaults) and found all 3 are genuinely zero-dependency given what this
- * component already has: pr-export.helpers.js's createPrExportHelpers only
+ * component already has: pr-export.helpers.ts's createPrExportHelpers only
  * needs getPerPrUserStateFromPayload (already a bare, directly-importable
  * export - see helpers/pr-per-pr-user-state.helpers.ts), and
  * getVisiblePrNumbersFromSectionsHost is pure given a DOM node as its own
@@ -48,7 +48,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
-import { createPrExportHelpers } from '../helpers/pr-export.helpers.js';
+import { createPrExportHelpers } from '../helpers/pr-export.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 
 const { getFieldCatalog, getVisiblePrNumbersFromSectionsHost, buildExportPayload } =

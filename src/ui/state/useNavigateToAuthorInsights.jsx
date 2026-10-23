@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useTabState } from './TabStateContext';
 import { usePrData } from './PrDataContext';
 import { useAuthorInsights } from './AuthorInsightsContext';
-import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.js';
+import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.ts';
 
 /**
  * Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):

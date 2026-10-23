@@ -1,6 +1,6 @@
 /**
  * AuthorInsightsPrDataMeta - React port of createAuthorInsightsPrDataMeta()
- * built in helpers/pr-author-insights-display.helpers.js: a status/
+ * built in helpers/pr-author-insights-display.helpers.ts: a status/
  * approved/CHK/conversations/viewed-files/labels meta row for a PR entry.
  * Shared by AuthorCreatedPrsSection.jsx and AuthorInsightsNotesSection.jsx
  * (Track B, REACT_MIGRATION_PLAN.md).

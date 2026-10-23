@@ -44,7 +44,7 @@
 import { useEffect } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
-import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.js';
+import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.ts';
 
 export function AuthorInsightsSelector() {
   const { payload, selectedAuthorLogin, setSelectedAuthorLogin } = usePrData();

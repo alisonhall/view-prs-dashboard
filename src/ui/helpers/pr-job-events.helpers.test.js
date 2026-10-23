@@ -1,4 +1,4 @@
-const { createPrJobEventsHelpers } = require("./pr-job-events.helpers.js");
+const { createPrJobEventsHelpers } = require("./pr-job-events.helpers.ts");
 
 describe("pr job events helpers", () => {
   const FIXED_NOW = "2026-01-01T00:00:00.000Z";

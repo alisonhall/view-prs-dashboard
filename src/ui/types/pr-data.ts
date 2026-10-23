@@ -170,6 +170,8 @@ export interface PrData {
   // ISO timestamps, or "" while the PR is open.
   closedAt?: string;
   mergedAt?: string;
+  // When the PR last changed on GitHub (ISO, or "").
+  sourceUpdatedAt?: string;
   metrics?: PrMetrics;
   // Older data kept notes on the row itself; current data has them on the
   // entry (PrEntry.notes).

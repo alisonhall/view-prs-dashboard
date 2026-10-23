@@ -1,4 +1,4 @@
-const { createPrExportHelpers } = require("./pr-export.helpers.js");
+const { createPrExportHelpers } = require("./pr-export.helpers.ts");
 
 const makeNode = (overrides = {}) => {
   const attrs = { ...(overrides.attributes || {}) };

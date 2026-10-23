@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { JobEventsContext } from '../state/JobEventsContext';
 import { PrDataContext } from '../state/PrDataContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
-import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.js';
+import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.ts';
 
 const STALENESS_CHECK_INTERVAL_MS = 30000;
 const STALENESS_THRESHOLD_MS = 60000;

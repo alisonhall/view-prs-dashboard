@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.js';
+import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.ts';
 
 /**
  * Activity drawer feature (see REACT_MIGRATION_PLAN.md): the live,

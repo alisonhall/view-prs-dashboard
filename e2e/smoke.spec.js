@@ -2538,7 +2538,7 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
   // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
   // exposed on window by index.page.js - ExportTab.jsx now builds and
-  // calls all 3 directly (pr-export.helpers.js). This tab had zero prior
+  // calls all 3 directly (pr-export.helpers.ts). This tab had zero prior
   // e2e coverage of any kind (confirmed by grep) - this is the only real-
   // browser check that the catalog/preview actually work end-to-end
   // against real page data, not a mocked window.* bridge.

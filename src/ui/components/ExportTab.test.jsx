@@ -29,7 +29,7 @@ const samplePayload = {
   lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
 };
 
-// getVisiblePrNumbersFromSectionsHost (pr-export.helpers.js) is a real,
+// getVisiblePrNumbersFromSectionsHost (pr-export.helpers.ts) is a real,
 // unmockable function now (Phase 7, see REACT_MIGRATION_PLAN.md -
 // ExportTab.jsx imports it directly instead of reading window.
 // getVisiblePrNumbersFromSectionsHost) - it reads the real #pr-sections
