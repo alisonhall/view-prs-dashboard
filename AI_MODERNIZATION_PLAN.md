@@ -1040,9 +1040,9 @@ No static type checking leads to:
   actor-identity-style, notes-people-options, selected-filters,
   review-conversations-ui-state, auto-render-unsaved, viewer-context,
   ack-refresh-warnings, credential-field-error-filter.
-  Shared data shapes live in
-  `src/ui/types/pr-data.ts`, grown from the data schema as helpers need
-  fields. Their tests stay `.js` for now (Phase 12G).
+  Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
+  shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
+  helpers need fields.
 - [ ] Add proper type annotations
 - [ ] Test each batch after migration
 - [ ] Verify types catch real issues
