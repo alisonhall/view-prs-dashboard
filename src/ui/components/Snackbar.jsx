@@ -8,7 +8,7 @@
  *
  * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
  * the state and the window.* bridge this used to own directly both moved
- * into SnackbarProvider.jsx (a genuine ancestor, wrapping <AppRoot/> from
+ * into SnackbarProvider.tsx (a genuine ancestor, wrapping <AppRoot/> from
  * mountAppRoot()) - this component is now just a reader of that Context,
  * via useSnackbar().
  *

@@ -1049,6 +1049,15 @@ No static type checking leads to:
 **Phase 12D: Component Migration**
 - [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
   (plus `src/ui/react-app.jsx`; `pr-row-keys` was converted with the helpers)
+  - State layer first (decided 2026-10-23): the contexts, hooks and
+    Providers survive the planned UI rework, the presentational components
+    largely won't, so those are converted (or rewritten in `.tsx`) as part
+    of the rework instead. Each context is converted with its Provider so
+    the exported value type is checked on both sides.
+  - State batch 1 (2026-10-23): useDebouncedCallback, useDebouncedValue,
+    useStableCallback, useMultiSelectDropdownClosing, and the OutputText,
+    Snackbar, ReviewConversationsUiState, StatusText, NotesDirty and
+    TabState contexts with their Providers.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -31,7 +31,7 @@ const MANAGEMENT_TAB_PANEL_IDS = {
  * button `className`/`aria-selected` writes, already fully redundant with
  * `DataTabButton.jsx`/`ManagementTabButton.jsx`'s own Context-derived
  * styling) are deleted outright, along with the `window.activateDataTab`/
- * `window.activateManagementTab` bridges `TabStateProvider.jsx` used to
+ * `window.activateManagementTab` bridges `TabStateProvider.tsx` used to
  * call as a side effect.
  *
  * A DOM mutation via `getElementById` (same element lookup those vanilla

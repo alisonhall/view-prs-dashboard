@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { useBackfillTabAutoRefresh } = require('./useBackfillTabAutoRefresh.jsx');
-const { TabStateContext } = require('./TabStateContext.jsx');
+const { TabStateContext } = require('./TabStateContext.tsx');
 
 function Probe({ triggerBackfillTabLoad }) {
   useBackfillTabAutoRefresh(triggerBackfillTabLoad);

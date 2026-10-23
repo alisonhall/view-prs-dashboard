@@ -25,7 +25,7 @@ import { useRequestActivity } from './RequestActivityContext';
  *
  * Not a fully "clean" hook, by design, matching useSinglePrUpdate.jsx's
  * own precedent exactly, not a new one. statusText itself moved to
- * StatusTextProvider.jsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
+ * StatusTextProvider.tsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
  * via useStatusText() directly now, same as useSinglePrUpdate.jsx.
  *
  * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):

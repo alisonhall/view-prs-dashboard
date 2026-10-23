@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { StatusTextContext } from '../state/StatusTextContext';
 
 /**
- * Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): owns
- * the `#status` panel's text (previously a local `useState('Not run')`
- * inside `AppRoot`, fed only via the `window.updateReactStatusText`
- * bridge).
+ * Owns the `#status` panel's text.
  *
  * Mounted wrapping `<AppRoot />` from `mountAppRoot()`, outside AppRoot's
  * own returned JSX - same reasoning as `PrActivityQueueProvider`:
@@ -33,14 +30,8 @@ import { StatusTextContext } from '../state/StatusTextContext';
  * simply overwrites the shared node, matching the "later install wins"
  * precedent `index.html.test.js`'s own `wireTextBridge` helper already
  * documents for this same container.
- *
- * Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
- * the `window.updateReactStatusText` bridge this Provider used to answer is
- * deleted. Its last caller was index.page.js's own `setStatusMessage`, whose
- * last users (that file's backfill code and initial-load failure path) are
- * gone; every other status writer reads this Context.
  */
-export function StatusTextProvider({ children }) {
+export function StatusTextProvider({ children }: { children?: ReactNode }) {
   const [statusText, setStatusText] = useState('Not run');
 
   useEffect(() => {

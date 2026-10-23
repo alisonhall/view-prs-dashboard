@@ -2261,7 +2261,7 @@ test("typing in the Author Insights manual comment composer isn't blocked by a s
   // React batches both into one commit, so it couldn't paint the typed
   // character until that whole handler (including the recompute) finished -
   // every keystroke was visibly delayed. Deferred to a useEffect instead
-  // (same pattern NotesDirtyProvider.jsx's own write path already used
+  // (same pattern NotesDirtyProvider.tsx's own write path already used
   // correctly), so the recompute runs after React has already painted.
   await page.goto("/");
   await waitForPrTable(page);
@@ -2565,7 +2565,7 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
 test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the snackbar is fully React-owned
-  // (Snackbar.jsx/SnackbarProvider.jsx). Test-only bridge removal: this used
+  // (Snackbar.jsx/SnackbarProvider.tsx). Test-only bridge removal: this used
   // to call window.showErrorNotification/showWarningNotification (deleted);
   // it now drives both variants through real app paths, with requests
   // intercepted. The auto-dismiss timer (no production caller passes a

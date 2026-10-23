@@ -19,10 +19,12 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
  * Only call the returned function from event handlers/effects, not
  * during render - the ref is updated in a layout effect.
  */
-export function useStableCallback(callback) {
+export function useStableCallback<A extends unknown[], R>(
+  callback: ((...args: A) => R) | null | undefined,
+): (...args: A) => R | undefined {
   const callbackRef = useRef(callback);
   useLayoutEffect(() => {
     callbackRef.current = callback;
   });
-  return useCallback((...args) => callbackRef.current?.(...args), []);
+  return useCallback((...args: A) => callbackRef.current?.(...args), []);
 }

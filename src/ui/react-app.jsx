@@ -438,7 +438,7 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
-    // statusText (#status) moved to StatusTextProvider.jsx (Phase H.8) - it
+    // statusText (#status) moved to StatusTextProvider.tsx (Phase H.8) - it
     // resolves that container itself, no longer via this containers object.
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),

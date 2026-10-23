@@ -187,7 +187,7 @@ export function PrTableApp() {
   // the busy one. Not useCallback: these handlers are held by every
   // memoized row, and useCallbacks with differing deps chained older render
   // scopes together, each pinning that render's payload - one full payload
-  // leaked per data change (see useStableCallback.jsx).
+  // leaked per data change (see useStableCallback.tsx).
   const withPrBusy = useStableCallback(
     (prNumber, repo, action) => async (...args) => {
       markPrBusy(prNumber, repo);

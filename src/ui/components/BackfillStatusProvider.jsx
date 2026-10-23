@@ -21,7 +21,7 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
  * `isBackfillActionPending`/`supportsBackfillLogPolling` (previously plain
  * module `let`s in index.page.js) and the `renderBackfillStatus`/
  * `updateBackfillStatusFromPayload`/`setBackfillLogMessage` functions that
- * wrote them - same shape as StatusTextProvider.jsx (Phase H.8): this
+ * wrote them - same shape as StatusTextProvider.tsx (Phase H.8): this
  * Provider becomes the thing that *answers*
  * `window.getBackfillTrackingState`/`setSupportsBackfillLogPolling`/
  * `setIsBackfillActionPending`/`updateBackfillStatusFromPayload`/

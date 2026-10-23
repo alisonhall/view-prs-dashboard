@@ -278,7 +278,7 @@ describe('ReviewStatsContent', () => {
       expect(buildReviewerStatsSpy).not.toHaveBeenCalled();
 
       // Simulate clicking the "Review Stats" data tab button - setActiveDataTab
-      // (TabStateProvider.jsx) - by changing the Context value that drives
+      // (TabStateProvider.tsx) - by changing the Context value that drives
       // it, instead of flipping the panel's own `hidden` attribute directly.
       await React.act(async () => {
         rerender(

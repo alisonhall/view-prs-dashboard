@@ -1280,7 +1280,7 @@ describe("index page rendering with Testing Library", () => {
   // roadmap"): both the 3 data-tab buttons (PR data/Review statistics/
   // Author Insights) and all 6 management-tab buttons (Activity/Run &
   // Filter/Backfill/Action Log/Actor Names/Export) are React-owned now
-  // (DataTabButton.jsx/ManagementTabButton.jsx/TabStateProvider.jsx) with
+  // (DataTabButton.jsx/ManagementTabButton.jsx/TabStateProvider.tsx) with
   // no vanilla-DOM fallback left for this jsdom-only suite (which never
   // loads react-app.jsx) to render into - dropped every tab assertion
   // from this test, same reasoning as the removed "author insights View
@@ -1302,7 +1302,7 @@ describe("index page rendering with Testing Library", () => {
   // was removed here: it clicked the real vanilla <button id="tab-review-
   // stats">, which Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full
   // migration roadmap") replaced with an empty React portal root
-  // (DataTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM fallback
+  // (DataTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM fallback
   // left for this jsdom-only suite (which never loads react-app.jsx) to
   // click. Already covered in a real browser by e2e/smoke.spec.js's
   // existing "lifecycle section expand/collapse and tab switching work"
@@ -2359,7 +2359,7 @@ describe("index page rendering with Testing Library", () => {
   // removed here: it clicked the real vanilla <button id="tab-script">,
   // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
   // roadmap") replaced with an empty React portal root
-  // (ManagementTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM
+  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
   // fallback left for this jsdom-only suite (which never loads
   // react-app.jsx) to click. e2e/smoke.spec.js clicks this exact tab in a
   // real browser 49+ times already (every test that reaches the Run &
@@ -5739,7 +5739,7 @@ describe("index page rendering with Testing Library", () => {
   // vanilla <button id="tab-action-log">/<button id="tab-actor-name-cache">,
   // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
   // roadmap") replaced with empty React portal roots
-  // (ManagementTabButton.jsx/TabStateProvider.jsx) - no vanilla-DOM
+  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
   // fallback left for this jsdom-only suite (which never loads
   // react-app.jsx) to click. e2e/smoke.spec.js's "Action Log tab loads
   // its entries on its very first visit..."/"Actor Names tab loads its
@@ -7155,7 +7155,7 @@ describe("index page rendering with Testing Library", () => {
   // "given a user opens the Export tab..." was removed here: it clicked
   // the real vanilla <button id="tab-export">, which Phase A, slice 2
   // (see REACT_MIGRATION_PLAN.md, "Full migration roadmap") replaced with
-  // an empty React portal root (ManagementTabButton.jsx/TabStateProvider.jsx)
+  // an empty React portal root (ManagementTabButton.jsx/TabStateProvider.tsx)
   // - no vanilla-DOM fallback left for this jsdom-only suite (which never
   // loads react-app.jsx) to click. e2e/smoke.spec.js clicks this exact
   // tab in a real browser already.

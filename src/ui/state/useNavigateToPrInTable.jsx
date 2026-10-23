@@ -7,7 +7,7 @@ import { useTabState } from './TabStateContext';
  * "jump to unsaved PR" chips call this hook's returned function directly.
  *
  * The tab-switch half is a direct Context call now (`setActiveDataTab`,
- * already real React state via TabStateProvider.jsx - as of Phase H.22,
+ * already real React state via TabStateProvider.tsx - as of Phase H.22,
  * panel visibility is owned reactively by TabPanelVisibilitySync.jsx
  * instead of this call also driving a vanilla `window.activateDataTab`
  * bridge). The "which row, then scroll/focus it" half is NOT reimplemented

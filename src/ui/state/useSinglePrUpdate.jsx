@@ -31,7 +31,7 @@ const { getGithubAuthFailureHint, formatCommandOutputWithAuthHint } =
  * already uses for its own direct network call (window.beginRequestActivity,
  * bare-imported postJson). Reading those bridges here is consistent with
  * that already-accepted precedent, not a new one. statusText itself moved
- * to StatusTextProvider.jsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
+ * to StatusTextProvider.tsx (Phase H.8, see REACT_MIGRATION_PLAN.md) - read
  * via useStatusText() directly now, since this hook's only caller
  * (PrTableApp.jsx) is a genuine descendant of that Provider.
  *

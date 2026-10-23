@@ -52,7 +52,7 @@ const {
  * since it's unrelated to what this one covers. readReviewConversationsUiState/
  * writeReviewConversationsUiState used to be deferred here for a similar
  * reason (a module-scope Map) but have since been fully retired - see
- * state/ReviewConversationsUiStateContext.jsx, which owns that state with
+ * state/ReviewConversationsUiStateContext.tsx, which owns that state with
  * no window.* bridge at all.
  */
 const buildDefaultPrInsightsDisplay = () => {
