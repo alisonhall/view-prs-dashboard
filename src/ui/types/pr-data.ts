@@ -33,6 +33,8 @@ export interface PrActivityEvent {
   sourceId?: string;
   threadId?: string;
   occurredAt?: string;
+  // The event's day (YYYY-MM-DD).
+  date?: string;
   actor?: string;
   type?: string;
   channel?: string;

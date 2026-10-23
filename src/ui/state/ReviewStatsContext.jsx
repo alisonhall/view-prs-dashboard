@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
-import { createPrReviewStatsTimelineHelpers } from '../helpers/pr-review-stats-timeline.helpers.js';
-import { createPrReviewStatsDateBucketingHelpers } from '../helpers/pr-review-stats-date-bucketing.helpers.js';
+import { createPrReviewStatsTimelineHelpers } from '../helpers/pr-review-stats-timeline.helpers.ts';
+import { createPrReviewStatsDateBucketingHelpers } from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
 
 /**
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats

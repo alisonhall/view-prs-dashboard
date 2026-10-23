@@ -5,8 +5,8 @@ import { usePrData } from '../state/PrDataContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
-import { createPrReviewStatsTimelineHelpers } from '../helpers/pr-review-stats-timeline.helpers.js';
-import { createPrReviewStatsDateBucketingHelpers } from '../helpers/pr-review-stats-date-bucketing.helpers.js';
+import { createPrReviewStatsTimelineHelpers } from '../helpers/pr-review-stats-timeline.helpers.ts';
+import { createPrReviewStatsDateBucketingHelpers } from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
