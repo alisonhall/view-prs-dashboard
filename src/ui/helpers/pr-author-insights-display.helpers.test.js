@@ -86,47 +86,6 @@ describe("pr author insights display helpers", () => {
     });
   });
 
-  describe("noteAuthorMatchesSelection", () => {
-    test("given matching login, when checking match, then returns true", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "user1",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(true);
-    });
-
-    test("given matching name, when checking match, then returns true", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "User One",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(true);
-    });
-
-    test("given non-matching author, when checking match, then returns false", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "user2",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(false);
-    });
-  });
-
   describe("getAuthorInsightsSentimentLabel", () => {
     test("given positive sentiment, when getting label, then returns Positive", () => {
       const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());

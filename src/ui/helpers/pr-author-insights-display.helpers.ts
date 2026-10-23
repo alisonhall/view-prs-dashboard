@@ -7,23 +7,15 @@ import type {
 } from "./pr-actor-identity.helpers.ts";
 import type { AuthorManualComment } from "./pr-author-insights-data.helpers.ts";
 
-// Author Insights' display helpers: the author dropdown's options, whether
-// a note was written about the selected author, sentiment and status
-// badge labels/classes, and newest-first sorting of comments, notes and
-// created PRs.
-//
-// noteAuthorMatchesSelection is the same rule as
-// pr-author-insights-identity.helpers.ts's; both copies predate the
-// TypeScript conversion.
+// Author Insights' display helpers: the author dropdown's options,
+// sentiment and status badge labels/classes, and newest-first sorting of
+// comments, notes and created PRs. (Whether a note is about the selected
+// author is pr-author-insights-identity.helpers.ts's
+// noteAuthorMatchesSelection.)
 
 export interface AuthorOption {
   login: string;
   name: string;
-}
-
-export interface SelectedAuthor {
-  login?: string;
-  name?: string;
 }
 
 // A note comment found on a PR, with the PR entry it belongs to.
@@ -54,7 +46,6 @@ const createPrAuthorInsightsDisplayHelpers = (deps: PrAuthorInsightsDisplayDeps 
   // dependency is missing throws.
   const resolveActorDisplayName = deps.resolveActorDisplayName as ResolveActorDisplayName;
   const getPreferredActorKeyFn = getPreferredActorKey as GetPreferredActorKey;
-  const normalizeActorLogin = deps.normalizeActorLogin as NormalizeActorLogin;
   const normalizeAuthorInsightsSentiment = deps.normalizeAuthorInsightsSentiment as (value: unknown) => string;
   const isChangedStatus = deps.isChangedStatus as (status: unknown) => boolean;
   const parseSortableTime = deps.parseSortableTime as (value: unknown) => number;
@@ -87,31 +78,6 @@ const createPrAuthorInsightsDisplayHelpers = (deps: PrAuthorInsightsDisplayDeps 
       .sort((a, b) =>
         String(a.name || a.login).localeCompare(String(b.name || b.login)),
       );
-  };
-
-  const noteAuthorMatchesSelection = (
-    noteAuthorValue: unknown,
-    selectedAuthor: SelectedAuthor | null | undefined,
-    actorsMap: ActorsMap,
-  ): boolean => {
-    const rawAuthor = String(noteAuthorValue || "").trim();
-    if (!rawAuthor || !selectedAuthor) return false;
-
-    const canonicalRawAuthor = normalizeActorLogin(rawAuthor);
-    const selectedLogin = String(selectedAuthor.login || "").trim();
-    const selectedName = String(selectedAuthor.name || "").trim();
-    const resolvedAuthor = resolveActorDisplayName(
-      rawAuthor,
-      actorsMap,
-      rawAuthor,
-    );
-
-    return (
-      rawAuthor === selectedLogin ||
-      canonicalRawAuthor === selectedLogin ||
-      rawAuthor === selectedName ||
-      resolvedAuthor === selectedName
-    );
   };
 
   const getAuthorInsightsSentimentLabel = (value: unknown): string => {
@@ -228,7 +194,6 @@ const createPrAuthorInsightsDisplayHelpers = (deps: PrAuthorInsightsDisplayDeps 
 
   return {
     buildAuthorInsightsEntries,
-    noteAuthorMatchesSelection,
     getAuthorInsightsSentimentLabel,
     getAuthorInsightsSentimentBadgeClassName,
     getAuthorInsightsStatusBadgeClassName,

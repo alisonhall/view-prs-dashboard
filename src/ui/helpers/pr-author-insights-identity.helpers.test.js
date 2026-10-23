@@ -37,4 +37,21 @@ describe("author insights identity helpers", () => {
       }),
     ).toBe(false);
   });
+
+  test("given a note author written as a name, when matching author selection, then the plain name and a login resolving to the name both match", () => {
+    const { noteAuthorMatchesSelection } = createHelpers();
+    const selectedAuthor = { login: "alice", name: "Alice A" };
+
+    // The note's author field holds the person's name itself.
+    expect(noteAuthorMatchesSelection("Alice A", selectedAuthor, {})).toBe(true);
+    // An alternate login whose display name is the selected author's name.
+    expect(noteAuthorMatchesSelection("alice-work", selectedAuthor, { "alice-work": "Alice A" })).toBe(true);
+  });
+
+  test("given no note author or no selected author, when matching author selection, then it doesn't match", () => {
+    const { noteAuthorMatchesSelection } = createHelpers();
+
+    expect(noteAuthorMatchesSelection("", { login: "alice", name: "Alice A" }, {})).toBe(false);
+    expect(noteAuthorMatchesSelection("alice", null, {})).toBe(false);
+  });
 });
