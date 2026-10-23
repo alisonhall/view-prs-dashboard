@@ -44,7 +44,7 @@ const { formatBackfillLogMessage } = createPrBackfillHelpers();
  * Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
  * tab-activation reload/initial auto-load that used to drive this same
  * state via backfill-tab.orchestrator.js (vanilla) is now
- * useBackfillTabAutoRefresh.jsx, calling this hook's own
+ * useBackfillTabAutoRefresh.tsx, calling this hook's own
  * triggerBackfillTabLoad below - the orchestrator itself is deleted.
  *
  * Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -175,7 +175,7 @@ export function useBackfillActions() {
     // triggered a status-text message - only the manual "Refresh status"
     // button's refreshBackfillStatus above does that) and no
     // beginRequestActivity wrapping (the orchestrator never tracked this
-    // as a request-activity badge either). useBackfillTabAutoRefresh.jsx
+    // as a request-activity badge either). useBackfillTabAutoRefresh.tsx
     // calls this on mount and on every Backfill-tab activation.
     const triggerBackfillTabLoad = async () => {
       try {

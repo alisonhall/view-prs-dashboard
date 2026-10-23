@@ -1058,6 +1058,13 @@ No static type checking leads to:
     useStableCallback, useMultiSelectDropdownClosing, and the OutputText,
     Snackbar, ReviewConversationsUiState, StatusText, NotesDirty and
     TabState contexts with their Providers.
+  - State batch 2 (2026-10-23): the RowFilter, AuthorThreadResolution and
+    ChangeFilterActor selection contexts with their Providers (sharing a
+    new useCheckedByListIdState hook), RepoLabels with its Provider,
+    useIsTabPanelVisible, useBackfillTabAutoRefresh, filterValuesStore, and
+    the FilterState and PrData contexts. Those two contexts are typed ahead
+    of their (large) Providers, which stay .jsx until a later batch and are
+    checked against the context types when they convert.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

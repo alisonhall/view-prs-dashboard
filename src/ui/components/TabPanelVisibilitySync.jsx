@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTabState } from '../state/TabStateContext';
 
-// Same panel-id/Context-key maps as state/useIsTabPanelVisible.jsx's own
+// Same panel-id/Context-key maps as state/useIsTabPanelVisible.tsx's own
 // (kept as a separate, local copy rather than importing/exporting shared
 // constants between the two - each file's own list is small, exhaustive,
 // and independently verifiable against index.html's real panel ids).

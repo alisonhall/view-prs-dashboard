@@ -585,7 +585,7 @@ function TableFilterChipsLive({ container }) {
 // <RepoLabelsProvider> specifically (see where it's actually rendered in
 // AppRoot's own JSX) - AppRoot itself can't call useRepoLabels() directly
 // in its own body, since that Provider is a descendant AppRoot renders
-// further down its own JSX, not an ancestor (see RepoLabelsProvider.jsx's
+// further down its own JSX, not an ancestor (see RepoLabelsProvider.tsx's
 // own comment).
 function RefreshLabelsButtonLive({ container }) {
   const { refresh } = useRepoLabels();
@@ -663,7 +663,7 @@ function AppRoot() {
   // (the "↻ Labels" button's own handler) isn't one of these - it can't be
   // called from here at all, since useRepoLabels() needs a real
   // <RepoLabelsProvider> ancestor and that Provider is a descendant AppRoot
-  // itself renders further down (see RepoLabelsProvider.jsx's own comment)
+  // itself renders further down (see RepoLabelsProvider.tsx's own comment)
   // - RefreshLabelsButtonLive, below, calls it from inside that Provider's
   // own subtree instead.
   const backfillActions = useBackfillActions();
@@ -811,7 +811,7 @@ function AppRoot() {
             (inside the filter-field portals further down) and PrTableApp's
             PrActionsCell (inside the prTable portal) are siblings, not an
             ancestor/descendant pair, that both need the same available-
-            labels list - see RepoLabelsContext.jsx's own comment. */}
+            labels list - see RepoLabelsContext.tsx's own comment. */}
         <RepoLabelsProvider>
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorInsightsDraftsProvider
             wraps everything below for the same cross-portal-sharing reason

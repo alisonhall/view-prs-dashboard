@@ -155,7 +155,7 @@ describe('FilterStateProvider', () => {
   // repo-labels structure so no window.* bridge is needed at all, see
   // REACT_MIGRATION_PLAN.md): the restore-on-mount effect used to call
   // window.refreshAvailableRepoLabels directly once a saved repo override
-  // was known - RepoLabelsProvider.jsx (a genuine descendant) now reads
+  // was known - RepoLabelsProvider.tsx (a genuine descendant) now reads
   // this signal via useFilterState() instead. These tests cover the
   // signal itself, at the source; RepoLabelsProvider.test.jsx's own
   // "reacts to a restored repo override" suite covers the real consumer
@@ -279,7 +279,7 @@ describe('FilterStateProvider', () => {
   });
 
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the per-key store (filterValuesStore.jsx) mirrors `values`. Every write path
+  // the per-key store (filterValuesStore.ts) mirrors `values`. Every write path
   // updates both in the same call, so a store reader and a useFilterState()
   // reader can never disagree.
   describe('per-field store kept in sync with values', () => {

@@ -21,7 +21,7 @@ import { useRepoLabels } from '../state/RepoLabelsContext';
  * `populateApplyLabelSelect` used to implement by hand.
  *
  * Phase 7 (see REACT_MIGRATION_PLAN.md): reads the labels list from
- * useRepoLabels() (RepoLabelsContext.jsx) instead of a `labels` prop -
+ * useRepoLabels() (RepoLabelsContext.tsx) instead of a `labels` prop -
  * the same data PrActionsCell.jsx's own per-row apply-label <select> now
  * reads too, consolidating what used to be two separate window.* bridges
  * for this one underlying list into one Context fed by one write point.

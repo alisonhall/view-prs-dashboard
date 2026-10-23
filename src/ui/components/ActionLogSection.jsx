@@ -28,7 +28,7 @@
  * React entirely - that function is deleted outright this phase. Now owned
  * by this component's own second effect below, watching
  * `useIsTabPanelVisible('tab-panel-action-log')` - same shape
- * `useBackfillTabAutoRefresh.jsx` already established for the Backfill
+ * `useBackfillTabAutoRefresh.tsx` already established for the Backfill
  * tab, just inlined here since this is its only consumer.
  */
 
@@ -89,7 +89,7 @@ export function ActionLogSection() {
   // later re-activation, matching activateTab("action-log")'s old
   // behavior exactly - skips this effect's own first run (the mount
   // effect above already loads unconditionally regardless of visibility,
-  // same "eager load on mount" contract useBackfillTabAutoRefresh.jsx's
+  // same "eager load on mount" contract useBackfillTabAutoRefresh.tsx's
   // own comment describes) via a ref, not the `isVisible` value itself,
   // since on a first mount where the tab is already active this effect's
   // first run would otherwise double-fire right alongside the mount

@@ -29,7 +29,7 @@
  * function is deleted outright this phase. Now owned by this component's
  * own second effect below, watching
  * `useIsTabPanelVisible('tab-panel-actor-name-cache')` - same shape
- * `useBackfillTabAutoRefresh.jsx`/`ActionLogSection.jsx` already
+ * `useBackfillTabAutoRefresh.tsx`/`ActionLogSection.jsx` already
  * established.
  *
  * Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort

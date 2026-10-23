@@ -69,8 +69,8 @@ const CHECKBOX_FIELD_IDS = [
  * them, and their one production caller, `PrSelectionCell.jsx` (mounted once
  * per table row, so it can't afford a whole-object Context subscription), now
  * subscribes to just its own field through a per-key store this Provider keeps
- * in step with `values` (`filterValuesStore.jsx`; `useFilterFieldValue`/
- * `useFilterFieldActions` in FilterStateContext.jsx). Tests read and write the
+ * in step with `values` (`filterValuesStore.ts`; `useFilterFieldValue`/
+ * `useFilterFieldActions` in FilterStateContext.tsx). Tests read and write the
  * same state through the Context (`test-fixtures/filter-state-probe.jsx`).
  *
  * Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): also
@@ -117,7 +117,7 @@ export function FilterStateProvider({ initialValues, children }) {
 
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // a per-key store mirroring `values`, for components that can't afford the
-  // whole-object Context (see filterValuesStore.jsx). Every write below goes to
+  // whole-object Context (see filterValuesStore.ts). Every write below goes to
   // both, in the same call, so they never diverge; `values` (the Context every
   // other consumer reads) is unchanged.
   const storeRef = useRef(null);
@@ -129,7 +129,7 @@ export function FilterStateProvider({ initialValues, children }) {
   // repo-labels structure so no window.* bridge is needed at all, see
   // REACT_MIGRATION_PLAN.md): a dedicated signal, separate from
   // `values.repo` itself, for "a saved repo override was just restored."
-  // RepoLabelsProvider.jsx (a genuine descendant of this Provider) reads
+  // RepoLabelsProvider.tsx (a genuine descendant of this Provider) reads
   // it via useFilterState() and reacts with its own effect - the natural,
   // already-valid Context direction (ancestor state flows down to a
   // descendant's effect), not an imperative call down into a child. Kept
@@ -220,7 +220,7 @@ export function FilterStateProvider({ initialValues, children }) {
       // was known - setting restoredRepoOverride here instead sidesteps
       // the timing problem that required a second pass at all (setValues
       // above is async relative to this synchronous code - a DOM read of
-      // #repo's value wouldn't reflect it yet, and RepoLabelsProvider.jsx
+      // #repo's value wouldn't reflect it yet, and RepoLabelsProvider.tsx
       // doesn't read the DOM at all any more besides). This is
       // specifically for when a *saved* repo differs from whatever
       // RepoLabelsProvider's own selectedRepo-driven effect already

@@ -2,19 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useIsTabPanelVisible } from './useIsTabPanelVisible';
 
 /**
- * Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
- * replaces backfill-tab.orchestrator.js (deleted outright) - that
- * orchestrator's `initialize()` fired an eager status/log load once,
- * unconditionally, at page-init time (regardless of which management tab
- * was active), and its `onTabActivated()` fired the same load again every
- * time `pr-management-tabs.helpers.js`'s `activateTab` switched to the
- * Backfill tab. Reproduces both exactly: `useIsTabPanelVisible` watches
- * `#tab-panel-backfill`'s `hidden` attribute (the same vanilla DOM
- * mutation `activateTab` still performs - unchanged, tab-switching chrome
- * itself isn't this phase's concern), and this effect fires once
- * unconditionally on mount (matching `initialize()`), then again only on
- * each later transition *to* visible (matching `onTabActivated()` - never
- * on leaving the tab, which the orchestrator never fired on either).
+ * Loads the backfill status/log once on mount, whatever tab is showing,
+ * then again each time the Backfill tab becomes visible (not when leaving
+ * it).
  *
  * Takes `triggerBackfillTabLoad` as a parameter rather than calling
  * `useBackfillActions()` itself, so `react-app.jsx`'s `AppRoot` (which
@@ -25,7 +15,7 @@ import { useIsTabPanelVisible } from './useIsTabPanelVisible';
  * `useBackfillActions()` instance instead of each creating a second,
  * independent one.
  */
-export function useBackfillTabAutoRefresh(triggerBackfillTabLoad) {
+export function useBackfillTabAutoRefresh(triggerBackfillTabLoad: () => void): void {
   const isBackfillTabVisible = useIsTabPanelVisible('tab-panel-backfill');
   const hasTriggeredOnceRef = useRef(false);
 

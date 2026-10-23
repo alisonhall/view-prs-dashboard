@@ -13,7 +13,7 @@
  * subscription would have re-rendered every row's checkbox on every keystroke
  * in ANY of the 30+ other filter fields. It now subscribes through
  * `useFilterFieldValue` (a per-key `useSyncExternalStore`, see
- * state/filterValuesStore.jsx) with a selector that returns just THIS row's
+ * state/filterValuesStore.ts) with a selector that returns just THIS row's
  * boolean, so a row re-renders only when its own "is selected" answer flips:
  * never for other fields, and not for edits to the PR-numbers field that
  * leave this PR's membership alone.

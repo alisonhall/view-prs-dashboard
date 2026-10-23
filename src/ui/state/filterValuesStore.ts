@@ -1,6 +1,5 @@
 /**
- * Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
- * a tiny external store holding FilterStateProvider's field values, with
+ * A tiny external store holding FilterStateProvider's field values, with
  * per-key subscriptions - the shape `useSyncExternalStore` wants (and what
  * Zustand/Jotai build on internally).
  *
@@ -8,9 +7,8 @@
  * independent fields whose `values` gets a new reference on every single-field
  * change, and `useFilterState()` has no selector - so a component that mounts
  * once per table row (PrSelectionCell) and subscribed through it would
- * re-render every row on every keystroke in ANY filter field. That is why it
- * used to reach this state through `window.getFilterStateValues()`/
- * `setFilterStateValue()`, non-reactively. Here a subscriber is notified only
+ * re-render every row on every keystroke in ANY filter field. Here a
+ * subscriber is notified only
  * when ITS key changes, and `useFilterFieldValue` additionally takes a
  * selector, so a row only re-renders when its own derived value does.
  *
@@ -19,11 +17,30 @@
  * Updates are immutable (a new `values` object per change), so `getAll()` is a
  * valid snapshot and a stale reference is never mutated under a reader.
  */
-export function createFilterValuesStore(initialValues = {}) {
-  let values = initialValues;
-  const listenersByKey = new Map();
+// The Run & Filter form's field values, keyed by FilterStateProvider's
+// Context keys (see pr-ui-option-persistence.helpers.ts's
+// FILTER_STATE_FIELD_MAP). Fields typed code reads are listed; the rest
+// are covered by the index signature until their readers are typed.
+export interface FilterValues {
+  repo?: string;
+  [key: string]: unknown;
+}
 
-  const notify = (keys) => {
+type Listener = () => void;
+
+export interface FilterValuesStore {
+  getAll: () => FilterValues;
+  getSnapshot: (key: string) => unknown;
+  setValue: (key: string, value: unknown) => boolean;
+  setMany: (patch: Partial<FilterValues> | null | undefined) => boolean;
+  subscribe: (key: string, listener: Listener) => () => void;
+}
+
+export function createFilterValuesStore(initialValues: FilterValues = {}): FilterValuesStore {
+  let values = initialValues;
+  const listenersByKey = new Map<string, Set<Listener>>();
+
+  const notify = (keys: string[]) => {
     keys.forEach((key) => {
       const listeners = listenersByKey.get(key);
       if (listeners) {
@@ -36,10 +53,10 @@ export function createFilterValuesStore(initialValues = {}) {
   return {
     getAll: () => values,
 
-    getSnapshot: (key) => values[key],
+    getSnapshot: (key: string) => values[key],
 
     // Returns true if anything changed (so callers can skip redundant work).
-    setValue(key, value) {
+    setValue(key: string, value: unknown) {
       if (Object.is(values[key], value)) {
         return false;
       }
@@ -49,8 +66,8 @@ export function createFilterValuesStore(initialValues = {}) {
     },
 
     // One immutable update for several keys; notifies each changed key once.
-    setMany(patch) {
-      const changedKeys = Object.keys(patch || {}).filter((key) => !Object.is(values[key], patch[key]));
+    setMany(patch: Partial<FilterValues> | null | undefined) {
+      const changedKeys = Object.keys(patch || {}).filter((key) => !Object.is(values[key], patch?.[key]));
       if (changedKeys.length === 0) {
         return false;
       }
@@ -59,16 +76,17 @@ export function createFilterValuesStore(initialValues = {}) {
       return true;
     },
 
-    subscribe(key, listener) {
+    subscribe(key: string, listener: Listener) {
       let listeners = listenersByKey.get(key);
       if (!listeners) {
         listeners = new Set();
         listenersByKey.set(key, listeners);
       }
       listeners.add(listener);
+      const keyListeners = listeners;
       return () => {
-        listeners.delete(listener);
-        if (listeners.size === 0) {
+        keyListeners.delete(listener);
+        if (keyListeners.size === 0) {
           listenersByKey.delete(key);
         }
       };

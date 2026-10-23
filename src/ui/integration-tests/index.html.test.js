@@ -836,7 +836,7 @@ const installFilterStateProviderBridge = () => {
 // now a real component calling the matching hooks itself, same as
 // react-app.jsx does, so those 4 bridges have no remaining caller and
 // were deleted from index.page.js. The 5th, "↻ Labels", now calls
-// useRepoLabels().refresh() directly too (see RepoLabelsProvider.jsx's own
+// useRepoLabels().refresh() directly too (see RepoLabelsProvider.tsx's own
 // comment) - this harness isn't wrapped in a real <RepoLabelsProvider>
 // (nothing here clicks this button, only mounts it so the other 4 don't
 // become empty portal roots), so it gets RepoLabelsContext's safe no-op

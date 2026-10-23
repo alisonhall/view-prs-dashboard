@@ -1,17 +1,28 @@
 import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from 'react';
+import type { FilterValues, FilterValuesStore } from './filterValuesStore';
 
 /**
- * Phase 6 (see REACT_MIGRATION_PLAN.md): shared filter-field state for the
- * fields migrated off the vanilla DOM-is-the-source-of-truth pattern.
- * Slice 1 covers just `scopeMode`/`alwaysShowInReview` - later slices add
- * more keys to `values`, they don't restructure this context's shape.
+ * The Run & Filter form's field values (scope, PR numbers, the "Any"
+ * filters, run options, attention rules...), owned by FilterStateProvider,
+ * which also restores and saves them as user defaults.
  *
  * `setValue` intentionally requires the caller to know its own field's key
- * (no magic) - each migrated field component owns exactly one key.
+ * (no magic) - each field component owns exactly one key.
  */
-export const FilterStateContext = createContext(null);
+export interface FilterStateValue {
+  values: FilterValues;
+  setValue: (key: string, value: unknown) => void;
+  // The saved repo override once a restore has applied it (null before),
+  // so RepoLabelsProvider can fetch that repo's labels.
+  restoredRepoOverride: string | null;
+  // Saves the Run Script options (repo, limits, jobs, PR numbers...) to the
+  // user defaults.
+  persistRunScriptOptions: () => Promise<void>;
+}
 
-export function useFilterState() {
+export const FilterStateContext = createContext<FilterStateValue | null>(null);
+
+export function useFilterState(): FilterStateValue {
   const context = useContext(FilterStateContext);
   if (!context) {
     throw new Error('useFilterState() must be called within a <FilterStateProvider>');
@@ -19,11 +30,15 @@ export function useFilterState() {
   return context;
 }
 
+export interface FilterFieldActions {
+  getFieldValue: (key: string) => unknown;
+  setFieldValue: (key: string, value: unknown) => void;
+}
+
 /**
- * Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
- * per-field access to FilterStateProvider's values, for components that mount
+ * Per-field access to FilterStateProvider's values, for components that mount
  * many times (e.g. once per table row) and so can't afford `useFilterState()`'s
- * whole-object subscription - see filterValuesStore.jsx for why.
+ * whole-object subscription - see filterValuesStore.ts for why.
  *
  * Its value is `{ store, actions }`, both of which keep one identity for the
  * Provider's lifetime, so subscribing to this Context never re-renders
@@ -33,9 +48,14 @@ export function useFilterState() {
  * Unwrapped (no Provider) it is `null` and the hooks below are inert (value
  * `undefined`, no-op writes) - the same safe default every other Context here has.
  */
-export const FilterFieldStoreContext = createContext(null);
+export interface FilterFieldStoreValue {
+  store: FilterValuesStore;
+  actions: FilterFieldActions;
+}
 
-const identity = (value) => value;
+export const FilterFieldStoreContext = createContext<FilterFieldStoreValue | null>(null);
+
+const identity = <T,>(value: T): T => value;
 
 /**
  * Subscribes to ONE field, optionally through a selector, and re-renders only
@@ -54,15 +74,18 @@ const identity = (value) => value;
  * still re-renders on every raw change (and on every re-render with a new
  * inline selector) - prefer primitives, or a `useCallback`'d selector.
  */
-export function useFilterFieldValue(key, select = identity) {
+export function useFilterFieldValue<S = unknown>(
+  key: string,
+  select: (raw: unknown) => S = identity as (raw: unknown) => S,
+): S {
   const context = useContext(FilterFieldStoreContext);
   const store = context?.store;
-  const cacheRef = useRef(null);
+  const cacheRef = useRef<{ raw: unknown; select: (raw: unknown) => S; selected: S } | null>(null);
   const subscribe = useCallback(
-    (listener) => (store ? store.subscribe(key, listener) : () => {}),
+    (listener: () => void) => (store ? store.subscribe(key, listener) : () => {}),
     [store, key],
   );
-  const getSnapshot = () => {
+  const getSnapshot = (): S => {
     const raw = store ? store.getSnapshot(key) : undefined;
     const cached = cacheRef.current;
     if (cached && cached.select === select && Object.is(cached.raw, raw)) {
@@ -75,14 +98,14 @@ export function useFilterFieldValue(key, select = identity) {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-const INERT_FIELD_ACTIONS = { getFieldValue: () => undefined, setFieldValue: () => {} };
+const INERT_FIELD_ACTIONS: FilterFieldActions = { getFieldValue: () => undefined, setFieldValue: () => {} };
 
 /**
  * Stable read/write functions for any field, for event handlers.
  * `getFieldValue` reads the store, which a `setFieldValue` updates
  * synchronously - so two writes in a row each see the previous one's result.
  */
-export function useFilterFieldActions() {
+export function useFilterFieldActions(): FilterFieldActions {
   const context = useContext(FilterFieldStoreContext);
   return context?.actions || INERT_FIELD_ACTIONS;
 }
