@@ -1,7 +1,7 @@
 const {
   getSelectedPrNumbersFromInput,
   toggleSelectedPrNumber,
-} = require("./pr-selected-pr-numbers.helpers.js");
+} = require("./pr-selected-pr-numbers.helpers.ts");
 
 describe("pr selected pr numbers helpers", () => {
   describe("getSelectedPrNumbersFromInput", () => {

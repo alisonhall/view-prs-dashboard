@@ -98,7 +98,7 @@ const createPrAckLabelActionsHelpers = ({
   // queue section. Only called for a genuine multi-chunk batch - see
   // runAckAction/runApplyLabelAction's own chunks.length <= 1 branch,
   // which never calls these (matches beginBulkActionBatch's own
-  // single-chunk no-op in pr-bulk-action-batches.helpers.js).
+  // single-chunk no-op in pr-bulk-action-batches.helpers.ts).
   beginBulkActionBatch,
   markBulkActionChunkInFlight,
   markBulkActionChunkDone,

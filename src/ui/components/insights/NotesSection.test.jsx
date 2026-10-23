@@ -6,7 +6,7 @@ require('@testing-library/jest-dom');
 // postJson is a plain ES import now (Phase 7, see REACT_MIGRATION_PLAN.md) -
 // a jest.mock is the equivalent of swapping a window.* global, same pattern
 // this codebase already uses for pr-row-sorting.helpers.ts/
-// pr-section-config.helpers.js in PrTableApp.test.jsx.
+// pr-section-config.helpers.ts in PrTableApp.test.jsx.
 jest.mock('../../helpers/pr-http.helpers.ts', () => ({
   postJson: jest.fn(),
 }));

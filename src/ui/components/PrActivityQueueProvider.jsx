@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { PrActivityQueueContext } from '../state/PrActivityQueueContext';
 import { buildActivePrKey } from './pr-row-keys';
-import { createPrBulkActionBatchesHelpers } from '../helpers/pr-bulk-action-batches.helpers.js';
+import { createPrBulkActionBatchesHelpers } from '../helpers/pr-bulk-action-batches.helpers.ts';
 
 const {
   getInitialBatchesState,
@@ -114,7 +114,7 @@ export function PrActivityQueueProvider({ children }) {
   }, []);
 
   // The bulk ack/apply-label chunk manifest - the one real ordered queue
-  // the drawer surfaces (see pr-bulk-action-batches.helpers.js). A plain
+  // the drawer surfaces (see pr-bulk-action-batches.helpers.ts). A plain
   // Map in a ref would avoid re-renders too, but this state IS the
   // drawer's own display data, so it needs to trigger a re-render on every
   // chunk transition.

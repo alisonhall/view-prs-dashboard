@@ -13,7 +13,7 @@ const {
 } = require('../state/BackfillStatusContext');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { usePrData } = require('../state/PrDataContext');
-const { createPrBackfillHelpers } = require('../helpers/pr-backfill.helpers.js');
+const { createPrBackfillHelpers } = require('../helpers/pr-backfill.helpers.ts');
 
 const { getBackfillStatusViewModel } = createPrBackfillHelpers();
 

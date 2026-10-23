@@ -2288,7 +2288,7 @@ test("typing in the Author Insights manual comment composer isn't blocked by a s
 test("typing an unsaved Author Insights comment draft holds back a real data poll until the draft is cleared", async ({ page }) => {
   // Regression test for Phase 7 (see REACT_MIGRATION_PLAN.md): the Author
   // Insights manual-comment composer/edit drafts used to live only in a
-  // vanilla module-scope object, read by pr-auto-render-blocking.helpers.js's
+  // vanilla module-scope object, read by pr-auto-render-blocking.helpers.ts's
   // getBlockingAuthorInsightsLogins to decide whether a background poll
   // must be deferred instead of silently discarding an unsaved comment
   // draft. They're AuthorInsightsDraftsProvider Context state now, read by

@@ -3,7 +3,7 @@ import { FilterStateContext } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import { FILTER_PR_NUMBERS_DEBOUNCE_MS } from './useVisiblePrNumbers';
-import { createPrTableFilterChipsHelpers } from '../helpers/pr-table-filter-chips.helpers.js';
+import { createPrTableFilterChipsHelpers } from '../helpers/pr-table-filter-chips.helpers.ts';
 
 const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 

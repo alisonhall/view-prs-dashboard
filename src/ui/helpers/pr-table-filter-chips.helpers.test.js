@@ -1,6 +1,6 @@
 const {
   createPrTableFilterChipsHelpers,
-} = require("./pr-table-filter-chips.helpers.js");
+} = require("./pr-table-filter-chips.helpers.ts");
 
 describe("pr table filter chips helpers", () => {
   describe("buildTableFilterChipsViewModel", () => {

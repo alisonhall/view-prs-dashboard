@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
+import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.ts';
 import { useBackfillStatus } from '../state/BackfillStatusContext';
 
 const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHelpers();
@@ -27,7 +27,7 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  * and `logText` (its content) are passed in, and this component renders
  * the log portal itself. `syncScrollPosition` reuses the same pure
  * `shouldAutoScrollBackfillLog`/`getBackfillScrollTop` functions the old
- * bridge used (pr-backfill.helpers.js), just called directly instead of
+ * bridge used (pr-backfill.helpers.ts), just called directly instead of
  * through a window bridge.
  *
  * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",

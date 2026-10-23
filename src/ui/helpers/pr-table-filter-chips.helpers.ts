@@ -1,25 +1,50 @@
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): same export shape every
-// other pure src/ui/helpers file in this folder uses (e.g.
-// pr-selected-filters.helpers.ts) - a factory with no React/Context import,
-// so it's independently unit-testable and reusable by both
-// useTableFilterChips.jsx and this file's own test.
-const createPrTableFilterChipsHelpers = () => {
-  const asArray = (value) => (Array.isArray(value) ? value : []);
+import { asArray } from "./pr-as-array.helpers.ts";
 
-  const fieldChip = (id, label, key, defaultValue) => ({
+// The removable chips above the PR table, one per active filter, each with
+// what clearing it means: reset a field to its default, or uncheck one
+// value in a multi-select list (useTableFilterChips applies it).
+export type FilterChipClear =
+  | { kind: "field"; key: string; value: unknown }
+  | { kind: "list"; listId: string; value: string };
+
+export interface FilterChip {
+  id: string;
+  label: string;
+  clear: FilterChipClear;
+}
+
+export interface TableFilterChipsInput {
+  scopeMode?: string;
+  filterPrNumbers?: string;
+  includeLabels?: string[];
+  excludeLabels?: string[];
+  authorLogins?: string[];
+  assignedLogins?: string[];
+  approverLogins?: string[];
+  alwaysShowInReview?: boolean;
+  filterCustomComments?: string;
+  filterOtherNotes?: string;
+  filterPrDifficulty?: string;
+  filterRallyStories?: string;
+  filterRallyLinks?: string;
+  filterAnalysisOfPr?: string;
+}
+
+const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
+
+const createPrTableFilterChipsHelpers = () => {
+  const fieldChip = (id: string, label: string, key: string, defaultValue: unknown): FilterChip => ({
     id,
     label,
     clear: { kind: "field", key, value: defaultValue },
   });
 
-  const listChips = (prefix, listId, values) =>
+  const listChips = (prefix: string, listId: string, values: string[] | null | undefined): FilterChip[] =>
     asArray(values).map((value) => ({
       id: `${listId}:${value}`,
       label: `${prefix}: ${value}`,
       clear: { kind: "list", listId, value },
     }));
-
-  const WITH_WITHOUT_LABELS = { with: "with", without: "without" };
 
   const buildTableFilterChipsViewModel = ({
     scopeMode,
@@ -36,8 +61,8 @@ const createPrTableFilterChipsHelpers = () => {
     filterRallyStories,
     filterRallyLinks,
     filterAnalysisOfPr,
-  } = {}) => {
-    const chips = [];
+  }: TableFilterChipsInput = {}): FilterChip[] => {
+    const chips: FilterChip[] = [];
 
     if (scopeMode && scopeMode !== "all") {
       chips.push(fieldChip("scopeMode", `Scope: ${scopeMode}`, "scopeMode", "all"));
@@ -65,8 +90,8 @@ const createPrTableFilterChipsHelpers = () => {
       );
     }
 
-    const withWithoutChip = (id, prefix, key, value) => {
-      const normalized = WITH_WITHOUT_LABELS[value] || value;
+    const withWithoutChip = (id: string, prefix: string, key: string, value: string | undefined) => {
+      const normalized = (value && WITH_WITHOUT_LABELS[value]) || value;
       if (!normalized) return;
       chips.push(fieldChip(id, `${prefix}: ${normalized}`, key, ""));
     };

@@ -1,3 +1,31 @@
+// What's holding back automatic data refreshes, for the "Auto update
+// paused" indicator: the "Blocking PRs: #1, #2 (+3 more)" label, and which
+// authors have unsaved Author Insights comment drafts (a dirty new-comment
+// composer, or an edit in progress that differs from the saved comment).
+export interface ManualCommentEditDraft {
+  isEditing?: boolean;
+  [field: string]: unknown;
+}
+
+export interface SavedManualComment {
+  id?: string | number;
+  [field: string]: unknown;
+}
+
+export interface AuthorInsightsDraftsState {
+  manualCommentDraftByAuthorLogin?: Record<string, unknown>;
+  manualCommentEditDraftByAuthorLogin?: Record<string, Record<string, ManualCommentEditDraft> | null | undefined>;
+}
+
+export interface PrAutoRenderBlockingDeps {
+  normalizePrNumber?: (value: unknown) => string;
+  normalizeActorLogin?: (value: unknown) => string;
+  isAuthorInsightsComposerDraftDirty?: (draft: unknown) => boolean;
+  getAuthorManualCommentsForLogin?: (authorLogin: string) => SavedManualComment[];
+  isAuthorInsightsEditDraftDirty?: (savedComment: SavedManualComment, draft: ManualCommentEditDraft) => boolean;
+  getAuthorInsightsDisplayName?: (authorLogin: string) => string;
+}
+
 const createPrAutoRenderBlockingHelpers = ({
   normalizePrNumber,
   normalizeActorLogin,
@@ -5,18 +33,18 @@ const createPrAutoRenderBlockingHelpers = ({
   getAuthorManualCommentsForLogin,
   isAuthorInsightsEditDraftDirty,
   getAuthorInsightsDisplayName,
-} = {}) => {
+}: PrAutoRenderBlockingDeps = {}) => {
   const normalizePrNumberSafe =
     typeof normalizePrNumber === "function"
       ? normalizePrNumber
-      : (value) => {
+      : (value: unknown) => {
           const normalized = String(value || "").trim();
           return /^\d+$/.test(normalized) ? normalized : "";
         };
   const normalizeActorLoginSafe =
     typeof normalizeActorLogin === "function"
       ? normalizeActorLogin
-      : (value) => String(value || "").trim().toLowerCase();
+      : (value: unknown) => String(value || "").trim().toLowerCase();
   const isAuthorInsightsComposerDraftDirtySafe =
     typeof isAuthorInsightsComposerDraftDirty === "function"
       ? isAuthorInsightsComposerDraftDirty
@@ -24,7 +52,7 @@ const createPrAutoRenderBlockingHelpers = ({
   const getAuthorManualCommentsForLoginSafe =
     typeof getAuthorManualCommentsForLogin === "function"
       ? getAuthorManualCommentsForLogin
-      : () => [];
+      : (): SavedManualComment[] => [];
   const isAuthorInsightsEditDraftDirtySafe =
     typeof isAuthorInsightsEditDraftDirty === "function"
       ? isAuthorInsightsEditDraftDirty
@@ -32,9 +60,9 @@ const createPrAutoRenderBlockingHelpers = ({
   const getAuthorInsightsDisplayNameSafe =
     typeof getAuthorInsightsDisplayName === "function"
       ? getAuthorInsightsDisplayName
-      : (value) => String(value || "").trim();
+      : (value: string) => String(value || "").trim();
 
-  const formatBlockingPrNumbersLabel = (prNumbers, maxVisible = 6) => {
+  const formatBlockingPrNumbersLabel = (prNumbers: unknown, maxVisible: number = 6): string => {
     const normalized = Array.from(
       new Set(
         (Array.isArray(prNumbers) ? prNumbers : [])
@@ -55,8 +83,8 @@ const createPrAutoRenderBlockingHelpers = ({
     return `Blocking PRs: ${visible.map((prNumber) => `#${prNumber}`).join(", ")}${suffix}`;
   };
 
-  const getBlockingAuthorInsightsLogins = (authorInsightsState = {}) => {
-    const blockingLogins = new Set();
+  const getBlockingAuthorInsightsLogins = (authorInsightsState: AuthorInsightsDraftsState = {}): string[] => {
+    const blockingLogins = new Set<string>();
 
     Object.entries(authorInsightsState.manualCommentDraftByAuthorLogin || {}).forEach(
       ([authorLogin, draft]) => {

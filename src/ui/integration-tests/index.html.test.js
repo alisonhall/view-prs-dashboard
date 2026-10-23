@@ -90,7 +90,7 @@ const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
 // createReactCallbackHelpers factory had zero remaining callers once
 // handleCheckboxChange moved to PrTableApp.jsx, following
 // handleAckAction/handleApplyLabel in Phase H.5.
-const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.js");
+const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.ts");
 const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.js");
 
 const htmlPath = path.join(__dirname, "..", "index.html");

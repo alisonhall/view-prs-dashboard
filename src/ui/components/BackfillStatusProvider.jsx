@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
+import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.ts';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
 import {
   BACKFILL_LOG_TAIL_LINES,

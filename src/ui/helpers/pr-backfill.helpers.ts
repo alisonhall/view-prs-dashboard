@@ -1,4 +1,36 @@
-const getBackfillStateKey = (backfillRaw = {}) => {
+// The Backfill tab's view state (BackfillStatusProvider and the log
+// controls): status badges and details text, which buttons are enabled,
+// log auto-scroll, and the log panel text.
+export interface BackfillStatus {
+  ok?: boolean;
+  running?: boolean;
+  pid?: string | number;
+  summary?: string;
+  error?: string;
+  logFile?: string;
+  pidFile?: string;
+}
+
+export interface BackfillBadge {
+  text: string;
+  className: string;
+}
+
+export interface BackfillStatusViewModel {
+  badges: BackfillBadge[];
+  detailsText: string;
+  isBackfillRunning: boolean;
+  buttonState: {
+    startDisabled: boolean;
+    stopDisabled: boolean;
+    refreshDisabled: boolean;
+    refreshLogDisabled: boolean;
+  };
+  stateKey: string;
+}
+
+// Changes only when something the status display shows changes.
+const getBackfillStateKey = (backfillRaw: BackfillStatus | null | undefined = {}): string => {
   const backfill = backfillRaw || {};
   return JSON.stringify({
     running: Boolean(backfill.running),
@@ -11,13 +43,18 @@ const getBackfillStateKey = (backfillRaw = {}) => {
 const shouldAutoScrollBackfillLog = ({
   autoScrollEnabled = false,
   isBackfillRunning = false,
-} = {}) => autoScrollEnabled && isBackfillRunning;
+}: { autoScrollEnabled?: boolean; isBackfillRunning?: boolean } = {}): boolean =>
+  autoScrollEnabled && isBackfillRunning;
 
 const getBackfillScrollTop = ({
   scrollHeight,
   currentScrollTop,
   shouldAutoScroll = false,
-}) => {
+}: {
+  scrollHeight: unknown;
+  currentScrollTop: number;
+  shouldAutoScroll?: boolean;
+}): number => {
   if (!shouldAutoScroll) {
     return currentScrollTop;
   }
@@ -28,9 +65,12 @@ const getBackfillScrollTop = ({
 const getBackfillStatusViewModel = ({
   backfillRaw = {},
   isBackfillActionPending = false,
-} = {}) => {
+}: {
+  backfillRaw?: BackfillStatus | null;
+  isBackfillActionPending?: boolean;
+} = {}): BackfillStatusViewModel => {
   const backfill = backfillRaw || {};
-  const badges = [
+  const badges: BackfillBadge[] = [
     {
       text: backfill.running ? "Backfill: running" : "Backfill: stopped",
       className: backfill.running
@@ -78,7 +118,7 @@ const getBackfillStatusViewModel = ({
   };
 };
 
-const formatBackfillLogMessage = ({ summary = "", tail = "" } = {}) => {
+const formatBackfillLogMessage = ({ summary = "", tail = "" }: { summary?: string; tail?: string } = {}): string => {
   const summaryLine = String(summary || "").trim();
   const logBody = String(tail || "") || "(no log lines yet)";
   return [summaryLine || "Backfill log", "", logBody]

@@ -1,4 +1,4 @@
-const { createPrBulkActionBatchesHelpers } = require("./pr-bulk-action-batches.helpers.js");
+const { createPrBulkActionBatchesHelpers } = require("./pr-bulk-action-batches.helpers.ts");
 
 describe("pr bulk action batches helpers", () => {
   const {

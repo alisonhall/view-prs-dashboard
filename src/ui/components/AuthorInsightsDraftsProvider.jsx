@@ -222,7 +222,7 @@ export function AuthorInsightsDraftsProvider({ children }) {
     [dataHelpers, beginRequestActivity],
   );
 
-  // A snapshot, not individual getters - pr-auto-render-blocking.helpers.js's
+  // A snapshot, not individual getters - pr-auto-render-blocking.helpers.ts's
   // getBlockingAuthorInsightsLogins takes the whole
   // manualCommentDraftByAuthorLogin/manualCommentEditDraftByAuthorLogin
   // maps as one positional argument (it iterates every author's draft, not

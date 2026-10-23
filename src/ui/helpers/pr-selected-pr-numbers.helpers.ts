@@ -1,14 +1,18 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): extracted out of index.page.js's
-// getSelectedPrNumbers/updateSelectedPrNumbers (which read/wrote the
-// "#pr-numbers" DOM input directly) - PrSelectionCell.jsx now reads/writes
-// the same value via FilterStateProvider's Context instead, so this module
-// holds only the pure parse/toggle logic, with no DOM dependency at all.
 import { parsePrNumbersInput } from "./form-parsing.helpers.ts";
 
-export const getSelectedPrNumbersFromInput = (prNumbersInput) =>
+// The "PR number(s)" field's selection as a list, and toggling one PR in or
+// out of it (PrSelectionCell, through FilterStateProvider).
+
+export const getSelectedPrNumbersFromInput = (prNumbersInput: unknown): string[] =>
   parsePrNumbersInput(String(prNumbersInput || ""));
 
-export const toggleSelectedPrNumber = (prNumbersInput, prNumber, shouldSelect) => {
+// Returns the new comma-joined field value, or the input unchanged when
+// prNumber isn't a valid number.
+export const toggleSelectedPrNumber = <V>(
+  prNumbersInput: V,
+  prNumber: unknown,
+  shouldSelect: boolean,
+): V | string => {
   const normalizedPrNumber = String(prNumber || "").trim();
   if (!/^\d+$/.test(normalizedPrNumber)) {
     return prNumbersInput;

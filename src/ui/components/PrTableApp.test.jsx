@@ -23,13 +23,13 @@ jest.mock('./PrSection', () => {
   };
 });
 
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.js/
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts/
 // pr-smart-groups.helpers.js are real ES modules now, imported directly by
 // PrTableApp.jsx instead of read off window.ViewPrsSectionConfigHelpers/
 // window.ViewPrsSmartGroupsHelpers - these tests used to swap window
 // globals per-test to control their behavior; jest.mock + mockImplementation
 // is the equivalent for a real import.
-jest.mock('../helpers/pr-section-config.helpers.js', () => ({
+jest.mock('../helpers/pr-section-config.helpers.ts', () => ({
   createPrSectionConfigHelpers: jest.fn(),
 }));
 jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
@@ -105,7 +105,7 @@ function AllSelectionProviders({ children }) {
     </RowFilterSelectionProvider>
   );
 }
-const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
+const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.ts');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
 
 // Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -184,9 +184,9 @@ const renderPrTableApp = ({
 function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
   // grouped.<key> array, in a fixed order, mirroring the shape
-  // pr-section-config.helpers.js actually returns.
+  // pr-section-config.helpers.ts actually returns.
   createPrSectionConfigHelpers.mockImplementation(
-    // Mirrors pr-section-config.helpers.js's real safe-default behavior: if
+    // Mirrors pr-section-config.helpers.ts's real safe-default behavior: if
     // the caller doesn't override resolvePrSectionOpenState, each section
     // falls back to its own configured default (false for lifecycle
     // sections, whatever the smart group specifies for its own).
@@ -283,7 +283,7 @@ describe('PrTableApp', () => {
   // ES module cleanup (see REACT_MIGRATION_PLAN.md): the "helpers module
   // entirely missing" scenario this used to cover (window.ViewPrsX never
   // set) is structurally impossible now that PrTableApp.jsx imports
-  // pr-section-config.helpers.js directly - a real ES import always
+  // pr-section-config.helpers.ts directly - a real ES import always
   // resolves before this component's own code runs, so `helpers` can never
   // be falsy via this path. Removed rather than kept as dead coverage for
   // something that can no longer happen.
@@ -1040,7 +1040,7 @@ describe('PrTableApp', () => {
 
   describe('non-exclusive membership: a PR in a smart group still renders in its lifecycle section', () => {
     // Regression test for a real bug: a prior "fix" added row-level dedup
-    // (pr-section-config.helpers.js's now-removed excludeSmartGroupMembers)
+    // (pr-section-config.helpers.ts's now-removed excludeSmartGroupMembers)
     // that silently hid a PR's row from its lifecycle section whenever it
     // was already shown in a smart group above (e.g. "Open PRs I'm
     // Involved In") - contradicting the documented "non-exclusive
@@ -1051,14 +1051,14 @@ describe('PrTableApp', () => {
     // latter is, by definition, also an open PR.
     //
     // installSectionHelpers() above is a simplified test double that never
-    // exercised the real pr-section-config.helpers.js/PrTableApp
+    // exercised the real pr-section-config.helpers.ts/PrTableApp
     // interaction, which is exactly why this regressed unnoticed - these
     // tests install the real helper module instead (jest.requireActual
     // bypasses the jest.mock() at the top of this file, which every other
     // describe block relies on).
     beforeEach(() => {
       const { createPrSectionConfigHelpers: realCreatePrSectionConfigHelpers } = jest.requireActual(
-        '../helpers/pr-section-config.helpers.js',
+        '../helpers/pr-section-config.helpers.ts',
       );
       createPrSectionConfigHelpers.mockImplementation(realCreatePrSectionConfigHelpers);
       window.isInReviewEnabled = () => false;

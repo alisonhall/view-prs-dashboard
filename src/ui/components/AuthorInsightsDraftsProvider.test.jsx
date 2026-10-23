@@ -5,14 +5,14 @@ require('@testing-library/jest-dom');
 const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } = require('../state/AuthorInsightsDraftsContext');
 const { PrDataProvider } = require('../state/PrDataProvider');
-const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render-blocking.helpers.js');
+const { createPrAutoRenderBlockingHelpers } = require('../helpers/pr-auto-render-blocking.helpers.ts');
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): closes a real coverage gap for
 // the same class of bug flagged in NotesDirtyProvider.test.jsx's own
 // comment (the getBlockingAuthorInsightsLogins bare-shorthand-property
 // bug) - no existing test exercises the real wiring between a real
 // AuthorInsightsDraftsProvider instance and the window.* bridge
-// pr-auto-render-blocking.helpers.js actually reads.
+// pr-auto-render-blocking.helpers.ts actually reads.
 let probeValue;
 let probeVersion;
 let probeRenders = 0;

@@ -28,7 +28,7 @@
  */
 
 import { useFilterFieldActions, useFilterFieldValue } from '../../state/FilterStateContext';
-import { getSelectedPrNumbersFromInput, toggleSelectedPrNumber } from '../../helpers/pr-selected-pr-numbers.helpers.js';
+import { getSelectedPrNumbersFromInput, toggleSelectedPrNumber } from '../../helpers/pr-selected-pr-numbers.helpers.ts';
 
 const PR_NUMBERS_FIELD = 'prNumbersInput';
 

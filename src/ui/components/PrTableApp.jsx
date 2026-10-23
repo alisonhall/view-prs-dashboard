@@ -22,7 +22,7 @@ import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
-import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
+import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 
@@ -393,7 +393,7 @@ export function PrTableApp() {
       return [];
     }
 
-    // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.js
+    // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts
     // is a real ES module now, imported directly above instead of read off
     // window - the `if (!helpers)` guard below is effectively dead now
     // (a real import always resolves before this component's own code
@@ -455,7 +455,7 @@ export function PrTableApp() {
 
     // Build smart groups (pr-smart-groups.helpers.js is a real ES module
     // now, imported directly above instead of read off window - see
-    // pr-section-config.helpers.js's own note above on the now-dead guard
+    // pr-section-config.helpers.ts's own note above on the now-dead guard
     // kept as-is to minimize the diff).
     let smartGroups = null;
     if (prSmartGroupsHelperFactory) {
@@ -513,7 +513,7 @@ export function PrTableApp() {
       title: config.title,
       // Per the documented "non-exclusive membership" design, a PR shown in
       // a smart group above is ALSO rendered here in its lifecycle section
-      // (pr-section-config.helpers.js no longer deduplicates them) - `prs`
+      // (pr-section-config.helpers.ts no longer deduplicates them) - `prs`
       // and `totalCount` are therefore always the same underlying set,
       // kept as separate fields so PrSection's "Total PRs" badge has a
       // stable name to read regardless of how rendering/counting evolve
