@@ -17,7 +17,7 @@ import { GraphCard } from './GraphCard';
 import { ReviewerActivityChart } from './ReviewerActivityChart';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useReviewStats } from '../state/ReviewStatsContext';
-import { asArray } from '../helpers/pr-as-array.helpers.js';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 

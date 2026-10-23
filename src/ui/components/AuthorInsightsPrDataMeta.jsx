@@ -41,10 +41,10 @@
  */
 
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
-import { asArray } from '../helpers/pr-as-array.helpers.js';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
-import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.js';
+import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 const { formatChkDisplay } = createPrStatusDisplayHelpers();

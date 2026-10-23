@@ -1028,7 +1028,13 @@ No static type checking leads to:
 - [ ] Create types for server routes
 
 **Phase 12C: Helper Migration**
-- [ ] Migrate all `src/ui/helpers/*.js` → `*.ts`
+- [ ] Migrate all `src/ui/helpers/*.js` → `*.ts` - in batches, leaf
+  helpers (no helper imports) first. Batch 1 (2026-10-23): as-array,
+  sortable-time, textarea-autoresize, default-repo, notes,
+  merged-request-more-config, repo-labels, thread-comments,
+  repo-run-context, viewed-files-summary. Shared data shapes live in
+  `src/ui/types/pr-data.ts`, grown from the data schema as helpers need
+  fields. Their tests stay `.js` for now (Phase 12G).
 - [ ] Add proper type annotations
 - [ ] Test each batch after migration
 - [ ] Verify types catch real issues

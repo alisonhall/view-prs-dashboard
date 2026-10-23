@@ -6,11 +6,11 @@ import { createPrInsightBadgeClassHelpers } from '../helpers/pr-insight-badge-cl
 import { createPrInsightMetricsSummaryHelpers } from '../helpers/pr-insight-metrics-summary.helpers.js';
 import { createPrUiRenderUtilsHelpers } from '../helpers/pr-ui-render-utils.helpers.js';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
-import { createPrNotesHelpers } from '../helpers/pr-notes.helpers.js';
+import { createPrNotesHelpers } from '../helpers/pr-notes.helpers.ts';
 import { createPrMarkdownRenderHelpers } from '../helpers/pr-markdown-render.helpers.js';
 import { createPrActivityEventsHelpers } from '../helpers/pr-activity-events.helpers.js';
 import { createPrApprovalDurationHelpers } from '../helpers/pr-approval-duration.helpers.js';
-import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.js';
+import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.ts';
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.js';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';

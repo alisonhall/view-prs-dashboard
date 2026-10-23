@@ -1,4 +1,4 @@
-const { createPrNotesHelpers } = require("../helpers/pr-notes.helpers.js");
+const { createPrNotesHelpers } = require("../helpers/pr-notes.helpers.ts");
 
 describe("pr notes helpers", () => {
   const { normalizeNotesListForUi } = createPrNotesHelpers();

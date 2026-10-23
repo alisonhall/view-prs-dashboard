@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.js';
-import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
+import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';

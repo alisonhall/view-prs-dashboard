@@ -10,7 +10,7 @@ import { InsightSection } from './InsightSection';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 

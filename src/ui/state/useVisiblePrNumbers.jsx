@@ -12,7 +12,7 @@ import { createPrVisiblePrNumbersHelpers } from '../helpers/pr-visible-pr-number
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
-import { asArray } from '../helpers/pr-as-array.helpers.js';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.js';
 import { getManualNotesFieldSummary } from '../helpers/pr-manual-notes-summary.helpers.js';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';

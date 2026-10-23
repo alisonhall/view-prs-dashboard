@@ -5,7 +5,7 @@
 // genuinely zero-dependency (asArray is itself a zero-dependency import,
 // not viewer/payload state), matching pr-row-sorting.helpers.js's own
 // precedent (bare exports, no createXHelpers() wrapper).
-import { asArray } from "./pr-as-array.helpers.js";
+import { asArray } from "./pr-as-array.helpers.ts";
 
 export const getManualNotesSummary = (entry = {}, row = {}) => {
   const notes = entry?.notes || row?.notes || {};

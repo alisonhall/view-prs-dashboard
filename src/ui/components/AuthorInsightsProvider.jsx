@@ -9,7 +9,7 @@ import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
-import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.js';
+import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
 const { toCount, formatIsoDatetime } = createPrFormattingHelpers();

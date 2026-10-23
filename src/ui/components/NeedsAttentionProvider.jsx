@@ -6,7 +6,7 @@ import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.hel
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.js';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
-import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
+import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
 

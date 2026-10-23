@@ -21,8 +21,8 @@ import { useRequestActivity } from '../../state/RequestActivityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
-import { asArray } from '../../helpers/pr-as-array.helpers.js';
-import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
+import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
 import { postJson } from '../../helpers/pr-http.helpers.js';
 
 const TONE_OPTIONS = [

@@ -1,5 +1,23 @@
+import type { LastRun } from "../types/pr-data.ts";
+
+export interface RepoRunContextInput {
+  selectedRepo?: string | null;
+  inputRepo?: string | null;
+  lastRun?: LastRun | null;
+}
+
+export interface RepoRunContext {
+  repoFilter: string;
+  runStamp: string;
+  normalizedRunStamp: string;
+}
+
 const createPrRepoRunContextHelpers = () => {
-  const deriveRepoRunContext = ({ selectedRepo, inputRepo, lastRun } = {}) => {
+  const deriveRepoRunContext = ({
+    selectedRepo,
+    inputRepo,
+    lastRun,
+  }: RepoRunContextInput = {}): RepoRunContext => {
     const repoFilter =
       String(selectedRepo || "").trim() ||
       String(inputRepo || "").trim() ||

@@ -1,7 +1,7 @@
 /**
  * NotesMultiEntryField - a labeled list of text inputs with add/remove
  * controls (used for Rally stories / Rally links). Matches vanilla's
- * createMultiEntryField (helpers/pr-notes.helpers.js): removing the last
+ * createMultiEntryField (helpers/pr-notes.helpers.ts): removing the last
  * remaining row clears it instead of deleting it, so there's always at
  * least one input.
  *

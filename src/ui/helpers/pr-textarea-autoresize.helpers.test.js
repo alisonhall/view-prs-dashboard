@@ -1,4 +1,4 @@
-const { autoResizeTextarea } = require("./pr-textarea-autoresize.helpers.js");
+const { autoResizeTextarea } = require("./pr-textarea-autoresize.helpers.ts");
 
 describe("pr textarea autoresize helper", () => {
   test("given an element, when resizing, then its height is reset then set to its scrollHeight", () => {

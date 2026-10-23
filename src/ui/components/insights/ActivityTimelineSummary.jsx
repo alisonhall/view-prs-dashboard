@@ -22,7 +22,7 @@
 
 import React from 'react';
 import { ActorIdentity } from '../ActorIdentity';
-import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
 const DATE_CELL_STYLE = { paddingRight: '12px', paddingTop: '2px', paddingBottom: '2px', verticalAlign: 'top', whiteSpace: 'nowrap' };
 const ACTIVITY_CELL_STYLE = { paddingTop: '2px', paddingBottom: '2px' };

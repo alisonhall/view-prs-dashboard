@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.js';
-import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.js';
+import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
 
 function summarizeDiffText(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);

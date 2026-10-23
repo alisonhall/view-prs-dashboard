@@ -9,7 +9,7 @@
 import { CopyIconButton } from '../CopyIconButton';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.js';
+import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();

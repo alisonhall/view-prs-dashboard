@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.js';
-import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
+import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { createPrMergedRequestMoreActionHelpers } from '../helpers/pr-merged-request-more-action.helpers.js';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { useStatusText } from './StatusTextContext';

@@ -2,9 +2,9 @@
 // (where they were plain inline functions, not in a helper module) so
 // PrTableApp.jsx can import them directly instead of reading them off
 // window - genuinely pure, no state/DOM dependency (matching
-// pr-sortable-time.helpers.js's own precedent: bare exports, no
+// pr-sortable-time.helpers.ts's own precedent: bare exports, no
 // createXHelpers() factory wrapper, since there's nothing to inject).
-import { parseSortableTime } from "./pr-sortable-time.helpers.js";
+import { parseSortableTime } from "./pr-sortable-time.helpers.ts";
 
 export const normalizeRows = (rows) =>
   rows.sort((a, b) => {

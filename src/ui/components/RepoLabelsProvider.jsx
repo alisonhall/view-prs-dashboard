@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RepoLabelsContext } from '../state/RepoLabelsContext';
 import { usePrData } from '../state/PrDataContext';
 import { useFilterState } from '../state/FilterStateContext';
-import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.js';
+import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.ts';
 
 /**
  * Phase 7 (see REACT_MIGRATION_PLAN.md): owns the current repo's

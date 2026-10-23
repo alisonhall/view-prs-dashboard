@@ -2,7 +2,7 @@ import { useContext, useMemo } from 'react';
 import { usePrData } from './PrDataContext';
 import { FilterStateContext } from './FilterStateContext';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.js';
-import { createPrMergedRequestMoreConfigHelpers } from '../helpers/pr-merged-request-more-config.helpers.js';
+import { createPrMergedRequestMoreConfigHelpers } from '../helpers/pr-merged-request-more-config.helpers.ts';
 
 const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
 const { buildMergedRequestMoreActionOptions } = createPrMergedRequestMoreConfigHelpers();

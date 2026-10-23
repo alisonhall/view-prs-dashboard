@@ -2,7 +2,7 @@
 
 const {
   createPrRepoRunContextHelpers,
-} = require("./pr-repo-run-context.helpers.js");
+} = require("./pr-repo-run-context.helpers.ts");
 
 describe("pr repo run context helpers", () => {
   test("given selected repo, when deriving repo run context, then selected repo has highest priority", () => {

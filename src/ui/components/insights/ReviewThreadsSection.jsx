@@ -8,7 +8,7 @@
  * and the summary toggle are read-only display state (no server calls) —
  * this is a straight port, not a simplification.
  *
- * parseSortableTime is imported directly from pr-sortable-time.helpers.js
+ * parseSortableTime is imported directly from pr-sortable-time.helpers.ts
  * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md) - it's a
  * genuinely pure, zero-dependency function, so no Context is needed here.
  *
@@ -24,8 +24,8 @@ import { useReviewConversationsUiState } from '../../state/ReviewConversationsUi
 import { FilterStateContext } from '../../state/FilterStateContext';
 import { AuthorThreadResolutionSelectionContext } from '../../state/AuthorThreadResolutionSelectionContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
-import { asArray } from '../../helpers/pr-as-array.helpers.js';
+import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.ts';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.js';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();

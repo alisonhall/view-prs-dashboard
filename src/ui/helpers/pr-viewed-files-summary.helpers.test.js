@@ -1,6 +1,6 @@
 const {
   createPrViewedFilesSummaryHelpers,
-} = require("./pr-viewed-files-summary.helpers.js");
+} = require("./pr-viewed-files-summary.helpers.ts");
 
 describe("pr viewed files summary helpers", () => {
   test("given an explicit viewedFilesSummary, when summarizing, then it is used directly", () => {

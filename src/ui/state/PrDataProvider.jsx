@@ -10,7 +10,7 @@ import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-poll
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.js';
-import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.js';
+import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { useStatusText } from './StatusTextContext';

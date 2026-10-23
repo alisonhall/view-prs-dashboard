@@ -18,7 +18,7 @@
  * @module components/AuthorInsightsPrLink
  */
 
-import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.js';
+import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 
 export function AuthorInsightsPrLink({ entry }) {

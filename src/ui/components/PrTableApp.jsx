@@ -20,7 +20,7 @@ import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
-import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.js';
+import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';

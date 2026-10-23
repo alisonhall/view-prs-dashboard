@@ -1,4 +1,4 @@
-const { resolveRepoForLabelsFetch } = require("./pr-repo-labels.helpers.js");
+const { resolveRepoForLabelsFetch } = require("./pr-repo-labels.helpers.ts");
 
 describe("resolveRepoForLabelsFetch", () => {
   // Regression guard for a real bug: this used to fall back to

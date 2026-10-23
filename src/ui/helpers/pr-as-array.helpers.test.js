@@ -1,4 +1,4 @@
-const { asArray } = require("./pr-as-array.helpers.js");
+const { asArray } = require("./pr-as-array.helpers.ts");
 
 describe("pr as array helper", () => {
   test("given an array, when normalizing, then it's returned unchanged", () => {
