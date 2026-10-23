@@ -1,7 +1,7 @@
 const { createPrVisiblePrNumbersHelpers } = require("./pr-visible-pr-numbers.helpers.ts");
 const { createPrScopeSelectionHelpers } = require("./pr-scope-selection.helpers.ts");
 const { createPrRowFilteringHelpers } = require("./pr-row-filtering.helpers.ts");
-const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.js");
+const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.ts");
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): wires the real
 // scope-selection/row-filtering/row-matching factories together (not

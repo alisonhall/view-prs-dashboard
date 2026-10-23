@@ -24,7 +24,7 @@ jest.mock('./PrSection', () => {
 });
 
 // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts/
-// pr-smart-groups.helpers.js are real ES modules now, imported directly by
+// pr-smart-groups.helpers.ts are real ES modules now, imported directly by
 // PrTableApp.jsx instead of read off window.ViewPrsSectionConfigHelpers/
 // window.ViewPrsSmartGroupsHelpers - these tests used to swap window
 // globals per-test to control their behavior; jest.mock + mockImplementation
@@ -32,7 +32,7 @@ jest.mock('./PrSection', () => {
 jest.mock('../helpers/pr-section-config.helpers.ts', () => ({
   createPrSectionConfigHelpers: jest.fn(),
 }));
-jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
+jest.mock('../helpers/pr-smart-groups.helpers.ts', () => ({
   createPrSmartGroupsHelpers: jest.fn(),
 }));
 // Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.ts is a
@@ -106,7 +106,7 @@ function AllSelectionProviders({ children }) {
   );
 }
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.ts');
-const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
+const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.ts');
 
 // Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // PrTableApp reads payload/selectedRepo/visiblePrNumbers from

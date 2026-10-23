@@ -91,7 +91,7 @@ const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
 // handleCheckboxChange moved to PrTableApp.jsx, following
 // handleAckAction/handleApplyLabel in Phase H.5.
 const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.ts");
-const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.js");
+const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.ts");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");

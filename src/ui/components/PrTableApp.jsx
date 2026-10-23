@@ -23,7 +23,7 @@ import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
-import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
+import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 
 /**
@@ -409,7 +409,7 @@ export function PrTableApp() {
     // not in a captured DOM snapshot like vanilla's resolvePrSectionOpenState
     // does — so just fall through to each section's own configured default
     // (lifecycle sections default closed; "In Review"/"Needs Attention"
-    // smart groups default open — see pr-smart-groups.helpers.js) by not
+    // smart groups default open — see pr-smart-groups.helpers.ts) by not
     // overriding it at all.
     const { buildPrSectionConfigs } = helpers.createPrSectionConfigHelpers();
 
@@ -453,7 +453,7 @@ export function PrTableApp() {
     const { buildGroupedPrSections } = sectionGroupingHelpersRef.current;
     const grouped = buildGroupedPrSections(entriesForRepo);
 
-    // Build smart groups (pr-smart-groups.helpers.js is a real ES module
+    // Build smart groups (pr-smart-groups.helpers.ts is a real ES module
     // now, imported directly above instead of read off window - see
     // pr-section-config.helpers.ts's own note above on the now-dead guard
     // kept as-is to minimize the diff).
@@ -485,7 +485,7 @@ export function PrTableApp() {
       });
 
       // Deliberately not passing `repo` here: isFlagged/isInReview
-      // (pr-smart-groups.helpers.js) fall back to each entry's own
+      // (pr-smart-groups.helpers.ts) fall back to each entry's own
       // `entry.repo` only when `repo` is falsy - passing effectiveRepo
       // would make every entry look up effectiveRepo's flagged/in-review
       // set regardless of which repo it actually belongs to, wrongly

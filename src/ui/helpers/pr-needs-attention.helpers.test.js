@@ -1,6 +1,6 @@
 const {
   createPrNeedsAttentionHelpers,
-} = require("./pr-needs-attention.helpers.js");
+} = require("./pr-needs-attention.helpers.ts");
 
 describe("pr needs attention helpers", () => {
   test("given explicit reason text, when parsing changed reason tokens, then pipe-delimited lowercase tokens are returned", () => {

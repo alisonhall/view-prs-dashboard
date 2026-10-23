@@ -137,11 +137,20 @@ export interface PrMetrics {
 export interface PrData {
   // Digits-only string in the data file; some callers pass a number.
   number?: string | number;
+  // The script's change status: "CHANGED", "NO_CHANGE" or "NO_ACTIVITY"
+  // (older data wrote "CHANGED(<reasons>)"), and the change reasons as
+  // "|"-separated tokens such as "commit|review" ("-" when none).
+  status?: string;
+  reason?: string;
+  // The viewer's own last activity on the PR (README: "Your last
+  // activity"); "" or "-" when there is none.
+  baseline?: string;
   url?: string;
   author?: string;
   authorLogin?: string;
   approvers?: PrApprover[];
   assignees?: PrActor[];
+  requestedReviewers?: PrActor[];
   comments?: PrComment[];
   reviews?: PrReview[];
   commits?: PrCommit[];

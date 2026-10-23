@@ -1,7 +1,7 @@
 import type { PrData } from "../types/pr-data.ts";
 
 // A commit whose headline starts with "Merge" (merging a branch/PR into
-// another) - same definition pr-needs-attention.helpers.js's
+// another) - same definition pr-needs-attention.helpers.ts's
 // isMergeCommitHeadline uses for "ignore merge-only commits", duplicated
 // here (rather than threaded through as a dependency) since it's a pure
 // one-liner with no state of its own.

@@ -60,7 +60,7 @@ const renderSection = (selectedAuthorLogin) =>
 
 describe('AuthorInsightsCommentsSection', () => {
   // loadManualComments (AuthorInsightsDraftsProvider) calls the real
-  // pr-author-insights-data.helpers.js loadAuthorManualComments now, which
+  // pr-author-insights-data.helpers.ts loadAuthorManualComments now, which
   // fetches /view-prs/author-comments for real - the old test's blanket
   // window.loadAuthorManualComments stub made that call a no-op; this
   // default (an empty, successful load) reproduces the same baseline for

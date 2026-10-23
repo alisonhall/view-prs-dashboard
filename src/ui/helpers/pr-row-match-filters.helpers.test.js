@@ -1,4 +1,4 @@
-const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.js");
+const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.ts");
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): this logic used
 // to be an inline, untested-in-isolation function in index.page.js

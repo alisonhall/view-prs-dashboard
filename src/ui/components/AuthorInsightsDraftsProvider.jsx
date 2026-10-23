@@ -3,7 +3,7 @@ import { AuthorInsightsDraftsContext, AuthorInsightsDraftsVersionContext } from 
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
-import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.js';
+import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.ts';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 
 /**
@@ -61,7 +61,7 @@ export function AuthorInsightsDraftsProvider({ children }) {
   // authorInsightsState object literal exactly) - createPrAuthorInsightsDraftsHelpers
   // only normalizes 3 of these on construction (manualCommentDraftByAuthorLogin/
   // manualCommentEditDraftByAuthorLogin/manualCommentsByAuthorLogin);
-  // loadAuthorManualComments (pr-author-insights-data.helpers.js) assumes
+  // loadAuthorManualComments (pr-author-insights-data.helpers.ts) assumes
   // manualCommentsLoadingByAuthorLogin/manualCommentsErrorByAuthorLogin
   // already exist as objects, with no existence check of its own.
   const stateRef = useRef(null);

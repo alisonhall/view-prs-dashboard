@@ -1,14 +1,25 @@
-//
-// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): extracted
-// verbatim out of index.page.js, where this was an inline function (not
-// its own module) sitting next to pr-scope-selection.helpers.ts/
-// pr-row-filtering.helpers.ts's own logic. Pure with respect to its own
-// (entry, filters) args - every dependency below is injected, so the
-// vanilla side (index.page.js) wires in its existing closures unchanged
-// (no behavior change there) while the new reactive useVisiblePrNumbers
-// derivation (state/useVisiblePrNumbers.jsx) wires in Context-derived
-// equivalents instead (useActorIdentity()'s functions, not index.page.js's
-// mutable currentActorLoginAliases/currentViewerLogin module `let`s).
+import type { PrData, PrEntry } from "../types/pr-data.ts";
+import type { ManualNotesFieldSummary } from "./pr-manual-notes-summary.helpers.ts";
+import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
+
+// Whether one PR entry passes the table's row filters (PR numbers, labels,
+// people, notes fields). Pure with respect to its (entry, filters) args;
+// useVisiblePrNumbers injects the actor-identity and notes lookups from
+// Context.
+interface LoginRecord {
+  login: string;
+}
+
+export interface PrRowMatchFiltersDeps {
+  getPreferredActorKey?: (login: unknown, fallback?: unknown) => string;
+  collectAssignedUsers?: (row: PrData) => LoginRecord[];
+  collectApproversFromRow?: (row: PrData) => LoginRecord[];
+  extractRowLabelNames?: (row: PrData) => string[];
+  normalizeFilterToken?: (value: string) => string;
+  getManualNotesFieldSummary?: (entry: PrEntry, row: PrData) => Partial<ManualNotesFieldSummary>;
+  isInReviewEnabled?: (row: PrData) => boolean;
+}
+
 const createPrRowMatchFiltersHelpers = ({
   getPreferredActorKey,
   collectAssignedUsers,
@@ -17,26 +28,26 @@ const createPrRowMatchFiltersHelpers = ({
   normalizeFilterToken,
   getManualNotesFieldSummary,
   isInReviewEnabled,
-} = {}) => {
+}: PrRowMatchFiltersDeps = {}) => {
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
   const collectAssignedUsersSafe =
-    typeof collectAssignedUsers === "function" ? collectAssignedUsers : () => [];
+    typeof collectAssignedUsers === "function" ? collectAssignedUsers : (): LoginRecord[] => [];
   const collectApproversFromRowSafe =
-    typeof collectApproversFromRow === "function" ? collectApproversFromRow : () => [];
+    typeof collectApproversFromRow === "function" ? collectApproversFromRow : (): LoginRecord[] => [];
   const extractRowLabelNamesSafe =
-    typeof extractRowLabelNames === "function" ? extractRowLabelNames : () => [];
+    typeof extractRowLabelNames === "function" ? extractRowLabelNames : (): string[] => [];
   const normalizeFilterTokenSafe =
-    typeof normalizeFilterToken === "function" ? normalizeFilterToken : (value) => value;
+    typeof normalizeFilterToken === "function" ? normalizeFilterToken : (value: string) => value;
   const getManualNotesFieldSummarySafe =
     typeof getManualNotesFieldSummary === "function"
       ? getManualNotesFieldSummary
-      : () => ({});
+      : (): Partial<ManualNotesFieldSummary> => ({});
   const isInReviewEnabledSafe =
     typeof isInReviewEnabled === "function" ? isInReviewEnabled : () => false;
 
-  const rowMatchesUiFilters = (entry, filters) => {
-    const row = entry?.data || {};
+  const rowMatchesUiFilters = (entry: PrEntry | null | undefined, filters: RowFilterCriteria): boolean => {
+    const row: PrData = entry?.data || {};
     const labels = extractRowLabelNamesSafe(row)
       .map((label) => normalizeFilterTokenSafe(label))
       .filter(Boolean);
@@ -96,7 +107,9 @@ const createPrRowMatchFiltersHelpers = ({
       return false;
     }
 
-    const notesSummary = getManualNotesFieldSummarySafe(entry, row);
+    // entry may be missing here (callers always pass one); the summary
+    // helper treats that like an entry with no notes.
+    const notesSummary = getManualNotesFieldSummarySafe(entry as PrEntry, row);
 
     if (filters.customComments === "with" && !notesSummary.hasCustomComments) {
       return false;

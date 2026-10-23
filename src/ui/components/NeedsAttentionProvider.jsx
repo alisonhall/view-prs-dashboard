@@ -2,7 +2,7 @@ import { useContext, useMemo } from 'react';
 import { NeedsAttentionContext } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { FilterStateContext } from '../state/FilterStateContext';
-import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.js';
+import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';

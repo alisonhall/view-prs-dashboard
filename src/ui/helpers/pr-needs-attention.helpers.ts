@@ -1,12 +1,49 @@
+import type { PrData, PrEntry } from "../types/pr-data.ts";
+
+// The "Needs attention" rules (configured under "Advanced visibility and
+// attention rules"): whether a PR's change or lack of activity should flag
+// it, per section, plus the "you've interacted with it" check.
+
+// The attention options from user defaults (NeedsAttentionProvider maps
+// the form fields onto these).
+export interface AttentionConfig {
+  ignoreMergeOnlyCommits?: boolean;
+  noActivityMode?: string;
+  includePendingComments?: boolean;
+  includeClosedMerged?: boolean;
+  includeDraftChanged?: boolean;
+  includeDraftNoActivity?: boolean;
+}
+
+interface LoginRecord {
+  login?: string;
+}
+
+export interface PrNeedsAttentionDeps {
+  asArray?: (value: unknown) => unknown[];
+  isChangedStatus?: (status: unknown) => boolean;
+  getEffectiveViewerLogin?: (row: PrData) => string;
+  collectAssignedUsers?: (row: PrData) => LoginRecord[];
+  collectRequestedReviewers?: (row: PrData) => LoginRecord[];
+  countPendingThreadComments?: (row: PrData) => number;
+}
+
+export interface ShouldShowNeedsAttentionInput {
+  row?: PrData;
+  sectionKey?: string;
+  hasPendingComments?: boolean;
+  config?: AttentionConfig;
+}
+
 const createPrNeedsAttentionHelpers = ({
-  asArray = (value) => (Array.isArray(value) ? value : []),
-  isChangedStatus = (status) => String(status || "").startsWith("CHANGED"),
+  asArray = (value: unknown) => (Array.isArray(value) ? value : []),
+  isChangedStatus = (status: unknown) => String(status || "").startsWith("CHANGED"),
   getEffectiveViewerLogin = () => "",
   collectAssignedUsers = () => [],
   collectRequestedReviewers = () => [],
   countPendingThreadComments = () => 0,
-} = {}) => {
-  const parseChangedReasonTokens = (row = {}) => {
+}: PrNeedsAttentionDeps = {}) => {
+  const parseChangedReasonTokens = (row: PrData = {}): string[] => {
     const reason = String(row?.reason || "").trim();
     if (reason && reason !== "-") {
       return reason
@@ -32,10 +69,10 @@ const createPrNeedsAttentionHelpers = ({
       .filter(Boolean);
   };
 
-  const isMergeCommitHeadline = (messageHeadline = "") =>
+  const isMergeCommitHeadline = (messageHeadline: unknown = ""): boolean =>
     /^Merge\b/i.test(String(messageHeadline || "").trim());
 
-  const shouldTreatChangedAsAttention = (row = {}, config = {}) => {
+  const shouldTreatChangedAsAttention = (row: PrData = {}, config: AttentionConfig = {}): boolean => {
     if (!isChangedStatus(row?.status)) return false;
     if (!config?.ignoreMergeOnlyCommits) return true;
 
@@ -43,12 +80,12 @@ const createPrNeedsAttentionHelpers = ({
     if (tokens.length === 0) return true;
     if (tokens.some((token) => token !== "commit")) return true;
 
-    return asArray(row?.commits).some(
+    return (asArray(row?.commits) as { messageHeadline?: string }[]).some(
       (commit) => !isMergeCommitHeadline(commit?.messageHeadline),
     );
   };
 
-  const shouldTreatNoActivityAsAttention = (row = {}, config = {}) => {
+  const shouldTreatNoActivityAsAttention = (row: PrData = {}, config: AttentionConfig = {}): boolean => {
     if (String(row?.status || "") !== "NO_ACTIVITY") return false;
 
     const mode = String(config?.noActivityMode || "all")
@@ -88,7 +125,7 @@ const createPrNeedsAttentionHelpers = ({
     sectionKey = "",
     hasPendingComments = false,
     config = {},
-  }) => {
+  }: ShouldShowNeedsAttentionInput): boolean => {
     const changedAttention = shouldTreatChangedAsAttention(row, config);
     const noActivityAttention = shouldTreatNoActivityAsAttention(row, config);
 
@@ -101,22 +138,22 @@ const createPrNeedsAttentionHelpers = ({
     }
 
     if (sectionKey === "merged" || sectionKey === "closed") {
-      return (
-        config.includeClosedMerged && (changedAttention || noActivityAttention)
+      return Boolean(
+        config.includeClosedMerged && (changedAttention || noActivityAttention),
       );
     }
 
     if (sectionKey === "draft") {
-      return (
+      return Boolean(
         (config.includeDraftChanged && changedAttention) ||
-        (config.includeDraftNoActivity && noActivityAttention)
+          (config.includeDraftNoActivity && noActivityAttention),
       );
     }
 
     return false;
   };
 
-  const entryNeedsAttention = (entry = {}, config = {}) => {
+  const entryNeedsAttention = (entry: PrEntry = {}, config: AttentionConfig = {}): boolean => {
     const row = entry?.data || {};
 
     const sectionKey = String(entry?.section || "")
@@ -132,7 +169,7 @@ const createPrNeedsAttentionHelpers = ({
     });
   };
 
-  const entryHasYourLastActivity = (entry = {}) => {
+  const entryHasYourLastActivity = (entry: PrEntry = {}): boolean => {
     const row = entry?.data || {};
     const baseline = String(row?.baseline || "").trim();
     return Boolean(baseline && baseline !== "-");

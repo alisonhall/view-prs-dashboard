@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.js';
+import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.ts';
 
 /**
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): "needs attention"

@@ -1,6 +1,6 @@
 const {
   createPrActorIdentityHelpers,
-} = require("../helpers/pr-actor-identity.helpers.js");
+} = require("../helpers/pr-actor-identity.helpers.ts");
 
 describe("pr actor identity helpers", () => {
   test("given login alias chain, when normalizeActorLogin is called, then it resolves to canonical login", () => {

@@ -1,4 +1,4 @@
-const { createPrSmartGroupsHelpers } = require("./pr-smart-groups.helpers.js");
+const { createPrSmartGroupsHelpers } = require("./pr-smart-groups.helpers.ts");
 
 describe("Smart Groups Helpers", () => {
   describe("isFlagged", () => {

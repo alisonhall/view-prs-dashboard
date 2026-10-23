@@ -7,7 +7,7 @@ import { useActorIdentity } from './ActorIdentityContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
 import { createPrRowFilteringHelpers } from '../helpers/pr-row-filtering.helpers.ts';
-import { createPrRowMatchFiltersHelpers } from '../helpers/pr-row-match-filters.helpers.js';
+import { createPrRowMatchFiltersHelpers } from '../helpers/pr-row-match-filters.helpers.ts';
 import { createPrVisiblePrNumbersHelpers } from '../helpers/pr-visible-pr-numbers.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
