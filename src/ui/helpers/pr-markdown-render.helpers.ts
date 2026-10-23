@@ -23,7 +23,7 @@ const MARKDOWN_SANITIZE_CONFIG = {
   FORBID_ATTR: ["style", "class", "id"],
 };
 
-const escapeHtml = (text) =>
+const escapeHtml = (text: string): string =>
   text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -32,7 +32,7 @@ const escapeHtml = (text) =>
     .replace(/'/g, "&#39;");
 
 const createPrMarkdownRenderHelpers = () => {
-  const replaceExpiredGithubImages = (html) => {
+  const replaceExpiredGithubImages = (html: string): string => {
     // Replace entire <img ...> tags where src is from known expiring/private GitHub attachment hosts.
     return html.replace(
       /<img\b[^>]*\bsrc=["']https:\/\/(?:private-user-images\.githubusercontent\.com|github\.com\/user-attachments)\/[^"']*["'][^>]*>/gi,
@@ -40,18 +40,19 @@ const createPrMarkdownRenderHelpers = () => {
     );
   };
 
-  const renderMarkdownAsHtml = (markdownText) => {
+  const renderMarkdownAsHtml = (markdownText: unknown): string => {
     const text = String(markdownText || "").trim();
     if (!text) return "";
 
     const sanitizer = window.DOMPurify;
-    if (!window.marked || typeof sanitizer?.sanitize !== "function") {
+    const marked = window.marked;
+    if (!marked || typeof sanitizer?.sanitize !== "function") {
       return escapeHtml(text);
     }
 
-    let html;
+    let html: string;
     try {
-      html = window.marked.parse(text);
+      html = marked.parse(text);
     } catch (error) {
       console.warn("Failed to render markdown", error);
       return escapeHtml(text);

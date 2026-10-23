@@ -1,3 +1,21 @@
+import type { PrDataPayload } from "../types/pr-data.ts";
+
+// PrDataProvider's full data load: GET /view-prs/data, then hand the
+// payload and its version/run stamps to the injected setters and renderer,
+// tracked as a "dataLoad" request activity.
+export interface PrStoredDataLoadDeps {
+  fetch?: (input: string) => Promise<Response>;
+  beginRequestActivity?: (kind: string) => () => void;
+  setLastSeenDataVersion?: (dataVersion: string) => void;
+  setLastRenderedRunStamp?: (runStamp: string) => void;
+  setLastSuccessfulRenderedCheckAt?: (checkedAt: string) => void;
+  setLatestStoredPayload?: (payload: PrDataPayload) => void;
+  getLatestSelectedRepo?: () => string;
+  setLatestSelectedRepo?: (repo: string) => void;
+  updateBackfillStatusFromPayload?: (payload: PrDataPayload) => void;
+  renderPrData?: (payload: PrDataPayload, selectedRepo: string, options: Record<string, unknown>) => void;
+}
+
 const createPrStoredDataLoadHelpers = ({
   fetch,
   beginRequestActivity,
@@ -9,8 +27,11 @@ const createPrStoredDataLoadHelpers = ({
   setLatestSelectedRepo,
   updateBackfillStatusFromPayload,
   renderPrData,
-} = {}) => {
-  const fetchSafe = typeof fetch === "function" ? fetch : () => Promise.reject(new Error("fetch is not available"));
+}: PrStoredDataLoadDeps = {}) => {
+  const fetchSafe =
+    typeof fetch === "function"
+      ? fetch
+      : (): Promise<Response> => Promise.reject(new Error("fetch is not available"));
   const beginRequestActivitySafe =
     typeof beginRequestActivity === "function"
       ? beginRequestActivity
@@ -35,11 +56,14 @@ const createPrStoredDataLoadHelpers = ({
       : () => {};
   const renderPrDataSafe = typeof renderPrData === "function" ? renderPrData : () => {};
 
-  const loadStoredData = async (selectedRepo = "", options = {}) => {
+  const loadStoredData = async (
+    selectedRepo: string = "",
+    options: Record<string, unknown> = {},
+  ): Promise<PrDataPayload> => {
     const finishActivity = beginRequestActivitySafe("dataLoad");
     try {
       const response = await fetchSafe("/view-prs/data");
-      const result = await response.json();
+      const result: PrDataPayload = await response.json();
       if (!response.ok || result.ok === false) {
         throw new Error(result.error || "Failed to fetch stored PR data");
       }
@@ -51,7 +75,7 @@ const createPrStoredDataLoadHelpers = ({
 
       const updatedAt = String(result?.lastRun?.updatedAt || "").trim();
       if (updatedAt) {
-        setLastRenderedRunStampSafe(result.lastRun.updatedAt);
+        setLastRenderedRunStampSafe(result.lastRun?.updatedAt ?? "");
         setLastSuccessfulRenderedCheckAtSafe(updatedAt);
       }
 

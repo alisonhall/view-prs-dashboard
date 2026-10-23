@@ -1,4 +1,4 @@
-const { createPrApproversHelpers } = require("./pr-approvers.helpers.js");
+const { createPrApproversHelpers } = require("./pr-approvers.helpers.ts");
 
 describe("pr approvers helpers", () => {
   const createHelpers = () =>

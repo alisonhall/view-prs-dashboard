@@ -1,7 +1,7 @@
 //
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): extracted
 // verbatim out of index.page.js, where this was an inline function (not
-// its own module) sitting next to pr-scope-selection.helpers.js/
+// its own module) sitting next to pr-scope-selection.helpers.ts/
 // pr-row-filtering.helpers.js's own logic. Pure with respect to its own
 // (entry, filters) args - every dependency below is injected, so the
 // vanilla side (index.page.js) wires in its existing closures unchanged

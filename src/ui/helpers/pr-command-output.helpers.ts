@@ -1,8 +1,28 @@
-const createPrCommandOutputHelpers = ({ stripAnsi }) => {
+// Formats a script/command result (command, error, stdout, stderr) for the
+// output panels, optionally with a hint when the failure looks like a
+// GitHub CLI auth or org-SAML problem.
+export interface CommandResult {
+  command?: string;
+  error?: string;
+  output?: string;
+  stderr?: string;
+}
+
+export interface CommandOutputOptions {
+  includeError?: boolean;
+  includeStdout?: boolean;
+  includeStderr?: boolean;
+}
+
+export interface PrCommandOutputDeps {
+  stripAnsi: (text: unknown) => string;
+}
+
+const createPrCommandOutputHelpers = ({ stripAnsi }: PrCommandOutputDeps) => {
   const formatCommandOutput = (
-    result,
-    { includeError = true, includeStdout = true, includeStderr = true } = {},
-  ) =>
+    result: CommandResult | null | undefined,
+    { includeError = true, includeStdout = true, includeStderr = true }: CommandOutputOptions = {},
+  ): string =>
     [
       result?.command ? `Command: ${result.command}` : "",
       includeError && result?.error ? `Error:\n${result.error}` : "",
@@ -16,7 +36,7 @@ const createPrCommandOutputHelpers = ({ stripAnsi }) => {
       .filter(Boolean)
       .join("\n\n");
 
-  const getGithubAuthFailureHint = (result = {}) => {
+  const getGithubAuthFailureHint = (result: CommandResult | null | undefined = {}): string => {
     const combined = [result?.error, result?.stderr, result?.output]
       .map((value) => String(value || ""))
       .join("\n")
@@ -54,13 +74,15 @@ const createPrCommandOutputHelpers = ({ stripAnsi }) => {
     ].join(" ");
   };
 
-  const formatCommandOutputWithAuthHint = (result, options = {}) => {
+  const formatCommandOutputWithAuthHint = (
+    result: CommandResult | null | undefined,
+    options: CommandOutputOptions = {},
+  ): string => {
     const output = formatCommandOutput(result, options);
     const hint = getGithubAuthFailureHint(result);
     if (!hint) {
       return output;
     }
-
     return [output, `Auth hint: ${hint}`].filter(Boolean).join("\n\n");
   };
 

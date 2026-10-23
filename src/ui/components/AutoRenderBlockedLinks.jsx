@@ -22,7 +22,7 @@
 import { useEffect } from 'react';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
 import { useAutoRenderBlocking } from '../state/AutoRenderBlockingContext';
-import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
+import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.ts';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 import { useNavigateToAuthorInsights } from '../state/useNavigateToAuthorInsights';
 

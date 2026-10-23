@@ -2,7 +2,7 @@
 
 const {
   createPrAutoRenderStateHelpers,
-} = require("./pr-auto-render-state.helpers.js");
+} = require("./pr-auto-render-state.helpers.ts");
 
 describe("auto render state helpers", () => {
   const createHelpers = (overrides = {}) =>

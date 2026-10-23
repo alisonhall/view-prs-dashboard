@@ -1,7 +1,39 @@
+import type { PrEntry } from "../types/pr-data.ts";
+
+// The "View scope" filter: normalizes the selected scope and narrows the
+// repo's rows to it (last run, needs attention, or needs attention or
+// interacted with), with a label for the applied-filters summary.
+export type SelectedScope =
+  | "all"
+  | "last-run"
+  | "needs-attention"
+  | "needs-attention-or-interacted";
+
+const SELECTED_SCOPES: readonly string[] = [
+  "all",
+  "last-run",
+  "needs-attention",
+  "needs-attention-or-interacted",
+];
+
+export interface PrScopeSelectionDeps {
+  entryNeedsAttention?: (entry: PrEntry, attentionConfig: unknown) => boolean;
+  entryHasYourLastActivity?: (entry: PrEntry) => boolean;
+}
+
+export interface ResolveScopedRowsInput<E extends PrEntry> {
+  rowsForRepo?: E[] | null;
+  ignoreScopeForPrNumberFilter?: boolean;
+  runStamp?: string;
+  useLastRunScope?: boolean;
+  selectedScope?: string;
+  attentionConfig?: unknown;
+}
+
 const createPrScopeSelectionHelpers = ({
   entryNeedsAttention,
   entryHasYourLastActivity,
-} = {}) => {
+}: PrScopeSelectionDeps = {}) => {
   const entryNeedsAttentionSafe =
     typeof entryNeedsAttention === "function"
       ? entryNeedsAttention
@@ -11,28 +43,23 @@ const createPrScopeSelectionHelpers = ({
       ? entryHasYourLastActivity
       : () => false;
 
-  const normalizeSelectedScope = (scopeModeValue) => {
+  const normalizeSelectedScope = (scopeModeValue: unknown): SelectedScope => {
     const normalizedValue = String(scopeModeValue || "all")
       .trim()
       .toLowerCase();
-    return [
-      "all",
-      "last-run",
-      "needs-attention",
-      "needs-attention-or-interacted",
-    ].includes(normalizedValue)
-      ? normalizedValue
+    return SELECTED_SCOPES.includes(normalizedValue)
+      ? (normalizedValue as SelectedScope)
       : "all";
   };
 
-  const resolveScopedRows = ({
+  const resolveScopedRows = <E extends PrEntry>({
     rowsForRepo,
     ignoreScopeForPrNumberFilter,
     runStamp,
     useLastRunScope,
     selectedScope,
     attentionConfig,
-  } = {}) => {
+  }: ResolveScopedRowsInput<E> = {}): { rows: E[]; scopeLabel: string } => {
     let rows = Array.isArray(rowsForRepo) ? rowsForRepo : [];
     let scopeLabel = "all stored rows";
 

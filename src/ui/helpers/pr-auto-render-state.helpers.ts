@@ -1,9 +1,27 @@
+// The auto-render blocking state (AutoRenderBlockingSync/Provider): which
+// unsaved notes and author-insight drafts are holding back automatic data
+// refreshes, built from the injected getters.
+export interface PrAutoRenderStateDeps {
+  getUnsavedNotesPrNumbers?: () => unknown;
+  getBlockingPrNumbers?: () => unknown;
+  getBlockingAuthorInsightsLogins?: () => unknown;
+  formatBlockingPrNumbersLabel?: (prNumbers: unknown) => string;
+}
+
+export interface AutoRenderBlockingState {
+  dirtyFieldCount: number;
+  unsavedNotesCount: number;
+  blockingPrNumbers: string[];
+  blockingAuthorInsightsLogins: string[];
+  blockingPrLabel: string;
+}
+
 const createPrAutoRenderStateHelpers = ({
   getUnsavedNotesPrNumbers,
   getBlockingPrNumbers,
   getBlockingAuthorInsightsLogins,
   formatBlockingPrNumbersLabel,
-} = {}) => {
+}: PrAutoRenderStateDeps = {}) => {
   const getUnsavedNotesPrNumbersSafe =
     typeof getUnsavedNotesPrNumbers === "function"
       ? getUnsavedNotesPrNumbers
@@ -19,18 +37,15 @@ const createPrAutoRenderStateHelpers = ({
       ? formatBlockingPrNumbersLabel
       : () => "";
 
-  const getAutoRenderBlockingState = () => {
+  const getAutoRenderBlockingState = (): AutoRenderBlockingState => {
     const unsavedNotesPrNumbers = getUnsavedNotesPrNumbersSafe();
     const blockingPrNumbers = getBlockingPrNumbersSafe();
     const blockingAuthorInsightsLogins = getBlockingAuthorInsightsLoginsSafe();
 
     return {
-      // Phase H.1 (see REACT_MIGRATION_PLAN.md, "Full migration
-      // roadmap"): used to come from getDirtyTrackedFields (a
-      // data-original-value DOM scan, confirmed dead - nothing ever set
-      // that attribute, so this was always 0 in production). Hardcoded
-      // rather than removed - AutoRenderBlockingProvider.jsx/
-      // pr-auto-render-indicator.helpers.js still read this field.
+      // Always 0: it used to count a DOM scan that never found anything.
+      // Kept because AutoRenderBlockingProvider and
+      // pr-auto-render-indicator.helpers.ts still read the field.
       dirtyFieldCount: 0,
       unsavedNotesCount: Array.isArray(unsavedNotesPrNumbers)
         ? unsavedNotesPrNumbers.length
@@ -45,7 +60,9 @@ const createPrAutoRenderStateHelpers = ({
     };
   };
 
-  const computeHasDirtyPrSectionsFields = (state = getAutoRenderBlockingState()) => {
+  const computeHasDirtyPrSectionsFields = (
+    state: Partial<AutoRenderBlockingState> | null | undefined = getAutoRenderBlockingState(),
+  ): boolean => {
     return (
       Number(state?.dirtyFieldCount || 0) > 0 ||
       Number(state?.unsavedNotesCount || 0) > 0 ||

@@ -24,7 +24,7 @@ import { countPendingThreadComments } from '../helpers/pr-thread-comments.helper
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
-import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
+import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 
 /**
  * Main PR Table Application Component
@@ -369,7 +369,7 @@ export function PrTableApp() {
   }, []);
 
   // Item 2 of the deferred-items follow-up (see REACT_MIGRATION_PLAN.md):
-  // pr-section-grouping.helpers.js's createPrSectionGroupingHelpers() must
+  // pr-section-grouping.helpers.ts's createPrSectionGroupingHelpers() must
   // be instantiated once, not on every render, or its internal
   // reference-equality cache (Phase 5 residual slice) never gets a chance
   // to hit - a lazily-initialized ref keeps exactly one instance for the
@@ -445,7 +445,7 @@ export function PrTableApp() {
     );
 
     // Group by lifecycle status and sort - now the *actual* shared
-    // pr-section-grouping.helpers.js helper (see REACT_MIGRATION_PLAN.md,
+    // pr-section-grouping.helpers.ts helper (see REACT_MIGRATION_PLAN.md,
     // deferred item 2) instead of a hand-duplicated inline copy of its
     // logic, so this also benefits from that helper's reference-equality
     // cache (skips re-filtering/re-sorting when `entriesForRepo` is

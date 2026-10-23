@@ -1,17 +1,34 @@
+// The "Auto update paused" indicator's status text and its links'
+// accessible name (AutoRenderBlockedLinks).
+export interface PrAutoRenderIndicatorDeps {
+  getAuthorInsightsDisplayName?: (authorLogin: string) => string;
+}
+
+export interface BlockedStatusCounts {
+  dirtyFieldCount?: number;
+  unsavedNotesCount?: number;
+  blockingAuthorInsightsCount?: number;
+}
+
+export interface BlockedLinksLabelInput {
+  blockingPrLabel?: string;
+  blockingAuthorInsightsLogins?: string[];
+}
+
 const createPrAutoRenderIndicatorHelpers = ({
   getAuthorInsightsDisplayName,
-} = {}) => {
+}: PrAutoRenderIndicatorDeps = {}) => {
   const getAuthorInsightsDisplayNameSafe =
     typeof getAuthorInsightsDisplayName === "function"
       ? getAuthorInsightsDisplayName
-      : (authorLogin) => String(authorLogin || "").trim();
+      : (authorLogin: string) => String(authorLogin || "").trim();
 
   const buildAutoRenderBlockedStatusText = ({
     dirtyFieldCount = 0,
     unsavedNotesCount = 0,
     blockingAuthorInsightsCount = 0,
-  } = {}) => {
-    const parts = [];
+  }: BlockedStatusCounts = {}): string => {
+    const parts: string[] = [];
     if (Number(dirtyFieldCount) > 0) {
       parts.push(
         `${dirtyFieldCount} unsaved field${dirtyFieldCount === 1 ? "" : "s"}`,
@@ -35,7 +52,7 @@ const createPrAutoRenderIndicatorHelpers = ({
   const buildAutoRenderBlockedLinksAriaLabel = ({
     blockingPrLabel = "",
     blockingAuthorInsightsLogins = [],
-  } = {}) => {
+  }: BlockedLinksLabelInput = {}): string => {
     const prLabel = String(blockingPrLabel || "").trim();
     if (prLabel) {
       return prLabel;

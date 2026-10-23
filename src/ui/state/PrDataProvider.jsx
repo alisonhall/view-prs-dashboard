@@ -9,7 +9,7 @@ import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.h
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
-import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.js';
+import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.ts';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
@@ -193,7 +193,7 @@ export function PrDataProvider({
   // this state, it's pure diffing bookkeeping for pollForDataChanges.
   //
   // Seeded from initialPayload (same dataVersion/updatedAt extraction
-  // pr-stored-data-load.helpers.js's own loadStoredData uses), so a Provider
+  // pr-stored-data-load.helpers.ts's own loadStoredData uses), so a Provider
   // mounted with data already in hand (component tests) polls against it.
   // In the app the initial payload is empty and loadStoredData (below, owned
   // by this Provider since window-bridge elimination Phase 7) fills these in.

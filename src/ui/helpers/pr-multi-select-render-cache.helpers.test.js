@@ -1,6 +1,6 @@
 const {
   createMultiSelectRenderCache,
-} = require("./pr-multi-select-render-cache.helpers.js");
+} = require("./pr-multi-select-render-cache.helpers.ts");
 
 describe("pr multi-select render cache helpers", () => {
   test("given the same listId and items twice in a row, when rendering the second time, then the wrapped render function is not called again", () => {

@@ -1043,7 +1043,10 @@ No static type checking leads to:
   (2026-10-23): row-sorting, concurrency, author-cell,
   trigger-auto-run-action, formatting, manual-notes-summary,
   pending-multi-select-selections, status-display, activity-badges,
-  author-insights-identity.
+  author-insights-identity. Batch 5 (2026-10-23): viewed-files-state,
+  multi-select-render-cache, auto-render-indicator, auto-render-state,
+  approvers, markdown-render, section-grouping, scope-selection,
+  stored-data-load, command-output.
   Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
   shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
   helpers need fields.

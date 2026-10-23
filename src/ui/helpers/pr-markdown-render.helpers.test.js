@@ -2,7 +2,7 @@
 
 const {
   createPrMarkdownRenderHelpers,
-} = require("./pr-markdown-render.helpers.js");
+} = require("./pr-markdown-render.helpers.ts");
 
 // The real libraries the browser loads: the vendored marked UMD build (the
 // npm package is ESM-only) and the dompurify package (same version as the

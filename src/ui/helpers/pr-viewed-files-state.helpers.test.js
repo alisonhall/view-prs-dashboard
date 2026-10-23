@@ -1,4 +1,4 @@
-const { getViewedFilesState } = require("./pr-viewed-files-state.helpers.js");
+const { getViewedFilesState } = require("./pr-viewed-files-state.helpers.ts");
 
 describe("pr viewed files state helper", () => {
   test("given viewed less than changed, when resolving, then hasUnviewedFiles is true and isComplete is false", () => {

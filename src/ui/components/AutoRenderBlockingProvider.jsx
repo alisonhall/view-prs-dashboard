@@ -3,9 +3,9 @@ import {
   AutoRenderBlockingActionsContext,
   AutoRenderBlockingContext,
 } from '../state/AutoRenderBlockingContext';
-import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
+import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.ts';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
-import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.js';
+import { createPrAutoRenderIndicatorHelpers } from '../helpers/pr-auto-render-indicator.helpers.ts';
 import { useStatusText } from '../state/StatusTextContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
 

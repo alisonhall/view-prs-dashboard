@@ -1,7 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { usePrData } from './PrDataContext';
 import { FilterStateContext } from './FilterStateContext';
-import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.js';
+import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
 import { createPrMergedRequestMoreConfigHelpers } from '../helpers/pr-merged-request-more-config.helpers.ts';
 
 const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
@@ -26,7 +26,7 @@ const DEFAULT_SCOPE_MODE = 'all';
  * internally - that hook also pulls in useNeedsAttention()/
  * useRowFilterSelection()/useActorIdentity() and runs the full row-filtering
  * pipeline, none of which this needs (selectedScope is a pure function of
- * scopeMode alone - see pr-scope-selection.helpers.js's normalizeSelectedScope,
+ * scopeMode alone - see pr-scope-selection.helpers.ts's normalizeSelectedScope,
  * which ignores its own entryNeedsAttention/entryHasYourLastActivity DI
  * params entirely). Reusing it here would mean this button's visibility
  * silently depends on the full filtering pipeline's own perf/Context

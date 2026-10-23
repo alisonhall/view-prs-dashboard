@@ -5,7 +5,7 @@ import { useFilterOptions } from '../state/FilterOptionsContext';
 import { useRowFilterSelection } from '../state/RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from '../state/AuthorThreadResolutionSelectionContext';
 import { useChangeFilterActorSelection } from '../state/ChangeFilterActorSelectionContext';
-import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.js';
+import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.ts';
 import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.ts';
 import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import {

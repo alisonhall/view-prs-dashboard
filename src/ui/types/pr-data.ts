@@ -28,6 +28,15 @@ export interface PrApprover extends PrActor {
   approvedAt?: string;
 }
 
+// A submitted review ($defs.review). `author` is the raw `gh` shape some
+// older rows still carry.
+export interface PrReview {
+  authorLogin?: string;
+  authorName?: string;
+  author?: { name?: string };
+  state?: string;
+}
+
 // A commit on the PR branch ($defs.commit).
 export interface PrCommit {
   messageHeadline?: string;
@@ -54,6 +63,7 @@ export interface PrNotes {
 // The per-PR `metrics` object (insights script output). Only the fields
 // converted code reads are listed.
 export interface PrMetrics {
+  approvals?: PrActor[];
   commentsByActor?: PrActor[];
   reviewsByActor?: PrActor[];
   counts?: {
@@ -86,7 +96,11 @@ export interface PrData {
   author?: string;
   authorLogin?: string;
   approvers?: PrApprover[];
+  reviews?: PrReview[];
   commits?: PrCommit[];
+  // ISO timestamps, or "" while the PR is open.
+  closedAt?: string;
+  mergedAt?: string;
   metrics?: PrMetrics;
   // Older data kept notes on the row itself; current data has them on the
   // entry (PrEntry.notes).
@@ -119,4 +133,14 @@ export interface PrEntry {
 export interface LastRun {
   repo?: string;
   updatedAt?: string;
+}
+
+// The /view-prs/data response: the data file plus the server's additions.
+// Only the fields converted code reads are listed.
+export interface PrDataPayload {
+  ok?: boolean;
+  error?: string;
+  byPrNumber?: Record<string, PrEntry>;
+  lastRun?: LastRun;
+  dataMeta?: { dataVersion?: string };
 }

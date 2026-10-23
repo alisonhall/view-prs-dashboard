@@ -1,28 +1,50 @@
+import type { PrData } from "../types/pr-data.ts";
+
+// A PR's approvers: collected (deduped) from the metrics approvals, the
+// approvers list and APPROVED reviews for filtering, and formatted as
+// "Name (login) at <date>" for the insights row.
+type ActorsMap = Record<string, unknown>;
+
+export interface PrApproversDeps {
+  asArray?: (value: unknown) => unknown[];
+  getPreferredActorKey?: (login: unknown, name: unknown) => string;
+  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  formatIsoDatetime?: (value: unknown) => string;
+}
+
+export interface CollectedApprover {
+  login: string;
+  name: string;
+}
+
 const createPrApproversHelpers = ({
   asArray,
   getPreferredActorKey,
   resolveActorDisplayName,
   formatIsoDatetime,
-} = {}) => {
-  const asArraySafe = typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
+}: PrApproversDeps = {}) => {
+  // Callers pass typed lists; the injected asArray only coerces.
+  const asArraySafe = <T>(value: T[] | null | undefined): T[] =>
+    (typeof asArray === "function" ? asArray(value) : Array.isArray(value) ? value : []) as T[];
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function"
       ? getPreferredActorKey
-      : (login, name) => String(login || name || "").trim();
+      : (login: unknown, name: unknown) => String(login || name || "").trim();
   const resolveActorDisplayNameSafe =
     typeof resolveActorDisplayName === "function"
       ? resolveActorDisplayName
-      : (login, _actorsMap, fallbackName) => String(fallbackName || login || "").trim();
+      : (login: string, _actorsMap: ActorsMap, fallbackName?: string) =>
+          String(fallbackName || login || "").trim();
   const formatIsoDatetimeSafe =
     typeof formatIsoDatetime === "function"
       ? formatIsoDatetime
-      : (value) => String(value || "-");
+      : (value: unknown) => String(value || "-");
 
-  const collectApproversFromRow = (row = {}) => {
-    const ordered = [];
-    const seen = new Set();
+  const collectApproversFromRow = (row: PrData | null | undefined = {}): CollectedApprover[] => {
+    const ordered: CollectedApprover[] = [];
+    const seen = new Set<string>();
 
-    const addApprover = (login, name = "") => {
+    const addApprover = (login: unknown, name: unknown = "") => {
       const preferredKey = getPreferredActorKeySafe(login, name);
       if (!preferredKey || seen.has(preferredKey)) return;
       seen.add(preferredKey);
@@ -47,7 +69,7 @@ const createPrApproversHelpers = ({
     return ordered;
   };
 
-  const formatApproversDisplay = (row = {}, actorsMap = {}) => {
+  const formatApproversDisplay = (row: PrData | null | undefined = {}, actorsMap: ActorsMap = {}): string => {
     const approvers = asArraySafe(row?.approvers);
     if (!approvers.length) {
       return "-";

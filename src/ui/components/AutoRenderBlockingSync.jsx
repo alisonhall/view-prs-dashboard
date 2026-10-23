@@ -6,7 +6,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useAutoRenderBlockingActions } from '../state/AutoRenderBlockingContext';
 import { createPrAutoRenderUnsavedHelpers } from '../helpers/pr-auto-render-unsaved.helpers.ts';
 import { createPrAutoRenderBlockingHelpers } from '../helpers/pr-auto-render-blocking.helpers.js';
-import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
+import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.ts';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
 import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 
