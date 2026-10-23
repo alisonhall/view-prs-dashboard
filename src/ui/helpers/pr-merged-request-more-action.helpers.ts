@@ -1,3 +1,33 @@
+import type { PostJsonResult } from "./pr-http.helpers.ts";
+
+// The "Request more" merged-PRs action (MergedRequestMoreAction): asks the
+// server for 30 more merged PRs, applies the fresh data (or reloads it),
+// and reports progress through status text and the failure snackbar.
+interface RequestMoreResult {
+  ok?: boolean;
+  error?: string;
+  prData?: unknown;
+  refreshedPrs?: unknown[];
+}
+
+export interface PrMergedRequestMoreActionDeps {
+  getIsRequestMoreMergedPending?: () => boolean;
+  setIsRequestMoreMergedPending?: (pending: boolean) => void;
+  getLatestSelectedRepo?: () => string;
+  defaultRepo?: string;
+  beginRequestActivity?: (kind: string) => () => void;
+  postJson?: (url: string, payload: unknown) => Promise<PostJsonResult<RequestMoreResult>>;
+  applyFreshPrPayload?: (prData: unknown, repo: string) => void;
+  loadStoredData?: (repo: string, options: { useLastRunScope: boolean }) => Promise<unknown>;
+  setStatusMessage?: (message: string) => void;
+  notifyFailureSnackbar?: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+}
+
+export interface RequestMoreCallbacks {
+  onPendingChange?: (pending: boolean) => void;
+  onStatusChange?: (status: string) => void;
+}
+
 const createPrMergedRequestMoreActionHelpers = ({
   getIsRequestMoreMergedPending,
   setIsRequestMoreMergedPending,
@@ -9,7 +39,7 @@ const createPrMergedRequestMoreActionHelpers = ({
   loadStoredData,
   setStatusMessage,
   notifyFailureSnackbar,
-} = {}) => {
+}: PrMergedRequestMoreActionDeps = {}) => {
   const getIsRequestMoreMergedPendingSafe =
     typeof getIsRequestMoreMergedPending === "function"
       ? getIsRequestMoreMergedPending
@@ -27,11 +57,13 @@ const createPrMergedRequestMoreActionHelpers = ({
     typeof beginRequestActivity === "function"
       ? beginRequestActivity
       : () => () => {};
+  // Without postJson, behave like a failed request (a plain object stands
+  // in for the Response, as before conversion).
   const postJsonSafe =
     typeof postJson === "function"
       ? postJson
-      : async () => ({
-          response: { ok: false },
+      : async (): Promise<PostJsonResult<RequestMoreResult>> => ({
+          response: { ok: false } as Response,
           result: { ok: false, error: "postJson is not available" },
         });
   const applyFreshPrPayloadSafe =
@@ -45,16 +77,13 @@ const createPrMergedRequestMoreActionHelpers = ({
       ? notifyFailureSnackbar
       : () => {};
 
-  // onPendingChange/onStatusChange are call-time options, not constructor
-  // deps - unlike the DOM element lookups they replace (which used to
-  // read whatever #merged-request-more-btn/-status happened to exist at
-  // click time), the caller is now a specific React component instance
-  // (components/MergedRequestMoreAction.jsx) passing its own state
-  // setters, so they have to be supplied per call, not once at module init.
+  // onPendingChange/onStatusChange are per-call options: the caller is a
+  // specific MergedRequestMoreAction instance passing its own state
+  // setters.
   const handleRequestMoreMerged = async (
-    repoOverride = "",
-    { onPendingChange, onStatusChange } = {},
-  ) => {
+    repoOverride: string = "",
+    { onPendingChange, onStatusChange }: RequestMoreCallbacks = {},
+  ): Promise<void> => {
     if (getIsRequestMoreMergedPendingSafe()) {
       return;
     }
@@ -105,7 +134,7 @@ const createPrMergedRequestMoreActionHelpers = ({
       onStatusChangeSafe(refreshedText);
       setStatusMessageSafe(refreshedText);
     } catch (error) {
-      const message = String(error?.message || error || "Request failed");
+      const message = String((error as { message?: unknown })?.message || error || "Request failed");
       onStatusChangeSafe(message);
       setStatusMessageSafe("Failed to request more merged PRs");
       notifyFailureSnackbarSafe(

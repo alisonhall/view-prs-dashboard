@@ -1,9 +1,16 @@
-// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): moved
-// out of index.page.js verbatim - these 4 pieces have no DOM dependency
-// (pure data + 2 fetch calls), so they're trivially portable to wherever
-// persist/restore logic ends up living (FilterStateProvider.jsx).
-const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn } = {}) => {
-  const getUiOptionDefaults = () => ({
+// FilterStateProvider's persistence: the default value of every saved
+// option (keyed by the form-field ids /view-prs/user-defaults stores
+// overrides under), the field-id -> Context-key map, and reading/writing
+// the saved overrides.
+export type UiOptionValue = string | boolean | string[];
+export type UiOptionOverrides = Record<string, unknown>;
+
+export interface PrUiOptionPersistenceDeps {
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+}
+
+const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersistenceDeps = {}) => {
+  const getUiOptionDefaults = (): Record<string, UiOptionValue> => ({
     repo: "",
     limit: "",
     "merged-limit": "",
@@ -39,13 +46,11 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn } = {}) => {
     "filter-analysis-of-pr": "",
   });
 
-  // Single source of truth mapping a DOM field id (the shape
+  // Single source of truth mapping a form-field id (the shape
   // /view-prs/user-defaults stores overrides under) to its
-  // FilterStateProvider Context key - same map index.page.js's
-  // FILTER_STATE_FIELD_MAP used to be, moved here since both the
-  // restore effect and the persist callbacks (FilterStateProvider.jsx)
-  // need it.
-  const FILTER_STATE_FIELD_MAP = {
+  // FilterStateProvider Context key - both the restore effect and the
+  // persist callbacks (FilterStateProvider.jsx) need it.
+  const FILTER_STATE_FIELD_MAP: Record<string, string> = {
     "scope-mode": "scopeMode",
     "always-show-in-review": "alwaysShowInReview",
     "attention-no-activity-mode": "attentionNoActivityMode",
@@ -75,19 +80,26 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn } = {}) => {
     "filter-analysis-of-pr": "filterAnalysisOfPr",
   };
 
-  const readUiSessionOverrides = async () => {
+  const readUiSessionOverrides = async (): Promise<UiOptionOverrides> => {
     try {
-      const response = await fetchFn("/view-prs/user-defaults");
+      const response = await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults");
       if (!response.ok) return {};
-      const result = await response.json();
+      const result: { overrides?: unknown } = await response.json();
       const parsed = result?.overrides;
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as UiOptionOverrides)
+        : {};
     } catch (_error) {
       return {};
     }
   };
 
-  const writeUiSessionOverrides = async (overrides, { preserveEmptyArrayKeys = [] } = {}) => {
+  // Empty arrays are dropped (so a cleared list falls back to its default)
+  // unless their key is in preserveEmptyArrayKeys.
+  const writeUiSessionOverrides = async (
+    overrides: UiOptionOverrides | null | undefined,
+    { preserveEmptyArrayKeys = [] }: { preserveEmptyArrayKeys?: string[] } = {},
+  ): Promise<void> => {
     const preserveSet = new Set(
       Array.isArray(preserveEmptyArrayKeys) ? preserveEmptyArrayKeys : [],
     );
@@ -101,7 +113,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn } = {}) => {
     const data = Object.fromEntries(entries);
 
     try {
-      await fetchFn("/view-prs/user-defaults", {
+      await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { PrInsightsDisplayContext } from '../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
-import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
+import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
 import { createPrInsightBadgeClassHelpers } from '../helpers/pr-insight-badge-class.helpers.ts';
 import { createPrInsightMetricsSummaryHelpers } from '../helpers/pr-insight-metrics-summary.helpers.ts';
@@ -10,7 +10,7 @@ import { createPrUiRenderUtilsHelpers } from '../helpers/pr-ui-render-utils.help
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
 import { createPrNotesHelpers } from '../helpers/pr-notes.helpers.ts';
 import { createPrMarkdownRenderHelpers } from '../helpers/pr-markdown-render.helpers.ts';
-import { createPrActivityEventsHelpers } from '../helpers/pr-activity-events.helpers.js';
+import { createPrActivityEventsHelpers } from '../helpers/pr-activity-events.helpers.ts';
 import { createPrApprovalDurationHelpers } from '../helpers/pr-approval-duration.helpers.ts';
 import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.ts';
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';

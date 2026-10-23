@@ -5,12 +5,49 @@
 // converted code reads. Every field is optional because the helpers stay
 // defensive about older or partial data and test fixtures.
 
-export interface ReviewThreadComment {
+// A top-level PR comment ($defs.topLevelComment).
+export interface PrComment {
+  id?: string;
+  authorLogin?: string;
+  authorName?: string;
+  createdAt?: string;
+  body?: string;
+  url?: string;
+}
+
+// A comment in a review thread ($defs.reviewThreadComment).
+export interface ReviewThreadComment extends PrComment {
   state?: string;
 }
 
 export interface ReviewThread {
+  id?: string;
+  isResolved?: boolean;
   comments?: ReviewThreadComment[];
+  participants?: string[];
+}
+
+// One entry of a PR's activity lists ($defs.activityEvent; commentEvents
+// use the comment subset of the same fields).
+export interface PrActivityEvent {
+  sourceId?: string;
+  threadId?: string;
+  occurredAt?: string;
+  actor?: string;
+  type?: string;
+  channel?: string;
+  body?: string;
+  url?: string;
+  conversationResolved?: boolean;
+  state?: string;
+  commitOid?: string;
+  messageHeadline?: string;
+  messageBody?: string;
+}
+
+// A day/actor/type bucket of activityTimeline ($defs.activityTimelineBucket).
+export interface PrActivityTimelineBucket {
+  events?: PrActivityEvent[];
 }
 
 // The data file stores label names as strings; `{ name }` objects (raw
@@ -31,15 +68,23 @@ export interface PrApprover extends PrActor {
 // A submitted review ($defs.review). `author` is the raw `gh` shape some
 // older rows still carry.
 export interface PrReview {
+  id?: string;
   authorLogin?: string;
   authorName?: string;
   author?: { name?: string };
   state?: string;
+  submittedAt?: string;
+  body?: string;
+  url?: string;
+  commitOid?: string;
 }
 
 // A commit on the PR branch ($defs.commit).
 export interface PrCommit {
+  oid?: string;
+  committedAt?: string;
   messageHeadline?: string;
+  messageBody?: string;
   authors?: PrActor[];
 }
 
@@ -96,6 +141,8 @@ export interface PrData {
   author?: string;
   authorLogin?: string;
   approvers?: PrApprover[];
+  assignees?: PrActor[];
+  comments?: PrComment[];
   reviews?: PrReview[];
   commits?: PrCommit[];
   // ISO timestamps, or "" while the PR is open.
@@ -108,6 +155,11 @@ export interface PrData {
   labels?: PrLabel[];
   viewerLogin?: string;
   reviewThreads?: ReviewThread[];
+  commentEvents?: PrActivityEvent[];
+  activityEvents?: PrActivityEvent[];
+  activityTimeline?: PrActivityTimelineBucket[];
+  // Digits-only string in the data file.
+  openConversationCount?: string | number;
   viewedFilesSummary?: string;
   // Digits-only strings in the data file ($defs.numericString); numbers are
   // accepted too, since every reader coerces.

@@ -3,7 +3,7 @@ import { NeedsAttentionContext } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { FilterStateContext } from '../state/FilterStateContext';
 import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.js';
-import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
+import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
@@ -13,7 +13,7 @@ const { isChangedStatus } = createPrStatusDisplayHelpers();
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
 // Same defaults FilterStateProvider's own getUiOptionDefaults()
-// (pr-ui-option-persistence.helpers.js) assigns these 6 fields - used only
+// (pr-ui-option-persistence.helpers.ts) assigns these 6 fields - used only
 // as a fallback for when there's no <FilterStateProvider> ancestor at all
 // (integration-tests/index.html.test.js's isolated PrTableApp mounts),
 // same shape useVisiblePrNumbers.jsx's own DEFAULT_FILTER_STATE_VALUES

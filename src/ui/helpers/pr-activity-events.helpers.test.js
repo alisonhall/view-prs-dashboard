@@ -1,6 +1,6 @@
 const {
   createPrActivityEventsHelpers,
-} = require("./pr-activity-events.helpers.js");
+} = require("./pr-activity-events.helpers.ts");
 
 describe("pr activity events helpers", () => {
   describe("buildActivityEventKey", () => {

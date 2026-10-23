@@ -1,4 +1,4 @@
-const { createPrUiOptionPersistenceHelpers } = require("./pr-ui-option-persistence.helpers.js");
+const { createPrUiOptionPersistenceHelpers } = require("./pr-ui-option-persistence.helpers.ts");
 
 describe("pr-ui-option-persistence helpers", () => {
   test("getUiOptionDefaults returns the full default shape", () => {

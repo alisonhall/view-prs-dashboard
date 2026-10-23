@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import { FilterOptionsContext } from '../state/FilterOptionsContext';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
-import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
+import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';

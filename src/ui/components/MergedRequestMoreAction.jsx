@@ -14,7 +14,7 @@
  * ever reads the old module-level isRequestMoreMergedPending variable, so
  * unlike some other converted sections there was no cross-cutting "vanilla
  * remains source of truth" concern here). The actual request logic
- * (wrapping helpers/pr-merged-request-more-action.helpers.js) still lives
+ * (wrapping helpers/pr-merged-request-more-action.helpers.ts) still lives
  * in that existing, already-tested pure helper, not reimplemented here -
  * but as of the ninth follow-up (see REACT_MIGRATION_PLAN.md,
  * "Remaining-effort audit") it's reached via the `onRequestMore` prop

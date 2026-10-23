@@ -1,4 +1,4 @@
-const { createPrVisiblePrNumbersHelpers } = require("./pr-visible-pr-numbers.helpers.js");
+const { createPrVisiblePrNumbersHelpers } = require("./pr-visible-pr-numbers.helpers.ts");
 const { createPrScopeSelectionHelpers } = require("./pr-scope-selection.helpers.ts");
 const { createPrRowFilteringHelpers } = require("./pr-row-filtering.helpers.ts");
 const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.js");

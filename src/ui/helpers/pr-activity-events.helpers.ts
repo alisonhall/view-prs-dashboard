@@ -1,15 +1,27 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction of index.page.js's
-// former buildActivityEventKey/normalizePrRootUrl/buildFallbackActivityEvents
-// bodies into a DI-factory module, so ActivityEventsSection.jsx can import
-// it directly instead of reading window.buildFallbackActivityEvents/
-// window.buildActivityEventKey/window.normalizePrRootUrl. All three exist
-// purely to feed that one component's event list, so they're grouped in
-// one file. Byte-for-byte-logic-preserving move.
-const createPrActivityEventsHelpers = ({ asArray } = {}) => {
-  const asArraySafe =
-    typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
+import type { PrActivityEvent, PrData } from "../types/pr-data.ts";
 
-  const buildActivityEventKey = (event = {}) =>
+// Event-list helpers for ActivityEventsSection: a dedupe key per event, a
+// PR URL without hash/query, and a fallback event list built from a PR's
+// comments, threads, reviews, commits and merge/close time when it has no
+// activity events of its own.
+export interface PrActivityEventsDeps {
+  asArray?: (value: unknown) => unknown[];
+}
+
+export interface FallbackActivityEvent extends PrActivityEvent {
+  sourceId: string;
+  occurredAt: string;
+  actor: string;
+  type: string;
+  channel: string;
+}
+
+const createPrActivityEventsHelpers = ({ asArray }: PrActivityEventsDeps = {}) => {
+  // Callers pass typed lists; the injected asArray only coerces.
+  const asArraySafe = <T>(value: T[] | null | undefined): T[] =>
+    (typeof asArray === "function" ? asArray(value) : Array.isArray(value) ? value : []) as T[];
+
+  const buildActivityEventKey = (event: PrActivityEvent | null | undefined = {}): string =>
     [
       String(event?.sourceId || ""),
       String(event?.occurredAt || ""),
@@ -18,7 +30,7 @@ const createPrActivityEventsHelpers = ({ asArray } = {}) => {
       String(event?.channel || ""),
     ].join("|");
 
-  const normalizePrRootUrl = (url) => {
+  const normalizePrRootUrl = (url: unknown): string => {
     const raw = String(url || "").trim();
     if (!raw) return "";
 
@@ -28,12 +40,12 @@ const createPrActivityEventsHelpers = ({ asArray } = {}) => {
       parsed.search = "";
       return parsed.toString().replace(/\/$/, "");
     } catch (_error) {
-      return raw.split("#")[0].split("?")[0].replace(/\/$/, "");
+      return (raw.split("#")[0] ?? "").split("?")[0]?.replace(/\/$/, "") ?? "";
     }
   };
 
-  const buildFallbackActivityEvents = (row = {}) => {
-    const fallback = [];
+  const buildFallbackActivityEvents = (row: PrData = {}): FallbackActivityEvent[] => {
+    const fallback: FallbackActivityEvent[] = [];
     const explicitCommentEvents = asArraySafe(row.commentEvents);
 
     explicitCommentEvents.forEach((event) => {

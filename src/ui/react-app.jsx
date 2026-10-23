@@ -146,7 +146,7 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * `<span id="…-root">` container.
  *
  * Initial Context values are the same hardcoded defaults
- * `getUiOptionDefaults()` (helpers/pr-ui-option-persistence.helpers.js)
+ * `getUiOptionDefaults()` (helpers/pr-ui-option-persistence.helpers.ts)
  * uses - there's no vanilla fallback markup left to read a "currently
  * showing" value from, since React is the only thing that ever renders
  * into these containers now. FilterStateProvider's own mount effect (a
@@ -216,7 +216,7 @@ const FILTER_STATE_TEXT_FIELDS = [
 // that FilterStateProvider itself moves from inside AppRoot's own returned
 // JSX to wrapping <AppRoot/> at mountAppRoot()'s own render() call (closing
 // window.getFormBody - see useFormBody.jsx). Pure defaults, same values as
-// getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.js) - no
+// getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.ts) - no
 // vanilla fallback markup is left to read a "currently showing" value from.
 function buildFilterStateInitialValues() {
   const initialValues = {

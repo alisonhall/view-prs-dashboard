@@ -1050,7 +1050,9 @@ No static type checking leads to:
   entry-derived-cache, last-checked-indicator, requested-reviewers,
   row-filtering, applied-summary. Batch 7 (2026-10-23):
   selected-pr-numbers, table-filter-chips, backfill, bulk-action-batches,
-  section-config, auto-render-blocking.
+  section-config, auto-render-blocking. Batch 8 (2026-10-23):
+  visible-pr-numbers, assigned-users, ui-option-persistence,
+  merged-request-more-action, activity-events.
   Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
   shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
   helpers need fields.

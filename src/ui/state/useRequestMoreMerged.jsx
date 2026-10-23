@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
-import { createPrMergedRequestMoreActionHelpers } from '../helpers/pr-merged-request-more-action.helpers.js';
+import { createPrMergedRequestMoreActionHelpers } from '../helpers/pr-merged-request-more-action.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useStatusText } from './StatusTextContext';
 import { useRequestActivity } from './RequestActivityContext';

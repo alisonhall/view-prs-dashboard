@@ -1,6 +1,6 @@
 const {
   createPrMergedRequestMoreActionHelpers,
-} = require("./pr-merged-request-more-action.helpers.js");
+} = require("./pr-merged-request-more-action.helpers.ts");
 
 describe("pr merged request more action helpers", () => {
   test("given a pending merged request more action, when handling request more, then no request is sent", async () => {
