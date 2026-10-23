@@ -973,6 +973,9 @@ const installReactTestGlobals = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
+  // index.html loads DOMPurify from a vendored <script>; without it the
+  // review-comment markdown renderer fails closed to escaped text.
+  window.DOMPurify = require("dompurify");
 };
 
 const initTestPage = ({
