@@ -2289,9 +2289,16 @@
             white-space: nowrap;
         }
 
+        /* Review comment HTML (pr-markdown-render.helpers.js). Sanitizing
+           already strips style/class/id attributes; containment is a second
+           layer, like .pr-insights-hook-content's, so nothing in a comment
+           can be positioned outside this box. overflow-x keeps wide code
+           blocks scrollable rather than clipped. */
         .insight-thread-body {
             margin-top: 4px;
             white-space: pre-wrap;
+            contain: layout paint;
+            overflow-x: auto;
         }
 
         .row-pending-comments-chip {

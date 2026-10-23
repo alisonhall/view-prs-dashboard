@@ -13,7 +13,15 @@ const EXPIRED_GITHUB_IMAGE_PLACEHOLDER = `<span class="md-image-expired" title="
 // Same forbidden tags as InsightsHookSection.jsx's hook-output sanitizing:
 // not script vectors (DOMPurify blocks those by default), but they can
 // restyle or redirect the whole page, and a <form> is a phishing vector.
-const MARKDOWN_SANITIZE_CONFIG = { FORBID_TAGS: ["style", "link", "base", "meta", "form"] };
+// `style`, `class` and `id` attributes go too (GitHub strips or prefixes
+// them in comments as well). DOMPurify keeps them, so a comment could
+// otherwise lay a fake full-page box over the dashboard (an inline
+// `position: fixed`, or one of the app's own fixed classes such as
+// pr-json-modal), or add a second element with an id the app looks up.
+const MARKDOWN_SANITIZE_CONFIG = {
+  FORBID_TAGS: ["style", "link", "base", "meta", "form"],
+  FORBID_ATTR: ["style", "class", "id"],
+};
 
 const escapeHtml = (text) =>
   text
@@ -48,7 +56,9 @@ const createPrMarkdownRenderHelpers = () => {
       console.warn("Failed to render markdown", error);
       return escapeHtml(text);
     }
-    return sanitizer.sanitize(replaceExpiredGithubImages(html), MARKDOWN_SANITIZE_CONFIG);
+    // Placeholders go in after sanitizing: they're a fixed trusted string,
+    // and their class would otherwise be stripped.
+    return replaceExpiredGithubImages(sanitizer.sanitize(html, MARKDOWN_SANITIZE_CONFIG));
   };
 
   return {

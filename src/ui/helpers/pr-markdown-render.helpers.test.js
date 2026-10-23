@@ -103,15 +103,42 @@ describe("pr markdown render helpers", () => {
     expect(html).not.toMatch(/<style|<form/i);
   });
 
-  test("given an expired GitHub image URL in the parsed html, when rendering, then the img tag is replaced with a placeholder", () => {
+  test("given an inline style that could overlay the page, when rendering, then the style attribute is removed but the text kept", () => {
+    window.marked = realMarked;
+    const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
+
+    const html = renderMarkdownAsHtml(
+      '<div style="position:fixed;inset:0;background:#fff;z-index:9999">Session expired, sign in</div>',
+    );
+
+    expect(html).toContain("Session expired, sign in");
+    expect(html).not.toMatch(/style=|position:\s*fixed/i);
+  });
+
+  test("given class or id attributes, when rendering, then they are removed so a comment can't borrow the app's fixed-position classes or duplicate its ids", () => {
+    window.marked = realMarked;
+    const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
+
+    const html = renderMarkdownAsHtml(
+      '<div class="pr-json-modal" id="status">Viewer : someone-else</div>\n\n```js\nconst a = 1;\n```',
+    );
+
+    expect(html).toContain("Viewer : someone-else");
+    expect(html).toContain("const a = 1;");
+    expect(html).not.toMatch(/class=|id=/i);
+  });
+
+  test("given an expired GitHub image URL in the parsed html, when rendering, then the img tag is replaced with a placeholder that keeps its class", () => {
     window.marked = {
       parse: () =>
         `<img src="https://private-user-images.githubusercontent.com/1/2.png" alt="x">`,
     };
     const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
 
-    expect(renderMarkdownAsHtml("![x](y)")).toContain("Image unavailable");
-    expect(renderMarkdownAsHtml("![x](y)")).not.toContain("<img");
+    const html = renderMarkdownAsHtml("![x](y)");
+    expect(html).toContain("Image unavailable");
+    expect(html).toContain('class="md-image-expired"');
+    expect(html).not.toContain("<img");
   });
 
   test("given window.marked.parse throws, when rendering, then the trimmed text is returned escaped and a warning is logged", () => {
