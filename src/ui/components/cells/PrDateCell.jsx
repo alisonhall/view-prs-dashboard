@@ -5,8 +5,8 @@
  * @module components/cells/PrDateCell
  */
 
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { getManualNotesFieldSummary } from '../../helpers/pr-manual-notes-summary.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { getManualNotesFieldSummary } from '../../helpers/pr-manual-notes-summary.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

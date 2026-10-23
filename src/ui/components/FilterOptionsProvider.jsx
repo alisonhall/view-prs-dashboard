@@ -4,7 +4,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.js';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
 

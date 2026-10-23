@@ -12,7 +12,7 @@ import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpe
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.js';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 import { useSetOutputText } from './OutputTextContext';

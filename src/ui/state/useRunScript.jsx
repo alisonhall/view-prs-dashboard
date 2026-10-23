@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';

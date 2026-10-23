@@ -1,6 +1,6 @@
 const {
   createPrAuthorCellHelpers,
-} = require("./pr-author-cell.helpers.js");
+} = require("./pr-author-cell.helpers.ts");
 
 describe("pr author cell helpers", () => {
   describe("collectPrAuthors", () => {

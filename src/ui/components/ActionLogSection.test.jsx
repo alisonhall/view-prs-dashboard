@@ -4,7 +4,7 @@ const React = require('react');
 const { render, screen, waitFor, act, fireEvent } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
 const { TabStateContext } = require('../state/TabStateContext');
-const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.js');
+const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.ts');
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

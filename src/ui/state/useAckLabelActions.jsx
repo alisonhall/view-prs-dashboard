@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
-import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';
+import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.ts';
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
 import { summarizeAckRefreshWarnings } from '../helpers/pr-ack-refresh-warnings.helpers.ts';
 import { usePrActivityQueue } from './PrActivityQueueContext';

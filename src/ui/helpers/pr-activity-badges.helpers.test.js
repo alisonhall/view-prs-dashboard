@@ -1,4 +1,4 @@
-const { createPrActivityBadgesHelpers } = require("../helpers/pr-activity-badges.helpers.js");
+const { createPrActivityBadgesHelpers } = require("../helpers/pr-activity-badges.helpers.ts");
 
 describe("pr activity badges helpers", () => {
   const withElapsedSuffix = (label, elapsedMs) =>

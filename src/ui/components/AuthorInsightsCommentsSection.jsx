@@ -45,7 +45,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
 import { useAuthorInsightsDrafts } from '../state/AuthorInsightsDraftsContext';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

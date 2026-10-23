@@ -23,7 +23,7 @@ import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useReviewConversationsUiState } from '../../state/ReviewConversationsUiStateContext';
 import { FilterStateContext } from '../../state/FilterStateContext';
 import { AuthorThreadResolutionSelectionContext } from '../../state/AuthorThreadResolutionSelectionContext';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.ts';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.ts';

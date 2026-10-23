@@ -8,8 +8,8 @@
 
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
-import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 
 const { approvedClass } = createPrStatusDisplayHelpers();
 const { toCount } = createPrFormattingHelpers();

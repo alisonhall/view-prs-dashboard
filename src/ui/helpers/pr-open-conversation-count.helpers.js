@@ -1,5 +1,5 @@
 import { createPrReviewStatsAggregationHelpers } from "./pr-review-stats-aggregation.helpers.js";
-import { createPrFormattingHelpers } from "./pr-formatting.helpers.js";
+import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction of index.page.js's
 // former getOpenConversationCount/getOpenConversationCountWithMe bodies

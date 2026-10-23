@@ -1,4 +1,4 @@
-const { createPrStatusDisplayHelpers } = require("./pr-status-display.helpers.js");
+const { createPrStatusDisplayHelpers } = require("./pr-status-display.helpers.ts");
 
 describe("pr status display helpers", () => {
   const {

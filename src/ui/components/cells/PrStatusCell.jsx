@@ -5,7 +5,7 @@
  * @module components/cells/PrStatusCell
  */
 
-import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
 import { buildPrLastCheckedIndicator } from '../../helpers/pr-last-checked-indicator.helpers.js';
 import { getViewedFilesState } from '../../helpers/pr-viewed-files-state.helpers.js';
 

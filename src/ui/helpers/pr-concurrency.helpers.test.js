@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { createPrConcurrencyHelpers } = require("./pr-concurrency.helpers.js");
+const { createPrConcurrencyHelpers } = require("./pr-concurrency.helpers.ts");
 
 describe("pr concurrency helpers", () => {
   const { runWithConcurrencyLimit } = createPrConcurrencyHelpers();

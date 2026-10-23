@@ -5,7 +5,7 @@
  * @module components/cells/PrCheckCell
  */
 
-import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
 
 const { formatChkDisplay } = createPrStatusDisplayHelpers();
 

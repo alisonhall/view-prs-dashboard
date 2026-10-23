@@ -2,7 +2,7 @@
 
 const {
   createPrAuthorInsightsIdentityHelpers,
-} = require("./pr-author-insights-identity.helpers.js");
+} = require("./pr-author-insights-identity.helpers.ts");
 
 describe("author insights identity helpers", () => {
   const createHelpers = () =>

@@ -3,7 +3,7 @@
 const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ApprovalRiskSection } = require('./ApprovalRiskSection');
-const { createPrFormattingHelpers } = require('../../helpers/pr-formatting.helpers.js');
+const { createPrFormattingHelpers } = require('../../helpers/pr-formatting.helpers.ts');
 const { PrInsightsDisplayContext, defaultPrInsightsDisplay } = require('../../state/PrInsightsDisplayContext');
 
 const { formatIsoDatetime } = createPrFormattingHelpers();

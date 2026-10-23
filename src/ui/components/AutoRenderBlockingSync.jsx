@@ -8,7 +8,7 @@ import { createPrAutoRenderUnsavedHelpers } from '../helpers/pr-auto-render-unsa
 import { createPrAutoRenderBlockingHelpers } from '../helpers/pr-auto-render-blocking.helpers.js';
 import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
-import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.js';
+import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 
 // Zero-dependency, built once - same precedent as AutoRenderBlockingProvider.jsx.
 const { isAuthorInsightsComposerDraftDirty, isAuthorInsightsEditDraftDirty } =

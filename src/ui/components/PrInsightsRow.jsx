@@ -18,7 +18,7 @@ import { ActivityTimelineSummary } from './insights/ActivityTimelineSummary';
 import { CopyIconButton } from './CopyIconButton';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 

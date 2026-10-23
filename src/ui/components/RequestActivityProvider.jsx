@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
+import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.ts';
 import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
 import { RequestActivityContext, RequestActivityDisplayContext } from '../state/RequestActivityContext';
 

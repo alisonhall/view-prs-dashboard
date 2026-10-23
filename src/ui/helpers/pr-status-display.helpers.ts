@@ -1,25 +1,27 @@
+// Status/approval CSS classes, CHK icons, and the title text with its
+// "[CHK:...]"/"[MRG:...]" markers removed, for the PR table cells.
 const createPrStatusDisplayHelpers = () => {
-  const isChangedStatus = (status = "") =>
+  const isChangedStatus = (status: unknown = ""): boolean =>
     String(status || "")
       .trim()
       .toUpperCase()
       .startsWith("CHANGED");
 
-  const statusClass = (status = "") => {
+  const statusClass = (status: unknown = ""): string => {
     if (isChangedStatus(status)) return "status-changed";
     if (status === "NO_CHANGE") return "status-no-change";
     if (status === "NO_ACTIVITY") return "status-no-activity";
     return "";
   };
 
-  const approvedClass = (approved = "") =>
+  const approvedClass = (approved: unknown = ""): string =>
     approved === "YES"
       ? "approved-yes"
       : approved === "NO"
         ? "approved-no"
         : "";
 
-  const statusIcon = (group, stateRaw) => {
+  const statusIcon = (group: string, stateRaw: unknown): string => {
     const state = String(stateRaw || "").toUpperCase();
 
     if (group === "CHK") {
@@ -34,14 +36,14 @@ const createPrStatusDisplayHelpers = () => {
     return "❔";
   };
 
-  const formatTitleWithIcons = (titleDisplay, fallbackTitle) => {
+  const formatTitleWithIcons = (titleDisplay?: string | null, fallbackTitle?: string | null): string => {
     const source = titleDisplay || fallbackTitle || "-";
     return source
       .replace(/\s*\[CHK:[^\]]+\]/g, "")
       .replace(/\s*\[MRG:[^\]]+\]/g, "");
   };
 
-  const formatChkDisplay = (titleDisplay = "") => {
+  const formatChkDisplay = (titleDisplay: unknown = ""): string => {
     const match = String(titleDisplay || "").match(/\[CHK:([^\]]+)\]/);
     if (!match || !match[1]) return "-";
     const state = String(match[1]).trim().toUpperCase();

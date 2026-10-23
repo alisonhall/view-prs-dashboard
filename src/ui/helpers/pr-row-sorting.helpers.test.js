@@ -2,7 +2,7 @@ const {
   normalizeRows,
   sortRowsByPrNumberDesc,
   sortRowsByDateFieldDesc,
-} = require("./pr-row-sorting.helpers.js");
+} = require("./pr-row-sorting.helpers.ts");
 
 describe("pr row sorting helpers", () => {
   describe("normalizeRows", () => {

@@ -2,7 +2,7 @@
 // queue section (see REACT_MIGRATION_PLAN.md) - the one place a REAL
 // ordered queue already exists (pr-ack-label-actions.helpers.js's own
 // `chunks` array, run with CONCURRENCY_LIMIT in flight at a time via
-// pr-concurrency.helpers.js). This module doesn't invent any new chunking -
+// pr-concurrency.helpers.ts). This module doesn't invent any new chunking -
 // it just mirrors the chunks the caller already computed into a
 // drawer-displayable manifest, keyed by batchId so more than one bulk
 // action's progress can be tracked at once.

@@ -45,7 +45,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useReviewStats } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

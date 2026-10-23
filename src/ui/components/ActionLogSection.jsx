@@ -34,7 +34,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();

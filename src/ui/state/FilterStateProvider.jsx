@@ -6,7 +6,7 @@ import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSelectionContext';
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.js';
-import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.js';
+import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
 import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.js';
 
 // Built once, not per-render - zero per-instance dependency other than the

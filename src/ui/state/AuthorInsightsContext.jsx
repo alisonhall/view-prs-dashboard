@@ -1,11 +1,11 @@
 import { createContext, useContext } from 'react';
-import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.js';
+import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 import { createPrAuthorInsightsDisplayHelpers } from '../helpers/pr-author-insights-display.helpers.js';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.js';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
-import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.ts';
 import { defaultActorIdentity } from './ActorIdentityContext';
 

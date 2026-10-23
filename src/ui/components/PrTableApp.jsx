@@ -21,7 +21,7 @@ import { useAckLabelActions } from '../state/useAckLabelActions';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
-import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.js';
+import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.js';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.js';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.js';
@@ -378,7 +378,7 @@ export function PrTableApp() {
   const sectionGroupingHelpersRef = useRef(null);
   if (!sectionGroupingHelpersRef.current) {
     // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
-    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.js -
+    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.ts -
     // genuinely zero-dependency, so this is a direct import now instead
     // of a window.* bridge read.
     sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({

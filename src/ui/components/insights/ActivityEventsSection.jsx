@@ -9,7 +9,7 @@
 import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();

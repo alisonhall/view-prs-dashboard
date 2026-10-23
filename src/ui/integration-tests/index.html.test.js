@@ -997,7 +997,7 @@ const initTestPage = ({
   jest.resetModules();
   // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
   // lists' "pending selections" now live on a dedicated window-level store
-  // (pr-pending-multi-select-selections.helpers.js), not a module-scope
+  // (pr-pending-multi-select-selections.helpers.ts), not a module-scope
   // variable inside index.page.js (deleted since) - jest.resetModules()
   // above doesn't reset them, since window itself is shared across every
   // test in this file. Reset explicitly, same reasoning as the interval/listener
@@ -9346,7 +9346,7 @@ describe("index page rendering with Testing Library", () => {
       // these 2 lists are now also Context-controlled
       // (ChangeFilterActorSelectionContext) - the pending-selection restore
       // path's own clear-after-consuming step (setPendingMultiSelectSelection
-      // (key, null), pr-pending-multi-select-selections.helpers.js) notifies
+      // (key, null), pr-pending-multi-select-selections.helpers.ts) notifies
       // this component's subscription again, re-running the seeding effect
       // one more time before the checked-state Context write from the
       // previous pass has committed to the DOM - same transient settling

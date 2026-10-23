@@ -1,12 +1,10 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): extracted out of index.page.js
-// (where they were plain inline functions, not in a helper module) so
-// PrTableApp.jsx can import them directly instead of reading them off
-// window - genuinely pure, no state/DOM dependency (matching
-// pr-sortable-time.helpers.ts's own precedent: bare exports, no
-// createXHelpers() factory wrapper, since there's nothing to inject).
+import type { PrData, PrEntry } from "../types/pr-data.ts";
 import { parseSortableTime } from "./pr-sortable-time.helpers.ts";
 
-export const normalizeRows = (rows) =>
+// In-place sorts for PrTableApp's section rows (they return the same
+// array). Ties fall back to the higher PR number first.
+
+export const normalizeRows = <E extends PrEntry>(rows: E[]): E[] =>
   rows.sort((a, b) => {
     const orderA = Number.isFinite(Number(a?.rowOrder))
       ? Number(a.rowOrder)
@@ -18,15 +16,15 @@ export const normalizeRows = (rows) =>
     return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
   });
 
-export const sortRowsByDateFieldDesc = (rows, fieldName) =>
+export const sortRowsByDateFieldDesc = <E extends PrEntry>(rows: E[], fieldName: keyof PrData | string): E[] =>
   rows.sort((a, b) => {
-    const dateA = parseSortableTime(a?.data?.[fieldName]);
-    const dateB = parseSortableTime(b?.data?.[fieldName]);
+    const dateA = parseSortableTime((a?.data as Record<string, unknown> | undefined)?.[fieldName]);
+    const dateB = parseSortableTime((b?.data as Record<string, unknown> | undefined)?.[fieldName]);
     if (dateA !== dateB) return dateB - dateA;
     return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
   });
 
-export const sortRowsByPrNumberDesc = (rows) =>
+export const sortRowsByPrNumberDesc = <E extends PrEntry>(rows: E[]): E[] =>
   rows.sort((a, b) => {
     const prA = Number(a?.data?.number || a?.prNumber || 0);
     const prB = Number(b?.data?.number || b?.prNumber || 0);

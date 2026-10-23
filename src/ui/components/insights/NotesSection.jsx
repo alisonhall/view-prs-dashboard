@@ -4,7 +4,7 @@
  * POST /view-prs/notes. Matches vanilla's createNotesSection (index.page.js).
  *
  * noteAuthorMatchesSelection is built directly from
- * pr-author-insights-identity.helpers.js (Phase 7, sub-phase 7.0 - see
+ * pr-author-insights-identity.helpers.ts (Phase 7, sub-phase 7.0 - see
  * REACT_MIGRATION_PLAN.md) - it's a genuinely pure function, but its
  * normalizeActorLogin/resolveActorDisplayName deps are threaded through
  * from useActorIdentity() so it resolves aliases the same way the rest of
@@ -20,7 +20,7 @@ import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useRequestActivity } from '../../state/RequestActivityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
-import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
+import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.ts';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
 import { postJson } from '../../helpers/pr-http.helpers.ts';

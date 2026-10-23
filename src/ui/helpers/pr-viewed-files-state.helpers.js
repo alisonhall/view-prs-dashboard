@@ -5,7 +5,7 @@
 // itself a zero-dependency import, not viewer/payload state), matching
 // pr-last-checked-indicator.helpers.js's own precedent (bare export, no
 // createXHelpers() wrapper).
-import { createPrFormattingHelpers } from "./pr-formatting.helpers.js";
+import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
 const { toCount } = createPrFormattingHelpers();
 

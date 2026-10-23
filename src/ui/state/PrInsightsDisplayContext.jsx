@@ -14,8 +14,8 @@ import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-su
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.ts';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
-import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { defaultActorIdentity } from './ActorIdentityContext';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();

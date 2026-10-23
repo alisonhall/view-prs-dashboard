@@ -12,7 +12,7 @@ import {
   getPendingMultiSelectSelection,
   setPendingMultiSelectSelection,
   subscribeToPendingMultiSelectSelections,
-} from '../helpers/pr-pending-multi-select-selections.helpers.js';
+} from '../helpers/pr-pending-multi-select-selections.helpers.ts';
 
 /**
  * Multi-select checkbox lists (Phase 2 - see REACT_MIGRATION_PLAN.md).
@@ -57,7 +57,7 @@ const MULTI_SELECT_OPTIONS_KEYS = {
 };
 
 // Each list's restore-time seed value - see
-// pr-pending-multi-select-selections.helpers.js for why this is a
+// pr-pending-multi-select-selections.helpers.ts for why this is a
 // dedicated window-level store rather than FilterStateProvider's Context.
 const MULTI_SELECT_PENDING_KEYS = {
   'label-list': 'pendingLabelSelections',

@@ -3,9 +3,9 @@
 // PrStatusCell.jsx can import buildPrLastCheckedIndicator directly instead
 // of reading it off window.buildPrLastCheckedIndicator - genuinely
 // zero-dependency (formatIsoDatetime is itself a zero-dependency import,
-// not viewer/payload state), matching pr-row-sorting.helpers.js's own
+// not viewer/payload state), matching pr-row-sorting.helpers.ts's own
 // precedent (bare exports, no createXHelpers() wrapper).
-import { createPrFormattingHelpers } from "./pr-formatting.helpers.js";
+import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

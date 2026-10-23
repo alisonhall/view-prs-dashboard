@@ -1,7 +1,7 @@
 const {
   getManualNotesSummary,
   getManualNotesFieldSummary,
-} = require("./pr-manual-notes-summary.helpers.js");
+} = require("./pr-manual-notes-summary.helpers.ts");
 
 describe("pr manual notes summary helpers", () => {
   describe("getManualNotesSummary", () => {

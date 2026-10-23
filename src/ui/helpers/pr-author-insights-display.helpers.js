@@ -267,7 +267,7 @@ export { createPrAuthorInsightsDisplayHelpers };
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md, navigateToAuthorInsights's own
 // entry): zero-dependency pure function - bare export, no createXHelpers()
-// wrapper needed (same precedent as pr-row-sorting.helpers.js). Shared by
+// wrapper needed (same precedent as pr-row-sorting.helpers.ts). Shared by
 // useNavigateToAuthorInsights.jsx (state/, the "jump to unsaved author
 // draft" navigation path) and AuthorInsightsSelector.jsx (components/,
 // the Author dropdown's own validation/auto-select-first-author rule,

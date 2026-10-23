@@ -2,7 +2,7 @@
 
 const {
   createPrTriggerAutoRunActionHelpers,
-} = require("./pr-trigger-auto-run-action.helpers.js");
+} = require("./pr-trigger-auto-run-action.helpers.ts");
 
 function buildHarness(overrides = {}) {
   const calls = {

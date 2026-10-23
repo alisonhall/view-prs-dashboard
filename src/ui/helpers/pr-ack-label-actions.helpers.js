@@ -29,7 +29,7 @@
 // REACT_MIGRATION_PLAN.md): a batch larger than CHUNK_SIZE is split into
 // several smaller /view-prs/ack or /view-prs/labels/apply requests, run
 // with at most CONCURRENCY_LIMIT in flight at once (via
-// pr-concurrency.helpers.js's runWithConcurrencyLimit - confirmed safe
+// pr-concurrency.helpers.ts's runWithConcurrencyLimit - confirmed safe
 // against the server's existing PR-state/user-state lockfiles before
 // building this, see check-open-pr-updates.sh's with_pr_state_lock/
 // with_user_state_lock). Each chunk clears its own PR numbers' busy state

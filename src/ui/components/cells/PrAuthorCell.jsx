@@ -3,7 +3,7 @@
  * Shows the official PR author (styled distinctly via ActorIdentity's
  * isPrAuthor state, same as before) plus every distinct person with a
  * non-merge commit on the branch. Matches vanilla's author-cell
- * (helpers/pr-author-cell.helpers.js).
+ * (helpers/pr-author-cell.helpers.ts).
  *
  * @module components/cells/PrAuthorCell
  */
@@ -11,8 +11,8 @@
 import { useMemo } from 'react';
 import { ActorIdentity } from '../ActorIdentity';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
-import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.js';
-import { getManualNotesSummary } from '../../helpers/pr-manual-notes-summary.helpers.js';
+import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
+import { getManualNotesSummary } from '../../helpers/pr-manual-notes-summary.helpers.ts';
 
 export function PrAuthorCell({ entry, pr, actorsMap = {} }) {
   const { getPreferredActorKey } = useActorIdentity();

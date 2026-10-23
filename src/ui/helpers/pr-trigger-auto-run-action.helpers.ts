@@ -1,28 +1,34 @@
-// Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): extracted verbatim
-// from index.page.js's former handleTriggerAutoRun body (pure extraction,
-// zero behavior change - same discipline as every sibling action already
-// extracted this way: pr-row-checkbox-actions.helpers.js,
-// pr-ack-label-actions.helpers.js, pr-single-pr-update.helpers.js,
-// pr-merged-request-more-action.helpers.js, pr-quick-check-actions.helpers.js).
-// index.page.js's own handleTriggerAutoRun is now a thin wrapper calling
-// runTriggerAutoRunWorkflow(), wired to the real React
-// TriggerAutoRunButton.jsx via the same window.handleTriggerAutoRun bridge
-// as before.
+import type { PostJsonResult } from "./pr-http.helpers.ts";
+
+// The "Trigger auto run" button's request (useTriggerAutoRun): POSTs
+// /view-prs/run-auto and reports a conflict (409, already running) or a
+// failure through the injected notifiers.
+interface RunAutoResult {
+  ok?: boolean;
+  error?: string;
+}
+
+export interface PrTriggerAutoRunActionDeps {
+  postJson?: (url: string, payload: unknown) => Promise<PostJsonResult<RunAutoResult>>;
+  showErrorNotification?: (title: string, detail: string, durationMs?: number) => void;
+  notifyFailureSnackbar?: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+}
+
 const createPrTriggerAutoRunActionHelpers = ({
   postJson,
   showErrorNotification,
   notifyFailureSnackbar,
-} = {}) => {
+}: PrTriggerAutoRunActionDeps = {}) => {
   const postJsonSafe =
     typeof postJson === "function"
       ? postJson
-      : () => Promise.reject(new Error("postJson unavailable"));
+      : (): Promise<PostJsonResult<RunAutoResult>> => Promise.reject(new Error("postJson unavailable"));
   const showErrorNotificationSafe =
     typeof showErrorNotification === "function" ? showErrorNotification : () => {};
   const notifyFailureSnackbarSafe =
     typeof notifyFailureSnackbar === "function" ? notifyFailureSnackbar : () => {};
 
-  const runTriggerAutoRunWorkflow = async () => {
+  const runTriggerAutoRunWorkflow = async (): Promise<void> => {
     try {
       const { response, result } = await postJsonSafe("/view-prs/run-auto", {});
       if (response.status === 409) {

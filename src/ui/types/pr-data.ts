@@ -28,6 +28,29 @@ export interface PrApprover extends PrActor {
   approvedAt?: string;
 }
 
+// A commit on the PR branch ($defs.commit).
+export interface PrCommit {
+  messageHeadline?: string;
+  authors?: PrActor[];
+}
+
+// The user's own notes on a PR (user-state schema's `notes`).
+export interface PrNotesComment {
+  id?: string;
+  author?: string;
+  tone?: "Positive" | "Negative" | "Neutral" | "";
+  note?: string;
+}
+
+export interface PrNotes {
+  comments?: PrNotesComment[];
+  otherNotes?: string;
+  prDifficulty?: string;
+  rallyStories?: string[];
+  rallyLinks?: string[];
+  analysisOfPr?: string;
+}
+
 // The per-PR `metrics` object (insights script output). Only the fields
 // converted code reads are listed.
 export interface PrMetrics {
@@ -63,7 +86,11 @@ export interface PrData {
   author?: string;
   authorLogin?: string;
   approvers?: PrApprover[];
+  commits?: PrCommit[];
   metrics?: PrMetrics;
+  // Older data kept notes on the row itself; current data has them on the
+  // entry (PrEntry.notes).
+  notes?: PrNotes;
   labels?: PrLabel[];
   viewerLogin?: string;
   reviewThreads?: ReviewThread[];
@@ -80,7 +107,12 @@ export interface PrEntry {
   prNumber?: string;
   repo?: string;
   section?: "open" | "draft" | "closed" | "merged";
+  updatedAt?: string;
+  rowOrder?: number | string;
   data?: PrData;
+  // Copied from the user state onto the entry by the server when it builds
+  // the /view-prs/data payload (app.js); not stored in the data file.
+  notes?: PrNotes;
 }
 
 // The data file's top-level `lastRun` record (the last script run).

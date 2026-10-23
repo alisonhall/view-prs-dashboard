@@ -1,18 +1,21 @@
+// Small text formatters shared across the UI: HTML escaping, ANSI-escape
+// stripping for script output, the "Jan 5, 2026 3:07 PM" date format, and
+// lenient number parsing.
 const createPrFormattingHelpers = () => {
-  const escapeHtml = (str) =>
+  const escapeHtml = (str: unknown): string =>
     String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
-  const stripAnsi = (text) =>
+  const stripAnsi = (text: unknown): string =>
     String(text || "")
       .replace(/\u001b\[[0-9;]*m/g, "") // eslint-disable-line no-control-regex
       .replace(/\u001b\]8;;.*?\u0007/g, "") // eslint-disable-line no-control-regex
       .replace(/\u001b\]8;;\u0007/g, ""); // eslint-disable-line no-control-regex
 
-  const formatIsoDatetime = (isoValue) => {
+  const formatIsoDatetime = (isoValue: unknown): string => {
     const raw = String(isoValue ?? "").trim();
     if (!raw || raw === "-") return "-";
 
@@ -43,7 +46,7 @@ const createPrFormattingHelpers = () => {
     return `${month} ${day}, ${year} ${hour12}:${minute} ${meridiem}`;
   };
 
-  const toCount = (value) => {
+  const toCount = (value: unknown): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
   };

@@ -1,5 +1,5 @@
 import { useJobEvents } from '../state/JobEventsContext';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

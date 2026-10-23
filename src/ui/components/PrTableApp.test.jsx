@@ -35,7 +35,7 @@ jest.mock('../helpers/pr-section-config.helpers.js', () => ({
 jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
   createPrSmartGroupsHelpers: jest.fn(),
 }));
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.js is a
+// Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.ts is a
 // real ES module now too, imported directly by PrTableApp.jsx instead of
 // read off window.sortRowsByPrNumberDesc/etc - same "jest.mock is the
 // equivalent for a real import" reasoning as above. Unlike those two,
@@ -44,8 +44,8 @@ jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
 // a jest.fn() so the one test that cares about call counts (see "row
 // sorting" below) can assert on it - normalizeRows/sortRowsByDateFieldDesc
 // pass through untouched.
-jest.mock('../helpers/pr-row-sorting.helpers.js', () => {
-  const actual = jest.requireActual('../helpers/pr-row-sorting.helpers.js');
+jest.mock('../helpers/pr-row-sorting.helpers.ts', () => {
+  const actual = jest.requireActual('../helpers/pr-row-sorting.helpers.ts');
   return { ...actual, sortRowsByPrNumberDesc: jest.fn(actual.sortRowsByPrNumberDesc) };
 });
 
@@ -62,7 +62,7 @@ jest.mock('../helpers/pr-http.helpers.ts', () => ({
 
 const { PrTableApp } = require('./PrTableApp');
 const { postJson } = require('../helpers/pr-http.helpers.ts');
-const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
+const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.ts');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): pushes
@@ -663,7 +663,7 @@ describe('PrTableApp', () => {
       // the cache should hit and skip re-sorting entirely.
       // sortRowsByPrNumberDesc is the module-level jest.fn()-wrapped real
       // implementation set up at the top of this file (see the
-      // jest.mock('../helpers/pr-row-sorting.helpers.js', ...) call) -
+      // jest.mock('../helpers/pr-row-sorting.helpers.ts', ...) call) -
       // clear it here so this test's own call count isn't polluted by
       // earlier tests in this describe block also exercising real sorting.
       sortRowsByPrNumberDesc.mockClear();
