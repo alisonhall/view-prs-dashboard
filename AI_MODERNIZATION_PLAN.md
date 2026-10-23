@@ -1006,7 +1006,8 @@ No static type checking leads to:
   `@babel/preset-typescript` ^7 (8.x needs Babel 8), `@types/jest`
 - [x] Create tsconfig.json with appropriate settings - UI only for now,
   `strict` + `noUncheckedIndexedAccess`, `allowJs` (unconverted files are
-  read for types but not checked)
+  read for types but not checked). Browser code gets no Jest/Node globals;
+  tests are checked separately by `tsconfig.test.json`, which adds them
 - [x] Configure build process - no separate build: Vite already compiles
   .ts/.tsx, and `tsc` only type-checks (`npm run typecheck`, in CI's lint
   job and `check:all`)
@@ -1033,8 +1034,9 @@ No static type checking leads to:
 - [ ] Verify types catch real issues
 
 **Phase 12D: Component Migration**
-- [ ] Migrate all `src/ui/components/*.js` → `*.ts`
-- [ ] Add proper type annotations
+- [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
+  (plus `src/ui/react-app.jsx` and `src/ui/components/pr-row-keys.js`)
+- [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
 **Phase 12E: Orchestrator Migration** - **N/A (2026-10-22):** `src/ui/orchestrators/` no longer exists; its orchestrators were deleted during the React migration (see `docs/history/REACT_MIGRATION_PLAN.md`).
@@ -1043,17 +1045,20 @@ No static type checking leads to:
 - [ ] Test integration
 
 **Phase 12F: Server Migration**
+- [ ] Decide how the server runs TypeScript (it is CommonJS run directly by
+  `node`, with no build step), then extend tsconfig coverage to `src/server/`
 - [ ] Migrate `src/server/helpers/*.js` → `*.ts`
 - [ ] Migrate `src/server/routes/*.js` → `*.ts`
-- [ ] Migrate `src/server/initialization/*.js` → `*.ts`
-- [ ] Migrate `src/server/app.js` → `app.ts`
+- [ ] Migrate `src/server/config/` and `src/server/storage/` → `*.ts`
+- [ ] Migrate `src/server/app.js` and `server.js` → `*.ts`
 - [ ] Test server startup and all routes
 
-**Phase 12G: Main Files Migration**
-- [ ] Migrate `src/ui/index.page.js` → `index.page.ts`
-- [ ] Migrate remaining files
-- [ ] Enable strict mode in tsconfig
-- [ ] Fix all strict mode errors
+**Phase 12G: Remaining Files** (`index.page.js`, listed here originally, was
+deleted in 2026-10-22's window-bridge elimination)
+- [ ] Migrate remaining files (tests, test fixtures, `src/dependencies/`,
+  `src/schema/`, `src/backfill/`, e2e specs) as worthwhile
+- [x] Enable strict mode in tsconfig - on from the start (12A), since only
+  converted files are checked
 
 **Phase 12H: Build and Distribution**
 - [ ] Configure build output directory
@@ -1063,8 +1068,9 @@ No static type checking leads to:
 
 ### Deliverables
 
-- [ ] All 143 source files migrated to TypeScript
-- [ ] tsconfig.json with strict settings
+- [ ] Every non-test source file migrated to TypeScript (288 `.js`/`.jsx`
+  files under `src/` as of 2026-10-22)
+- [x] tsconfig.json with strict settings
 - [ ] Build process producing valid JavaScript
 - [ ] Type declarations for all public APIs
 - [ ] All tests passing with TypeScript

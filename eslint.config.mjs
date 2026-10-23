@@ -126,8 +126,8 @@ export default defineConfig([
     extends: ["json/recommended"],
   },
   {
-    // tsc reads tsconfig.json as JSON with comments.
-    files: ["tsconfig.json"],
+    // tsc reads its tsconfig files as JSON with comments.
+    files: ["tsconfig*.json"],
     language: "json/jsonc",
   },
   {

@@ -112,20 +112,22 @@ npm run test:deps
 npm run test:backfill
 npm run test:all
 npm run test:coverage
+npm run typecheck
 npm run check:all
 ```
 
 Script guide:
 
 - `npm run test:app`: server route/integration/scheduler suites (`src/server/integration-tests/`)
-- `npm run test:ui`: UI suites (`src/ui/**/*.test.js`)
+- `npm run test:ui`: UI suites (every test under `src/ui/`: `.test.js`, `.test.jsx`, `.test.ts`)
 - `npm run test:script`: shell script Jest harness (`src/script/integration-tests/*.test.js`)
 - `npm run test:schema`: schema-focused Jest suites (`src/schema/integration-tests/`)
 - `npm run test:deps`: dependency guard/unit suites (`src/dependencies/integration-tests/`)
 - `npm run test:backfill`: backfill-focused suites (`src/backfill/integration-tests/`)
 - `npm run test:all`: guard + full Jest run (no coverage output)
 - `npm run test:coverage` / `npm run test:ci`: guard + full Jest run with coverage output (`coverage/lcov-report`)
-- `npm run check:all`: dependency check + lint + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
+- `npm run typecheck`: TypeScript type check, no output files (`tsconfig.json` for UI source, `tsconfig.test.json` for tests; also run by CI)
+- `npm run check:all`: dependency check + lint + `typecheck` + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
 - `npm run test:e2e`: real-browser Playwright suite (`e2e/*.spec.js`) against a live server; not run as part of `test:all`/`check:all`
 - `npm run stability:heap-check`: standalone long-session heap-growth diagnostic (`e2e/stability/long-session-heap-check.js`), run on demand, not part of any `test:*`/`check:*` script
 
@@ -140,7 +142,7 @@ UI test placement conventions:
   - `index.page.memory-leak-prevention.test.jsx` (the three `index.page.*` names predate `index.page.js`'s deletion; they now test React/helper code)
   - `index.page.notifications.test.js`
   - `index.page.trends.test.js`
-- `npm run test:ui` discovers all UI tests via `src/ui/**/*.test.js`.
+- `npm run test:ui` runs every test under `src/ui/` (`jest src/ui`).
 - Real-browser regressions that jsdom can't see (asset 404s, event-delegation races between vanilla and React, charset handling) belong in `e2e/smoke.spec.js` instead.
 
 Recommended default before opening a PR: `npm run check:all`. Run `npm run test:e2e` too if you touched UI rendering/event wiring — it isn't part of `check:all`.

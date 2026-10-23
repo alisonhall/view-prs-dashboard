@@ -29,7 +29,7 @@
     "start": "concurrently \"npm run dev:server\" \"npm run dev:ui\"",
     "start:server-only": "node src/server/server.js",
     "test": "jest",
-    "test:ui": "jest src/ui/**/*.test.js",
+    "test:ui": "jest src/ui",
     "test:ui:dom": "jest --env=jsdom",
     "test:script": "jest src/script/integration-tests/*.test.js",
     "test:schema": "jest src/schema/integration-tests/*.test.js",
@@ -43,7 +43,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "lint:check": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "lint:fix": "eslint . --fix"
   },
   "author": "Alison Hall",
