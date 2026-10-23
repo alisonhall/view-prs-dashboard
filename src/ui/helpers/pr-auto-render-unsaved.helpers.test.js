@@ -2,7 +2,7 @@
 
 const {
   createPrAutoRenderUnsavedHelpers,
-} = require("./pr-auto-render-unsaved.helpers.js");
+} = require("./pr-auto-render-unsaved.helpers.ts");
 
 describe("auto render unsaved helpers", () => {
   const createHelpers = ({ getDirtyNotesPrNumbers } = {}) =>

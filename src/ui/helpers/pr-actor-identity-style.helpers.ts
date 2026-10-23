@@ -1,9 +1,22 @@
+// Class names and tooltip text marking a person as the current viewer
+// and/or the PR author (ActorIdentity).
+export interface ActorIdentityState {
+  isViewer?: boolean;
+  isPrAuthor?: boolean;
+}
+
+export interface ActorIdentityClassNameInput {
+  identityState?: ActorIdentityState | null;
+  className?: string;
+  baseClassName?: string;
+}
+
 const createPrActorIdentityStyleHelpers = () => {
   const buildActorIdentityClassName = ({
     identityState = {},
     className = "",
     baseClassName = "actor-identity",
-  } = {}) => {
+  }: ActorIdentityClassNameInput = {}): string => {
     const classes = [String(baseClassName || "actor-identity").trim()].filter(Boolean);
 
     if (className) {
@@ -19,8 +32,8 @@ const createPrActorIdentityStyleHelpers = () => {
     return classes.join(" ");
   };
 
-  const buildActorIdentityTitle = (identityState = {}) => {
-    const titleParts = [];
+  const buildActorIdentityTitle = (identityState: ActorIdentityState | null | undefined = {}): string => {
+    const titleParts: string[] = [];
     if (identityState?.isViewer) {
       titleParts.push("Current user");
     }

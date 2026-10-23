@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { createPrActorIdentityHelpers } from '../helpers/pr-actor-identity.helpers.js';
 import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.ts';
-import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.js';
+import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.ts';
 
 /**
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): actor-identity

@@ -1,19 +1,27 @@
-// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the checked-state
-// seeding logic every deleted populateXOptions function (pr-filter-panel
-// .helpers.js, index.page.js) used to duplicate per list - moved out
-// verbatim into one shared, pure function so react-app.jsx's
-// MultiSelectListPortals (the new source of this behavior) and
-// index.html.test.js's test harness can both call the same logic instead
-// of re-implementing it a second time.
+// Which options of a multi-select filter list start checked
+// (MultiSelectListPortals, and index.html.test.js's harness): the options
+// already checked if any, else the selections restored from user defaults.
+// shouldClearPending says the restored selections have now been applied.
 //
 // `normalizeToken`, when given, is used only for matching (e.g. the label
 // lists' case/whitespace-insensitive comparison) - the returned items keep
 // each option's original `value`/`label` untouched.
-export const seedCheckedState = (
-  options,
-  { existingChecked = [], pendingSelections = null, normalizeToken } = {},
-) => {
-  const normalize = typeof normalizeToken === "function" ? normalizeToken : (value) => value;
+export interface SeedCheckedStateOptions {
+  existingChecked?: unknown[];
+  pendingSelections?: unknown[] | null;
+  normalizeToken?: (value: unknown) => unknown;
+}
+
+export interface SeededCheckedState<O> {
+  items: Array<O & { checked: boolean }>;
+  shouldClearPending: boolean;
+}
+
+export const seedCheckedState = <O extends { value?: unknown }>(
+  options: O[] | null | undefined,
+  { existingChecked = [], pendingSelections = null, normalizeToken }: SeedCheckedStateOptions = {},
+): SeededCheckedState<O> => {
+  const normalize = typeof normalizeToken === "function" ? normalizeToken : (value: unknown) => value;
   const safeOptions = Array.isArray(options) ? options : [];
   const safeExistingChecked = Array.isArray(existingChecked) ? existingChecked : [];
 

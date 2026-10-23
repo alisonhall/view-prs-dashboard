@@ -1036,6 +1036,10 @@ No static type checking leads to:
   filter-label-extraction, viewer-login-inference, approval-duration,
   per-pr-user-state, actor-identity-render, ui-render-utils,
   insight-metrics-summary, insight-badge-class, scheduler-status, http.
+  Batch 3 (2026-10-23): multi-select-checked-state, failure-snackbar,
+  actor-identity-style, notes-people-options, selected-filters,
+  review-conversations-ui-state, auto-render-unsaved, viewer-context,
+  ack-refresh-warnings, credential-field-error-filter.
   Shared data shapes live in
   `src/ui/types/pr-data.ts`, grown from the data schema as helpers need
   fields. Their tests stay `.js` for now (Phase 12G).

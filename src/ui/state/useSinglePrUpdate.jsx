@@ -3,7 +3,7 @@ import { postJson } from '../helpers/pr-http.helpers.ts';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
-import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';
 import { useRequestActivity } from './RequestActivityContext';

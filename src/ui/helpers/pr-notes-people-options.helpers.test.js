@@ -1,6 +1,6 @@
 const {
   createPrNotesPeopleOptionsHelpers,
-} = require("./pr-notes-people-options.helpers.js");
+} = require("./pr-notes-people-options.helpers.ts");
 
 describe("pr notes people options helpers", () => {
   test("given a row with an author, commenters, reviewers, and approvers, when building options, then each unique person appears once", () => {

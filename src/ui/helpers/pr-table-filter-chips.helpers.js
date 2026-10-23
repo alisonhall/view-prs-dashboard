@@ -1,6 +1,6 @@
 // ES module cleanup (see REACT_MIGRATION_PLAN.md): same export shape every
 // other pure src/ui/helpers file in this folder uses (e.g.
-// pr-selected-filters.helpers.js) - a factory with no React/Context import,
+// pr-selected-filters.helpers.ts) - a factory with no React/Context import,
 // so it's independently unit-testable and reusable by both
 // useTableFilterChips.jsx and this file's own test.
 const createPrTableFilterChipsHelpers = () => {

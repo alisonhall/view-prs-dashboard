@@ -1,7 +1,7 @@
 const {
   buildFailureSnackbarNotification,
   isTimeoutFailureMessage,
-} = require("./pr-failure-snackbar.helpers.js");
+} = require("./pr-failure-snackbar.helpers.ts");
 
 describe("pr failure snackbar helpers", () => {
   describe("isTimeoutFailureMessage", () => {

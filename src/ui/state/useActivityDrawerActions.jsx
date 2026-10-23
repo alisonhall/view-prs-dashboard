@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
-import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useSnackbar } from './SnackbarContext';
 
 /**

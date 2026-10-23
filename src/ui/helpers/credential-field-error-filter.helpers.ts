@@ -1,7 +1,4 @@
-// Window-bridge elimination Phase 7.5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// moved from index.page.js, which installed these two listeners at module
-// load. react-app.jsx installs them before mounting, the same point in page
-// startup.
+// react-app.jsx installs these two window listeners before mounting.
 //
 // Some browsers' password managers throw errors like
 // "ControlLooksLikePasswordCredentialField" while inspecting the page's plain
@@ -12,7 +9,7 @@ const IGNORED_CREDENTIAL_FIELD_ERROR_MARKERS = [
   "UsernameElementUniqueID",
 ];
 
-export const isIgnoredCredentialFieldError = (value) => {
+export const isIgnoredCredentialFieldError = (value: unknown): boolean => {
   const text = String(value || "");
   return IGNORED_CREDENTIAL_FIELD_ERROR_MARKERS.some((marker) =>
     text.includes(marker),
@@ -20,8 +17,10 @@ export const isIgnoredCredentialFieldError = (value) => {
 };
 
 // Returns a function that removes both listeners (used by tests).
-export const installCredentialFieldErrorFilters = (target) => {
-  const onUnhandledRejection = (event) => {
+export const installCredentialFieldErrorFilters = (
+  target: Pick<Window, "addEventListener" | "removeEventListener">,
+): (() => void) => {
+  const onUnhandledRejection = (event: PromiseRejectionEvent) => {
     const reasonMessage =
       event?.reason?.message ||
       event?.reason?.stack ||
@@ -32,7 +31,7 @@ export const installCredentialFieldErrorFilters = (target) => {
     }
     console.error("Unhandled promise rejection:", event.reason);
   };
-  const onError = (event) => {
+  const onError = (event: ErrorEvent) => {
     if (isIgnoredCredentialFieldError(event?.message)) {
       event.preventDefault();
     }

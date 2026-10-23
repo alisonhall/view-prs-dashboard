@@ -1,6 +1,6 @@
 const {
   createPrReviewConversationsUiStateHelpers,
-} = require("./pr-review-conversations-ui-state.helpers.js");
+} = require("./pr-review-conversations-ui-state.helpers.ts");
 
 describe("pr review conversations ui state helpers", () => {
   describe("getReviewConversationsStateKey", () => {

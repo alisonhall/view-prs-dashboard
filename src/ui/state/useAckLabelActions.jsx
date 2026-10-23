@@ -5,7 +5,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.js';
 import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
-import { summarizeAckRefreshWarnings } from '../helpers/pr-ack-refresh-warnings.helpers.js';
+import { summarizeAckRefreshWarnings } from '../helpers/pr-ack-refresh-warnings.helpers.ts';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';
 import { useSetOutputText } from './OutputTextContext';

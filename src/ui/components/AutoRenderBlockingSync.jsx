@@ -4,7 +4,7 @@ import { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } from '../stat
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
 import { useAutoRenderBlockingActions } from '../state/AutoRenderBlockingContext';
-import { createPrAutoRenderUnsavedHelpers } from '../helpers/pr-auto-render-unsaved.helpers.js';
+import { createPrAutoRenderUnsavedHelpers } from '../helpers/pr-auto-render-unsaved.helpers.ts';
 import { createPrAutoRenderBlockingHelpers } from '../helpers/pr-auto-render-blocking.helpers.js';
 import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.helpers.js';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';

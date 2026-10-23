@@ -61,7 +61,7 @@ import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
 import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
 import { useMultiSelectDropdownClosing } from './state/useMultiSelectDropdownClosing';
-import { installCredentialFieldErrorFilters } from './helpers/credential-field-error-filter.helpers.js';
+import { installCredentialFieldErrorFilters } from './helpers/credential-field-error-filter.helpers.ts';
 import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
 import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';

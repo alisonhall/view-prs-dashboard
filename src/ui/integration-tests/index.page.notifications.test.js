@@ -2,9 +2,9 @@
 // __testables export, which re-exported its own wired instances. index.page.js
 // no longer builds them, so the tests use the helpers directly, wired the
 // way index.page.js wired them.
-const { isTimeoutFailureMessage } = require("../helpers/pr-failure-snackbar.helpers.js");
-const { summarizeAckRefreshWarnings } = require("../helpers/pr-ack-refresh-warnings.helpers.js");
-const { createPrAutoRenderUnsavedHelpers } = require("../helpers/pr-auto-render-unsaved.helpers.js");
+const { isTimeoutFailureMessage } = require("../helpers/pr-failure-snackbar.helpers.ts");
+const { summarizeAckRefreshWarnings } = require("../helpers/pr-ack-refresh-warnings.helpers.ts");
+const { createPrAutoRenderUnsavedHelpers } = require("../helpers/pr-auto-render-unsaved.helpers.ts");
 const { createPrAutoRenderBlockingHelpers } = require("../helpers/pr-auto-render-blocking.helpers.js");
 const { createPrAuthorInsightsDraftsHelpers } = require("../helpers/pr-author-insights-drafts.helpers.js");
 

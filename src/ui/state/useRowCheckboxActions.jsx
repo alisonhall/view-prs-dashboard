@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { usePrData } from './PrDataContext';
 import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.js';
-import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
 import { usePrDataActions } from './PrDataActionsContext';

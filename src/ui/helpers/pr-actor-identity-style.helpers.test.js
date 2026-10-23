@@ -1,6 +1,6 @@
 const {
   createPrActorIdentityStyleHelpers,
-} = require("./pr-actor-identity-style.helpers.js");
+} = require("./pr-actor-identity-style.helpers.ts");
 
 describe("pr actor identity style helpers", () => {
   test("given viewer and author identity, when building class name, then viewer and author classes are included", () => {

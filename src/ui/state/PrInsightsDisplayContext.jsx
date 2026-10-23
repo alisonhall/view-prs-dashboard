@@ -12,7 +12,7 @@ import { createPrActivityEventsHelpers } from '../helpers/pr-activity-events.hel
 import { createPrApprovalDurationHelpers } from '../helpers/pr-approval-duration.helpers.ts';
 import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-summary.helpers.ts';
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.js';
-import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.js';
+import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.ts';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.js';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';

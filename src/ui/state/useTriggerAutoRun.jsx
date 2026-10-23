@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 import { createPrTriggerAutoRunActionHelpers } from '../helpers/pr-trigger-auto-run-action.helpers.js';
-import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useSnackbar } from './SnackbarContext';
 
 /**

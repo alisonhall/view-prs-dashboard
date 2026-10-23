@@ -1,4 +1,4 @@
-const { seedCheckedState } = require("./pr-multi-select-checked-state.helpers.js");
+const { seedCheckedState } = require("./pr-multi-select-checked-state.helpers.ts");
 
 describe("pr-multi-select-checked-state helpers", () => {
   describe("seedCheckedState", () => {

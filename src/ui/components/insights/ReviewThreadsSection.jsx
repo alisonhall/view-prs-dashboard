@@ -26,7 +26,7 @@ import { AuthorThreadResolutionSelectionContext } from '../../state/AuthorThread
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
 import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.ts';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
-import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.js';
+import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 const { getReviewConversationsStateKey, normalizeReviewConversationsUiState } =

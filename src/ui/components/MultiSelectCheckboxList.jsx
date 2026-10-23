@@ -13,7 +13,7 @@
  * state (below) always re-initializes fresh from the caller-computed
  * `options` prop rather than trying to diff/reconcile against whatever was
  * checked before - the caller (MultiSelectListPortals.jsx, via
- * pr-multi-select-checked-state.helpers.js's seedCheckedState) already
+ * pr-multi-select-checked-state.helpers.ts's seedCheckedState) already
  * does that diffing itself before calling in.
  *
  * React mounts directly into the existing `<div id="...-list">` container

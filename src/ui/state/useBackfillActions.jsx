@@ -4,7 +4,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
 import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
-import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
+import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { BACKFILL_LOG_TAIL_LINES, useBackfillStatusActions } from './BackfillStatusContext';
 import { useRequestActivity } from './RequestActivityContext';
 import { useStatusText } from './StatusTextContext';

@@ -1,20 +1,29 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md, useSinglePrUpdate's own entry):
-// extracted out of index.page.js's notifyFailureSnackbar - genuinely pure,
-// no state/DOM dependency (matching pr-row-sorting.helpers.js's own
-// precedent: bare export, no createXHelpers() factory wrapper, since
-// there's nothing to inject). Shared by index.page.js's own
-// notifyFailureSnackbar (the vanilla path) and useSinglePrUpdate.jsx (the
-// React path), so both build the same { title, detail } shape the same
-// way instead of one reimplementing the other's logic.
+// The { title, detail } a failure snackbar shows (useSinglePrUpdate and the
+// other action hooks): the first useful message from an error/result
+// object, with "(timed out)" added to the title for timeouts.
 
-export const isTimeoutFailureMessage = (value) =>
+export const isTimeoutFailureMessage = (value: unknown): boolean =>
   /\b(timed?\s*out|timeout|deadline exceeded)\b/i.test(String(value || ""));
 
+// A thrown error or a failed route result: any of these may carry the text.
+export interface FailureSource {
+  error?: unknown;
+  summary?: unknown;
+  message?: unknown;
+  stderr?: unknown;
+  output?: unknown;
+}
+
+export interface FailureSnackbarNotification {
+  title: string;
+  detail: string;
+}
+
 export const buildFailureSnackbarNotification = (
-  title,
-  errorSource,
-  fallbackMessage = "Operation failed",
-) => {
+  title: string,
+  errorSource: FailureSource | string | null | undefined,
+  fallbackMessage: string = "Operation failed",
+): FailureSnackbarNotification => {
   const messageCandidates =
     errorSource && typeof errorSource === "object"
       ? [

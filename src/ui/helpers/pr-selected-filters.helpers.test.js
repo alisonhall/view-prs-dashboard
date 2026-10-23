@@ -2,7 +2,7 @@
 
 const {
   createPrSelectedFiltersHelpers,
-} = require("./pr-selected-filters.helpers.js");
+} = require("./pr-selected-filters.helpers.ts");
 
 describe("pr selected filters helpers", () => {
   test("given selected filter arrays, when building selected filters view model, then joined filter strings are returned", () => {

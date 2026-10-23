@@ -6,7 +6,7 @@ import { useRowFilterSelection } from '../state/RowFilterSelectionContext';
 import { useAuthorThreadResolutionSelection } from '../state/AuthorThreadResolutionSelectionContext';
 import { useChangeFilterActorSelection } from '../state/ChangeFilterActorSelectionContext';
 import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.js';
-import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.js';
+import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.ts';
 import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import {
   getPendingMultiSelectSelection,
@@ -127,7 +127,7 @@ const CHANGE_FILTER_LIST_IDS = new Set([
  *
  * Each list's checked state still has to be seeded imperatively (read the
  * currently-checked DOM values, or fall back to a pending restore-time
- * selection - see pr-multi-select-checked-state.helpers.js's
+ * selection - see pr-multi-select-checked-state.helpers.ts's
  * seedCheckedState). All 9 lists now also mirror their seeded checked
  * values into a Context: the 5 row-filtering lists (include/exclude
  * label, author, assigned, approver) into RowFilterSelectionContext

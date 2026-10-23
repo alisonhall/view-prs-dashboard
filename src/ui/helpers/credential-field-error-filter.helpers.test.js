@@ -3,7 +3,7 @@
 const {
   isIgnoredCredentialFieldError,
   installCredentialFieldErrorFilters,
-} = require("./credential-field-error-filter.helpers.js");
+} = require("./credential-field-error-filter.helpers.ts");
 
 // Window-bridge elimination Phase 7.5: moved from index.page.js's module-load
 // listeners, which had no tests of their own.

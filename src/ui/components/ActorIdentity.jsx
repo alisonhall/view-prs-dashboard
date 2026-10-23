@@ -10,7 +10,7 @@
  * useActorIdentity() (state/ActorIdentityContext.jsx) - `getEffectiveViewerLogin`
  * (helpers/pr-actor-identity-render.helpers.ts) and
  * `buildActorIdentityClassName`/`buildActorIdentityTitle`
- * (helpers/pr-actor-identity-style.helpers.js) - so behavior can't drift.
+ * (helpers/pr-actor-identity-style.helpers.ts) - so behavior can't drift.
  * The isViewer/isPrAuthor comparison itself is a plain inline equality
  * check below, matching what the vanilla renderer's own identity-state
  * step used to compute.

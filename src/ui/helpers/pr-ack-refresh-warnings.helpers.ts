@@ -1,15 +1,24 @@
-// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// moved out of index.page.js, which only published it as
-// window.summarizeAckRefreshWarnings for useAckLabelActions.jsx. Genuinely
-// pure, so a bare export (pr-failure-snackbar.helpers.js's precedent) that
-// the hook imports directly.
+// Summarizes the per-PR refresh problems an ack/label action reported
+// (useAckLabelActions): skipped vs failed counts and a few sample lines.
+// null when there were none.
+export interface AckRefreshError {
+  prNumber?: string | number;
+  error?: string;
+}
+
+export interface AckRefreshWarningsSummary {
+  skippedCount: number;
+  failedCount: number;
+  summaryText: string;
+  sample: string;
+}
 
 export const summarizeAckRefreshWarnings = (
-  refreshErrors = [],
-  maxSampleItems = 5,
-) => {
-  const normalizedErrors = Array.isArray(refreshErrors)
-    ? refreshErrors.filter((entry) => entry && typeof entry === "object")
+  refreshErrors: unknown = [],
+  maxSampleItems: number = 5,
+): AckRefreshWarningsSummary | null => {
+  const normalizedErrors: AckRefreshError[] = Array.isArray(refreshErrors)
+    ? refreshErrors.filter((entry): entry is AckRefreshError => Boolean(entry) && typeof entry === "object")
     : [];
 
   if (normalizedErrors.length === 0) {
@@ -32,7 +41,7 @@ export const summarizeAckRefreshWarnings = (
     })
     .join("\n");
 
-  const summaryParts = [];
+  const summaryParts: string[] = [];
   if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
   if (failedCount > 0) summaryParts.push(`${failedCount} failed`);
 

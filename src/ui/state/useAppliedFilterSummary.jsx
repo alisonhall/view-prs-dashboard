@@ -5,7 +5,7 @@ import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useJobEvents } from './JobEventsContext';
 import { useFilteredPrRows, FILTER_PR_NUMBERS_DEBOUNCE_MS } from './useVisiblePrNumbers';
 import { useDebouncedValue } from './useDebouncedValue';
-import { createPrSelectedFiltersHelpers } from '../helpers/pr-selected-filters.helpers.js';
+import { createPrSelectedFiltersHelpers } from '../helpers/pr-selected-filters.helpers.ts';
 import { createPrAppliedSummaryHelpers } from '../helpers/pr-applied-summary.helpers.js';
 
 const { buildSelectedFiltersViewModel } = createPrSelectedFiltersHelpers();

@@ -40,7 +40,7 @@ const toOptions = (entries) => entries.map(([value, label]) => ({ value, label }
  * Checked state (which options are ticked) is NOT computed here - that
  * depends on the currently-rendered DOM state and each list's pending
  * restore-time selections, and is seeded by react-app.jsx's
- * MultiSelectListPortals via pr-multi-select-checked-state.helpers.js's
+ * MultiSelectListPortals via pr-multi-select-checked-state.helpers.ts's
  * seedCheckedState, same as it always was.
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter

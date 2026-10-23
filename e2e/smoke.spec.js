@@ -398,7 +398,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   // Regression test for Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md):
   // NotesSection.jsx used to report an unsaved edit via a
   // data-has-unsaved-notes DOM attribute, scanned by vanilla
-  // pr-auto-render-unsaved.helpers.js. It's NotesDirtyProvider's React state
+  // pr-auto-render-unsaved.helpers.ts. It's NotesDirtyProvider's React state
   // now, which AutoRenderBlockingSync turns into the auto-render-blocking
   // state (window-bridge elimination Phase 7.4). Test-only bridge removal:
   // this used to read window.getDirtyNotesPrNumbers; it now checks the real
