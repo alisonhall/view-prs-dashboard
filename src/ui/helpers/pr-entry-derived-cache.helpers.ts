@@ -3,7 +3,7 @@
  * label/assignee/approver extraction for the filter dropdowns), so only
  * entries that actually changed are re-derived on each render.
  *
- * `mergeDataDeltaPayload` (pr-data-polling.helpers.js) merges polling
+ * `mergeDataDeltaPayload` (pr-data-polling.helpers.ts) merges polling
  * deltas via a shallow spread, so an entry for a PR that didn't change
  * keeps its exact object reference across renders. A WeakMap keyed by
  * that entry object is therefore a correct, low-risk cache: an entry

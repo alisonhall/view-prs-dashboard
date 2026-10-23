@@ -217,6 +217,20 @@ export interface PrDataPayload {
   ok?: boolean;
   error?: string;
   byPrNumber?: Record<string, PrEntry>;
-  lastRun?: LastRun;
-  dataMeta?: { dataVersion?: string };
+  lastRun?: LastRun | null;
+  dataMeta?: { dataVersion?: string } | null;
+  scheduler?: unknown;
+  // Per-PR row versions, for polling deltas (see PrManifest).
+  dataManifest?: PrManifest;
 }
+
+// What polling compares to find changed PRs: per PR, a version string of
+// its whole entry plus where it lives.
+export interface PrManifestEntry {
+  rowVersion: string;
+  repo: string;
+  section: string;
+  updatedAt: string;
+}
+
+export type PrManifest = Record<string, PrManifestEntry>;

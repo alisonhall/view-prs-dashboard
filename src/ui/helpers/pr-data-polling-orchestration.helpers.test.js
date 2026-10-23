@@ -2,7 +2,7 @@
 
 const {
   createPrDataPollingOrchestrationHelpers,
-} = require("./pr-data-polling-orchestration.helpers.js");
+} = require("./pr-data-polling-orchestration.helpers.ts");
 
 const jsonResponse = (body, overrides = {}) => ({
   ok: true,

@@ -1,4 +1,4 @@
-const { createPrDataPollingHelpers } = require("../helpers/pr-data-polling.helpers.js");
+const { createPrDataPollingHelpers } = require("../helpers/pr-data-polling.helpers.ts");
 
 describe("pr data polling helpers", () => {
   const {

@@ -1,24 +1,79 @@
-// Phase 7, sub-phase 7.2 (revised scope - see REACT_MIGRATION_PLAN.md):
-// pure extraction of index.page.js's former pollForDataChanges function body
-// into a DI-factory module, matching the pattern every other complex
-// index.page.js function already uses (e.g. pr-single-pr-update.helpers.js).
-// This is a byte-for-byte-logic-preserving move, not a rewrite - every
-// module-level mutable variable pollForDataChanges used to close over
-// directly is now an injected getter/setter pair instead, and the two
-// variables covered by a centralized applyLatestPrData setter go through
-// that instead of a bare assignment - no other behavior changes.
+import type { PrDataPayload, PrEntry, PrManifest } from "../types/pr-data.ts";
+import type {
+  DataPollRenderAction,
+  DataPollRenderInput,
+  ManifestDelta,
+  MergeDataDeltaInput,
+} from "./pr-data-polling.helpers.ts";
+
+// PrDataProvider's data poll (pollForDataChanges): checks the data version
+// (/view-prs/data-meta), fetches only the changed PRs when the server
+// offers a manifest (/view-prs/data-manifest + /view-prs/data-delta),
+// otherwise reloads /view-prs/data, then renders, queues the render behind
+// unsaved edits, or skips it.
 //
-// The pure fingerprint/manifest-delta/render-decision helpers this function
-// calls into (computePrDataManifest, getManifestDelta, mergeDataDeltaPayload,
-// computePrDataFingerprint, computePrDataMetaFingerprint,
-// getDataPollRenderAction) are NOT duplicated here - they're injected, so
-// this module has zero dependency on pr-data-polling.helpers.js directly.
-//
-// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// the only instance is state/PrDataProvider.jsx's, which injects its own
-// createPrDataPollingHelpers() instance (with its derived-value cache) and
-// its own applyLatestPrData/renderPrData; index.page.js no longer has any of
-// these, and window.pollForDataChanges is gone.
+// Every piece of state the poll reads or writes is an injected getter/
+// setter, and the pure fingerprint/manifest/render-decision helpers come
+// from the caller's createPrDataPollingHelpers() instance, so this module
+// holds no state of its own. PrDataProvider is the only caller.
+
+type Getter<T> = () => T;
+type Setter<T> = (value: T) => void;
+
+interface MetaResult {
+  ok?: boolean;
+  error?: string;
+  dataVersion?: string;
+  supportsDataManifest?: boolean;
+}
+
+interface ManifestResult {
+  ok?: boolean;
+  manifest?: PrManifest;
+  dataMeta?: PrDataPayload["dataMeta"];
+}
+
+interface DeltaResult {
+  ok?: boolean;
+  byPrNumber?: Record<string, PrEntry>;
+  scheduler?: unknown;
+  lastRun?: PrDataPayload["lastRun"];
+}
+
+export interface PrDataPollingOrchestrationDeps {
+  fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
+  documentRef?: { activeElement?: { tagName?: string } | null } | null;
+  computePrDataManifest?: (payload: PrDataPayload | null | undefined) => PrManifest;
+  getManifestDelta?: (input: { previousManifest?: PrManifest | null; nextManifest?: PrManifest | null }) => ManifestDelta;
+  mergeDataDeltaPayload?: (input: MergeDataDeltaInput) => PrDataPayload;
+  computePrDataFingerprint?: (payload: PrDataPayload) => string;
+  computePrDataMetaFingerprint?: (payload: PrDataPayload) => string;
+  getDataPollRenderAction?: (input: DataPollRenderInput) => DataPollRenderAction;
+  getSupportsDataMetaPolling?: Getter<boolean>;
+  setSupportsDataMetaPolling?: Setter<boolean>;
+  getSupportsDataManifestPolling?: Getter<boolean>;
+  setSupportsDataManifestPolling?: Setter<boolean>;
+  getLastSeenDataVersion?: Getter<string>;
+  setLastSeenDataVersion?: Setter<string>;
+  getLatestPrManifest?: Getter<PrManifest | null | undefined>;
+  setLatestPrManifest?: Setter<PrManifest>;
+  getLatestStoredPayload?: Getter<PrDataPayload | null | undefined>;
+  applyLatestPrData?: (update: { payload: PrDataPayload }) => void;
+  getLastRenderedPrFingerprint?: Getter<string>;
+  setLastRenderedPrFingerprint?: Setter<string>;
+  getLastRenderedMetaFingerprint?: Getter<string>;
+  setLastRenderedMetaFingerprint?: Setter<string>;
+  getLastRenderedRunStamp?: Getter<string>;
+  setLastRenderedRunStamp?: Setter<string>;
+  getHasDirtyPrSectionsFields?: Getter<boolean>;
+  getPendingAutoRenderPayload?: Getter<PrDataPayload | null | undefined>;
+  setPendingAutoRenderPayload?: Setter<PrDataPayload | null>;
+  renderPrData?: (payload: PrDataPayload) => void;
+  markPollSuccess?: (attemptedAt: string) => void;
+  showPollFailureWarning?: (failure: { errorSource: unknown; attemptedAt: string }) => void;
+  setStatusMessage?: (message: string) => void;
+}
+
 const createPrDataPollingOrchestrationHelpers = ({
   fetchFn,
   documentRef,
@@ -51,20 +106,25 @@ const createPrDataPollingOrchestrationHelpers = ({
   markPollSuccess,
   showPollFailureWarning,
   setStatusMessage,
-} = {}) => {
-  const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
-    throw new Error("fetchFn is not available");
-  };
+}: PrDataPollingOrchestrationDeps = {}) => {
+  const fetchFnSafe =
+    typeof fetchFn === "function"
+      ? fetchFn
+      : async (): Promise<Response> => {
+          throw new Error("fetchFn is not available");
+        };
   const getDocumentSafe = () =>
     documentRef || (typeof document !== "undefined" ? document : null);
   const computePrDataManifestSafe =
-    typeof computePrDataManifest === "function" ? computePrDataManifest : () => ({});
+    typeof computePrDataManifest === "function" ? computePrDataManifest : (): PrManifest => ({});
   const getManifestDeltaSafe =
     typeof getManifestDelta === "function"
       ? getManifestDelta
-      : () => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false });
+      : (): ManifestDelta => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false });
   const mergeDataDeltaPayloadSafe =
-    typeof mergeDataDeltaPayload === "function" ? mergeDataDeltaPayload : ({ basePayload } = {}) => basePayload || {};
+    typeof mergeDataDeltaPayload === "function"
+      ? mergeDataDeltaPayload
+      : ({ basePayload }: MergeDataDeltaInput = {}): PrDataPayload => basePayload || {};
   const computePrDataFingerprintSafe =
     typeof computePrDataFingerprint === "function" ? computePrDataFingerprint : () => "";
   const computePrDataMetaFingerprintSafe =
@@ -72,7 +132,7 @@ const createPrDataPollingOrchestrationHelpers = ({
   const getDataPollRenderActionSafe =
     typeof getDataPollRenderAction === "function"
       ? getDataPollRenderAction
-      : ({ result } = {}) => ({ type: "render", payload: result });
+      : ({ result }: DataPollRenderInput): DataPollRenderAction => ({ type: "render", payload: result });
   const getSupportsDataMetaPollingSafe =
     typeof getSupportsDataMetaPolling === "function" ? getSupportsDataMetaPolling : () => true;
   const setSupportsDataMetaPollingSafe =
@@ -86,7 +146,7 @@ const createPrDataPollingOrchestrationHelpers = ({
   const setLastSeenDataVersionSafe =
     typeof setLastSeenDataVersion === "function" ? setLastSeenDataVersion : () => {};
   const getLatestPrManifestSafe =
-    typeof getLatestPrManifest === "function" ? getLatestPrManifest : () => ({});
+    typeof getLatestPrManifest === "function" ? getLatestPrManifest : (): PrManifest => ({});
   const setLatestPrManifestSafe =
     typeof setLatestPrManifest === "function" ? setLatestPrManifest : () => {};
   const getLatestStoredPayloadSafe =
@@ -117,19 +177,19 @@ const createPrDataPollingOrchestrationHelpers = ({
     typeof showPollFailureWarning === "function" ? showPollFailureWarning : () => {};
   const setStatusMessageSafe = typeof setStatusMessage === "function" ? setStatusMessage : () => {};
 
-  const pollForDataChanges = async () => {
+  const pollForDataChanges = async (): Promise<void> => {
     const pollAttemptedAt = new Date().toISOString();
     try {
       let latestVersion = "";
       let shouldTryManifestDelta = false;
-      let dataResult = null;
+      let dataResult: PrDataPayload | null = null;
 
       if (getSupportsDataMetaPollingSafe()) {
         const metaResponse = await fetchFnSafe("/view-prs/data-meta");
         if (metaResponse.status === 404) {
           setSupportsDataMetaPollingSafe(false);
         } else {
-          const metaResult = await metaResponse.json();
+          const metaResult: MetaResult = await metaResponse.json();
           if (!metaResponse.ok || metaResult.ok === false) {
             throw new Error(
               metaResult?.error ||
@@ -158,7 +218,7 @@ const createPrDataPollingOrchestrationHelpers = ({
         if (manifestResponse.status === 404) {
           setSupportsDataManifestPollingSafe(false);
         } else {
-          const manifestResult = await manifestResponse.json();
+          const manifestResult: ManifestResult = await manifestResponse.json();
           if (manifestResponse.ok && manifestResult?.ok !== false) {
             const nextManifest = manifestResult?.manifest || {};
             const currentManifest = getLatestPrManifestSafe();
@@ -188,7 +248,7 @@ const createPrDataPollingOrchestrationHelpers = ({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
             });
-            const deltaResult = await deltaResponse.json();
+            const deltaResult: DeltaResult = await deltaResponse.json();
             if (deltaResponse.ok && deltaResult?.ok !== false) {
               dataResult = mergeDataDeltaPayloadSafe({
                 basePayload: getLatestStoredPayloadSafe(),
@@ -207,7 +267,7 @@ const createPrDataPollingOrchestrationHelpers = ({
 
       if (!dataResult) {
         const response = await fetchFnSafe("/view-prs/data");
-        const result = await response.json();
+        const result: PrDataPayload = await response.json();
         if (!response.ok || result.ok === false) {
           throw new Error(
             result?.error ||
@@ -251,20 +311,12 @@ const createPrDataPollingOrchestrationHelpers = ({
         return;
       }
 
-      // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // "queue-render" and "queue-render-and-listen" used to need
-      // different handling here (the latter also rendering the
-      // indicator immediately and arming its own blur listener) - both
-      // are now equivalent from this call site's perspective, since
-      // setPendingAutoRenderPayloadSafe (the bridge to
-      // AutoRenderBlockingProvider.jsx) triggers that Provider's own
-      // reactive effect, which re-derives the exact same
-      // apply/wait-for-blur/wait-for-clean decision itself (including
-      // the blur-listener attachment) as soon as the payload changes -
-      // doing it again here would just attach a second, redundant
-      // listener. getDataPollRenderAction's own distinction between the
-      // two types is preserved (still a real, tested branch), just no
-      // longer needs differentiated handling at this one call site.
+      // Both queue types are handled the same here: handing the payload
+      // to setPendingAutoRenderPayload (AutoRenderBlockingProvider's
+      // action) triggers that Provider's own effect, which makes the
+      // apply / wait-for-blur / wait-for-clean decision itself (including
+      // the blur listener). getDataPollRenderAction still distinguishes
+      // the two (a tested branch); this call site just doesn't need to.
       if (
         renderAction.type === "queue-render" ||
         renderAction.type === "queue-render-and-listen"

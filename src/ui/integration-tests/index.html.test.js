@@ -8311,7 +8311,7 @@ describe("index page rendering with Testing Library", () => {
     // whether the auto-render-blocking pipeline could move into React
     // (see REACT_MIGRATION_PLAN.md): getPendingAutoRenderAction's
     // "wait-for-blur" branch (index.page.js's flushPendingAutoRender,
-    // via pr-data-polling.helpers.js) had a direct unit test for its own
+    // via pr-data-polling.helpers.ts) had a direct unit test for its own
     // pure decision function, but nothing exercised the real mechanism -
     // self-attaching a one-time native "blur" listener on
     // document.activeElement - end to end. This proves that real

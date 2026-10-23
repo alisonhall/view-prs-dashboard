@@ -3,7 +3,7 @@
 // runClearOnlyWorkflow/runApplyLabelAction/runApplyLabelWorkflow function
 // bodies into a DI-factory module, matching the pattern every other complex
 // index.page.js function already uses (e.g. pr-single-pr-update.helpers.js,
-// pr-data-polling-orchestration.helpers.js, pr-row-checkbox-actions.helpers.js).
+// pr-data-polling-orchestration.helpers.ts, pr-row-checkbox-actions.helpers.js).
 // This is a byte-for-byte-logic-preserving move, not a rewrite.
 //
 // runAckOnlyWorkflow/runClearOnlyWorkflow/runApplyLabelWorkflow have two

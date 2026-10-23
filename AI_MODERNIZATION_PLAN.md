@@ -1058,7 +1058,8 @@ No static type checking leads to:
   author-insights-drafts, quick-check-actions. Batch 11 (2026-10-23):
   review-stats-date-bucketing, review-stats-timeline. Batch 12
   (2026-10-23): review-stats-aggregation, open-conversation-count. Batch
-  13 (2026-10-23): export, job-events, author-insights-display.
+  13 (2026-10-23): export, job-events, author-insights-display. Batch 14
+  (2026-10-23): data-polling, data-polling-orchestration.
   Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
   shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
   helpers need fields.

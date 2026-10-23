@@ -6,8 +6,8 @@ import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity
 import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.ts';
 import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpers.ts';
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.ts';
-import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
-import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
+import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.ts';
+import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.ts';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.ts';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';

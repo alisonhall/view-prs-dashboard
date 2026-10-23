@@ -2,7 +2,7 @@
 // extraction of index.page.js's former toggleInReviewForRow/
 // toggleFlaggedForRow function bodies into a DI-factory module, matching
 // the pattern every other complex index.page.js function already uses
-// (e.g. pr-single-pr-update.helpers.js, pr-data-polling-orchestration.helpers.js).
+// (e.g. pr-single-pr-update.helpers.js, pr-data-polling-orchestration.helpers.ts).
 // This is a byte-for-byte-logic-preserving move, not a rewrite - every
 // module-level read (`latestStoredPayload`/`latestSelectedRepo`) is now an
 // injected getter, and the payload/repo write goes through
