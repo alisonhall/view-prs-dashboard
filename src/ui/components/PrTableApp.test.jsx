@@ -52,7 +52,7 @@ jest.mock('../helpers/pr-row-sorting.helpers.ts', () => {
 // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // PrTableApp.jsx no longer accepts onAckAction/onApplyLabel as props - it
 // builds its own real handlers via useAckLabelActions(), which reaches
-// the real pr-ack-label-actions.helpers.js factory and (through it) the
+// the real pr-ack-label-actions.helpers.ts factory and (through it) the
 // real postJson. Mocking postJson here is the new seam for the
 // "per-row busy spinner" tests below, replacing the old prop-injection
 // seam.
@@ -765,7 +765,7 @@ describe('PrTableApp', () => {
   // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // onCheckboxChange used to be a test-injected prop - PrTableApp now
   // builds the real handler itself (via useRowCheckboxActions(), reaching
-  // the real pr-row-checkbox-actions.helpers.js factory), so this drives
+  // the real pr-row-checkbox-actions.helpers.ts factory), so this drives
   // the real fetch call instead of a mock prop - same seam shift H.5 did
   // for onAckAction/onApplyLabel (there via postJson, here via fetch
   // directly, matching toggleInReviewForRow/toggleFlaggedForRow's own
@@ -795,7 +795,7 @@ describe('PrTableApp', () => {
     // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // onAckAction/onApplyLabel used to be test-injected props - PrTableApp
     // now builds the real handlers itself (via useAckLabelActions(),
-    // reaching the real pr-ack-label-actions.helpers.js factory), so these
+    // reaching the real pr-ack-label-actions.helpers.ts factory), so these
     // tests drive the real postJson call instead of a mock prop. They
     // still reach PrSection as PrTableApp's own wrapper functions so it can
     // track which PR number is currently mid-request and light up that
@@ -864,7 +864,7 @@ describe('PrTableApp', () => {
     });
 
     test('given an Ack action whose request rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
-      // runSingleAckRequest (pr-ack-label-actions.helpers.js) catches a
+      // runSingleAckRequest (pr-ack-label-actions.helpers.ts) catches a
       // rejected postJson internally and resolves to null - it never
       // rejects itself. This confirms withPrBusy's own finally still
       // clears the busy state for that real failure path.
@@ -940,7 +940,7 @@ describe('PrTableApp', () => {
     // Bulk counterpart's "queued, not yet started" phase - distinct from
     // the busy state above, for a chunked bulk request's PR numbers before
     // their own chunk's request has actually reached the network (see
-    // pr-ack-label-actions.helpers.js's own comment).
+    // pr-ack-label-actions.helpers.ts's own comment).
     describe('markPrQueued/clearPrQueued (chunked bulk Ack/Apply-Label)', () => {
       test('given the component is mounted, when marking several PR numbers queued, then all of them show up in queuedPrNumbers', () => {
         const payload = {

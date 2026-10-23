@@ -1,21 +1,53 @@
-// Phase 7, sub-phase 7.3 (revised scope - see REACT_MIGRATION_PLAN.md): pure
-// extraction of index.page.js's former toggleInReviewForRow/
-// toggleFlaggedForRow function bodies into a DI-factory module, matching
-// the pattern every other complex index.page.js function already uses
-// (e.g. pr-single-pr-update.helpers.js, pr-data-polling-orchestration.helpers.ts).
-// This is a byte-for-byte-logic-preserving move, not a rewrite - every
-// module-level read (`latestStoredPayload`/`latestSelectedRepo`) is now an
-// injected getter, and the payload/repo write goes through
-// index.page.js's existing centralized `applyLatestPrData` setter (Phase
-// 7, sub-phase 7.2) the same way it already did before this extraction.
+import type { PrData, PrDataPayload, PrEntry } from "../types/pr-data.ts";
+
+// The In Review and Flagged checkboxes' server calls
+// (useRowCheckboxActions, used by PrTableApp): POST /view-prs/ack, then
+// update the stored payload from the response. On failure the checkbox is
+// set back and a snackbar shown.
 //
-// These two functions are structurally near-identical but were NOT
-// deduplicated here: their status/notification message wording has real
-// grammatical differences (e.g. "Enabling in-review for #X" vs "Flagging
-// #X" - the flagged variant never says "for"), so a naive shared template
-// risks a subtle wording bug for a zero-risk pure extraction. Left as two
-// separate functions; deduplicating them is a deliberate follow-up, not
-// bundled into this pass.
+// The two functions are structurally near-identical but deliberately not
+// merged: their status/notification wording differs in small ways
+// ("Enabling in-review for #X" vs "Flagging #X" - the flagged variant
+// never says "for"), so a shared template risks a subtle wording bug.
+
+// The checkbox the action updates. PrTableApp passes a plain { checked }
+// stand-in rather than the DOM element; the real checkbox is a controlled
+// React input that re-derives from the payload.
+export interface CheckboxLike {
+  checked?: boolean;
+  disabled?: boolean;
+}
+
+// What a successful toggle hands back: the payload it stored, so the
+// caller can push it into React without reading Context back the same tick.
+export interface CheckboxToggleResult {
+  payload: PrDataPayload | null | undefined;
+  selectedRepo: string;
+}
+
+type ToggleRow = Pick<PrData, "number">;
+type ToggleEntry = Pick<PrEntry, "prNumber" | "repo">;
+
+interface AckToggleResult {
+  ok?: boolean;
+  flaggedByRepo?: unknown;
+  inReviewByRepo?: unknown;
+  prData?: PrDataPayload;
+}
+
+export interface PrRowCheckboxActionsDeps {
+  fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
+  setStatusTextOnly?: (message: string) => void;
+  notifyFailureSnackbar?: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+  getLatestStoredPayload?: () => PrDataPayload | null | undefined;
+  getLatestSelectedRepo?: () => string;
+  applyLatestPrData?: (update: { payload: PrDataPayload | null | undefined; selectedRepo: string }) => void;
+  loadStoredData?: (repo: string) => Promise<unknown>;
+  // Tracks the toggle in the activity drawer, so a request that takes
+  // unusually long becomes visible under "In-flight user actions".
+  beginRequestActivity?: (kind: string) => () => void;
+}
+
 const createPrRowCheckboxActionsHelpers = ({
   fetchFn,
   setStatusTextOnly,
@@ -24,19 +56,14 @@ const createPrRowCheckboxActionsHelpers = ({
   getLatestSelectedRepo,
   applyLatestPrData,
   loadStoredData,
-  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): these were
-  // previously untracked entirely - a checkbox toggle is normally
-  // near-instant (the server's own isCheckboxOnly path skips any PR
-  // refresh), so there was nothing to see in practice, but a genuinely
-  // slow/hung network request had no visibility anywhere either. Wrapped
-  // the same way every other tracked action already is, so the only
-  // behavior change is a toggle that's taking unusually long becoming
-  // visible in the drawer's "In-flight user actions" section.
   beginRequestActivity,
-} = {}) => {
-  const fetchFnSafe = typeof fetchFn === "function" ? fetchFn : async () => {
-    throw new Error("fetchFn is not available");
-  };
+}: PrRowCheckboxActionsDeps = {}) => {
+  const fetchFnSafe =
+    typeof fetchFn === "function"
+      ? fetchFn
+      : async (): Promise<Response> => {
+          throw new Error("fetchFn is not available");
+        };
   const setStatusTextOnlySafe =
     typeof setStatusTextOnly === "function" ? setStatusTextOnly : () => {};
   const notifyFailureSnackbarSafe =
@@ -52,16 +79,16 @@ const createPrRowCheckboxActionsHelpers = ({
   const beginRequestActivitySafe =
     typeof beginRequestActivity === "function" ? beginRequestActivity : () => () => {};
 
-  // Phase 7, sub-phase 7.3 follow-up (see REACT_MIGRATION_PLAN.md): every
-  // exit point returns either null (failure) or { payload, selectedRepo }
-  // (success) instead of a bare return - this is what lets
-  // react-callbacks.helpers.js push the just-computed value into React
-  // directly, without reading latestStoredPayload back synchronously
-  // right after this function writes it (the documented regression class
-  // that deferred this - a setState-backed Context read can't satisfy a
-  // same-tick readback, but using this function's own return value
-  // doesn't go through Context at all).
-  const toggleInReviewForRow = async (entry, row, nextValue, checkbox) => {
+  // Every exit returns null (failure) or { payload, selectedRepo }
+  // (success), so the caller pushes the just-computed value into React
+  // directly instead of reading the stored payload back right after this
+  // writes it (a setState-backed Context can't satisfy a same-tick read).
+  const toggleInReviewForRow = async (
+    entry: ToggleEntry,
+    row: ToggleRow,
+    nextValue: boolean,
+    checkbox: CheckboxLike,
+  ): Promise<CheckboxToggleResult | null> => {
     const prNumber = String(row.number || entry.prNumber || "").trim();
 
     if (!prNumber) {
@@ -89,7 +116,7 @@ const createPrRowCheckboxActionsHelpers = ({
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
       });
-      const result = await response.json();
+      const result: AckToggleResult = await response.json();
 
       if (!response.ok || result.ok === false) {
         checkbox.checked = !nextValue;
@@ -148,7 +175,12 @@ const createPrRowCheckboxActionsHelpers = ({
     }
   };
 
-  const toggleFlaggedForRow = async (entry, row, nextValue, checkbox) => {
+  const toggleFlaggedForRow = async (
+    entry: ToggleEntry,
+    row: ToggleRow,
+    nextValue: boolean,
+    checkbox: CheckboxLike,
+  ): Promise<CheckboxToggleResult | null> => {
     const prNumber = String(row.number || entry.prNumber || "").trim();
 
     if (!prNumber) {
@@ -176,7 +208,7 @@ const createPrRowCheckboxActionsHelpers = ({
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
       });
-      const result = await response.json();
+      const result: AckToggleResult = await response.json();
 
       if (!response.ok || result.ok === false) {
         checkbox.checked = !nextValue;

@@ -33,7 +33,7 @@ const {
  * window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued/
  * beginBulkActionBatch/markBulkActionChunkInFlight/markBulkActionChunkDone/
  * finishBulkActionBatch all deleted outright - their "real external
- * callers" (pr-ack-label-actions.helpers.js/pr-quick-check-actions.helpers.ts)
+ * callers" (pr-ack-label-actions.helpers.ts/pr-quick-check-actions.helpers.ts)
  * are pure DI factories with zero window.* references of their own; their
  * only actual callers are useAckLabelActions.jsx/useQuickCheckActions.jsx,
  * both hooks that already inject these Context functions directly, not

@@ -2,7 +2,7 @@
 
 const {
   createPrRowCheckboxActionsHelpers,
-} = require("./pr-row-checkbox-actions.helpers.js");
+} = require("./pr-row-checkbox-actions.helpers.ts");
 
 const jsonResponse = (body, overrides = {}) => ({
   ok: true,

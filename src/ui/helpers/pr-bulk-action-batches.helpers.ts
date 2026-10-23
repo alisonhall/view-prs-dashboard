@@ -1,13 +1,13 @@
 // Pure chunk-manifest builder for the activity drawer's bulk ack/apply-label
 // queue section - the one place a REAL ordered queue already exists
-// (pr-ack-label-actions.helpers.js's own `chunks` array, run with
+// (pr-ack-label-actions.helpers.ts's own `chunks` array, run with
 // CONCURRENCY_LIMIT in flight at a time via pr-concurrency.helpers.ts).
 // This module doesn't invent any new chunking - it just mirrors the chunks
 // the caller already computed into a drawer-displayable manifest, keyed by
 // batchId so more than one bulk action's progress can be tracked at once.
 //
 // A batch with fewer than 2 chunks is deliberately never tracked
-// (beginBatch is a no-op for it) - pr-ack-label-actions.helpers.js itself
+// (beginBatch is a no-op for it) - pr-ack-label-actions.helpers.ts itself
 // skips the "queued" phase entirely for a single-chunk batch (see its own
 // comment), and showing a one-item "queue" here would be inventing
 // structure that isn't real.

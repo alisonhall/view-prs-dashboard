@@ -4,7 +4,7 @@ import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.ts';
 import { createPrConcurrencyHelpers } from '../helpers/pr-concurrency.helpers.ts';
-import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.js';
+import { createPrAckLabelActionsHelpers } from '../helpers/pr-ack-label-actions.helpers.ts';
 import { summarizeAckRefreshWarnings } from '../helpers/pr-ack-refresh-warnings.helpers.ts';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useStatusText } from './StatusTextContext';

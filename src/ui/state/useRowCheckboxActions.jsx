@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { usePrData } from './PrDataContext';
-import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.js';
+import { createPrRowCheckboxActionsHelpers } from '../helpers/pr-row-checkbox-actions.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { useStatusText } from './StatusTextContext';
 import { useSnackbar } from './SnackbarContext';
@@ -14,7 +14,7 @@ import { useRequestActivity } from './RequestActivityContext';
  * (PrTableApp.jsx's own handleCheckboxChange, built from
  * react-callbacks.helpers.js's vanilla createReactCallbacks() until now).
  * Same shape useSinglePrUpdate.jsx already established: wraps an
- * existing, already-tested DI-factory (pr-row-checkbox-actions.helpers.js)
+ * existing, already-tested DI-factory (pr-row-checkbox-actions.helpers.ts)
  * with Context-sourced state where it's available (payload/selectedRepo,
  * via usePrData()) and window.* bridges for the pieces that stay
  * vanilla-owned for now (beginRequestActivity/loadStoredData/

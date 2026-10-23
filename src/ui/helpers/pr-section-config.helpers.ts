@@ -78,7 +78,7 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
     // group above (Flagged, In Review, Needs Attention, Open PRs I'm
     // Involved In) is ALSO rendered as its own row here - each instance
     // tracks independent per-section state (see PrRow's compositeKey,
-    // built by pr-row-keys.js's buildExpandedInsightsKey, for "More
+    // built by pr-row-keys.ts's buildExpandedInsightsKey, for "More
     // Insights"), while state shared by every instance of the same PR
     // stays consistent because each reads one source: selection from the
     // "PR number(s)" field (PrSelectionCell, via FilterStateProvider) and

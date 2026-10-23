@@ -112,14 +112,6 @@ export default defineConfig([
     languageOptions: { sourceType: "module" },
   },
   {
-    // Every non-test src/ui/helpers/*.js file (and pr-row-keys.js) is an ES
-    // module, overriding the blanket sourceType: "commonjs" above. Their
-    // tests and the test fixtures still use require(), which Babel handles.
-    files: ["src/ui/helpers/*.js", "src/ui/components/pr-row-keys.js"],
-    ignores: ["**/*.test.js"],
-    languageOptions: { sourceType: "module" },
-  },
-  {
     files: ["**/*.json"],
     plugins: { json },
     language: "json/json",

@@ -2,7 +2,7 @@
 
 const {
   createPrAckLabelActionsHelpers,
-} = require("./pr-ack-label-actions.helpers.js");
+} = require("./pr-ack-label-actions.helpers.ts");
 const { createPrConcurrencyHelpers } = require("./pr-concurrency.helpers.ts");
 
 const { runWithConcurrencyLimit } = createPrConcurrencyHelpers();

@@ -1027,49 +1027,28 @@ No static type checking leads to:
 - [ ] Create types for API responses
 - [ ] Create types for server routes
 
-**Phase 12C: Helper Migration**
-- [ ] Migrate all `src/ui/helpers/*.js` → `*.ts` - in batches, leaf
-  helpers (no helper imports) first. Batch 1 (2026-10-23): as-array,
-  sortable-time, textarea-autoresize, default-repo, notes,
-  merged-request-more-config, repo-labels, thread-comments,
-  repo-run-context, viewed-files-summary. Batch 2 (2026-10-23):
-  filter-label-extraction, viewer-login-inference, approval-duration,
-  per-pr-user-state, actor-identity-render, ui-render-utils,
-  insight-metrics-summary, insight-badge-class, scheduler-status, http.
-  Batch 3 (2026-10-23): multi-select-checked-state, failure-snackbar,
-  actor-identity-style, notes-people-options, selected-filters,
-  review-conversations-ui-state, auto-render-unsaved, viewer-context,
-  ack-refresh-warnings, credential-field-error-filter. Batch 4
-  (2026-10-23): row-sorting, concurrency, author-cell,
-  trigger-auto-run-action, formatting, manual-notes-summary,
-  pending-multi-select-selections, status-display, activity-badges,
-  author-insights-identity. Batch 5 (2026-10-23): viewed-files-state,
-  multi-select-render-cache, auto-render-indicator, auto-render-state,
-  approvers, markdown-render, section-grouping, scope-selection,
-  stored-data-load, command-output. Batch 6 (2026-10-23): form-parsing,
-  entry-derived-cache, last-checked-indicator, requested-reviewers,
-  row-filtering, applied-summary. Batch 7 (2026-10-23):
-  selected-pr-numbers, table-filter-chips, backfill, bulk-action-batches,
-  section-config, auto-render-blocking. Batch 8 (2026-10-23):
-  visible-pr-numbers, assigned-users, ui-option-persistence,
-  merged-request-more-action, activity-events. Batch 9 (2026-10-23):
-  needs-attention, row-match-filters, smart-groups, author-insights-data,
-  actor-identity. Batch 10 (2026-10-23): backfill-actions,
-  author-insights-drafts, quick-check-actions. Batch 11 (2026-10-23):
-  review-stats-date-bucketing, review-stats-timeline. Batch 12
-  (2026-10-23): review-stats-aggregation, open-conversation-count. Batch
-  13 (2026-10-23): export, job-events, author-insights-display. Batch 14
-  (2026-10-23): data-polling, data-polling-orchestration.
-  Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
-  shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
-  helpers need fields.
-- [ ] Add proper type annotations
-- [ ] Test each batch after migration
-- [ ] Verify types catch real issues
+**Phase 12C: Helper Migration** ✅ (2026-10-23)
+- [x] Migrate all `src/ui/helpers/*.js` → `*.ts` - all 87 helpers, plus
+  `src/ui/components/pr-row-keys.js`, in 15 batches (commits "TypeScript
+  batch 1" to "batch 15"), leaf helpers first. Shared data shapes live in
+  `src/ui/types/pr-data.ts` (following the data schema) and
+  `src/ui/types/globals.d.ts` (the vendored marked/DOMPurify globals);
+  shared dependency types are exported by the helper that owns them (e.g.
+  actor-identity's ActorsMap and ResolveActorDisplayName).
+- [x] Add proper type annotations
+- [x] Test each batch after migration (typecheck, lint, vite build,
+  test:ci and e2e per batch). The review-stats timeline and aggregation
+  helpers, whose own tests are thin, were also compared old-vs-new on
+  generated data before committing.
+- [x] Verify types catch real issues - the conversion surfaced stale
+  comments and a few spots where a typed rewrite would have changed
+  behaviour (all kept identical). Converted helpers' tests stay `.js` for
+  now (Phase 12G), and their callers are still `.jsx`, so the types aren't
+  yet checked against how they're called.
 
 **Phase 12D: Component Migration**
 - [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
-  (plus `src/ui/react-app.jsx` and `src/ui/components/pr-row-keys.js`)
+  (plus `src/ui/react-app.jsx`; `pr-row-keys` was converted with the helpers)
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

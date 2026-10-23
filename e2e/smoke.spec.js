@@ -585,7 +585,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 });
 
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
-  // Regression test for a real UX gap: pr-ack-label-actions.helpers.js's
+  // Regression test for a real UX gap: pr-ack-label-actions.helpers.ts's
   // runAckAction (bulk operations submitted via the Run & Filter tab's
   // "#pr-numbers" field, as opposed to a single row's own Ack button)
   // previously gave no visible per-row feedback at all while a multi-PR
@@ -636,7 +636,7 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // reproducing it faithfully through only the 3 PRs this fixture provides
 // would mean engineering a PR-number list that lands a specific PR number
-// in a chunk beyond pr-ack-label-actions.helpers.js's own CONCURRENCY_LIMIT
+// in a chunk beyond pr-ack-label-actions.helpers.ts's own CONCURRENCY_LIMIT
 // (3 chunks in flight at once) while never appearing in an earlier
 // in-flight chunk - fragile and tightly coupled to that implementation
 // constant, for coverage two other layers already provide faithfully:

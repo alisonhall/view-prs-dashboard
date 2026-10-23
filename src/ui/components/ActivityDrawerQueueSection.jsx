@@ -3,7 +3,7 @@ import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 /**
  * Activity drawer feature (see REACT_MIGRATION_PLAN.md): section 4, the
  * one place a REAL ordered queue exists - a chunked bulk ack/apply-label
- * batch (pr-ack-label-actions.helpers.js), surfaced via
+ * batch (pr-ack-label-actions.helpers.ts), surfaced via
  * PrActivityQueueProvider. Deliberately the only section in this drawer
  * that shows a numbered position/order - everywhere else (the scheduled
  * jobs section) explicitly avoids that, since no comparable real queue

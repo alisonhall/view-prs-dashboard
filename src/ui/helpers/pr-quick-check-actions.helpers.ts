@@ -212,7 +212,7 @@ const createPrQuickCheckActionsHelpers = ({
     }
 
     // markPrsBusy/clearPrsBusy take one repo per call (busy state is
-    // keyed by repo+number, see pr-row-keys.js's buildActivePrKey), so
+    // keyed by repo+number, see pr-row-keys.ts's buildActivePrKey), so
     // each repo in the sweep needs its own call rather than one call
     // spanning every repo.
     try {

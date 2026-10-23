@@ -32,7 +32,7 @@ describe("pr bulk action batches helpers", () => {
       expect(viewModel[0].chunks.every((c) => c.state === "waiting")).toBe(true);
     });
 
-    test("does not track a single-chunk batch - matches pr-ack-label-actions.helpers.js's own single-chunk skip", () => {
+    test("does not track a single-chunk batch - matches pr-ack-label-actions.helpers.ts's own single-chunk skip", () => {
       const state = beginBatch(getInitialBatchesState(), {
         batchId: "b1",
         actionLabel: "Ack/Clear",

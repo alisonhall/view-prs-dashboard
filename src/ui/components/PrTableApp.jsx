@@ -57,7 +57,7 @@ export function PrTableApp() {
   // PR numbers are only unique within a repo, and rows from repos other
   // than the currently-configured one now render alongside it (see
   // entriesForRepo below) - every "is this PR currently active/busy" set
-  // below is keyed via buildActivePrKey (pr-row-keys.js), not by prNumber
+  // below is keyed via buildActivePrKey (pr-row-keys.ts), not by prNumber
   // alone, so a coincidentally-matching PR number in a different repo
   // doesn't show a spinner it has nothing to do with.
 
