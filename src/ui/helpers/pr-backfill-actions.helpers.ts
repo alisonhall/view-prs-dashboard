@@ -2,9 +2,10 @@ import type { BackfillButtonState, BackfillStatus } from "./pr-backfill.helpers.
 import type { CommandOutputOptions, CommandResult } from "./pr-command-output.helpers.ts";
 import type { PostJsonResult } from "./pr-http.helpers.ts";
 
-// The Backfill tab's server calls (BackfillStatusProvider): loading the
-// status and log tail, and starting/stopping the backfill with status
-// text, output, button state and the failure snackbar kept in step.
+// The Backfill tab's server calls: loading the status and log tail
+// (BackfillStatusProvider uses loadBackfillStatus), and starting/stopping
+// the backfill with status text, output, button state and the failure
+// snackbar kept in step (useBackfillActions).
 interface BackfillLogResult {
   ok?: boolean;
   error?: string;
@@ -14,47 +15,60 @@ interface BackfillLogResult {
 
 type BackfillActionResult = BackfillStatus & CommandResult & { summary?: string };
 
+// Each function needs only some of these, and callers pass just those
+// (BackfillStatusProvider passes the eight loadBackfillStatus needs).
+// There are no fallbacks: calling a function whose dependency is missing
+// throws, as before conversion.
+//  - loadBackfillLogTail: fetch, getSupportsBackfillLogPolling,
+//    setSupportsBackfillLogPolling, setBackfillLogMessage,
+//    formatBackfillLogMessage, autoScrollBackfillLogToBottom,
+//    backfillLogTailLines
+//  - loadBackfillStatus: fetch, updateBackfillStatusFromPayload, plus
+//    loadBackfillLogTail's when includeLog is set
+//  - handleBackfillAction: all of them
 export interface PrBackfillActionDeps {
-  fetch: (input: string) => Promise<Response>;
-  postJson: (url: string, payload: unknown) => Promise<PostJsonResult<BackfillActionResult>>;
-  beginRequestActivity: (kind: string) => () => void;
-  setStatusMessage: (message: string) => void;
-  setOutputMessage: (message: string) => void;
-  setBackfillButtonState: (state: BackfillButtonState) => void;
-  notifyFailureSnackbar: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
-  formatCommandOutput: (result: CommandResult, options?: CommandOutputOptions) => string;
-  stripAnsi: (text: unknown) => string;
-  updateBackfillStatusFromPayload: (payload: BackfillStatus, options?: { announce?: boolean }) => void;
-  setBackfillLogMessage: (message: string) => void;
-  autoScrollBackfillLogToBottom: () => void;
-  formatBackfillLogMessage: (log: { summary?: string; tail?: string }) => string;
-  getSupportsBackfillLogPolling: () => boolean;
-  setSupportsBackfillLogPolling: (supported: boolean) => void;
-  getIsBackfillRunning: () => boolean;
-  setIsBackfillActionPending: (pending: boolean) => void;
-  backfillLogTailLines: number;
+  fetch?: (input: string) => Promise<Response>;
+  postJson?: (url: string, payload: unknown) => Promise<PostJsonResult<BackfillActionResult>>;
+  beginRequestActivity?: (kind: string) => () => void;
+  setStatusMessage?: (message: string) => void;
+  setOutputMessage?: (message: string) => void;
+  setBackfillButtonState?: (state: BackfillButtonState) => void;
+  notifyFailureSnackbar?: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+  formatCommandOutput?: (result: CommandResult, options?: CommandOutputOptions) => string;
+  stripAnsi?: (text: unknown) => string;
+  updateBackfillStatusFromPayload?: (payload: BackfillStatus, options?: { announce?: boolean }) => void;
+  setBackfillLogMessage?: (message: string) => void;
+  autoScrollBackfillLogToBottom?: () => void;
+  formatBackfillLogMessage?: (log: { summary?: string; tail?: string }) => string;
+  getSupportsBackfillLogPolling?: () => boolean;
+  setSupportsBackfillLogPolling?: (supported: boolean) => void;
+  getIsBackfillRunning?: () => boolean;
+  setIsBackfillActionPending?: (pending: boolean) => void;
+  backfillLogTailLines?: number;
 }
 
-const createPrBackfillActionHelpers = ({
-  fetch,
-  postJson,
-  beginRequestActivity,
-  setStatusMessage,
-  setOutputMessage,
-  setBackfillButtonState,
-  notifyFailureSnackbar,
-  formatCommandOutput,
-  stripAnsi,
-  updateBackfillStatusFromPayload,
-  setBackfillLogMessage,
-  autoScrollBackfillLogToBottom,
-  formatBackfillLogMessage,
-  getSupportsBackfillLogPolling,
-  setSupportsBackfillLogPolling,
-  getIsBackfillRunning,
-  setIsBackfillActionPending,
-  backfillLogTailLines,
-}: PrBackfillActionDeps) => {
+const createPrBackfillActionHelpers = (deps: PrBackfillActionDeps) => {
+  const {
+    fetch,
+    postJson,
+    beginRequestActivity,
+    setStatusMessage,
+    setOutputMessage,
+    setBackfillButtonState,
+    notifyFailureSnackbar,
+    formatCommandOutput,
+    stripAnsi,
+    updateBackfillStatusFromPayload,
+    setBackfillLogMessage,
+    autoScrollBackfillLogToBottom,
+    formatBackfillLogMessage,
+    getSupportsBackfillLogPolling,
+    setSupportsBackfillLogPolling,
+    getIsBackfillRunning,
+    setIsBackfillActionPending,
+    backfillLogTailLines,
+  } = deps as Required<PrBackfillActionDeps>;
+
   const loadBackfillLogTail = async (): Promise<BackfillLogResult> => {
     if (!getSupportsBackfillLogPolling()) {
       return {

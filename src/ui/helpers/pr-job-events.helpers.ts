@@ -1,8 +1,9 @@
 // Pure reducer for the activity drawer's SSE-fed job state. No React/DOM -
 // all the "honest, not a fake queue" semantics live here so they're unit
-// testable without a real EventSource. JobEventsProvider.jsx is the only
-// caller; it owns the live connection and EventSource lifecycle, this
-// module only owns what a given frame does to state.
+// testable without a real EventSource. JobEventsProvider.jsx owns the live
+// connection and EventSource lifecycle and applies frames through this
+// module, which only owns what a given frame does to state;
+// JobEventsContext.jsx uses getInitialJobEventsState for its default value.
 
 export type JobKey = "autoRefresh" | "quickCheck" | "mergedQueueDrain";
 

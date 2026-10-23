@@ -5,6 +5,8 @@ import type { EntryDerivedCache } from "./pr-entry-derived-cache.helpers.ts";
 // manifests to detect changes, the manifest delta and merging a delta
 // response into the stored payload, and whether a poll result should
 // render now, wait (unsaved edits or a focused text field), or be skipped.
+// AutoRenderBlockingProvider also uses getPendingAutoRenderAction to decide
+// when a queued update can be applied.
 
 // What getDataPollRenderAction / getPendingAutoRenderAction decide.
 export type DataPollRenderAction =
