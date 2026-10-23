@@ -1,13 +1,43 @@
+import type { NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
+import type {
+  AuthorInsightsState,
+  AuthorManualComment,
+  ManualCommentComposerDraft,
+  ManualCommentEditDraft,
+} from "./pr-author-insights-data.helpers.ts";
+
+// Author Insights' unsaved comment drafts, kept in the shared mutable
+// state object (AuthorInsightsDraftsProvider's ref): one new-comment
+// composer draft per author, and one edit draft per saved comment being
+// edited, plus whether each differs from what's saved.
+
 const DEFAULT_AUTHOR_INSIGHTS_SENTIMENT = "neutral";
+
+// The part of AuthorInsightsState these helpers read and fill in.
+type DraftsState = Pick<
+  AuthorInsightsState,
+  "manualCommentDraftByAuthorLogin" | "manualCommentEditDraftByAuthorLogin" | "manualCommentsByAuthorLogin"
+>;
+
+export interface PrAuthorInsightsDraftsDeps {
+  authorInsightsState?: Partial<DraftsState> | null;
+  normalizeActorLogin?: NormalizeActorLogin;
+}
+
+type DraftValues = Record<string, unknown>;
+
+const hasOwn = (values: DraftValues, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(values, key);
 
 const createPrAuthorInsightsDraftsHelpers = ({
   authorInsightsState,
   normalizeActorLogin,
-} = {}) => {
-  const state =
-    authorInsightsState && typeof authorInsightsState === "object"
-      ? authorInsightsState
-      : {};
+}: PrAuthorInsightsDraftsDeps = {}) => {
+  // Fills in any missing maps on the caller's own object (it's shared, so
+  // this mutates it on purpose).
+  const state = (
+    authorInsightsState && typeof authorInsightsState === "object" ? authorInsightsState : {}
+  ) as Partial<DraftsState>;
   if (!state.manualCommentDraftByAuthorLogin) {
     state.manualCommentDraftByAuthorLogin = {};
   }
@@ -17,13 +47,17 @@ const createPrAuthorInsightsDraftsHelpers = ({
   if (!state.manualCommentsByAuthorLogin) {
     state.manualCommentsByAuthorLogin = {};
   }
+  // Read on every call, as before conversion, in case a map is replaced.
+  const composerDrafts = () => state.manualCommentDraftByAuthorLogin ?? (state.manualCommentDraftByAuthorLogin = {});
+  const editDrafts = () =>
+    state.manualCommentEditDraftByAuthorLogin ?? (state.manualCommentEditDraftByAuthorLogin = {});
 
   const normalizeActorLoginSafe =
     typeof normalizeActorLogin === "function"
       ? normalizeActorLogin
-      : (value) => String(value || "").trim().toLowerCase();
+      : (value: unknown) => String(value || "").trim().toLowerCase();
 
-  const normalizeAuthorInsightsSentiment = (value) => {
+  const normalizeAuthorInsightsSentiment = (value: unknown): string => {
     const normalized = String(value || DEFAULT_AUTHOR_INSIGHTS_SENTIMENT)
       .trim()
       .toLowerCase();
@@ -32,29 +66,31 @@ const createPrAuthorInsightsDraftsHelpers = ({
       : DEFAULT_AUTHOR_INSIGHTS_SENTIMENT;
   };
 
-  const createAuthorInsightsComposerDraft = () => ({
+  const createAuthorInsightsComposerDraft = (): ManualCommentComposerDraft => ({
     note: "",
     sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
   });
 
-  const getAuthorInsightsComposerDraft = (authorLogin) => {
+  const getAuthorInsightsComposerDraft = (authorLogin: unknown): ManualCommentComposerDraft => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     if (!normalizedAuthorLogin) {
       return createAuthorInsightsComposerDraft();
     }
 
-    const existingDraft =
-      state.manualCommentDraftByAuthorLogin[normalizedAuthorLogin];
+    const existingDraft = composerDrafts()[normalizedAuthorLogin];
     if (existingDraft && typeof existingDraft === "object") {
       return existingDraft;
     }
 
     const nextDraft = createAuthorInsightsComposerDraft();
-    state.manualCommentDraftByAuthorLogin[normalizedAuthorLogin] = nextDraft;
+    composerDrafts()[normalizedAuthorLogin] = nextDraft;
     return nextDraft;
   };
 
-  const updateAuthorInsightsComposerDraft = (authorLogin, nextValues = {}) => {
+  const updateAuthorInsightsComposerDraft = (
+    authorLogin: unknown,
+    nextValues: DraftValues = {},
+  ): ManualCommentComposerDraft => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     if (!normalizedAuthorLogin) {
       return createAuthorInsightsComposerDraft();
@@ -62,29 +98,26 @@ const createPrAuthorInsightsDraftsHelpers = ({
 
     const currentDraft = getAuthorInsightsComposerDraft(normalizedAuthorLogin);
     const nextDraft = {
-      note:
-        Object.prototype.hasOwnProperty.call(nextValues, "note")
-          ? String(nextValues.note || "")
-          : String(currentDraft.note || ""),
-      sentiment:
-        Object.prototype.hasOwnProperty.call(nextValues, "sentiment")
-          ? normalizeAuthorInsightsSentiment(nextValues.sentiment)
-          : normalizeAuthorInsightsSentiment(currentDraft.sentiment),
+      note: hasOwn(nextValues, "note")
+        ? String(nextValues.note || "")
+        : String(currentDraft.note || ""),
+      sentiment: hasOwn(nextValues, "sentiment")
+        ? normalizeAuthorInsightsSentiment(nextValues.sentiment)
+        : normalizeAuthorInsightsSentiment(currentDraft.sentiment),
     };
-    state.manualCommentDraftByAuthorLogin[normalizedAuthorLogin] = nextDraft;
+    composerDrafts()[normalizedAuthorLogin] = nextDraft;
     return nextDraft;
   };
 
-  const resetAuthorInsightsComposerDraft = (authorLogin) => {
+  const resetAuthorInsightsComposerDraft = (authorLogin: unknown): void => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     if (!normalizedAuthorLogin) {
       return;
     }
-    state.manualCommentDraftByAuthorLogin[normalizedAuthorLogin] =
-      createAuthorInsightsComposerDraft();
+    composerDrafts()[normalizedAuthorLogin] = createAuthorInsightsComposerDraft();
   };
 
-  const isAuthorInsightsComposerDraftDirty = (draft = {}) => {
+  const isAuthorInsightsComposerDraftDirty = (draft: ManualCommentComposerDraft = {}): boolean => {
     const note = String(draft.note || "");
     const sentiment = normalizeAuthorInsightsSentiment(draft.sentiment);
     return (
@@ -93,33 +126,37 @@ const createPrAuthorInsightsDraftsHelpers = ({
     );
   };
 
-  const getAuthorInsightsEditDraftMap = (authorLogin) => {
+  const getAuthorInsightsEditDraftMap = (authorLogin: unknown): Record<string, ManualCommentEditDraft> => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     if (!normalizedAuthorLogin) {
       return {};
     }
-    const existingDraftMap =
-      state.manualCommentEditDraftByAuthorLogin[normalizedAuthorLogin];
+    const existingDraftMap = editDrafts()[normalizedAuthorLogin];
     if (existingDraftMap && typeof existingDraftMap === "object") {
       return existingDraftMap;
     }
-    const nextDraftMap = {};
-    state.manualCommentEditDraftByAuthorLogin[normalizedAuthorLogin] =
-      nextDraftMap;
+    const nextDraftMap: Record<string, ManualCommentEditDraft> = {};
+    editDrafts()[normalizedAuthorLogin] = nextDraftMap;
     return nextDraftMap;
   };
 
-  const createAuthorInsightsEditDraft = (comment = {}, overrides = {}) => ({
-    note: Object.prototype.hasOwnProperty.call(overrides, "note")
+  const createAuthorInsightsEditDraft = (
+    comment: AuthorManualComment = {},
+    overrides: DraftValues = {},
+  ): ManualCommentEditDraft => ({
+    note: hasOwn(overrides, "note")
       ? String(overrides.note || "")
       : String(comment?.note || ""),
-    sentiment: Object.prototype.hasOwnProperty.call(overrides, "sentiment")
+    sentiment: hasOwn(overrides, "sentiment")
       ? normalizeAuthorInsightsSentiment(overrides.sentiment)
       : normalizeAuthorInsightsSentiment(comment?.sentiment),
     isEditing: overrides.isEditing === true,
   });
 
-  const getAuthorInsightsEditDraft = (authorLogin, comment = {}) => {
+  const getAuthorInsightsEditDraft = (
+    authorLogin: unknown,
+    comment: AuthorManualComment = {},
+  ): ManualCommentEditDraft => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     const commentId = String(comment?.id || "").trim();
     if (!normalizedAuthorLogin || !commentId) {
@@ -138,10 +175,10 @@ const createPrAuthorInsightsDraftsHelpers = ({
   };
 
   const updateAuthorInsightsEditDraft = (
-    authorLogin,
-    commentId,
-    nextValues = {},
-  ) => {
+    authorLogin: unknown,
+    commentId: unknown,
+    nextValues: DraftValues = {},
+  ): ManualCommentEditDraft | null => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     const normalizedCommentId = String(commentId || "").trim();
     if (!normalizedAuthorLogin || !normalizedCommentId) {
@@ -152,24 +189,21 @@ const createPrAuthorInsightsDraftsHelpers = ({
     const currentDraft =
       draftMap[normalizedCommentId] || createAuthorInsightsEditDraft();
     const nextDraft = {
-      note:
-        Object.prototype.hasOwnProperty.call(nextValues, "note")
-          ? String(nextValues.note || "")
-          : String(currentDraft.note || ""),
-      sentiment:
-        Object.prototype.hasOwnProperty.call(nextValues, "sentiment")
-          ? normalizeAuthorInsightsSentiment(nextValues.sentiment)
-          : normalizeAuthorInsightsSentiment(currentDraft.sentiment),
-      isEditing:
-        Object.prototype.hasOwnProperty.call(nextValues, "isEditing")
-          ? nextValues.isEditing === true
-          : currentDraft.isEditing === true,
+      note: hasOwn(nextValues, "note")
+        ? String(nextValues.note || "")
+        : String(currentDraft.note || ""),
+      sentiment: hasOwn(nextValues, "sentiment")
+        ? normalizeAuthorInsightsSentiment(nextValues.sentiment)
+        : normalizeAuthorInsightsSentiment(currentDraft.sentiment),
+      isEditing: hasOwn(nextValues, "isEditing")
+        ? nextValues.isEditing === true
+        : currentDraft.isEditing === true,
     };
     draftMap[normalizedCommentId] = nextDraft;
     return nextDraft;
   };
 
-  const resetAuthorInsightsEditDraft = (authorLogin, commentId) => {
+  const resetAuthorInsightsEditDraft = (authorLogin: unknown, commentId: unknown): void => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     const normalizedCommentId = String(commentId || "").trim();
     if (!normalizedAuthorLogin || !normalizedCommentId) {
@@ -179,7 +213,10 @@ const createPrAuthorInsightsDraftsHelpers = ({
     delete draftMap[normalizedCommentId];
   };
 
-  const isAuthorInsightsEditDraftDirty = (comment = {}, draft = {}) => {
+  const isAuthorInsightsEditDraftDirty = (
+    comment: AuthorManualComment = {},
+    draft: ManualCommentEditDraft = {},
+  ): boolean => {
     const commentNote = String(comment?.note || "");
     const commentSentiment = normalizeAuthorInsightsSentiment(comment?.sentiment);
     return (
@@ -188,7 +225,7 @@ const createPrAuthorInsightsDraftsHelpers = ({
     );
   };
 
-  const getAuthorManualCommentsForLogin = (authorLogin) => {
+  const getAuthorManualCommentsForLogin = (authorLogin: unknown): AuthorManualComment[] => {
     const normalizedAuthorLogin = normalizeActorLoginSafe(authorLogin);
     if (!normalizedAuthorLogin) {
       return [];

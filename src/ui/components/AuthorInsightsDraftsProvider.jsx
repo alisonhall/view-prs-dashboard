@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { AuthorInsightsDraftsContext, AuthorInsightsDraftsVersionContext } from '../state/AuthorInsightsDraftsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
-import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
+import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.ts';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.ts';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 

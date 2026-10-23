@@ -16,16 +16,18 @@ export interface BackfillBadge {
   className: string;
 }
 
+export interface BackfillButtonState {
+  startDisabled: boolean;
+  stopDisabled: boolean;
+  refreshDisabled: boolean;
+  refreshLogDisabled: boolean;
+}
+
 export interface BackfillStatusViewModel {
   badges: BackfillBadge[];
   detailsText: string;
   isBackfillRunning: boolean;
-  buttonState: {
-    startDisabled: boolean;
-    stopDisabled: boolean;
-    refreshDisabled: boolean;
-    refreshLogDisabled: boolean;
-  };
+  buttonState: BackfillButtonState;
   stateKey: string;
 }
 

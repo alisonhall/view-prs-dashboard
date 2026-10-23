@@ -4,7 +4,7 @@ import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 import { createPrAuthorInsightsDisplayHelpers } from '../helpers/pr-author-insights-display.helpers.js';
-import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.js';
+import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.ts';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.ts';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';

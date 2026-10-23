@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { postJson } from '../helpers/pr-http.helpers.ts';
-import { createPrQuickCheckActionsHelpers } from '../helpers/pr-quick-check-actions.helpers.js';
+import { createPrQuickCheckActionsHelpers } from '../helpers/pr-quick-check-actions.helpers.ts';
 import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { usePrActivityQueue } from './PrActivityQueueContext';

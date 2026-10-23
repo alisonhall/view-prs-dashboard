@@ -1,4 +1,4 @@
-const { createPrBackfillActionHelpers } = require("../helpers/pr-backfill-actions.helpers.js");
+const { createPrBackfillActionHelpers } = require("../helpers/pr-backfill-actions.helpers.ts");
 
 const createDeps = (overrides = {}) => {
   const setSupportsBackfillLogPolling = jest.fn();

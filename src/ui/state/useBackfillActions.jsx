@@ -3,7 +3,7 @@ import { postJson } from '../helpers/pr-http.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.ts';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.ts';
-import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.js';
+import { createPrBackfillActionHelpers } from '../helpers/pr-backfill-actions.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';
 import { BACKFILL_LOG_TAIL_LINES, useBackfillStatusActions } from './BackfillStatusContext';
 import { useRequestActivity } from './RequestActivityContext';

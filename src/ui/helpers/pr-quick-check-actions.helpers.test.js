@@ -2,7 +2,7 @@
 
 const {
   createPrQuickCheckActionsHelpers,
-} = require("./pr-quick-check-actions.helpers.js");
+} = require("./pr-quick-check-actions.helpers.ts");
 
 function buildHarness(overrides = {}) {
   const calls = {

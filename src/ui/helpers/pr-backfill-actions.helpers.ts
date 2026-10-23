@@ -1,3 +1,40 @@
+import type { BackfillButtonState, BackfillStatus } from "./pr-backfill.helpers.ts";
+import type { CommandOutputOptions, CommandResult } from "./pr-command-output.helpers.ts";
+import type { PostJsonResult } from "./pr-http.helpers.ts";
+
+// The Backfill tab's server calls (BackfillStatusProvider): loading the
+// status and log tail, and starting/stopping the backfill with status
+// text, output, button state and the failure snackbar kept in step.
+interface BackfillLogResult {
+  ok?: boolean;
+  error?: string;
+  summary?: string;
+  tail?: string;
+}
+
+type BackfillActionResult = BackfillStatus & CommandResult & { summary?: string };
+
+export interface PrBackfillActionDeps {
+  fetch: (input: string) => Promise<Response>;
+  postJson: (url: string, payload: unknown) => Promise<PostJsonResult<BackfillActionResult>>;
+  beginRequestActivity: (kind: string) => () => void;
+  setStatusMessage: (message: string) => void;
+  setOutputMessage: (message: string) => void;
+  setBackfillButtonState: (state: BackfillButtonState) => void;
+  notifyFailureSnackbar: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+  formatCommandOutput: (result: CommandResult, options?: CommandOutputOptions) => string;
+  stripAnsi: (text: unknown) => string;
+  updateBackfillStatusFromPayload: (payload: BackfillStatus, options?: { announce?: boolean }) => void;
+  setBackfillLogMessage: (message: string) => void;
+  autoScrollBackfillLogToBottom: () => void;
+  formatBackfillLogMessage: (log: { summary?: string; tail?: string }) => string;
+  getSupportsBackfillLogPolling: () => boolean;
+  setSupportsBackfillLogPolling: (supported: boolean) => void;
+  getIsBackfillRunning: () => boolean;
+  setIsBackfillActionPending: (pending: boolean) => void;
+  backfillLogTailLines: number;
+}
+
 const createPrBackfillActionHelpers = ({
   fetch,
   postJson,
@@ -17,8 +54,8 @@ const createPrBackfillActionHelpers = ({
   getIsBackfillRunning,
   setIsBackfillActionPending,
   backfillLogTailLines,
-}) => {
-  const loadBackfillLogTail = async () => {
+}: PrBackfillActionDeps) => {
+  const loadBackfillLogTail = async (): Promise<BackfillLogResult> => {
     if (!getSupportsBackfillLogPolling()) {
       return {
         ok: false,
@@ -43,7 +80,7 @@ const createPrBackfillActionHelpers = ({
       };
     }
 
-    const result = await response.json();
+    const result: BackfillLogResult = await response.json();
 
     if (!response.ok || result.ok === false) {
       throw new Error(result.error || "Failed to fetch backfill log");
@@ -60,15 +97,16 @@ const createPrBackfillActionHelpers = ({
     return result;
   };
 
+  // Throws on failure with the server's result attached as `error.result`.
   const loadBackfillStatus = async ({
     announce = false,
     includeLog = false,
-  } = {}) => {
+  }: { announce?: boolean; includeLog?: boolean } = {}): Promise<BackfillStatus> => {
     const response = await fetch("/view-prs/backfill");
-    const result = await response.json();
+    const result: BackfillStatus = await response.json();
 
     if (!response.ok || result.ok === false) {
-      const error = new Error(
+      const error: Error & { result?: BackfillStatus } = new Error(
         result.error || "Failed to fetch backfill status",
       );
       error.result = result;
@@ -82,7 +120,7 @@ const createPrBackfillActionHelpers = ({
     return result;
   };
 
-  const handleBackfillAction = async (action) => {
+  const handleBackfillAction = async (action: "start" | "stop"): Promise<void> => {
     const actionLabel = action === "start" ? "Starting" : "Stopping";
     const finishActivity = beginRequestActivity("backfill");
     setIsBackfillActionPending(true);
@@ -138,13 +176,11 @@ const createPrBackfillActionHelpers = ({
       try {
         await loadBackfillStatus({ includeLog: getIsBackfillRunning() });
       } catch (_error) {
-        // Phase C (see REACT_MIGRATION_PLAN.md, "Full migration
-        // roadmap"): the reload above normally pushes a fresh
-        // buttonState (via renderBackfillStatus's own
-        // window.updateReactBackfillButtonState call) that un-disables
-        // whatever this action disabled - if that reload itself fails,
-        // there's no fresh view model to push, so force every button
-        // back to enabled directly instead of leaving the UI stuck.
+        // The reload above normally pushes a fresh button state (through
+        // updateBackfillStatusFromPayload) that re-enables whatever this
+        // action disabled. If the reload itself fails there's no fresh
+        // state to push, so re-enable every button directly instead of
+        // leaving the UI stuck.
         setBackfillButtonState({
           startDisabled: false,
           stopDisabled: false,

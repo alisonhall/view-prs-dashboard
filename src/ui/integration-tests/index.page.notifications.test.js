@@ -6,7 +6,7 @@ const { isTimeoutFailureMessage } = require("../helpers/pr-failure-snackbar.help
 const { summarizeAckRefreshWarnings } = require("../helpers/pr-ack-refresh-warnings.helpers.ts");
 const { createPrAutoRenderUnsavedHelpers } = require("../helpers/pr-auto-render-unsaved.helpers.ts");
 const { createPrAutoRenderBlockingHelpers } = require("../helpers/pr-auto-render-blocking.helpers.ts");
-const { createPrAuthorInsightsDraftsHelpers } = require("../helpers/pr-author-insights-drafts.helpers.js");
+const { createPrAuthorInsightsDraftsHelpers } = require("../helpers/pr-author-insights-drafts.helpers.ts");
 
 const { formatBlockingPrNumbersLabel } = createPrAutoRenderBlockingHelpers({
   normalizePrNumber: createPrAutoRenderUnsavedHelpers().normalizePrNumber,

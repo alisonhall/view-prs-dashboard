@@ -1,40 +1,80 @@
-// "Quick check all existing PRs" (see the saved plan / REACT_MIGRATION_PLAN.md
-// context): checks every PR number already loaded in the app, grouped by its
-// own repo, rather than requiring the user to type numbers into the Run &
-// Filter tab. The loaded table isn't scoped to one repo - PrTableApp.jsx
-// deliberately renders rows from every repo ever loaded together (see its own
-// comment) - so this collects PR numbers per distinct repo present in the
-// loaded payload and sends them all in one request to POST
-// /view-prs/quick-check-all (one lock acquisition server-side for the whole
-// sweep, rather than firing one /quick-check request per repo from here,
-// which would just race against the server's single isQuickCheckInProgress
-// flag).
+import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
+import type { PostJsonResult } from "./pr-http.helpers.ts";
+
+// "Quick check" and "Quick check all": checks whether PRs changed upstream
+// without a full run. "Quick check all" checks every PR number already
+// loaded, grouped by repo: the loaded table isn't scoped to one repo -
+// PrTableApp.jsx deliberately renders rows from every repo ever loaded
+// together (see its own comment) - so this sends every repo in one POST
+// /view-prs/quick-check-all request (one lock acquisition server-side for
+// the whole sweep, rather than firing one /quick-check request per repo
+// from here, which would just race against the server's single
+// isQuickCheckInProgress flag).
 //
-// buildQuickCheckOutcome is the 409/503/failure/success branching extracted
-// verbatim from index.page.js's original handleQuickCheck body (pure
-// extraction, zero behavior change - same discipline as this session's
-// earlier sub-phase 7.2/7.3 work) so both the single "Quick check" button and
-// this new "Quick check all" button share one implementation instead of
-// duplicating it. Only the idle/fallback label and the success label's exact
-// wording differ between the two callers, so both are passed in rather than
-// hardcoded here.
-const collectAllLoadedPrsByRepo = (byPrNumber) => {
-  const map = new Map();
+// buildQuickCheckOutcome is the 409/503/failure/success branching both
+// buttons share. Only the idle/fallback label and the success label's
+// exact wording differ between the two callers, so both are passed in
+// rather than hardcoded here.
+
+export interface QuickCheckResult {
+  ok?: boolean;
+  error?: string;
+  newPendingOpenCount?: number;
+  newPendingMergedClosedCount?: number;
+  reposChecked?: string[];
+  reposFailed?: unknown[];
+}
+
+export interface QuickCheckOutcome {
+  label: string;
+  resetAfterMs?: number;
+}
+
+export interface QuickCheckLabels {
+  fallbackLabel: string;
+  buildSuccessLabel?: (summary: { pendingTotal: number; reposChecked: string[]; failedCount: number }) => string;
+}
+
+export interface RepoQuickCheckRequest {
+  repo: string;
+  prNumbers: string;
+}
+
+type Notify = (title: string, detail: string, durationMs?: number) => void;
+
+export interface PrQuickCheckActionsDeps {
+  showErrorNotification?: Notify;
+  showWarningNotification?: Notify;
+  notifyFailureSnackbar?: (title: string, errorSource: unknown, fallbackMessage?: string) => void;
+  loadSchedulerStatus?: () => unknown;
+  // Only runQuickCheckWorkflow/runQuickCheckAllWorkflow need these, so
+  // callers that only use the pure helpers can leave them out.
+  postJson?: (url: string, payload: unknown) => Promise<PostJsonResult<QuickCheckResult>>;
+  getFormBody?: () => { repo?: string; prNumbers?: string };
+  getLatestStoredPayload?: () => PrDataPayload | null | undefined;
+  markPrsBusy?: (prNumbers: string[], repo: string) => void;
+  clearPrsBusy?: (prNumbers: string[], repo: string) => void;
+}
+
+// repo -> PR numbers, from every loaded entry that has both.
+const collectAllLoadedPrsByRepo = (
+  byPrNumber: Record<string, PrEntry> | null | undefined,
+): Map<string, string[]> => {
+  const map = new Map<string, string[]>();
   Object.values(byPrNumber || {}).forEach((entry) => {
     const repo = entry?.repo;
     const number = entry?.data?.number ?? entry?.prNumber;
     if (!repo || (number === undefined || number === null || number === "")) {
       return;
     }
-    if (!map.has(repo)) {
-      map.set(repo, []);
-    }
-    map.get(repo).push(String(number));
+    const prNumbers = map.get(repo) ?? [];
+    prNumbers.push(String(number));
+    map.set(repo, prNumbers);
   });
   return map;
 };
 
-const toRepoRequests = (map) =>
+const toRepoRequests = (map: Map<string, string[]>): RepoQuickCheckRequest[] =>
   Array.from(map.entries()).map(([repo, prNumbers]) => ({
     repo,
     prNumbers: prNumbers.join(","),
@@ -45,18 +85,12 @@ const createPrQuickCheckActionsHelpers = ({
   showWarningNotification,
   notifyFailureSnackbar,
   loadSchedulerStatus,
-  // Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): these 5 are
-  // only needed by runQuickCheckWorkflow/runQuickCheckAllWorkflow below
-  // (extracted verbatim from index.page.js's own former handleQuickCheck/
-  // handleQuickCheckAll bodies) - optional and safely defaulted so
-  // existing callers/tests that only use buildQuickCheckOutcome/
-  // collectAllLoadedPrsByRepo/toRepoRequests keep working unmodified.
   postJson,
   getFormBody,
   getLatestStoredPayload,
   markPrsBusy,
   clearPrsBusy,
-} = {}) => {
+}: PrQuickCheckActionsDeps = {}) => {
   const showErrorNotificationSafe =
     typeof showErrorNotification === "function" ? showErrorNotification : () => {};
   const showWarningNotificationSafe =
@@ -68,14 +102,20 @@ const createPrQuickCheckActionsHelpers = ({
   const postJsonSafe =
     typeof postJson === "function"
       ? postJson
-      : () => Promise.reject(new Error("postJson unavailable"));
-  const getFormBodySafe = typeof getFormBody === "function" ? getFormBody : () => ({});
+      : (): Promise<PostJsonResult<QuickCheckResult>> => Promise.reject(new Error("postJson unavailable"));
+  const getFormBodySafe =
+    typeof getFormBody === "function" ? getFormBody : (): { repo?: string; prNumbers?: string } => ({});
   const getLatestStoredPayloadSafe =
     typeof getLatestStoredPayload === "function" ? getLatestStoredPayload : () => undefined;
   const markPrsBusySafe = typeof markPrsBusy === "function" ? markPrsBusy : () => {};
   const clearPrsBusySafe = typeof clearPrsBusy === "function" ? clearPrsBusy : () => {};
 
-  const buildQuickCheckOutcome = ({ response, result, fallbackLabel, buildSuccessLabel }) => {
+  const buildQuickCheckOutcome = ({
+    response,
+    result,
+    fallbackLabel,
+    buildSuccessLabel,
+  }: PostJsonResult<QuickCheckResult> & QuickCheckLabels): QuickCheckOutcome => {
     if (response.status === 409) {
       showErrorNotificationSafe(
         "Quick check already in progress",
@@ -139,13 +179,10 @@ const createPrQuickCheckActionsHelpers = ({
     };
   };
 
-  // Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): extracted
-  // verbatim from index.page.js's former handleQuickCheck body (pure
-  // extraction, zero behavior change) - scopes to the Run & Filter tab's
-  // entered PR numbers when present, so an older merged PR typed in
-  // there is still checked (bypassing the day-window server-side); an
-  // empty field sends {}, identical to before.
-  const runQuickCheckWorkflow = async ({ fallbackLabel, buildSuccessLabel }) => {
+  // Scopes to the Run & Filter tab's entered PR numbers when present, so
+  // an older merged PR typed in there is still checked (bypassing the
+  // day-window server-side); an empty field sends {}.
+  const runQuickCheckWorkflow = async ({ fallbackLabel, buildSuccessLabel }: QuickCheckLabels): Promise<QuickCheckOutcome> => {
     try {
       const { repo, prNumbers } = getFormBodySafe();
       const payload = prNumbers ? { repo, prNumbers } : {};
@@ -157,13 +194,10 @@ const createPrQuickCheckActionsHelpers = ({
     }
   };
 
-  // Phase 7, sub-phase 7.6 (see REACT_MIGRATION_PLAN.md): extracted
-  // verbatim from index.page.js's former handleQuickCheckAll body (pure
-  // extraction, zero behavior change) - checks every PR number already
-  // loaded in the app, grouped by its own repo (see
-  // collectAllLoadedPrsByRepo's own comment for why the loaded table
-  // isn't scoped to one repo).
-  const runQuickCheckAllWorkflow = async ({ fallbackLabel, buildSuccessLabel }) => {
+  // Checks every PR number already loaded in the app, grouped by its own
+  // repo (see the header comment for why the loaded table isn't scoped to
+  // one repo).
+  const runQuickCheckAllWorkflow = async ({ fallbackLabel, buildSuccessLabel }: QuickCheckLabels): Promise<QuickCheckOutcome> => {
     const repoRequests = toRepoRequests(
       collectAllLoadedPrsByRepo(getLatestStoredPayloadSafe()?.byPrNumber),
     );
@@ -178,7 +212,7 @@ const createPrQuickCheckActionsHelpers = ({
     }
 
     // markPrsBusy/clearPrsBusy take one repo per call (busy state is
-    // keyed by repo+number, see PrTableApp.jsx's buildActivePrKey), so
+    // keyed by repo+number, see pr-row-keys.js's buildActivePrKey), so
     // each repo in the sweep needs its own call rather than one call
     // spanning every repo.
     try {

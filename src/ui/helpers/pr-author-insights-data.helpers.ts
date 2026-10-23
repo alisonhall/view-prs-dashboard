@@ -18,10 +18,15 @@ export interface AuthorManualComment {
   [field: string]: unknown;
 }
 
+// The new-comment composer's draft for one author.
+export interface ManualCommentComposerDraft {
+  note?: string;
+  sentiment?: string;
+}
+
 // An in-progress edit of a saved comment.
-export interface ManualCommentEditDraft {
+export interface ManualCommentEditDraft extends ManualCommentComposerDraft {
   isEditing?: boolean;
-  [field: string]: unknown;
 }
 
 // The mutable state object AuthorInsightsDraftsProvider keeps in a ref:
@@ -32,7 +37,7 @@ export interface AuthorInsightsState {
   manualCommentsLoadingByAuthorLogin: Record<string, boolean | undefined>;
   manualCommentsErrorByAuthorLogin: Record<string, string | undefined>;
   // author login -> the new-comment composer draft
-  manualCommentDraftByAuthorLogin?: Record<string, unknown>;
+  manualCommentDraftByAuthorLogin?: Record<string, ManualCommentComposerDraft | undefined>;
   // author login -> comment id -> edit draft
   manualCommentEditDraftByAuthorLogin?: Record<string, Record<string, ManualCommentEditDraft> | null | undefined>;
 }
