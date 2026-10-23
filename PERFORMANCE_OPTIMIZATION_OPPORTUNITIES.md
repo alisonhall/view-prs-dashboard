@@ -95,7 +95,7 @@ predicate functions run for every PR.
 
 **What actually shipped:** not per-render caching of the *count*, but a
 per-entry cache of the *underlying derived values* those predicates read
-(labels, assignee/approver logins) - `pr-entry-derived-cache.helpers.js`,
+(labels, assignee/approver logins) - `pr-entry-derived-cache.helpers.ts`,
 added in `REACT_MIGRATION_PLAN.md`'s Phase 5 ("Delta-aware render
 pipeline", 2026-09-14). A `WeakMap` keyed by PR entry object means an
 unchanged entry (same object reference across a polling delta merge)
@@ -109,9 +109,9 @@ plan's own writeup for the full mechanism and measured impact.
 **Original problem:** filter pipeline re-executes on every render; same
 filters produce same results.
 
-**What actually shipped:** the same `pr-entry-derived-cache.helpers.js`
+**What actually shipped:** the same `pr-entry-derived-cache.helpers.ts`
 cache (see #7 above) applied to `rowMatchesUiFilters`
-(`pr-row-filtering.helpers.js`), keyed per `(entry, current-filter-criteria-fingerprint)`
+(`pr-row-filtering.helpers.ts`), keyed per `(entry, current-filter-criteria-fingerprint)`
 rather than a single global `filterCache` keyed on filters alone - so an
 unchanged entry under unchanged filters is a cache hit, while a filter
 change still correctly busts every entry's cached match result. Measured

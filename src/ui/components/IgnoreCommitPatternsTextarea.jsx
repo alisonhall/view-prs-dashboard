@@ -9,7 +9,7 @@
  * `<form id="run-script-form">` (gotcha #3) - that listener reacts to the
  * real native "change" event this element always fires regardless of
  * which side manages its value, so no change was needed there; it in turn
- * calls `parseCommitPatterns(textarea)` (form-parsing.helpers.js), which
+ * calls `parseCommitPatterns(textarea)` (form-parsing.helpers.ts), which
  * just reads `textarea.value` directly off the real DOM node - also
  * already correct either way. `restoreUiOptionOverrides`'s `setText` now
  * writes through `window.setFilterStateValue` for this field id (see

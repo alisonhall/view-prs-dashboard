@@ -8,9 +8,9 @@
  * @module components/insights/NotesMultiEntryField
  */
 
-import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.js';
+import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 
-// The shared non-credential-field attributes (form-parsing.helpers.js;
+// The shared non-credential-field attributes (form-parsing.helpers.ts;
 // window-bridge elimination Phase 7.5 follow-up - this file had its own
 // identical copy) - without them, Chrome's password-manager heuristics misclassify these
 // fields (e.g. "Rally links" looking like a credential field) and can

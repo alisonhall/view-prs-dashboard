@@ -6,7 +6,7 @@
  */
 
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
-import { buildPrLastCheckedIndicator } from '../../helpers/pr-last-checked-indicator.helpers.js';
+import { buildPrLastCheckedIndicator } from '../../helpers/pr-last-checked-indicator.helpers.ts';
 import { getViewedFilesState } from '../../helpers/pr-viewed-files-state.helpers.ts';
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): a genuinely

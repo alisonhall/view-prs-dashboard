@@ -23,7 +23,7 @@
 
 import { useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
-import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.js';
+import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
 
 const SORT_OPTIONS = [
   ['riskyApprovals', 'Risky approvals'],
@@ -43,7 +43,7 @@ const FILTER_MODE_OPTIONS = [
   ['useful-comments', 'Only useful-comment signals'],
 ];
 
-// The shared non-credential-field attributes (form-parsing.helpers.js);
+// The shared non-credential-field attributes (form-parsing.helpers.ts);
 // this file had its own identical copy until the window-bridge elimination
 // Phase 7.5 follow-up.
 const NON_CREDENTIAL_DATE_ATTRS = NON_CREDENTIAL_INPUT_PROPS;

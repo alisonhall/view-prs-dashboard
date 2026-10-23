@@ -2,8 +2,8 @@
 
 const {
   createPrRowFilteringHelpers,
-} = require("./pr-row-filtering.helpers.js");
-const { createEntryDerivedCache } = require("./pr-entry-derived-cache.helpers.js");
+} = require("./pr-row-filtering.helpers.ts");
+const { createEntryDerivedCache } = require("./pr-entry-derived-cache.helpers.ts");
 
 describe("pr row filtering helpers", () => {
   test("given filter inputs, when building row filter criteria, then criteria object preserves arrays and boolean", () => {

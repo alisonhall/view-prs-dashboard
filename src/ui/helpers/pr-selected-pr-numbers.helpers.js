@@ -3,7 +3,7 @@
 // "#pr-numbers" DOM input directly) - PrSelectionCell.jsx now reads/writes
 // the same value via FilterStateProvider's Context instead, so this module
 // holds only the pure parse/toggle logic, with no DOM dependency at all.
-import { parsePrNumbersInput } from "./form-parsing.helpers.js";
+import { parsePrNumbersInput } from "./form-parsing.helpers.ts";
 
 export const getSelectedPrNumbersFromInput = (prNumbersInput) =>
   parsePrNumbersInput(String(prNumbersInput || ""));

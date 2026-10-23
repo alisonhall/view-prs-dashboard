@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useFilterState } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
-import { parsePrNumbersInput } from '../helpers/form-parsing.helpers.js';
+import { parsePrNumbersInput } from '../helpers/form-parsing.helpers.ts';
 
 const checkedList = (checkedByListId, listId) => Array.from(checkedByListId[listId] || []);
 

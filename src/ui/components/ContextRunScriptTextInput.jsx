@@ -20,7 +20,7 @@
  */
 
 import { useFilterState } from '../state/FilterStateContext';
-import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.js';
+import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
 
 export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey }) {
   const { values, setValue } = useFilterState();

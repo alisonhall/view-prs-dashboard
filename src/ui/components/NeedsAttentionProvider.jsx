@@ -4,7 +4,7 @@ import { useActorIdentity } from '../state/ActorIdentityContext';
 import { FilterStateContext } from '../state/FilterStateContext';
 import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.js';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
-import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.js';
+import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 

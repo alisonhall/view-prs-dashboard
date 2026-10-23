@@ -1,7 +1,7 @@
 const {
   formatRelativeLastCheckedLabel,
   buildPrLastCheckedIndicator,
-} = require("./pr-last-checked-indicator.helpers.js");
+} = require("./pr-last-checked-indicator.helpers.ts");
 
 describe("pr last checked indicator helpers", () => {
   describe("formatRelativeLastCheckedLabel", () => {

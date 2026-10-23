@@ -153,7 +153,7 @@ const viewPrsSchedulerState = {
   activePrNumbers: [],
   // Back-compat aggregates derived from autoCircuitByRepo below (worst
   // case across every repo) - kept for existing consumers
-  // (getViewPrsSchedulerPublicState, pr-applied-summary.helpers.js's "Last
+  // (getViewPrsSchedulerPublicState, pr-applied-summary.helpers.ts's "Last
   // auto skip" text). Not written to directly - see
   // recomputeAutoCircuitAggregates in view-prs-scheduler-helpers.js.
   consecutiveAutoFailures: 0,

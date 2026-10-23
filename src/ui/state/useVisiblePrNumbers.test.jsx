@@ -8,8 +8,8 @@
 // useFilteredPrRows actually wires the bounded cache in.
 
 const mockCacheInstances = [];
-jest.mock('../helpers/pr-entry-derived-cache.helpers.js', () => {
-  const actual = jest.requireActual('../helpers/pr-entry-derived-cache.helpers.js');
+jest.mock('../helpers/pr-entry-derived-cache.helpers.ts', () => {
+  const actual = jest.requireActual('../helpers/pr-entry-derived-cache.helpers.ts');
   return {
     createEntryDerivedCache: (...args) => {
       const cache = actual.createEntryDerivedCache(...args);

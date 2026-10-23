@@ -1046,7 +1046,9 @@ No static type checking leads to:
   author-insights-identity. Batch 5 (2026-10-23): viewed-files-state,
   multi-select-render-cache, auto-render-indicator, auto-render-state,
   approvers, markdown-render, section-grouping, scope-selection,
-  stored-data-load, command-output.
+  stored-data-load, command-output. Batch 6 (2026-10-23): form-parsing,
+  entry-derived-cache, last-checked-indicator, requested-reviewers,
+  row-filtering, applied-summary.
   Converted helpers' tests stay `.js` for now (Phase 12G). Shared data
   shapes live in `src/ui/types/pr-data.ts`, grown from the data schema as
   helpers need fields.

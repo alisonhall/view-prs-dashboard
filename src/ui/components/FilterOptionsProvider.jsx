@@ -6,7 +6,7 @@ import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpe
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
-import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
+import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 const asArray = (value) => (Array.isArray(value) ? value : []);
@@ -58,7 +58,7 @@ const toOptions = (entries) => entries.map(([value, label]) => ({ value, label }
  * (the latter two walk activityTimeline/commits/reviewers) unconditionally
  * - even on an unrelated tab where these lists aren't rendered. Fixed with
  * a WeakMap-keyed per-entry cache (createEntryDerivedCache,
- * pr-entry-derived-cache.helpers.js - the same module useVisiblePrNumbers.jsx
+ * pr-entry-derived-cache.helpers.ts - the same module useVisiblePrNumbers.jsx
  * already uses for the row-filtering predicate), held in a useRef so it
  * survives this Provider's own re-renders: an entry whose reference is
  * unchanged across a poll (mergeDataDeltaPayload's shallow merge keeps an
@@ -69,7 +69,7 @@ const toOptions = (entries) => entries.map(([value, label]) => ({ value, label }
  * preferred author key) - not the final actorsMap-dependent display-name
  * resolution below, which is already cheap (once per unique login in the
  * outer Maps, not once per entry) and reads the always-current `actorsMap`
- * fresh every time. Same accepted tradeoff pr-row-filtering.helpers.js's
+ * fresh every time. Same accepted tradeoff pr-row-filtering.helpers.ts's
  * own cache already has: if the actor-login-alias map changes without the
  * entry itself changing, a cached per-entry value could theoretically lag
  * by one entry-change - not handled there either, and not handled here,

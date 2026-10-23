@@ -1,17 +1,23 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): extracted out of index.page.js
-// (where these were plain inline functions, not in any helper module) so
-// PrStatusCell.jsx can import buildPrLastCheckedIndicator directly instead
-// of reading it off window.buildPrLastCheckedIndicator - genuinely
-// zero-dependency (formatIsoDatetime is itself a zero-dependency import,
-// not viewer/payload state), matching pr-row-sorting.helpers.ts's own
-// precedent (bare exports, no createXHelpers() wrapper).
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
+// PrStatusCell's "last checked" marker: a relative label ("↻ 5m ago"), a
+// tooltip with the exact time, and whether an open PR's check is stale
+// (older than 15 minutes).
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
 const OPEN_PR_LAST_CHECK_STALE_MS = 15 * 60 * 1000;
 
-const parseIsoTimestampMs = (isoValue) => {
+export interface LastCheckedLabel {
+  label: string;
+  elapsedMs: number;
+  title: string;
+}
+
+export interface LastCheckedIndicator extends LastCheckedLabel {
+  isStale: boolean;
+}
+
+const parseIsoTimestampMs = (isoValue: unknown): number => {
   const raw = String(isoValue ?? "").trim();
   if (!raw || raw === "-") {
     return Number.NaN;
@@ -21,7 +27,7 @@ const parseIsoTimestampMs = (isoValue) => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
-export const formatRelativeLastCheckedLabel = (updatedAt, nowMs = Date.now()) => {
+export const formatRelativeLastCheckedLabel = (updatedAt: unknown, nowMs: number = Date.now()): LastCheckedLabel => {
   const updatedAtMs = parseIsoTimestampMs(updatedAt);
   if (!Number.isFinite(updatedAtMs)) {
     return {
@@ -67,7 +73,13 @@ export const formatRelativeLastCheckedLabel = (updatedAt, nowMs = Date.now()) =>
   };
 };
 
-export const buildPrLastCheckedIndicator = ({ updatedAt, sectionKey }) => {
+export const buildPrLastCheckedIndicator = ({
+  updatedAt,
+  sectionKey,
+}: {
+  updatedAt: unknown;
+  sectionKey?: string;
+}): LastCheckedIndicator => {
   const relative = formatRelativeLastCheckedLabel(updatedAt);
   const isOpenSection = sectionKey === "open";
   const isStale =

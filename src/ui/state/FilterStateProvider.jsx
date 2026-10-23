@@ -7,7 +7,7 @@ import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSele
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.js';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
-import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.js';
+import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.ts';
 
 // Built once, not per-render - zero per-instance dependency other than the
 // real fetch (same "stable, zero-per-render-state" precedent as

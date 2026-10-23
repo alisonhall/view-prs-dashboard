@@ -1,10 +1,7 @@
 /**
- * Phase 5 (see REACT_MIGRATION_PLAN.md, "Performance Validation"): the
- * shared render pipeline re-derives several fairly expensive per-entry
- * values (filter-match results, label/assignee/approver extraction for
- * the filter dropdowns) from *every* stored PR entry on *every* render,
- * regardless of how many entries actually changed - measured as the
- * dominant, delta-size-independent cost behind the render pipeline.
+ * Per-entry cache for values derived from a PR entry (filter-match results,
+ * label/assignee/approver extraction for the filter dropdowns), so only
+ * entries that actually changed are re-derived on each render.
  *
  * `mergeDataDeltaPayload` (pr-data-polling.helpers.js) merges polling
  * deltas via a shallow spread, so an entry for a PR that didn't change
@@ -22,19 +19,38 @@
  * that other input into the key, so a criteria change naturally busts
  * every entry's cached result for that key without extra bookkeeping.
  */
-const createEntryDerivedCache = () => {
-  const cache = new WeakMap();
+interface LatestVariant {
+  variant: unknown;
+  value: unknown;
+}
 
-  const getOrCompute = (entry, cacheKey, compute) => {
+export interface EntryDerivedCache {
+  getOrCompute: <T>(entry: object, cacheKey: string, compute: () => T) => T;
+  getOrComputeLatest: <T>(entry: object, cacheKey: string, variant: unknown, compute: () => T) => T;
+  getCachedKeyCount: (entry: object) => number;
+}
+
+const createEntryDerivedCache = (): EntryDerivedCache => {
+  // Each key holds either a plain result (getOrCompute) or a
+  // { variant, value } record (getOrComputeLatest); a key is only ever
+  // used by one of the two.
+  const cache = new WeakMap<object, Map<string, unknown>>();
+
+  const getEntryCache = (entry: object): Map<string, unknown> => {
     let entryCache = cache.get(entry);
     if (!entryCache) {
       entryCache = new Map();
       cache.set(entry, entryCache);
     }
+    return entryCache;
+  };
+
+  const getOrCompute = <T>(entry: object, cacheKey: string, compute: () => T): T => {
+    const entryCache = getEntryCache(entry);
     if (!entryCache.has(cacheKey)) {
       entryCache.set(cacheKey, compute());
     }
-    return entryCache.get(cacheKey);
+    return entryCache.get(cacheKey) as T;
   };
 
   // Like getOrCompute, but keeps only the *latest* variant per
@@ -49,15 +65,11 @@ const createEntryDerivedCache = () => {
   // code: 5", after typing into the free-text filter fields). A variant
   // change here overwrites the previous result, so the cost is a
   // recompute when switching back to an earlier variant, never growth.
-  const getOrComputeLatest = (entry, cacheKey, variant, compute) => {
-    let entryCache = cache.get(entry);
-    if (!entryCache) {
-      entryCache = new Map();
-      cache.set(entry, entryCache);
-    }
-    const cached = entryCache.get(cacheKey);
+  const getOrComputeLatest = <T>(entry: object, cacheKey: string, variant: unknown, compute: () => T): T => {
+    const entryCache = getEntryCache(entry);
+    const cached = entryCache.get(cacheKey) as LatestVariant | undefined;
     if (cached && cached.variant === variant) {
-      return cached.value;
+      return cached.value as T;
     }
     const value = compute();
     entryCache.set(cacheKey, { variant, value });
@@ -66,7 +78,7 @@ const createEntryDerivedCache = () => {
 
   // Number of cached keys held for an entry - for tests/diagnostics, to
   // assert the cache stays bounded.
-  const getCachedKeyCount = (entry) => cache.get(entry)?.size || 0;
+  const getCachedKeyCount = (entry: object): number => cache.get(entry)?.size || 0;
 
   return {
     getOrCompute,

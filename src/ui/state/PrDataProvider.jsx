@@ -8,7 +8,7 @@ import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpe
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.ts';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
-import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
+import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.ts';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.ts';

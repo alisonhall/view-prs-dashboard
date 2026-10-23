@@ -45,7 +45,7 @@ describe("pr data polling helpers", () => {
   test("given a getOrCompute cache, when computePrDataFingerprint runs twice with an unchanged entry reference, then that entry isn't re-stringified", () => {
     // A minimal real WeakMap-backed getOrCompute (not a bare passthrough),
     // so this exercises actual cache-hit behavior - only calls `compute()`
-    // on a genuine miss, matching pr-entry-derived-cache.helpers.js's own
+    // on a genuine miss, matching pr-entry-derived-cache.helpers.ts's own
     // contract.
     const cache = new WeakMap();
     const getOrCompute = (entry, cacheKey, compute) => {

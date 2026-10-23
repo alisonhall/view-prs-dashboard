@@ -1,6 +1,6 @@
 const {
   createEntryDerivedCache,
-} = require("./pr-entry-derived-cache.helpers.js");
+} = require("./pr-entry-derived-cache.helpers.ts");
 
 describe("pr entry derived cache helpers", () => {
   test("given the same entry and cache key, when getOrCompute is called twice, then the compute function only runs once", () => {

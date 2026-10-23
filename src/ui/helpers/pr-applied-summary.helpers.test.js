@@ -2,7 +2,7 @@
 
 const {
   createPrAppliedSummaryHelpers,
-} = require("./pr-applied-summary.helpers.js");
+} = require("./pr-applied-summary.helpers.ts");
 
 describe("pr applied summary helpers", () => {
   test("given baseline inputs, when building summary view model, then required filters and summary text are returned", () => {

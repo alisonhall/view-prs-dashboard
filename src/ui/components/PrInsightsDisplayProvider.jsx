@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { PrInsightsDisplayContext } from '../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
-import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.js';
+import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
 import { createPrInsightBadgeClassHelpers } from '../helpers/pr-insight-badge-class.helpers.ts';

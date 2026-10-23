@@ -375,7 +375,7 @@ const createViewPrsSchedulerHelpers = ({
 
   // The flat consecutiveAutoFailures/autoCircuitOpenUntil/lastAutoCircuitOpenedAt
   // fields stay as back-compat aggregates (existing consumers - the public
-  // scheduler-state shape, pr-applied-summary.helpers.js's "Last auto skip"
+  // scheduler-state shape, pr-applied-summary.helpers.ts's "Last auto skip"
   // text - keep working unchanged): the worst case across every repo
   // (highest failure count; soonest-still-open circuit, if any).
   const recomputeAutoCircuitAggregates = () => {

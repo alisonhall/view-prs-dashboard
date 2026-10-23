@@ -175,7 +175,7 @@ const getDataPollRenderAction = ({
 
 const createPrDataPollingHelpers = ({
   // Phase 5 residual (see REACT_MIGRATION_PLAN.md): optional shared
-  // per-entry derived-value cache (see pr-entry-derived-cache.helpers.js),
+  // per-entry derived-value cache (see pr-entry-derived-cache.helpers.ts),
   // the same instance pr-filter-panel.helpers.js already uses for
   // label/assignee/approver extraction - defaults to an uncached
   // passthrough so every existing call site/unit test keeps working
@@ -191,7 +191,7 @@ const createPrDataPollingHelpers = ({
   // decide whether to skip rendering, once again afterward to refresh
   // lastRenderedPrFingerprint), regardless of how many entries actually
   // changed. Caches each entry's own stringified piece by entry
-  // reference - safe for the same reason pr-entry-derived-cache.helpers.js's
+  // reference - safe for the same reason pr-entry-derived-cache.helpers.ts's
   // other consumers are: mergeDataDeltaPayload's shallow merge keeps an
   // unchanged entry's object identity stable across polls, so a real
   // change is simply a different/absent cache key, never a stale hit.

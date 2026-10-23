@@ -6,7 +6,7 @@ import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useActorIdentity } from './ActorIdentityContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
-import { createPrRowFilteringHelpers } from '../helpers/pr-row-filtering.helpers.js';
+import { createPrRowFilteringHelpers } from '../helpers/pr-row-filtering.helpers.ts';
 import { createPrRowMatchFiltersHelpers } from '../helpers/pr-row-match-filters.helpers.js';
 import { createPrVisiblePrNumbersHelpers } from '../helpers/pr-visible-pr-numbers.helpers.js';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.js';
@@ -15,7 +15,7 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import { getManualNotesFieldSummary } from '../helpers/pr-manual-notes-summary.helpers.ts';
-import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
+import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 

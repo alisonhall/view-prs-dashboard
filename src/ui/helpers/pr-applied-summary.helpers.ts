@@ -1,3 +1,37 @@
+// The "Applied filters" summary: one line of text (filters, row count, last
+// run, scheduler settings) plus the chips shown for each filter.
+export interface SchedulerSummaryFields {
+  intervalMinutes?: number;
+  manualCooldownMinutes?: number;
+  lastManualRunAt?: string;
+  lastAutoRunAt?: string;
+  lastAutoSkipReason?: string;
+  lastAutoError?: string;
+}
+
+export interface AppliedSummaryInput {
+  repoFilter?: string;
+  scopeLabel?: string;
+  filterPrNumbersRaw?: string;
+  includeLabelFilter?: string;
+  excludeLabelFilter?: string;
+  authorFilter?: string;
+  assignedFilter?: string;
+  approverFilter?: string;
+  alwaysShowInReview?: boolean;
+  openModeFilter?: string;
+  rowsCount?: number;
+  lastRunUpdatedAt?: string;
+  scheduler?: SchedulerSummaryFields | null;
+}
+
+export interface AppliedSummaryViewModel {
+  appliedFilters: string[];
+  schedulerSummary: string;
+  appliedSummaryText: string;
+  filterChips: string[];
+}
+
 const createPrAppliedSummaryHelpers = () => {
   const buildAppliedSummaryViewModel = ({
     repoFilter,
@@ -13,7 +47,7 @@ const createPrAppliedSummaryHelpers = () => {
     rowsCount,
     lastRunUpdatedAt,
     scheduler,
-  } = {}) => {
+  }: AppliedSummaryInput = {}): AppliedSummaryViewModel => {
     const appliedFilters = [
       `repo=${repoFilter || "all repos"}`,
       `scope=${scopeLabel || "all stored rows"}`,
@@ -44,7 +78,7 @@ const createPrAppliedSummaryHelpers = () => {
       appliedFilters.push(`open=${openModeFilter}`);
     }
 
-    const schedulerSafe = scheduler || {};
+    const schedulerSafe: SchedulerSummaryFields = scheduler || {};
     const schedulerSummary = [
       `Auto every ${schedulerSafe.intervalMinutes || 15}m`,
       `Manual cooldown ${schedulerSafe.manualCooldownMinutes || 15}m`,
