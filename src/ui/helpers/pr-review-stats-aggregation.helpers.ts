@@ -1,3 +1,174 @@
+import type { PrData, PrEntry, PrMetricsApproval } from "../types/pr-data.ts";
+import type {
+  ActorsMap,
+  GetPreferredActorKey,
+  NormalizeActorLogin,
+  ResolveActorDisplayName,
+} from "./pr-actor-identity.helpers.ts";
+import type { StatsDateRange } from "./pr-review-stats-date-bucketing.helpers.ts";
+
+// Review statistics' numbers: each PR's metrics with every count coerced
+// to a number, the per-reviewer stats table (comments, usefulness
+// signals, reviews, approvals and their risk) with the PRs behind each
+// number, the summary cards, and the table's sort/filter/top-N controls.
+
+export interface StatsViewState {
+  sortBy?: string;
+  filterMode?: string;
+  topN?: number | string;
+  minComments?: number | string;
+}
+
+export interface NormalizedRowMetrics {
+  counts: {
+    topLevelComments: number;
+    threadComments: number;
+    totalComments: number;
+    reviews: number;
+    approvals: number;
+    commits: number;
+    conversations: number;
+    openConversations: number;
+  };
+  commentsByActor: unknown[];
+  reviewsByActor: unknown[];
+  approvals: PrMetricsApproval[];
+  approvalSummary: {
+    totalApprovals: number;
+    riskyApprovals: number;
+    highRiskApprovals: number;
+    approvalsWithChangeRequestsAfter: number;
+    approvalsWithCommentsAfter: number;
+    approvalsWithCommitsAfter: number;
+    averageMergeLeadMinutes: number | null;
+  };
+  commentUsefulnessSummary: {
+    commentsOnOthersPrs: number;
+    resolvedThreadCommentsOnOthersPrs: number;
+    commentsFollowedByAuthorCommit: number;
+    commentsFollowedByAuthorCommitWithin24h: number;
+    usefulnessSignals: number;
+  };
+  conversationSummary: {
+    totalThreads: number;
+    openThreads: number;
+    resolvedThreads: number;
+    totalThreadComments: number;
+    topLevelConversations: number;
+    reviewConversations: number;
+    estimatedTotalConversations: number;
+    estimatedOpenConversations: number;
+  };
+}
+
+// The PR a stats number came from (shown under "Show sources").
+export type StatsPrContext = {
+  prNumber: string;
+  prTitle: string;
+  prUrl: string;
+  prAuthor: string;
+};
+
+export type StatsSource = StatsPrContext & Record<string, unknown>;
+
+export interface StatsSummary {
+  rows: number;
+  commentsOnOthersPrs: number;
+  usefulnessSignals: number;
+  commentsFollowedByAuthorCommit: number;
+  resolvedThreadCommentsOnOthersPrs: number;
+  approvals: number;
+  riskyApprovals: number;
+  highRiskApprovals: number;
+  openConversations: number;
+  sources: Record<
+    | "rows"
+    | "commentsOnOthersPrs"
+    | "usefulnessSignals"
+    | "commentsFollowedByAuthorCommit"
+    | "resolvedThreadCommentsOnOthersPrs"
+    | "approvals"
+    | "riskyApprovals"
+    | "highRiskApprovals"
+    | "openConversations",
+    StatsSource[]
+  >;
+}
+
+export interface ReviewerStat {
+  login: string;
+  name: string;
+  comments: number;
+  threadComments: number;
+  resolvedThreadComments: number;
+  commentsFollowedByAuthorCommit: number;
+  commentsFollowedByAuthorCommitWithin24h: number;
+  usefulnessSignals: number;
+  reviews: number;
+  approvals: number;
+  riskyApprovals: number;
+  highRiskApprovals: number;
+  approvalsBeforeChangeRequest: number;
+  prsTouched: Set<string>;
+  sources: Record<
+    | "comments"
+    | "reviews"
+    | "approvals"
+    | "riskyApprovals"
+    | "highRiskApprovals"
+    | "usefulnessSignals"
+    | "commentsFollowedByAuthorCommit"
+    | "resolvedThreadComments",
+    StatsSource[]
+  >;
+}
+
+export type ReviewerRow = ReviewerStat & { prCount: number };
+
+export interface ReviewerStats {
+  summary: StatsSummary;
+  reviewerRows: ReviewerRow[];
+}
+
+export interface PrReviewStatsAggregationDeps {
+  toCount?: (value: unknown) => number;
+  asArray?: (value: unknown) => unknown[];
+  getNormalizedStatsDateRange?: () => StatsDateRange;
+  normalizeActorLogin?: NormalizeActorLogin;
+  getPreferredActorKey?: GetPreferredActorKey;
+  formatTitleWithIcons?: (titleDisplay?: string | null, fallbackTitle?: string | null) => string;
+  isWithinStatsDateRange?: (isoValue: unknown, range: StatsDateRange) => boolean;
+  resolveActorDisplayName?: ResolveActorDisplayName;
+  statsViewState?: StatsViewState | null;
+}
+
+// Per-PR, per-person tallies built while scanning one PR.
+interface CommentStat {
+  login: string;
+  name: string;
+  topLevelCount: number;
+  threadCount: number;
+  resolvedThreadCount: number;
+  followedByAuthorCommitCount: number;
+  followedByAuthorCommitWithin24hCount: number;
+  usefulnessSignals: number;
+  totalCount: number;
+  commentsOnOthersPr: boolean;
+}
+
+interface ReviewStat {
+  login: string;
+  name: string;
+  reviewCount: number;
+  approvalCount: number;
+  commentCount: number;
+  changesRequestedCount: number;
+  dismissedCount: number;
+  reviewsOnOthersPr: boolean;
+}
+
+type RawSection = Record<string, unknown>;
+
 const createPrReviewStatsAggregationHelpers = ({
   toCount,
   asArray,
@@ -8,34 +179,33 @@ const createPrReviewStatsAggregationHelpers = ({
   isWithinStatsDateRange,
   resolveActorDisplayName,
   statsViewState,
-} = {}) => {
+}: PrReviewStatsAggregationDeps = {}) => {
   const toCountSafe =
     typeof toCount === "function"
       ? toCount
-      : (value) => {
+      : (value: unknown) => {
           const parsed = Number(value);
           return Number.isFinite(parsed) ? parsed : 0;
         };
-  const asArraySafe =
-    typeof asArray === "function"
-      ? asArray
-      : (value) => (Array.isArray(value) ? value : []);
+  // Callers pass typed lists; the injected asArray only coerces.
+  const asArraySafe = <T>(value: T[] | null | undefined): T[] =>
+    (typeof asArray === "function" ? asArray(value) : Array.isArray(value) ? value : []) as T[];
   const getNormalizedStatsDateRangeSafe =
     typeof getNormalizedStatsDateRange === "function"
       ? getNormalizedStatsDateRange
-      : () => ({ start: "", end: "", startDate: "", endDate: "" });
+      : (): StatsDateRange => ({ start: "", end: "", startDate: "", endDate: "" });
   const normalizeActorLoginSafe =
     typeof normalizeActorLogin === "function"
       ? normalizeActorLogin
-      : (value) => String(value || "").trim().toLowerCase();
+      : (value: unknown) => String(value || "").trim().toLowerCase();
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function"
       ? getPreferredActorKey
-      : (login, fallback) => String(login || fallback || "").trim();
+      : (login: unknown, fallback?: unknown) => String(login || fallback || "").trim();
   const formatTitleWithIconsSafe =
     typeof formatTitleWithIcons === "function"
       ? formatTitleWithIcons
-      : (_titleDisplay, title) => String(title || "").trim();
+      : (_titleDisplay?: string | null, title?: string | null) => String(title || "").trim();
   const isWithinStatsDateRangeSafe =
     typeof isWithinStatsDateRange === "function"
       ? isWithinStatsDateRange
@@ -43,9 +213,9 @@ const createPrReviewStatsAggregationHelpers = ({
   const resolveActorDisplayNameSafe =
     typeof resolveActorDisplayName === "function"
       ? resolveActorDisplayName
-      : (login, _actorsMap, fallback) =>
+      : (login: string, _actorsMap: ActorsMap, fallback?: string) =>
           String(fallback || login || "").trim();
-  const statsViewStateSafe =
+  const statsViewStateSafe: StatsViewState =
     statsViewState && typeof statsViewState === "object"
       ? statsViewState
       : {
@@ -55,12 +225,12 @@ const createPrReviewStatsAggregationHelpers = ({
           minComments: 0,
         };
 
-  const normalizeRowMetrics = (row = {}) => {
-    const metrics = row?.metrics || {};
-    const counts = metrics?.counts || {};
-    const approvalSummary = metrics?.approvalSummary || {};
-    const commentUsefulnessSummary = metrics?.commentUsefulnessSummary || {};
-    const conversationSummary = metrics?.conversationSummary || {};
+  const normalizeRowMetrics = (row: PrData | null | undefined = {}): NormalizedRowMetrics => {
+    const metrics = (row?.metrics || {}) as RawSection & { approvals?: PrMetricsApproval[] };
+    const counts = (metrics?.counts || {}) as RawSection;
+    const approvalSummary = (metrics?.approvalSummary || {}) as RawSection;
+    const commentUsefulnessSummary = (metrics?.commentUsefulnessSummary || {}) as RawSection;
+    const conversationSummary = (metrics?.conversationSummary || {}) as RawSection;
 
     return {
       counts: {
@@ -73,8 +243,8 @@ const createPrReviewStatsAggregationHelpers = ({
         conversations: toCountSafe(counts.conversations),
         openConversations: toCountSafe(counts.openConversations),
       },
-      commentsByActor: asArraySafe(metrics.commentsByActor),
-      reviewsByActor: asArraySafe(metrics.reviewsByActor),
+      commentsByActor: asArraySafe(metrics.commentsByActor as unknown[] | undefined),
+      reviewsByActor: asArraySafe(metrics.reviewsByActor as unknown[] | undefined),
       approvals: asArraySafe(metrics.approvals),
       approvalSummary: {
         totalApprovals: toCountSafe(approvalSummary.totalApprovals),
@@ -129,10 +299,10 @@ const createPrReviewStatsAggregationHelpers = ({
     };
   };
 
-  const buildReviewerStats = (rows, actorsMap = {}) => {
+  const buildReviewerStats = (rows: Iterable<PrEntry>, actorsMap: ActorsMap = {}): ReviewerStats => {
     const range = getNormalizedStatsDateRangeSafe();
-    const reviewers = new Map();
-    const summary = {
+    const reviewers = new Map<string, ReviewerStat>();
+    const summary: StatsSummary = {
       rows: 0,
       commentsOnOthersPrs: 0,
       usefulnessSignals: 0,
@@ -155,18 +325,19 @@ const createPrReviewStatsAggregationHelpers = ({
       },
     };
 
-    const pushSource = (bucket, item) => {
+    const pushSource = (bucket: StatsSource[] | undefined, item: StatsSource | null | undefined) => {
       if (!Array.isArray(bucket) || !item) return;
       bucket.push(item);
     };
 
-    const ensureReviewer = (login, fallbackName = "") => {
+    const ensureReviewer = (login: unknown, fallbackName: unknown = ""): ReviewerStat | null => {
       const normalizedLogin = normalizeActorLoginSafe(login);
       const normalizedFallbackName = String(fallbackName || "").trim();
       const reviewerLogin = normalizedLogin || String(login || "").trim();
       if (!reviewerLogin) return null;
-      if (!reviewers.has(reviewerLogin)) {
-        reviewers.set(reviewerLogin, {
+      let stat = reviewers.get(reviewerLogin);
+      if (!stat) {
+        stat = {
           login: reviewerLogin,
           name: normalizedFallbackName || reviewerLogin,
           comments: 0,
@@ -191,9 +362,9 @@ const createPrReviewStatsAggregationHelpers = ({
             commentsFollowedByAuthorCommit: [],
             resolvedThreadComments: [],
           },
-        });
+        };
+        reviewers.set(reviewerLogin, stat);
       }
-      const stat = reviewers.get(reviewerLogin);
       if (normalizedFallbackName && stat.name === stat.login) {
         stat.name = normalizedFallbackName;
       }
@@ -233,7 +404,7 @@ const createPrReviewStatsAggregationHelpers = ({
           isWithinStatsDateRangeSafe(comment?.createdAt, range),
         );
       });
-      const prContext = {
+      const prContext: StatsPrContext = {
         prNumber,
         prTitle,
         prUrl: String(row.url || "").trim(),
@@ -258,12 +429,13 @@ const createPrReviewStatsAggregationHelpers = ({
         });
       }
 
-      const commentsByActor = new Map();
+      const commentsByActor = new Map<string, CommentStat>();
       filteredCommentEvents.forEach((event) => {
         const login = normalizeActorLoginSafe(event?.actor);
         if (!login) return;
-        if (!commentsByActor.has(login)) {
-          commentsByActor.set(login, {
+        let commentStat = commentsByActor.get(login);
+        if (!commentStat) {
+          commentStat = {
             login,
             name: login,
             topLevelCount: 0,
@@ -274,9 +446,9 @@ const createPrReviewStatsAggregationHelpers = ({
             usefulnessSignals: 0,
             totalCount: 0,
             commentsOnOthersPr: true,
-          });
+          };
+          commentsByActor.set(login, commentStat);
         }
-        const commentStat = commentsByActor.get(login);
         commentStat.totalCount += 1;
         if (event?.channel === "thread") {
           commentStat.threadCount += 1;
@@ -318,12 +490,13 @@ const createPrReviewStatsAggregationHelpers = ({
           commentStat.followedByAuthorCommitWithin24hCount;
       });
 
-      const reviewsByActor = new Map();
+      const reviewsByActor = new Map<string, ReviewStat>();
       filteredReviews.forEach((review) => {
         const login = normalizeActorLoginSafe(review?.authorLogin);
         if (!login) return;
-        if (!reviewsByActor.has(login)) {
-          reviewsByActor.set(login, {
+        let reviewStat = reviewsByActor.get(login);
+        if (!reviewStat) {
+          reviewStat = {
             login,
             name: String(review?.authorName || login).trim() || login,
             reviewCount: 0,
@@ -332,9 +505,9 @@ const createPrReviewStatsAggregationHelpers = ({
             changesRequestedCount: 0,
             dismissedCount: 0,
             reviewsOnOthersPr: true,
-          });
+          };
+          reviewsByActor.set(login, reviewStat);
         }
-        const reviewStat = reviewsByActor.get(login);
         reviewStat.reviewCount += 1;
         const reviewState = String(review?.state || "").trim();
         if (reviewState === "APPROVED") reviewStat.approvalCount += 1;
@@ -484,8 +657,8 @@ const createPrReviewStatsAggregationHelpers = ({
     return { summary, reviewerRows };
   };
 
-  const applyStatsControls = ({ summary, reviewerRows }) => {
-    const sortKey = statsViewStateSafe.sortBy;
+  const applyStatsControls = ({ summary, reviewerRows }: ReviewerStats) => {
+    const sortKey = statsViewStateSafe.sortBy as keyof ReviewerRow;
     const minComments = Math.max(0, toCountSafe(statsViewStateSafe.minComments));
     const topN = Math.max(1, toCountSafe(statsViewStateSafe.topN) || 12);
     const filterMode = String(statsViewStateSafe.filterMode || "all");

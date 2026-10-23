@@ -107,10 +107,18 @@ export interface PrNotes {
   analysisOfPr?: string;
 }
 
+// One approval as the insights script assessed it ($defs.metricsApproval).
+export interface PrMetricsApproval extends PrActor {
+  approvedAt?: string;
+  changeRequestCountAfterApproval?: number;
+  riskyApproval?: boolean;
+  highRiskApproval?: boolean;
+}
+
 // The per-PR `metrics` object (insights script output). Only the fields
 // converted code reads are listed.
 export interface PrMetrics {
-  approvals?: PrActor[];
+  approvals?: PrMetricsApproval[];
   commentsByActor?: PrActor[];
   reviewsByActor?: PrActor[];
   counts?: {
@@ -139,6 +147,9 @@ export interface PrMetrics {
 export interface PrData {
   // Digits-only string in the data file; some callers pass a number.
   number?: string | number;
+  title?: string;
+  // The title with "[CHK:...]"/"[MRG:...]" markers appended.
+  titleDisplay?: string;
   // The script's change status: "CHANGED", "NO_CHANGE" or "NO_ACTIVITY"
   // (older data wrote "CHANGED(<reasons>)"), and the change reasons as
   // "|"-separated tokens such as "commit|review" ("-" when none).

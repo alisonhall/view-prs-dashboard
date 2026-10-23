@@ -2,7 +2,7 @@
 
 const {
   createPrReviewStatsAggregationHelpers,
-} = require("./pr-review-stats-aggregation.helpers.js");
+} = require("./pr-review-stats-aggregation.helpers.ts");
 
 describe("review stats aggregation helpers", () => {
   const createHelpers = (overrides = {}) => {

@@ -1,6 +1,6 @@
 const {
   createPrOpenConversationCountHelpers,
-} = require("./pr-open-conversation-count.helpers.js");
+} = require("./pr-open-conversation-count.helpers.ts");
 
 describe("pr open conversation count helpers", () => {
   describe("getOpenConversationCount", () => {

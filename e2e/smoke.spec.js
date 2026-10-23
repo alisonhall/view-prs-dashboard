@@ -1937,7 +1937,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
 
   // "Filtered rows" only counts every row unconditionally when there's no
   // active date-range filter (see buildReviewerStats in
-  // pr-review-stats-aggregation.helpers.js) - statsViewState defaults to a
+  // pr-review-stats-aggregation.helpers.ts) - statsViewState defaults to a
   // recent start date that excludes this fixture's Jan 2026 PRs, so clear
   // it to get a predictable count.
   const startDateInput = page.getByLabel("Start date", { exact: true });

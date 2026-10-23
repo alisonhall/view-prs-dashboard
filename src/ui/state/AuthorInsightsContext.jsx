@@ -3,7 +3,7 @@ import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insi
 import { createPrAuthorInsightsDisplayHelpers } from '../helpers/pr-author-insights-display.helpers.js';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.ts';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.ts';
-import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.js';
+import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.ts';

@@ -1,28 +1,33 @@
-import { createPrReviewStatsAggregationHelpers } from "./pr-review-stats-aggregation.helpers.js";
+import type { PrData } from "../types/pr-data.ts";
+import { createPrReviewStatsAggregationHelpers } from "./pr-review-stats-aggregation.helpers.ts";
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction of index.page.js's
-// former getOpenConversationCount/getOpenConversationCountWithMe bodies
-// into a DI-factory module, so PrInsightsRow.jsx can import it directly
-// instead of reading window.getOpenConversationCountWithMe.
-// getOpenConversationCountWithMe genuinely needs the current viewer's
-// login (confirmed by reading the body directly, not a zero-dependency
-// function despite first appearances) - it used to read a three-tier
-// fallback chain (currentViewerLogin || row.viewerLogin ||
-// inferViewerLoginFromPage()) off index.page.js's own module state;
-// getEffectiveViewerLogin(row) (ActorIdentityContext) is that exact same
-// derivation, already Context-native, so it's injected here instead of
-// reimplementing the chain.
+// PrInsightsRow's "Open conversations" count: the data file's own count,
+// else the metrics estimate. With a known viewer it's "Open conversations
+// with me": unresolved threads the viewer took part in. The viewer comes
+// from the injected getEffectiveViewerLogin (ActorIdentityContext), which
+// falls back from the known viewer to the row's viewerLogin to the page.
 const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 const { toCount } = createPrFormattingHelpers();
 
-const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray } = {}) => {
+export interface PrOpenConversationCountDeps {
+  getEffectiveViewerLogin?: (row: PrData | null | undefined) => string;
+  asArray?: (value: unknown) => unknown[];
+}
+
+export interface OpenConversationCountWithMe {
+  count: number;
+  isViewerSpecific: boolean;
+}
+
+const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray }: PrOpenConversationCountDeps = {}) => {
   const getEffectiveViewerLoginSafe =
     typeof getEffectiveViewerLogin === "function" ? getEffectiveViewerLogin : () => "";
-  const asArraySafe =
-    typeof asArray === "function" ? asArray : (value) => (Array.isArray(value) ? value : []);
+  // Callers pass typed lists; the injected asArray only coerces.
+  const asArraySafe = <T>(value: T[] | null | undefined): T[] =>
+    (typeof asArray === "function" ? asArray(value) : Array.isArray(value) ? value : []) as T[];
 
-  const getOpenConversationCount = (row) => {
+  const getOpenConversationCount = (row: PrData | null | undefined): number => {
     const openConversationCountRaw = row?.openConversationCount;
     const metrics = normalizeRowMetrics(row);
     const fallbackOpenConversations =
@@ -35,7 +40,7 @@ const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray
       : toCount(fallbackOpenConversations);
   };
 
-  const getOpenConversationCountWithMe = (row) => {
+  const getOpenConversationCountWithMe = (row: PrData | null | undefined): OpenConversationCountWithMe => {
     const viewerLogin = String(getEffectiveViewerLoginSafe(row) || "")
       .trim()
       .toLowerCase();
