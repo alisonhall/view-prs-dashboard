@@ -8,11 +8,11 @@ require('@testing-library/jest-dom');
 // new per-entry cache actually skips re-deriving an unchanged entry on a
 // second render - not just that the rendered options still come out
 // correct (the 4 tests below already proved that before this change).
-jest.mock('../helpers/pr-filter-label-extraction.helpers.js', () => {
-  const real = jest.requireActual('../helpers/pr-filter-label-extraction.helpers.js');
+jest.mock('../helpers/pr-filter-label-extraction.helpers.ts', () => {
+  const real = jest.requireActual('../helpers/pr-filter-label-extraction.helpers.ts');
   return { ...real, extractRowLabelNames: jest.fn(real.extractRowLabelNames) };
 });
-const { extractRowLabelNames } = require('../helpers/pr-filter-label-extraction.helpers.js');
+const { extractRowLabelNames } = require('../helpers/pr-filter-label-extraction.helpers.ts');
 
 const { FilterOptionsProvider } = require('./FilterOptionsProvider');
 const { useFilterOptions } = require('../state/FilterOptionsContext');

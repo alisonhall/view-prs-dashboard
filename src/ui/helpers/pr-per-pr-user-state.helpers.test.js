@@ -1,4 +1,4 @@
-const { getPerPrUserStateFromPayload } = require("./pr-per-pr-user-state.helpers.js");
+const { getPerPrUserStateFromPayload } = require("./pr-per-pr-user-state.helpers.ts");
 
 describe("pr per-PR user state helper", () => {
   test("given a payload with matching notes/ack/reverify/inReview data, when resolving, then it returns all 4", () => {

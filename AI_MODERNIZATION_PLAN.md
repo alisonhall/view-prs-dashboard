@@ -1032,7 +1032,11 @@ No static type checking leads to:
   helpers (no helper imports) first. Batch 1 (2026-10-23): as-array,
   sortable-time, textarea-autoresize, default-repo, notes,
   merged-request-more-config, repo-labels, thread-comments,
-  repo-run-context, viewed-files-summary. Shared data shapes live in
+  repo-run-context, viewed-files-summary. Batch 2 (2026-10-23):
+  filter-label-extraction, viewer-login-inference, approval-duration,
+  per-pr-user-state, actor-identity-render, ui-render-utils,
+  insight-metrics-summary, insight-badge-class, scheduler-status, http.
+  Shared data shapes live in
   `src/ui/types/pr-data.ts`, grown from the data schema as helpers need
   fields. Their tests stay `.js` for now (Phase 12G).
 - [ ] Add proper type annotations

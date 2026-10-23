@@ -1,17 +1,18 @@
-// Phase 7 (see REACT_MIGRATION_PLAN.md): pure extraction of index.page.js's
-// former formatDurationMinutes body into a DI-factory module, so
-// ApprovalRiskSection.jsx can import it directly instead of reading
-// window.formatDurationMinutes. Byte-for-byte-logic-preserving move.
-const createPrApprovalDurationHelpers = ({ toCount } = {}) => {
+// Formats a minute count as "45m", "2h" or "2h 5m" (ApprovalRiskSection).
+export interface PrApprovalDurationDeps {
+  toCount?: (value: unknown) => number;
+}
+
+const createPrApprovalDurationHelpers = ({ toCount }: PrApprovalDurationDeps = {}) => {
   const toCountSafe =
     typeof toCount === "function"
       ? toCount
-      : (value) => {
+      : (value: unknown) => {
           const parsed = Number(value);
           return Number.isFinite(parsed) ? parsed : 0;
         };
 
-  const formatDurationMinutes = (value) => {
+  const formatDurationMinutes = (value: unknown): string => {
     const totalMinutes = toCountSafe(value);
     if (totalMinutes <= 0) return "0m";
     if (totalMinutes < 60) return `${totalMinutes}m`;

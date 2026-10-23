@@ -8,7 +8,7 @@
  *
  * The viewer-login resolution and class/title *logic* come from
  * useActorIdentity() (state/ActorIdentityContext.jsx) - `getEffectiveViewerLogin`
- * (helpers/pr-actor-identity-render.helpers.js) and
+ * (helpers/pr-actor-identity-render.helpers.ts) and
  * `buildActorIdentityClassName`/`buildActorIdentityTitle`
  * (helpers/pr-actor-identity-style.helpers.js) - so behavior can't drift.
  * The isViewer/isPrAuthor comparison itself is a plain inline equality

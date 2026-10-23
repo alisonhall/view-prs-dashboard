@@ -11,7 +11,7 @@
  * @module components/cells/PrActionsCell
  */
 
-import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.js';
+import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { useRepoLabels } from '../../state/RepoLabelsContext';
 
 export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {

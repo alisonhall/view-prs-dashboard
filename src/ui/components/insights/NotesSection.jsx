@@ -23,7 +23,7 @@ import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
-import { postJson } from '../../helpers/pr-http.helpers.js';
+import { postJson } from '../../helpers/pr-http.helpers.ts';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },

@@ -56,12 +56,12 @@ jest.mock('../helpers/pr-row-sorting.helpers.js', () => {
 // real postJson. Mocking postJson here is the new seam for the
 // "per-row busy spinner" tests below, replacing the old prop-injection
 // seam.
-jest.mock('../helpers/pr-http.helpers.js', () => ({
+jest.mock('../helpers/pr-http.helpers.ts', () => ({
   postJson: jest.fn(),
 }));
 
 const { PrTableApp } = require('./PrTableApp');
-const { postJson } = require('../helpers/pr-http.helpers.js');
+const { postJson } = require('../helpers/pr-http.helpers.ts');
 const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.js');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');

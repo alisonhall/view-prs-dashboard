@@ -1,6 +1,6 @@
 const {
   createPrApprovalDurationHelpers,
-} = require("./pr-approval-duration.helpers.js");
+} = require("./pr-approval-duration.helpers.ts");
 
 describe("pr approval duration helpers", () => {
   test("given zero or negative minutes, when formatting, then 0m is returned", () => {

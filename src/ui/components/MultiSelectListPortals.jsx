@@ -7,7 +7,7 @@ import { useAuthorThreadResolutionSelection } from '../state/AuthorThreadResolut
 import { useChangeFilterActorSelection } from '../state/ChangeFilterActorSelectionContext';
 import * as prMultiSelectRenderCacheHelperFactory from '../helpers/pr-multi-select-render-cache.helpers.js';
 import { seedCheckedState } from '../helpers/pr-multi-select-checked-state.helpers.js';
-import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.js';
+import { normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import {
   getPendingMultiSelectSelection,
   setPendingMultiSelectSelection,
@@ -72,7 +72,7 @@ const MULTI_SELECT_PENDING_KEYS = {
 };
 
 // Only the label lists match selections case/whitespace-insensitively
-// (see pr-filter-label-extraction.helpers.js's normalizeFilterToken) -
+// (see pr-filter-label-extraction.helpers.ts's normalizeFilterToken) -
 // every other list matches on the raw login value.
 const MULTI_SELECT_NORMALIZE_TOKEN = {
   'label-list': normalizeFilterToken,

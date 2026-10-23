@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import { createPrActorIdentityHelpers } from '../helpers/pr-actor-identity.helpers.js';
-import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.js';
+import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.ts';
 import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.js';
 
 /**

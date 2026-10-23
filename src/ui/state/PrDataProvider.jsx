@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PrDataContext } from './PrDataContext';
 import { ActorIdentityContext } from './ActorIdentityContext';
 import { createPrActorIdentityHelpers } from '../helpers/pr-actor-identity.helpers.js';
-import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.js';
+import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity-render.helpers.ts';
 import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.js';
 import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpers.js';
-import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.js';
+import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.ts';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.js';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.js';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.js';
@@ -145,7 +145,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * cluster 1): the paragraph above's "`loadSchedulerStatus` stays vanilla -
  * reached via a reverse bridge" is now stale - `window.loadSchedulerStatus`
  * itself is deleted outright. `loadSchedulerStatus`'s implementation moved
- * to `helpers/pr-scheduler-status.helpers.js`; `index.page.js` and
+ * to `helpers/pr-scheduler-status.helpers.ts`; `index.page.js` and
  * `useQuickCheckActions.jsx` (its only 2 real callers) each build their own
  * instance directly instead of going through this Provider or a `window.*`
  * bridge at all. `renderSchedulerStatus` itself (the one piece still

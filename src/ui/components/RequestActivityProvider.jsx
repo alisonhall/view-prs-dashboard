@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.js';
-import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.js';
+import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
 import { RequestActivityContext, RequestActivityDisplayContext } from '../state/RequestActivityContext';
 
 // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the

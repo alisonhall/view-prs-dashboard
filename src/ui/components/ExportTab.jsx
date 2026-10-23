@@ -24,7 +24,7 @@
  * defaults) and found all 3 are genuinely zero-dependency given what this
  * component already has: pr-export.helpers.js's createPrExportHelpers only
  * needs getPerPrUserStateFromPayload (already a bare, directly-importable
- * export - see helpers/pr-per-pr-user-state.helpers.js), and
+ * export - see helpers/pr-per-pr-user-state.helpers.ts), and
  * getVisiblePrNumbersFromSectionsHost is pure given a DOM node as its own
  * argument - it doesn't need to be *exposed* via window to read live DOM,
  * it only needs the node passed in, which this component already queries
@@ -47,9 +47,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
-import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.js';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrExportHelpers } from '../helpers/pr-export.helpers.js';
-import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.js';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 
 const { getFieldCatalog, getVisiblePrNumbersFromSectionsHost, buildExportPayload } =
   createPrExportHelpers({ getPerPrUserStateFromPayload });

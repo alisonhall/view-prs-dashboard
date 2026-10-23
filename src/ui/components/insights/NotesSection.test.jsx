@@ -7,14 +7,14 @@ require('@testing-library/jest-dom');
 // a jest.mock is the equivalent of swapping a window.* global, same pattern
 // this codebase already uses for pr-row-sorting.helpers.js/
 // pr-section-config.helpers.js in PrTableApp.test.jsx.
-jest.mock('../../helpers/pr-http.helpers.js', () => ({
+jest.mock('../../helpers/pr-http.helpers.ts', () => ({
   postJson: jest.fn(),
 }));
 
 const { NotesSection } = require('./NotesSection');
 const { RequestActivityContext } = require('../../state/RequestActivityContext');
 const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
-const { postJson } = require('../../helpers/pr-http.helpers.js');
+const { postJson } = require('../../helpers/pr-http.helpers.ts');
 
 // NotesSection reads beginRequestActivity from usePrData() now, not
 // window.beginRequestActivity (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).

@@ -1,4 +1,4 @@
-const { createPrHttpHelpers } = require("./pr-http.helpers.js");
+const { createPrHttpHelpers } = require("./pr-http.helpers.ts");
 
 describe("pr-http helpers", () => {
   test("given a url and payload, when postJson is called, then it POSTs JSON with the expected headers and returns the parsed response", async () => {

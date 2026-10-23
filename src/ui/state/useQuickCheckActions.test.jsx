@@ -58,7 +58,7 @@ describe('useQuickCheckActions', () => {
 
   // Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): window.loadSchedulerStatus is gone - the hook now builds
-  // its own real pr-scheduler-status.helpers.js instance, which calls
+  // its own real pr-scheduler-status.helpers.ts instance, which calls
   // fetch("/view-prs/scheduler") directly and forwards the result to
   // renderSchedulerStatus (RequestActivityProvider's since window-bridge
   // elimination Phase 7.3; unwrapped here, so the inert default). Asserting the forced scheduler refresh fires

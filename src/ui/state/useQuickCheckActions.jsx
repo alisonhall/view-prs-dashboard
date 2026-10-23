@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { postJson } from '../helpers/pr-http.helpers.js';
+import { postJson } from '../helpers/pr-http.helpers.ts';
 import { createPrQuickCheckActionsHelpers } from '../helpers/pr-quick-check-actions.helpers.js';
-import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.js';
+import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
 import { buildFailureSnackbarNotification } from '../helpers/pr-failure-snackbar.helpers.js';
 import { usePrActivityQueue } from './PrActivityQueueContext';
 import { useFormBody } from './useFormBody';
@@ -50,7 +50,7 @@ const buildQuickCheckCountLabel = (pendingTotal) =>
  *
  * Phase H.24 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 1): window.loadSchedulerStatus is gone too - this hook now
- * builds its own instance of helpers/pr-scheduler-status.helpers.js
+ * builds its own instance of helpers/pr-scheduler-status.helpers.ts
  * directly (same "every live consumer builds its own separate instance"
  * pattern every other Context in this migration already uses), reading
  * renderSchedulerStatus only for the side effect that instance still needs

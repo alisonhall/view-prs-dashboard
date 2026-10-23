@@ -1,4 +1,4 @@
-const { createPrSchedulerStatusHelpers } = require("./pr-scheduler-status.helpers.js");
+const { createPrSchedulerStatusHelpers } = require("./pr-scheduler-status.helpers.ts");
 
 describe("pr scheduler status helpers", () => {
   test("given a successful response, when loadSchedulerStatus is called, then it renders the scheduler payload and returns the result", async () => {

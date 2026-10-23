@@ -1,6 +1,6 @@
 const {
   createPrInsightBadgeClassHelpers,
-} = require("./pr-insight-badge-class.helpers.js");
+} = require("./pr-insight-badge-class.helpers.ts");
 
 describe("pr insight badge class helpers", () => {
   test("given changed-like status values, when resolving status badge class, then changed class is returned", () => {

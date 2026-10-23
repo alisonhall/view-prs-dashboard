@@ -13,7 +13,39 @@ export interface ReviewThread {
   comments?: ReviewThreadComment[];
 }
 
+// The data file stores label names as strings; `{ name }` objects (raw
+// `gh` output) are accepted too.
+export type PrLabel = string | { name?: string };
+
+// The per-PR `metrics` object (insights script output). Only the summary
+// counts the insights row formats are listed.
+export interface PrMetrics {
+  counts?: {
+    totalComments?: number;
+    reviews?: number;
+    approvals?: number;
+  };
+  conversationSummary?: {
+    estimatedOpenConversations?: number;
+    openThreads?: number;
+    estimatedTotalConversations?: number;
+    totalThreads?: number;
+  };
+  approvalSummary?: {
+    riskyApprovals?: number;
+    totalApprovals?: number;
+    highRiskApprovals?: number;
+  };
+  commentUsefulnessSummary?: {
+    usefulnessSignals?: number;
+    commentsFollowedByAuthorCommit?: number;
+    resolvedThreadCommentsOnOthersPrs?: number;
+  };
+}
+
 export interface PrData {
+  labels?: PrLabel[];
+  viewerLogin?: string;
   reviewThreads?: ReviewThread[];
   viewedFilesSummary?: string;
   // Digits-only strings in the data file ($defs.numericString); numbers are

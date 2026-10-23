@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { postJson } from '../helpers/pr-http.helpers.js';
+import { postJson } from '../helpers/pr-http.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
 import { createPrCommandOutputHelpers } from '../helpers/pr-command-output.helpers.js';
 import { createPrBackfillHelpers } from '../helpers/pr-backfill.helpers.js';
