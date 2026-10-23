@@ -1,4 +1,5 @@
 import type { PrData } from "../types/pr-data.ts";
+import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
 
 // A commit whose headline starts with "Merge" (merging a branch/PR into
 // another) - same definition pr-needs-attention.helpers.ts's
@@ -9,7 +10,7 @@ const isMergeCommitHeadline = (messageHeadline: unknown = ""): boolean =>
   /^Merge\b/i.test(String(messageHeadline || "").trim());
 
 export interface PrAuthorCellDeps {
-  getPreferredActorKey?: (login: unknown, name: unknown) => string;
+  getPreferredActorKey?: GetPreferredActorKey;
 }
 
 export interface PrAuthor {

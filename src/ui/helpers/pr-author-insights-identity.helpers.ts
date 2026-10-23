@@ -1,11 +1,12 @@
+import type { ActorsMap, NormalizeActorLogin, ResolveActorDisplayName } from "./pr-actor-identity.helpers.ts";
+
 // Author Insights' name lookups: the selected author's display name, and
 // whether a note's free-text author refers to the selected author (by
 // login, canonical login, name, or resolved display name).
-type ActorsMap = Record<string, unknown>;
 
 export interface PrAuthorInsightsIdentityDeps {
-  normalizeActorLogin?: (value: unknown) => string;
-  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  normalizeActorLogin?: NormalizeActorLogin;
+  resolveActorDisplayName?: ResolveActorDisplayName;
   getLatestActorsMap?: () => ActorsMap | null | undefined;
 }
 

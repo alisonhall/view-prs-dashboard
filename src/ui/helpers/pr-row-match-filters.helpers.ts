@@ -1,6 +1,7 @@
 import type { PrData, PrEntry } from "../types/pr-data.ts";
 import type { ManualNotesFieldSummary } from "./pr-manual-notes-summary.helpers.ts";
 import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
+import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
 
 // Whether one PR entry passes the table's row filters (PR numbers, labels,
 // people, notes fields). Pure with respect to its (entry, filters) args;
@@ -11,7 +12,7 @@ interface LoginRecord {
 }
 
 export interface PrRowMatchFiltersDeps {
-  getPreferredActorKey?: (login: unknown, fallback?: unknown) => string;
+  getPreferredActorKey?: GetPreferredActorKey;
   collectAssignedUsers?: (row: PrData) => LoginRecord[];
   collectApproversFromRow?: (row: PrData) => LoginRecord[];
   extractRowLabelNames?: (row: PrData) => string[];

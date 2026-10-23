@@ -23,8 +23,8 @@ export type RenderMultiSelectList<I extends MultiSelectItem> = (listId: string, 
 const createMultiSelectRenderCache = () => {
   const lastSignatureByListId = new Map<string, string>();
 
-  // NUL between an item's fields and SOH between items: neither can occur
-  // in an option value.
+  // NUL between an item's fields and SOH between items: control characters
+  // chosen because they won't appear in label names or logins.
   const buildItemsSignature = (items: MultiSelectItem[] | null | undefined): string =>
     (Array.isArray(items) ? items : [])
       .map((item) => `${item?.value}\u0000${item?.checked ? 1 : 0}`)

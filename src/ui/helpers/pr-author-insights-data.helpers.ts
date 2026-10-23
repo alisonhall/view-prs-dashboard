@@ -1,4 +1,5 @@
 import type { PostJsonResult } from "./pr-http.helpers.ts";
+import type { NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
 
 // Author Insights' manual comments: the sentiment options, and loading,
 // saving and updating an author's comments through
@@ -17,6 +18,12 @@ export interface AuthorManualComment {
   [field: string]: unknown;
 }
 
+// An in-progress edit of a saved comment.
+export interface ManualCommentEditDraft {
+  isEditing?: boolean;
+  [field: string]: unknown;
+}
+
 // The mutable state object AuthorInsightsDraftsProvider keeps in a ref:
 // loadAuthorManualComments writes into it, then calls onComplete so the
 // provider re-renders.
@@ -24,8 +31,10 @@ export interface AuthorInsightsState {
   manualCommentsByAuthorLogin: Record<string, AuthorManualComment[] | undefined>;
   manualCommentsLoadingByAuthorLogin: Record<string, boolean | undefined>;
   manualCommentsErrorByAuthorLogin: Record<string, string | undefined>;
+  // author login -> the new-comment composer draft
   manualCommentDraftByAuthorLogin?: Record<string, unknown>;
-  manualCommentEditDraftByAuthorLogin?: Record<string, unknown>;
+  // author login -> comment id -> edit draft
+  manualCommentEditDraftByAuthorLogin?: Record<string, Record<string, ManualCommentEditDraft> | null | undefined>;
 }
 
 interface AuthorCommentsResult {
@@ -38,7 +47,7 @@ interface AuthorCommentsResult {
 // AuthorInsightsContext call the factory with no arguments just to read
 // AUTHOR_COMMENT_SENTIMENT_OPTIONS; every function below needs it.
 export interface PrAuthorInsightsDataDeps {
-  normalizeActorLogin?: (value: unknown) => string;
+  normalizeActorLogin?: NormalizeActorLogin;
   fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 

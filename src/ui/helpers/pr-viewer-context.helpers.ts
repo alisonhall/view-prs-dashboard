@@ -1,13 +1,12 @@
 import type { PrEntry } from "../types/pr-data.ts";
+import type { ActorLoginAliases, NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
 
 // The viewer's normalized login and the login-alias map for a data
 // payload (PrDataProvider). The login comes from the payload, else any
 // row's viewerLogin, else the page text.
-type LoginAliases = Record<string, unknown>;
-
 export interface PrViewerContextDeps {
-  normalizeActorLoginAliases?: (value: unknown) => LoginAliases;
-  normalizeActorLogin?: (value: unknown) => string;
+  normalizeActorLoginAliases?: (value: unknown) => ActorLoginAliases;
+  normalizeActorLogin?: NormalizeActorLogin;
   inferViewerLoginFromPage?: () => string;
 }
 
@@ -17,7 +16,7 @@ export interface ViewerContextInput {
 }
 
 export interface ViewerContext {
-  currentActorLoginAliases: LoginAliases;
+  currentActorLoginAliases: ActorLoginAliases;
   currentViewerLogin: string;
 }
 
@@ -29,7 +28,7 @@ const createPrViewerContextHelpers = ({
   const normalizeActorLoginAliasesSafe =
     typeof normalizeActorLoginAliases === "function"
       ? normalizeActorLoginAliases
-      : (value: unknown): LoginAliases => (value && typeof value === "object" ? (value as LoginAliases) : {});
+      : (value: unknown): ActorLoginAliases => (value && typeof value === "object" ? (value as ActorLoginAliases) : {});
   const normalizeActorLoginSafe =
     typeof normalizeActorLogin === "function"
       ? normalizeActorLogin

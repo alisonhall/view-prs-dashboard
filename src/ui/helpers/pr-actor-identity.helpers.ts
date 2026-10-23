@@ -5,7 +5,14 @@ import type { PrData } from "../types/pr-data.ts";
 // under, display names, and a login -> display-name map built from every
 // person a PR mentions.
 export type ActorLoginAliases = Record<string, string>;
+// Canonical login -> display name.
 export type ActorsMap = Record<string, string | undefined>;
+
+// The shapes other helpers take these functions in as injected
+// dependencies (ActorIdentityContext supplies the real ones).
+export type NormalizeActorLogin = (login: unknown) => string;
+export type GetPreferredActorKey = (login: unknown, fallback?: unknown) => string;
+export type ResolveActorDisplayName = (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
 
 export interface PrActorIdentityDeps {
   asArray?: (value: unknown) => unknown[];

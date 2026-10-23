@@ -1,14 +1,14 @@
 import type { PrData } from "../types/pr-data.ts";
+import type { ActorsMap, GetPreferredActorKey, ResolveActorDisplayName } from "./pr-actor-identity.helpers.ts";
 
 // A PR's approvers: collected (deduped) from the metrics approvals, the
 // approvers list and APPROVED reviews for filtering, and formatted as
 // "Name (login) at <date>" for the insights row.
-type ActorsMap = Record<string, unknown>;
 
 export interface PrApproversDeps {
   asArray?: (value: unknown) => unknown[];
-  getPreferredActorKey?: (login: unknown, name: unknown) => string;
-  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  getPreferredActorKey?: GetPreferredActorKey;
+  resolveActorDisplayName?: ResolveActorDisplayName;
   formatIsoDatetime?: (value: unknown) => string;
 }
 

@@ -1,14 +1,14 @@
 import type { PrData } from "../types/pr-data.ts";
+import type { ActorsMap, ResolveActorDisplayName } from "./pr-actor-identity.helpers.ts";
 
 // A PR's requested reviewers, deduped by login. The request fields come in
 // several shapes (plain logins, { login, name }, or the reviewer nested
 // under requestedReviewer/reviewer/user), so they're read as unknown and
 // narrowed here. With no requests at all, whoever has reviewed is used.
-type ActorsMap = Record<string, unknown>;
 
 export interface PrRequestedReviewersDeps {
   asArray?: (value: unknown) => unknown[];
-  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  resolveActorDisplayName?: ResolveActorDisplayName;
 }
 
 export interface RequestedReviewer {

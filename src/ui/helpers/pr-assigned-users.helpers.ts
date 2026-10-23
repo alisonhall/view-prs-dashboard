@@ -1,16 +1,16 @@
 import type { PrActivityEvent, PrData } from "../types/pr-data.ts";
+import type { ActorsMap, NormalizeActorLogin, ResolveActorDisplayName } from "./pr-actor-identity.helpers.ts";
 
 // A PR's assignees, deduped by normalized login. Assignment fields come in
 // several shapes (plain logins, { login, name }, a nested user), so they're
 // read as unknown and narrowed here; assignment events in the activity
 // lists are also scanned.
-type ActorsMap = Record<string, unknown>;
 type LooseRecord = Record<string, unknown>;
 
 export interface PrAssignedUsersDeps {
   asArray?: (value: unknown) => unknown[];
-  normalizeActorLogin?: (value: unknown) => string;
-  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  normalizeActorLogin?: NormalizeActorLogin;
+  resolveActorDisplayName?: ResolveActorDisplayName;
 }
 
 export interface AssignedUser {

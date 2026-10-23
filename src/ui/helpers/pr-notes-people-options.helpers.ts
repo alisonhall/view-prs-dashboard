@@ -1,12 +1,12 @@
 import type { PrData } from "../types/pr-data.ts";
+import type { ActorsMap, ResolveActorDisplayName } from "./pr-actor-identity.helpers.ts";
 
 // The people offered in a PR's Notes "author" dropdown: the PR author,
 // commenters, reviewers and approvers, each once, with display names
 // resolved through the injected actor-identity lookup.
-type ActorsMap = Record<string, unknown>;
 
 export interface PrNotesPeopleOptionsDeps {
-  resolveActorDisplayName?: (login: string, actorsMap: ActorsMap, fallbackName?: string) => string;
+  resolveActorDisplayName?: ResolveActorDisplayName;
   asArray?: (value: unknown) => unknown[];
 }
 

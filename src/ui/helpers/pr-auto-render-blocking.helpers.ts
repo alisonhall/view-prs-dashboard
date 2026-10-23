@@ -1,28 +1,27 @@
+import type { NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
+import type {
+  AuthorInsightsState,
+  AuthorManualComment,
+  ManualCommentEditDraft,
+} from "./pr-author-insights-data.helpers.ts";
+
 // What's holding back automatic data refreshes, for the "Auto update
 // paused" indicator: the "Blocking PRs: #1, #2 (+3 more)" label, and which
 // authors have unsaved Author Insights comment drafts (a dirty new-comment
 // composer, or an edit in progress that differs from the saved comment).
-export interface ManualCommentEditDraft {
-  isEditing?: boolean;
-  [field: string]: unknown;
-}
 
-export interface SavedManualComment {
-  id?: string | number;
-  [field: string]: unknown;
-}
-
-export interface AuthorInsightsDraftsState {
-  manualCommentDraftByAuthorLogin?: Record<string, unknown>;
-  manualCommentEditDraftByAuthorLogin?: Record<string, Record<string, ManualCommentEditDraft> | null | undefined>;
-}
+// The drafts part of the Author Insights state (getDraftsSnapshot()).
+export type AuthorInsightsDraftsState = Pick<
+  AuthorInsightsState,
+  "manualCommentDraftByAuthorLogin" | "manualCommentEditDraftByAuthorLogin"
+>;
 
 export interface PrAutoRenderBlockingDeps {
   normalizePrNumber?: (value: unknown) => string;
-  normalizeActorLogin?: (value: unknown) => string;
+  normalizeActorLogin?: NormalizeActorLogin;
   isAuthorInsightsComposerDraftDirty?: (draft: unknown) => boolean;
-  getAuthorManualCommentsForLogin?: (authorLogin: string) => SavedManualComment[];
-  isAuthorInsightsEditDraftDirty?: (savedComment: SavedManualComment, draft: ManualCommentEditDraft) => boolean;
+  getAuthorManualCommentsForLogin?: (authorLogin: string) => AuthorManualComment[];
+  isAuthorInsightsEditDraftDirty?: (savedComment: AuthorManualComment, draft: ManualCommentEditDraft) => boolean;
   getAuthorInsightsDisplayName?: (authorLogin: string) => string;
 }
 
@@ -52,7 +51,7 @@ const createPrAutoRenderBlockingHelpers = ({
   const getAuthorManualCommentsForLoginSafe =
     typeof getAuthorManualCommentsForLogin === "function"
       ? getAuthorManualCommentsForLogin
-      : (): SavedManualComment[] => [];
+      : (): AuthorManualComment[] => [];
   const isAuthorInsightsEditDraftDirtySafe =
     typeof isAuthorInsightsEditDraftDirty === "function"
       ? isAuthorInsightsEditDraftDirty
