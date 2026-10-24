@@ -89,8 +89,9 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * `applyFreshTablePayload` (payload and repo together), or `setPayload`
  * (e.g. NotesSection.jsx applying its POST /view-prs/notes response).
  *
- * `pollForDataChanges` (called by <PrDataPolling />'s interval and
- * JobEventsProvider's SSE "data changed" events) and `pollBackfillStatus`
+ * `pollForDataChanges` (called by <PrDataPolling />'s interval, and by
+ * JobEventsProvider when an SSE frame reports a data-writing job finishing
+ * or a "data-changed" event) and `pollBackfillStatus`
  * are built here; the poll's bookkeeping is a ref (`trackingRef`), since
  * nothing renders from it. Request activity and the backfill load come
  * from RequestActivityProvider and BackfillStatusProvider (ancestors).

@@ -151,9 +151,8 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * showing" value from, since React is the only thing that ever renders
  * into these containers now. FilterStateProvider's own mount effect (a
  * real async fetch) still overwrites these with any saved overrides once
- * it resolves - a direct `setValues` call from inside that effect, not a
- * flushSync-wrapped bridge call reaching in from outside (see
- * state/FilterStateProvider.tsx's own header comment).
+ * it resolves - a plain `setValues` call from inside that effect (it runs
+ * in the Provider's own lifecycle, so no flushSync is needed).
  */
 // Context-backed checkboxes with no field-specific behavior (see
 // ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
