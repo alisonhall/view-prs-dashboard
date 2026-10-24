@@ -9,9 +9,11 @@ interface ActionRouteResult {
 }
 
 export interface ActivityDrawerActions {
-  // Moves a queued dispatcher task to the front. Resolves false on failure.
+  // Makes one queued dispatcher task due now and starts a dispatcher run.
+  // Resolves false on failure.
   handleDispatcherBump: (repo: string, taskType: string) => Promise<boolean>;
-  // Resets the GitHub circuit breaker. Resolves false on failure.
+  // Resets the auto-run circuit breaker (which pauses automatic runs after
+  // a burst of failures). Resolves false on failure.
   handleResetCircuitBreaker: () => Promise<boolean>;
 }
 
