@@ -2533,7 +2533,7 @@ describe("index page rendering with Testing Library", () => {
     await user.type(prNumbersInput, "912  921,  300");
     // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
     // cluster 6): useRunScript()'s getFormBody is Context-based now
-    // (useFormBody.jsx), not a FormData scan of the real <form> - same
+    // (useFormBody.tsx), not a FormData scan of the real <form> - same
     // static-markup/React-portal collision Phase H.18/H.19 fixed
     // elsewhere: injectRunFilterFieldElements() pre-seeds this field's
     // container too, so document.getElementById finds the static element,
@@ -3074,7 +3074,7 @@ describe("index page rendering with Testing Library", () => {
     // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
     // cluster 6): same static-markup/React-portal collision Phase
     // H.18/H.19 fixed elsewhere - useQuickCheckActions()'s getFormBody is
-    // Context-based now (useFormBody.jsx), not a FormData scan.
+    // Context-based now (useFormBody.tsx), not a FormData scan.
     syncFilterStateFromElement(repoField, "repo");
 
     const prNumbersInput = document.getElementById("pr-numbers");
@@ -3293,7 +3293,7 @@ describe("index page rendering with Testing Library", () => {
     // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
     // cluster 6): same static-markup/React-portal collision Phase
     // H.18/H.19 fixed elsewhere - useRunScript()'s getFormBody is
-    // Context-based now (useFormBody.jsx), not a FormData scan.
+    // Context-based now (useFormBody.tsx), not a FormData scan.
     syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     await waitFor(() => {

@@ -210,7 +210,7 @@ const createPrAuthorInsightsDisplayHelpers = (deps: PrAuthorInsightsDisplayDeps 
 
 export { createPrAuthorInsightsDisplayHelpers };
 
-// Shared by useNavigateToAuthorInsights.jsx (the "jump to unsaved author
+// Shared by useNavigateToAuthorInsights.tsx (the "jump to unsaved author
 // draft" navigation path) and AuthorInsightsSelector.jsx (the Author
 // dropdown's own validation/auto-select-first-author rule), so both
 // validate a requested author login against the same current options the

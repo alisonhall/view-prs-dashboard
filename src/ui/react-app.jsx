@@ -214,7 +214,7 @@ const FILTER_STATE_TEXT_FIELDS = [
 // initialValues once, at module load, with no DOM dependency - needed now
 // that FilterStateProvider itself moves from inside AppRoot's own returned
 // JSX to wrapping <AppRoot/> at mountAppRoot()'s own render() call (closing
-// window.getFormBody - see useFormBody.jsx). Pure defaults, same values as
+// window.getFormBody - see useFormBody.tsx). Pure defaults, same values as
 // getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.ts) - no
 // vanilla fallback markup is left to read a "currently showing" value from.
 function buildFilterStateInitialValues() {
@@ -798,7 +798,7 @@ function AppRoot() {
           PrDataProvider/FilterStateProvider, not AppRoot - this is the
           same constraint one level further out), and Phase G's own
           PrActivityQueueProvider move/Phase G.1's TabStateProvider
-          widening both ran into separately - see state/useFormBody.jsx.
+          widening both ran into separately - see state/useFormBody.tsx.
           PrDataProvider itself stays here (cluster 6
           doesn't move it), so it's now FilterStateProvider's *descendant*
           instead of its ancestor - confirmed inert (neither reads the
@@ -880,7 +880,7 @@ function AppRoot() {
         {/* Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration
             roadmap"): widened to also wrap AutoRenderBlockedLinks.jsx's
             portal (further down, inside JobEventsProvider) - its own
-            useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx
+            useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx
             hooks call useTabState() directly now, which silently resolved
             to this Context's no-op default (not the real Provider) when
             that portal sat outside this boundary, same "a sibling portal
@@ -1262,7 +1262,7 @@ function mountAppRoot() {
   // phase). Closing window.getFormBody needed useRunScript/
   // useAckLabelActions/useQuickCheckActions (called from AppRoot's own
   // body) to reach useFilterState()/useRowFilterSelection() directly - see
-  // state/useFormBody.jsx and this function's own initialValues argument
+  // state/useFormBody.tsx and this function's own initialValues argument
   // below, now computed once here via buildFilterStateInitialValues()
   // instead of threaded through AppRoot's own containers state.
   //

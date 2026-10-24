@@ -462,7 +462,7 @@ export function PrDataProvider({
     setState((previous) => ({ ...previous, statsViewState: { ...previous.statsViewState, ...patch } }));
   }, []);
 
-  // Written by state/useNavigateToAuthorInsights.jsx with a validated login.
+  // Written by state/useNavigateToAuthorInsights.tsx with a validated login.
   const setSelectedAuthorLogin = useCallback<PrDataValue['setSelectedAuthorLogin']>((login) => {
     setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
   }, []);

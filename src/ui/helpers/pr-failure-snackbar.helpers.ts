@@ -21,18 +21,13 @@ export interface FailureSnackbarNotification {
 
 export const buildFailureSnackbarNotification = (
   title: string,
-  errorSource: FailureSource | string | null | undefined,
+  errorSource: unknown,
   fallbackMessage: string = "Operation failed",
 ): FailureSnackbarNotification => {
+  const source = errorSource as FailureSource | null;
   const messageCandidates =
-    errorSource && typeof errorSource === "object"
-      ? [
-          errorSource.error,
-          errorSource.summary,
-          errorSource.message,
-          errorSource.stderr,
-          errorSource.output,
-        ]
+    source && typeof source === "object"
+      ? [source.error, source.summary, source.message, source.stderr, source.output]
       : [errorSource];
 
   const normalizedCandidates = messageCandidates

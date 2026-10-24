@@ -3,28 +3,38 @@ import { useFilterState } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { parsePrNumbersInput } from '../helpers/form-parsing.helpers.ts';
 
-const checkedList = (checkedByListId, listId) => Array.from(checkedByListId[listId] || []);
+const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<string>>>, listId: L): string[] =>
+  Array.from(checkedByListId[listId] || []);
 
 /**
- * Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
- * cluster 6): the reactive replacement for window.getFormBody
- * (index.page.js) - every field it read via FormData/DOM scan is already
- * Context-backed (FilterStateContext for the 9 scalar Run Script fields,
- * RowFilterSelectionContext for the 3 multi-selects also shared with
- * cluster 5's own, now-closed work), so this just re-derives the same
- * shape straight from Context instead of parsing a real <form> element.
- *
- * Needs a genuine `<FilterStateProvider>`/`<RowFilterSelectionProvider>`
- * ancestor - true for every real caller (useRunScript/useAckLabelActions/
- * useQuickCheckActions, all invoked from AppRoot's own body) now that both
- * Providers wrap <AppRoot/> itself (mountAppRoot(), react-app.jsx).
- *
- * `ackChanged`/`showReason`/`quiet` are already real booleans in Context -
- * window.getFormBody's own toBoolean(formProps.x) call (coercing a
- * FormData checkbox's "on"/absent string) is unnecessary here, not just a
- * 1:1 port.
+ * Returns a function that builds the Run Script request body from the Run &
+ * Filter form's state: FilterStateContext for the scalar fields and
+ * RowFilterSelectionContext for the label/exclude-label/author lists.
+ * Used by useRunScript/useAckLabelActions/useQuickCheckActions, which need
+ * a <FilterStateProvider>/<RowFilterSelectionProvider> ancestor (both wrap
+ * <AppRoot/> in mountAppRoot(), react-app.jsx).
  */
-export function useFormBody() {
+export interface FormBody {
+  repo: string;
+  prNumbersInput: string;
+  prNumberList: string[];
+  // prNumberList joined with ","; prNumber is its first entry.
+  prNumbers: string;
+  prNumber: string;
+  limit: string;
+  mergedLimit: string;
+  jobs: string;
+  openMode: string;
+  // The selected labels/excluded labels/authors, joined with ", ".
+  label: string;
+  excludeLabel: string;
+  author: string;
+  ackChanged: boolean;
+  showReason: boolean;
+  quiet: boolean;
+}
+
+export function useFormBody(): () => FormBody {
   const { values } = useFilterState();
   const { checkedByListId } = useRowFilterSelection();
 
@@ -42,7 +52,7 @@ export function useFormBody() {
       limit: String(values.limit || '').trim(),
       mergedLimit: String(values.mergedLimit || '').trim(),
       jobs: String(values.jobs || '').trim(),
-      openMode: values.openMode || 'none',
+      openMode: String(values.openMode || 'none'),
       label: checkedList(checkedByListId, 'label-list').join(', '),
       excludeLabel: checkedList(checkedByListId, 'exclude-label-list').join(', '),
       author: checkedList(checkedByListId, 'author-list').join(', '),

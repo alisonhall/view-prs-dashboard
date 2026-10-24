@@ -516,7 +516,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
   // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/
   // window.navigateToAuthorInsights directly - both are real hooks now
-  // (state/useNavigateToPrInTable.jsx/useNavigateToAuthorInsights.jsx). No
+  // (state/useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx). No
   // existing e2e spec drove these chips directly before this test - the 2
   // "View in table" specs elsewhere in this file exercise a different,
   // sibling implementation (AuthorInsightsPrLink.jsx's "View in table" button).
@@ -1927,7 +1927,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // direct mutation that does nothing once React owns that row (the same
   // bug class Author Insights' own "View in table" button already hit and
   // was fixed for, via a 'pr-navigate-to-insights' CustomEvent - see
-  // state/useNavigateToPrInTable.jsx). Review
+  // state/useNavigateToPrInTable.tsx). Review
   // Stats' button was never fixed the same way; this conversion routes it
   // through that same already-React-safe helper instead of rebuilding the
   // broken version a third time.

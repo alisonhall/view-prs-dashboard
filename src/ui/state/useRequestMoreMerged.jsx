@@ -16,7 +16,7 @@ import { usePrDataActions } from './PrDataActionsContext';
  * index.page.js's own vanilla instance (deleted outright, confirmed no
  * other caller). Builds its own instance of the already-pure
  * createPrMergedRequestMoreActionHelpers, same shape as useBackfillActions.jsx/
- * useTriggerAutoRun.jsx.
+ * useTriggerAutoRun.tsx.
  *
  * getIsRequestMoreMergedPending/setIsRequestMoreMergedPending - the old
  * vanilla module-level `let isRequestMoreMergedPending` - become a
@@ -29,7 +29,7 @@ import { usePrDataActions } from './PrDataActionsContext';
  * getLatestSelectedRepo intentionally stays an empty-string fallback, not
  * usePrData()'s selectedRepo - MergedRequestMoreAction.jsx always passes a
  * real, already-resolved repo as this function's first argument (see
- * useMergedRequestMoreActionOptions.jsx's own comment: its `repo` prop IS
+ * useMergedRequestMoreActionOptions.tsx's own comment: its `repo` prop IS
  * PrDataContext's selectedRepo), so that fallback path is dead in practice
  * for this hook's one real caller; not worth a PrDataProvider dependency
  * for an unreachable branch.

@@ -3,7 +3,7 @@
 const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useNavigateToPrInTable } = require('./useNavigateToPrInTable.jsx');
+const { useNavigateToPrInTable } = require('./useNavigateToPrInTable.tsx');
 const { TabStateProvider } = require('../components/TabStateProvider');
 const { useTabState } = require('./TabStateContext');
 

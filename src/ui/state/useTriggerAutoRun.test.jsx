@@ -2,7 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useTriggerAutoRun } = require('./useTriggerAutoRun.jsx');
+const { useTriggerAutoRun } = require('./useTriggerAutoRun.tsx');
 const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {

@@ -2,7 +2,10 @@ import { useContext, useMemo } from 'react';
 import { usePrData } from './PrDataContext';
 import { FilterStateContext } from './FilterStateContext';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
-import { createPrMergedRequestMoreConfigHelpers } from '../helpers/pr-merged-request-more-config.helpers.ts';
+import {
+  createPrMergedRequestMoreConfigHelpers,
+  type MergedRequestMoreActionOptions,
+} from '../helpers/pr-merged-request-more-config.helpers.ts';
 
 const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
 const { buildMergedRequestMoreActionOptions } = createPrMergedRequestMoreConfigHelpers();
@@ -14,12 +17,8 @@ const { buildMergedRequestMoreActionOptions } = createPrMergedRequestMoreConfigH
 const DEFAULT_SCOPE_MODE = 'all';
 
 /**
- * Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
- * reactive replacement for the "Request more" merged-PRs button's
- * isVisible/repo props, previously pushed imperatively via
- * window.updateReactMergedRequestMoreAction (pr-render-apply.helpers.js's
- * applyRenderResults, run as a side effect of the vanilla render pipeline -
- * see that file's own comment) into AppRoot's local useState.
+ * The "Request more" merged-PRs button's visibility and repo, derived from
+ * the scope mode and PrDataContext's payload/selectedRepo.
  *
  * Deliberately does NOT reuse useFilteredPrRows() (state/useVisiblePrNumbers.
  * jsx) for `selectedScope` even though that hook already derives it
@@ -32,25 +31,19 @@ const DEFAULT_SCOPE_MODE = 'all';
  * silently depends on the full filtering pipeline's own perf/Context
  * footprint for no reason.
  *
- * repoFilter/latestSelectedRepo both map to PrDataContext's own
- * `selectedRepo` - the vanilla pipeline's distinction between the two
- * (repoFilter = the render pipeline's own just-resolved repo,
- * latestSelectedRepo = the last repo applyResolvedRepo recorded) collapses
- * to the same single value once selectedRepo is the one, already-resolved,
- * reactive source of truth both sides shared on the vanilla side anyway.
+ * repoFilter/latestSelectedRepo are both PrDataContext's `selectedRepo`
+ * (the helper predates the two being one value).
  *
  * Forces isVisible to false until `payload.ok` confirms a real
  * /view-prs/data response has actually loaded. Found via code review:
  * PrDataProvider always mounts with initialPayload={} before the first
  * fetch resolves, and scopeMode's own real default is "all" - without this
  * guard, buildMergedRequestMoreActionOptions would report isVisible: true
- * (with repo: '') during that window, where the old window.*-bridge-fed
- * version stayed explicitly isVisible: false until the vanilla pipeline's
- * first real render. `ok: true` is a field every real server response sets
+ * (with repo: '') during that window. `ok: true` is a field every real server response sets
  * (buildDataPayload, view-prs-data-response-helpers.js) that the empty seed
  * never has.
  */
-export function useMergedRequestMoreActionOptions() {
+export function useMergedRequestMoreActionOptions(): MergedRequestMoreActionOptions {
   const { payload, selectedRepo } = usePrData();
   const filterState = useContext(FilterStateContext);
   const scopeMode = filterState?.values?.scopeMode ?? DEFAULT_SCOPE_MODE;

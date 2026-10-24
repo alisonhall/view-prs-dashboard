@@ -1081,6 +1081,10 @@ No static type checking leads to:
   - State batch 7 (2026-10-24): FilterStateProvider and PrDataProvider,
     checked against their already-typed contexts. Every Context and
     Provider is now TypeScript; the state-layer hooks remain.
+  - State batch 8 (2026-10-24): the six smallest hooks - useTriggerAutoRun,
+    useNavigateToPrInTable, useFormBody, useMergedRequestMoreActionOptions,
+    useRowCheckboxActions and useNavigateToAuthorInsights.
+    buildFailureSnackbarNotification now takes any error value.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -3,7 +3,7 @@
 const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useNavigateToAuthorInsights } = require('./useNavigateToAuthorInsights.jsx');
+const { useNavigateToAuthorInsights } = require('./useNavigateToAuthorInsights.tsx');
 const { TabStateProvider } = require('../components/TabStateProvider');
 const { useTabState } = require('./TabStateContext');
 const { PrDataProvider } = require('./PrDataProvider');

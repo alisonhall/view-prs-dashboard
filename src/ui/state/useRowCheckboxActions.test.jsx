@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataProvider } = require('./PrDataProvider');
-const { useRowCheckboxActions } = require('./useRowCheckboxActions.jsx');
+const { useRowCheckboxActions } = require('./useRowCheckboxActions.tsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { usePrDataActions } = require('./PrDataActionsContext');
