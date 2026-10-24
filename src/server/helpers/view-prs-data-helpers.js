@@ -83,6 +83,41 @@ const normalizeNotesComment = (comment) => {
   };
 };
 
+const normalizeStringList = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean);
+  }
+  const singleValue = String(value ?? "").trim();
+  return singleValue ? [singleValue] : [];
+};
+
+// A note's stories, each a name and/or URL; rows with neither are dropped.
+// Notes saved before `stories` existed kept names (rallyStories) and URLs
+// (rallyLinks) in two lists, entered side by side - those are paired by
+// position. `stories` wins when both are present.
+const normalizeNoteStories = (notes) => {
+  if (Array.isArray(notes?.stories)) {
+    return notes.stories
+      .map((story) =>
+        isObject(story)
+          ? {
+              name: String(story.name ?? "").trim(),
+              url: String(story.url ?? "").trim(),
+            }
+          : { name: String(story ?? "").trim(), url: "" },
+      )
+      .filter((story) => story.name || story.url);
+  }
+  const names = normalizeStringList(notes?.rallyStories);
+  const urls = normalizeStringList(notes?.rallyLinks);
+  return Array.from({ length: Math.max(names.length, urls.length) }, (_, index) => ({
+    name: names[index] || "",
+    url: urls[index] || "",
+  }));
+};
+
 const normalizeNotes = (notes) => {
   if (!isObject(notes)) {
     return null;
@@ -99,46 +134,11 @@ const normalizeNotes = (notes) => {
       : "";
   };
 
-  const normalizeStringList = (value) => {
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => String(item ?? "").trim())
-        .filter(Boolean);
-    }
-    const singleValue = String(value ?? "").trim();
-    return singleValue ? [singleValue] : [];
-  };
-
-  // The PR's stories, each a name and/or URL; rows with neither are dropped.
-  // Notes saved before `stories` existed kept names (rallyStories) and URLs
-  // (rallyLinks) in two lists, entered side by side - those are paired by
-  // position.
-  const normalizeStories = () => {
-    if (Array.isArray(notes.stories)) {
-      return notes.stories
-        .map((story) =>
-          isObject(story)
-            ? {
-                name: String(story.name ?? "").trim(),
-                url: String(story.url ?? "").trim(),
-              }
-            : { name: String(story ?? "").trim(), url: "" },
-        )
-        .filter((story) => story.name || story.url);
-    }
-    const names = normalizeStringList(notes.rallyStories);
-    const urls = normalizeStringList(notes.rallyLinks);
-    return Array.from({ length: Math.max(names.length, urls.length) }, (_, index) => ({
-      name: names[index] || "",
-      url: urls[index] || "",
-    }));
-  };
-
   return {
     comments,
     otherNotes: String(notes.otherNotes ?? ""),
     prDifficulty: normalizeDifficulty(notes.prDifficulty),
-    stories: normalizeStories(),
+    stories: normalizeNoteStories(notes),
     analysisOfPr: String(notes.analysisOfPr ?? ""),
   };
 };
@@ -480,6 +480,7 @@ module.exports = {
   isRepoSlug,
   parseRepoCsv,
   normalizeNotesComment,
+  normalizeNoteStories,
   normalizeNotes,
   normalizeAuthorCommentSentiment,
   normalizeAuthorComment,

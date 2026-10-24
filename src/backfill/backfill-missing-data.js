@@ -4,10 +4,26 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const Ajv2020 = require("ajv/dist/2020");
+const {
+  backupStamp,
+  isObject,
+  normalizeNoteStories,
+  normalizeNotes,
+  normalizePerRepoMap,
+  normalizeViewPrsAuthorComments,
+  normalizeViewPrsUserState,
+} = require("../server/helpers/view-prs-data-helpers.js");
+const { createFileIoHelpers } = require("../server/helpers/file-io-helpers.js");
+const { createViewPrsStateStorage } = require("../server/storage/view-prs-state-storage.js");
+const { enforceProtectedWritePolicy } = require("../server/state-write-policy.js");
 
-const viewPrsDir = __dirname;
+// The project root: the same data/, src/schema/ and src/script/ locations
+// the server uses (src/server/config/app-config.js).
+const viewPrsDir = path.resolve(__dirname, "..", "..");
 const schemaPathDefault = path.join(
   viewPrsDir,
+  "src",
+  "schema",
   "check-open-pr-updates.data.schema.json",
 );
 const dataPathDefault = path.join(
@@ -15,15 +31,26 @@ const dataPathDefault = path.join(
   "data",
   "check-open-pr-updates.data.json",
 );
+const userStatePathDefault = path.join(
+  viewPrsDir,
+  "data",
+  "check-open-pr-updates.user-state.json",
+);
+const backupDirDefault = path.join(viewPrsDir, "data", "backups");
 const refreshScriptPathDefault = path.join(
   viewPrsDir,
+  "src",
+  "script",
   "check-open-pr-updates.sh",
 );
 
 const buildDefaultOptions = () => ({
   schemaPath: schemaPathDefault,
   dataPath: dataPathDefault,
+  userStatePath: userStatePathDefault,
+  backupDir: backupDirDefault,
   refreshScriptPath: refreshScriptPathDefault,
+  migrateOnly: false,
   maxPrs: 25,
   delayMs: 2500,
   jobs: 1,
@@ -51,18 +78,33 @@ const parseArgs = (argv, defaults = buildDefaultOptions()) => {
       options.dryRun = true;
       continue;
     }
+    if (arg === "--migrate-only") {
+      options.migrateOnly = true;
+      continue;
+    }
+    // Override paths are relative to the current directory.
     if (arg === "--schema") {
-      options.schemaPath = path.resolve(viewPrsDir, argv[i + 1] || "");
+      options.schemaPath = path.resolve(argv[i + 1] || "");
       i += 1;
       continue;
     }
     if (arg === "--data") {
-      options.dataPath = path.resolve(viewPrsDir, argv[i + 1] || "");
+      options.dataPath = path.resolve(argv[i + 1] || "");
+      i += 1;
+      continue;
+    }
+    if (arg === "--user-state") {
+      options.userStatePath = path.resolve(argv[i + 1] || "");
+      i += 1;
+      continue;
+    }
+    if (arg === "--backup-dir") {
+      options.backupDir = path.resolve(argv[i + 1] || "");
       i += 1;
       continue;
     }
     if (arg === "--script") {
-      options.refreshScriptPath = path.resolve(viewPrsDir, argv[i + 1] || "");
+      options.refreshScriptPath = path.resolve(argv[i + 1] || "");
       i += 1;
       continue;
     }
@@ -99,8 +141,13 @@ const parseArgs = (argv, defaults = buildDefaultOptions()) => {
     if (arg === "-h" || arg === "--help") {
       console.log(`Usage: node backfill-missing-data.js [options]
 
+First converts notes saved in the old stories format (separate rallyStories/
+rallyLinks lists) to \`stories: [{ name, url }]\` in the user state and data
+files, then refreshes stale or schema-invalid PR rows.
+
 Options:
-  --dry-run                Only report stale/missing rows, do not refresh
+  --dry-run                Only report what would change, do not write or refresh
+  --migrate-only           Only convert old-format stories, skip the PR refresh
   --repo <owner/name>      Only refresh rows for a specific repo
   --max-prs <n>            Max PR rows to refresh this run (default: 25)
   --delay-ms <ms>          Delay between refreshes (default: 2500)
@@ -109,6 +156,8 @@ Options:
   --max-age-days <days>    Also refresh rows older than this age in days (default: 0 disabled)
   --schema <path>          Override schema file path
   --data <path>            Override data file path
+  --user-state <path>      Override user state file path
+  --backup-dir <path>      Override where file backups are written
   --script <path>          Override refresh script path`);
       process.exit(0);
     }
@@ -203,6 +252,171 @@ const collectBackfillCandidates = ({
 
 const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf8"));
 
+const isPlainObject = (value) =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const LEGACY_STORY_KEYS = ["rallyStories", "rallyLinks"];
+
+// A note in the old stories format (rallyStories/rallyLinks) converted to
+// `stories`, the same way the server reads it (normalizeNoteStories); null
+// when the note has neither old key. Other fields and the key order are
+// kept, `stories` taking the first old key's place.
+const migrateNoteStories = (notes) => {
+  if (
+    !isPlainObject(notes) ||
+    !LEGACY_STORY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(notes, key))
+  ) {
+    return null;
+  }
+  const stories = normalizeNoteStories(notes);
+  const migrated = {};
+  for (const [key, value] of Object.entries(notes)) {
+    if (LEGACY_STORY_KEYS.includes(key) || key === "stories") {
+      if (!Object.prototype.hasOwnProperty.call(migrated, "stories")) {
+        migrated.stories = stories;
+      }
+      continue;
+    }
+    migrated[key] = value;
+  }
+  return migrated;
+};
+
+// Converts, in place, every old-format note in the user state
+// (notesByPrNumber) and any notes still on data-file entries (saved before
+// notes moved to the user state). Returns the PR numbers changed in each.
+const migrateLegacyStories = ({ userState, data }) => {
+  const userStatePrNumbers = [];
+  const dataPrNumbers = [];
+  const notesByPrNumber = isPlainObject(userState?.notesByPrNumber) ? userState.notesByPrNumber : {};
+  for (const [prNumber, notes] of Object.entries(notesByPrNumber)) {
+    const migrated = migrateNoteStories(notes);
+    if (migrated) {
+      notesByPrNumber[prNumber] = migrated;
+      userStatePrNumbers.push(prNumber);
+    }
+  }
+  const byPrNumber = isPlainObject(data?.byPrNumber) ? data.byPrNumber : {};
+  for (const [prNumber, entry] of Object.entries(byPrNumber)) {
+    const migrated = migrateNoteStories(entry?.notes);
+    if (migrated) {
+      entry.notes = migrated;
+      dataPrNumbers.push(prNumber);
+    }
+  }
+  return { userStatePrNumbers, dataPrNumbers };
+};
+
+// The lock directory check-open-pr-updates.sh and the server use for a
+// state file (e.g. check-open-pr-updates.data.json ->
+// check-open-pr-updates.data.lock), so this never interleaves with their
+// read-modify-write.
+const getLockDir = (filePath) => filePath.replace(/\.json$/, ".lock");
+
+const withFileLock = async (filePath, run, { maxWaitMs = 5000 } = {}) => {
+  const lockDir = getLockDir(filePath);
+  const deadlineMs = Date.now() + maxWaitMs;
+  for (;;) {
+    try {
+      fs.mkdirSync(lockDir);
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadlineMs) {
+        throw new Error(`Unable to acquire lock ${lockDir} (another run may be writing ${path.basename(filePath)})`, {
+          cause: error,
+        });
+      }
+      await wait(50);
+    }
+  }
+  try {
+    return await run();
+  } finally {
+    try {
+      fs.rmdirSync(lockDir);
+    } catch (_error) {
+      // Best effort.
+    }
+  }
+};
+
+// Writes through the server's own state storage, so its protected-write
+// policy applies (it refuses a write that would clear or drastically shrink
+// a file) and each file is first backed up into backupDir (pruned to
+// VIEW_PRS_BACKUP_RETENTION per file and tag, as the server does).
+const createStateWriter = ({ dataPath, userStatePath, backupDir }) => {
+  const { readJsonFileIfExists, readJsonFileIfExistsDetailed } = createFileIoHelpers({ fs, path });
+  const { writeJsonFileWithBackup } = createViewPrsStateStorage({
+    fs,
+    enforceProtectedWritePolicy,
+    viewPrsBackupRetention: Math.max(
+      1,
+      Number.parseInt(process.env.VIEW_PRS_BACKUP_RETENTION || "50", 10) || 50,
+    ),
+    viewPrsBackupDir: backupDir,
+    viewPrsDataFile: dataPath,
+    viewPrsUserStateFile: userStatePath,
+    // Not written here.
+    viewPrsAuthorCommentsFile: "",
+    readJsonFileIfExists,
+    readJsonFileIfExistsDetailed,
+    normalizeViewPrsUserState,
+    normalizeViewPrsAuthorComments,
+    normalizeNotes,
+    normalizePerRepoMap,
+    isObject,
+    backupStamp,
+  });
+  return (filePath, value) => writeJsonFileWithBackup(filePath, value, "stories-migration");
+};
+
+// Converts old-format stories in the user state and data files (each read
+// and written under its lock; a missing file is skipped). With dryRun,
+// only reports. Returns the PR numbers changed in each file.
+const migrateLegacyStoriesInFiles = async ({
+  userStatePath,
+  dataPath,
+  backupDir,
+  dryRun = false,
+  log = console.log,
+  lockWaitMs = 5000,
+}) => {
+  const result = { userStatePrNumbers: [], dataPrNumbers: [] };
+  const writeStateFile = createStateWriter({ dataPath, userStatePath, backupDir });
+  const files = [
+    { filePath: userStatePath, key: "userStatePrNumbers", label: "user state" },
+    { filePath: dataPath, key: "dataPrNumbers", label: "data file" },
+  ];
+  for (const { filePath, key, label } of files) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      continue;
+    }
+    await withFileLock(filePath, async () => {
+      const value = readJson(filePath);
+      const changed = migrateLegacyStories(
+        key === "userStatePrNumbers" ? { userState: value } : { data: value },
+      )[key];
+      result[key] = changed;
+      if (!changed.length) {
+        return;
+      }
+      log(
+        `[backfill] ${dryRun ? "would convert" : "converting"} old-format stories in the ${label} for PR(s): ${changed.join(", ")}`,
+      );
+      if (!dryRun) {
+        writeStateFile(filePath, value);
+      }
+    }, { maxWaitMs: lockWaitMs });
+  }
+  if (!result.userStatePrNumbers.length && !result.dataPrNumbers.length) {
+    log("[backfill] no old-format stories found");
+  }
+  return result;
+};
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const runWithConcurrency = async ({
@@ -257,6 +471,7 @@ const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
       String(jobs),
     ];
 
+    // From the project root, as the server runs it.
     const child = spawn("bash", args, {
       cwd: viewPrsDir,
       stdio: ["ignore", "pipe", "pipe"],
@@ -285,6 +500,16 @@ const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
 
 const main = async () => {
   const options = parseArgs(process.argv.slice(2));
+
+  await migrateLegacyStoriesInFiles({
+    userStatePath: options.userStatePath,
+    dataPath: options.dataPath,
+    backupDir: options.backupDir,
+    dryRun: options.dryRun,
+  });
+  if (options.migrateOnly) {
+    return;
+  }
 
   if (!fs.existsSync(options.schemaPath)) {
     throw new Error(`Schema file not found: ${options.schemaPath}`);
@@ -380,5 +605,8 @@ if (require.main === module) {
 module.exports = {
   buildDefaultOptions,
   collectBackfillCandidates,
+  migrateLegacyStories,
+  migrateLegacyStoriesInFiles,
+  migrateNoteStories,
   parseArgs,
 };

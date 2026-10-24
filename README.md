@@ -346,6 +346,8 @@ Use `backfill-missing-data.js` to find PR rows with schema-missing data and opti
 - Safe with active localhost usage: writes are serialized via the same state-file lock used by `src/script/check-open-pr-updates.sh`.
 - Candidate processing is prioritized by section for faster visible wins: `open` -> `draft` -> `closed` -> `merged`.
 - Backfill refreshes can run with a bounded worker pool (`--concurrency`) while keeping each PR update independent.
+- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script; `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way, so this only tidies the files.
+- `--data`/`--user-state`/`--schema`/`--script`/`--backup-dir` override paths are relative to the current directory.
 
 Common commands:
 
@@ -354,6 +356,9 @@ cd view-prs
 
 # Inspect candidates only
 npm run backfill:missing:dry -- --max-prs 30
+
+# Only convert old-format stories (no GitHub refresh)
+npm run backfill:missing -- --migrate-only
 
 # Refresh candidates in foreground (throttled)
 npm run backfill:missing -- --max-prs 50 --delay-ms 3000
