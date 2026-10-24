@@ -143,12 +143,13 @@ const parseArgs = (argv, defaults = buildDefaultOptions()) => {
 
 First converts notes saved in the old stories format (separate rallyStories/
 rallyLinks lists) to \`stories: [{ name, url }]\` in the user state and data
-files, then refreshes stale or schema-invalid PR rows.
+files (every note: notes are stored by PR number, not repo, so --repo
+doesn't limit this), then refreshes stale or schema-invalid PR rows.
 
 Options:
   --dry-run                Only report what would change, do not write or refresh
   --migrate-only           Only convert old-format stories, skip the PR refresh
-  --repo <owner/name>      Only refresh rows for a specific repo
+  --repo <owner/name>      Only refresh rows for a specific repo (not the stories conversion)
   --max-prs <n>            Max PR rows to refresh this run (default: 25)
   --delay-ms <ms>          Delay between refreshes (default: 2500)
   --jobs <n>               Pass through to check-open-pr-updates.sh --jobs (default: 1)
@@ -307,11 +308,36 @@ const migrateLegacyStories = ({ userState, data }) => {
   return { userStatePrNumbers, dataPrNumbers };
 };
 
-// The lock directory check-open-pr-updates.sh and the server use for a
-// state file (e.g. check-open-pr-updates.data.json ->
-// check-open-pr-updates.data.lock), so this never interleaves with their
-// read-modify-write.
+// The lock directory check-open-pr-updates.sh uses for a state file (e.g.
+// check-open-pr-updates.data.json -> check-open-pr-updates.data.lock; the
+// server also takes the data one for its label patch), so this never
+// interleaves with their read-modify-write. The server's own user state
+// writes (notes saves) don't take a lock - see migrateLegacyStoriesInFiles.
 const getLockDir = (filePath) => filePath.replace(/\.json$/, ".lock");
+
+// Why a lock is still held, for the error: its age and the holder the shell
+// recorded in lock-info. A lock left by a killed run is not removed here:
+// the shell does that by checking the holder's pid, but under Git Bash that
+// is an MSYS pid Node can't check, so a live lock could look abandoned.
+const describeHeldLock = (lockDir) => {
+  const parts = [];
+  try {
+    const ageSeconds = Math.round((Date.now() - fs.statSync(lockDir).mtimeMs) / 1000);
+    parts.push(`held for ${ageSeconds}s`);
+  } catch (_error) {
+    // It may have just been released.
+  }
+  try {
+    const info = fs.readFileSync(path.join(lockDir, "lock-info"), "utf8");
+    const pid = (info.match(/^pid=(.*)$/m) || [])[1];
+    if (pid) {
+      parts.push(`by pid ${pid.trim()}`);
+    }
+  } catch (_error) {
+    // No lock-info (e.g. held by the server or another backfill run).
+  }
+  return parts.length ? ` (${parts.join(" ")})` : "";
+};
 
 const withFileLock = async (filePath, run, { maxWaitMs = 5000 } = {}) => {
   const lockDir = getLockDir(filePath);
@@ -325,9 +351,10 @@ const withFileLock = async (filePath, run, { maxWaitMs = 5000 } = {}) => {
         throw error;
       }
       if (Date.now() >= deadlineMs) {
-        throw new Error(`Unable to acquire lock ${lockDir} (another run may be writing ${path.basename(filePath)})`, {
-          cause: error,
-        });
+        throw new Error(
+          `Unable to acquire lock ${lockDir}${describeHeldLock(lockDir)}. Another run may be writing ${path.basename(filePath)}; if no check-open-pr-updates.sh run is in progress, the lock was left by one that stopped early and the folder can be removed.`,
+          { cause: error },
+        );
       }
       await wait(50);
     }
@@ -376,6 +403,13 @@ const createStateWriter = ({ dataPath, userStatePath, backupDir }) => {
 // Converts old-format stories in the user state and data files (each read
 // and written under its lock; a missing file is skipped). With dryRun,
 // only reports. Returns the PR numbers changed in each file.
+//
+// The lock doesn't cover the dashboard's own notes saves, which write the
+// user state without one. So the file is read again just before writing,
+// and if it changed in the meantime (e.g. a note was saved) the conversion
+// is redone on the fresh copy rather than overwriting that save.
+const MAX_CONVERT_ATTEMPTS = 3;
+
 const migrateLegacyStoriesInFiles = async ({
   userStatePath,
   dataPath,
@@ -383,6 +417,7 @@ const migrateLegacyStoriesInFiles = async ({
   dryRun = false,
   log = console.log,
   lockWaitMs = 5000,
+  readText = (filePath) => fs.readFileSync(filePath, "utf8"),
 }) => {
   const result = { userStatePrNumbers: [], dataPrNumbers: [] };
   const writeStateFile = createStateWriter({ dataPath, userStatePath, backupDir });
@@ -395,20 +430,29 @@ const migrateLegacyStoriesInFiles = async ({
       continue;
     }
     await withFileLock(filePath, async () => {
-      const value = readJson(filePath);
-      const changed = migrateLegacyStories(
-        key === "userStatePrNumbers" ? { userState: value } : { data: value },
-      )[key];
-      result[key] = changed;
-      if (!changed.length) {
+      for (let attempt = 1; attempt <= MAX_CONVERT_ATTEMPTS; attempt += 1) {
+        const before = readText(filePath);
+        const value = JSON.parse(before);
+        const changed = migrateLegacyStories(
+          key === "userStatePrNumbers" ? { userState: value } : { data: value },
+        )[key];
+        result[key] = changed;
+        if (!changed.length || dryRun) {
+          if (changed.length) {
+            log(`[backfill] would convert old-format stories in the ${label} for PR(s): ${changed.join(", ")}`);
+          }
+          return;
+        }
+        if (readText(filePath) !== before) {
+          continue;
+        }
+        log(`[backfill] converting old-format stories in the ${label} for PR(s): ${changed.join(", ")}`);
+        writeStateFile(filePath, value);
         return;
       }
-      log(
-        `[backfill] ${dryRun ? "would convert" : "converting"} old-format stories in the ${label} for PR(s): ${changed.join(", ")}`,
+      throw new Error(
+        `The ${label} kept changing while converting its stories; nothing was written. Run again when the dashboard is idle.`,
       );
-      if (!dryRun) {
-        writeStateFile(filePath, value);
-      }
     }, { maxWaitMs: lockWaitMs });
   }
   if (!result.userStatePrNumbers.length && !result.dataPrNumbers.length) {

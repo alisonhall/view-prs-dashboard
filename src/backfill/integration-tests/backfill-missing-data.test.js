@@ -310,6 +310,55 @@ describe("backfill-missing-data old-format stories", () => {
       expect(fs.readFileSync(userStatePath, "utf8")).toBe(before);
     });
 
+    test("given a held lock with the shell's lock-info, when run, then the error says who holds it and when it can be removed", async () => {
+      const lockDir = path.join(dir, "check-open-pr-updates.user-state.lock");
+      fs.mkdirSync(lockDir);
+      fs.writeFileSync(path.join(lockDir, "lock-info"), "pid=4242\ncreated_at=0\n");
+
+      await expect(run({ lockWaitMs: 50 })).rejects.toThrow(
+        /held for \d+s by pid 4242\).*if no check-open-pr-updates\.sh run is in progress.*can be removed/,
+      );
+    });
+
+    test("given the dashboard saves a note between the read and the write, when run, then the conversion is redone on the saved copy instead of overwriting it", async () => {
+      let reads = 0;
+      const readText = (filePath) => {
+        reads += 1;
+        if (filePath === userStatePath && reads === 2) {
+          // The "dashboard" saves PR 2's notes after the first read.
+          const saved = readJson(userStatePath);
+          saved.notesByPrNumber[2] = { comments: [], otherNotes: "saved meanwhile", stories: [] };
+          writeJson(userStatePath, saved);
+        }
+        return fs.readFileSync(filePath, "utf8");
+      };
+
+      await expect(run({ readText })).resolves.toMatchObject({ userStatePrNumbers: ["1"] });
+
+      expect(readJson(userStatePath).notesByPrNumber).toEqual({
+        1: { comments: [], otherNotes: "", stories: [{ name: "US1", url: "https://x/1" }] },
+        2: { comments: [], otherNotes: "saved meanwhile", stories: [] },
+      });
+      expect(fs.readdirSync(backupDir)).toHaveLength(1);
+    });
+
+    test("given the file keeps changing on every read, when run, then it gives up without writing", async () => {
+      let reads = 0;
+      const readText = (filePath) => {
+        reads += 1;
+        if (filePath === userStatePath) {
+          const saved = readJson(userStatePath);
+          saved.ackByRepo = { "owner/repo": { [String(reads)]: "2026-10-24T00:00:00Z" } };
+          writeJson(userStatePath, saved);
+        }
+        return fs.readFileSync(filePath, "utf8");
+      };
+
+      await expect(run({ readText })).rejects.toThrow(/kept changing.*nothing was written/);
+      expect(readJson(userStatePath).notesByPrNumber[1].rallyStories).toEqual(["US1"]);
+      expect(fs.existsSync(backupDir)).toBe(false);
+    });
+
     test("given missing files, when run, then they are skipped", async () => {
       fs.rmSync(userStatePath);
       fs.rmSync(dataPath);
