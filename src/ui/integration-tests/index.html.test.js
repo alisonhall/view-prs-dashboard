@@ -3730,7 +3730,7 @@ describe("index page rendering with Testing Library", () => {
       // setInterval, see PrDataPolling.jsx's own comment) is gone - the
       // progress indicator is driven by renderSchedulerStatus in production
       // too (RequestActivityProvider's, via Context since window-bridge
-      // elimination Phase 7.3), called by JobEventsProvider.jsx's real SSE
+      // elimination Phase 7.3), called by JobEventsProvider.tsx's real SSE
       // connection on every scheduler-status push. Calling it directly
       // here with the same payload shape exercises that real remaining
       // path instead of a bridge with no caller left.

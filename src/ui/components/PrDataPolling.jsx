@@ -26,7 +26,7 @@
  * The scheduler-status poll this component used to also own
  * (schedulerInterval, calling window.pollSchedulerStatus) was retired by
  * the activity-drawer feature (see REACT_MIGRATION_PLAN.md's "Polling
- * retirement" section): JobEventsProvider.jsx's SSE connection drives the
+ * retirement" section): JobEventsProvider.tsx's SSE connection drives the
  * scheduler rendering directly (RequestActivityProvider's
  * renderSchedulerStatus, via Context since window-bridge elimination Phase
  * 7.3), so a separate 30s fetch for it is no longer needed.

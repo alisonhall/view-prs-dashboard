@@ -1,9 +1,9 @@
 // Pure reducer for the activity drawer's SSE-fed job state. No React/DOM -
 // all the "honest, not a fake queue" semantics live here so they're unit
-// testable without a real EventSource. JobEventsProvider.jsx owns the live
+// testable without a real EventSource. JobEventsProvider.tsx owns the live
 // connection and EventSource lifecycle and applies frames through this
 // module, which only owns what a given frame does to state;
-// JobEventsContext.jsx uses getInitialJobEventsState for its default value.
+// JobEventsContext.tsx uses getInitialJobEventsState for its default value.
 
 export type JobKey = "autoRefresh" | "quickCheck" | "mergedQueueDrain";
 
@@ -332,7 +332,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     setConnectionState,
     applyJobEventsSnapshot,
     applyJobEvent,
-    // Exported for JobEventsProvider.jsx's own payload.scheduler fallback
+    // Exported for JobEventsProvider.tsx's own payload.scheduler fallback
     // (see that file's comment) - lets it normalize payload.scheduler
     // into the exact same schedulerSummary shape, until the first real
     // SSE snapshot arrives.

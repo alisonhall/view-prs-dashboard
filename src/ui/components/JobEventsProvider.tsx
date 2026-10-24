@@ -1,8 +1,13 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { JobEventsContext } from '../state/JobEventsContext';
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { JobEventsContext, type JobEventsValue } from '../state/JobEventsContext';
 import { PrDataContext } from '../state/PrDataContext';
-import { useRequestActivity } from '../state/RequestActivityContext';
-import { createPrJobEventsHelpers } from '../helpers/pr-job-events.helpers.ts';
+import { useRequestActivity, type RequestActivityValue } from '../state/RequestActivityContext';
+import {
+  createPrJobEventsHelpers,
+  type JobEventEnvelope,
+  type JobEventsState,
+  type SchedulerSnapshot,
+} from '../helpers/pr-job-events.helpers.ts';
 
 const STALENESS_CHECK_INTERVAL_MS = 30000;
 const STALENESS_THRESHOLD_MS = 60000;
@@ -17,33 +22,29 @@ const {
   extractSchedulerSummary,
 } = createPrJobEventsHelpers();
 
+// A job/scheduler frame, or a "data-changed" frame (which carries `type`).
+type JobEventsFrame = JobEventEnvelope & { type?: string };
+
 /**
- * Activity drawer feature (see REACT_MIGRATION_PLAN.md): owns the single
- * EventSource connection to GET /view-prs/events and exposes the resulting
- * job state via JobEventsContext.
+ * Owns the single EventSource connection to GET /view-prs/events and
+ * exposes the resulting job state via JobEventsContext.
  *
  * A Provider (not a bare hook) deliberately - so exactly one EventSource
- * exists for the page even as more consumers are added later, the same
- * reasoning NotesDirtyProvider documents for owning genuinely shared state
- * rather than letting each consumer re-derive it.
+ * exists for the page however many consumers read it.
  *
  * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
- * renderSchedulerStatus (RequestActivityProvider's, via Context since
- * window-bridge elimination Phase 7.3 - it was window.renderSchedulerStatus) with
- * the bundled scheduler object - that
- * function's only remaining job (since #scheduler-badges/#scheduler-details
- * were removed as redundant with this drawer's own live display) is keeping
- * the per-row progress indicator and #request-activity-badges current, both
- * independent of this drawer's own UI. And on an autoRefresh/
- * mergedQueueDrain "finish" job event, OR a "data-changed" event (fired by
- * ack/apply-label/manual-run/request-more once one of those routes actually
- * wrote to the stored PR data file), it calls PrDataContext's pollForDataChanges
+ * RequestActivityProvider's renderSchedulerStatus with the bundled
+ * scheduler object, which keeps the per-row progress indicator and the
+ * request-activity badges current. And on an autoRefresh/mergedQueueDrain
+ * "finish" job event, OR a "data-changed" event (fired by ack/apply-label/
+ * manual-run/request-more once one of those routes actually wrote to the
+ * stored PR data file), it calls PrDataContext's pollForDataChanges
  * immediately rather than waiting for that poll's own next tick - the
  * interval itself stays as a slower safety net, since not every possible
  * write path is instrumented (e.g. anything that bypasses these routes
  * entirely would still rely on it).
  */
-export function JobEventsProvider({ children }) {
+export function JobEventsProvider({ children }: { children?: ReactNode }) {
   // Reads PrDataContext directly (not the throwing usePrData() hook) so
   // this still works without a <PrDataProvider> ancestor - this
   // component's own existing test file mounts it standalone, and payload
@@ -55,15 +56,15 @@ export function JobEventsProvider({ children }) {
   // Ref, not an effect dependency: the SSE effect below must not tear down
   // and reconnect the EventSource if PrDataProvider ever rebuilds this
   // function's identity.
-  const pollForDataChangesRef = useRef(null);
+  const pollForDataChangesRef = useRef<(() => Promise<void>) | undefined>(undefined);
   pollForDataChangesRef.current = prDataContext?.pollForDataChanges;
   // Same ref reasoning. Stable anyway (RequestActivityProvider's value never
   // changes), and the inert default without a Provider is a no-op.
-  const renderSchedulerStatusRef = useRef(null);
+  const renderSchedulerStatusRef = useRef<RequestActivityValue['renderSchedulerStatus'] | null>(null);
   renderSchedulerStatusRef.current = useRequestActivity().renderSchedulerStatus;
-  const [jobEventsState, setJobEventsState] = useState(getInitialJobEventsState);
+  const [jobEventsState, setJobEventsState] = useState<JobEventsState>(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
-  const lastEventAtRef = useRef(null);
+  const lastEventAtRef = useRef<string | null>(null);
   lastEventAtRef.current = jobEventsState.lastEventAt;
 
   useEffect(() => {
@@ -72,17 +73,17 @@ export function JobEventsProvider({ children }) {
       return undefined;
     }
 
-    let eventSource = null;
-    let reconnectTimer = null;
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
     let stopped = false;
 
-    const applySchedulerSideEffects = (scheduler) => {
+    const applySchedulerSideEffects = (scheduler: SchedulerSnapshot | undefined) => {
       renderSchedulerStatusRef.current?.(scheduler);
     };
 
-    const handleSnapshot = (event) => {
-      let payload;
+    const handleSnapshot = (event: MessageEvent) => {
+      let payload: { scheduler?: SchedulerSnapshot; at?: string };
       try {
         payload = JSON.parse(event.data);
       } catch (_error) {
@@ -92,8 +93,8 @@ export function JobEventsProvider({ children }) {
       applySchedulerSideEffects(payload?.scheduler);
     };
 
-    const handleJobOrSchedulerFrame = (event) => {
-      let envelope;
+    const handleJobOrSchedulerFrame = (event: MessageEvent) => {
+      let envelope: JobEventsFrame;
       try {
         envelope = JSON.parse(event.data);
       } catch (_error) {
@@ -105,10 +106,9 @@ export function JobEventsProvider({ children }) {
       const isDataWritingJobFinish =
         envelope?.phase === 'finish' &&
         (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain');
-      // "data-changed" (see REACT_MIGRATION_PLAN.md's poll-conversion
-      // follow-up): emitted by ack/apply-label/manual-run/request-more once
-      // one of those routes has actually written to the stored PR data file
-      // - the requesting tab already has its own fresh result from that
+      // "data-changed" is emitted by ack/apply-label/manual-run/request-more
+      // once one of those routes has actually written to the stored PR data
+      // file - the requesting tab already has its own fresh result from that
       // route's own response, so this is specifically for every *other*
       // connected tab.
       const isDataChangedEvent = envelope?.type === 'data-changed';
@@ -181,7 +181,6 @@ export function JobEventsProvider({ children }) {
     return () => clearInterval(watchdog);
   }, []);
 
-  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
   // schedulerSummary's own default value (getInitialJobEventsState) is a
   // hardcoded placeholder ({ intervalMinutes: 15, lastAutoRunAt: null,
   // ... }), not real data - on a fresh page load, before this
@@ -195,15 +194,15 @@ export function JobEventsProvider({ children }) {
   // prefer it as a fallback until lastSnapshotAt confirms this connection
   // has delivered real data of its own - from then on, the live
   // SSE-tracked value is preferred (fresher between polls, the whole
-  // point of this connection existing). Found via code review.
+  // point of this connection existing).
   const schedulerSummary = useMemo(() => {
     if (jobEventsState.lastSnapshotAt) {
       return jobEventsState.schedulerSummary;
     }
-    return extractSchedulerSummary(payload?.scheduler, jobEventsState.schedulerSummary);
+    return extractSchedulerSummary(payload?.scheduler as SchedulerSnapshot | undefined, jobEventsState.schedulerSummary);
   }, [jobEventsState.lastSnapshotAt, jobEventsState.schedulerSummary, payload]);
 
-  const value = useMemo(
+  const value = useMemo<JobEventsValue>(
     () => ({ ...jobEventsState, schedulerSummary, isStale }),
     [jobEventsState, schedulerSummary, isStale],
   );

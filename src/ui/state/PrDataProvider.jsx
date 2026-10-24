@@ -63,7 +63,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
 
 // Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the request-activity bookkeeping that used to be defined here (labels,
-// counters, badges) moved to components/RequestActivityProvider.jsx.
+// counters, badges) moved to components/RequestActivityProvider.tsx.
 
 /**
  * Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -111,7 +111,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * renders from this state, it exists purely for the poll's own
  * fingerprint/manifest-diffing, so there's no reason to trigger a
  * re-render on every write. Its callers - `<PrDataPolling />`'s interval
- * and `JobEventsProvider.jsx`'s SSE "data changed" poll - read it from this
+ * and `JobEventsProvider.tsx`'s SSE "data changed" poll - read it from this
  * Provider's Context. (It was also published as `window.pollForDataChanges`
  * until window-bridge elimination Phase 7 deleted that bridge; the vanilla
  * writers of this tracking state, which went through
@@ -122,7 +122,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * built `beginRequestActivity`/`renderRequestActivity`/`pollBackfillStatus`.
  * Window-bridge elimination Phase 7.3 moved the first two (and their
  * counter/history/scheduler-state bookkeeping) out to
- * `components/RequestActivityProvider.jsx`, an ancestor, because two of their
+ * `components/RequestActivityProvider.tsx`, an ancestor, because two of their
  * callers sit above this Provider; this Provider now reads them from
  * `useRequestActivity()` like everyone else. `pollBackfillStatus` stays here
  * (`<PrDataPolling />` reads it from this Context); its load is
@@ -137,7 +137,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * `<PrDataPolling />` never destructured it from this Context either).
  * The real production behavior it exercised (the active-PR progress
  * indicator) is unaffected - `renderSchedulerStatus` is the one real
- * remaining path, called by `JobEventsProvider.jsx`'s SSE connection
+ * remaining path, called by `JobEventsProvider.tsx`'s SSE connection
  * (`RequestActivityProvider`'s, via Context, since window-bridge elimination
  * Phase 7.3; it was `index.page.js`'s `window.renderSchedulerStatus`).
  *
@@ -149,7 +149,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * `useQuickCheckActions.jsx` (its only 2 real callers) each build their own
  * instance directly instead of going through this Provider or a `window.*`
  * bridge at all. `renderSchedulerStatus` itself (the one piece still
- * vanilla/SSE-shared, called by `JobEventsProvider.jsx` above) is
+ * vanilla/SSE-shared, called by `JobEventsProvider.tsx` above) is
  * unaffected.
  *
  * Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):

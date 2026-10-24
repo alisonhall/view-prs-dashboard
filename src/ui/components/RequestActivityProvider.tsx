@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.ts';
 import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
-import { RequestActivityContext, RequestActivityDisplayContext } from '../state/RequestActivityContext';
+import {
+  RequestActivityContext,
+  RequestActivityDisplayContext,
+  type RecentRequestActivity,
+  type RequestActivityKey,
+  type RequestActivityValue,
+} from '../state/RequestActivityContext';
 
-// Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// default state for the request-activity-counter/history/scheduler-state
-// bookkeeping below - matches index.page.js's old module-scope
-// requestActivityCounters/requestActivityStartedAtMs/
-// recentRequestActivityEntries/latestSchedulerState defaults exactly.
-const REQUEST_ACTIVITY_LABELS = {
+const REQUEST_ACTIVITY_LABELS: Record<RequestActivityKey, string> = {
   runScript: 'Run script',
   ackClear: 'Ack/Clear',
   singlePr: 'Single PR update',
@@ -19,18 +20,33 @@ const REQUEST_ACTIVITY_LABELS = {
   notesSave: 'Notes save',
   authorComment: 'Author comment',
 };
+const REQUEST_ACTIVITY_KEYS = Object.keys(REQUEST_ACTIVITY_LABELS) as RequestActivityKey[];
 const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
 const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
 const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
 
-const createDefaultActivityState = () => ({
-  counters: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
-  startedAtMs: Object.fromEntries(Object.keys(REQUEST_ACTIVITY_LABELS).map((key) => [key, 0])),
+// The scheduler fields this Provider reads.
+type SchedulerState = Parameters<RequestActivityValue['renderSchedulerStatus']>[0] & {
+  lastAutoAttemptAt?: string;
+};
+
+interface ActivityState {
+  // In-flight count and when the oldest in-flight request of each kind
+  // started (0 when none).
+  counters: Record<string, number>;
+  startedAtMs: Record<string, number>;
+  recentEntries: RecentRequestActivity[];
+  latestSchedulerState: NonNullable<SchedulerState>;
+}
+
+const createDefaultActivityState = (): ActivityState => ({
+  counters: Object.fromEntries(REQUEST_ACTIVITY_KEYS.map((key) => [key, 0])),
+  startedAtMs: Object.fromEntries(REQUEST_ACTIVITY_KEYS.map((key) => [key, 0])),
   recentEntries: [],
   latestSchedulerState: {},
 });
 
-const formatElapsedLabel = (elapsedMs) => {
+const formatElapsedLabel = (elapsedMs: unknown): string => {
   const totalSeconds = Math.max(
     0,
     Math.floor(Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) / 1000 : 0),
@@ -43,7 +59,7 @@ const formatElapsedLabel = (elapsedMs) => {
   return `${seconds}s`;
 };
 
-const getElapsedFromStartMs = (startMs) => {
+const getElapsedFromStartMs = (startMs: unknown): number | null => {
   const parsedStart = Number(startMs || 0);
   if (!Number.isFinite(parsedStart) || parsedStart <= 0) {
     return null;
@@ -51,14 +67,14 @@ const getElapsedFromStartMs = (startMs) => {
   return Math.max(0, Date.now() - parsedStart);
 };
 
-const withElapsedSuffix = (label, elapsedMs) => {
+const withElapsedSuffix = (label: string, elapsedMs?: number | null): string => {
   if (!Number.isFinite(Number(elapsedMs)) || Number(elapsedMs) < 0) {
     return label;
   }
   return `${label} (${formatElapsedLabel(elapsedMs)})`;
 };
 
-const getRequestActivitySeverityClass = (elapsedMs) => {
+const getRequestActivitySeverityClass = (elapsedMs?: number | null): string => {
   const safeElapsedMs = Number(elapsedMs);
   if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
     return '';
@@ -72,24 +88,22 @@ const getRequestActivitySeverityClass = (elapsedMs) => {
   return '';
 };
 
-// Built once, not per-render - same "stable, zero-per-render-state"
-// precedent as useSinglePrUpdate.jsx's own module-level instantiation.
+// Built once, not per render.
 const { getRequestActivityBadges } = createPrActivityBadgesHelpers({
   withElapsedSuffix,
   getRequestActivitySeverityClass,
 });
 
-const buildBadges = (activityState) => {
-  const activeEntries = Object.keys(REQUEST_ACTIVITY_LABELS)
-    // Iterates REQUEST_ACTIVITY_LABELS generically rather than one
-    // hand-written branch per key - see index.page.js's git history for why
-    // (a hand-written-branch shape silently dropped the "labelApply" key for
-    // a while).
-    .filter((key) => activityState.counters[key] > 0)
-    .map((key) => ({
+const buildBadges = (activityState: ActivityState) => {
+  // Iterates every known kind generically rather than one hand-written
+  // branch per key (a hand-written-branch shape once silently dropped the
+  // "labelApply" key).
+  const activeEntries = REQUEST_ACTIVITY_KEYS.filter((key) => (activityState.counters[key] ?? 0) > 0).map(
+    (key) => ({
       label: `${REQUEST_ACTIVITY_LABELS[key]} x${activityState.counters[key]}`,
       elapsedMs: getElapsedFromStartMs(activityState.startedAtMs[key]),
-    }));
+    }),
+  );
   const isAutoRunInProgress = Boolean(activityState.latestSchedulerState?.isAutoRunInProgress);
   const autoRunElapsedMs = isAutoRunInProgress
     ? getElapsedFromStartMs(Date.parse(String(activityState.latestSchedulerState?.lastAutoAttemptAt || '')))
@@ -98,54 +112,53 @@ const buildBadges = (activityState) => {
 };
 
 /**
- * Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
- * owns request activity (the in-flight request counters/elapsed times behind
+ * Owns request activity (the in-flight request counters/elapsed times behind
  * the activity drawer's badges, and its "recent activity" list) and the
- * latest scheduler state. Two halves moved in here:
+ * latest scheduler state.
  *
- * - From PrDataProvider (Phase F.2): beginRequestActivity/renderRequestActivity
- *   and their ref-held bookkeeping. They had to leave it because two of their
- *   callers, BackfillStatusProvider and AutoRenderBlockingProvider, are
- *   PrDataProvider's *ancestors* and could only reach them through
- *   window.renderRequestActivity. Mounted above all three in mountAppRoot(),
- *   this Provider needs no other Context, so all of them read it directly.
- * - From index.page.js: renderSchedulerStatus (JobEventsProvider's SSE frames
- *   and useQuickCheckActions call it, via window.renderSchedulerStatus) and
- *   the startup scheduler load. It records the scheduler state for the "Auto
- *   run" badge and announces the scheduler's active PRs with the
- *   'pr-active-progress-update' window event PrTableApp listens for.
- *   index.page.js also toggled each row's progress-indicator `hidden`
- *   attribute directly; PrNumberCell already renders that from PrTableApp's
- *   state, so that DOM write is dropped rather than moved.
+ * Mounted above BackfillStatusProvider, AutoRenderBlockingProvider and
+ * PrDataProvider in mountAppRoot() and needing no other Context, so all of
+ * them - and the action hooks - can read it directly.
  *
- * The badges and recent list are this Provider's own state now, published on
- * RequestActivityDisplayContext (AppRoot passes them to the drawer). AppRoot
- * used to hold them, pushed in through window.updateReactRequestActivityBadges/
- * updateReactRecentRequestActivity. The first state is the idle badge set, so
- * there's no startup "render once React is ready" push any more either.
+ * renderSchedulerStatus (called from JobEventsProvider's SSE frames and
+ * useQuickCheckActions) records the scheduler state for the "Auto run"
+ * badge and announces the scheduler's active PRs with the
+ * 'pr-active-progress-update' window event PrTableApp listens for.
  *
- * The bookkeeping itself stays a ref (it's mutated in place by every
- * begin/finish, read synchronously); only the derived badges/list are state.
- * RequestActivityContext's value is stable for this Provider's lifetime, so
- * the many hooks that call these functions never re-render because of them.
+ * The badges and recent list are this Provider's own state, published on
+ * RequestActivityDisplayContext (AppRoot passes them to the drawer); the
+ * first state is the idle badge set. The bookkeeping itself stays a ref
+ * (it's mutated in place by every begin/finish, read synchronously); only
+ * the derived badges/list are state. RequestActivityContext's value is
+ * stable for this Provider's lifetime, so the many hooks that call these
+ * functions never re-render because of them.
  *
  * `loadOnMount` (set by mountAppRoot, like PrDataProvider's) runs the startup
- * GET /view-prs/scheduler; failures are ignored, as initPage's were.
+ * GET /view-prs/scheduler; failures are ignored.
  */
-export function RequestActivityProvider({ loadOnMount = false, children }) {
-  const activityRef = useRef(null);
+export function RequestActivityProvider({
+  loadOnMount = false,
+  children,
+}: {
+  loadOnMount?: boolean;
+  children?: ReactNode;
+}) {
+  const activityRef = useRef<ActivityState | null>(null);
   if (activityRef.current === null) {
     activityRef.current = createDefaultActivityState();
   }
-  const [requestActivityBadges, setRequestActivityBadges] = useState(() => buildBadges(activityRef.current));
-  const [recentRequestActivity, setRecentRequestActivity] = useState([]);
+  // Set just above and never cleared.
+  const getActivityState = (): ActivityState => activityRef.current as ActivityState;
+  const [requestActivityBadges, setRequestActivityBadges] = useState(() => buildBadges(getActivityState()));
+  const [recentRequestActivity, setRecentRequestActivity] = useState<RecentRequestActivity[]>([]);
 
   const renderRequestActivity = useCallback(() => {
-    setRequestActivityBadges(buildBadges(activityRef.current));
+    setRequestActivityBadges(buildBadges(activityRef.current as ActivityState));
   }, []);
 
-  const setRequestActivityCounter = useCallback((key, delta = 0) => {
-    const activityState = activityRef.current;
+  // Unknown keys are ignored.
+  const setRequestActivityCounter = useCallback((key: string, delta: number = 0) => {
+    const activityState = activityRef.current as ActivityState;
     if (!Object.prototype.hasOwnProperty.call(activityState.counters, key)) {
       return;
     }
@@ -161,9 +174,9 @@ export function RequestActivityProvider({ loadOnMount = false, children }) {
     }
   }, []);
 
-  const recordRecentRequestActivity = useCallback((key) => {
-    const activityState = activityRef.current;
-    const label = REQUEST_ACTIVITY_LABELS[key] || key;
+  const recordRecentRequestActivity = useCallback((key: string) => {
+    const activityState = activityRef.current as ActivityState;
+    const label = REQUEST_ACTIVITY_LABELS[key as RequestActivityKey] || key;
     activityState.recentEntries = [
       { key, label, finishedAt: new Date().toISOString() },
       ...activityState.recentEntries,
@@ -171,7 +184,7 @@ export function RequestActivityProvider({ loadOnMount = false, children }) {
     setRecentRequestActivity(activityState.recentEntries);
   }, []);
 
-  const beginRequestActivity = useCallback(
+  const beginRequestActivity = useCallback<RequestActivityValue['beginRequestActivity']>(
     (key) => {
       setRequestActivityCounter(key, 1);
       renderRequestActivity();
@@ -189,14 +202,14 @@ export function RequestActivityProvider({ loadOnMount = false, children }) {
     [setRequestActivityCounter, renderRequestActivity, recordRecentRequestActivity],
   );
 
-  const renderSchedulerStatus = useCallback(
+  const renderSchedulerStatus = useCallback<RequestActivityValue['renderSchedulerStatus']>(
     (schedulerRaw = {}) => {
       const scheduler = schedulerRaw || {};
       // The server (app.js's buildActivePrKey) sends activePrNumbers as
       // { repo, prNumber } pairs; PrTableApp keys rows the same way.
       const activePrNumbers = Array.isArray(scheduler.activePrNumbers) ? scheduler.activePrNumbers : [];
       window.dispatchEvent(new CustomEvent('pr-active-progress-update', { detail: { activePrNumbers } }));
-      activityRef.current.latestSchedulerState = scheduler;
+      (activityRef.current as ActivityState).latestSchedulerState = scheduler;
       renderRequestActivity();
     },
     [renderRequestActivity],
@@ -209,8 +222,8 @@ export function RequestActivityProvider({ loadOnMount = false, children }) {
     }
     hasStartedInitialLoadRef.current = true;
     const { loadSchedulerStatus } = createPrSchedulerStatusHelpers({
-      fetch: (...args) => fetch(...args),
-      renderSchedulerStatus,
+      fetch: (input) => fetch(input),
+      renderSchedulerStatus: (scheduler) => renderSchedulerStatus(scheduler as SchedulerState),
     });
     loadSchedulerStatus().catch(() => {
       // Ignore startup scheduler fetch failures; the SSE connection keeps

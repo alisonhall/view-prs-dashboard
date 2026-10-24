@@ -123,7 +123,7 @@ describe('JobEventsProvider', () => {
   // briefly show it instead of the real values PrDataProvider's payload
   // already has from its own very first /view-prs/data fetch. Found via
   // code review.
-  describe('schedulerSummary payload.scheduler fallback (see JobEventsProvider.jsx\'s own comment)', () => {
+  describe('schedulerSummary payload.scheduler fallback (see JobEventsProvider.tsx\'s own comment)', () => {
     test('given a payload.scheduler and no SSE snapshot has arrived yet, when read, then schedulerSummary reflects payload.scheduler, not the hardcoded default', () => {
       render(
         <PrDataContext.Provider
