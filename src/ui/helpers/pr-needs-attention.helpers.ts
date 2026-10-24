@@ -35,8 +35,26 @@ export interface ShouldShowNeedsAttentionInput {
   row?: PrData;
   sectionKey?: string;
   hasPendingComments?: boolean;
+  // How many, for the reason's wording; optional.
+  pendingCommentCount?: number;
   config?: AttentionConfig;
 }
+
+// What each change-reason token from check-open-pr-updates.sh's
+// build_reasons means. An unknown token is shown as it is.
+const CHANGE_REASON_TEXT: Record<string, string> = {
+  "unanswered-thread": "Unanswered review threads",
+  "thread-reply": "New replies in review threads",
+  comment: "New comments",
+  review: "New reviews",
+  commit: "New commits",
+  "ack-cleared": "Ack was cleared",
+};
+
+const NO_ACTIVITY_TEXT: Record<string, string> = {
+  "assigned-only": "No recent activity on a PR assigned to you",
+  "reviewer-only": "No recent activity on a PR you're reviewing",
+};
 
 const createPrNeedsAttentionHelpers = ({
   asArray = (value: unknown) => (Array.isArray(value) ? value : []),
@@ -119,38 +137,67 @@ const createPrNeedsAttentionHelpers = ({
     return isAssignedToMe() || isReviewerMe();
   };
 
-  const shouldShowNeedsAttention = ({
+  // Whether this section counts a change / a lack of activity at all:
+  // always for open PRs, by setting for closed/merged and drafts, never
+  // for any other section key.
+  const sectionCountsChanges = (sectionKey: string, config: AttentionConfig): boolean =>
+    sectionKey === "open" ||
+    ((sectionKey === "merged" || sectionKey === "closed") && Boolean(config.includeClosedMerged)) ||
+    (sectionKey === "draft" && Boolean(config.includeDraftChanged));
+  const sectionCountsNoActivity = (sectionKey: string, config: AttentionConfig): boolean =>
+    sectionKey === "open" ||
+    ((sectionKey === "merged" || sectionKey === "closed") && Boolean(config.includeClosedMerged)) ||
+    (sectionKey === "draft" && Boolean(config.includeDraftNoActivity));
+
+  // Same modes as shouldTreatNoActivityAsAttention: any value other than
+  // "all", "none", "assigned-only" and "reviewer-only" means "mine-only".
+  const describeNoActivity = (config: AttentionConfig): string => {
+    const mode = String(config?.noActivityMode || "all")
+      .trim()
+      .toLowerCase();
+    if (mode === "all") return "No recent activity";
+    return NO_ACTIVITY_TEXT[mode] ?? "No recent activity on a PR assigned to you or that you're reviewing";
+  };
+
+  const describeChange = (row: PrData): string[] => {
+    const tokens = parseChangedReasonTokens(row);
+    if (tokens.length === 0) return ["Changed since your last ack"];
+    return tokens.map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
+  };
+
+  // Why a PR needs attention, in words (the attention icon's tooltip, the
+  // row summary). Empty when it doesn't: this is the one definition, and
+  // shouldShowNeedsAttention is "has any reason".
+  const getNeedsAttentionReasons = ({
     row = {},
     sectionKey = "",
     hasPendingComments = false,
+    pendingCommentCount,
     config = {},
-  }: ShouldShowNeedsAttentionInput): boolean => {
-    const changedAttention = shouldTreatChangedAsAttention(row, config);
-    const noActivityAttention = shouldTreatNoActivityAsAttention(row, config);
+  }: ShouldShowNeedsAttentionInput): string[] => {
+    const reasons: string[] = [];
 
     if (hasPendingComments && config.includePendingComments) {
-      return true;
-    }
-
-    if (sectionKey === "open") {
-      return changedAttention || noActivityAttention;
-    }
-
-    if (sectionKey === "merged" || sectionKey === "closed") {
-      return Boolean(
-        config.includeClosedMerged && (changedAttention || noActivityAttention),
+      reasons.push(
+        pendingCommentCount && pendingCommentCount > 0
+          ? `${pendingCommentCount} unsubmitted pending comment${pendingCommentCount === 1 ? "" : "s"}`
+          : "Unsubmitted pending comments",
       );
     }
 
-    if (sectionKey === "draft") {
-      return Boolean(
-        (config.includeDraftChanged && changedAttention) ||
-          (config.includeDraftNoActivity && noActivityAttention),
-      );
+    if (sectionCountsChanges(sectionKey, config) && shouldTreatChangedAsAttention(row, config)) {
+      reasons.push(...describeChange(row));
     }
 
-    return false;
+    if (sectionCountsNoActivity(sectionKey, config) && shouldTreatNoActivityAsAttention(row, config)) {
+      reasons.push(describeNoActivity(config));
+    }
+
+    return reasons;
   };
+
+  const shouldShowNeedsAttention = (input: ShouldShowNeedsAttentionInput): boolean =>
+    getNeedsAttentionReasons(input).length > 0;
 
   const entryNeedsAttention = (entry: PrEntry = {}, config: AttentionConfig = {}): boolean => {
     const row = entry?.data || {};
@@ -178,6 +225,7 @@ const createPrNeedsAttentionHelpers = ({
     parseChangedReasonTokens,
     shouldTreatChangedAsAttention,
     shouldTreatNoActivityAsAttention,
+    getNeedsAttentionReasons,
     shouldShowNeedsAttention,
     entryNeedsAttention,
     entryHasYourLastActivity,

@@ -120,6 +120,65 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Menu (portaled to <body>; MenuButton.tsx sets top/left) */
+.ui-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-tooltip);
+}
+
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-menu-item:hover,
+.ui-menu-item:focus-visible {
+  outline: none;
+  background: var(--color-surface-hover);
+}
+
+.ui-menu-group + .ui-menu-group,
+.ui-menu-item + .ui-menu-group,
+.ui-menu-group + .ui-menu-item {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ui-menu-group-label {
+  padding: 4px var(--space-2) 2px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-menu-empty {
+  padding: 6px var(--space-2);
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
 /* Chips */
 .ui-chip-group {
   display: flex;

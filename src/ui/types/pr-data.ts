@@ -157,6 +157,17 @@ export interface PrData {
   title?: string;
   // The title with "[CHK:...]"/"[MRG:...]" markers appended.
   titleDisplay?: string;
+  // The same two states as fields: checks PASS / FAIL / RUN / SKIP / NA,
+  // and GitHub's `mergeable` as YES / NO / UNK (or its own value). Older
+  // data only has the markers.
+  checkState?: string;
+  mergeState?: string;
+  // Lines added / deleted: digits-only strings in the data file.
+  additions?: string | number;
+  deletions?: string | number;
+  // Set by the server (app.js) on a PR whose change was detected but whose
+  // full details are still queued to refresh; not in the data file.
+  updatePending?: boolean;
   // The script's change status: "CHANGED", "NO_CHANGE" or "NO_ACTIVITY"
   // (older data wrote "CHANGED(<reasons>)"), and the change reasons as
   // "|"-separated tokens such as "commit|review" ("-" when none).

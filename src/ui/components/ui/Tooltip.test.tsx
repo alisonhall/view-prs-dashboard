@@ -222,6 +222,35 @@ describe('Tooltip', () => {
     expect(target).toHaveAccessibleDescription(/^Needs attention\s+New commits after your last review$/);
   });
 
+  test('stays closed while disabled, and takes no Escape, then works again once enabled', async () => {
+    const user = userEvent.setup();
+    const pageEscape = jest.fn();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') pageEscape();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    try {
+      const { rerender } = render(
+        <Tooltip content="More actions" disabled>
+          <button type="button">More</button>
+        </Tooltip>,
+      );
+      await user.hover(screen.getByRole('button', { name: 'More' }));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      await user.keyboard('{Escape}');
+      expect(pageEscape).toHaveBeenCalledTimes(1);
+
+      rerender(
+        <Tooltip content="More actions">
+          <button type="button">More</button>
+        </Tooltip>,
+      );
+      expect(screen.getByRole('tooltip')).toHaveTextContent('More actions');
+    } finally {
+      document.removeEventListener('keydown', onKeyDown);
+    }
+  });
+
   test('shows without describing when describe is false', async () => {
     const user = userEvent.setup();
     render(

@@ -32,6 +32,8 @@ import { createPortal } from 'react-dom';
  *   a count), pass `focusTarget` to wrap it in a focusable span instead.
  * - Pass `describe={false}` when `content` just repeats the child's own
  *   accessible name (an icon button's label), so it isn't read twice.
+ * - Pass `disabled` to keep it closed, e.g. while the trigger's own menu
+ *   is open (it would cover the menu and take its Escape).
  */
 export type TooltipPlacement = 'top' | 'bottom';
 
@@ -41,6 +43,7 @@ export interface TooltipProps {
   placement?: TooltipPlacement;
   focusTarget?: boolean;
   describe?: boolean;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -85,6 +88,7 @@ export function Tooltip({
   placement = 'top',
   focusTarget = false,
   describe = true,
+  disabled = false,
   className,
 }: TooltipProps) {
   const descriptionId = useId();
@@ -96,7 +100,7 @@ export function Tooltip({
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [position, setPosition] = useState<BubblePosition | null>(null);
-  const open = (hovered || focused) && !dismissed;
+  const open = (hovered || focused) && !dismissed && !disabled;
   const describedBy = describe ? descriptionId : undefined;
 
   const cancelClose = () => clearTimeout(closeTimerRef.current);

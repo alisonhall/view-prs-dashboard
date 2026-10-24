@@ -199,6 +199,37 @@ Nothing uses the primitives yet; phase 2 is their first user.
   `pr-needs-attention.helpers.ts`. Today the helper only answers yes/no; the
   tooltip, the summary and the pane all need the reasons as text.
 
+Phase 2 is done in steps on branch `ui-redesign/phase-2`, each leaving the
+app working:
+
+- **2a - row display helpers.** Done (2026-10-24):
+  - `getNeedsAttentionReasons` is now the one definition of "needs
+    attention", and `shouldShowNeedsAttention` means "has a reason". A
+    test keeps a copy of the old rules and checks both agree on every
+    combination of section, status, pending comments and setting.
+  - The reasons are only what the rules check: unsubmitted pending
+    comments, a change since the last ack (one reason per change-reason
+    token: unanswered threads, thread replies, comments, reviews,
+    commits, ack cleared), or no recent activity (worded for the
+    no-activity mode). Reasons in the design mockups such as "Author
+    resolved a thread you started" are not attention rules.
+  - New `pr-row-signals.helpers.ts`: what each signal slot shows (checks,
+    mergeable, viewed files, notes, size, activity) as an icon, a tone
+    and the tooltip text.
+  - `PrData` gains `checkState`, `mergeState`, `additions`, `deletions`
+    and `updatePending`. The old date cell's `pr.updatedAt` fallback is
+    dropped: PR data has no such field (only the entry does).
+- **2b - a `MenuButton` component** for the row's More actions (Add label,
+  View JSON). Done (2026-10-24), following the WAI-ARIA menu-button
+  pattern, portaled to `<body>` like the tooltip. A tooltip now has a
+  `disabled` option: while a button's menu is open, its tooltip used to
+  take the menu's Escape.
+- **2c - the new cells, rows, table and section headers** (`.tsx`, with
+  `styles/pr-table.css`).
+- **2d - `PrTableApp` to `.tsx`.**
+- **2e - tests:** update the integration and e2e tests, then delete the
+  old cells and their CSS.
+
 ### Phase 3 - Inline summary
 
 - `PrRowSummary.tsx` replaces the inline "More insights" content: why /
