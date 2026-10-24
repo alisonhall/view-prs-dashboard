@@ -1,0 +1,124 @@
+// The "Applied filters" summary: one line of text (filters, row count, last
+// run, scheduler settings) plus the chips shown for each filter.
+export interface SchedulerSummaryFields {
+  intervalMinutes?: number;
+  manualCooldownMinutes?: number;
+  // Only interpolated into the text, so any value is accepted.
+  lastManualRunAt?: unknown;
+  lastAutoRunAt?: unknown;
+  lastAutoSkipReason?: unknown;
+  lastAutoError?: unknown;
+}
+
+export interface AppliedSummaryInput {
+  repoFilter?: string;
+  scopeLabel?: string;
+  filterPrNumbersRaw?: string;
+  includeLabelFilter?: string;
+  excludeLabelFilter?: string;
+  authorFilter?: string;
+  assignedFilter?: string;
+  approverFilter?: string;
+  alwaysShowInReview?: boolean;
+  openModeFilter?: string;
+  rowsCount?: number;
+  lastRunUpdatedAt?: string;
+  scheduler?: SchedulerSummaryFields | null;
+}
+
+export interface AppliedSummaryViewModel {
+  appliedFilters: string[];
+  schedulerSummary: string;
+  appliedSummaryText: string;
+  filterChips: string[];
+}
+
+const createPrAppliedSummaryHelpers = () => {
+  const buildAppliedSummaryViewModel = ({
+    repoFilter,
+    scopeLabel,
+    filterPrNumbersRaw,
+    includeLabelFilter,
+    excludeLabelFilter,
+    authorFilter,
+    assignedFilter,
+    approverFilter,
+    alwaysShowInReview,
+    openModeFilter,
+    rowsCount,
+    lastRunUpdatedAt,
+    scheduler,
+  }: AppliedSummaryInput = {}): AppliedSummaryViewModel => {
+    const appliedFilters = [
+      `repo=${repoFilter || "all repos"}`,
+      `scope=${scopeLabel || "all stored rows"}`,
+    ];
+
+    if (filterPrNumbersRaw) {
+      appliedFilters.push(`pr-numbers=${filterPrNumbersRaw}`);
+    }
+    if (includeLabelFilter) {
+      appliedFilters.push(`label=${includeLabelFilter}`);
+    }
+    if (excludeLabelFilter) {
+      appliedFilters.push(`exclude-label=${excludeLabelFilter}`);
+    }
+    if (authorFilter) {
+      appliedFilters.push(`author=${authorFilter}`);
+    }
+    if (assignedFilter) {
+      appliedFilters.push(`assigned=${assignedFilter}`);
+    }
+    if (approverFilter) {
+      appliedFilters.push(`approver=${approverFilter}`);
+    }
+    if (alwaysShowInReview) {
+      appliedFilters.push("always-show-in-review=on");
+    }
+    if (openModeFilter && openModeFilter !== "none") {
+      appliedFilters.push(`open=${openModeFilter}`);
+    }
+
+    const schedulerSafe: SchedulerSummaryFields = scheduler || {};
+    const schedulerSummary = [
+      `Auto every ${schedulerSafe.intervalMinutes || 15}m`,
+      `Manual cooldown ${schedulerSafe.manualCooldownMinutes || 15}m`,
+      `Last manual: ${schedulerSafe.lastManualRunAt || "-"}`,
+      `Last auto: ${schedulerSafe.lastAutoRunAt || "-"}`,
+      schedulerSafe.lastAutoSkipReason
+        ? `Last auto skip: ${schedulerSafe.lastAutoSkipReason}`
+        : "",
+      schedulerSafe.lastAutoError
+        ? `Last auto error: ${schedulerSafe.lastAutoError}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const safeRowsCount = Number.isFinite(Number(rowsCount))
+      ? Number(rowsCount)
+      : 0;
+    const safeLastRunUpdatedAt = lastRunUpdatedAt || "-";
+
+    const appliedSummaryText = `Applied filters: ${appliedFilters.join(" | ")} | Rows: ${safeRowsCount} | Last run: ${safeLastRunUpdatedAt} | ${schedulerSummary}`;
+
+    const filterChips = [
+      ...appliedFilters,
+      `rows=${safeRowsCount}`,
+      `last-run=${safeLastRunUpdatedAt}`,
+    ];
+
+    return {
+      appliedFilters,
+      schedulerSummary,
+      appliedSummaryText,
+      filterChips,
+    };
+  };
+
+  return {
+    buildAppliedSummaryViewModel,
+  };
+};
+
+export { createPrAppliedSummaryHelpers };

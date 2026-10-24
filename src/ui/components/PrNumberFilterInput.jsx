@@ -11,10 +11,15 @@
  * Context value over `.value` off this element when the provider has
  * mounted.
  *
+ * Window-bridge elimination Phase 7.5: renders the non-credential-field hints
+ * (NON_CREDENTIAL_INPUT_PROPS) itself; index.page.js used to add them by DOM
+ * id after React rendered this input.
+ *
  * @module components/PrNumberFilterInput
  */
 
 import { useFilterState } from '../state/FilterStateContext';
+import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
 
 export function PrNumberFilterInput() {
   const { values, setValue } = useFilterState();
@@ -25,6 +30,7 @@ export function PrNumberFilterInput() {
       id="filter-pr-numbers"
       name="filterPrNumbers"
       placeholder="912, 921"
+      {...NON_CREDENTIAL_INPUT_PROPS}
       value={values.filterPrNumbers ?? ''}
       onChange={(e) => setValue('filterPrNumbers', e.target.value)}
     />

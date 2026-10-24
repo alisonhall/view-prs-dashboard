@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const React = require("react");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite mounts the real
-// PrTableApp (see installReactTableMountBridge() below) via
+// PrTableApp (see installReactTestGlobals() below) via
 // @testing-library/react's own render()/cleanup() rather than a hand-rolled
 // ReactDOM.createRoot() bridge - see that function's own comment for why.
 // Importing it also configures @testing-library/dom's *shared* global
@@ -12,8 +12,8 @@ const React = require("react");
 // `screen`/`waitFor`/`within` below read from) with an eventWrapper that
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
-const { render: rtlRender, cleanup } = require("@testing-library/react");
-const { flushSync } = require("react-dom");
+const { render: rtlRender, cleanup, act } = require("@testing-library/react");
+const { createPortal, flushSync } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -22,22 +22,76 @@ const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
+const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
+// harness root's PrDataProvider is read through this probe (mounted below);
+// it was window.getReactPrTablePayload, deleted.
+const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
+const prDataProbe = createPrDataProbe();
+const { useBackfillStatus } = require("../state/BackfillStatusContext");
+const { usePrData } = require("../state/PrDataContext");
+const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
+const { FilterStateProvider } = require("../state/FilterStateProvider");
+const { useFilterState } = require("../state/FilterStateContext");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
-const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
+const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { useNotesDirty } = require("../state/NotesDirtyContext");
+const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
+const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
+const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
+const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlockedStatusText");
+const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
+const { BackfillControls } = require("../components/BackfillControls");
+const { BackfillLogControls } = require("../components/BackfillLogControls");
+const { RunScriptActionButton } = require("../components/RunScriptActionButton");
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
+// suite's own BackfillControlsTestHarness/RunScriptActionButtonsTestHarness
+// below used to wire these components' onClick/onStart/etc. props straight
+// to window.handleBackfillAction/handleRunScript/handleAckOnly/etc. - a
+// hand-rolled duplicate of react-app.jsx's own wiring, needed only because
+// this suite never mounts react-app.jsx itself. Now that react-app.jsx
+// calls real hooks instead of those bridges, this harness calls the same
+// hooks too, so the bridges (and the window.*-poking that only existed for
+// this file) can be deleted outright instead of kept alive for a test.
+const { useBackfillActions } = require("../state/useBackfillActions");
+const { useBackfillTabAutoRefresh } = require("../state/useBackfillTabAutoRefresh");
+const { useRunScript } = require("../state/useRunScript");
+const { useAckLabelActions } = require("../state/useAckLabelActions");
+const { useTriggerAutoRun } = require("../state/useTriggerAutoRun");
+const { useQuickCheckActions } = require("../state/useQuickCheckActions");
+const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
+const { useRepoLabels } = require("../state/RepoLabelsContext");
+const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
+const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
+const { StatusTextProvider } = require("../components/StatusTextProvider");
+const { BackfillStatusProvider } = require("../components/BackfillStatusProvider");
+const { RequestActivityProvider } = require("../components/RequestActivityProvider");
+const { useRequestActivity } = require("../state/RequestActivityContext");
+const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
+const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
+const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
+const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
 const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
 const { Snackbar } = require("../components/Snackbar");
+const { SnackbarProvider } = require("../components/SnackbarProvider");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
-// Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
+const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
+const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
+// Phase 6 (see REACT_MIGRATION_PLAN.md): these two are plain UMD helper
 // modules (require()-able directly), but in the browser PrTableApp.jsx and
 // index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
 // own <script> tags, which this suite never loads) rather than importing
 // them - see the initTestPage() wiring below for where they get attached.
-const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.js");
-const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.js");
-const reactCallbacksHelpers = require("../helpers/react-callbacks.helpers.js");
+// Phase H.6 (see REACT_MIGRATION_PLAN.md): react-callbacks.helpers.js
+// (formerly the third of these three) was deleted outright - its own
+// createReactCallbackHelpers factory had zero remaining callers once
+// handleCheckboxChange moved to PrTableApp.jsx, following
+// handleAckAction/handleApplyLabel in Phase H.5.
+const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.ts");
+const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.ts");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
@@ -60,13 +114,39 @@ let actionLogEntries = [];
 let actorNameCacheEntries = {};
 let actorLoginAliasEntries = {};
 let fetchMock;
+// Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the real FilterStateProvider's Context value, captured by
+// FilterStateTestHandle below. This suite's own helpers (and a few assertions)
+// used to read/write that state through window.getFilterStateValues()/
+// setFilterStateValue() - bridges with no production caller, deleted. null
+// until the harness tree mounts (and after it unmounts), like the bridges
+// were.
+let filterStateTestHandle = null;
+// Window-bridge elimination Phase 7.3: the real RequestActivityProvider's
+// functions, captured by RequestActivityTestHandle below - the scheduler test
+// drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
+// does in production (it used to call window.renderSchedulerStatus).
+let requestActivityTestHandle = null;
+// Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
+// captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
+// notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
+// call window.recomputeDirtyPrSectionsFields, both index.page.js's).
+let notesDirtyTestHandle = null;
+const readFilterStateValues = () => filterStateTestHandle?.values;
 
 const createFetchMock = ({
   userDefaultsOverrides = {},
   backfillStatusResponse = null,
   authorCommentsGetHandler = null,
-} = {}) =>
-  jest.fn(async (url, init = {}) => {
+} = {}) => {
+  const currentBackfillStatus = () =>
+    backfillStatusResponse || {
+      ok: true,
+      running: false,
+      summary: "Backfill status: not running",
+      output: "Backfill status: not running",
+    };
+  return jest.fn(async (url, init = {}) => {
     const normalizedUrl = String(url || "");
     const method = String(init?.method || "GET").toUpperCase();
 
@@ -79,15 +159,7 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/backfill" && method === "GET") {
-      if (backfillStatusResponse) {
-        return createOkJsonResponse(backfillStatusResponse);
-      }
-      return createOkJsonResponse({
-        ok: true,
-        running: false,
-        summary: "Backfill status: not running",
-        output: "Backfill status: not running",
-      });
+      return createOkJsonResponse(currentBackfillStatus());
     }
 
     if (normalizedUrl === "/view-prs/backfill/start" && method === "POST") {
@@ -159,7 +231,14 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/data" && method === "GET") {
-      return createOkJsonResponse(latestDataPayload);
+      // Like the real server (view-prs-data-routes.js's buildDataPayload), the
+      // data response embeds the same backfill state /view-prs/backfill
+      // returns; a fixture's own `backfill` wins. Window-bridge elimination
+      // Phase 7.2 made this matter: the data load and the Backfill tab's own
+      // status load now both start on mount, so whichever finishes last
+      // renders the backfill status, and a payload without `backfill` makes
+      // updateBackfillStatusFromPayload render the payload itself as one.
+      return createOkJsonResponse({ backfill: currentBackfillStatus(), ...latestDataPayload });
     }
 
     if (
@@ -195,6 +274,7 @@ const createFetchMock = ({
 
     return createOkJsonResponse({ ok: true });
   });
+};
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): index.html no longer has vanilla
 // fallback markup nested inside each "#<id>-root" container for the 26
@@ -238,12 +318,8 @@ const injectRunFilterFieldElements = () => {
     '<select id="filter-pr-difficulty" name="filterPrDifficulty"><option value="" selected>Any (set or not set)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="not-set">Not set</option></select>',
   );
   setRootContent(
-    "filter-rally-stories-root",
-    '<select id="filter-rally-stories" name="filterRallyStories"><option value="" selected>Any (with or without)</option><option value="with">With Rally stories</option><option value="without">Without Rally stories</option></select>',
-  );
-  setRootContent(
-    "filter-rally-links-root",
-    '<select id="filter-rally-links" name="filterRallyLinks"><option value="" selected>Any (with or without)</option><option value="with">With Rally links</option><option value="without">Without Rally links</option></select>',
+    "filter-stories-root",
+    '<select id="filter-stories" name="filterStories"><option value="" selected>Any</option><option value="none">Without any story details</option><option value="name-only">With only story name</option><option value="url-only">With only story URL</option><option value="name-and-url">With story and URL</option></select>',
   );
   setRootContent(
     "filter-analysis-of-pr-root",
@@ -282,10 +358,6 @@ const injectRunFilterFieldElements = () => {
     '<select id="attention-author-thread-resolution-mode" name="attentionAuthorThreadResolutionMode"><option value="allow-all" selected>Allow PR authors to resolve all own-PR threads</option><option value="allow-only">Allow only for selected thread starters</option><option value="deny-only">Disallow for selected thread starters</option></select>',
   );
   setRootContent(
-    "change-filter-use-builtin-merge-pattern-root",
-    '<input type="checkbox" id="change-filter-use-builtin-merge-pattern" name="changeFilterUseBuiltinMergePattern" checked />',
-  );
-  setRootContent(
     "change-filter-ignore-commit-patterns-root",
     '<textarea id="change-filter-ignore-commit-patterns" name="changeFilterIgnoreCommitPatterns" rows="4" aria-describedby="commit-patterns-help"></textarea>',
   );
@@ -302,6 +374,10 @@ const injectRunFilterFieldElements = () => {
     '<input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />',
   );
   setRootContent("jobs-root", '<input type="number" id="jobs" name="jobs" min="1" placeholder="6" />');
+  setRootContent(
+    "pr-numbers-root",
+    '<input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />',
+  );
   setRootContent(
     "open-mode-root",
     '<select id="open-mode" name="openMode"><option value="none" selected>none</option><option value="changed">changed</option><option value="all">all</option></select>',
@@ -322,13 +398,11 @@ const injectRunFilterFieldElements = () => {
 // That branch (and the vanilla table-build code it called) is gone now, so
 // this suite needs a real React-rendered table to keep exercising real
 // row/checkbox/Ack DOM the same way a real browser does. Rather than
-// importing the whole react-app.jsx module, this reimplements just its
-// mountReactPrTable/updateReactPrTable pairing directly against the same
-// PrTableApp component real production mounts - see react-app.jsx's real
-// mountReactPrTable, and index.page.js's mountReactTable/updateReactTable
-// (Track C slice C2b, REACT_MIGRATION_PLAN.md) for the real callers.
-// Called both from initTestPage() and from the one test below that builds
-// its own page setup from scratch instead of using it.
+// importing the whole react-app.jsx module, FilterStateTestRootHarness
+// (below) mounts the same Providers and PrTableApp component real
+// production mounts, nested the same way. Installed both from
+// initTestPage() and from the one test below that builds its own page setup
+// from scratch instead of using it.
 //
 // Mounts via @testing-library/react's own render()/cleanup() rather than a
 // hand-rolled ReactDOM.createRoot() bridge. An earlier version of this
@@ -346,221 +420,550 @@ const injectRunFilterFieldElements = () => {
 // delegation (a typed input's native value updated the DOM but never
 // reached React's onChange/state at all). cleanup() is RTL's own
 // real, battle-tested fix for exactly this class of problem.
-// Phase 6 (see REACT_MIGRATION_PLAN.md): pr-filter-panel.helpers.js's
-// multi-select populate functions and renderManagementFilterSummary have
-// no DOM-building of their own anymore - they only call
-// window.renderReactMultiSelectList/window.renderReactFilterSummary
-// (real react-app.jsx bridges, never loaded in this jsdom-only suite - see
-// installReactTableMountBridge's own comment for why the PR table gets the
-// same "reimplement just the bridge, not the whole module" treatment).
-// Real containers already exist in index.html for all of these (no
-// `-root` placeholder/portal involved, matching react-app.jsx's own
-// comment on MULTI_SELECT_LIST_ID_PREFIXES and mountAppliedFilterSummary),
-// so this mounts the same real components react-app.jsx does, directly
-// into them, via RTL's render()/cleanup() like every other bridge here.
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  "label-list": "label",
-  "exclude-label-list": "exclude-label",
-  "author-list": "author",
-  "assigned-list": "assigned",
-  "approver-list": "approver",
-  // Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): these 4 are built
-  // directly in index.page.js (not pr-filter-panel.helpers.js) but share
-  // the exact same window.renderReactMultiSelectList bridge/no-fallback
-  // shape - added here to match react-app.jsx's real
-  // MULTI_SELECT_LIST_ID_PREFIXES after index.page.js's own vanilla
-  // DOM-building fallback for them was deleted as dead code (it was never
-  // reachable in production, only in this stub, once it always returned
-  // `false` for these 4 ids for lack of an entry here).
-  "attention-author-thread-resolution-allow-list": "attention-author-thread-resolution-allow",
-  "attention-author-thread-resolution-deny-list": "attention-author-thread-resolution-deny",
-  "change-filter-ignore-comment-authors-list": "change-filter-ignore-comment-authors",
-  "change-filter-ignore-review-authors-list": "change-filter-ignore-review-authors",
+// Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
+// lists' OPTIONS are no longer pushed imperatively via
+// window.renderReactMultiSelectList (deleted - nothing calls it in
+// production any more) - they're derived reactively by the real
+// FilterOptionsProvider/MultiSelectListPortals (imported above), same as
+// react-app.jsx's own AppRoot. buildMultiSelectContainers() resolves the
+// real DOM containers these portal into, matching react-app.jsx's own
+// computeStaticContainers resolution, for use by
+// FilterStateTestRootHarness below (which mounts this inside the SAME
+// <PrDataProvider> instance the PR table uses, so both read the identical
+// payload/selectedRepo - the real react-app.jsx structure, not two
+// independent trees).
+const buildMultiSelectContainers = () => {
+  const multiSelect = {};
+  const multiSelectSummary = {};
+  Object.keys(MULTI_SELECT_LIST_ID_PREFIXES).forEach((listId) => {
+    const listContainer = document.getElementById(listId);
+    multiSelect[listId] = listContainer;
+    multiSelectSummary[listId] = listContainer?.closest("details")?.querySelector(".multi-select-summary") || null;
+  });
+  return { multiSelect, multiSelectSummary };
 };
 
-const installReactFilterPanelMountBridges = () => {
-  const multiSelectEntries = {};
-  window.renderReactMultiSelectList = (listId, options) => {
-    const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-    const container = document.getElementById(listId);
-    if (!idPrefix || !container) return false;
-    // Matches react-app.jsx's renderReactMultiSelectList exactly: an
-    // incrementing `key` forces a full remount (not a prop-diff update) on
-    // every call, so the component's internal `checked` state always
-    // re-initializes fresh from `options` - see MultiSelectCheckboxList.jsx's
-    // own comment for why a plain rerender() would be wrong here.
-    const entry = multiSelectEntries[listId] || { rerender: null, renderCount: 0 };
-    entry.renderCount += 1;
-    // emptyClassContainer/summaryContainer (deferred-items follow-up, full
-    // vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md): same
-    // resolution react-app.jsx's own computeStaticContainers does, so
-    // MultiSelectCheckboxList's "empty" class toggle and summary count
-    // text work the same way in this test harness as in the real app.
-    const element = React.createElement(MultiSelectCheckboxList, {
-      key: entry.renderCount,
-      options,
-      idPrefix,
-      emptyClassContainer: container,
-      summaryContainer: container.closest("details")?.querySelector(".multi-select-summary") || null,
-    });
-    // flushSync, matching react-app.jsx's real renderReactMultiSelectList:
-    // a same-tick DOM read right after this call (getSelectedMultiSelectValues,
-    // used to seed a *different* list or the filter-apply pipeline that
-    // triggered this render in the first place) must see the committed
-    // result, not React 18's default batched/deferred commit.
-    if (entry.rerender) {
-      flushSync(() => entry.rerender(element));
-    } else {
-      let rerender;
-      flushSync(() => {
-        ({ rerender } = rtlRender(element, { container }));
-      });
-      entry.rerender = rerender;
-    }
-    multiSelectEntries[listId] = entry;
-    return true;
-  };
-
-  let filterSummaryRerender = null;
-  window.renderReactFilterSummary = (summaryText, filterChips) => {
-    const container = document.getElementById("management-filter-summary-root");
-    if (!container) return false;
-    if (filterSummaryRerender) {
-      filterSummaryRerender(React.createElement(AppliedFilterSummary, { summaryText, filterChips }));
-    } else {
-      const { rerender } = rtlRender(
+// Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
+// push bridges this used to install a standalone rtlRender tree for) are
+// both confirmed dead in production - react-app.jsx's real
+// AppliedFilterSummaryLive derives the same summary/chips/#data-meta text
+// live, reactively, from Context instead. This suite's own equivalent,
+// AppliedFilterSummaryTestLive (below), replaces this function - it has
+// to be mounted *inside* the harness's PrDataProvider (not as its own independent
+// root the way this used to be) since it needs a real <PrDataProvider/>
+// ancestor, which only exists there.
+function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
+  const { payload } = usePrData();
+  const { summaryText, filterChips } = useAppliedFilterSummary();
+  const dataMetaText = payload?.ok ? summaryText : "Loading...";
+  return React.createElement(
+    React.Fragment,
+    null,
+    appliedFilterSummaryContainer &&
+      createPortal(
         React.createElement(AppliedFilterSummary, { summaryText, filterChips }),
-        { container },
+        appliedFilterSummaryContainer,
+        "applied-filter-summary",
+      ),
+    dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, "data-meta"),
+  );
+}
+
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
+// below, as the ancestor of the harness's PrDataProvider - the same
+// order react-app.jsx's mountAppRoot() uses. It used to be its own separate,
+// sibling root (installAutoRenderBlockingProviderBridge), which stopped
+// working once PrDataProvider started reading it through Context: a
+// PrDataProvider outside the Provider sees the inert default, so the whole
+// auto-render-blocking path would silently do nothing.
+
+// Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the REAL BackfillControls/BackfillLogControls (not a hand-rolled
+// simulation) into a detached container, same reasoning as
+// installAutoRenderBlockingProviderBridge above - this suite never mounts
+// react-app.jsx, so nothing else would publish
+// window.updateReactBackfillButtonState otherwise. A small local wrapper
+// component owns the buttonState useState - the same "push bridge feeds
+// local state, portal the real component" shape react-app.jsx's own
+// AppRoot uses for backfillButtonState.
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+// button/checkbox callbacks used to call window.handleBackfillAction/
+// refreshBackfillStatus/refreshBackfillLogTail directly - this harness now
+// calls useBackfillActions() itself, same as react-app.jsx does, so those
+// 3 bridges have no remaining caller and were deleted from index.page.js.
+// (window.autoScrollBackfillLogToBottom itself is now deleted outright too
+// - cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit" - confirmed to have no remaining readers anywhere.)
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// WindowBackedPrActivityProvider (a RequestActivityContext stand-in that
+// forwarded to window.beginRequestActivity) is gone. Its harness roots
+// called those hooks outside this suite's real PrDataProvider, which used to
+// mount lazily with the PR table; the Provider now mounts once at the root
+// of FilterStateTestRootHarness (it loads the data itself, as in
+// production), so every hook below is a genuine descendant of it.
+
+// Reads the container ids at render time, like react-app.jsx's AppRoot.
+function BackfillControlsTestHarness() {
+  const controlsRoot = document.getElementById("backfill-controls-root");
+  const logControlsRoot = document.getElementById("backfill-log-controls-root");
+  const logContainer = document.getElementById("backfill-log");
+  // Window-bridge elimination Phase 3d: the button state is owned by the real
+  // BackfillStatusProvider this harness is mounted under (same as react-app.jsx's
+  // AppRoot reads it), not a local state fed by window.updateReactBackfillButtonState.
+  const { backfillButtonState: buttonState } = useBackfillStatus();
+  // Window-bridge elimination Phase 4: the log text (+ its update tick, which
+  // BackfillLogControls' scroll-sync effect needs so it fires on every
+  // refresh even for identical text) and the details text are owned by the
+  // real BackfillStatusProvider too, read here exactly as react-app.jsx's
+  // AppRoot reads them - not local states fed by window.updateReactBackfillLogText
+  // / updateReactBackfillDetailsText.
+  const {
+    backfillLogText: logText,
+    backfillLogUpdateTick: logUpdateTick,
+    backfillDetailsText,
+  } = useBackfillStatus();
+  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, triggerBackfillTabLoad } =
+    useBackfillActions();
+  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // backfill-tab.orchestrator.js (deleted outright that phase) used to
+  // drive the initial/on-activation status+log load here, triggered via
+  // index.page.js's own vanilla activateTab/initPage - since this suite
+  // never mounts the real <AppRoot/> (which now owns this via
+  // useBackfillTabAutoRefresh), this harness needs the same hook itself to
+  // keep the many tests that click into the Backfill management tab and
+  // assert on the resulting status/log passing.
+  useBackfillTabAutoRefresh(triggerBackfillTabLoad);
+
+  const backfillDetailsContainer = document.getElementById("backfill-details");
+
+  return React.createElement(
+    React.Fragment,
+    null,
+    controlsRoot &&
+      createPortal(
+        React.createElement(BackfillControls, {
+          buttonState,
+          onStart: () => handleBackfillAction("start"),
+          onStop: () => handleBackfillAction("stop"),
+          onRefreshStatus: () => refreshBackfillStatus(),
+        }),
+        controlsRoot,
+        "backfill-controls",
+      ),
+    backfillDetailsContainer &&
+      createPortal(backfillDetailsText, backfillDetailsContainer, "backfill-details"),
+    logControlsRoot &&
+      createPortal(
+        React.createElement(BackfillLogControls, {
+          refreshLogDisabled: buttonState.refreshLogDisabled,
+          onRefreshLog: () => refreshBackfillLogTail(),
+          logText,
+          logUpdateTick,
+          logContainer,
+        }),
+        logControlsRoot,
+        "backfill-log-controls",
+      ),
+  );
+}
+
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the REAL FilterStateProvider - this suite's own comment on
+// installReactTestGlobals's RowFilterSelectionProvider block
+// explains why it was deliberately NOT mounted before (its bridges would
+// win over this suite's own plain DOM writes); persistence now living
+// inside this Provider makes mounting it unavoidable, since there is no
+// vanilla implementation left to exercise in isolation. See
+// syncFilterStateFromElement's own comment for how the resulting
+// DOM/Context gap is bridged at each affected call site.
+// Deliberately NOT seeding every FILTER_STATE_FIELD_MAP key's real default
+// here (tried, reverted): several fields (scope-mode, filter-pr-numbers)
+// are exercised throughout this huge suite via *raw DOM* interaction with
+// no real Context-backed component mounted for them (by design - see this
+// function's own earlier comment) - seeding them with a real default
+// would make every reader that prefers Context over DOM
+// (getFilterStateOverrideForFieldId's callers, e.g. the data-meta summary)
+// silently ignore those tests' DOM-only changes. (The merge commit rules
+// need no seed: persistViewFilterOptions treats a missing value as the
+// default.)
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the PR table subtree, portaled into #pr-sections once the real
+// PrDataProvider has rendered its first payload - the same gate as
+// react-app.jsx's PrTablePortal. Replaces MountedPrTableTree, which this
+// suite's window.mountReactPrTable stub used to portal in (with its own
+// PrDataProvider) when index.page.js's renderPrData asked for a mount.
+function PrTablePortalTestLive() {
+  const { hasRenderedPrData } = usePrData();
+  const container = document.getElementById("pr-sections");
+  if (!container || !hasRenderedPrData) return null;
+  // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up (it
+  // wraps the harness's data-level children, like mountAppRoot wraps AppRoot).
+  return createPortal(
+    React.createElement(
+      NeedsAttentionProvider,
+      null,
+      // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
+      // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
+      // onCheckboxChange as props - it builds its own real handlers via
+      // useAckLabelActions()/useRowCheckboxActions().
+      React.createElement(PrTableApp),
+    ),
+    container,
+    "pr-table",
+  );
+}
+
+function NotesDirtyTestHandle() {
+  notesDirtyTestHandle = useNotesDirty();
+  React.useEffect(
+    () => () => {
+      notesDirtyTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
+// Captures the real FilterStateProvider's Context value for the helpers above.
+function RequestActivityTestHandle() {
+  requestActivityTestHandle = useRequestActivity();
+  React.useEffect(
+    () => () => {
+      requestActivityTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
+function FilterStateTestHandle() {
+  const state = useFilterState();
+  filterStateTestHandle = state;
+  React.useEffect(
+    () => () => {
+      filterStateTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
+// The suite's single persistent root, nested like react-app.jsx's
+// mountAppRoot(): the 3 selection Providers > FilterStateProvider (so
+// FilterStateProvider's buildOverrides() resolves the same Context instances
+// MultiSelectListPortals writes into) > AutoRenderBlockingProvider >
+// PrDataProvider, with every harness that calls a data/activity hook below
+// it.
+//
+// Window-bridge elimination Phase 7: PrDataProvider mounts here, once, with
+// loadOnMount - it fetches /view-prs/data itself, as in production, instead
+// of index.page.js fetching and then asking this suite's
+// window.mountReactPrTable stub to mount a per-table Provider. So this root
+// must mount after initTestPage() points fetch at the test's fetchMock (see
+// installFilterStateProviderBridge's callers). BackfillStatusProvider wraps
+// from here too now, inside StatusTextProvider like production: it used to
+// be a separate root (installBackfillControlsBridge, deleted), which can't
+// work once PrDataProvider pushes each payload's backfill status to it
+// through Context.
+function FilterStateTestRootHarness({ initialValues }) {
+  const errorSnackbarRoot = document.getElementById("error-snackbar-root");
+  const autoRenderBlockedStatusRoot = document.getElementById("auto-render-blocked-status-root");
+  const autoRenderBlockedApplyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
+
+  return React.createElement(
+    // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+    // audit"): wraps the whole tree, outside StatusTextProvider (order
+    // between the two is arbitrary - neither depends on the other). The
+    // real <Snackbar/> UI (portaled into #error-snackbar-root just below)
+    // must be the SAME instance every useSnackbar() caller writes to, so
+    // this suite's #error-snackbar-message assertions see their text.
+    SnackbarProvider,
+    null,
+    React.createElement(
+      // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // the hooks below read/write statusText via useStatusText() directly -
+      // wraps the whole tree, same as react-app.jsx's mountAppRoot.
+      StatusTextProvider,
+      null,
+      // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps
+      // BackfillStatusProvider/AutoRenderBlockingProvider/PrDataProvider, as in
+      // mountAppRoot(); loadOnMount makes the startup scheduler load.
+      React.createElement(
+        RequestActivityProvider,
+        { loadOnMount: true },
+        React.createElement(RequestActivityTestHandle),
+        React.createElement(
+        BackfillStatusProvider,
+        null,
+        React.createElement(
+          RowFilterSelectionProvider,
+          null,
+          React.createElement(
+            AuthorThreadResolutionSelectionProvider,
+            null,
+            React.createElement(
+              ChangeFilterActorSelectionProvider,
+              null,
+              React.createElement(
+                FilterStateProvider,
+                { initialValues },
+                // Phase H.7 (see REACT_MIGRATION_PLAN.md, "Full migration
+                // roadmap"): the allow/deny <details> visibility is owned by
+                // this headless component - matches react-app.jsx's own
+                // buildFilterStateFieldPortals(), which mounts it as a plain
+                // child the same way.
+                React.createElement(AuthorThreadResolutionRuleVisibility),
+                React.createElement(FilterStateTestHandle),
+                React.createElement(
+                  AutoRenderBlockingProvider,
+                  null,
+                  React.createElement(
+                    PrDataProvider,
+                    { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
+                    React.createElement(prDataProbe.PrDataProbe),
+                    // Phase H.20 (see REACT_MIGRATION_PLAN.md,
+                    // "Remaining-effort audit", cluster 6): these call
+                    // useFormBody() (FilterStateContext/
+                    // RowFilterSelectionContext), so they must be genuine
+                    // descendants of this tree's Providers.
+                    // ActionButtonsTestHarness keeps its own isolated
+                    // PrActivityQueueProvider instance (no test asserts
+                    // row-busy state through these 2 buttons specifically).
+                    React.createElement(RunScriptActionButtonsTestHarness),
+                    React.createElement(
+                      PrActivityQueueProvider,
+                      null,
+                      React.createElement(ActionButtonsTestHarness),
+                    ),
+                    React.createElement(BackfillControlsTestHarness),
+                    autoRenderBlockedStatusRoot &&
+                      createPortal(
+                        React.createElement(AutoRenderBlockedStatusText),
+                        autoRenderBlockedStatusRoot,
+                        "auto-render-blocked-status",
+                      ),
+                    autoRenderBlockedApplyBtnRoot &&
+                      createPortal(
+                        React.createElement(AutoRenderBlockedApplyButton),
+                        autoRenderBlockedApplyBtnRoot,
+                        "auto-render-blocked-apply-btn",
+                      ),
+                    // Window-bridge elimination Phase 7.4: production's
+                    // NotesDirtyProvider > (AppRoot's)
+                    // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
+                    // which computes the blocking state the deferred-poll
+                    // tests below depend on. index.page.js used to compute it.
+                    React.createElement(
+                      NotesDirtyProvider,
+                      null,
+                      React.createElement(
+                        AuthorInsightsDraftsProvider,
+                        null,
+                        React.createElement(AutoRenderBlockingSync),
+                        React.createElement(NotesDirtyTestHandle),
+                        React.createElement(PrTablePortalTestLive),
+                      ),
+                    ),
+                    // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration
+                    // roadmap"): mounted like react-app.jsx's real AppRoot
+                    // does, so the "data polling (via real PrDataPolling
+                    // interval)" tests below drive pollForDataChanges via a
+                    // real setInterval + fake timers.
+                    React.createElement(PrDataPolling, null),
+                    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md):
+                    // inside the SAME PrDataProvider as PrTableApp, so
+                    // FilterOptionsProvider derives its 9 option lists from
+                    // the exact payload/selectedRepo the table is showing.
+                    React.createElement(
+                      FilterOptionsProvider,
+                      null,
+                      React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+                    ),
+                    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration
+                    // roadmap"): needs a real PrDataProvider ancestor for
+                    // usePrData().
+                    React.createElement(AppliedFilterSummaryTestLive, {
+                      appliedFilterSummaryContainer: document.getElementById("management-filter-summary-root"),
+                      dataMetaContainer: document.getElementById("data-meta"),
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      ),
+    ),
+    errorSnackbarRoot && createPortal(React.createElement(Snackbar), errorSnackbarRoot),
+  );
+}
+
+const installFilterStateProviderBridge = () => {
+  const container = document.createElement("div");
+  rtlRender(
+    React.createElement(FilterStateTestRootHarness, {
+      initialValues: {},
+    }),
+    { container },
+  );
+};
+
+// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
+// the 5 REAL RunScriptActionButton instances into a detached container,
+// same reasoning as BackfillControlsTestHarness above - this suite
+// never mounts react-app.jsx, so without this, "Run script" (43/8
+// existing role-based click tests) and the other 3 buttons would all
+// become empty, unclickable portal roots.
+// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): 4 of
+// these 5 onClick callbacks used to call window.handleRunScript/
+// handleAckOnly/handleClearOnly/handleApplyLabelClick directly - this is
+// now a real component calling the matching hooks itself, same as
+// react-app.jsx does, so those 4 bridges have no remaining caller and
+// were deleted from index.page.js. The 5th, "↻ Labels", now calls
+// useRepoLabels().refresh() directly too (see RepoLabelsProvider.tsx's own
+// comment) - this harness isn't wrapped in a real <RepoLabelsProvider>
+// (nothing here clicks this button, only mounts it so the other 4 don't
+// become empty portal roots), so it gets RepoLabelsContext's safe no-op
+// default instead; real coverage for an actual click is the Playwright
+// smoke suite, which boots the full Provider tree.
+// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 1): the "apply-filters-btn" entry this list used to also have
+// is deleted outright, along with the real button/window.applyFiltersFromCache
+// bridge it mirrored - see that phase's own plan entry.
+function RunScriptActionButtonsTestHarness() {
+  const runScript = useRunScript();
+  const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
+  const { refresh: refreshAvailableRepoLabels } = useRepoLabels();
+  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): persistRunScriptOptions comes from useFilterState() directly
+  // now, not window.persistRunScriptOptionOverrides - same change as
+  // react-app.jsx's real "Run script" button.
+  const { persistRunScriptOptions } = useFilterState();
+
+  const buttons = [
+    {
+      id: "run-script-btn",
+      rootId: "run-script-btn-root",
+      className: "primary-run-btn",
+      label: "Run script",
+      onClick: () => {
+        persistRunScriptOptions();
+        runScript();
+      },
+    },
+    {
+      id: "ack-only-btn",
+      rootId: "ack-only-btn-root",
+      label: "Apply ack only",
+      onClick: () => handleAckOnly(),
+    },
+    {
+      id: "clear-only-btn",
+      rootId: "clear-only-btn-root",
+      label: "Apply clear only",
+      onClick: () => handleClearOnly(),
+    },
+    {
+      id: "apply-label-btn",
+      rootId: "apply-label-btn-root",
+      label: "Apply label",
+      onClick: () => handleApplyLabelClick(),
+    },
+    {
+      id: "refresh-labels-btn",
+      rootId: "refresh-labels-btn-root",
+      title: "Reload labels for the current repo",
+      label: "↻ Labels",
+      onClick: () => refreshAvailableRepoLabels(),
+    },
+  ];
+  const portals = buttons
+    .map(({ id, rootId, className, title, label, onClick }) => {
+      const root = document.getElementById(rootId);
+      if (!root) {
+        return null;
+      }
+      return createPortal(
+        React.createElement(RunScriptActionButton, { id, className, title, label, onClick }),
+        root,
+        id,
       );
-      filterSummaryRerender = rerender;
-    }
-    return true;
-  };
-};
+    })
+    .filter(Boolean);
+  return React.createElement(React.Fragment, null, ...portals);
+}
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the 7 status/log panels (#status, #output,
-// #scheduler-details, #request-activity-details, #backfill-details,
-// #backfill-log, #data-meta) are now React-portaled plain text
-// (react-app.jsx's AppRoot), not written directly by index.page.js. Since
-// this test file exercises index.page.js without react-app.jsx's real
-// <AppRoot/> ever mounting, these bridges are otherwise never assigned -
-// a plain textContent write is a faithful simulation here since the real
-// bridges do nothing more than that (createPortal(text, container, key)),
-// unlike the multi-select/filter-summary bridges above which mount real
-// components.
-const installReactStatusTextMountBridges = () => {
-  const wireTextBridge = (bridgeName, containerId) => {
-    window[bridgeName] = (text) => {
-      const container = document.getElementById(containerId);
-      if (!container) return false;
-      container.textContent = text;
-      return true;
-    };
-  };
-  wireTextBridge("updateReactStatusText", "status");
-  wireTextBridge("updateReactOutputText", "output");
-  wireTextBridge("updateReactSchedulerDetailsText", "scheduler-details");
-  wireTextBridge("updateReactRequestActivityDetailsText", "request-activity-details");
-  wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
-  wireTextBridge("updateReactBackfillLogText", "backfill-log");
-  wireTextBridge("updateReactDataMetaText", "data-meta");
-};
+// Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// installReactStatusTextMountBridges is gone. It stubbed window.updateReactStatusText/
+// updateReactOutputText as plain textContent writers for index.page.js's
+// setStatusTextOnly/setOutputMessage, whose last callers were deleted; every
+// remaining status writer here goes through the real StatusTextProvider.
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #error-snackbar is now fully React-owned
-// (components/Snackbar.jsx, mounted into #error-snackbar-root) - unlike
-// the plain-text panels above, this has real stateful behavior (variant
-// class, hidden toggle, auto-dismiss timer) that many tests assert on
-// precisely, so this mounts the REAL component via RTL (matching the
-// multi-select/filter-summary bridges' approach), not a plain-write
-// simulation - Snackbar.jsx registers window.showErrorNotification/
-// window.showWarningNotification/window.hideErrorNotification itself via
-// its own useEffect, exactly like the real app.
-const installReactSnackbarMountBridge = () => {
-  const container = document.getElementById("error-snackbar-root");
-  if (!container) return;
-  rtlRender(React.createElement(Snackbar), { container });
-};
-
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #trigger-auto-run-btn/#quick-check-btn are now
-// fully React-owned (components/TriggerAutoRunButton.jsx/
-// QuickCheckButton.jsx), each calling window.handleTriggerAutoRun/
-// window.handleQuickCheck (index.page.js) as their onTrigger/onCheck prop
-// - same real-RTL-mount reasoning as the snackbar above, since several
-// tests click these and assert on the resulting disabled/label state.
-const installReactActionButtonMountBridges = () => {
+// Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// #trigger-auto-run-btn/#quick-check-btn/#quick-check-all-btn are now fully
+// React-owned (components/TriggerAutoRunButton.jsx/QuickCheckButton.jsx/
+// QuickCheckAllButton.jsx), each calling useTriggerAutoRun()/
+// useQuickCheckActions() directly instead of window.handleTriggerAutoRun/
+// window.handleQuickCheck/window.handleQuickCheckAll (both deleted from
+// index.page.js, confirmed no other caller) - same real-RTL-mount
+// reasoning as the snackbar above, since several tests click these and
+// assert on the resulting disabled/label state. Wrapped in its own
+// PrActivityQueueProvider instance (useQuickCheckActions()'s own
+// markPrBusy/clearPrBusy for the "Quick check all" sweep) - no test here
+// asserts row-busy-indicator state through these 2 buttons specifically,
+// so a separate instance from the main persistent tree's is harmless.
+function ActionButtonsTestHarness() {
+  const triggerAutoRun = useTriggerAutoRun();
+  const { handleQuickCheck, handleQuickCheckAll } = useQuickCheckActions();
   const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
-  if (triggerAutoRunContainer) {
-    rtlRender(
-      React.createElement(TriggerAutoRunButton, { onTrigger: () => window.handleTriggerAutoRun?.() }),
-      { container: triggerAutoRunContainer },
-    );
-  }
   const quickCheckContainer = document.getElementById("quick-check-btn-root");
-  if (quickCheckContainer) {
-    rtlRender(
-      React.createElement(QuickCheckButton, { onCheck: () => window.handleQuickCheck?.() }),
-      { container: quickCheckContainer },
-    );
-  }
   const quickCheckAllContainer = document.getElementById("quick-check-all-btn-root");
-  if (quickCheckAllContainer) {
-    rtlRender(
-      React.createElement(QuickCheckAllButton, { onCheck: () => window.handleQuickCheckAll?.() }),
-      { container: quickCheckAllContainer },
-    );
-  }
-};
 
-// Track C, slices C2b/C2c (post-Phase-6 follow-up, see
-// REACT_MIGRATION_PLAN.md): index.page.js no longer calls
-// window.ReactMountBridge (that module was deleted - it was just a thin
-// wrapper around window.mountReactPrTable/window.updateReactPrTable plus an
-// isMounted() flag, now inlined directly into index.page.js as
-// mountReactTable/updateReactTable/isReactTableMounted). This stub now
-// defines window.mountReactPrTable/window.updateReactPrTable themselves -
-// the same functions react-app.jsx really exposes - using real RTL
-// rendering, matching mountReactPrTable's own real contract: it mounts the
-// real <PrDataProvider /> (state/PrDataProvider.jsx) wrapping PrTableApp,
-// exactly like react-app.jsx's own mountReactPrTable does, and lets the
-// Provider's own useEffect assign window.updateReactPrTable - this stub no
-// longer reimplements that merge logic itself.
-const installReactTableMountBridge = () => {
+  return React.createElement(
+    React.Fragment,
+    null,
+    triggerAutoRunContainer &&
+      createPortal(
+        React.createElement(TriggerAutoRunButton, { onTrigger: () => triggerAutoRun() }),
+        triggerAutoRunContainer,
+        "trigger-auto-run",
+      ),
+    quickCheckContainer &&
+      createPortal(
+        React.createElement(QuickCheckButton, { onCheck: () => handleQuickCheck() }),
+        quickCheckContainer,
+        "quick-check",
+      ),
+    quickCheckAllContainer &&
+      createPortal(
+        React.createElement(QuickCheckAllButton, { onCheck: () => handleQuickCheckAll() }),
+        quickCheckAllContainer,
+        "quick-check-all",
+      ),
+  );
+}
+
+// Unmounts the previous generation's React roots and installs the window
+// globals this suite still fakes (the helper modules index.html's <script>
+// tags would load).
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// this was installReactTableMountBridge, and also stubbed
+// window.mountReactPrTable for index.page.js's renderPrData to call. Both
+// that bridge and renderPrData are gone: the PR table now mounts from
+// FilterStateTestRootHarness's own PrDataProvider (PrTablePortalTestLive),
+// as react-app.jsx's does.
+const installReactTestGlobals = () => {
   cleanup();
   window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
   window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
-  window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
-  installReactFilterPanelMountBridges();
-  installReactStatusTextMountBridges();
-  installReactSnackbarMountBridge();
-  installReactActionButtonMountBridges();
-
-  window.mountReactPrTable = (containerElement, props) => {
-    if (!containerElement) return null;
-    rtlRender(
-      React.createElement(
-        PrDataProvider,
-        {
-          initialPayload: props?.initialPayload,
-          initialSelectedRepo: props?.selectedRepo,
-          initialVisiblePrNumbers: props?.visiblePrNumbers,
-        },
-        React.createElement(
-          NeedsAttentionProvider,
-          null,
-          React.createElement(PrTableApp, {
-            onCheckboxChange: props?.onCheckboxChange,
-            onAckAction: props?.onAckAction,
-            onApplyLabel: props?.onApplyLabel,
-          }),
-        ),
-      ),
-      { container: containerElement },
-    );
-    return { unmount: () => {} };
-  };
+  // index.html loads DOMPurify from a vendored <script>; without it the
+  // review-comment markdown renderer fails closed to escaped text.
+  window.DOMPurify = require("dompurify");
 };
 
 const initTestPage = ({
@@ -574,12 +977,21 @@ const initTestPage = ({
 } = {}) => {
   // Unmount the previous generation's React root(s) while their container
   // is still attached to the document (about to be replaced below) rather
-  // than after - see installReactTableMountBridge()'s own cleanup() call
+  // than after - see installReactTestGlobals()'s own cleanup() call
   // for why unmounting matters here; doing it before detaching the
   // container gives React's own commit/cleanup work a normally-connected
   // DOM to run against.
   cleanup();
   jest.resetModules();
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
+  // lists' "pending selections" now live on a dedicated window-level store
+  // (pr-pending-multi-select-selections.helpers.ts), not a module-scope
+  // variable inside index.page.js (deleted since) - jest.resetModules()
+  // above doesn't reset them, since window itself is shared across every
+  // test in this file. Reset explicitly, same reasoning as the interval/listener
+  // tracking below this function.
+  delete window.viewPrsPendingMultiSelectSelections;
+  delete window.viewPrsPendingMultiSelectSelectionsListeners;
   latestDataPayload = dataPayload || { ok: true, byPrNumber: {}, lastRun: null };
   actionLogEntries = Array.isArray(actionEntries) ? actionEntries : [];
   actorNameCacheEntries = actorNameEntries && typeof actorNameEntries === "object"
@@ -590,7 +1002,7 @@ const initTestPage = ({
     : {};
   document.body.innerHTML = extractBodyHtml(indexHtml);
   injectRunFilterFieldElements();
-  installReactTableMountBridge();
+  installReactTestGlobals();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
@@ -603,7 +1015,16 @@ const initTestPage = ({
     parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
   };
 
-  require("../index.page.js");
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): must
+  // mount *after* global.fetch/window.fetch point at this test's own
+  // fetchMock - FilterStateProvider's restore effect fires its
+  // /view-prs/user-defaults GET immediately on mount, and would otherwise
+  // race against (and miss) this test's userDefaultsOverrides fixture.
+  installFilterStateProviderBridge();
+
+  // Window-bridge elimination Phase 7.5: index.page.js is deleted (this used
+  // to require() it here, after the root mounted). Its credential hints are
+  // props on the React inputs this root renders.
 };
 
 // Helper functions for multi-select checkbox lists (label, exclude-label, author, assigned, approver filters)
@@ -627,6 +1048,84 @@ const clickMultiSelectCheckbox = async (listId, value, user) => {
   const checkbox = list.querySelector(`input[type="checkbox"][value="${value}"]`);
   if (!checkbox) throw new Error(`Checkbox not found for value: ${value} in list: ${listId}`);
   await user.click(checkbox);
+};
+
+// Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
+// suite simulates these fields' static HTML directly (no real
+// Context-backed component mounted for them - see
+// installFilterStateProviderBridge's own comment), so a plain DOM
+// interaction (user.click/selectOptions/type) never reaches
+// FilterStateProvider's `values` the way the real app's own field
+// components do via their own onChange. FilterStateProvider.tsx's
+// persistRunScriptOptions/persistViewFilterOptions read `values` directly,
+// with no DOM-read fallback - call this right after simulating the
+// interaction (reads the DOM's current value, so order matters) wherever
+// a test asserts on what actually got persisted/restored.
+const syncFilterStateFromElement = (element, contextKey) => {
+  if (!element) return;
+  const value = element.type === "checkbox" ? element.checked : element.value;
+  // flushSync: the removed window bridge was flushSync-wrapped, so a write was
+  // visible to a read (or the next assertion) in the same call stack. Callers
+  // here are plain synchronous test code, with no act() around them.
+  if (filterStateTestHandle) {
+    flushSync(() => filterStateTestHandle.setValue(contextKey, value));
+  }
+};
+
+// Window-bridge elimination Phase 6 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// window.persistViewFilterOptionOverrides is gone. FilterStateProvider's own
+// 150ms debounced effect is the only thing that saves view-filter fields, so
+// tests wait for it: the latest PUT to /view-prs/user-defaults must pass
+// `assertBody`. Asserting inside waitFor (rather than on the first PUT seen)
+// tolerates an intermediate debounced save if a test's steps straddle 150ms;
+// the debounce always ends on the final state. Clear fetchMock *before* the
+// changes being asserted on, not after them, or the save can land first.
+const waitForPersistedViewFilterOverrides = async (assertBody) => {
+  await waitFor(() => {
+    const putCall = fetchMock.mock.calls
+      .slice()
+      .reverse()
+      .find(([url, init]) => (
+        String(url || "") === "/view-prs/user-defaults" &&
+        String(init?.method || "GET").toUpperCase() === "PUT"
+      ));
+    expect(putCall).toBeDefined();
+    assertBody(JSON.parse(String(putCall[1]?.body || "{}")));
+  });
+};
+
+// Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 3): window.activateManagementTab (pr-management-tabs.helpers.js's
+// activateTab) is deleted outright - the real app's own panel-hiding
+// mechanism is now components/TabPanelVisibilitySync.jsx, reading
+// TabStateContext reactively, which this suite never mounts (it never
+// mounts react-app.jsx/TabStateProvider at all - see this file's own
+// comments elsewhere about the React tab buttons being empty portal roots
+// here). Every one of this suite's own ~60 call sites only ever used
+// "script"/"backfill" (confirmed via grep), purely to unhide that panel so
+// Testing-Library's role/label queries - which exclude elements under a
+// `hidden` ancestor - can find fields inside it; none exercise the
+// deleted function's other side effects (button styling, which the real
+// buttons don't even exist in this suite to assert on; loadActionLog/
+// loadActorNameCache/onBackfillTabActivated, never used with those 2
+// keys here). This local helper replaces the deleted bridge with exactly
+// that one remaining real behavior - same panel-id/key map as
+// TabPanelVisibilitySync.jsx's own.
+const MANAGEMENT_TAB_PANEL_IDS_FOR_TEST = {
+  "tab-panel-status": "status",
+  "tab-panel-script": "script",
+  "tab-panel-backfill": "backfill",
+  "tab-panel-action-log": "action-log",
+  "tab-panel-actor-name-cache": "actor-name-cache",
+  "tab-panel-export": "export",
+};
+const activateManagementTabForTest = (key) => {
+  Object.entries(MANAGEMENT_TAB_PANEL_IDS_FOR_TEST).forEach(([panelId, panelKey]) => {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+      panel.hidden = panelKey !== key;
+    }
+  });
 };
 
 describe("index page rendering with Testing Library", () => {
@@ -665,6 +1164,9 @@ describe("index page rendering with Testing Library", () => {
   // during a later, unrelated test. Track listeners added to window/
   // document during a test and remove them afterward, same as the
   // interval tracking above.
+  // (Window-bridge elimination Phase 7.5 deleted index.page.js, so nothing
+  // here require()s it any more. The tracking stays: each test still mounts
+  // React roots whose timers and listeners would otherwise outlive it.)
   const realWindowAddEventListener = window.addEventListener.bind(window);
   const realWindowRemoveEventListener = window.removeEventListener.bind(window);
   const realDocumentAddEventListener = document.addEventListener.bind(document);
@@ -729,9 +1231,9 @@ describe("index page rendering with Testing Library", () => {
   }, 20_000);
 
   afterEach(async () => {
-    // Some click handlers (e.g. "Apply filters (local)") kick off a
-    // fire-and-forget persistence fetch (`void persistViewFilterOptionOverrides()`)
-    // that the test never awaits. If that Promise chain is still pending
+    // Some handlers (e.g. FilterStateProvider's debounced view-filter
+    // persist) kick off a fire-and-forget persistence fetch that the test
+    // never awaits. If that Promise chain is still pending
     // when the test ends, it resolves during the *next* test - after
     // document.body.innerHTML has already been replaced - and can
     // re-render using this test's now-stale closure state into the next
@@ -762,14 +1264,18 @@ describe("index page rendering with Testing Library", () => {
     window.setTimeout = realSetTimeout;
   });
 
-  test("shows key management and data tabs from static HTML", () => {
+  // Phase A, slices 1 and 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap"): both the 3 data-tab buttons (PR data/Review statistics/
+  // Author Insights) and all 6 management-tab buttons (Activity/Run &
+  // Filter/Backfill/Action Log/Actor Names/Export) are React-owned now
+  // (DataTabButton.jsx/ManagementTabButton.jsx/TabStateProvider.tsx) with
+  // no vanilla-DOM fallback left for this jsdom-only suite (which never
+  // loads react-app.jsx) to render into - dropped every tab assertion
+  // from this test, same reasoning as the removed "author insights View
+  // in table..." test below. Only the page heading is still genuinely
+  // static HTML.
+  test("shows the page heading from static HTML", () => {
     expect(screen.getByRole("heading", { name: "View PR Updates" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "Run & Filter" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "PR data" })).toBeInTheDocument();
   });
 
   test("blocked auto-update indicator is hidden by default and exposes apply action", () => {
@@ -780,18 +1286,18 @@ describe("index page rendering with Testing Library", () => {
     expect(document.getElementById("auto-render-blocked-apply-btn")).toBeInTheDocument();
   });
 
-  test("switches the active data tab when a user clicks Review statistics", async () => {
-    const user = userEvent.setup();
-    const reviewStatsTab = screen.getByRole("tab", { name: "Review statistics" });
-    const prDataTab = screen.getByRole("tab", { name: "PR data" });
-
-    await user.click(reviewStatsTab);
-
-    expect(reviewStatsTab).toHaveAttribute("aria-selected", "true");
-    expect(prDataTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-review-stats").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-pr-data").hidden).toBe(true);
-  });
+  // "switches the active data tab when a user clicks Review statistics"
+  // was removed here: it clicked the real vanilla <button id="tab-review-
+  // stats">, which Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full
+  // migration roadmap") replaced with an empty React portal root
+  // (DataTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM fallback
+  // left for this jsdom-only suite (which never loads react-app.jsx) to
+  // click. Already covered in a real browser by e2e/smoke.spec.js's
+  // existing "lifecycle section expand/collapse and tab switching work"
+  // test, which clicks both the Review statistics and Author Insights
+  // buttons and asserts their panels become visible - confirmed it
+  // actually catches a regression here too (temporarily disabled
+  // TabStateProvider's DOM-sync call and reran just that test).
 
   // "author insights View in table switches to PR data tab and expands the
   // insights row" was removed here: it exercised Review Stats' "View in
@@ -1267,7 +1773,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#77")).toBeInTheDocument();
@@ -1290,7 +1796,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer2",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
 
     await clickMultiSelectCheckbox(
@@ -1303,7 +1808,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
@@ -1312,7 +1816,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
 
@@ -1413,7 +1916,7 @@ describe("index page rendering with Testing Library", () => {
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#177")).toBeInTheDocument();
@@ -1423,7 +1926,18 @@ describe("index page rendering with Testing Library", () => {
       "attention-author-thread-resolution-mode",
     );
 
+    // Phase H.19 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): same static-markup/React-portal collision Phase H.18
+    // fixed for the 6 attention-* checkbox/select fields - this suite's
+    // injectRunFilterFieldElements() pre-seeds this mode select's
+    // container with plain static markup too, so document.getElementById
+    // here finds that static element, not the real Context-backed
+    // AuthorThreadResolutionModeSelect, and user.selectOptions() on it
+    // never reaches FilterStateContext on its own. Needs the same
+    // syncFilterStateFromElement call every other such field already
+    // gets in this file.
     await user.selectOptions(modeField, "allow-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await clickMultiSelectCheckbox(
       "attention-author-thread-resolution-allow-list",
       "reviewer1",
@@ -1431,6 +1945,7 @@ describe("index page rendering with Testing Library", () => {
     );
 
     await user.selectOptions(modeField, "deny-only");
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await clickMultiSelectCheckbox(
       "attention-author-thread-resolution-deny-list",
       "reviewer1",
@@ -1438,11 +1953,11 @@ describe("index page rendering with Testing Library", () => {
     );
 
     await user.selectOptions(modeField, "allow-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
     await expectWarningState(true);
   });
 
@@ -1828,20 +2343,17 @@ describe("index page rendering with Testing Library", () => {
     expect(String(reviewersValue?.textContent || "")).toContain("Reviewer Two");
   });
 
-  test("switches management tab panels when a user opens Run & Filter", async () => {
-    const user = userEvent.setup();
-    const activityTab = screen.getByRole("tab", { name: "Activity" });
-    const runFilterTab = screen.getByRole("tab", { name: "Run & Filter" });
+  // "switches management tab panels when a user opens Run & Filter" was
+  // removed here: it clicked the real vanilla <button id="tab-script">,
+  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap") replaced with an empty React portal root
+  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
+  // fallback left for this jsdom-only suite (which never loads
+  // react-app.jsx) to click. e2e/smoke.spec.js clicks this exact tab in a
+  // real browser 49+ times already (every test that reaches the Run &
+  // Filter panel).
 
-    await user.click(runFilterTab);
-
-    expect(runFilterTab).toHaveAttribute("aria-selected", "true");
-    expect(activityTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-script").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-status").hidden).toBe(true);
-  });
-
-  test("filters, scheduler, backfill, and visibility toggles update rendered output", async () => {
+  test("filters, backfill, and visibility toggles update rendered output", async () => {
     initTestPage({
       backfillStatusResponse: {
         ok: true,
@@ -1882,29 +2394,20 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
-    const user = userEvent.setup();
 
     await waitFor(() => {
       const dataMeta = document.getElementById("data-meta")?.textContent || "";
       expect(dataMeta).toContain("Rows: 1");
     });
 
-    // The scheduler badges themselves are React-owned (#scheduler-badges,
-    // mounted by react-app.jsx, reusing <BackfillBadges />) and no longer
-    // have a vanilla-DOM fallback to assert against in this jsdom-only
-    // suite (which never loads react-app.jsx) - see SchedulerBadges
-    // coverage via BackfillBadges.test.jsx (shared component) plus the
-    // "React-owned scheduler status badges..." e2e test for that coverage.
-    // `details` stays vanilla-rendered regardless, so it's still asserted
-    // on directly here.
-    const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
-    expect(schedulerDetailsText).toContain("Last auto error:");
-    // Surfaces why a quick check was skipped (e.g. blocked by an in-progress
-    // full auto refresh) - previously invisible, since runViewPrsQuickCheck's
-    // skip branches didn't persist anything to scheduler state at all.
-    expect(schedulerDetailsText).toContain("Last quick check skip: already-in-progress");
+    // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
+    // Refresh Scheduler" display) were removed as redundant with the
+    // activity drawer's own live "Scheduled background jobs" section (see
+    // REACT_MIGRATION_PLAN.md) - this fixture's scheduler object (lastAutoError/
+    // lastQuickCheckSkipReason) is kept only because the rest of this test's
+    // payload shape mirrors a real response; nothing here reads it anymore.
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
     expect(document.getElementById("tab-panel-status").hidden).toBe(true);
 
@@ -1943,60 +2446,28 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("renders request-activity details from JavaScript init logic", async () => {
-    // The request-activity badges themselves are React-owned
-    // (#request-activity-badges, mounted by react-app.jsx, reusing
-    // <BackfillBadges />) and no longer have a vanilla-DOM fallback to
-    // assert against in this jsdom-only suite (which never loads
-    // react-app.jsx) - see pr-activity-badges.helpers.test.js for
-    // getRequestActivityBadges' own coverage. `details` stays
-    // vanilla-rendered regardless, so it's still asserted on directly here.
-    await waitFor(() => {
-      expect(screen.getByText(/Current status: Not run/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Active requests: none/i)).toBeInTheDocument();
-  });
+  // Window-bridge elimination Phase 7.5: a test here checked the
+  // credential-field hints on the Run Script/filter inputs. Those inputs are
+  // stand-in markup in this harness (injectRunFilterFieldElements), which
+  // only got the hints from index.page.js's DOM pass; the real components now
+  // render them, so the test is gone. Coverage: ContextRunScriptTextInput.test.jsx,
+  // PrNumberFilterInput.test.jsx, react-app.test.jsx and e2e's "all 6
+  // React-portaled non-credential-hint fields" test.
 
-  test("applies non-credential autofill hints without changing existing form field names", () => {
-    const repoField = document.getElementById("repo");
-    const prNumbersField = document.getElementById("pr-numbers");
-    const targetFieldIds = [
-      "repo",
-      "pr-numbers",
-      "limit",
-      "merged-limit",
-      "jobs",
-      "filter-pr-numbers",
-    ];
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-
-    targetFieldIds.forEach((id) => {
-      const field = document.getElementById(id);
-      expect(field).toHaveAttribute("autocomplete", "off");
-      expect(field).toHaveAttribute("autocapitalize", "off");
-      expect(field).toHaveAttribute("autocorrect", "off");
-      expect(field).toHaveAttribute("spellcheck", "false");
-      expect(field).toHaveAttribute("data-lpignore", "true");
-      expect(field).toHaveAttribute("data-1p-ignore", "true");
-      expect(field).toHaveAttribute("data-bwignore", "true");
-      expect(field).toHaveAttribute("data-form-type", "other");
-    });
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-  });
-
-  test("given run and filter tab when Apply filters (local) is clicked then view-filter defaults are persisted", async () => {
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): "Apply filters (local)" (the button) is deleted outright -
+  // view-filter fields now auto-persist on their own real "change" event
+  // instead of needing an explicit click (same mechanism the other,
+  // already-auto-persisting fields always used). Changing scope-mode
+  // directly is this test's new trigger.
+  test("given a view-filter field changes, when the change event fires, then view-filter defaults are persisted", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
-    await user.click(
-      screen.getByRole("button", { name: "Apply filters (local)" }),
-    );
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -2015,10 +2486,18 @@ describe("index page rendering with Testing Library", () => {
 
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): this block used to rely on the previous test's own
+    // "Apply filters (local)" click (that button is gone now) - gives
+    // itself its own explicit trigger instead of depending on another
+    // test's side effect, same pattern the "view-filter defaults are
+    // persisted" test just above uses.
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find((call) => {
@@ -2040,6 +2519,14 @@ describe("index page rendering with Testing Library", () => {
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "912  921,  300");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): useRunScript()'s getFormBody is Context-based now
+    // (useFormBody.tsx), not a FormData scan of the real <form> - same
+    // static-markup/React-portal collision Phase H.18/H.19 fixed
+    // elsewhere: injectRunFilterFieldElements() pre-seeds this field's
+    // container too, so document.getElementById finds the static element,
+    // not the real one, and needs the same syncFilterStateFromElement call.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Run script" }));
@@ -2068,9 +2555,273 @@ describe("index page rendering with Testing Library", () => {
     expect(bodies.some((b) => b.includes('"300"') || b.includes('"prNumber":"300"'))).toBe(true);
   });
 
+  // Regression coverage for closing out the "redundant render-then-reload"
+  // cleanup arc (see REACT_MIGRATION_PLAN.md, applyFreshPrPayload's own
+  // entries): handleRunScript used to always call loadStoredData() (a
+  // second GET /view-prs/data fetch) after its loop finished, regardless
+  // of outcome - confirmed via the server route that every failure mode
+  // of /view-prs/run leaves data genuinely unchanged, so that reload was
+  // either pure redundant overhead (success case) or a no-op (failure
+  // case). No existing test exercised this function's response/render
+  // handling at all before these were added - every pre-existing test
+  // above only asserted outgoing POST bodies.
+  describe("Run script response/render handling (applyFreshPrPayload)", () => {
+    const getRunCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/run" &&
+          String(init?.method || "GET").toUpperCase() === "POST"
+        );
+      });
+
+    const getDataGetCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/data" &&
+          String(init?.method || "GET").toUpperCase() === "GET"
+        );
+      });
+
+    test("given a single successful target, when Run script completes, then the fresh payload is applied directly with no redundant reload", async () => {
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42");
+      // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+      // cluster 6): same static-markup/React-portal collision Phase
+      // H.18/H.19 fixed elsewhere - useFormBody() reads
+      // FilterStateContext, not a FormData scan, so document.getElementById
+      // here needs the matching syncFilterStateFromElement call.
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Fresh after run script" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Fresh after run script",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given multiple successful targets, when Run script completes, then the final rendered state reflects the last target's payload with no redundant reload", async () => {
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
+
+      fetchMock.mockClear();
+      let callCount = 0;
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          callCount += 1;
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: `Iteration ${callCount}` } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Iteration 2",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given one target succeeds and one fails, when Run script completes, then the successful target's data still renders and the combined status/snackbar reflect the partial failure", async () => {
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          const body = JSON.parse(String(init?.body || "{}"));
+          if (body.prNumber === "43") {
+            return {
+              ok: false,
+              status: 500,
+              json: async () => ({ ok: false, error: "script failed" }),
+            };
+          }
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Target 42 succeeded" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Target 42 succeeded",
+        );
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (1/2 successful)",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given every target fails, when Run script completes, then the failure status is shown, nothing throws, and nothing is rendered", async () => {
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+      syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({ ok: false, error: "script failed" }),
+          };
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      const payloadBefore = prDataProbe.readPayload();
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (0/2 successful)",
+        );
+      });
+      expect(prDataProbe.readPayload()).toBe(payloadBefore);
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given no PR numbers entered (an \"All PRs\" run), when Run script completes, then it behaves the same as a specific-PR-number target", async () => {
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "All PRs run" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      expect(JSON.parse(String(getRunCalls()[0][1]?.body || "{}")).prNumber).toBe("");
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "All PRs run",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+  });
+
   test("given no selected author and toggled checkboxes when Run script posts payload then author fallback and boolean flags are mapped", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     // Note: With checkbox-based filters, authors are populated dynamically from PR data.
     // This test verifies that when no author checkboxes are selected, the author field
@@ -2079,14 +2830,23 @@ describe("index page rendering with Testing Library", () => {
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "101  xyz, 202");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useFormBody() reads FilterStateContext,
+    // not a FormData scan, so every document.getElementById-driven
+    // interaction below needs the matching syncFilterStateFromElement call.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     const ackChangedCheckbox = document.getElementById("ack-changed");
     const showReasonCheckbox = document.getElementById("show-reason");
     const quietCheckbox = document.getElementById("quiet");
 
     await user.click(ackChangedCheckbox);
+    syncFilterStateFromElement(ackChangedCheckbox, "ackChanged");
     await user.click(showReasonCheckbox);
+    syncFilterStateFromElement(showReasonCheckbox, "showReason");
     await user.click(quietCheckbox);
+    syncFilterStateFromElement(quietCheckbox, "quiet");
 
     fetchMock.mockClear();
     await user.click(screen.getByRole("button", { name: "Run script" }));
@@ -2147,7 +2907,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2189,7 +2949,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2220,7 +2980,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2258,7 +3018,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2294,15 +3054,21 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const repoField = document.getElementById("repo");
     await user.clear(repoField);
     await user.type(repoField, "owner/repo");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useQuickCheckActions()'s getFormBody is
+    // Context-based now (useFormBody.tsx), not a FormData scan.
+    syncFilterStateFromElement(repoField, "repo");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "912,921");
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2343,7 +3109,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -2386,7 +3152,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2414,7 +3180,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2456,7 +3222,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2507,11 +3273,16 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
     await user.type(prNumbersInput, "101");
+    // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 6): same static-markup/React-portal collision Phase
+    // H.18/H.19 fixed elsewhere - useRunScript()'s getFormBody is
+    // Context-based now (useFormBody.tsx), not a FormData scan.
+    syncFilterStateFromElement(prNumbersInput, "prNumbersInput");
 
     await waitFor(() => {
       const includeValues = Array.from(
@@ -2602,7 +3373,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const scopeField = document.getElementById("scope-mode");
     const prFilterField = document.getElementById("filter-pr-numbers");
@@ -2632,12 +3403,22 @@ describe("index page rendering with Testing Library", () => {
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
     await user.clear(prFilterField);
     await user.type(prFilterField, "1");
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // #data-meta's text now comes from the real, Context-only
+    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive), which
+    // has its own identical PR-number-filter-takes-precedence-over-scope
+    // behavior (same production logic, not vanilla-only) - scope-mode/
+    // filter-pr-numbers have no real Context-backed component mounted in
+    // this reduced harness, so both need the same sync call every other
+    // DOM-only field already uses (syncFilterStateFromElement's own
+    // header comment) for the live summary to see them.
+    syncFilterStateFromElement(scopeField, "scopeMode");
+    syncFilterStateFromElement(prFilterField, "filterPrNumbers");
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
     await clickMultiSelectCheckbox("author-list", "author-other", user);
     await clickMultiSelectCheckbox("assigned-list", "assignee-other", user);
 
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -2646,9 +3427,19 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=all stored rows");
     });
 
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // now that filterPrNumbers is synced into real Context above (needed
+    // for the live #data-meta summary to see it), the REAL React table -
+    // which reads useVisiblePrNumbers(), the same reactive Context
+    // derivation - picks it up too, same as it already does in the real
+    // app: the PR-number filter takes precedence over the 4 multi-select
+    // filters (label=frontend/exclude=bug/author=author-other/
+    // assigned=assignee-other, which alone would match PR #2, not PR #1).
+    // Matches the real, fully-wired app's own precedence (also covered by
+    // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
     expect(
-      screen.getByRole("button", { name: "View PR JSON details for #1" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "View PR JSON details for #1" }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: "View PR JSON details for #2" }),
     ).not.toBeInTheDocument();
@@ -2725,12 +3516,20 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
     const scopeField = document.getElementById("scope-mode");
     expect(scopeField).toBeInTheDocument();
 
     await user.selectOptions(scopeField, "needs-attention");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // #data-meta's text now comes from the real, Context-only
+    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive) instead of
+    // the old vanilla pipeline's own DOM-fallback-aware computation -
+    // scope-mode has no real Context-backed component mounted in this
+    // suite (see this file's own comment on that), so a raw DOM change
+    // needs this same sync call every other DOM-only field already uses
+    // (syncFilterStateFromElement's own header comment).
+    syncFilterStateFromElement(scopeField, "scopeMode");
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
@@ -2743,7 +3542,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.selectOptions(scopeField, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(scopeField, "scopeMode");
 
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
     // flag alone no longer qualifies it for either scope.
@@ -2849,7 +3648,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("scheduler polling toggles active PR progress indicators without row rerender", async () => {
+  test("scheduler status push toggles active PR progress indicators without row rerender", async () => {
     {
       jest.resetModules();
       latestDataPayload = createMultiPrPayload({
@@ -2875,35 +3674,22 @@ describe("index page rendering with Testing Library", () => {
       actionLogEntries = [];
       document.body.innerHTML = extractBodyHtml(indexHtml);
       injectRunFilterFieldElements();
-      installReactTableMountBridge();
+      installReactTestGlobals();
 
       let schedulerActivePrNumbers = [];
-      const baseFetch = createFetchMock();
-      fetchMock = jest.fn(async (url, init = {}) => {
-        const normalizedUrl = String(url || "");
-        const method = String(init?.method || "GET").toUpperCase();
-        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
-          return createOkJsonResponse({
-            ok: true,
-            scheduler: {
-              intervalMinutes: 15,
-              manualCooldownMinutes: 15,
-              isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
-              activePrNumbers: schedulerActivePrNumbers,
-            },
-          });
-        }
-        return baseFetch(url, init);
-      });
+      fetchMock = createFetchMock();
       global.fetch = fetchMock;
       window.fetch = fetchMock;
       window.marked = {
         parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
       };
 
-      require("../index.page.js");
-
-      expect(typeof window.pollSchedulerStatus).toBe("function");
+      // Mounts the harness root, whose PrDataProvider renders the table
+      // (window-bridge elimination Phase 7 - it loads /view-prs/data itself).
+      // Must come after the fetchMock assignment above, same ordering reason
+      // as the main initTestPage() flow: the root's restore and data-load
+      // effects fire their GETs immediately on mount.
+      installFilterStateProviderBridge();
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there
@@ -2927,8 +3713,24 @@ describe("index page rendering with Testing Library", () => {
       expect(initialIndicator).toBeTruthy();
       expect(initialIndicator?.hidden).toBe(true);
 
+      // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // window.pollSchedulerStatus (a poll wrapper around a now-retired
+      // setInterval, see PrDataPolling.jsx's own comment) is gone - the
+      // progress indicator is driven by renderSchedulerStatus in production
+      // too (RequestActivityProvider's, via Context since window-bridge
+      // elimination Phase 7.3), called by JobEventsProvider.tsx's real SSE
+      // connection on every scheduler-status push. Calling it directly
+      // here with the same payload shape exercises that real remaining
+      // path instead of a bridge with no caller left.
       schedulerActivePrNumbers = [{ repo: "owner/repo", prNumber: "1" }];
-      await window.pollSchedulerStatus();
+      act(() => {
+        requestActivityTestHandle.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();
@@ -2937,7 +3739,14 @@ describe("index page rendering with Testing Library", () => {
       });
 
       schedulerActivePrNumbers = [];
-      await window.pollSchedulerStatus();
+      act(() => {
+        requestActivityTestHandle.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
         const updatedIndicator = getIndicator();
@@ -3054,7 +3863,7 @@ describe("index page rendering with Testing Library", () => {
 
     document.getElementById("status").textContent = "Viewer : ahall236_uhg";
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const noActivityMode = document.getElementById("attention-no-activity-mode");
     const includePendingComments = document.getElementById(
@@ -3077,26 +3886,37 @@ describe("index page rendering with Testing Library", () => {
     expect(includePendingComments).toBeInTheDocument();
     expect(ignoreMergeOnly).toBeInTheDocument();
 
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - injectRunFilterFieldElements()
+    // seeds these fields' containers with plain static markup before
+    // installFilterStateProviderBridge() portals the real Context-backed
+    // components into the same containers, so document.getElementById()
+    // here finds the static element, not the real one, and a user.click()/
+    // selectOptions() on it never reaches Context on its own. Every
+    // interaction below needs the same syncFilterStateFromElement call
+    // this suite already uses for other DOM-only-presenting fields.
     await user.click(includePendingComments);
+    syncFilterStateFromElement(includePendingComments, "attentionIncludePendingComments");
     await user.selectOptions(noActivityMode, "none");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(false);
     });
 
     await user.selectOptions(noActivityMode, "mine-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
 
     await user.selectOptions(noActivityMode, "all");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(true);
     });
 
     await user.click(ignoreMergeOnly);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(ignoreMergeOnly, "attentionIgnoreMergeOnlyCommits");
 
     await waitFor(() => {
       expect(hasAttentionForPr("102")).toBe(false);
@@ -3104,11 +3924,12 @@ describe("index page rendering with Testing Library", () => {
 
     if (includeDraftChanged.checked) {
       await user.click(includeDraftChanged);
+      syncFilterStateFromElement(includeDraftChanged, "attentionIncludeDraftChanged");
     }
     if (includeDraftNoActivity.checked) {
       await user.click(includeDraftNoActivity);
+      syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(false);
@@ -3116,8 +3937,9 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await user.click(includeDraftChanged);
+    syncFilterStateFromElement(includeDraftChanged, "attentionIncludeDraftChanged");
     await user.click(includeDraftNoActivity);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftNoActivity, "attentionIncludeDraftNoActivity");
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(true);
@@ -3126,53 +3948,32 @@ describe("index page rendering with Testing Library", () => {
 
     fetchMock.mockClear();
     await user.selectOptions(noActivityMode, "mine-only");
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     if (includeClosedMerged.checked) {
       await user.click(includeClosedMerged);
+      syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
 
     fetchMock.mockClear();
     await user.selectOptions(noActivityMode, "all");
+    syncFilterStateFromElement(noActivityMode, "attentionNoActivityMode");
     await user.click(includeClosedMerged);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeClosedMerged, "attentionIncludeClosedMerged");
 
-    let resetPutCall;
-    await waitFor(() => {
-      resetPutCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(resetPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-closed-merged"]).not.toBe(false);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(resetPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
   test("preserves selected author filter through rerender after row actions", async () => {
@@ -3222,13 +4023,12 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -3379,8 +4179,7 @@ describe("index page rendering with Testing Library", () => {
                 ],
                 otherNotes: "Follow up after release",
                 prDifficulty: "4",
-                rallyStories: ["US12345"],
-                rallyLinks: ["https://rally.example/US12345"],
+                stories: [{ name: "US12345", url: "https://stories.example/US12345" }],
                 analysisOfPr: "Risk is moderate due to API coupling.",
               },
               data: {
@@ -3490,7 +4289,7 @@ describe("index page rendering with Testing Library", () => {
     const pr11FieldIndicators = Array.from(
       pr11DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
     );
-    expect(pr11FieldIndicators.length).toBe(6);
+    expect(pr11FieldIndicators.length).toBe(5);
     expect(
       pr11FieldIndicators.every((node) =>
         String(node?.className || "").includes("author-notes-field-indicator-filled"),
@@ -3514,7 +4313,7 @@ describe("index page rendering with Testing Library", () => {
     const pr12FieldIndicators = Array.from(
       pr12DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
     );
-    expect(pr12FieldIndicators.length).toBe(6);
+    expect(pr12FieldIndicators.length).toBe(5);
     expect(
       pr12FieldIndicators.every((node) =>
         String(node?.className || "").includes("author-notes-field-indicator-empty"),
@@ -3622,7 +4421,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
     });
@@ -3642,22 +4441,29 @@ describe("index page rendering with Testing Library", () => {
       "attention-ignore-merge-only-commits",
     );
 
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - a raw `.checked =` write
+    // alone (bypassing React's own onChange) no longer reaches it, same
+    // as every other Context-migrated field this suite already handles
+    // via syncFilterStateFromElement.
     pendingCommentsToggle.checked = false;
+    syncFilterStateFromElement(pendingCommentsToggle, "attentionIncludePendingComments");
     await user.selectOptions(noActivityModeSelect, "none");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
 
     await waitFor(() => {
       expect(getAttentionIcon("101")).toBeNull();
     });
 
     await user.selectOptions(noActivityModeSelect, "all");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     await waitFor(() => {
       expect(getAttentionIcon("101")?.textContent || "").toBe("⚠️");
     });
 
     ignoreMergeOnlyToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(ignoreMergeOnlyToggle, "attentionIgnoreMergeOnlyCommits");
     await waitFor(() => {
       expect(getAttentionIcon("102")).toBeNull();
     });
@@ -3669,59 +4475,40 @@ describe("index page rendering with Testing Library", () => {
       "attention-include-draft-no-activity",
     );
 
+    // The 2 raw `.checked =` writes below fire no native event at all; only
+    // Context (via syncFilterStateFromElement) sees them, which is all the
+    // debounced persist needs.
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "mine-only");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     includeClosedMergedToggle.checked = false;
+    syncFilterStateFromElement(includeClosedMergedToggle, "attentionIncludeClosedMerged");
     includeDraftNoActivityToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
 
-    let latestPutCall;
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
+      expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
     });
 
-    const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
-    expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
-
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "all");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     includeClosedMergedToggle.checked = true;
+    syncFilterStateFromElement(includeClosedMergedToggle, "attentionIncludeClosedMerged");
     includeDraftNoActivityToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
 
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-draft-no-activity"]).not.toBe(true);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(latestPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
     test("given author thread-resolution controls, when mode and actor selections change, then user-default overrides are persisted immediately", async () => {
@@ -3752,7 +4539,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
       await waitFor(() => {
         expect(screen.getByText("#901")).toBeInTheDocument();
       });
@@ -3761,7 +4548,18 @@ describe("index page rendering with Testing Library", () => {
       const modeField = document.getElementById(
         "attention-author-thread-resolution-mode",
       );
-      await user.selectOptions(modeField, "deny-only");
+      // Sync Context directly (not via user.selectOptions) - this
+      // field's own real React component isn't mounted in this suite
+      // (same static-markup harness gap documented elsewhere in this
+      // file), so nothing else keeps Context in step with the DOM value.
+      // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
+      // effort audit", cluster 1): persistence itself is no longer tied
+      // to this "change" event's own timing at all - FilterStateProvider.tsx's
+      // debounced Context-level watcher picks up the Context write below
+      // on its own, whether or not a native event ever fires.
+      modeField.value = "deny-only";
+      syncFilterStateFromElement(modeField, "attentionAuthorThreadResolutionMode");
+      fireEvent.change(modeField, { target: { value: "deny-only" } });
 
       let latestPutCall;
       await waitFor(() => {
@@ -3783,6 +4581,15 @@ describe("index page rendering with Testing Library", () => {
         "deny-only",
       );
 
+      // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
+      // effort audit", cluster 1): persistence is no longer a synchronous
+      // vanilla listener firing off the same event (that whole mechanism
+      // is deleted outright, superseded by FilterStateProvider.tsx's own
+      // debounced Context-level watcher) - without clearing the mock
+      // first, the next waitFor below would trivially find the PUT call
+      // just asserted on above (already non-undefined) before the new,
+      // debounced one for this checkbox click ever lands.
+      fetchMock.mockClear();
       await clickMultiSelectCheckbox(
         "attention-author-thread-resolution-deny-list",
         "reviewer1",
@@ -3844,15 +4651,11 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
       await waitFor(() => {
         expect(screen.getByText("#902")).toBeInTheDocument();
       });
 
-      const modeField = document.getElementById(
-        "attention-author-thread-resolution-mode",
-      );
       const allowOptions = document.getElementById(
         "attention-author-thread-resolution-allow-options",
       );
@@ -3860,7 +4663,18 @@ describe("index page rendering with Testing Library", () => {
         "attention-author-thread-resolution-deny-options",
       );
 
-      expect(modeField?.value).toBe("deny-only");
+      // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // restore now lands in FilterStateProvider's own Context state, not
+      // directly on this static <select> (no real Context-backed component
+      // is mounted for it in this harness - see
+      // installFilterStateProviderBridge's own comment) - read the real
+      // source of truth instead of the DOM. Also now async (a fetch), so
+      // this needs a waitFor.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.attentionAuthorThreadResolutionMode).toBe(
+          "deny-only",
+        );
+      });
       expect(Boolean(allowOptions?.hidden)).toBe(true);
       expect(Boolean(denyOptions?.hidden)).toBe(false);
 
@@ -3930,7 +4744,7 @@ describe("index page rendering with Testing Library", () => {
         ?.querySelector(".attention-icon");
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
     });
@@ -3940,20 +4754,30 @@ describe("index page rendering with Testing Library", () => {
       expect(within(draftSection).getByText("#202")).toBeInTheDocument();
     });
 
-    document.getElementById("attention-include-pending-comments").checked = false;
-    await user.selectOptions(document.getElementById("attention-no-activity-mode"), "all");
+    // Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): attention icons are NeedsAttentionProvider-driven now,
+    // reading FilterStateContext directly - a raw `.checked =` write
+    // alone (bypassing React's own onChange) no longer reaches it, same
+    // as every other Context-migrated field this suite already handles
+    // via syncFilterStateFromElement.
+    const includePendingCommentsToggle = document.getElementById("attention-include-pending-comments");
+    includePendingCommentsToggle.checked = false;
+    syncFilterStateFromElement(includePendingCommentsToggle, "attentionIncludePendingComments");
+    const noActivityModeSelect = document.getElementById("attention-no-activity-mode");
+    await user.selectOptions(noActivityModeSelect, "all");
+    syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
 
     const includeDraftChangedToggle = document.getElementById(
       "attention-include-draft-changed",
     );
     includeDraftChangedToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
     await waitFor(() => {
       expect(getAttentionIcon("201")).toBeNull();
     });
 
     includeDraftChangedToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
     await waitFor(() => {
       expect(getAttentionIcon("201")?.textContent || "").toBe("⚠️");
     });
@@ -3962,13 +4786,13 @@ describe("index page rendering with Testing Library", () => {
       "attention-include-draft-no-activity",
     );
     includeDraftNoActivityToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
     await waitFor(() => {
       expect(getAttentionIcon("202")).toBeNull();
     });
 
     includeDraftNoActivityToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
     await waitFor(() => {
       expect(getAttentionIcon("202")?.textContent || "").toBe("⚠️");
     });
@@ -4042,7 +4866,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const scopeSelect = document.getElementById("scope-mode");
     const authorList = getMultiSelectList("author-list");
@@ -4055,14 +4879,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
@@ -4111,8 +4933,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4184,8 +5005,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4267,7 +5087,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4278,7 +5098,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "alice", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -4335,8 +5154,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     const approverList = getMultiSelectList("approver-list");
@@ -4377,8 +5195,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const assignedList = getMultiSelectList("assigned-list");
     await waitFor(() => {
@@ -4506,7 +5323,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     const scopeSelect = document.getElementById("scope-mode");
@@ -4519,14 +5336,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "david", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
@@ -4641,7 +5456,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4653,7 +5468,6 @@ describe("index page rendering with Testing Library", () => {
 
     // Select only reviewer-a: should show #601 (approved by both) but not #602 (only reviewer-b) or #603 (no approvals)
     await clickMultiSelectCheckbox("approver-list", "reviewer-a", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -4687,9 +5501,8 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4743,7 +5556,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     await waitFor(() => {
@@ -4751,25 +5564,12 @@ describe("index page rendering with Testing Library", () => {
       expect(approverLogins).toEqual(["grace"]);
     });
 
+    fetchMock.mockClear();
     await clickMultiSelectCheckbox("approver-list", "grace", user);
 
-    fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides.approver).toEqual(["grace"]);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides.approver).toEqual(["grace"]);
   });
 
   test("given approver stored in user-defaults, when page loads and data renders, then approver select is pre-selected", async () => {
@@ -4831,7 +5631,6 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
     // Ensure user-defaults have been fetched and the pending restore is set
     // before navigating so Apply sees the pre-populated pending selections.
@@ -4846,13 +5645,12 @@ describe("index page rendering with Testing Library", () => {
       expect(defaultsCall).toBeDefined();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+    activateManagementTabForTest("script");
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
 
     // Apply triggers re-render which picks up pendingApproverFilterSelections.
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["grace"]);
@@ -4923,29 +5721,23 @@ describe("index page rendering with Testing Library", () => {
     expect(document.activeElement).toBe(firstElement);
   });
 
-  test("given a user opens the Action Log tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActionLogSection.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Action Log" }));
-
-    expect(document.getElementById("tab-panel-action-log").hidden).toBe(false);
-  });
-
-  test("given a user opens the Actor Names tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActorNamesTab.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Actor Names" }));
-
-    expect(document.getElementById("tab-panel-actor-name-cache").hidden).toBe(false);
-  });
+  // "given a user opens the Action Log tab..." and "given a user opens
+  // the Actor Names tab..." were removed here: they clicked the real
+  // vanilla <button id="tab-action-log">/<button id="tab-actor-name-cache">,
+  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
+  // roadmap") replaced with empty React portal roots
+  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
+  // fallback left for this jsdom-only suite (which never loads
+  // react-app.jsx) to click. e2e/smoke.spec.js's "Action Log tab loads
+  // its entries on its very first visit..."/"Actor Names tab loads its
+  // mappings on its very first visit..." tests click these exact tabs in
+  // a real browser already.
 
   test("posts to backfill start endpoint when a user starts backfill from the Backfill tab", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5019,7 +5811,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5084,12 +5876,32 @@ describe("index page rendering with Testing Library", () => {
 
     expect(document.getElementById("merged-request-more-action")).toBeInTheDocument();
 
-    // The button/status content is React-owned now (MergedRequestMoreAction.jsx,
-    // portaled into #merged-request-more-action - not mounted in this
-    // jsdom-only suite), but window.handleRequestMoreMerged (the vanilla
-    // orchestration it calls on click) is still real here, so the actual
-    // POST round-trip is still worth exercising directly.
-    await window.handleRequestMoreMerged("owner/repo");
+    // Phase H.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // mount the real MergedRequestMoreAction component and click its
+    // button, instead of calling window.handleRequestMoreMerged directly -
+    // same pattern ActionButtonsTestHarness already uses for
+    // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton.
+    //
+    // Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+    // audit"): the button's own click handler now calls
+    // useRequestMoreMerged()'s returned function (via onRequestMore), not
+    // window.handleRequestMoreMerged - this small wrapper calls that hook
+    // itself, same shape as MergedRequestMoreActionLive in react-app.jsx.
+    function MergedRequestMoreActionTestHarness() {
+      const requestMoreMerged = useRequestMoreMerged();
+      return React.createElement(MergedRequestMoreAction, {
+        isVisible: true,
+        repo: "owner/repo",
+        onRequestMore: requestMoreMerged,
+      });
+    }
+    // Its own root, so the hook sees the inert default PrData/request-activity
+    // Contexts - enough here, since this test only asserts the POST body.
+    rtlRender(React.createElement(MergedRequestMoreActionTestHarness), {
+      container: document.getElementById("merged-request-more-action"),
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Request more" }));
 
     let requestMoreCall;
     await waitFor(() => {
@@ -5612,7 +6424,7 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const clearButton = await screen.findByRole("button", {
-      name: "✓ Ack'd",
+      name: /^Ack'd PR #/,
     });
     expect(clearButton).toBeInTheDocument();
 
@@ -5930,8 +6742,7 @@ describe("index page rendering with Testing Library", () => {
                   comments: [savedNote],
                   otherNotes: "",
                   prDifficulty: "5",
-                  rallyStories: [],
-                  rallyLinks: [],
+                  stories: [],
                   analysisOfPr: "Deep analysis for save test",
                 },
               },
@@ -5952,7 +6763,7 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = fetchMock;
 
     const insightsButton = await screen.findByRole("button", {
-      name: "More insights",
+      name: /^More insights for PR #/,
     });
     await user.click(insightsButton);
 
@@ -6018,7 +6829,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("enables Save notes when only difficulty or rally fields are edited", async () => {
+  test("enables Save notes when only difficulty or story fields are edited", async () => {
     const renderCleanNotesSection = async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
@@ -6050,7 +6861,7 @@ describe("index page rendering with Testing Library", () => {
 
       const localUser = userEvent.setup();
       const insightsButton = await screen.findByRole("button", {
-        name: "More insights",
+        name: /^More insights for PR #/,
       });
       await localUser.click(insightsButton);
 
@@ -6077,10 +6888,7 @@ describe("index page rendering with Testing Library", () => {
 
     {
       const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyStoryInput = notesSection.querySelector(
-        ".pr-notes-rally-story-input",
-      );
-      expect(rallyStoryInput).toBeInTheDocument();
+      const storyNameInput = within(notesSection).getByRole("textbox", { name: "Story 1 name" });
       // fireEvent.change (one direct value-set + 'change' dispatch), not
       // user.type (many sequential per-keystroke events) - see this
       // test's own renderCleanNotesSection() comment for why: by the time
@@ -6089,15 +6897,14 @@ describe("index page rendering with Testing Library", () => {
       // input's onChange/state at all (confirmed via the component's own
       // internal state tracing - the DOM value updated, React's state
       // never did), while a single fireEvent.change reliably still does.
-      fireEvent.change(rallyStoryInput, { target: { value: "US12345" } });
+      fireEvent.change(storyNameInput, { target: { value: "US12345" } });
       expect(saveNotesButton).toBeEnabled();
     }
 
     {
       const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyLinkInput = notesSection.querySelector(".pr-notes-rally-link-input");
-      expect(rallyLinkInput).toBeInTheDocument();
-      fireEvent.change(rallyLinkInput, { target: { value: "https://rally.example/US12345" } });
+      const storyUrlInput = within(notesSection).getByRole("textbox", { name: "Story 1 URL" });
+      fireEvent.change(storyUrlInput, { target: { value: "https://stories.example/US12345" } });
       expect(saveNotesButton).toBeEnabled();
     }
   });
@@ -6181,7 +6988,7 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    await user.click(await screen.findByRole("button", { name: "More insights" }));
+    await user.click(await screen.findByRole("button", { name: /^More insights for PR #/ }));
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -6309,7 +7116,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Refresh log" }));
 
     await waitFor(() => {
@@ -6327,20 +7134,40 @@ describe("index page rendering with Testing Library", () => {
     expect(logTailCall).toBeDefined();
   });
 
-  test("given a user opens the Export tab, when it activates, then the tab panel becomes visible (content is React-owned - see ExportTab.test.jsx)", async () => {
+  // "given a user opens the Export tab..." was removed here: it clicked
+  // the real vanilla <button id="tab-export">, which Phase A, slice 2
+  // (see REACT_MIGRATION_PLAN.md, "Full migration roadmap") replaced with
+  // an empty React portal root (ManagementTabButton.jsx/TabStateProvider.tsx)
+  // - no vanilla-DOM fallback left for this jsdom-only suite (which never
+  // loads react-app.jsx) to click. e2e/smoke.spec.js clicks this exact
+  // tab in a real browser already.
+
+  // Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // index.page.js's initPage made its own status+log load on top of the one
+  // useBackfillTabAutoRefresh fires on mount, so every page load fetched both
+  // twice. Only the React one is left.
+  test("given a fresh page load, when everything settles, then backfill status and log are each fetched exactly once", async () => {
     initTestPage();
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Export" }));
+    await waitFor(() => {
+      expect(document.getElementById("backfill-details")?.textContent || "").toContain("Summary:");
+    });
+    // Let any second, slower load land before counting.
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(document.getElementById("tab-panel-export").hidden).toBe(false);
+    const countGets = (path) =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url || "") === path && String(init?.method || "GET").toUpperCase() === "GET",
+      ).length;
+    expect(countGets("/view-prs/backfill")).toBe(1);
+    expect(countGets("/view-prs/backfill/log?lines=120")).toBe(1);
   });
 
   test("backfill log auto-scrolls to bottom when running and auto-scroll is enabled", async () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
 
     // Force a running status refresh in-test to avoid startup timing races.
     const defaultImpl = fetchMock.getMockImplementation();
@@ -6396,7 +7223,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6421,7 +7248,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    activateManagementTabForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6447,7 +7274,24 @@ describe("index page rendering with Testing Library", () => {
     expect(backfillLog.scrollTop).toBe(0);
   });
 
-  test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
+  // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // 9 tests below used to call window.pollForDataChanges() directly -
+  // FilterStateTestRootHarness mounts a real <PrDataPolling />, so these drive
+  // the same real orchestration function through its actual setInterval
+  // instead, via fake timers scoped to just this describe block (doNotFake:
+  // ['Date'] - this suite's fixtures/assertions rely on real Date/ISO
+  // timestamps elsewhere and must not be affected).
+  describe("data polling (via real PrDataPolling interval)", () => {
+    const DATA_POLL_MS = 30000; // PrDataPolling's AUTO_DATA_POLL_MS (no ?dataPollMs= override here)
+
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ["Date"] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
     {
       initTestPage({
         dataPayload: {
@@ -6475,7 +7319,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       let dataFallbackCalls = 0;
@@ -6541,8 +7387,12 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6592,7 +7442,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6617,7 +7469,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       fetchMock.mockImplementation(async (url, init = {}) => {
         const normalizedUrl = String(url || "");
@@ -6638,7 +7492,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const snackbar = document.getElementById("error-snackbar");
       const snackbarMessage = document.getElementById("error-snackbar-message");
@@ -6674,7 +7530,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       expect(snackbar).toHaveAttribute("hidden");
     }
@@ -6708,7 +7566,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6741,7 +7601,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6792,7 +7654,6 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
       await waitFor(() => {
         const row = document.querySelector(
           "#pr-sections .pr-group-section-content table tbody tr",
@@ -6867,7 +7728,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       let firstMainRowTextAfter = "";
       await waitFor(() => {
@@ -7013,9 +7876,10 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
-
-      const user = userEvent.setup();
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
       });
@@ -7093,7 +7957,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
@@ -7160,7 +8026,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -7249,7 +8117,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -7287,6 +8157,274 @@ describe("index page rendering with Testing Library", () => {
 
       const deltaCallBody = String(deltaCalls[0]?.[1]?.body || "");
       expect(deltaCallBody).toContain("101");
+    }
+  });
+
+  test("a poll deferred by a dirty Notes field flushes once clean, applying the fresh payload without going through the full render pipeline", async () => {
+    // Regression coverage for a real gap found while closing out
+    // recomputeDirtyPrSectionsFields's own entanglement (see
+    // REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
+    // renders"): no existing test (jest or Playwright) exercised the full
+    // dirty -> queued -> clean -> flush cycle end to end - only the dirty
+    // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
+    // proves the flush's applyFreshPrPayload call actually reaches the
+    // real, mounted React table. Window-bridge elimination Phase 7.4: the
+    // dirty state now flows NotesDirtyProvider -> AutoRenderBlockingSync ->
+    // AutoRenderBlockingProvider, all real here.
+    {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 101,
+                overrides: {
+                  data: {
+                    title: "Deferred poll seed",
+                    titleDisplay: "Deferred poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/101",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#101")).toBeInTheDocument();
+      });
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+
+      // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
+      // NotesSection does on an edit.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", true);
+      });
+
+      // The indicator only becomes visible once a poll actually has a
+      // payload queued (AutoRenderBlockingProvider's isBlocked requires
+      // both pendingAutoRenderPayload and
+      // hasDirtyPrSectionsFields) - not from the dirty flag alone.
+      const indicator = document.getElementById("auto-render-blocked-indicator");
+      expect(indicator).toHaveAttribute("hidden");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "deferred-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 101,
+                  overrides: {
+                    data: {
+                      title: "Deferred poll applied",
+                      titleDisplay: "Deferred poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/101",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+
+      // Still deferred - the dirty field hasn't cleared yet. The indicator
+      // itself is now toggled by AutoRenderBlockingProvider.tsx's own
+      // effect (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"),
+      // one React commit after the bridge call above - waitFor accounts
+      // for that, where this used to be a synchronous vanilla DOM write.
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+      await waitFor(() => {
+        expect(indicator).not.toHaveAttribute("hidden");
+      });
+
+      // Field becomes clean - AutoRenderBlockingSync pushes the clean state,
+      // and the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and flushes.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", false);
+      });
+
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["101"]?.data?.title).toBe(
+          "Deferred poll applied",
+        );
+      });
+      await waitFor(() => {
+        expect(indicator).toHaveAttribute("hidden");
+      });
+    }
+  });
+
+  test("a poll that clears while a text field is focused waits for blur before applying, instead of clobbering the focused field", async () => {
+    // Regression coverage for a real gap found while investigating
+    // whether the auto-render-blocking pipeline could move into React
+    // (see REACT_MIGRATION_PLAN.md): getPendingAutoRenderAction's
+    // "wait-for-blur" branch (index.page.js's flushPendingAutoRender,
+    // via pr-data-polling.helpers.ts) had a direct unit test for its own
+    // pure decision function, but nothing exercised the real mechanism -
+    // self-attaching a one-time native "blur" listener on
+    // document.activeElement - end to end. This proves that real
+    // mechanism actually works: a poll that becomes eligible to apply
+    // while a text field is focused does NOT apply immediately, and
+    // applies only once that field is blurred.
+    let focusedInput;
+    try {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 102,
+                overrides: {
+                  data: {
+                    title: "Blur-wait poll seed",
+                    titleDisplay: "Blur-wait poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/102",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#102")).toBeInTheDocument();
+      });
+
+      // A real, focused text-entry element - isTextEntryElement only
+      // checks tagName, so a plain throwaway <input> is a faithful
+      // stand-in for whichever real field the user was actually editing.
+      focusedInput = document.createElement("input");
+      document.body.appendChild(focusedInput);
+      focusedInput.focus();
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Mark PR 102's notes dirty through the real NotesDirtyProvider, as
+      // the sibling test above does.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", true);
+      });
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "blur-wait-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 102,
+                  overrides: {
+                    data: {
+                      title: "Blur-wait poll applied",
+                      titleDisplay: "Blur-wait poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/102",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+
+      // Still deferred - the dirty field hasn't cleared yet.
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+
+      // Field becomes clean - the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and runs its flush check, which (after its
+      // setTimeout(0)) finds document.activeElement is still our focused
+      // text input and chooses "wait-for-blur" instead of applying.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", false);
+      });
+
+      // Give the setTimeout(0) a chance to run, then confirm the payload
+      // is still NOT applied - the focused field must not be clobbered.
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): a real setTimeout wait
+      // here would hang forever now that this describe block's fake
+      // timers are active and nothing else advances them - advance them
+      // explicitly instead.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10);
+      });
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Blur the field - the self-attached one-time listener re-runs
+      // flushPendingAutoRender, which now sees no focused text element
+      // and applies the pending payload.
+      focusedInput.blur();
+
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["102"]?.data?.title).toBe(
+          "Blur-wait poll applied",
+        );
+      });
+    } finally {
+      focusedInput?.remove();
     }
   });
 
@@ -7330,12 +8468,13 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
-
       const insightsToggle = await screen.findByRole("button", {
-        name: "More insights",
+        name: /^More insights for PR #/,
       });
-      const user = userEvent.setup();
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
       await user.click(insightsToggle);
 
       await waitFor(() => {
@@ -7427,7 +8566,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       await waitFor(() => {
         const toggle = document.querySelector(".row-insights-toggle");
@@ -7446,6 +8587,7 @@ describe("index page rendering with Testing Library", () => {
       expect(activityDetailsAfter).toBeTruthy();
       expect(activityDetailsAfter.open).toBe(true);
     }
+    });
   });
 
   test("closed or merged sections sort by timestamps", async () => {
@@ -7702,38 +8844,62 @@ describe("index page rendering with Testing Library", () => {
   // comments finish loading" was removed here: the manual comments
   // composer is React-owned (#author-insights-content-root) with no
   // vanilla-DOM fallback left for this jsdom-only suite to render into.
-  // The actual mechanism under test (composer draft state surviving a
-  // full section rebuild, which is what happens when the async
-  // author-comments GET resolves) lives entirely in
-  // buildManualCommentsSection/draftHelpers, unrelated to React - see
-  // "given a composer draft typed for an author..." in
-  // pr-author-insights.component.test.js for the same coverage, tested
-  // directly against that mechanism instead.
+  // The actual mechanism under test (composer draft state surviving an
+  // async author-comments load) lives entirely in
+  // AuthorInsightsDraftsProvider.tsx's real Context state now - see
+  // AuthorInsightsCommentsSection.test.jsx's own draft/dirty-tracking
+  // tests for the equivalent coverage, tested directly against that
+  // mechanism instead.
 
-  test("form parsing applies credential hints to filter inputs without changing field names", () => {
+  // Window-bridge elimination Phase 7.5: a test here checked the
+  // credential-field hints on the Run Script/filter inputs. Those inputs are
+  // stand-in markup in this harness (injectRunFilterFieldElements), which
+  // only got the hints from index.page.js's DOM pass; the real components now
+  // render them, so the test is gone. Coverage: ContextRunScriptTextInput.test.jsx,
+  // PrNumberFilterInput.test.jsx, react-app.test.jsx and e2e's "all 6
+  // React-portaled non-credential-hint fields" test.
+
+  // Accessibility naming (groundwork for role-based e2e queries that survive
+  // a UI redesign): the page's text areas, content areas and multi-select
+  // filter lists in index.html each have a role and a name. Some live in
+  // tab panels that start hidden, hence { hidden: true }.
+  test("index.html's page areas and filter lists are reachable by role and name", () => {
     initTestPage();
 
-    const repoField = document.getElementById("repo");
-    expect(repoField.name).toBe("repo");
-    expect(repoField.getAttribute("data-lpignore")).toBe("true");
-    expect(repoField.getAttribute("data-1p-ignore")).toBe("true");
-    expect(repoField.getAttribute("data-bwignore")).toBe("true");
-    expect(repoField.getAttribute("autocomplete")).toBe("off");
-    expect(repoField.getAttribute("autocapitalize")).toBe("off");
-    expect(repoField.getAttribute("autocorrect")).toBe("off");
-    expect(repoField.getAttribute("spellcheck")).toBe("false");
-    expect(repoField.getAttribute("data-form-type")).toBe("other");
+    const regions = [
+      "Pull requests",
+      "Latest request output",
+      "Backfill status details",
+      "Backfill log",
+      "PR data summary",
+      "Review statistics",
+      "Author comments",
+      "Status message",
+      "Selected author",
+      "Author's PR notes",
+      "Author's created PRs",
+    ];
+    regions.forEach((name) => {
+      expect(screen.getByRole("region", { name, hidden: true })).toBeInTheDocument();
+    });
 
-    // Verify field names are preserved (not overridden)
-    expect(repoField.name).toBe("repo");
-
-    const prNumbersField = document.getElementById("pr-numbers");
-    expect(prNumbersField.name).toBe("prNumbers");
-    expect(prNumbersField.getAttribute("data-lpignore")).toBe("true");
-
-    const limitField = document.getElementById("limit");
-    expect(limitField.name).toBe("limit");
-    expect(limitField.getAttribute("data-1p-ignore")).toBe("true");
+    const groups = [
+      "Applied table filters",
+      "Backfill status badges",
+      "Review statistics controls",
+      "Filter by label name(s)",
+      "Exclude by label name(s)",
+      "Filter by PR author(s)",
+      "Filter by Assigned user(s)",
+      "Filter by PR approver(s)",
+      "Allow PR authors to resolve threads started by (Actor Names)",
+      "Do not allow PR authors to resolve threads started by (Actor Names)",
+      "Ignore comments from these authors (GitHub logins)",
+      "Ignore reviews from these authors (GitHub logins)",
+    ];
+    groups.forEach((name) => {
+      expect(screen.getByRole("group", { name, hidden: true })).toBeInTheDocument();
+    });
   });
 
   test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
@@ -7860,6 +9026,61 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the
+  // FilterOptionSelect "Any" fields (filter-custom-comments,
+  // filter-other-notes, filter-pr-difficulty, filter-stories,
+  // filter-analysis-of-pr) were never included in
+  // persistUiOptionOverrides/restoreUiOptionOverrides/getUiOptionDefaults -
+  // a real, undocumented persistence gap, not an intentional exclusion
+  // (unlike their separate, deliberate exclusion from auto-apply-on-change).
+  // Covers both directions of that fix for one representative field
+  // (filter-pr-difficulty); the others share the exact same code path.
+  describe("FilterOptionSelect persistence (persistence-gap fix)", () => {
+    test("given a FilterOptionSelect value, when it changes, then it is persisted to user-defaults", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 850 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+      const user = userEvent.setup();
+      activateManagementTabForTest("script");
+
+      const prDifficultySelect = document.getElementById("filter-pr-difficulty");
+      fetchMock.mockClear();
+      await user.selectOptions(prDifficultySelect, "3");
+      syncFilterStateFromElement(prDifficultySelect, "filterPrDifficulty");
+
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides["filter-pr-difficulty"]).toBe("3");
+      });
+    });
+
+    test("given user-defaults with a FilterOptionSelect value, when page loads, then it is restored", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 851 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+        userDefaultsOverrides: {
+          repo: "owner/repo",
+          "filter-pr-difficulty": "4",
+        },
+      });
+
+      activateManagementTabForTest("script");
+
+      // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // restore now lands in FilterStateProvider's own Context, not this
+      // static <select> directly (see installFilterStateProviderBridge's
+      // own comment) - read the real source of truth instead of the DOM.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.filterPrDifficulty).toBe("4");
+      });
+    });
+  });
+
   describe("change detection filters", () => {
     test("given actorsMap with multiple users, when page loads, then comment author filter list is populated with checkboxes", async () => {
       initTestPage({
@@ -7888,10 +9109,15 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
 
-      const list = getMultiSelectList("change-filter-ignore-comment-authors-list");
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-comment-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-comment-authors-list")).toBe(false);
 
@@ -7926,10 +9152,15 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
 
-      const list = getMultiSelectList("change-filter-ignore-review-authors-list");
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-review-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-review-authors-list")).toBe(false);
 
@@ -7953,8 +9184,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
 
       const commentList = getMultiSelectList("change-filter-ignore-comment-authors-list");
       const reviewList = getMultiSelectList("change-filter-ignore-review-authors-list");
@@ -7975,7 +9205,7 @@ describe("index page rendering with Testing Library", () => {
       expect(commentCheckboxes.length).toBe(reviewCheckboxes.length);
     });
 
-    test("given change filter selections, when Apply filters clicked, then selections are persisted to user-defaults", async () => {
+    test("given change filter selections, when they are made, then they are persisted to user-defaults", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 804 }],
@@ -7989,7 +9219,12 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
+      await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
       // Select comment authors to ignore
       await clickMultiSelectCheckbox(
@@ -8016,40 +9251,24 @@ describe("index page rendering with Testing Library", () => {
       );
       commitPatternsTextarea.value = "^docs:\n^test:\n^chore\\(deps\\):";
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters).toBeDefined();
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "dependabot[bot]",
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^chore\\(deps\\):",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters).toBeDefined();
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "dependabot[bot]",
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^chore\\(deps\\):",
-      ]);
     });
 
-    test("given commit patterns with whitespace and empty lines, when Apply filters clicked, then patterns are trimmed and empty lines removed", async () => {
+    test("given commit patterns with whitespace and empty lines, when entered, then the persisted patterns are trimmed and empty lines removed", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 805 }],
@@ -8058,39 +9277,22 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
       );
       commitPatternsTextarea.value = "  ^docs:  \n\n  ^test:  \n   \n^style: formatting";
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^style: formatting",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^style: formatting",
-      ]);
     });
 
     test("given user-defaults with change filters, when page loads, then selections are restored", async () => {
@@ -8115,32 +9317,58 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
+      await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
-      // Check comment author selections are restored
-      const commentAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-comment-authors-list",
-      );
-      expect(commentAuthorsSelections).toEqual(
-        expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
-      );
-      expect(commentAuthorsSelections.length).toBe(2);
+      // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // these 2 lists are now also Context-controlled
+      // (ChangeFilterActorSelectionContext) - the pending-selection restore
+      // path's own clear-after-consuming step (setPendingMultiSelectSelection
+      // (key, null), pr-pending-multi-select-selections.helpers.ts) notifies
+      // this component's subscription again, re-running the seeding effect
+      // one more time before the checked-state Context write from the
+      // previous pass has committed to the DOM - same transient settling
+      // window the existing thread-resolution restore test above already
+      // wraps in waitFor (getSelectedMultiSelectValues reads the live DOM,
+      // which briefly lags the Context write). A plain synchronous
+      // assertion here was fine before these 2 lists had this extra
+      // Context-driven re-render step.
+      await waitFor(() => {
+        // Check comment author selections are restored
+        const commentAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-comment-authors-list",
+        );
+        expect(commentAuthorsSelections).toEqual(
+          expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
+        );
+        expect(commentAuthorsSelections.length).toBe(2);
+      });
 
       // Check review author selections are restored
-      const reviewAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-review-authors-list",
-      );
-      expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      await waitFor(() => {
+        const reviewAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-review-authors-list",
+        );
+        expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      });
 
-      // Check commit patterns are restored
-      const commitPatternsTextarea = document.getElementById(
-        "change-filter-ignore-commit-patterns",
-      );
-      expect(commitPatternsTextarea.value).toBe("^docs:\n^test:\n^chore\\(deps\\):");
+      // Check commit patterns are restored - Phase E (see
+      // REACT_MIGRATION_PLAN.md, "Full migration roadmap"): restore now
+      // lands in FilterStateProvider's own Context, not this static
+      // <textarea> directly (see installFilterStateProviderBridge's own
+      // comment) - read the real source of truth instead of the DOM.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.changeFilterIgnoreCommitPatterns).toBe(
+          "^docs:\n^test:\n^chore\\(deps\\):",
+        );
+      });
     });
 
-    test("given change filter selections, when selections are changed and Apply filters clicked, then new selections replace old ones", async () => {
+    test("given change filter selections, when selections are changed, then new selections replace old ones", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 807 }],
@@ -8163,7 +9391,12 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
+      await waitFor(() => {
+        expect(
+          getSelectedMultiSelectValues("change-filter-ignore-comment-authors-list"),
+        ).toEqual(["dependabot[bot]"]);
+      });
 
       // Verify initial state
       expect(
@@ -8192,37 +9425,21 @@ describe("index page rendering with Testing Library", () => {
       );
       commitPatternsTextarea.value = "^test:\n^style:";
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
+          expect.arrayContaining(["reviewer1", "reviewer2"]),
+        );
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
-        expect.arrayContaining(["reviewer1", "reviewer2"]),
-      );
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
     });
 
-    test("given no change filter selections, when Apply filters clicked, then empty arrays are persisted", async () => {
+    test("given a change filter selection, when it is cleared again, then empty lists are persisted (changeFilters omitted)", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 808 }],
@@ -8234,32 +9451,26 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
+      activateManagementTabForTest("script");
       await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
       });
 
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      // When all filter arrays are empty, changeFilters should be removed from saved overrides
-      expect(savedOverrides.changeFilters).toBeUndefined();
+      // Saves only happen on a change (the debounce never fires on mount), so
+      // check and uncheck a reviewer: the final state has every list empty.
+      fetchMock.mockClear();
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        // When all filter arrays are empty, changeFilters should be removed from saved overrides
+        expect(savedOverrides.changeFilters).toBeUndefined();
+      });
     });
 
-    test("given commit patterns textarea with complex regex, when Apply filters clicked, then patterns are preserved exactly", async () => {
+    test("given commit patterns textarea with complex regex, when persisted, then patterns are preserved exactly", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 809 }],
@@ -8268,8 +9479,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+      activateManagementTabForTest("script");
 
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
@@ -8277,59 +9487,15 @@ describe("index page rendering with Testing Library", () => {
       // Complex regex patterns with special characters
       commitPatternsTextarea.value = "^chore\\(deps(-dev)?\\): bump\n^(docs|test):\\s+[A-Z]\n^Merge branch .* into .*$";
       commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      syncFilterStateFromElement(commitPatternsTextarea, "changeFilterIgnoreCommitPatterns");
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^chore\\(deps(-dev)?\\): bump",
+          "^(docs|test):\\s+[A-Z]",
+          "^Merge branch .* into .*$",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^chore\\(deps(-dev)?\\): bump",
-        "^(docs|test):\\s+[A-Z]",
-        "^Merge branch .* into .*$",
-      ]);
-    });
-  });
-
-  describe("React mount failure (Phase 6 - see REACT_MIGRATION_PLAN.md)", () => {
-    test("given window.mountReactPrTable genuinely throws, when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
-      // Distinct from the ordinary "React's deferred module hasn't finished
-      // loading yet" race (which this suite's installReactTableMountBridge
-      // pairing never simulates - see renderPrData's own comment on why that
-      // race now leaves #pr-sections empty rather than falling back to a
-      // vanilla table build). This is the other branch: mountReactTable's
-      // (index.page.js) try/catch around window.mountReactPrTable() catches
-      // a genuine failure - renderPrData must surface
-      // renderPrTableMountError()'s honest error state, not pretend to
-      // recover.
-      initTestPage({
-        dataPayload: createMultiPrPayload({
-          prs: [{ scenario: "open-no-change", prNumber: 1 }],
-        }),
-      });
-      window.mountReactPrTable = () => {
-        throw new Error("React mount failed");
-      };
-
-      const errorMessage = await screen.findByText(
-        "Failed to load the PR table. Please refresh the page.",
-      );
-      expect(errorMessage).toHaveClass("pr-table-mount-error");
-      expect(screen.queryByText("#1")).toBeNull();
     });
   });
 });

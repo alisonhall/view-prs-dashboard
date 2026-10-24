@@ -14,26 +14,52 @@ const renderExportTab = ({ initialPayload, selectedRepo } = {}) =>
     </PrDataProvider>,
   );
 
+// No `repo` field on the entry itself (deliberately) - getPerPrUserStateFromPayload
+// always contributes 4 fixed userStatePaths (ackByRepo/inReviewByRepo/
+// notesByPrNumber/reverifyByRepo) regardless of entry content, and
+// buildExportPayload's own repo resolution already falls back to
+// payload.lastRun.repo - so omitting it here keeps the catalog's *data*
+// side down to just the 2 fields this test cares about (prNumber/title),
+// for a total of 6 real checkboxes (confirmed by running the real
+// getFieldCatalog against this fixture).
 const samplePayload = {
   byPrNumber: {
-    11: { prNumber: 11, repo: 'owner/repo', title: 'PR 11' },
+    11: { prNumber: 11, title: 'PR 11' },
   },
   lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
 };
 
+// getVisiblePrNumbersFromSectionsHost (pr-export.helpers.ts) is a real,
+// unmockable function now (Phase 7, see REACT_MIGRATION_PLAN.md -
+// ExportTab.jsx imports it directly instead of reading window.
+// getVisiblePrNumbersFromSectionsHost) - it reads the real #pr-sections
+// markup PrSection.jsx/PrNumberCell.jsx render in the actual app, which
+// this isolated ExportTab-only test harness never mounts. Build the same
+// shape by hand (an open .pr-group-section containing a .pr-number-cell
+// with matching data-pr-number) so "visible PR" assertions still have a
+// real, non-mocked #pr-sections to read from.
+const mountPrSectionsHost = (prNumbers) => {
+  const host = document.createElement('div');
+  host.id = 'pr-sections';
+  const section = document.createElement('details');
+  section.className = 'pr-group-section';
+  section.open = true;
+  prNumbers.forEach((prNumber) => {
+    const cell = document.createElement('td');
+    cell.className = 'pr-number-cell';
+    cell.setAttribute('data-pr-number', String(prNumber));
+    section.appendChild(cell);
+  });
+  host.appendChild(section);
+  document.body.appendChild(host);
+  return host;
+};
+
 describe('ExportTab', () => {
+  let prSectionsHost;
+
   beforeEach(() => {
-    window.getExportFieldCatalog = jest.fn(() => ({
-      dataPaths: ['prNumber', 'title'],
-      userStatePaths: ['notesByPrNumber.otherNotes'],
-    }));
-    window.getVisiblePrNumbersFromSectionsHost = jest.fn(() => ['11']);
-    window.buildExportPayload = jest.fn(({ visiblePrNumbers, selectedDataPaths, selectedUserStatePaths }) => ({
-      prCount: visiblePrNumbers.length,
-      prs: visiblePrNumbers.map((prNumber) => ({ prNumber })),
-      selectedFields: { data: selectedDataPaths, userState: selectedUserStatePaths },
-    }));
-    window.safeJsonStringify = jest.fn((value) => JSON.stringify(value));
+    prSectionsHost = mountPrSectionsHost([11]);
 
     global.fetch = jest.fn((url, init = {}) => {
       const method = String(init.method || 'GET').toUpperCase();
@@ -48,24 +74,30 @@ describe('ExportTab', () => {
   });
 
   afterEach(() => {
-    delete window.getExportFieldCatalog;
-    delete window.getVisiblePrNumbersFromSectionsHost;
-    delete window.buildExportPayload;
-    delete window.safeJsonStringify;
+    prSectionsHost?.remove();
     jest.restoreAllMocks();
+  });
+
+  // Accessibility naming: the field list, status and preview are findable by
+  // role and name (e2e uses these instead of ids/classes).
+  test('given the tab, when rendered, then the field list, status and preview are named', async () => {
+    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Export fields' })).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'Export status' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Export preview' })).toBeInTheDocument();
   });
 
   test('given a populated field catalog, when rendered, then it lists data and user-state checkboxes, all selected by default', async () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
   });
 
   test('given no exportable fields, when rendered, then it shows the empty-state message', () => {
-    window.getExportFieldCatalog = jest.fn(() => ({ dataPaths: [], userStatePaths: [] }));
     renderExportTab({ initialPayload: {}, selectedRepo: '' });
 
     expect(screen.getByText('No exportable fields found in current payload.')).toBeInTheDocument();
@@ -94,7 +126,6 @@ describe('ExportTab', () => {
       expect(screen.getByRole('checkbox', { name: /prNumber/ })).toBeChecked();
     });
     expect(screen.getByRole('checkbox', { name: /^DATA title$/ })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /otherNotes/ })).not.toBeChecked();
   });
 
   test('given the user clicks "Select none" then "Data only", when selecting, then only data checkboxes end up checked', async () => {
@@ -102,7 +133,7 @@ describe('ExportTab', () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
 
@@ -112,7 +143,6 @@ describe('ExportTab', () => {
     await user.click(screen.getByRole('button', { name: 'Data only' }));
     expect(screen.getByRole('checkbox', { name: /prNumber/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /^DATA title$/ })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /otherNotes/ })).not.toBeChecked();
   });
 
   test('given fields are selected, when Preview JSON is clicked, then the selection is persisted and the preview is rendered', async () => {
@@ -120,14 +150,14 @@ describe('ExportTab', () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
 
     await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
 
     await waitFor(() => {
-      expect(window.buildExportPayload).toHaveBeenCalled();
+      expect(screen.getByText('Prepared export JSON for 1 visible PR.')).toBeInTheDocument();
     });
 
     const putCall = global.fetch.mock.calls.find(
@@ -136,11 +166,14 @@ describe('ExportTab', () => {
     expect(putCall).toBeDefined();
     const body = JSON.parse(putCall[1].body);
     expect(body['export-data-fields'].sort()).toEqual(['prNumber', 'title']);
-    expect(body['export-user-state-fields']).toEqual(['notesByPrNumber.otherNotes']);
+    expect(body['export-user-state-fields'].sort()).toEqual([
+      'ackByRepo',
+      'inReviewByRepo',
+      'notesByPrNumber',
+      'reverifyByRepo',
+    ]);
 
-    await waitFor(() => {
-      expect(screen.getByText('Prepared export JSON for 1 visible PR.')).toBeInTheDocument();
-    });
+    expect(screen.getByText(/"prNumber": "11"/)).toBeInTheDocument();
   });
 
   test('given no fields are selected, when Preview JSON is clicked, then a validation error is shown instead of building JSON', async () => {
@@ -148,7 +181,7 @@ describe('ExportTab', () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
     await user.click(screen.getByRole('button', { name: 'Select none' }));
@@ -157,7 +190,6 @@ describe('ExportTab', () => {
     await waitFor(() => {
       expect(screen.getByText('Select at least one field before exporting.')).toBeInTheDocument();
     });
-    expect(window.buildExportPayload).not.toHaveBeenCalled();
   });
 
   test('given a browser with clipboard support, when Copy JSON is clicked, then the export JSON is written to the clipboard', async () => {
@@ -167,7 +199,7 @@ describe('ExportTab', () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
     await user.click(screen.getByRole('button', { name: 'Copy JSON' }));
@@ -193,7 +225,7 @@ describe('ExportTab', () => {
     renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
       screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
     });
     await user.click(screen.getByRole('button', { name: 'Download JSON' }));

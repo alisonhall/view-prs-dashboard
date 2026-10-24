@@ -4,23 +4,7 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ActivityEventsSection } = require('./ActivityEventsSection');
 
-function installDefaultHelpers() {
-  window.asArray = (v) => (Array.isArray(v) ? v : []);
-  window.buildFallbackActivityEvents = () => [];
-  window.buildActivityEventKey = (e) => `${e?.sourceId || ''}|${e?.occurredAt || ''}`;
-  window.normalizePrRootUrl = (url) => String(url || '');
-}
-
-function clearHelpers() {
-  ['asArray', 'buildFallbackActivityEvents', 'buildActivityEventKey', 'normalizePrRootUrl'].forEach(
-    (key) => delete window[key],
-  );
-}
-
 describe('ActivityEventsSection', () => {
-  beforeEach(installDefaultHelpers);
-  afterEach(clearHelpers);
-
   test('given no activity events, when rendering, then renders nothing', () => {
     const { container } = render(<ActivityEventsSection pr={{}} actorsMap={{}} />);
     expect(container).toBeEmptyDOMElement();
@@ -45,6 +29,21 @@ describe('ActivityEventsSection', () => {
     expect(items[0]).toHaveTextContent('bob');
     expect(items[0]).toHaveTextContent('approved');
     expect(items[1]).toHaveTextContent('first comment');
+  });
+
+  test("given a 'closed' event, when rendering, then it gets its own dedicated kind class (not the generic 'system' fallback)", () => {
+    const pr = {
+      activityTimeline: [
+        {
+          events: [
+            { sourceId: 'closed', occurredAt: '2026-01-05T00:00:00Z', actor: 'unknown', type: 'closed', channel: 'system' },
+          ],
+        },
+      ],
+    };
+    render(<ActivityEventsSection pr={pr} actorsMap={{}} />);
+    const item = document.querySelector('.insight-list-item');
+    expect(item).toHaveClass('insight-event-kind-closed');
   });
 
   test('given a commit event with a long message body, when rendering, then truncates it past 280 characters', () => {

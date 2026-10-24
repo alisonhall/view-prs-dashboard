@@ -11,6 +11,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
+import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
 
 function summarizeDiffText(diffText) {
   const lines = String(diffText || '').split(/\r?\n/);
@@ -230,17 +233,10 @@ export function PrJsonModal({ target, payload, onClose }) {
 
   const [detailsPayload, setDetailsPayload] = useState(null);
   const [diffData, setDiffData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingState, setLoading] = useState(false);
   const [wrapped, setWrapped] = useState(false);
   const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
   const [copyDiffLabel, setCopyDiffLabel] = useState('Copy diff');
-
-  const safeJsonStringify =
-    window.safeJsonStringify || ((value) => JSON.stringify(value ?? null, null, 2));
-  const getPerPrUserStateFromPayload =
-    window.getPerPrUserStateFromPayload ||
-    (() => ({ notesByPrNumber: null, ackByRepo: null, reverifyByRepo: null, inReviewByRepo: null }));
-  const defaultRepo = window.DEFAULT_REPO || '';
 
   // Open/close lifecycle: build the JSON payload synchronously, fetch the
   // diff, manage focus + Escape/Tab handling + body scroll lock, matching
@@ -279,6 +275,12 @@ export function PrJsonModal({ target, payload, onClose }) {
       const key = String(event?.key || '');
       if (key === 'Escape') {
         event.preventDefault?.();
+        // This is a true modal (focus trap, body scroll lock) that can sit
+        // on top of other dismissable overlays (e.g. the activity drawer,
+        // ActivityDrawer.jsx - also closes on Escape via its own window
+        // listener). Stopping propagation here means Escape closes only
+        // the topmost/true modal, not everything listening for it at once.
+        event.stopPropagation?.();
         onClose?.();
         return;
       }
@@ -305,6 +307,12 @@ export function PrJsonModal({ target, payload, onClose }) {
 
     return () => {
       cancelled = true;
+      // Drop the previous PR's data on close/target change, so reopening
+      // (possibly for a different PR) starts from "loading" instead of
+      // flashing the last PR's JSON for a frame before the open effect
+      // above replaces it.
+      setDetailsPayload(null);
+      setDiffData(null);
       document.removeEventListener('keydown', handleKeydown);
       if (document.body?.style) {
         document.body.style.overflow = bodyOverflowRef.current;
@@ -323,6 +331,13 @@ export function PrJsonModal({ target, payload, onClose }) {
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // detailsPayload is only set by the open effect above, so the very first
+  // render after opening has loadingState=false and no payload yet - without
+  // this it would flash empty JSON blocks for a frame (and a test or
+  // assistive tech reading the dialog in that window sees nothing, not
+  // "Loading..."). No payload yet always means still loading.
+  const loading = loadingState || !detailsPayload;
 
   const diffBlocks = buildDiffBlocks(diffData?.ok === false ? '' : diffData?.diffText || '');
   const diffMeta = loading ? 'Loading diff details...' : formatDiffSummaryLine(diffData);
@@ -411,21 +426,21 @@ export function PrJsonModal({ target, payload, onClose }) {
         <div id="pr-json-modal-content" className="pr-json-modal-content">
           <details className="pr-json-section" open>
             <summary>Data File Entry</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="Data File Entry">
               {loading ? 'Loading data file entry...' : safeJsonStringify(detailsPayload?.dataFile)}
             </pre>
           </details>
 
           <details className="pr-json-section" open>
             <summary>PR Detail File</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="PR Detail File">
               {loading ? 'Loading pr-detail file entry...' : safeJsonStringify(detailsPayload?.prDetailFile)}
             </pre>
           </details>
 
           <details className="pr-json-section" open>
             <summary>User State Entry</summary>
-            <pre className="pr-json-block">
+            <pre className="pr-json-block" role="region" aria-label="User State Entry">
               {loading ? 'Loading user-state entry...' : safeJsonStringify(detailsPayload?.userStateFile)}
             </pre>
           </details>

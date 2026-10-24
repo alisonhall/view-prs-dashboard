@@ -19,6 +19,8 @@ jobs:
 
       - run: npm run lint:check
 
+      - run: npm run typecheck
+
   test:
     strategy:
       fail-fast: false

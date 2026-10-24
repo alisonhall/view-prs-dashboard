@@ -23,58 +23,169 @@ jest.mock('./PrSection', () => {
   };
 });
 
-// ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.js/
-// pr-smart-groups.helpers.js are real ES modules now, imported directly by
+// ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts/
+// pr-smart-groups.helpers.ts are real ES modules now, imported directly by
 // PrTableApp.jsx instead of read off window.ViewPrsSectionConfigHelpers/
 // window.ViewPrsSmartGroupsHelpers - these tests used to swap window
 // globals per-test to control their behavior; jest.mock + mockImplementation
 // is the equivalent for a real import.
-jest.mock('../helpers/pr-section-config.helpers.js', () => ({
+jest.mock('../helpers/pr-section-config.helpers.ts', () => ({
   createPrSectionConfigHelpers: jest.fn(),
 }));
-jest.mock('../helpers/pr-smart-groups.helpers.js', () => ({
+jest.mock('../helpers/pr-smart-groups.helpers.ts', () => ({
   createPrSmartGroupsHelpers: jest.fn(),
+}));
+// Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.ts is a
+// real ES module now too, imported directly by PrTableApp.jsx instead of
+// read off window.sortRowsByPrNumberDesc/etc - same "jest.mock is the
+// equivalent for a real import" reasoning as above. Unlike those two,
+// this mock keeps the REAL sorting behavior for every export (tests rely
+// on rows actually being sorted) and only wraps sortRowsByPrNumberDesc in
+// a jest.fn() so the one test that cares about call counts (see "row
+// sorting" below) can assert on it - normalizeRows/sortRowsByDateFieldDesc
+// pass through untouched.
+jest.mock('../helpers/pr-row-sorting.helpers.ts', () => {
+  const actual = jest.requireActual('../helpers/pr-row-sorting.helpers.ts');
+  return { ...actual, sortRowsByPrNumberDesc: jest.fn(actual.sortRowsByPrNumberDesc) };
+});
+
+// Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// PrTableApp.jsx no longer accepts onAckAction/onApplyLabel as props - it
+// builds its own real handlers via useAckLabelActions(), which reaches
+// the real pr-ack-label-actions.helpers.ts factory and (through it) the
+// real postJson. Mocking postJson here is the new seam for the
+// "per-row busy spinner" tests below, replacing the old prop-injection
+// seam.
+jest.mock('../helpers/pr-http.helpers.ts', () => ({
+  postJson: jest.fn(),
 }));
 
 const { PrTableApp } = require('./PrTableApp');
+const { postJson } = require('../helpers/pr-http.helpers.ts');
+const { sortRowsByPrNumberDesc } = require('../helpers/pr-row-sorting.helpers.ts');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): pushes
+// payloads through this probe (PrDataProvider's applyFreshTablePayload), not
+// window.updateReactPrTable.
+const prDataProbe = createPrDataProbe();
 const { NeedsAttentionContext, defaultNeedsAttention } = require('../state/NeedsAttentionContext');
-const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.js');
-const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.js');
+const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
+const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
+
+// Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
+// tests below that used to drive busy/queued state through those bridges
+// now call this Context value's own markPrBusy/clearPrBusy/markPrQueued/
+// clearPrQueued directly instead, same functions useAckLabelActions.tsx/
+// useQuickCheckActions.tsx already call.
+let capturedActivityQueue;
+function ActivityQueueProbe() {
+  capturedActivityQueue = usePrActivityQueue();
+  return null;
+}
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor) - the 3 selection Providers wrap PrDataProvider/
+// FilterStateProvider now, not the other way around, matching
+// react-app.jsx's real AppRoot order after this phase's reorder.
+function AllSelectionProviders({ children }) {
+  return (
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>{children}</ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
+  );
+}
+const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.ts');
+const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.ts');
 
 // Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // PrTableApp reads payload/selectedRepo/visiblePrNumbers from
 // <PrDataProvider /> now, not as direct props - this wraps every render the
 // same way mountReactPrTable (react-app.jsx) really does. Updates after the
-// initial render go through window.updateReactPrTable (the Provider's own
-// bridge), not a `rerender` with new props - see the "delivers a fresh
+// initial render go through the Provider's own applyFreshTablePayload (via
+// prDataProbe; it was the window.updateReactPrTable bridge), not a
+// `rerender` with new props - see the "delivers a fresh
 // payload" test below for the real post-mount update path.
 //
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `needsAttention`
-// merges onto defaultNeedsAttention (state/NeedsAttentionContext.jsx) and is
+// merges onto defaultNeedsAttention (state/NeedsAttentionContext.tsx) and is
 // provided via Context - the real app's <NeedsAttentionProvider /> derives
 // this from FilterStateProvider/ActorIdentityContext, but tests here want
 // direct per-test control instead, the same way renderCell's
 // actorIdentityOverrides works in PrApprovedCell.test.jsx.
-const renderPrTableApp = ({ initialPayload, selectedRepo, visiblePrNumbers, needsAttention, ...tableProps } = {}) =>
+//
+// Activity drawer feature (see REACT_MIGRATION_PLAN.md): busyPrNumbers/
+// queuedPrNumbers moved from PrTableApp's own local state into
+// PrActivityQueueProvider.tsx - this wraps every render the same way
+// react-app.jsx's real AppRoot now does. Tenth follow-up (see
+// REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): the markPrsBusy/
+// clearPrsBusy/markPrsQueued/clearPrsQueued window bridges that used to
+// drive this in tests are gone - ActivityQueueProbe above exposes the
+// same Context functions directly instead.
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+// is no longer read from PrDataProvider by PrTableApp - useVisiblePrNumbers()
+// derives it live from Context instead (see that hook's own comment).
+// PrDataProvider itself stopped accepting an initial value for it once the
+// vanilla computation that used to feed it was confirmed dead and deleted
+// (see REACT_MIGRATION_PLAN.md's cleanup entry). FilterStateProvider/
+// RowFilterSelectionProvider are required ancestors for useVisiblePrNumbers()
+// - `filterStateValues` lets an individual test override the defaults
+// below (e.g. to exercise a specific scope/PR-number filter) without every
+// existing call site needing to pass a full values object.
+const renderPrTableApp = ({
+  initialPayload,
+  selectedRepo,
+  needsAttention,
+  filterStateValues,
+  ...tableProps
+} = {}) =>
   render(
-    <PrDataProvider
-      initialPayload={initialPayload}
-      initialSelectedRepo={selectedRepo}
-      initialVisiblePrNumbers={visiblePrNumbers}
-    >
-      <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
-        <PrTableApp {...tableProps} />
-      </NeedsAttentionContext.Provider>
-    </PrDataProvider>,
+    <AllSelectionProviders>
+      <PrDataProvider
+        initialPayload={initialPayload}
+        initialSelectedRepo={selectedRepo}
+      >
+        <prDataProbe.PrDataProbe />
+        <FilterStateProvider
+          initialValues={{
+            scopeMode: 'all',
+            filterPrNumbers: '',
+            alwaysShowInReview: false,
+            filterCustomComments: '',
+            filterOtherNotes: '',
+            filterPrDifficulty: '',
+            filterStories: '',
+            filterAnalysisOfPr: '',
+            ...filterStateValues,
+          }}
+        >
+          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
+            <PrActivityQueueProvider>
+              <ActivityQueueProbe />
+              <PrTableApp {...tableProps} />
+            </PrActivityQueueProvider>
+          </NeedsAttentionContext.Provider>
+        </FilterStateProvider>
+      </PrDataProvider>
+    </AllSelectionProviders>,
   );
 
 function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
   // grouped.<key> array, in a fixed order, mirroring the shape
-  // pr-section-config.helpers.js actually returns.
+  // pr-section-config.helpers.ts actually returns.
   createPrSectionConfigHelpers.mockImplementation(
-    // Mirrors pr-section-config.helpers.js's real safe-default behavior: if
+    // Mirrors pr-section-config.helpers.ts's real safe-default behavior: if
     // the caller doesn't override resolvePrSectionOpenState, each section
     // falls back to its own configured default (false for lifecycle
     // sections, whatever the smart group specifies for its own).
@@ -122,33 +233,13 @@ function installSmartGroupHelpers() {
 function clearWindowHelpers() {
   createPrSectionConfigHelpers.mockReset();
   createPrSmartGroupsHelpers.mockReset();
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): window.isInReviewEnabled is
+  // confirmed dead for PrTableApp (checkNeedsAttention never reads it -
+  // see the regression tests below that set it specifically to prove
+  // that) - this cleanup just avoids the value leaking across tests, it
+  // has no effect on PrTableApp's own behavior either way.
   delete window.isInReviewEnabled;
-  delete window.updateReactPrTable;
-  delete window.sortRowsByPrNumberDesc;
-  delete window.sortRowsByDateFieldDesc;
-  delete window.normalizeRows;
-}
-
-// Real equivalents of index.page.js's row-sorting functions (mirrored here
-// rather than requiring the whole vanilla script), so tests can verify
-// PrTableApp actually wires these in rather than leaving rows unsorted.
-function installSortHelpers() {
-  window.sortRowsByPrNumberDesc = (rows) =>
-    rows.sort((a, b) => Number(a?.data?.number || a?.prNumber || 0) < Number(b?.data?.number || b?.prNumber || 0) ? 1 : -1);
-  window.sortRowsByDateFieldDesc = (rows, fieldName) =>
-    rows.sort((a, b) => {
-      const dateA = Date.parse(String(a?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
-      const dateB = Date.parse(String(b?.data?.[fieldName] || '')) || Number.NEGATIVE_INFINITY;
-      if (dateA !== dateB) return dateB - dateA;
-      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-    });
-  window.normalizeRows = (rows) =>
-    rows.sort((a, b) => {
-      const orderA = Number.isFinite(Number(a?.rowOrder)) ? Number(a.rowOrder) : Number.MAX_SAFE_INTEGER;
-      const orderB = Number.isFinite(Number(b?.rowOrder)) ? Number(b.rowOrder) : Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) return orderA - orderB;
-      return Number(b?.prNumber || 0) - Number(a?.prNumber || 0);
-    });
+  prDataProbe.reset();
 }
 
 function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
@@ -164,6 +255,7 @@ function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
 describe('PrTableApp', () => {
   beforeEach(() => {
     capturedSectionProps.length = 0;
+    postJson.mockReset();
     installSectionHelpers();
     // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.jsx's
     // `if (prSmartGroupsHelperFactory)` guard is always true now (a real
@@ -190,7 +282,7 @@ describe('PrTableApp', () => {
   // ES module cleanup (see REACT_MIGRATION_PLAN.md): the "helpers module
   // entirely missing" scenario this used to cover (window.ViewPrsX never
   // set) is structurally impossible now that PrTableApp.jsx imports
-  // pr-section-config.helpers.js directly - a real ES import always
+  // pr-section-config.helpers.ts directly - a real ES import always
   // resolves before this component's own code runs, so `helpers` can never
   // be falsy via this path. Removed rather than kept as dead coverage for
   // something that can no longer happen.
@@ -289,7 +381,7 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps[0].getPrFlags('1')).toEqual({ isFlagged: false, isInReview: false, isAcknowledged: false });
   });
 
-  test('given window.updateReactPrTable delivers a fresh payload (the real post-mount update path - see PrDataProvider.jsx, Track C slice C2c), when called, then the new payload is reflected', () => {
+  test('given applyFreshTablePayload delivers a fresh payload (the real post-mount update path - see PrDataProvider.tsx), when called, then the new payload is reflected', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     const payloadB = {
       byPrNumber: {
@@ -302,17 +394,49 @@ describe('PrTableApp', () => {
 
     capturedSectionProps.length = 0;
     React.act(() => {
-      window.updateReactPrTable(payloadB);
+      prDataProbe.applyFreshTablePayload(payloadB);
     });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(2);
   });
 
-  test('given window.updateReactPrTable is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
+  test('given a series of fresh payloads, when each is delivered, then the row action handlers keep the same identity (regression: Chrome/Edge "Error code: 5" renderer OOM)', () => {
+    // useCallback handlers with differing deps chained older render
+    // scopes together through the memoized rows that hold them, each
+    // pinning that render's payload - one full payload leaked per data
+    // change. Stable identities mean no older render is reachable.
+    const makePayload = (count) => ({
+      byPrNumber: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          index + 1,
+          makeEntry({ prNumber: String(index + 1), repo: 'owner/repo', section: 'open' }),
+        ]),
+      ),
+    });
+    const handlerNames = ['onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'];
+    const pickHandlers = () => {
+      const props = capturedSectionProps.find((p) => p.section.key === 'open');
+      return Object.fromEntries(handlerNames.map((name) => [name, props[name]]));
+    };
+    renderPrTableApp({ initialPayload: makePayload(1), selectedRepo: 'owner/repo' });
+    const initialHandlers = pickHandlers();
+    handlerNames.forEach((name) => expect(typeof initialHandlers[name]).toBe('function'));
+
+    for (let count = 2; count <= 5; count += 1) {
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        prDataProbe.applyFreshTablePayload(makePayload(count));
+      });
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(count);
+      handlerNames.forEach((name) => expect(pickHandlers()[name]).toBe(initialHandlers[name]));
+    }
+  });
+
+  test('given applyFreshTablePayload is called again with the same payload reference, when nothing actually changed, then the content is still correct', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
     capturedSectionProps.length = 0;
     React.act(() => {
-      window.updateReactPrTable(payload);
+      prDataProbe.applyFreshTablePayload(payload);
     });
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(1);
   });
@@ -454,11 +578,15 @@ describe('PrTableApp', () => {
 
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       const buildTree = (attentionFlag) => (
-        <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-          <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
-            <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
-          </NeedsAttentionContext.Provider>
-        </PrDataProvider>
+        <AllSelectionProviders>
+          <PrDataProvider initialPayload={payload} initialSelectedRepo="">
+            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+              <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
+                <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
+              </NeedsAttentionContext.Provider>
+            </FilterStateProvider>
+          </PrDataProvider>
+        </AllSelectionProviders>
       );
 
       const { rerender } = render(buildTree(false));
@@ -472,8 +600,6 @@ describe('PrTableApp', () => {
   });
 
   describe('row sorting', () => {
-    beforeEach(installSortHelpers);
-
     test('given open PRs in arbitrary order, when rendering, then the Open section lists them newest-PR-number-first', () => {
       const payload = {
         byPrNumber: {
@@ -534,11 +660,12 @@ describe('PrTableApp', () => {
       // (a `sections` useMemo dependency) without changing `payload`, so
       // `entriesForRepo`'s entry objects are the exact same references -
       // the cache should hit and skip re-sorting entirely.
-      // installSortHelpers() installs plain (non-spy) functions; wrap with
-      // jest.fn() here, preserving the real sorting behavior, so this test
-      // alone can count calls without affecting the other tests in this
-      // describe block.
-      window.sortRowsByPrNumberDesc = jest.fn(window.sortRowsByPrNumberDesc);
+      // sortRowsByPrNumberDesc is the module-level jest.fn()-wrapped real
+      // implementation set up at the top of this file (see the
+      // jest.mock('../helpers/pr-row-sorting.helpers.ts', ...) call) -
+      // clear it here so this test's own call count isn't polluted by
+      // earlier tests in this describe block also exercising real sorting.
+      sortRowsByPrNumberDesc.mockClear();
 
       const payload = {
         byPrNumber: {
@@ -547,7 +674,7 @@ describe('PrTableApp', () => {
         },
       };
       renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
-      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
 
       const openSectionBefore = capturedSectionProps.find((p) => p.section.key === 'open');
       capturedSectionProps.length = 0;
@@ -557,7 +684,7 @@ describe('PrTableApp', () => {
 
       expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs.map((e) => e.prNumber)).toEqual(['20', '10']);
       // Not called again - the cache returned the previous result untouched.
-      expect(window.sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -634,50 +761,93 @@ describe('PrTableApp', () => {
     expect(openSection.section.attentionCount).toBe(1);
   });
 
-  test('given an onCheckboxChange prop, when passed through, then the same function reaches PrSection unchanged', () => {
-    const onCheckboxChange = jest.fn();
+  // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // onCheckboxChange used to be a test-injected prop - PrTableApp now
+  // builds the real handler itself (via useRowCheckboxActions(), reaching
+  // the real pr-row-checkbox-actions.helpers.ts factory), so this drives
+  // the real fetch call instead of a mock prop - same seam shift H.5 did
+  // for onAckAction/onApplyLabel (there via postJson, here via fetch
+  // directly, matching toggleInReviewForRow/toggleFlaggedForRow's own
+  // fetchFn DI).
+  test('given a checkbox change, when the real handler is called, then it posts the real /view-prs/ack request', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, prData: {} }),
+    });
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: onCheckboxChange, onAckAction: () => {}, onApplyLabel: () => {} });
-    expect(capturedSectionProps[0].onCheckboxChange).toBe(onCheckboxChange);
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+    await React.act(async () => {
+      await capturedSectionProps[0].onCheckboxChange('1', 'inReview', true, 'owner/repo');
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/ack',
+      expect.objectContaining({
+        body: JSON.stringify({ repo: 'owner/repo', inReview: '1' }),
+      }),
+    );
+    delete global.fetch;
   });
 
   describe('per-row busy spinner (Ack/Apply-Label/Update in flight)', () => {
-    // onAckAction/onApplyLabel/onUpdatePr reach PrSection as PrTableApp's
-    // own wrapper functions (not the raw props unchanged) so it can track
-    // which PR number is currently mid-request and light up that row's
-    // PrNumberCell spinner (activePrNumbers) - these tests call through the
-    // wrapper the same way PrActionsCell does, and assert both that the
-    // original callback still runs with the same arguments and that the
-    // row's busy state is set/cleared around it.
-    test('given onAckAction, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
-      const onAckAction = jest.fn().mockResolvedValue(undefined);
+    // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // onAckAction/onApplyLabel used to be test-injected props - PrTableApp
+    // now builds the real handlers itself (via useAckLabelActions(),
+    // reaching the real pr-ack-label-actions.helpers.ts factory), so these
+    // tests drive the real postJson call instead of a mock prop. They
+    // still reach PrSection as PrTableApp's own wrapper functions so it can
+    // track which PR number is currently mid-request and light up that
+    // row's PrNumberCell spinner (activePrNumbers).
+    test('given onAckAction, when the wrapped handler is called, then it posts the real /view-prs/ack request', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
         await capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
       });
 
-      expect(onAckAction).toHaveBeenCalledWith('1', false, 'owner/repo');
+      expect(postJson).toHaveBeenCalledWith('/view-prs/ack', { repo: 'owner/repo', ack: '1' });
     });
 
-    test('given onApplyLabel, when the wrapped handler is called, then the underlying callback still runs with the same arguments', async () => {
-      const onApplyLabel = jest.fn().mockResolvedValue(undefined);
+    // Guards against a real bug class: isAcked means "is this PR CURRENTLY
+    // acked" so onAckAction can decide ack vs. clear - a caller that
+    // instead passed the toggled target state would invert every request
+    // (clicking "Ack" on an unacked PR sending ackClear instead of ack).
+    test('given onAckAction with isAcked=true (currently acked), when called, then it posts an ackClear request, not ack', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: onApplyLabel });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      await React.act(async () => {
+        await capturedSectionProps[0].onAckAction('1', true, 'owner/repo');
+      });
+
+      expect(postJson).toHaveBeenCalledWith('/view-prs/ack', { repo: 'owner/repo', ackClear: '1' });
+    });
+
+    test('given onApplyLabel, when the wrapped handler is called, then it posts the real /view-prs/labels/apply request', async () => {
+      postJson.mockResolvedValue({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
         await capturedSectionProps[0].onApplyLabel('1', 'bug', 'owner/repo');
       });
 
-      expect(onApplyLabel).toHaveBeenCalledWith('1', 'bug', 'owner/repo');
+      expect(postJson).toHaveBeenCalledWith('/view-prs/labels/apply', {
+        repo: 'owner/repo',
+        label: 'bug',
+        prNumbers: '1',
+      });
     });
 
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
-      let resolveAck;
-      const onAckAction = jest.fn(() => new Promise((resolve) => { resolveAck = resolve; }));
+      let resolvePostJson;
+      postJson.mockImplementation(() => new Promise((resolve) => { resolvePostJson = resolve; }));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       let ackPromise;
       React.act(() => {
@@ -686,19 +856,23 @@ describe('PrTableApp', () => {
       expect(capturedSectionProps.at(-1).activePrNumbers).toContain('owner/repo::1');
 
       await React.act(async () => {
-        resolveAck();
+        resolvePostJson({ response: { ok: true, status: 200 }, result: { ok: true, prData: null } });
         await ackPromise;
       });
       expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');
     });
 
-    test('given an Ack action that rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
-      const onAckAction = jest.fn().mockRejectedValue(new Error('boom'));
+    test('given an Ack action whose request rejects, when it settles, then the PR is still removed from activePrNumbers', async () => {
+      // runSingleAckRequest (pr-ack-label-actions.helpers.ts) catches a
+      // rejected postJson internally and resolves to null - it never
+      // rejects itself. This confirms withPrBusy's own finally still
+      // clears the busy state for that real failure path.
+      postJson.mockRejectedValue(new Error('boom'));
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: onAckAction, onApplyLabel: () => {} });
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
 
       await React.act(async () => {
-        await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).rejects.toThrow('boom');
+        await expect(capturedSectionProps[0].onAckAction('1', false, 'owner/repo')).resolves.toBeUndefined();
       });
 
       expect(capturedSectionProps.at(-1).activePrNumbers).not.toContain('owner/repo::1');
@@ -710,38 +884,13 @@ describe('PrTableApp', () => {
       expect(typeof capturedSectionProps[0].onUpdatePr).toBe('function');
     });
 
-    // Bulk counterpart to the single-row wrappers above - covers vanilla code
-    // (pr-ack-label-actions.helpers.js's runAckAction/runApplyLabelAction)
-    // marking every PR number in a multi-PR batch request busy via
-    // window.markPrsBusy/window.clearPrsBusy, not just the row a user
-    // directly clicked.
-    describe('window.markPrsBusy/window.clearPrsBusy (bulk Ack/Apply-Label from the Run & Filter tab)', () => {
-      afterEach(() => {
-        delete window.markPrsBusy;
-        delete window.clearPrsBusy;
-      });
-
-      test('given the component is mounted, when calling window.markPrsBusy with several PR numbers, then all of them show up in activePrNumbers', () => {
-        const payload = {
-          byPrNumber: {
-            1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
-            2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
-          },
-        };
-        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
-
-        expect(typeof window.markPrsBusy).toBe('function');
-
-        React.act(() => {
-          window.markPrsBusy(['1', '2'], 'owner/repo');
-        });
-
-        expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(
-          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
-        );
-      });
-
-      test('given several PR numbers already marked busy, when calling window.clearPrsBusy with them, then all of them are removed from activePrNumbers', () => {
+    // Bulk counterpart to the single-row wrappers above - covers
+    // useAckLabelActions.tsx's own per-PR-loop wrapping of markPrBusy/
+    // clearPrBusy (usePrActivityQueue()), marking every PR number in a
+    // multi-PR batch request busy, not just the row a user directly
+    // clicked.
+    describe('markPrBusy/clearPrBusy (bulk Ack/Apply-Label from the Run & Filter tab)', () => {
+      test('given the component is mounted, when marking several PR numbers busy, then all of them show up in activePrNumbers', () => {
         const payload = {
           byPrNumber: {
             1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
@@ -751,42 +900,48 @@ describe('PrTableApp', () => {
         renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
 
         React.act(() => {
-          window.markPrsBusy(['1', '2'], 'owner/repo');
+          capturedActivityQueue.markPrBusy('1', 'owner/repo');
+          capturedActivityQueue.markPrBusy('2', 'owner/repo');
+        });
+
+        expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(
+          expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
+        );
+      });
+
+      test('given several PR numbers already marked busy, when clearing them, then all of them are removed from activePrNumbers', () => {
+        const payload = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+            2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+          },
+        };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
+
+        React.act(() => {
+          capturedActivityQueue.markPrBusy('1', 'owner/repo');
+          capturedActivityQueue.markPrBusy('2', 'owner/repo');
         });
         expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(
           expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
         );
 
         React.act(() => {
-          window.clearPrsBusy(['1', '2'], 'owner/repo');
+          capturedActivityQueue.clearPrBusy('1', 'owner/repo');
+          capturedActivityQueue.clearPrBusy('2', 'owner/repo');
         });
         expect(capturedSectionProps.at(-1).activePrNumbers).not.toEqual(
           expect.arrayContaining(['owner/repo::1', 'owner/repo::2']),
         );
       });
-
-      test('given the component unmounts, when checking the bridges, then they are removed from window', () => {
-        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-        const { unmount } = renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
-
-        expect(typeof window.markPrsBusy).toBe('function');
-        unmount();
-        expect(window.markPrsBusy).toBeUndefined();
-        expect(window.clearPrsBusy).toBeUndefined();
-      });
     });
 
     // Bulk counterpart's "queued, not yet started" phase - distinct from
-    // the busy bridge above, for a chunked bulk request's PR numbers before
+    // the busy state above, for a chunked bulk request's PR numbers before
     // their own chunk's request has actually reached the network (see
-    // pr-ack-label-actions.helpers.js's own comment).
-    describe('window.markPrsQueued/window.clearPrsQueued (chunked bulk Ack/Apply-Label)', () => {
-      afterEach(() => {
-        delete window.markPrsQueued;
-        delete window.clearPrsQueued;
-      });
-
-      test('given the component is mounted, when calling window.markPrsQueued with several PR numbers, then all of them show up in queuedPrNumbers', () => {
+    // pr-ack-label-actions.helpers.ts's own comment).
+    describe('markPrQueued/clearPrQueued (chunked bulk Ack/Apply-Label)', () => {
+      test('given the component is mounted, when marking several PR numbers queued, then all of them show up in queuedPrNumbers', () => {
         const payload = {
           byPrNumber: {
             1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
@@ -795,10 +950,9 @@ describe('PrTableApp', () => {
         };
         renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
 
-        expect(typeof window.markPrsQueued).toBe('function');
-
         React.act(() => {
-          window.markPrsQueued(['1', '2'], 'owner/repo');
+          capturedActivityQueue.markPrQueued('1', 'owner/repo');
+          capturedActivityQueue.markPrQueued('2', 'owner/repo');
         });
 
         expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(
@@ -806,17 +960,17 @@ describe('PrTableApp', () => {
         );
       });
 
-      test('given several PR numbers already marked queued, when calling window.clearPrsQueued with them, then all of them are removed from queuedPrNumbers', () => {
+      test('given several PR numbers already marked queued, when clearing them, then all of them are removed from queuedPrNumbers', () => {
         const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
         renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
 
         React.act(() => {
-          window.markPrsQueued(['1'], 'owner/repo');
+          capturedActivityQueue.markPrQueued('1', 'owner/repo');
         });
         expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::1']);
 
         React.act(() => {
-          window.clearPrsQueued(['1'], 'owner/repo');
+          capturedActivityQueue.clearPrQueued('1', 'owner/repo');
         });
         expect(capturedSectionProps.at(-1).queuedPrNumbers).not.toContain('owner/repo::1');
       });
@@ -826,22 +980,12 @@ describe('PrTableApp', () => {
         renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
 
         React.act(() => {
-          window.markPrsQueued(['1'], 'owner/repo');
-          window.markPrsBusy(['1'], 'owner/repo');
+          capturedActivityQueue.markPrQueued('1', 'owner/repo');
+          capturedActivityQueue.markPrBusy('1', 'owner/repo');
         });
 
         expect(capturedSectionProps.at(-1).activePrNumbers).toContain('owner/repo::1');
         expect(capturedSectionProps.at(-1).queuedPrNumbers).not.toContain('owner/repo::1');
-      });
-
-      test('given the component unmounts, when checking the bridges, then they are removed from window', () => {
-        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-        const { unmount } = renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {}, onAckAction: () => {}, onApplyLabel: () => {} });
-
-        expect(typeof window.markPrsQueued).toBe('function');
-        unmount();
-        expect(window.markPrsQueued).toBeUndefined();
-        expect(window.clearPrsQueued).toBeUndefined();
       });
     });
   });
@@ -895,7 +1039,7 @@ describe('PrTableApp', () => {
 
   describe('non-exclusive membership: a PR in a smart group still renders in its lifecycle section', () => {
     // Regression test for a real bug: a prior "fix" added row-level dedup
-    // (pr-section-config.helpers.js's now-removed excludeSmartGroupMembers)
+    // (pr-section-config.helpers.ts's now-removed excludeSmartGroupMembers)
     // that silently hid a PR's row from its lifecycle section whenever it
     // was already shown in a smart group above (e.g. "Open PRs I'm
     // Involved In") - contradicting the documented "non-exclusive
@@ -906,14 +1050,14 @@ describe('PrTableApp', () => {
     // latter is, by definition, also an open PR.
     //
     // installSectionHelpers() above is a simplified test double that never
-    // exercised the real pr-section-config.helpers.js/PrTableApp
+    // exercised the real pr-section-config.helpers.ts/PrTableApp
     // interaction, which is exactly why this regressed unnoticed - these
     // tests install the real helper module instead (jest.requireActual
     // bypasses the jest.mock() at the top of this file, which every other
     // describe block relies on).
     beforeEach(() => {
       const { createPrSectionConfigHelpers: realCreatePrSectionConfigHelpers } = jest.requireActual(
-        '../helpers/pr-section-config.helpers.js',
+        '../helpers/pr-section-config.helpers.ts',
       );
       createPrSectionConfigHelpers.mockImplementation(realCreatePrSectionConfigHelpers);
       window.isInReviewEnabled = () => false;
@@ -921,7 +1065,6 @@ describe('PrTableApp', () => {
 
     test('given a PR that also belongs to a smart group, when computing the open section, then it still renders there (both totalCount and prs include it)', () => {
       installSmartGroupHelpers();
-      installSortHelpers();
       // installSmartGroupHelpers' mock "Flagged" group is driven by
       // hasNeedsAttentionFlag, which PrTableApp wires to entryNeedsAttention -
       // use that as the smart-group membership hook for this test.
@@ -965,6 +1108,85 @@ describe('PrTableApp', () => {
       const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
       expect(openSection.section.totalCount).toBe(2);
       expect(openSection.section.prs).toHaveLength(2);
+    });
+  });
+
+  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // state/useNavigateToPrInTable.tsx (AutoRenderBlockedLinks.jsx) dispatches
+  // this same event with a focusUnsaved detail flag now - this suite's own
+  // PrSection mock (top of file) means the real .pr-link/.pr-notes-save
+  // markup these assertions target never actually renders through
+  // PrTableApp itself, so each test inserts a standalone element matching
+  // the same selectors the real row/Notes-section markup would produce
+  // (PrNumberCell.jsx/NotesSection.jsx), directly into document.body -
+  // this still exercises PrTableApp's own effect logic for real (a global
+  // document.querySelector, not scoped to its own container), just without
+  // needing the full unmocked render tree.
+  describe('pr-navigate-to-insights (scroll/focus after insights-row expansion)', () => {
+    afterEach(() => {
+      document.body.querySelectorAll('[data-test-standalone]').forEach((el) => el.remove());
+    });
+
+    test('given focusUnsaved and a real unsaved Notes save button in the DOM, when the event fires, then that button ends up focused', async () => {
+      const notesSection = document.createElement('div');
+      notesSection.className = 'pr-notes-section';
+      notesSection.setAttribute('data-pr-number', '1');
+      notesSection.setAttribute('data-test-standalone', 'true');
+      const saveButton = document.createElement('button');
+      saveButton.className = 'pr-notes-save';
+      notesSection.appendChild(saveButton);
+      document.body.appendChild(notesSection);
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+      });
+
+      fireEvent(
+        window,
+        new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1', focusUnsaved: true } }),
+      );
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(saveButton);
+      });
+    });
+
+    test('given no focusUnsaved, when the event fires, then the row-link element ends up focused instead', async () => {
+      const cell = document.createElement('div');
+      cell.setAttribute('data-pr-number', '1');
+      cell.setAttribute('data-repo', 'owner/repo');
+      cell.setAttribute('data-test-standalone', 'true');
+      const link = document.createElement('a');
+      link.className = 'pr-link';
+      link.href = 'https://github.com/owner/repo/pull/1';
+      cell.appendChild(link);
+      document.body.appendChild(cell);
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        onCheckboxChange: () => {},
+        onAckAction: () => {},
+      });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(link);
+      });
     });
   });
 });

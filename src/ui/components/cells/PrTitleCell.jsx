@@ -7,9 +7,9 @@
  */
 
 import { CopyIconButton } from '../CopyIconButton';
-import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.js';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.js';
+import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -61,6 +61,9 @@ export function PrTitleCell({ pr, repo, sectionKey, isSmartGroup, lifecycleSecti
         type="button"
         className="row-insights-toggle"
         aria-expanded={isExpanded ? 'true' : 'false'}
+        // The PR number makes each row's toggle distinguishable by name (the
+        // visible text is the same on every row); it keeps the visible words.
+        aria-label={`${isExpanded ? 'Hide insights' : 'More insights'} for PR #${prNumber}`}
         data-pr-number={String(pr?.number || '')}
         data-section-key={String(sectionKey || '')}
         onClick={() => onToggleInsights(pr.number, sectionKey, repo)}

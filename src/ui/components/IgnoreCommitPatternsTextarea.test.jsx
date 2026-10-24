@@ -5,20 +5,33 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { IgnoreCommitPatternsTextarea } = require('./IgnoreCommitPatternsTextarea');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
+const filterStateProbe = createFilterStateProbe();
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (changeFilterIgnoreCommitPatterns = '') =>
   render(
-    <FilterStateProvider initialValues={{ changeFilterIgnoreCommitPatterns }}>
-      <IgnoreCommitPatternsTextarea />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={{ changeFilterIgnoreCommitPatterns }}>
+            <filterStateProbe.FilterStateProbe />
+            <IgnoreCommitPatternsTextarea />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('IgnoreCommitPatternsTextarea', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
-  });
 
   test('given the provider seeds an empty value, when rendering, then id/name/rows are applied and it starts empty', () => {
     renderWithProvider('');
@@ -35,7 +48,7 @@ describe('IgnoreCommitPatternsTextarea', () => {
     expect(screen.getByRole('textbox')).toHaveValue('^docs:\n^test:');
   });
 
-  test('given a user types into the textarea, when typing, then the displayed value updates and window.getFilterStateValues() reflects it', async () => {
+  test('given a user types into the textarea, when typing, then the displayed value updates and filterStateProbe.readValues() reflects it', async () => {
     const user = userEvent.setup();
     renderWithProvider();
     const textarea = screen.getByRole('textbox');
@@ -43,16 +56,16 @@ describe('IgnoreCommitPatternsTextarea', () => {
     await user.type(textarea, '^docs:');
 
     expect(textarea).toHaveValue('^docs:');
-    expect(window.getFilterStateValues().changeFilterIgnoreCommitPatterns).toBe('^docs:');
+    expect(filterStateProbe.readValues().changeFilterIgnoreCommitPatterns).toBe('^docs:');
   });
 
-  test('given window.setFilterStateValue is called directly (the new restore path), when called, then the textarea reflects it', () => {
+  test('given setValue is called directly through the Context (the restore path), when called, then the textarea reflects it', () => {
     const { act } = require('@testing-library/react');
     renderWithProvider();
     const textarea = screen.getByRole('textbox');
 
     act(() => {
-      window.setFilterStateValue('changeFilterIgnoreCommitPatterns', '^chore:\n^style:');
+      filterStateProbe.setValue('changeFilterIgnoreCommitPatterns', '^chore:\n^style:');
     });
 
     expect(textarea).toHaveValue('^chore:\n^style:');

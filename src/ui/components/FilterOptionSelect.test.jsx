@@ -5,6 +5,10 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterOptionSelect } = require('./FilterOptionSelect');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
 const OPTIONS = [
   { value: '', label: 'Any (with or without)' },
@@ -12,19 +16,28 @@ const OPTIONS = [
   { value: 'without', label: 'Without custom comments' },
 ];
 
+const filterStateProbe = createFilterStateProbe();
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (initialValues, props) =>
   render(
-    <FilterStateProvider initialValues={initialValues}>
-      <FilterOptionSelect {...props} />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={initialValues}>
+            <filterStateProbe.FilterStateProbe />
+            <FilterOptionSelect {...props} />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('FilterOptionSelect', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
-  });
 
   test('given id/name/options props, when rendering, then all render correctly', () => {
     renderWithProvider(
@@ -55,7 +68,7 @@ describe('FilterOptionSelect', () => {
     await user.selectOptions(select, 'without');
 
     expect(select).toHaveValue('without');
-    expect(window.getFilterStateValues().x).toBe('without');
+    expect(filterStateProbe.readValues().x).toBe('without');
   });
 
   test('given an external native value change (e.g. some other legacy code manipulating this element directly), when the native setter + change event fire, then React state picks it up', () => {

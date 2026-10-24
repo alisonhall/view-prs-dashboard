@@ -2,7 +2,7 @@
 
 const {
   createPrMergedRequestMoreConfigHelpers,
-} = require("./pr-merged-request-more-config.helpers.js");
+} = require("./pr-merged-request-more-config.helpers.ts");
 
 describe("pr merged request more config helpers", () => {
   test("given all scope and repo filter, when building request more options, then action is visible and repo filter is used", () => {

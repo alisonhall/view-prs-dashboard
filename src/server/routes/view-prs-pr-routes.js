@@ -131,6 +131,8 @@ const registerViewPrsPrRoutes = ({
       comments,
       otherNotes: String(body.otherNotes ?? ""),
       prDifficulty: String(body.prDifficulty ?? ""),
+      stories: body.stories,
+      // Older clients send these instead of stories.
       rallyStories: body.rallyStories,
       rallyLinks: body.rallyLinks,
       analysisOfPr: String(body.analysisOfPr ?? ""),

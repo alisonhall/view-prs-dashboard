@@ -1,35 +1,41 @@
 /**
  * ActionLogSection - React-owned content for the Management "Action Log"
- * tab's `#action-log-container`.
+ * tab's `#action-log-container`, and (seventh follow-up, see
+ * REACT_MIGRATION_PLAN.md, "Remaining-effort audit") also the "Refresh"
+ * button, portaled into `#action-log-refresh-btn-root` (a static empty div
+ * in index.html, replacing the old plain `<button>` - same "Live button"
+ * shape as RefreshLabelsButtonLive in react-app.jsx). Both the button and
+ * the auto-reload-on-tab-reactivation effect below call this component's
+ * own local `load` directly now - no `window.triggerActionLogLoad` bridge
+ * needed any more, since both of its former callers (index.page.js's
+ * click handler; this component's own re-activation effect) were always
+ * genuine React/same-component callers, not vanilla ones.
  *
  * Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): real JSX now,
  * replacing pr-action-log.helpers.js's renderActionLog/loadActionLog
- * (deleted). The tab-switch chrome (pr-management-tabs.helpers.js) and the
- * "Refresh" button (index.page.js) are unchanged and still vanilla - they
- * both still call a `loadActionLog` reference, which index.page.js now
- * points at `window.triggerActionLogLoad`, a bridge this component
- * registers on mount (the same "vanilla chrome still drives it, React owns
- * the content" shape as the container-split conversions elsewhere in this
- * codebase - only the *tab-switching* stays vanilla, not the data/render).
+ * (deleted).
  *
  * @module components/ActionLogSection
  *
  * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
  * component is now lazy-loaded (react-app.jsx), mounting only once the
- * Action Log tab is first activated - before that, pr-management-tabs.
- * helpers.js's activateTab("action-log") calls loadActionLog() (->
- * window.triggerActionLogLoad?.()) SYNCHRONOUSLY on click, before this
- * component's lazy chunk has even started fetching, so that call always
- * no-ops on first visit. Loading once on mount (below) closes that gap -
- * confirmed no double-fetch results: the vanilla click handler's own
- * trigger call is a no-op until this effect has run (mount always wins the
- * race), and once mounted, that same click handler correctly re-triggers
- * `load` on every later re-activation (this effect's `[]` deps mean it
- * only runs once, on mount).
+ * Action Log tab is first activated.
+ *
+ * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): re-triggering `load()` on every later re-activation (switch
+ * away, then back) used to be `pr-management-tabs.helpers.js`'s
+ * `activateTab("action-log")` calling `loadActionLog()` directly, outside
+ * React entirely - that function is deleted outright this phase. Now owned
+ * by this component's own second effect below, watching
+ * `useIsTabPanelVisible('tab-panel-action-log')` - same shape
+ * `useBackfillTabAutoRefresh.tsx` already established for the Backfill
+ * tab, just inlined here since this is its only consumer.
  */
 
-import { useEffect, useState } from 'react';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -55,75 +61,107 @@ const buildDetailText = (entry) => {
 
 export function ActionLogSection() {
   const [state, setState] = useState({ status: 'initial', entries: [], error: '' });
+  const isVisible = useIsTabPanelVisible('tab-panel-action-log');
 
-  useEffect(() => {
-    const load = async () => {
-      setState((previous) => ({ ...previous, status: 'loading' }));
-      try {
-        const response = await fetch('/view-prs/action-log');
-        const result = await response.json();
-        if (!response.ok || result.ok === false) {
-          throw new Error(result.error || 'Failed to load action log');
-        }
-        setState({
-          status: 'loaded',
-          entries: Array.isArray(result.entries) ? result.entries : [],
-          error: '',
-        });
-      } catch (error) {
-        setState({ status: 'error', entries: [], error: String(error?.message || error) });
+  const load = useCallback(async () => {
+    setState((previous) => ({ ...previous, status: 'loading' }));
+    try {
+      const response = await fetch('/view-prs/action-log');
+      const result = await response.json();
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || 'Failed to load action log');
       }
-    };
-
-    window.triggerActionLogLoad = load;
-    load();
-    return () => {
-      delete window.triggerActionLogLoad;
-    };
+      setState({
+        status: 'loaded',
+        entries: Array.isArray(result.entries) ? result.entries : [],
+        error: '',
+      });
+    } catch (error) {
+      setState({ status: 'error', entries: [], error: String(error?.message || error) });
+    }
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Phase H.22 (see this module's own header comment): re-trigger on every
+  // later re-activation, matching activateTab("action-log")'s old
+  // behavior exactly - skips this effect's own first run (the mount
+  // effect above already loads unconditionally regardless of visibility,
+  // same "eager load on mount" contract useBackfillTabAutoRefresh.tsx's
+  // own comment describes) via a ref, not the `isVisible` value itself,
+  // since on a first mount where the tab is already active this effect's
+  // first run would otherwise double-fire right alongside the mount
+  // effect's own load() call.
+  const hasSkippedFirstRunRef = useRef(false);
+  useEffect(() => {
+    if (!hasSkippedFirstRunRef.current) {
+      hasSkippedFirstRunRef.current = true;
+      return;
+    }
+    if (isVisible) {
+      load();
+    }
+  }, [isVisible, load]);
+
+  const refreshBtnRoot = document.getElementById('action-log-refresh-btn-root');
+  const refreshButtonPortal =
+    refreshBtnRoot &&
+    createPortal(
+      <button type="button" onClick={() => load()}>
+        Refresh
+      </button>,
+      refreshBtnRoot,
+      'action-log-refresh-btn',
+    );
+
+  let content;
   if (state.status === 'loading') {
-    return <p className="action-log-empty">Loading...</p>;
-  }
-
-  if (state.status === 'error') {
-    return <p className="action-log-empty">{`Failed to load action log: ${state.error}`}</p>;
-  }
-
-  if (state.entries.length === 0) {
-    return <p className="action-log-empty">No actions logged yet.</p>;
+    content = <p className="action-log-empty">Loading...</p>;
+  } else if (state.status === 'error') {
+    content = <p className="action-log-empty">{`Failed to load action log: ${state.error}`}</p>;
+  } else if (state.entries.length === 0) {
+    content = <p className="action-log-empty">No actions logged yet.</p>;
+  } else {
+    content = (
+      <table className="action-log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {state.entries.map((entry, index) => (
+            <tr key={`${entry?.action || 'entry'}-${entry?.triggeredAt || index}`}>
+              <td>{entry?.triggeredAt ? formatIsoDatetime(entry.triggeredAt) : '(unknown)'}</td>
+              <td>
+                <code>{String(entry?.action || '')}</code>
+              </td>
+              <td>
+                {entry?.ok !== false ? (
+                  <span className="action-log-status-ok">OK</span>
+                ) : (
+                  <span className="action-log-status-fail">Failed</span>
+                )}
+              </td>
+              <td>{formatDuration(typeof entry?.durationMs === 'number' ? entry.durationMs : null)}</td>
+              <td className="action-log-detail">{buildDetailText(entry)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   }
 
   return (
-    <table className="action-log-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Action</th>
-          <th>Status</th>
-          <th>Duration</th>
-          <th>Detail</th>
-        </tr>
-      </thead>
-      <tbody>
-        {state.entries.map((entry, index) => (
-          <tr key={`${entry?.action || 'entry'}-${entry?.triggeredAt || index}`}>
-            <td>{entry?.triggeredAt ? formatIsoDatetime(entry.triggeredAt) : '(unknown)'}</td>
-            <td>
-              <code>{String(entry?.action || '')}</code>
-            </td>
-            <td>
-              {entry?.ok !== false ? (
-                <span className="action-log-status-ok">OK</span>
-              ) : (
-                <span className="action-log-status-fail">Failed</span>
-              )}
-            </td>
-            <td>{formatDuration(typeof entry?.durationMs === 'number' ? entry.durationMs : null)}</td>
-            <td className="action-log-detail">{buildDetailText(entry)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      {refreshButtonPortal}
+      {content}
+    </>
   );
 }

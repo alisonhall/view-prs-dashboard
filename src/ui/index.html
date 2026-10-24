@@ -14,15 +14,17 @@
          its target's children) - see REACT_MIGRATION_PLAN.md's full
          vanilla-to-React sweep. -->
     <div id="error-snackbar-root"></div>
-    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-live="polite"
+    <!-- Rendered by React (ActivityDrawer.jsx, mounted in react-app.jsx) -
+         the collapsible background-activity panel. Always mounted so its
+         toggle's live count stays accurate while the panel is closed. -->
+    <div id="activity-drawer-root"></div>
+    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-label="Auto update paused" aria-live="polite"
         aria-atomic="true" hidden>
         <div class="auto-render-blocked-title">Auto update paused</div>
-        <div id="auto-render-blocked-status" class="auto-render-blocked-status">
-            Auto updates are paused until changes are saved.
-        </div>
+        <span id="auto-render-blocked-status-root"></span>
         <div id="auto-render-blocked-pr-links" class="auto-render-blocked-pr-links"></div>
         <div class="auto-render-blocked-actions">
-            <button type="button" id="auto-render-blocked-apply-btn">Discard unsaved</button>
+            <span id="auto-render-blocked-apply-btn-root"></span>
         </div>
     </div>
     <h1>View PR Updates</h1>
@@ -36,59 +38,37 @@
     <h2>Management Tabs</h2>
     <div class="management-tabs" id="management-tabs">
         <div class="management-tab-list" role="tablist" aria-label="Management tabs">
-            <button type="button" id="tab-status" class="management-tab-button is-active" role="tab"
-                aria-selected="true" aria-controls="tab-panel-status">
-                Activity
-            </button>
-            <button type="button" id="tab-script" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-script">
-                Run & Filter
-            </button>
-            <button type="button" id="tab-backfill" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-backfill">
-                Backfill
-            </button>
-            <button type="button" id="tab-action-log" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-action-log">
-                Action Log
-            </button>
-            <button type="button" id="tab-actor-name-cache" class="management-tab-button" role="tab"
-                aria-selected="false" aria-controls="tab-panel-actor-name-cache">
-                Actor Names
-            </button>
-            <button type="button" id="tab-export" class="management-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-export">
-                Export
-            </button>
+            <span id="tab-status-root"></span>
+            <span id="tab-script-root"></span>
+            <span id="tab-backfill-root"></span>
+            <span id="tab-action-log-root"></span>
+            <span id="tab-actor-name-cache-root"></span>
+            <span id="tab-export-root"></span>
         </div>
 
         <section id="tab-panel-status" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-status">
+            <!-- Activity drawer feature (see REACT_MIGRATION_PLAN.md): the
+                 "Request Activity" card and "Auto Refresh Scheduler"
+                 badges/details that used to live on this tab were removed -
+                 both were redundant with the drawer's own live "Scheduled
+                 background jobs"/"In-flight user actions" sections
+                 (ActivityDrawer.jsx, top-right of the page). The one piece
+                 of unique information the old scheduler badges had (pending
+                 open/merged-closed counts) moved into the drawer's
+                 Merged/closed drain row instead of being dropped. -->
             <div class="management-overview-grid">
-                <section class="section-card management-priority-card">
-                    <h3>Request Activity</h3>
-                    <div id="request-activity-badges" class="scheduler-badges"></div>
-                    <!-- Rendered by React (react-app.jsx, plain-string portal - see
-                         REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep) -
-                         starts empty; React's own initial state supplies the
-                         placeholder text, since createPortal doesn't clear
-                         pre-existing static content in its target. -->
-                    <pre id="request-activity-details" class="scheduler-details"></pre>
-                </section>
-
                 <section class="section-card">
                     <h3>Latest Status</h3>
                     <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                         starts empty, see #request-activity-details above. -->
-                    <pre id="status" style="white-space: break-spaces;"></pre>
+                         starts empty; React's own initial state supplies the
+                         placeholder text, since createPortal doesn't clear
+                         pre-existing static content in its target. -->
+                    <pre id="status" style="white-space: break-spaces;" role="region" aria-label="Status message"></pre>
                 </section>
             </div>
 
             <h3>Auto Refresh Scheduler</h3>
             <div id="scheduler-card" class="scheduler-card">
-                <div id="scheduler-badges" class="scheduler-badges"></div>
-                <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                     starts empty, see #request-activity-details above. -->
-                <pre id="scheduler-details" class="scheduler-details"></pre>
                 <div class="form-actions">
                     <!-- Rendered by React (TriggerAutoRunButton.jsx, mounted in
                          react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
@@ -105,10 +85,15 @@
                         <h3>Run check-open-pr-updates.sh</h3>
                         <div class="form-grid single-field-grid">
                             <label for="pr-numbers">PR number(s) (comma-separated)</label>
-                            <input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />
+                            <!-- Rendered by React (ContextRunScriptTextInput.jsx, mounted
+                                 in react-app.jsx, Context-backed by FilterStateProvider) -
+                                 see REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep. -->
+                            <span id="pr-numbers-root"></span>
                         </div>
                         <div class="form-actions primary-actions">
-                            <button type="button" id="run-script-btn" class="primary-run-btn">Run script</button>
+                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                            <span id="run-script-btn-root"></span>
                             <!-- Rendered by React (QuickCheckButton.jsx, mounted in
                                  react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
                                  vanilla-to-React sweep. -->
@@ -117,8 +102,10 @@
                                  react-app.jsx) - checks every PR row already loaded,
                                  across every repo, instead of typed-in numbers. -->
                             <span id="quick-check-all-btn-root"></span>
-                            <button type="button" id="ack-only-btn">Apply ack only</button>
-                            <button type="button" id="clear-only-btn">Apply clear only</button>
+                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                            <span id="ack-only-btn-root"></span>
+                            <span id="clear-only-btn-root"></span>
                         </div>
                         <div class="form-grid single-field-grid">
                             <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
@@ -126,8 +113,10 @@
                                 <!-- Rendered by React (ApplyLabelSelect, mounted in react-app.jsx) as
                                      a <select id="apply-label-select">, same id/options shape as before. -->
                                 <span id="apply-label-select-root"></span>
-                                <button type="button" id="apply-label-btn">Apply label</button>
-                                <button type="button" id="refresh-labels-btn" title="Reload labels for the current repo">&#8635; Labels</button>
+                                <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
+                                     react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
+                                <span id="apply-label-btn-root"></span>
+                                <span id="refresh-labels-btn-root"></span>
                             </div>
                         </div>
                     </section>
@@ -169,27 +158,27 @@
                                  found earlier in this same sweep. -->
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by label name(s)"></summary>
-                                <div id="label-list" class="multi-select-list"></div>
+                                <div id="label-list" class="multi-select-list" role="group" aria-label="Filter by label name(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Exclude by label name(s)"></summary>
-                                <div id="exclude-label-list" class="multi-select-list"></div>
+                                <div id="exclude-label-list" class="multi-select-list" role="group" aria-label="Exclude by label name(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by PR author(s)"></summary>
-                                <div id="author-list" class="multi-select-list"></div>
+                                <div id="author-list" class="multi-select-list" role="group" aria-label="Filter by PR author(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by Assigned user(s)"></summary>
-                                <div id="assigned-list" class="multi-select-list"></div>
+                                <div id="assigned-list" class="multi-select-list" role="group" aria-label="Filter by Assigned user(s)"></div>
                             </details>
 
                             <details class="multi-select-dropdown">
                                 <summary class="multi-select-summary" data-base-label="Filter by PR approver(s)"></summary>
-                                <div id="approver-list" class="multi-select-list"></div>
+                                <div id="approver-list" class="multi-select-list" role="group" aria-label="Filter by PR approver(s)"></div>
                             </details>
 
                             <label for="filter-custom-comments">Custom comments</label>
@@ -204,22 +193,13 @@
                             <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
                             <span id="filter-pr-difficulty-root"></span>
 
-                            <label for="filter-rally-stories">Rally stories</label>
+                            <label for="filter-stories">Stories</label>
                             <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-rally-stories-root"></span>
-
-                            <label for="filter-rally-links">Rally links</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-rally-links-root"></span>
+                            <span id="filter-stories-root"></span>
 
                             <label for="filter-analysis-of-pr">Analysis of PR</label>
                             <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
                             <span id="filter-analysis-of-pr-root"></span>
-                        </div>
-
-                        <div class="form-actions">
-                            <button type="button" id="apply-filters-btn" class="apply-filters-btn">Apply filters
-                                (local)</button>
                         </div>
 
                         <details class="advanced-options section-card low-emphasis-card">
@@ -272,19 +252,38 @@
                                     <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
                                     <span id="attention-author-thread-resolution-mode-root"></span>
 
-                                    <details id="attention-author-thread-resolution-allow-options"
+                                    <details id="attention-author-thread-resolution-allow-options" aria-label="Thread-resolution allow-list options"
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-allow-list"
-                                            class="multi-select-list"></div>
+                                            class="multi-select-list" role="group" aria-label="Allow PR authors to resolve threads started by (Actor Names)"></div>
                                     </details>
 
-                                    <details id="attention-author-thread-resolution-deny-options"
+                                    <details id="attention-author-thread-resolution-deny-options" aria-label="Thread-resolution deny-list options"
                                         class="multi-select-dropdown" hidden>
                                         <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
                                         <div id="attention-author-thread-resolution-deny-list"
-                                            class="multi-select-list"></div>
+                                            class="multi-select-list" role="group" aria-label="Do not allow PR authors to resolve threads started by (Actor Names)"></div>
                                     </details>
+                                </fieldset>
+
+                                <fieldset>
+                                    <legend>Merge commits</legend>
+                                    <p class="subtle-copy" id="merge-commit-rules-help">🔀 A commit counts as a merge
+                                        when its headline matches one of the patterns, or when every one of its authors
+                                        is in the logins list (e.g. bots). Merge commits don't mark a PR CHANGED, aren't
+                                        listed in the Author column, and are what "Exclude merge-only commit activity"
+                                        leaves out. Default pattern: <code>^Merge\b</code>.</p>
+
+                                    <label for="merge-commit-headline-patterns">Headline patterns (regular expressions,
+                                        one per line, not case-sensitive)</label>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="merge-commit-headline-patterns-root"></span>
+
+                                    <label for="merge-commit-logins">Logins whose commits always count as merges (one
+                                        per line)</label>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="merge-commit-logins-root"></span>
                                 </fieldset>
 
                                 <fieldset>
@@ -294,7 +293,7 @@
 
                                     <details class="multi-select-dropdown">
                                         <summary class="multi-select-summary" data-base-label="Ignore comments from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-comment-authors-list" class="multi-select-list">
+                                        <div id="change-filter-ignore-comment-authors-list" class="multi-select-list" role="group" aria-label="Ignore comments from these authors (GitHub logins)">
                                         </div>
                                     </details>
                                     <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
@@ -306,7 +305,7 @@
 
                                     <details class="multi-select-dropdown">
                                         <summary class="multi-select-summary" data-base-label="Ignore reviews from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-review-authors-list" class="multi-select-list">
+                                        <div id="change-filter-ignore-review-authors-list" class="multi-select-list" role="group" aria-label="Ignore reviews from these authors (GitHub logins)">
                                         </div>
                                     </details>
                                     <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
@@ -315,19 +314,6 @@
                                         request states (created via "Review changes" button). Use this to ignore
                                         optional
                                         reviewers whose approval isn't required.
-                                    </p>
-
-                                    <label class="checkbox-row">
-                                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                        <span id="change-filter-use-builtin-merge-pattern-root"></span>
-                                        Use built-in merge commit filter (merges from main/origin/main)
-                                    </label>
-                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
-                                        🔀 Built-in pattern:
-                                        <code>^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main
-                                            into )</code><br>
-                                        Uncheck to use only your custom patterns below, or to define your own merge
-                                        filter.
                                     </p>
 
                                     <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
@@ -396,7 +382,7 @@
                 <summary>Latest request output</summary>
                 <!-- Rendered by React (react-app.jsx, plain-string portal) -
                      starts empty, see #request-activity-details above. -->
-                <pre id="output"></pre>
+                <pre id="output" role="region" aria-label="Latest request output"></pre>
             </details>
         </section>
 
@@ -408,27 +394,21 @@
                      Phase 3, see REACT_MIGRATION_PLAN.md. Falls back to a
                      vanilla-built <span> per badge if React fails to
                      load/mount. -->
-                <div id="backfill-badges" class="scheduler-badges"></div>
-                <div class="form-actions">
-                    <button type="button" id="backfill-start-btn">Start backfill</button>
-                    <button type="button" id="backfill-stop-btn">Stop backfill</button>
-                    <button type="button" id="backfill-refresh-btn">Refresh status</button>
-                </div>
+                <div id="backfill-badges" class="scheduler-badges" role="group" aria-label="Backfill status badges"></div>
+                <!-- Rendered by React (BackfillControls.jsx, react-app.jsx) -
+                     Phase C, see REACT_MIGRATION_PLAN.md. -->
+                <span id="backfill-controls-root"></span>
                 <!-- Rendered by React (react-app.jsx, plain-string portal) -
                      starts empty, see #request-activity-details above. -->
-                <pre id="backfill-details" class="scheduler-details"></pre>
+                <pre id="backfill-details" class="scheduler-details" role="region" aria-label="Backfill status details"></pre>
                 <details class="advanced-options">
                     <summary>Log details</summary>
-                    <div class="backfill-log-options">
-                        <label>
-                            <input type="checkbox" id="backfill-log-autoscroll" checked />
-                            Auto-scroll log while running
-                        </label>
-                        <button type="button" id="backfill-log-refresh-btn">Refresh log</button>
-                    </div>
+                    <!-- Rendered by React (BackfillLogControls.jsx, react-app.jsx) -
+                         Phase C, see REACT_MIGRATION_PLAN.md. -->
+                    <span id="backfill-log-controls-root"></span>
                     <!-- Rendered by React (react-app.jsx, plain-string portal) -
                          starts empty, see #request-activity-details above. -->
-                    <pre id="backfill-log" class="backfill-log"></pre>
+                    <pre id="backfill-log" class="backfill-log" role="region" aria-label="Backfill log"></pre>
                 </details>
             </div>
         </section>
@@ -437,7 +417,7 @@
             hidden>
             <h3>Action Log</h3>
             <div class="action-log-controls form-actions">
-                <button type="button" id="action-log-refresh-btn">Refresh</button>
+                <div id="action-log-refresh-btn-root"></div>
             </div>
             <div id="action-log-container" class="action-log-container">
                 <!-- Rendered by React (ActionLogSection, mounted in react-app.jsx) -->
@@ -465,25 +445,21 @@
     <h2>Data Views</h2>
     <div class="data-tabs" id="data-tabs">
         <div class="data-tab-list" role="tablist" aria-label="PR data views">
-            <button type="button" id="tab-pr-data" class="data-tab-button is-active" role="tab" aria-selected="true"
-                aria-controls="tab-panel-pr-data">
-                PR data
-            </button>
-            <button type="button" id="tab-review-stats" class="data-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-review-stats">
-                Review statistics
-            </button>
-            <button type="button" id="tab-author-insights" class="data-tab-button" role="tab" aria-selected="false"
-                aria-controls="tab-panel-author-insights">
-                Author Insights
-            </button>
+            <span id="tab-pr-data-root"></span>
+            <span id="tab-review-stats-root"></span>
+            <span id="tab-author-insights-root"></span>
         </div>
 
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <!-- Rendered by React (react-app.jsx, plain-string portal) -
                  starts empty, see #request-activity-details above. -->
-            <pre id="data-meta" style="white-space: break-spaces;"></pre>
-            <div id="pr-sections"></div>
+            <pre id="data-meta" style="white-space: break-spaces;" role="region" aria-label="PR data summary"></pre>
+            <!-- Rendered by React (components/TableFilterChips.jsx) -
+                 renders nothing at all when no non-default filter is
+                 applied, same precedent as #merged-request-more-action
+                 below. -->
+            <div id="table-filter-chips-root" role="group" aria-label="Applied table filters"></div>
+            <div id="pr-sections" role="region" aria-label="Pull requests"></div>
             <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
                  renders nothing at all (not even this div's own children)
                  when not visible, so no `hidden` attribute is needed here. -->
@@ -496,7 +472,7 @@
                 <!-- Rendered by React (react-app.jsx) - Phase 3, then Track C
                      (see REACT_MIGRATION_PLAN.md): ReviewStatsContent now computes
                      its own stats from PrDataContext's payload instead of being
-                     pushed a pre-built result, so nothing in index.page.js rebuilds
+                     pushed a pre-built result, so nothing outside React rebuilds
                      either #stats-controls-root or #stats-content-root anymore.
                      Starts empty (found and fixed alongside the full
                      vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the old
@@ -504,8 +480,8 @@
                      mounted here - createPortal doesn't clear a target's
                      pre-existing content, so the real stats content used to
                      render stuck directly onto the end of "Loading...". -->
-                <div id="stats-controls-root"></div>
-                <div id="stats-content-root"></div>
+                <div id="stats-controls-root" role="group" aria-label="Review statistics controls"></div>
+                <div id="stats-content-root" role="region" aria-label="Review statistics"></div>
             </div>
         </section>
 
@@ -526,7 +502,7 @@
                      without a persisted override) if React fails to
                      load/mount. -->
                 <div id="author-insights-selector-root"></div>
-                <div id="author-insights-header-root"></div>
+                <div id="author-insights-header-root" role="region" aria-label="Selected author"></div>
                 <!-- Manual comments composer/list - real JSX
                      (AuthorInsightsCommentsSection.jsx). Its mutable draft
                      state and save/edit POST side effects go through the
@@ -541,9 +517,9 @@
                      target's pre-existing content, so the real composer/list
                      content used to render stuck directly onto the end of
                      "Loading...". -->
-                <div id="author-insights-content-root"></div>
-                <div id="author-insights-notes-root"></div>
-                <div id="author-insights-created-prs-root"></div>
+                <div id="author-insights-content-root" role="region" aria-label="Author comments"></div>
+                <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes"></div>
+                <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs"></div>
             </div>
         </section>
     </div>
@@ -568,34 +544,11 @@
          is treated as untrusted. Re-copy purify.min.js and purify.min.js.map
          together when bumping the "dompurify" dependency version. -->
     <script src="./vendor/purify.min.js"></script>
-    <!-- pr-section-grouping.helpers.js: converted to a real ES module
-         (see REACT_MIGRATION_PLAN.md) - imported directly by index.page.js
-         instead of loaded as its own script tag. -->
-    <!-- pr-entry-derived-cache.helpers.js/pr-multi-select-render-cache.helpers.js:
-         converted to real ES modules (see REACT_MIGRATION_PLAN.md) -
-         imported directly by index.page.js instead of loaded as their own
-         script tags. -->
-    <!-- pr-smart-groups.helpers.js/pr-section-config.helpers.js: converted
-         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
-         directly by PrTableApp.jsx (not index.page.js, which never
-         referenced either) instead of loaded as their own script tags. -->
-    <!-- react-callbacks.helpers.js/form-parsing.helpers.js/
-         pr-data-tab.orchestrator.js/backfill-tab.orchestrator.js: converted
-         to real ES modules (see REACT_MIGRATION_PLAN.md) - imported
-         directly by index.page.js instead of loaded as their own script
-         tags. -->
-
-    <!-- ES module cleanup (see REACT_MIGRATION_PLAN.md): type="module" so
-         index.page.js can start using real `import` for its ~81 helper/
-         component/orchestrator dependencies (converted incrementally, one
-         file at a time) instead of the require()/globalThis.ViewPrsX
-         fallback every one of them still uses today. Deferred execution
-         (the default for type="module") is safe here: every still-classic
-         dependency above finishes running - and sets its window.ViewPrsX
-         global - before this deferred script runs, and relative to
-         react-app.jsx (also deferred, positioned after this tag) document
-         order is preserved, so this still runs first. -->
-    <script type="module" src="./index.page.js"></script>
+    <!-- Window-bridge elimination Phase 7.5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+         index.page.js, the last vanilla script, is deleted. Its
+         credential-field hints are props on the React inputs, its dropdown
+         closing is AppRoot's useMultiSelectDropdownClosing, and its error
+         filters are installed by react-app.jsx before mounting. -->
 
     <!-- React App Entry Point (Phase 1: Hybrid Migration) -->
     <script type="module" src="./react-app.jsx"></script>

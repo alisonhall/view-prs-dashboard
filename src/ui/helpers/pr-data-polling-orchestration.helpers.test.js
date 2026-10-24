@@ -2,7 +2,7 @@
 
 const {
   createPrDataPollingOrchestrationHelpers,
-} = require("./pr-data-polling-orchestration.helpers.js");
+} = require("./pr-data-polling-orchestration.helpers.ts");
 
 const jsonResponse = (body, overrides = {}) => ({
   ok: true,
@@ -29,8 +29,6 @@ function buildHarness(overrides = {}) {
   const calls = {
     applyLatestPrData: [],
     renderPrData: [],
-    renderAutoRenderBlockedIndicator: [],
-    flushPendingAutoRender: [],
     markPollSuccess: [],
     showPollFailureWarning: [],
     setStatusMessage: [],
@@ -88,8 +86,6 @@ function buildHarness(overrides = {}) {
       state.pendingAutoRenderPayload = value;
     },
     renderPrData: (...args) => calls.renderPrData.push(args),
-    renderAutoRenderBlockedIndicator: (...args) => calls.renderAutoRenderBlockedIndicator.push(args),
-    flushPendingAutoRender: (...args) => calls.flushPendingAutoRender.push(args),
     markPollSuccess: (...args) => calls.markPollSuccess.push(args),
     showPollFailureWarning: (...args) => calls.showPollFailureWarning.push(args),
     setStatusMessage: (...args) => calls.setStatusMessage.push(args),
@@ -204,7 +200,15 @@ describe("pr data polling orchestration helpers", () => {
     expect(calls.markPollSuccess).toHaveLength(0);
   });
 
-  test("given the render decision is queue-render-and-listen, when polling, then it queues the payload, shows the indicator, and arms a blur listener", async () => {
+  // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // this call site no longer renders the indicator or arms its own blur
+  // listener directly for "queue-render-and-listen" - setPendingAutoRenderPayload
+  // (the bridge to AutoRenderBlockingProvider.tsx) now triggers that
+  // Provider's own reactive effect to do both, so a focused element's
+  // addEventListener is no longer called from here at all. Confirmed via
+  // AutoRenderBlockingProvider.test.jsx that the Provider itself does
+  // arm the listener once notified.
+  test("given the render decision is queue-render-and-listen, when polling, then it just queues the payload (the Provider handles showing the indicator and arming a blur listener)", async () => {
     const focusedElement = { addEventListener: jest.fn() };
     const pendingPayload = { byPrNumber: { 2: {} } };
     const { helpers, state, calls } = buildHarness({
@@ -217,8 +221,7 @@ describe("pr data polling orchestration helpers", () => {
     await helpers.pollForDataChanges();
 
     expect(state.pendingAutoRenderPayload).toBe(pendingPayload);
-    expect(calls.renderAutoRenderBlockedIndicator).toHaveLength(1);
-    expect(focusedElement.addEventListener).toHaveBeenCalledWith("blur", expect.any(Function), { once: true });
+    expect(focusedElement.addEventListener).not.toHaveBeenCalled();
     expect(calls.markPollSuccess).toHaveLength(1);
     expect(calls.renderPrData).toHaveLength(0);
   });

@@ -5,20 +5,33 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { OpenModeSelect } = require('./OpenModeSelect');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
+const filterStateProbe = createFilterStateProbe();
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (openMode = 'none') =>
   render(
-    <FilterStateProvider initialValues={{ openMode }}>
-      <OpenModeSelect />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={{ openMode }}>
+            <filterStateProbe.FilterStateProbe />
+            <OpenModeSelect />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('OpenModeSelect', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
-  });
 
   test('given the provider seeds "none", when rendering, then the select starts with that value', () => {
     renderWithProvider('none');
@@ -41,7 +54,7 @@ describe('OpenModeSelect', () => {
     await user.selectOptions(select, 'all');
 
     expect(select).toHaveValue('all');
-    expect(window.getFilterStateValues().openMode).toBe('all');
+    expect(filterStateProbe.readValues().openMode).toBe('all');
   });
 
   test('given an external native value change (e.g. some other legacy code manipulating this element directly), when the native setter + change event fire, then React state picks it up', () => {

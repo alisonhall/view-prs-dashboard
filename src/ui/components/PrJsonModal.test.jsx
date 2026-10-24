@@ -1,23 +1,10 @@
 /** @jest-environment jsdom */
 
-const { render, screen, waitFor, fireEvent } = require('@testing-library/react');
+const { render, screen, waitFor, fireEvent, within } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrJsonModal } = require('./PrJsonModal');
-
-function installDefaultHelpers() {
-  window.safeJsonStringify = (value) => JSON.stringify(value ?? null, null, 2);
-  window.getPerPrUserStateFromPayload = (_payload, _entry, _prNumber, _repo) => ({
-    notesByPrNumber: null,
-    ackByRepo: null,
-    reverifyByRepo: null,
-    inReviewByRepo: null,
-  });
-  window.DEFAULT_REPO = 'owner/default-repo';
-}
-
-function clearHelpers() {
-  ['safeJsonStringify', 'getPerPrUserStateFromPayload', 'DEFAULT_REPO'].forEach((key) => delete window[key]);
-}
+const { ActivityDrawer } = require('./ActivityDrawer');
+const { JobEventsContext } = require('../state/JobEventsContext');
 
 function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old\n+new') {
   global.fetch = jest.fn().mockResolvedValue({
@@ -36,11 +23,9 @@ function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old
 
 describe('PrJsonModal', () => {
   beforeEach(() => {
-    installDefaultHelpers();
     Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
   });
   afterEach(() => {
-    clearHelpers();
     jest.restoreAllMocks();
     delete global.fetch;
   });
@@ -48,6 +33,60 @@ describe('PrJsonModal', () => {
   test('given no target, when rendering, then renders nothing', () => {
     const { container } = render(<PrJsonModal target={null} payload={{}} onClose={() => {}} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  test('given a target, when it is first rendered (before the open effect runs), then the blocks say loading rather than flashing empty', () => {
+    // Server rendering runs no effects, so this is exactly the first render
+    // after opening: detailsPayload is still null there.
+    // jsdom has no TextEncoder, which the browser server build needs.
+    global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
+    const { renderToString } = require('react-dom/server');
+    const html = renderToString(
+      <PrJsonModal
+        target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+        payload={{ byPrNumber: {} }}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).toContain('Loading data file entry...');
+    expect(html).toContain('Loading pr-detail file entry...');
+    expect(html).toContain('Loading user-state entry...');
+  });
+
+  test('given the modal was closed after showing one PR, when it reopens for a different PR, then its first frame is loading, not the previous PR\'s JSON', async () => {
+    const React = require('react');
+    mockFetchOk();
+    const target = (number) => ({ entry: { prNumber: String(number), repo: 'owner/repo' }, pr: { number } });
+    const firstFrames = [];
+    // A layout effect runs in the commit of a render, before the modal's own
+    // passive effect updates its state - so it sees that render's first frame.
+    const FrameReader = ({ tag }) => {
+      React.useLayoutEffect(() => {
+        firstFrames.push({
+          tag,
+          subtitle: document.querySelector('#pr-json-modal-subtitle')?.textContent || null,
+          block: document.querySelector('pre.pr-json-block')?.textContent || null,
+        });
+      });
+      return null;
+    };
+    const App = ({ currentTarget, tag }) => (
+      <>
+        <PrJsonModal target={currentTarget} payload={{ byPrNumber: {} }} onClose={() => {}} />
+        <FrameReader tag={tag} />
+      </>
+    );
+
+    const { rerender } = render(<App currentTarget={target(1)} tag="open-pr-1" />);
+    await waitFor(() => expect(screen.getByText('PR #1 (owner/repo)')).toBeInTheDocument());
+    rerender(<App currentTarget={null} tag="closed" />);
+    firstFrames.length = 0;
+    rerender(<App currentTarget={target(2)} tag="reopen-pr-2" />);
+
+    const reopenFrame = firstFrames.find((frame) => frame.tag === 'reopen-pr-2');
+    expect(reopenFrame.subtitle).not.toBe('PR #1 (owner/repo)');
+    expect(reopenFrame.block).toBe('Loading data file entry...');
+    await waitFor(() => expect(screen.getByText('PR #2 (owner/repo)')).toBeInTheDocument());
   });
 
   test('given a target, when rendering, then shows the dialog with the PR number/repo subtitle and loading placeholders', async () => {
@@ -62,6 +101,23 @@ describe('PrJsonModal', () => {
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('PR #42 (owner/repo)')).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+  });
+
+  // Accessibility naming: each JSON block is a region named by its summary.
+  test('given a target, when rendering, then the three JSON blocks are regions named by their summaries', async () => {
+    mockFetchOk();
+    render(
+      <PrJsonModal
+        target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+        payload={{ byPrNumber: {} }}
+        onClose={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    for (const name of ['Data File Entry', 'PR Detail File', 'User State Entry']) {
+      expect(within(dialog).getByRole('region', { name })).toBeInTheDocument();
+    }
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
   });
 
@@ -242,6 +298,43 @@ describe('PrJsonModal', () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('given the modal is open on top of the activity drawer, when Escape is pressed, then only the modal closes (stopPropagation prevents the drawer from also closing)', async () => {
+    mockFetchOk();
+    const onClose = jest.fn();
+    const jobEventsValue = {
+      connection: 'open',
+      isStale: false,
+      jobs: {
+        autoRefresh: { status: 'idle', lastSkip: null },
+        quickCheck: { status: 'idle', lastSkip: null, waitingOn: null },
+        mergedQueueDrain: { status: 'idle', lastSkip: null },
+      },
+    };
+
+    render(
+      <JobEventsContext.Provider value={jobEventsValue}>
+        <ActivityDrawer />
+        <PrJsonModal
+          target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+          payload={{ byPrNumber: {} }}
+          onClose={onClose}
+        />
+      </JobEventsContext.Provider>,
+    );
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+    // Open the drawer too, so both overlays are up at once.
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // The drawer's own window-level Escape listener never got the event -
+    // it's still open.
+    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
   });
 
   test('given the modal opens, when body overflow is locked, then it is restored on close/unmount', async () => {

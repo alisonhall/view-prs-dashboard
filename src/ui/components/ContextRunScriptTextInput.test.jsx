@@ -5,19 +5,48 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ContextRunScriptTextInput } = require('./ContextRunScriptTextInput');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
+const filterStateProbe = createFilterStateProbe();
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (initialValues, props) =>
   render(
-    <FilterStateProvider initialValues={initialValues}>
-      <ContextRunScriptTextInput {...props} />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={initialValues}>
+            <filterStateProbe.FilterStateProbe />
+            <ContextRunScriptTextInput {...props} />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('ContextRunScriptTextInput', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
+
+  // Window-bridge elimination Phase 7.5: index.page.js used to add these by
+  // DOM id after React rendered the input (all five Run Script fields use
+  // this component).
+  test('given the input renders, when read, then it carries the non-credential-field hints', () => {
+    renderWithProvider({}, { id: 'limit', name: 'limit', filterStateKey: 'limit', type: 'number' });
+    const input = document.getElementById('limit');
+    expect(input).toHaveAttribute('autocomplete', 'off');
+    expect(input).toHaveAttribute('autocapitalize', 'off');
+    expect(input).toHaveAttribute('autocorrect', 'off');
+    expect(input).toHaveAttribute('spellcheck', 'false');
+    expect(input).toHaveAttribute('data-lpignore', 'true');
+    expect(input).toHaveAttribute('data-1p-ignore', 'true');
+    expect(input).toHaveAttribute('data-bwignore', 'true');
+    expect(input).toHaveAttribute('data-form-type', 'other');
   });
 
   test('given the provider seeds a value, when rendering, then the input starts with it', () => {
@@ -45,7 +74,7 @@ describe('ContextRunScriptTextInput', () => {
     expect(screen.getByRole('spinbutton')).toHaveAttribute('min', '1');
   });
 
-  test('given a user types, when typing, then the value updates and window.getFilterStateValues() reflects it', async () => {
+  test('given a user types, when typing, then the value updates and filterStateProbe.readValues() reflects it', async () => {
     const user = userEvent.setup();
     renderWithProvider({ repo: '' }, { id: 'repo', name: 'repo', filterStateKey: 'repo' });
     const input = screen.getByRole('textbox');
@@ -53,6 +82,6 @@ describe('ContextRunScriptTextInput', () => {
     await user.type(input, 'octocat/hello-world');
 
     expect(input).toHaveValue('octocat/hello-world');
-    expect(window.getFilterStateValues().repo).toBe('octocat/hello-world');
+    expect(filterStateProbe.readValues().repo).toBe('octocat/hello-world');
   });
 });

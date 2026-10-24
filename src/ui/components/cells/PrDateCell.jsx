@@ -5,7 +5,8 @@
  * @module components/cells/PrDateCell
  */
 
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { getManualNotesFieldSummary } from '../../helpers/pr-manual-notes-summary.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -25,18 +26,6 @@ function FieldIndicator({ hasData, title, text = '', extraClass = '' }) {
 }
 
 export function PrDateCell({ entry, pr }) {
-  const getManualNotesFieldSummary =
-    window.getManualNotesFieldSummary ||
-    (() => ({
-      hasCustomComments: false,
-      hasOtherNotes: false,
-      hasDifficulty: false,
-      difficultyLevelText: '',
-      hasRallyStories: false,
-      hasRallyLinks: false,
-      hasAnalysisOfPr: false,
-    }));
-
   const prLastActivity = pr?.mergedAt || pr?.closedAt || pr?.sourceUpdatedAt || pr?.updatedAt || '-';
   const prActivityTitle = pr?.mergedAt ? 'Merged at' : pr?.closedAt ? 'Closed at' : 'Last commit';
   const fieldSummary = getManualNotesFieldSummary(entry, pr);
@@ -60,8 +49,7 @@ export function PrDateCell({ entry, pr }) {
           text={fieldSummary.hasDifficulty ? fieldSummary.difficultyLevelText : ''}
           extraClass="author-notes-field-indicator-difficulty"
         />
-        <FieldIndicator hasData={fieldSummary.hasRallyStories} title="Rally stories" />
-        <FieldIndicator hasData={fieldSummary.hasRallyLinks} title="Rally links" />
+        <FieldIndicator hasData={fieldSummary.hasStories} title="Stories" />
         <FieldIndicator hasData={fieldSummary.hasAnalysisOfPr} title="Analysis of PR" />
       </div>
     </td>

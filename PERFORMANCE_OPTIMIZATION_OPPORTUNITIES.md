@@ -1,7 +1,7 @@
 # Performance Optimization Opportunities
 
 > **Note (2026-09-15):** the PR table has since been migrated to React (see
-> `REACT_MIGRATION_PLAN.md`, now complete). That migration's own Phase 5
+> `docs/history/REACT_MIGRATION_PLAN.md`, now complete). That migration's own Phase 5
 > ("Performance Tuning") superseded #7 and #8 below with a different
 > mechanism than either originally proposed - see those items for details.
 > Everything else here (the completed vanilla debouncing work, and the
@@ -20,6 +20,9 @@
 - **Solution:** Debounce textarea inputs (300ms)
 - **Impact:** Smooth typing, no per-keystroke lag
 - **Implemented:** January 2025
+- **Note (2026-10-22):** `recomputeDirtyPrSectionsFields()` was vanilla-era
+  code and no longer exists. Notes dirty state is now React state
+  (`NotesDirtyProvider`).
 
 ### 3. **Filter Change Performance** ✅ COMPLETED
 - **Issue:** Every filter dropdown/checkbox change triggered full table re-render
@@ -92,7 +95,7 @@ predicate functions run for every PR.
 
 **What actually shipped:** not per-render caching of the *count*, but a
 per-entry cache of the *underlying derived values* those predicates read
-(labels, assignee/approver logins) - `pr-entry-derived-cache.helpers.js`,
+(labels, assignee/approver logins) - `pr-entry-derived-cache.helpers.ts`,
 added in `REACT_MIGRATION_PLAN.md`'s Phase 5 ("Delta-aware render
 pipeline", 2026-09-14). A `WeakMap` keyed by PR entry object means an
 unchanged entry (same object reference across a polling delta merge)
@@ -106,9 +109,9 @@ plan's own writeup for the full mechanism and measured impact.
 **Original problem:** filter pipeline re-executes on every render; same
 filters produce same results.
 
-**What actually shipped:** the same `pr-entry-derived-cache.helpers.js`
+**What actually shipped:** the same `pr-entry-derived-cache.helpers.ts`
 cache (see #7 above) applied to `rowMatchesUiFilters`
-(`pr-row-filtering.helpers.js`), keyed per `(entry, current-filter-criteria-fingerprint)`
+(`pr-row-filtering.helpers.ts`), keyed per `(entry, current-filter-criteria-fingerprint)`
 rather than a single global `filterCache` keyed on filters alone - so an
 unchanged entry under unchanged filters is a cache hit, while a filter
 change still correctly busts every entry's cached match result. Measured
@@ -136,7 +139,10 @@ before/after numbers.
 
 ---
 
-### 10. **DOM Manipulation Batching**
+### 10. **DOM Manipulation Batching** ⛔ N/A (superseded by React migration)
+
+> **Note (2026-10-22):** React now builds and reconciles the table, so
+> there is no hand-written DOM loop left to batch. Kept for history only.
 
 **Problem:**
 - Multiple DOM updates in loops
@@ -170,7 +176,7 @@ before/after numbers.
 ### **Not Recommended** (low ROI)
 
 8. Date formatting optimization
-9. DOM batching improvements
+9. ~~DOM batching improvements~~ - N/A since the React migration (see #10)
 10. Auto-refresh fingerprinting
 
 ---

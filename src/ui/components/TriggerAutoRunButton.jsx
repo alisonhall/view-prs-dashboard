@@ -33,7 +33,9 @@ export function TriggerAutoRunButton({ onTrigger }) {
   };
 
   return (
-    <button type="button" id="trigger-auto-run-btn" disabled={state.disabled} onClick={handleClick}>
+    // data-testid: the visible name changes while it works ("Triggering..."),
+    // so tests can't find it by name throughout a click.
+    <button type="button" id="trigger-auto-run-btn" data-testid="trigger-auto-run-button" disabled={state.disabled} onClick={handleClick}>
       {state.label}
     </button>
   );

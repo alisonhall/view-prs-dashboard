@@ -3,28 +3,16 @@
 const { render, screen, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { ReviewThreadsSection } = require('./ReviewThreadsSection');
-
-function installDefaultHelpers() {
-  window.asArray = (value) => (Array.isArray(value) ? value : []);
-  window.getAuthorThreadResolutionPolicy = () => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() });
-  window.renderMarkdownAsHtml = (text) => `<p>${text}</p>`;
-  window.readReviewConversationsUiState = () => ({ stateKey: 'k', conversationFilterMode: 'unresolved', showSummaryCards: true });
-  window.writeReviewConversationsUiState = () => {};
-}
-
-function clearHelpers() {
-  [
-    'asArray',
-    'getAuthorThreadResolutionPolicy',
-    'renderMarkdownAsHtml',
-    'readReviewConversationsUiState',
-    'writeReviewConversationsUiState',
-  ].forEach((key) => delete window[key]);
-}
+const { FilterStateContext } = require('../../state/FilterStateContext');
+const { AuthorThreadResolutionSelectionContext } = require('../../state/AuthorThreadResolutionSelectionContext');
 
 describe('ReviewThreadsSection', () => {
-  beforeEach(installDefaultHelpers);
-  afterEach(clearHelpers);
+  // No FilterStateContext/AuthorThreadResolutionSelectionContext ancestor
+  // needed for the default case - both are read permissively (see
+  // ReviewThreadsSection.jsx's own useAuthorThreadResolutionPolicy
+  // comment), and their defaults already resolve to the same "allow-all,
+  // nothing checked" policy the old window.getAuthorThreadResolutionPolicy
+  // mock used to install.
 
   test('given no threads/comments/summaries, when rendering, then renders nothing', () => {
     const { container } = render(<ReviewThreadsSection pr={{}} actorsMap={{}} />);
@@ -61,11 +49,6 @@ describe('ReviewThreadsSection', () => {
     // "allow-all" (the default policy) never flags an author-resolved thread
     // regardless of who started it — the warning only exists for the
     // "deny-only" (or "allow-only") policies, matching vanilla exactly.
-    window.getAuthorThreadResolutionPolicy = () => ({
-      mode: 'deny-only',
-      allowLoginKeys: new Set(),
-      denyLoginKeys: new Set(['someone-else']),
-    });
     const pr = {
       authorLogin: 'author-login',
       reviewThreads: [
@@ -76,7 +59,19 @@ describe('ReviewThreadsSection', () => {
         },
       ],
     };
-    render(<ReviewThreadsSection pr={pr} actorsMap={{}} />);
+    render(
+      <FilterStateContext.Provider value={{ values: { attentionAuthorThreadResolutionMode: 'deny-only' } }}>
+        <AuthorThreadResolutionSelectionContext.Provider
+          value={{
+            checkedByListId: {
+              'attention-author-thread-resolution-deny-list': new Set(['someone-else']),
+            },
+          }}
+        >
+          <ReviewThreadsSection pr={pr} actorsMap={{}} />
+        </AuthorThreadResolutionSelectionContext.Provider>
+      </FilterStateContext.Provider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Resolved (1)' }));
     expect(screen.getByText('WARNING: should be resolved by thread starter', { exact: false })).toBeInTheDocument();
     expect(screen.getByText(/incorrectly resolved by PR author/)).toBeInTheDocument();

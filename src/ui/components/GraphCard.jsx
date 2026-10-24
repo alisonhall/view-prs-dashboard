@@ -9,7 +9,7 @@
  * @module components/GraphCard
  */
 
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 

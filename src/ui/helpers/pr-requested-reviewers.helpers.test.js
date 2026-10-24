@@ -1,6 +1,6 @@
 const {
   createPrRequestedReviewersHelpers,
-} = require("./pr-requested-reviewers.helpers.js");
+} = require("./pr-requested-reviewers.helpers.ts");
 
 describe("pr requested reviewers helpers", () => {
   const createHelpers = () =>

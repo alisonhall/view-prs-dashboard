@@ -8,7 +8,9 @@
 
 import { InsightSection } from './InsightSection';
 import { ActivityEventDescription } from './ActivityEventDescription';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -24,6 +26,7 @@ function getEventKind(event) {
   if (eventType === 'approval') return 'approval';
   if (eventType === 'merged') return 'merged';
   if (eventType === 'opened') return 'opened';
+  if (eventType === 'closed') return 'closed';
   if (eventChannel === 'commit' || eventType === 'commit') return 'commit';
   if (eventChannel === 'review' || eventType === 'review') return 'review';
   if (eventChannel === 'thread') return 'thread';
@@ -31,11 +34,7 @@ function getEventKind(event) {
   return 'system';
 }
 
-function buildActivityEvents(pr) {
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const buildFallbackActivityEvents = window.buildFallbackActivityEvents || (() => []);
-  const buildActivityEventKey = window.buildActivityEventKey || (() => '');
-
+function buildActivityEvents(pr, { buildFallbackActivityEvents, buildActivityEventKey }) {
   const timelineEvents = asArray(pr.activityTimeline).flatMap((bucket) => asArray(bucket?.events));
   const sourceEvents = timelineEvents.length ? timelineEvents : asArray(pr.activityEvents);
   const fallbackEvents = buildFallbackActivityEvents(pr);
@@ -92,9 +91,9 @@ function buildActivityEvents(pr) {
 }
 
 export function ActivityEventsSection({ pr, actorsMap }) {
-  const normalizePrRootUrl = window.normalizePrRootUrl || ((url) => String(url || ''));
+  const { normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEventKey } = usePrInsightsDisplay();
 
-  const activityEvents = buildActivityEvents(pr);
+  const activityEvents = buildActivityEvents(pr, { buildFallbackActivityEvents, buildActivityEventKey });
   if (!activityEvents.length) return null;
 
   return (

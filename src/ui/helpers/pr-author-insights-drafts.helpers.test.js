@@ -2,7 +2,7 @@
 
 const {
   createPrAuthorInsightsDraftsHelpers,
-} = require("./pr-author-insights-drafts.helpers.js");
+} = require("./pr-author-insights-drafts.helpers.ts");
 
 describe("author insights drafts helpers", () => {
   const createHelpers = (overrides = {}) => {

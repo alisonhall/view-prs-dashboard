@@ -1,15 +1,15 @@
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): aggregateReviewerActivityTimeline
 // used to be reachable only via index.page.js's own __testables export (a
 // DI-wired instance closing over index.page.js's module state) - now that
-// the whole review-stats cluster has moved to React (state/ReviewStatsProvider.jsx),
+// the whole review-stats cluster has moved to React (components/ReviewStatsProvider.tsx),
 // index.page.js no longer defines this function at all. These tests call
-// the real pr-review-stats-timeline.helpers.js factory directly instead,
+// the real pr-review-stats-timeline.helpers.ts factory directly instead,
 // wired with the same real isWithinStatsDateRange logic index.page.js used
 // to provide (see that function's own former implementation) - every test
 // case/assertion here is unchanged from before this rewrite.
 const {
   createPrReviewStatsTimelineHelpers,
-} = require("../helpers/pr-review-stats-timeline.helpers.js");
+} = require("../helpers/pr-review-stats-timeline.helpers.ts");
 
 const isWithinStatsDateRange = (isoValue, range = {}) => {
   const value = String(isoValue || "").trim();

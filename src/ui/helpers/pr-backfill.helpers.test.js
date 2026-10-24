@@ -1,4 +1,4 @@
-const { createPrBackfillHelpers } = require("../helpers/pr-backfill.helpers.js");
+const { createPrBackfillHelpers } = require("../helpers/pr-backfill.helpers.ts");
 
 describe("pr backfill helpers", () => {
   const {

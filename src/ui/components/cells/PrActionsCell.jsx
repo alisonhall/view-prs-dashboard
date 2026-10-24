@@ -11,16 +11,18 @@
  * @module components/cells/PrActionsCell
  */
 
+import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
+import { useRepoLabels } from '../../state/RepoLabelsContext';
 
 export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged, onCheckboxChange, onAckAction, onApplyLabel, onUpdatePr, onViewJson }) {
   const entry = { prNumber: String(pr?.number || ''), repo };
   const prNumber = String(pr?.number || '');
+  const { labels: repoLabels } = useRepoLabels();
 
-  const getLabelName = window.getLabelName || ((label) => String(label?.name || label || '').trim());
   const existingLabels = new Set(
     (Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean),
   );
-  const availableLabels = ((window.getAvailableRepoLabels || (() => []))() || []).filter(
+  const availableLabels = repoLabels.filter(
     (label) => label?.name && !existingLabels.has(label.name),
   );
 
@@ -42,11 +44,10 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
 
   const handleUpdateClick = async (e) => {
     e.stopPropagation();
-    if (onUpdatePr) {
-      await onUpdatePr(pr.number, entry, pr);
-    } else {
-      await (window.runSinglePrUpdate || (async () => {}))(entry, pr);
-    }
+    // onUpdatePr is always wired by the real PrTableApp (useSinglePrUpdate,
+    // see REACT_MIGRATION_PLAN.md) - this no-op only covers isolated tests
+    // that render this cell without that wiring.
+    await onUpdatePr?.(pr.number, entry, pr);
   };
 
   const handleAckToggleClick = (e) => {
@@ -88,13 +89,19 @@ export function PrActionsCell({ pr, repo, isFlagged, isInReview, isAcknowledged,
           <span className="in-review-label flagged-label">Flagged</span>
         </label>
 
-        <button type="button" className="row-action-btn update" onClick={handleUpdateClick}>
+        <button
+          type="button"
+          className="row-action-btn update"
+          aria-label={`Update PR #${prNumber}`}
+          onClick={handleUpdateClick}
+        >
           ↻ Update
         </button>
         <button
           type="button"
           className={isAcknowledged ? 'row-action-btn ack is-acked' : 'row-action-btn ack'}
           aria-pressed={Boolean(isAcknowledged)}
+          aria-label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           title={isAcknowledged ? 'Acknowledged - click to clear' : 'Click to acknowledge'}
           onClick={handleAckToggleClick}
         >

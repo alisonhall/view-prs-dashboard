@@ -60,6 +60,7 @@ export function PrTable({
   prs,
   repo,
   sectionKey,
+  label,
   isSmartGroup,
   lifecycleSection,
   dateHeader,
@@ -85,7 +86,11 @@ export function PrTable({
   const activePrNumberSet = new Set((activePrNumbers || []).map(String));
   const queuedPrNumberSet = new Set((queuedPrNumbers || []).map(String));
   return (
-    <table className="pr-data-table">
+    // Named by its section title ("Open PRs", "Needs Attention") so each
+    // table - and, within it, each PR's row controls - can be found by role.
+    // A PR can appear in more than one section, so the table name is what
+    // tells two copies of the same row apart.
+    <table className="pr-data-table" aria-label={label || undefined}>
       <colgroup>
         {TABLE_COLUMN_CLASSES.map((columnClass) => (
           <col key={columnClass} className={columnClass} />

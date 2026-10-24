@@ -5,6 +5,12 @@ require('@testing-library/jest-dom');
 const { AppliedFilterSummary } = require('./AppliedFilterSummary');
 
 describe('AppliedFilterSummary', () => {
+  // Accessibility naming: the summary is a region named for e2e and assistive tech.
+  test('given summary text, when rendering, then the summary is a region named "Applied filters summary"', () => {
+    render(<AppliedFilterSummary summaryText="repo=owner/repo | Rows: 5" filterChips={[]} />);
+    expect(screen.getByRole('region', { name: 'Applied filters summary' })).toHaveTextContent('Rows: 5');
+  });
+
   test('given summary text, when rendering, then shows it in the <pre> summary node', () => {
     render(<AppliedFilterSummary summaryText="repo=owner/repo | Rows: 5" filterChips={[]} />);
     expect(document.getElementById('management-filter-summary')).toHaveTextContent(

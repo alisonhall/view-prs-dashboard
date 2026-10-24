@@ -14,13 +14,15 @@
  * ever reads the old module-level isRequestMoreMergedPending variable, so
  * unlike some other converted sections there was no cross-cutting "vanilla
  * remains source of truth" concern here). The actual request logic
- * (window.handleRequestMoreMerged, wrapping
- * helpers/pr-merged-request-more-action.helpers.js) still lives in vanilla -
- * it does real async orchestration (POST /view-prs/merged/request-more,
- * updating the shared PR payload, re-rendering the table) that belongs in
- * that existing, already-tested helper, not reimplemented here. It now
- * takes onPendingChange/onStatusChange callbacks instead of reaching into
- * #merged-request-more-btn/-status by id directly.
+ * (wrapping helpers/pr-merged-request-more-action.helpers.ts) still lives
+ * in that existing, already-tested pure helper, not reimplemented here -
+ * but as of the ninth follow-up (see REACT_MIGRATION_PLAN.md,
+ * "Remaining-effort audit") it's reached via the `onRequestMore` prop
+ * (MergedRequestMoreActionLive in react-app.jsx passes
+ * useRequestMoreMerged()'s own returned function), not
+ * window.handleRequestMoreMerged. It takes onPendingChange/onStatusChange
+ * callbacks instead of reaching into #merged-request-more-btn/-status by
+ * id directly.
  *
  * The old vanilla version rebuilt this button+status from scratch on every
  * render (applyRenderResults runs on every poll cycle, ~15-30s), which
@@ -36,7 +38,7 @@
 
 import { useState } from 'react';
 
-export function MergedRequestMoreAction({ isVisible, repo }) {
+export function MergedRequestMoreAction({ isVisible, repo, onRequestMore }) {
   const [isPending, setIsPending] = useState(false);
   const [statusText, setStatusText] = useState('');
 
@@ -45,7 +47,7 @@ export function MergedRequestMoreAction({ isVisible, repo }) {
   }
 
   const handleClick = () => {
-    window.handleRequestMoreMerged?.(repo, {
+    onRequestMore?.(repo, {
       onPendingChange: setIsPending,
       onStatusChange: setStatusText,
     });

@@ -7,9 +7,9 @@
  * - Provides bridge between vanilla JS and React
  */
 
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { flushSync, createPortal } from 'react-dom';
+import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
 import { PrNumberFilterInput } from './components/PrNumberFilterInput';
 import { ScopeFilterSelect } from './components/ScopeFilterSelect';
@@ -17,26 +17,77 @@ import { AlwaysShowInReviewCheckbox } from './components/AlwaysShowInReviewCheck
 import { ContextFilterCheckbox } from './components/ContextFilterCheckbox';
 import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
+import { AuthorThreadResolutionRuleVisibility } from './components/AuthorThreadResolutionRuleVisibility';
 import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
-import { MultiSelectCheckboxList } from './components/MultiSelectCheckboxList';
+import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
+import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
+import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
-import { AutoRenderBlockedLinks } from './components/AutoRenderBlockedLinks';
+import { AutoRenderBlockedLinksLive } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
+import { BackfillControls } from './components/BackfillControls';
+import { BackfillLogControls } from './components/BackfillLogControls';
 import { AppliedFilterSummary } from './components/AppliedFilterSummary';
+import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
+import { TableFilterChips } from './components/TableFilterChips';
+import { useTableFilterChips } from './state/useTableFilterChips';
+import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
+import { useRequestMoreMerged } from './state/useRequestMoreMerged';
 import { Snackbar } from './components/Snackbar';
+import { SnackbarProvider } from './components/SnackbarProvider';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
+import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
 import { QuickCheckAllButton } from './components/QuickCheckAllButton';
-import { PrDataPolling } from './components/PrDataPolling';
+import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
+import { useBackfillActions } from './state/useBackfillActions';
+import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
+import { useRunScript } from './state/useRunScript';
+import { useAckLabelActions } from './state/useAckLabelActions';
+import { useTriggerAutoRun } from './state/useTriggerAutoRun';
+import { useQuickCheckActions } from './state/useQuickCheckActions';
+import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
+import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
+import { useFilterState } from './state/FilterStateContext';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
+import { TabStateProvider } from './components/TabStateProvider';
+import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
+import { DataTabButton } from './components/DataTabButton';
+import { ManagementTabButton } from './components/ManagementTabButton';
+import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
+import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
+import { useMultiSelectDropdownClosing } from './state/useMultiSelectDropdownClosing';
+import { installCredentialFieldErrorFilters } from './helpers/credential-field-error-filter.helpers.ts';
+import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
+import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
+import { NotesDirtyProvider } from './components/NotesDirtyProvider';
+import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
+import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
 import { ReviewStatsProvider } from './components/ReviewStatsProvider';
 import { AuthorInsightsProvider } from './components/AuthorInsightsProvider';
+import { FilterOptionsProvider } from './components/FilterOptionsProvider';
+import { JobEventsProvider } from './components/JobEventsProvider';
+import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
+import { StatusTextProvider } from './components/StatusTextProvider';
+import { OutputTextProvider } from './components/OutputTextProvider';
+import { RequestActivityProvider } from './components/RequestActivityProvider';
+import { useRequestActivityDisplay } from './state/RequestActivityContext';
+import { useOutputText } from './state/OutputTextContext';
+import { useBackfillStatus } from './state/BackfillStatusContext';
+import { BackfillStatusProvider } from './components/BackfillStatusProvider';
+import { RepoLabelsProvider } from './components/RepoLabelsProvider';
+import { useRepoLabels } from './state/RepoLabelsContext';
+import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
+import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
+import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
+import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
+import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -97,12 +148,13 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * `<span id="…-root">` container.
  *
  * Initial Context values are the same hardcoded defaults
- * `getUiOptionDefaults()` (index.page.js) uses - there's no vanilla
- * fallback markup left to read a "currently showing" value from, since
- * React is the only thing that ever renders into these containers now.
- * `restoreUiOptionOverrides()` (a real async fetch) still overwrites these
- * via `window.setFilterStateValue` once it resolves, same as any other
- * Context update.
+ * `getUiOptionDefaults()` (helpers/pr-ui-option-persistence.helpers.ts)
+ * uses - there's no vanilla fallback markup left to read a "currently
+ * showing" value from, since React is the only thing that ever renders
+ * into these containers now. FilterStateProvider's own mount effect (a
+ * real async fetch) still overwrites these with any saved overrides once
+ * it resolves - a plain `setValues` call from inside that effect (it runs
+ * in the Provider's own lifecycle, so no flushSync is needed).
  */
 // Context-backed checkboxes with no field-specific behavior (see
 // ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
@@ -124,15 +176,6 @@ const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
   { id: 'ack-changed', name: 'ackChanged', key: 'ackChanged', defaultValue: false },
   { id: 'show-reason', name: 'showReason', key: 'showReason', defaultValue: true },
   { id: 'quiet', name: 'quiet', key: 'quiet', defaultValue: false },
-  // change-filter-use-builtin-merge-pattern DOES auto-persist+apply on
-  // change (its own special-case branch in the delegated #run-script-form
-  // listener, index.page.js) - but that stays owned entirely by the
-  // delegated listener reacting to the real native "change" event this
-  // element always fires, unaffected by Context migration, so it's added
-  // to FilterStateProvider's own debounced-apply deps below only for the
-  // same "harmless double-hookup" consistency every other auto-apply
-  // field gets, not because it's required for correctness.
-  { id: 'change-filter-use-builtin-merge-pattern', name: 'changeFilterUseBuiltinMergePattern', key: 'changeFilterUseBuiltinMergePattern', defaultValue: true },
 ];
 
 // Context-backed text/number inputs (see ContextRunScriptTextInput.jsx) -
@@ -143,7 +186,53 @@ const FILTER_STATE_TEXT_FIELDS = [
   { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200', defaultValue: '' },
   { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15', defaultValue: '' },
   { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): the one remaining field in this
+  // group - previously left as plain vanilla markup specifically because
+  // PrSelectionCell.jsx's bulk-select checkboxes read/write its value too
+  // (off their own one-off window.getSelectedPrNumbers/updateSelectedPrNumbers
+  // bridge). Now Context-backed like its 4 siblings; PrSelectionCell.jsx
+  // reads/writes the same prNumbersInput Context key through a per-key
+  // store (useFilterFieldValue, Phase 5 of the window-bridge elimination -
+  // it used to use window.getFilterStateValues()/setFilterStateValue())
+  // rather than subscribing via useFilterState(), since it's mounted once
+  // per visible table row - a whole-object subscription there would re-render
+  // every row's checkbox on every keystroke in ANY of the 30+ filter
+  // fields, not just this one.
+  { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
 ];
+
+// Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+// cluster 6): extracted out of buildFilterStateFieldPortals() below (still
+// its only other caller) so mountAppRoot() can compute FilterStateProvider's
+// initialValues once, at module load, with no DOM dependency - needed now
+// that FilterStateProvider itself moves from inside AppRoot's own returned
+// JSX to wrapping <AppRoot/> at mountAppRoot()'s own render() call (closing
+// window.getFormBody - see useFormBody.tsx). Pure defaults, same values as
+// getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.ts) - no
+// vanilla fallback markup is left to read a "currently showing" value from.
+function buildFilterStateInitialValues() {
+  const initialValues = {
+    scopeMode: 'all',
+    alwaysShowInReview: false,
+    attentionNoActivityMode: 'all',
+    openMode: 'none',
+    filterPrNumbers: '',
+    attentionAuthorThreadResolutionMode: 'allow-all',
+    changeFilterIgnoreCommitPatterns: '',
+    mergeCommitHeadlinePatterns: formatRuleLines(DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
+    mergeCommitLogins: '',
+  };
+  FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.defaultValue;
+  });
+  FILTER_STATE_TEXT_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.defaultValue;
+  });
+  FILTER_OPTION_SELECT_FIELDS.forEach((field) => {
+    initialValues[field.key] = field.options[0]?.value ?? '';
+  });
+  return initialValues;
+}
 
 function buildFilterStateFieldPortals() {
   const scopeModeContainer = document.getElementById('scope-mode-root');
@@ -159,6 +248,8 @@ function buildFilterStateFieldPortals() {
   const ignoreCommitPatternsContainer = document.getElementById(
     'change-filter-ignore-commit-patterns-root',
   );
+  const mergeCommitHeadlinePatternsContainer = document.getElementById('merge-commit-headline-patterns-root');
+  const mergeCommitLoginsContainer = document.getElementById('merge-commit-logins-root');
   const contextCheckboxContainers = FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.map((field) => ({
     ...field,
     container: document.getElementById(`${field.id}-root`),
@@ -172,27 +263,6 @@ function buildFilterStateFieldPortals() {
     container: document.getElementById(`${field.id}-root`),
   }));
 
-  // Same defaults as getUiOptionDefaults() (index.page.js) - no vanilla
-  // fallback markup is left to read a "currently showing" value from.
-  const initialValues = {
-    scopeMode: 'all',
-    alwaysShowInReview: false,
-    attentionNoActivityMode: 'all',
-    openMode: 'none',
-    filterPrNumbers: '',
-    attentionAuthorThreadResolutionMode: 'allow-all',
-    changeFilterIgnoreCommitPatterns: '',
-  };
-  contextCheckboxContainers.forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  contextTextContainers.forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  contextOptionSelectContainers.forEach((field) => {
-    initialValues[field.key] = field.options[0]?.value ?? '';
-  });
-
   const portals = [
     scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer, 'scope-mode'),
     alwaysShowInReviewContainer &&
@@ -204,8 +274,32 @@ function buildFilterStateFieldPortals() {
       createPortal(<PrNumberFilterInput />, filterPrNumbersContainer, 'filter-pr-numbers'),
     authorThreadResolutionModeContainer &&
       createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
+    // Headless (renders nothing, no container needed) - see its own header
+    // comment for why it stays a plain child here instead of a portal.
+    <AuthorThreadResolutionRuleVisibility key="author-thread-resolution-visibility" />,
     ignoreCommitPatternsContainer &&
       createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer, 'ignore-commit-patterns'),
+    mergeCommitHeadlinePatternsContainer &&
+      createPortal(
+        <MergeCommitRulesTextarea
+          id="merge-commit-headline-patterns"
+          filterStateKey="mergeCommitHeadlinePatterns"
+          placeholder={'^Merge\\b\n^Revert "Merge'}
+          validatePatterns
+        />,
+        mergeCommitHeadlinePatternsContainer,
+        'merge-commit-headline-patterns',
+      ),
+    mergeCommitLoginsContainer &&
+      createPortal(
+        <MergeCommitRulesTextarea
+          id="merge-commit-logins"
+          filterStateKey="mergeCommitLogins"
+          placeholder={'dependabot[bot]\nrenovate[bot]'}
+        />,
+        mergeCommitLoginsContainer,
+        'merge-commit-logins',
+      ),
     ...contextCheckboxContainers.map(
       (field) =>
         field.container &&
@@ -246,17 +340,16 @@ function buildFilterStateFieldPortals() {
     ),
   ].filter(Boolean);
 
-  return { initialValues, portals };
+  return { portals };
 }
 
 // Context-backed "Any (with/without)" plain-metadata filter selects (see
 // FilterOptionSelect.jsx) - each `key` matches the field's `name`
 // attribute and has a corresponding entry in index.page.js's
-// FILTER_STATE_FIELD_MAP. None of these are read via a direct DOM read
-// outside pr-filter-panel.helpers.js's getCustomCommentsFilter/etc.
-// (each only called when "Apply filters (local)" is clicked), and none
-// are in debouncedApplyOnChangeIds, so FilterStateProvider's
-// debounced-apply effect dependency list doesn't need these keys either.
+// FILTER_STATE_FIELD_MAP, and each is part of FilterStateContext's own
+// `values` object, so FilterStateProvider.tsx's debounced persistence
+// watcher already covers every one of these keys with no extra wiring
+// needed here.
 const FILTER_OPTION_SELECT_FIELDS = [
   {
     id: 'filter-custom-comments',
@@ -293,23 +386,17 @@ const FILTER_OPTION_SELECT_FIELDS = [
     ],
   },
   {
-    id: 'filter-rally-stories',
-    name: 'filterRallyStories',
-    key: 'filterRallyStories',
+    // A PR matches name-only/url-only/name-and-url when at least one of
+    // its stories does (pr-row-match-filters.helpers.ts).
+    id: 'filter-stories',
+    name: 'filterStories',
+    key: 'filterStories',
     options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With Rally stories' },
-      { value: 'without', label: 'Without Rally stories' },
-    ],
-  },
-  {
-    id: 'filter-rally-links',
-    name: 'filterRallyLinks',
-    key: 'filterRallyLinks',
-    options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With Rally links' },
-      { value: 'without', label: 'Without Rally links' },
+      { value: '', label: 'Any' },
+      { value: 'none', label: 'Without any story details' },
+      { value: 'name-only', label: 'With only story name' },
+      { value: 'url-only', label: 'With only story URL' },
+      { value: 'name-and-url', label: 'With story and URL' },
     ],
   },
   {
@@ -323,40 +410,6 @@ const FILTER_OPTION_SELECT_FIELDS = [
     ],
   },
 ];
-
-/**
- * Multi-select checkbox lists (Phase 2 - see REACT_MIGRATION_PLAN.md).
- * Unlike every field above, these lists' *options* are rebuilt from the PR
- * payload on every data (re)load - see MultiSelectCheckboxList.jsx's own
- * comment for why each render uses an incrementing `key` instead of
- * relying on prop diffing. React mounts directly into the existing
- * `<div id="...-list">` container (like Phase 1's #pr-sections), not a
- * wrapper span, so no index.html/index.css change is needed for these.
- *
- * MULTI_SELECT_LIST_ID_PREFIXES maps each list's container id to the
- * checkbox-id prefix its options previously used (the vanilla fallback's
- * own id-generation scheme, since removed along with the rest of its
- * DOM-building code from pr-filter-panel.helpers.js - see the
- * `${idPrefix}-${login}-${index}` scheme still in index.page.js's own
- * renderActorOptionsList/renderChangeFilterActorList) so generated ids
- * stay stable across the conversion. Covers every multi-select in the app:
- * five owned by pr-filter-panel.helpers.js (label/exclude-label/author/
- * assigned/approver) and four built directly in index.page.js
- * (thread-resolution allow/deny, change-filter ignore-comment/review-
- * authors) - same bridge, same flushSync fix (gotcha #4), just two
- * different call sites feeding it.
- */
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  'label-list': 'label',
-  'exclude-label-list': 'exclude-label',
-  'author-list': 'author',
-  'assigned-list': 'assigned',
-  'approver-list': 'approver',
-  'attention-author-thread-resolution-allow-list': 'attention-author-thread-resolution-allow',
-  'attention-author-thread-resolution-deny-list': 'attention-author-thread-resolution-deny',
-  'change-filter-ignore-comment-authors-list': 'change-filter-ignore-comment-authors',
-  'change-filter-ignore-review-authors-list': 'change-filter-ignore-review-authors',
-};
 
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -396,26 +449,44 @@ function computeStaticContainers() {
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
     backfillBadges: document.getElementById('backfill-badges'),
-    schedulerBadges: document.getElementById('scheduler-badges'),
-    requestActivityBadges: document.getElementById('request-activity-badges'),
-    statusText: document.getElementById('status'),
-    requestActivityDetails: document.getElementById('request-activity-details'),
-    schedulerDetails: document.getElementById('scheduler-details'),
+    // statusText (#status) moved to StatusTextProvider.tsx (Phase H.8) - it
+    // resolves that container itself, no longer via this containers object.
     outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
+    backfillControls: document.getElementById('backfill-controls-root'),
+    backfillLogControls: document.getElementById('backfill-log-controls-root'),
     dataMeta: document.getElementById('data-meta'),
+    tableFilterChips: document.getElementById('table-filter-chips-root'),
     appliedFilterSummary: document.getElementById('management-filter-summary-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
     quickCheckBtn: document.getElementById('quick-check-btn-root'),
     quickCheckAllBtn: document.getElementById('quick-check-all-btn-root'),
+    runScriptBtn: document.getElementById('run-script-btn-root'),
+    ackOnlyBtn: document.getElementById('ack-only-btn-root'),
+    clearOnlyBtn: document.getElementById('clear-only-btn-root'),
+    applyLabelBtn: document.getElementById('apply-label-btn-root'),
+    refreshLabelsBtn: document.getElementById('refresh-labels-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
     applyLabelSelect: document.getElementById('apply-label-select-root'),
     autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
+    activityDrawer: document.getElementById('activity-drawer-root'),
+    tabPrData: document.getElementById('tab-pr-data-root'),
+    tabReviewStats: document.getElementById('tab-review-stats-root'),
+    tabAuthorInsights: document.getElementById('tab-author-insights-root'),
+    tabStatus: document.getElementById('tab-status-root'),
+    tabScript: document.getElementById('tab-script-root'),
+    tabBackfill: document.getElementById('tab-backfill-root'),
+    tabActionLog: document.getElementById('tab-action-log-root'),
+    tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
+    tabExport: document.getElementById('tab-export-root'),
+    autoRenderBlockedStatus: document.getElementById('auto-render-blocked-status-root'),
+    autoRenderBlockedApplyBtn: document.getElementById('auto-render-blocked-apply-btn-root'),
+    prSections: document.getElementById('pr-sections'),
   };
 }
 
@@ -435,10 +506,10 @@ function computeStaticContainers() {
  * reads via the same window.* bridges as before, this slice only unifies
  * *where* everything renders, not yet *how* each piece gets its data.
  *
- * PrTableApp is the one consumer that doesn't mount eagerly (index.page.js
- * calls window.mountReactPrTable(container, props) lazily, once PR data
- * first loads) - `prTable` state starts null and the portal only renders
- * once that bridge call has actually happened.
+ * PrTableApp is the one consumer that doesn't mount eagerly: <PrTablePortal />
+ * only renders it once PrDataProvider has rendered its first payload
+ * (window-bridge elimination Phase 7 - index.page.js used to trigger this via
+ * window.mountReactPrTable).
  */
 
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): same default as
@@ -462,8 +533,173 @@ const DEFAULT_STATS_VIEW_STATE = {
   startDate: getDefaultStatsStartDate(),
   endDate: '',
 };
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a
+// thin wrapper so useAppliedFilterSummary() (a hook) can be called from
+// AppRoot's JSX, which otherwise can't call hooks mid-render. Must be
+// mounted inside both <RowFilterSelectionProvider> and <JobEventsProvider>
+// - see where it's actually portaled in AppRoot's own JSX.
+//
+// Also portals #data-meta's text from the same single hook call, rather
+// than a separate <DataMetaTextLive> component each independently calling
+// useAppliedFilterSummary() - found via code review that two separate
+// component instances don't share one useMemo/cache, so the whole
+// row-filtering derivation inside useFilteredPrRows() (which this hook
+// composes) was running twice per render for the exact same string. #data-
+// meta showed exactly this same string even before this round (both were
+// fed the same appliedSummaryText by the vanilla pipeline's
+// applyRenderResults, pr-render-apply.helpers.js), so sharing one call is
+// correct, not just cheaper.
+//
+// dataMetaText specifically falls back to "Loading..." until payload.ok
+// confirms a real /view-prs/data response has loaded - without this,
+// PrDataProvider's initial empty-seed payload ({}) would make
+// useAppliedFilterSummary() compute a premature, real-looking summary
+// ("Applied filters: repo=all repos | ... | Rows: 0") in the window before
+// the first fetch resolves, where the old window.updateReactDataMetaText-fed
+// version showed an explicit "Loading..." placeholder. The chip text itself
+// (summaryText, passed to AppliedFilterSummary below) is left as-is - this
+// guard is specifically about restoring #data-meta's own prior placeholder
+// behavior, not a new requirement for the chip.
+function AppliedFilterSummaryLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
+  const { payload } = usePrData();
+  const { summaryText, filterChips } = useAppliedFilterSummary();
+  const dataMetaText = payload?.ok ? summaryText : 'Loading...';
+  return (
+    <>
+      {appliedFilterSummaryContainer &&
+        createPortal(
+          <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />,
+          appliedFilterSummaryContainer,
+          'applied-filter-summary',
+        )}
+      {dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, 'data-meta')}
+    </>
+  );
+}
+
+// Removable filter chips shown above the table (Data Views tab) - a thin
+// wrapper so useTableFilterChips() (a hook) can be called from AppRoot's
+// JSX, same pattern as AppliedFilterSummaryLive above. Must be mounted
+// inside both <RowFilterSelectionProvider> and <FilterStateProvider> - see
+// where it's actually portaled in AppRoot's own JSX, right alongside
+// AppliedFilterSummaryLive which has the same requirement.
+function TableFilterChipsLive({ container }) {
+  const { chips } = useTableFilterChips();
+  if (!container) return null;
+  return createPortal(<TableFilterChips chips={chips} />, container, 'table-filter-chips');
+}
+
+// The "↻ Labels" button - a thin wrapper so useRepoLabels() (a hook) can
+// be called from inside <RepoLabelsProvider>'s own subtree, same pattern
+// as TableFilterChipsLive above. Must be mounted inside
+// <RepoLabelsProvider> specifically (see where it's actually rendered in
+// AppRoot's own JSX) - AppRoot itself can't call useRepoLabels() directly
+// in its own body, since that Provider is a descendant AppRoot renders
+// further down its own JSX, not an ancestor (see RepoLabelsProvider.tsx's
+// own comment).
+function RefreshLabelsButtonLive({ container }) {
+  const { refresh } = useRepoLabels();
+  if (!container) return null;
+  return createPortal(
+    <RunScriptActionButton
+      id="refresh-labels-btn"
+      title="Reload labels for the current repo"
+      label={'↻ Labels'}
+      onClick={() => refresh()}
+    />,
+    container,
+    'refresh-labels-btn',
+  );
+}
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a thin
+// wrapper so useMergedRequestMoreActionOptions() (a hook) can be called from
+// AppRoot's JSX. key={repo}: same stale-state-on-repo-change reasoning the
+// previous window.updateReactMergedRequestMoreAction-fed version already
+// documented at its own portal call site.
+//
+// Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+// also calls useRequestMoreMerged(), passing its returned function as
+// onRequestMore - replaces window.handleRequestMoreMerged.
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the PR table, mounted once PrDataProvider has rendered its first payload -
+// replaces window.mountReactPrTable, which index.page.js's renderPrData called
+// on its first render. Its own component so only it (not AppRoot and every
+// portal AppRoot builds) subscribes to the PR-data Context.
+function PrTablePortal({ container }) {
+  const { hasRenderedPrData } = usePrData();
+  if (!container || !hasRenderedPrData) return null;
+  // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up to wrap
+  // <AppRoot /> (mountAppRoot), so AutoRenderBlockingSync can read it too.
+  return createPortal(
+    <NeedsAttentionProvider>
+      <PrInsightsDisplayProvider>
+        <ReviewConversationsUiStateProvider>
+          <PrTableApp />
+        </ReviewConversationsUiStateProvider>
+      </PrInsightsDisplayProvider>
+    </NeedsAttentionProvider>,
+    container,
+    'pr-table',
+  );
+}
+
+// Window-bridge elimination Phase 7.4: AutoRenderBlockedLinksLive (in
+// AutoRenderBlockedLinks.jsx) renders the "jump to unsaved" chips from
+// AutoRenderBlockingProvider and sets the chip list's `hidden`/`aria-label`.
+
+function MergedRequestMoreActionLive() {
+  const { isVisible, repo } = useMergedRequestMoreActionOptions();
+  const requestMoreMerged = useRequestMoreMerged();
+  return (
+    <MergedRequestMoreAction
+      key={repo}
+      isVisible={isVisible}
+      repo={repo}
+      onRequestMore={requestMoreMerged}
+    />
+  );
+}
+
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
+
+  // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // BackfillControls/BackfillLogControls/RunScriptActionButton's instances
+  // below used to call window.handleBackfillAction/refreshBackfillStatus/
+  // refreshBackfillLogTail/autoScrollBackfillLogToBottom/handleRunScript/
+  // handleAckOnly/handleClearOnly/handleApplyLabelClick directly - they now
+  // call these hooks' returned functions instead. refreshAvailableRepoLabels
+  // (the "↻ Labels" button's own handler) isn't one of these - it can't be
+  // called from here at all, since useRepoLabels() needs a real
+  // <RepoLabelsProvider> ancestor and that Provider is a descendant AppRoot
+  // itself renders further down (see RepoLabelsProvider.tsx's own comment)
+  // - RefreshLabelsButtonLive, below, calls it from inside that Provider's
+  // own subtree instead.
+  const backfillActions = useBackfillActions();
+  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // replaces backfill-tab.orchestrator.js's own initialize()/
+  // onTabActivated() (deleted outright) - see that hook's own header
+  // comment for why this exact shape reproduces both.
+  useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
+  const runScript = useRunScript();
+  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+  // audit"): persistRunScriptOptions comes from useFilterState() directly
+  // now, not window.persistRunScriptOptionOverrides - AppRoot is a
+  // genuine descendant of FilterStateProvider (mountAppRoot wraps it from
+  // outside AppRoot).
+  const { persistRunScriptOptions } = useFilterState();
+  const ackLabelActions = useAckLabelActions();
+  // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton/the
+  // dispatcher-bump and reset-circuit-breaker drawer actions below used to
+  // call window.handleTriggerAutoRun/handleQuickCheck/handleQuickCheckAll/
+  // handleDispatcherBump/handleResetCircuitBreaker directly - they now call
+  // these hooks' returned functions instead.
+  const triggerAutoRun = useTriggerAutoRun();
+  const quickCheckActions = useQuickCheckActions();
+  const activityDrawerActions = useActivityDrawerActions();
 
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): drives
   // which lazy-loaded tab chunks below have been requested yet.
@@ -473,15 +709,20 @@ function AppRoot() {
   const hasExportBeenVisible = useHasTabPanelBeenVisible('tab-panel-export');
   const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
-  const [prTable, setPrTable] = useState(null);
-  const [multiSelectStates, setMultiSelectStates] = useState({});
-  const [filterSummary, setFilterSummary] = useState({ summaryText: '', filterChips: [] });
-  const [backfillBadges, setBackfillBadges] = useState({ badges: [] });
-  const [schedulerBadges, setSchedulerBadges] = useState({ badges: [] });
-  const [requestActivityBadges, setRequestActivityBadges] = useState({ badges: [] });
-  const [applyLabelOptions, setApplyLabelOptions] = useState({ labels: [] });
-  const [autoRenderBlockedLinks, setAutoRenderBlockedLinks] = useState({ prNumbers: [], authorLogins: [] });
-  const [mergedRequestMoreAction, setMergedRequestMoreAction] = useState({ isVisible: false, repo: '' });
+  // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the Backfill tab's button-disabled flags live in <BackfillStatusProvider />
+  // now (it computes them via getBackfillStatusViewModel anyway, and used to
+  // push them into this component's own state through
+  // window.updateReactBackfillButtonState - a bridge from an ancestor down
+  // into its own descendant). Read back here for the buttons' props.
+  //
+  // Window-bridge elimination Phase 7.3: the same goes for the activity
+  // drawer's request-activity badges and "Recent Activity" list - they were
+  // this component's own state, pushed in by PrDataProvider (an ancestor)
+  // through window.updateReactRequestActivityBadges/
+  // updateReactRecentRequestActivity. RequestActivityProvider owns them now;
+  // read back here only to pass to the drawer.
+  const { requestActivityBadges, recentRequestActivity } = useRequestActivityDisplay();
 
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the 7 remaining vanilla `.textContent =`
@@ -491,326 +732,323 @@ function AppRoot() {
   // needed since none of these render anything but text). Initial values
   // match each `<pre>`'s original static index.html text, so there's no
   // flash of empty content before the first bridge call.
-  const [statusText, setStatusText] = useState('Not run');
-  const [requestActivityDetailsText, setRequestActivityDetailsText] = useState('Monitoring request activity...');
-  const [schedulerDetailsText, setSchedulerDetailsText] = useState('Loading scheduler status...');
-  const [outputText, setOutputText] = useState('Run the script to see output');
-  const [backfillDetailsText, setBackfillDetailsText] = useState('Loading backfill status...');
-  const [backfillLogText, setBackfillLogText] = useState('Loading backfill log...');
-  const [dataMetaText, setDataMetaText] = useState('Loading...');
+  //
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // statusText itself moved out of here into <StatusTextProvider />
+  // (wrapping this whole component, see mountAppRoot below) - it owns the
+  // window.updateReactStatusText bridge and writes #status's textContent
+  // directly now (see that Provider's own comment for why a plain DOM
+  // write, not a portal), so hooks called from this component's own body
+  // (useRunScript/useBackfillActions/useAckLabelActions below) can read it
+  // via useStatusText() instead of bouncing through that bridge.
+  // Window-bridge elimination Phase 3c: the output text itself lives in
+  // <OutputTextProvider /> (wrapping this component, see mountAppRoot) so the
+  // hooks that write it - including useSinglePrUpdate, which runs inside
+  // PrTableApp rather than this body - can reach it via useOutputText().
+  const { outputText } = useOutputText();
+  // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // the Backfill tab's badges/details text/log text (and the log's update
+  // tick - BackfillLogControls' scroll-sync effect must fire on every log
+  // refresh, even identical text, which useState alone would bail out of)
+  // live in <BackfillStatusProvider /> now, read back here for the portals.
+  const {
+    backfillButtonState,
+    backfillBadges,
+    backfillDetailsText,
+    backfillLogText,
+    backfillLogUpdateTick,
+  } = useBackfillStatus();
 
-  useEffect(() => {
-    window.mountReactPrTable = (containerElement, props) => {
-      if (!containerElement) {
-        console.error('[React Migration] Cannot mount: container element not found');
-        return null;
-      }
-      setPrTable({
-        container: containerElement,
-        onCheckboxChange: props?.onCheckboxChange,
-        onAckAction: props?.onAckAction,
-        onApplyLabel: props?.onApplyLabel,
-      });
-      // Seed the initial payload through the same path every later update
-      // uses (window.updateReactPrTable, owned by <PrDataProvider />, which
-      // is always mounted below - see its own file) rather than threading
-      // initialPayload/selectedRepo/visiblePrNumbers through this function
-      // as a second, parallel way to get data in.
-      window.updateReactPrTable?.(props?.initialPayload, props?.selectedRepo, props?.visiblePrNumbers);
-      return { unmount: () => setPrTable(null) };
-    };
-    return () => {
-      delete window.mountReactPrTable;
-    };
-  }, []);
+  // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // window.mountReactPrTable is gone. index.page.js's renderPrData called it on
+  // the first data render; PrDataProvider renders the data itself now, and
+  // <PrTablePortal /> (below) mounts the table once it has.
 
-  useEffect(() => {
-    window.renderReactMultiSelectList = (listId, options) => {
-      const container = containers.multiSelect[listId];
-      const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-      if (!container || !idPrefix) {
-        return false;
-      }
-      // flushSync: see MultiSelectCheckboxList's own callers historically -
-      // a same-tick DOM read right after this call (e.g.
-      // getSelectedMultiSelectValues) must see the just-committed state,
-      // not a pre-commit stale one.
-      flushSync(() => {
-        setMultiSelectStates((previous) => ({
-          ...previous,
-          [listId]: { options, renderKey: (previous[listId]?.renderKey || 0) + 1 },
-        }));
-      });
-      return true;
-    };
-    return () => {
-      delete window.renderReactMultiSelectList;
-    };
-  }, [containers]);
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+  // window.renderReactFilterSummary (the push bridge this useEffect used
+  // to register) is gone - <AppliedFilterSummaryLive> now derives the
+  // chip/summary text itself, reactively, via useAppliedFilterSummary().
+  // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // the vanilla call site that used to try calling this now-nonexistent
+  // bridge (pr-render-apply.helpers.js's applyRenderResults, and its
+  // window.updateReactDataMetaText sibling there) is deleted outright too
+  // - both were confirmed dead in production (no installer anywhere in
+  // this file), left wired only because index.html.test.js's own test
+  // harness faked them (fixed below, see installReactFilterPanelMountBridges's
+  // own comment there).
 
-  useEffect(() => {
-    window.renderReactFilterSummary = (summaryText, filterChips) => {
-      if (!containers.appliedFilterSummary) {
-        return false;
-      }
-      setFilterSummary({ summaryText, filterChips });
-      return true;
-    };
-    return () => {
-      delete window.renderReactFilterSummary;
-    };
-  }, [containers]);
+  // Window-bridge elimination Phase 7.4: window.updateReactAutoRenderBlockedLinks
+  // (and the state it set here) is gone - <AutoRenderBlockedLinksLive /> reads
+  // the blocking lists from AutoRenderBlockingProvider.
 
-  useEffect(() => {
-    window.updateReactBackfillBadges = (badges) => {
-      setBackfillBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactSchedulerBadges = (badges) => {
-      setSchedulerBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactRequestActivityBadges = (badges) => {
-      setRequestActivityBadges({ badges });
-      return true;
-    };
-    return () => {
-      delete window.updateReactRequestActivityBadges;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactApplyLabelOptions = (labels) => {
-      setApplyLabelOptions({ labels });
-      return true;
-    };
-    return () => {
-      delete window.updateReactApplyLabelOptions;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactAutoRenderBlockedLinks = (prNumbers, authorLogins) => {
-      setAutoRenderBlockedLinks({ prNumbers, authorLogins });
-      return true;
-    };
-    return () => {
-      delete window.updateReactAutoRenderBlockedLinks;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactMergedRequestMoreAction = (isVisible, repo) => {
-      setMergedRequestMoreAction({ isVisible, repo });
-      return true;
-    };
-    return () => {
-      delete window.updateReactMergedRequestMoreAction;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactStatusText = (text) => {
-      setStatusText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactStatusText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactRequestActivityDetailsText = (text) => {
-      setRequestActivityDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactRequestActivityDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactSchedulerDetailsText = (text) => {
-      setSchedulerDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactSchedulerDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactOutputText = (text) => {
-      setOutputText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactOutputText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactBackfillDetailsText = (text) => {
-      setBackfillDetailsText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillDetailsText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactBackfillLogText = (text) => {
-      setBackfillLogText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactBackfillLogText;
-    };
-  }, []);
-
-  useEffect(() => {
-    window.updateReactDataMetaText = (text) => {
-      setDataMetaText(text);
-      return true;
-    };
-    return () => {
-      delete window.updateReactDataMetaText;
-    };
-  }, []);
-
-  // Announce readiness only once every window.* bridge above has actually
-  // been assigned. React runs useEffects in declaration order after commit,
-  // so this must be the LAST effect in the component - dispatching from
-  // any earlier effect (even one that itself assigns a real bridge, e.g.
-  // window.mountReactPrTable) fires before later effects in this list have
-  // run, racing them the same way. index.page.js's one-time
-  // 'viewprs:react-ready' listeners have no second chance if they fire
-  // before their specific bridge is real: they re-check the relevant
-  // window.* function, find it still undefined, and permanently give up.
-  // Confirmed two real instances of this: window.mountReactPrTable
-  // undefined left the PR table stuck on "Loading..." forever (CI trace:
-  // valid data fetched in 41ms, zero console errors, table never painted);
-  // window.renderReactMultiSelectList undefined (when dispatch lived in the
-  // mountReactPrTable effect above, which runs before this one) left every
-  // filter multi-select (label/author/assigned/etc.) permanently empty.
-  useEffect(() => {
-    // queueMicrotask, not a direct dispatch: every listener (index.page.js)
-    // is invoked synchronously by dispatchEvent, and several call back into
-    // flushSync-wrapped bridges (window.renderReactMultiSelectList,
-    // window.setFilterStateValue) either directly or via a fetch
-    // continuation that can resolve fast enough to still be "inside"
-    // React's own effect-flush for this commit. flushSync reentrant with
-    // an in-progress render throws "flushSync was called from inside a
-    // lifecycle method" (confirmed via this exact warning in CI) - queuing
-    // a fresh microtask guarantees this commit (including its own effect
-    // flush) has fully finished before any listener runs, exactly as that
-    // warning's own message suggests ("...scheduler task or micro task").
-    // A plain setTimeout also works in a real browser, but jsdom
-    // integration tests that assert immediately after an awaited user
-    // interaction (no explicit wait) only drain the microtask queue, not
-    // macrotasks, and would see pre-restore state.
-    queueMicrotask(() => window.dispatchEvent(new CustomEvent('viewprs:react-ready')));
-  }, []);
+  // Window-bridge elimination Phase 7.5: the 'viewprs:react-ready' event this
+  // component used to dispatch from its last effect is gone. It told
+  // index.page.js (deleted) that AppRoot's bridges and portaled inputs
+  // existed; its last listener re-ran the credential hints, which the inputs
+  // now render themselves (NON_CREDENTIAL_INPUT_PROPS). See git history for
+  // the load-order races it guarded against.
+  //
+  // Also from index.page.js: outside clicks close the filter dropdowns.
+  useMultiSelectDropdownClosing();
 
   return (
-    <PrDataProvider
-      initialPayload={{}}
-      initialSelectedRepo=""
-      initialVisiblePrNumbers={null}
-      initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
-    >
-      <FilterStateProvider initialValues={containers.filterFields.initialValues}>
+    <>
+      {/* Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+          cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
+          ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
+          from here (same reasoning as the comment that used to sit at this
+          spot: cross-portal sharing between MultiSelectListPortals and
+          PrTableApp/ReviewThreadsSection, sibling portals not an
+          ancestor/descendant pair). They now wrap <AppRoot/> itself instead,
+          from mountAppRoot() below - closing window.getFormBody required
+          useRunScript/useAckLabelActions/useQuickCheckActions (called from
+          AppRoot's own body) to reach useFilterState()/useRowFilterSelection()
+          directly, which needs AppRoot to be a genuine descendant of all 4,
+          the same "component can't be descendant of what it renders"
+          constraint Phase G.3 already ran into moving these same 3
+          selection Providers the first time (that move was to wrap
+          PrDataProvider/FilterStateProvider, not AppRoot - this is the
+          same constraint one level further out), and Phase G's own
+          PrActivityQueueProvider move/Phase G.1's TabStateProvider
+          widening both ran into separately - see state/useFormBody.tsx.
+          PrDataProvider itself stays here (cluster 6
+          doesn't move it), so it's now FilterStateProvider's *descendant*
+          instead of its ancestor - confirmed inert (neither reads the
+          other's Context) but a genuine reversal worth calling out, since
+          every move before this one only ever added a new ancestor above
+          an existing one. */}
+        {/* RepoLabelsProvider wraps everything below for the same reason
+            PrActivityQueueProvider does: ApplyLabelSelect's own portal
+            (inside the filter-field portals further down) and PrTableApp's
+            PrActionsCell (inside the prTable portal) are siblings, not an
+            ancestor/descendant pair, that both need the same available-
+            labels list - see RepoLabelsContext.tsx's own comment. */}
+        <RepoLabelsProvider>
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md): AuthorInsightsDraftsProvider
+            wraps everything below for the same cross-portal-sharing reason
+            RepoLabelsProvider does - AuthorInsightsCommentsSection (inside
+            one of the 6 separate per-portal AuthorInsightsProvider
+            instances further down) needs this state to persist across
+            every one of those remounts (author/tab switches), and nothing
+            about it is specific to any single portal. */}
+        <AuthorInsightsDraftsProvider>
+        {/* Window-bridge elimination Phase 7.4: computes the auto-render-
+            blocking state from the drafts above and NotesDirtyProvider
+            (wrapping AppRoot) - replaces index.page.js's
+            recomputeDirtyPrSectionsFields. */}
+        <AutoRenderBlockingSync />
+        {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
+            JobEventsProvider widened from "just the drawer portal" (its own
+            prior comment here predicted this) to wrap everything
+            RowFilterSelectionProvider does - useAppliedFilterSummary.tsx
+            (consumed inside the prTable portal below AND by the
+            appliedFilterSummary portal further down) needs useJobEvents()'s
+            schedulerSummary too, and those are sibling portals relative to
+            the drawer, not an ancestor/descendant pair - same
+            cross-portal-sharing reason every other Provider at this level
+            is already this wide. */}
+        <JobEventsProvider>
+        {/* Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+            PrActivityQueueProvider used to wrap just the drawer's
+            bulk-queue section and PrTableApp below - it now wraps <AppRoot />
+            itself instead (mountAppRoot, above), so useAckLabelActions()
+            (called from this component's own body) can reach it via
+            usePrActivityQueue() directly. The drawer/PrTableApp portals
+            below still resolve to that same (now outer) Provider - no
+            change for them. */}
+            {containers.activityDrawer &&
+              createPortal(
+                <ActivityDrawer
+                  backfillBadges={backfillBadges.badges}
+                  backfillDetailsText={backfillDetailsText}
+                  requestActivityBadges={requestActivityBadges}
+                  recentRequestActivity={recentRequestActivity}
+                  onBumpDispatcherEntry={(repo, taskType) =>
+                    activityDrawerActions.handleDispatcherBump(repo, taskType)
+                  }
+                  onResetCircuitBreaker={() => activityDrawerActions.handleResetCircuitBreaker()}
+                />,
+                containers.activityDrawer,
+                'activity-drawer',
+              )}
+
+          <PrTablePortal container={containers.prSections} />
+
         {containers.filterFields.portals}
 
-        {prTable &&
-          createPortal(
-            <NeedsAttentionProvider>
-              <PrTableApp
-                onCheckboxChange={prTable.onCheckboxChange}
-                onAckAction={prTable.onAckAction}
-                onApplyLabel={prTable.onApplyLabel}
-              />
-            </NeedsAttentionProvider>,
-            prTable.container,
-            'pr-table',
-          )}
+        <FilterOptionsProvider>
+          <MultiSelectListPortals containers={containers} />
+        </FilterOptionsProvider>
 
-        {Object.entries(containers.multiSelect).map(([listId, container]) => {
-          if (!container) {
-            return null;
-          }
-          const state = multiSelectStates[listId];
-          return createPortal(
-            // key includes renderKey (bumped on every populate call, see
-            // window.renderReactMultiSelectList above) so this remounts on
-            // every populate, matching MultiSelectCheckboxList's own doc
-            // comment - its `checked` state is seeded once from `options`
-            // via a lazy useState initializer, not kept in sync with
-            // subsequent prop updates, since the caller (populateXOptions
-            // in pr-filter-panel.helpers.js) already does its own
-            // checked/unchecked diffing before calling in. A static
-            // `key={listId}` (the bug this fixes) meant every populate
-            // after the very first silently no-op'd on the checked state:
-            // confirmed via a reload repro where a persisted "enhancement"
-            // label selection rendered into the DOM with checked: true
-            // (traced through populateIncludeLabelOptions and
-            // window.renderReactMultiSelectList) yet the actual checkbox
-            // stayed unchecked, because this component was never told to
-            // re-run its initializer.
-            <MultiSelectCheckboxList
-              key={`${listId}-${state?.renderKey ?? 0}`}
-              options={state?.options || []}
-              idPrefix={MULTI_SELECT_LIST_ID_PREFIXES[listId]}
-              emptyClassContainer={container}
-              summaryContainer={containers.multiSelectSummary[listId]}
-            />,
-            container,
-            listId,
-          );
-        })}
+        <AppliedFilterSummaryLive
+          appliedFilterSummaryContainer={containers.appliedFilterSummary}
+          dataMetaContainer={containers.dataMeta}
+        />
 
-        {containers.appliedFilterSummary &&
-          createPortal(
-            <AppliedFilterSummary
-              summaryText={filterSummary.summaryText}
-              filterChips={filterSummary.filterChips}
-            />,
-            containers.appliedFilterSummary,
-            'applied-filter-summary',
-          )}
+        <TableFilterChipsLive container={containers.tableFilterChips} />
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 
+        {/* Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration
+            roadmap"): widened to also wrap AutoRenderBlockedLinks.jsx's
+            portal (further down, inside JobEventsProvider) - its own
+            useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx
+            hooks call useTabState() directly now, which silently resolved
+            to this Context's no-op default (not the real Provider) when
+            that portal sat outside this boundary, same "a sibling portal
+            needs to be a real descendant, not just visually adjacent"
+            class of bug Phase G's own PrActivityQueueProvider move fixed.
+            Caught by a real end-to-end test, not jsdom - this Provider is
+            cheap/pure state, so widening its scope costs nothing.
+            Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+            audit", cluster 3): <TabStateProvider> itself moved from here
+            to wrapping <AppRoot/> at mountAppRoot() below, for the same
+            reason - AppRoot's own body calls useHasTabPanelBeenVisible()
+            5 times (hasReviewStatsBeenVisible etc.), which silently
+            resolved to this Context's no-op default too, since AppRoot's
+            body isn't a descendant of a Provider nested inside its own
+            returned JSX (the exact "component can't be descendant of what
+            it renders" constraint Phase H.20 already ran into for
+            FilterStateProvider/the 3 selection Providers) - caught by a
+            real Playwright regression (Author Insights content never
+            appearing after H.21's useIsTabPanelVisible rewrite), not
+            jsdom (every jsdom test happens to wrap its own Probe in a
+            real Provider directly, side-stepping this). */}
+          {containers.tabPrData &&
+            createPortal(
+              <DataTabButton tabKey="pr-data" label="PR data" panelId="tab-panel-pr-data" />,
+              containers.tabPrData,
+              'tab-pr-data',
+            )}
+          {containers.tabReviewStats &&
+            createPortal(
+              <DataTabButton tabKey="review-stats" label="Review statistics" panelId="tab-panel-review-stats" />,
+              containers.tabReviewStats,
+              'tab-review-stats',
+            )}
+          {containers.tabAuthorInsights &&
+            createPortal(
+              <DataTabButton tabKey="author-insights" label="Author Insights" panelId="tab-panel-author-insights" />,
+              containers.tabAuthorInsights,
+              'tab-author-insights',
+            )}
+          {containers.tabStatus &&
+            createPortal(
+              <ManagementTabButton tabKey="status" label="Activity" panelId="tab-panel-status" />,
+              containers.tabStatus,
+              'tab-status',
+            )}
+          {containers.tabScript &&
+            createPortal(
+              <ManagementTabButton tabKey="script" label="Run & Filter" panelId="tab-panel-script" />,
+              containers.tabScript,
+              'tab-script',
+            )}
+          {containers.tabBackfill &&
+            createPortal(
+              <ManagementTabButton tabKey="backfill" label="Backfill" panelId="tab-panel-backfill" />,
+              containers.tabBackfill,
+              'tab-backfill',
+            )}
+          {containers.tabActionLog &&
+            createPortal(
+              <ManagementTabButton tabKey="action-log" label="Action Log" panelId="tab-panel-action-log" />,
+              containers.tabActionLog,
+              'tab-action-log',
+            )}
+          {containers.tabActorNameCache &&
+            createPortal(
+              <ManagementTabButton tabKey="actor-name-cache" label="Actor Names" panelId="tab-panel-actor-name-cache" />,
+              containers.tabActorNameCache,
+              'tab-actor-name-cache',
+            )}
+          {containers.tabExport &&
+            createPortal(
+              <ManagementTabButton tabKey="export" label="Export" panelId="tab-panel-export" />,
+              containers.tabExport,
+              'tab-export',
+            )}
+
+        {containers.autoRenderBlockedStatus &&
+            createPortal(
+              <AutoRenderBlockedStatusText />,
+              containers.autoRenderBlockedStatus,
+              'auto-render-blocked-status',
+            )}
+          {containers.autoRenderBlockedApplyBtn &&
+            createPortal(
+              <AutoRenderBlockedApplyButton />,
+              containers.autoRenderBlockedApplyBtn,
+              'auto-render-blocked-apply-btn',
+            )}
+
         {containers.triggerAutoRunBtn &&
           createPortal(
-            <TriggerAutoRunButton onTrigger={() => window.handleTriggerAutoRun?.()} />,
+            <TriggerAutoRunButton onTrigger={() => triggerAutoRun()} />,
             containers.triggerAutoRunBtn,
             'trigger-auto-run-btn',
           )}
 
+        {containers.runScriptBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="run-script-btn"
+              className="primary-run-btn"
+              label="Run script"
+              onClick={() => {
+                persistRunScriptOptions();
+                runScript();
+              }}
+            />,
+            containers.runScriptBtn,
+            'run-script-btn',
+          )}
+
+        {containers.ackOnlyBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="ack-only-btn"
+              label="Apply ack only"
+              onClick={() => ackLabelActions.handleAckOnly()}
+            />,
+            containers.ackOnlyBtn,
+            'ack-only-btn',
+          )}
+
+        {containers.clearOnlyBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="clear-only-btn"
+              label="Apply clear only"
+              onClick={() => ackLabelActions.handleClearOnly()}
+            />,
+            containers.clearOnlyBtn,
+            'clear-only-btn',
+          )}
+
+        {containers.applyLabelBtn &&
+          createPortal(
+            <RunScriptActionButton
+              id="apply-label-btn"
+              label="Apply label"
+              onClick={() => ackLabelActions.handleApplyLabelClick()}
+            />,
+            containers.applyLabelBtn,
+            'apply-label-btn',
+          )}
+
+        <RefreshLabelsButtonLive container={containers.refreshLabelsBtn} />
+
         {containers.quickCheckBtn &&
           createPortal(
-            <QuickCheckButton onCheck={() => window.handleQuickCheck?.()} />,
+            <QuickCheckButton onCheck={() => quickCheckActions.handleQuickCheck()} />,
             containers.quickCheckBtn,
             'quick-check-btn',
           )}
 
         {containers.quickCheckAllBtn &&
           createPortal(
-            <QuickCheckAllButton onCheck={() => window.handleQuickCheckAll?.()} />,
+            <QuickCheckAllButton onCheck={() => quickCheckActions.handleQuickCheckAll()} />,
             containers.quickCheckAllBtn,
             'quick-check-all-btn',
           )}
@@ -841,7 +1079,7 @@ function AppRoot() {
           createPortal(
             <AuthorInsightsProvider>
               <Suspense fallback={null}>
-                <AuthorInsightsSelector onChange={(login) => window.selectAuthorInsightsAuthor?.(login)} />
+                <AuthorInsightsSelector />
               </Suspense>
             </AuthorInsightsProvider>,
             containers.authorInsightsSelector,
@@ -899,37 +1137,41 @@ function AppRoot() {
             'backfill-badges',
           )}
 
-        {containers.schedulerBadges &&
+        {containers.backfillControls &&
           createPortal(
-            <BackfillBadges badges={schedulerBadges.badges} />,
-            containers.schedulerBadges,
-            'scheduler-badges',
+            <BackfillControls
+              buttonState={backfillButtonState}
+              onStart={() => backfillActions.handleBackfillAction('start')}
+              onStop={() => backfillActions.handleBackfillAction('stop')}
+              onRefreshStatus={() => backfillActions.refreshBackfillStatus()}
+            />,
+            containers.backfillControls,
+            'backfill-controls',
           )}
-
-        {containers.requestActivityBadges &&
-          createPortal(
-            <BackfillBadges badges={requestActivityBadges.badges} />,
-            containers.requestActivityBadges,
-            'request-activity-badges',
-          )}
-
-        {containers.statusText && createPortal(statusText, containers.statusText, 'status-text')}
-
-        {containers.requestActivityDetails &&
-          createPortal(requestActivityDetailsText, containers.requestActivityDetails, 'request-activity-details')}
-
-        {containers.schedulerDetails &&
-          createPortal(schedulerDetailsText, containers.schedulerDetails, 'scheduler-details')}
 
         {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 
         {containers.backfillDetails &&
           createPortal(backfillDetailsText, containers.backfillDetails, 'backfill-details')}
 
-        {containers.backfillLog &&
-          createPortal(backfillLogText, containers.backfillLog, 'backfill-log')}
-
-        {containers.dataMeta && createPortal(dataMetaText, containers.dataMeta, 'data-meta')}
+        {containers.backfillLogControls &&
+          createPortal(
+            // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration
+            // roadmap"): BackfillLogControls now also owns the #backfill-log
+            // content portal itself (logText/logContainer below), not just
+            // the checkbox/button - it needs both to sync scroll position
+            // via a ref instead of the old window.autoScrollBackfillLogToBottom
+            // DOM-query bridge.
+            <BackfillLogControls
+              refreshLogDisabled={backfillButtonState.refreshLogDisabled}
+              onRefreshLog={() => backfillActions.refreshBackfillLogTail()}
+              logText={backfillLogText}
+              logUpdateTick={backfillLogUpdateTick}
+              logContainer={containers.backfillLog}
+            />,
+            containers.backfillLogControls,
+            'backfill-log-controls',
+          )}
 
         {hasActionLogBeenVisible && containers.actionLog &&
           createPortal(
@@ -960,7 +1202,7 @@ function AppRoot() {
 
         {containers.applyLabelSelect &&
           createPortal(
-            <ApplyLabelSelect labels={applyLabelOptions.labels} />,
+            <ApplyLabelSelect />,
             containers.applyLabelSelect,
             'apply-label-select',
           )}
@@ -968,10 +1210,7 @@ function AppRoot() {
         {containers.autoRenderBlockedLinks &&
           createPortal(
             <AuthorInsightsProvider>
-              <AutoRenderBlockedLinks
-                prNumbers={autoRenderBlockedLinks.prNumbers}
-                authorLogins={autoRenderBlockedLinks.authorLogins}
-              />
+              <AutoRenderBlockedLinksLive container={containers.autoRenderBlockedLinks} />
             </AuthorInsightsProvider>,
             containers.autoRenderBlockedLinks,
             'auto-render-blocked-links',
@@ -979,24 +1218,14 @@ function AppRoot() {
 
         {containers.mergedRequestMoreAction &&
           createPortal(
-            // key={repo}: remounts (resetting local pending/status state)
-            // whenever the target repo actually changes - see
-            // MergedRequestMoreAction.jsx's own doc comment for the stale-
-            // state bug this fixes. Not keyed on isVisible too: if a
-            // request is still in flight when this hides and reshows for
-            // the *same* repo, showing whatever it resolved to in the
-            // meantime is correct, not stale.
-            <MergedRequestMoreAction
-              key={mergedRequestMoreAction.repo}
-              isVisible={mergedRequestMoreAction.isVisible}
-              repo={mergedRequestMoreAction.repo}
-            />,
+            <MergedRequestMoreActionLive />,
             containers.mergedRequestMoreAction,
             'merged-request-more-action',
           )}
-      </FilterStateProvider>
-      <PrDataPolling />
-    </PrDataProvider>
+        </JobEventsProvider>
+        </AuthorInsightsDraftsProvider>
+      </RepoLabelsProvider>
+    </>
   );
 }
 
@@ -1010,13 +1239,137 @@ function mountAppRoot() {
   const anchor = document.createElement('div');
   anchor.hidden = true;
   document.body.appendChild(anchor);
-  ReactDOM.createRoot(anchor).render(<AppRoot />);
+  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // PrActivityQueueProvider wraps <AppRoot /> from here, outside its own
+  // returned JSX - AppRoot's own body calls useAckLabelActions() directly
+  // (a plain function call, not a descendant element), so a Provider
+  // nested *inside* AppRoot's returned tree can never be reached by
+  // AppRoot itself (a component can't be a descendant of something it
+  // renders). Wrapping from the root-mount call instead makes AppRoot a
+  // genuine Context descendant, so useAckLabelActions() can call
+  // usePrActivityQueue() directly. The old inner <PrActivityQueueProvider>
+  // (wrapping just the drawer/PrTableApp portals) is gone - removed below,
+  // its children now resolve to this single outer Provider instead.
+  //
+  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+  // StatusTextProvider wraps from here too, same reasoning -
+  // useRunScript/useBackfillActions/useAckLabelActions/useSinglePrUpdate
+  // need to reach it via useStatusText() directly instead of the
+  // window.updateReactStatusText/setStatusMessage bridges.
+  //
+  // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 4): BackfillStatusProvider wraps from here too, inside
+  // StatusTextProvider (it needs useStatusText() itself, for the
+  // announce-on-change path) and outside AppRoot (BackfillLogControls.jsx,
+  // a descendant of AppRoot's own returned JSX, reads it via
+  // useBackfillStatus() - see that component's own comment).
+  //
+  // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
+  // ChangeFilterActorSelectionProvider/FilterStateProvider wrap from here
+  // too now (outermost - none of the 4 need useStatusText()/
+  // usePrActivityQueue(), confirmed by reading each file, so nesting order
+  // relative to the 3 existing Providers is arbitrary; kept in the same
+  // relative order they were in inside AppRoot's own JSX before this
+  // phase). Closing window.getFormBody needed useRunScript/
+  // useAckLabelActions/useQuickCheckActions (called from AppRoot's own
+  // body) to reach useFilterState()/useRowFilterSelection() directly - see
+  // state/useFormBody.tsx and this function's own initialValues argument
+  // below, now computed once here via buildFilterStateInitialValues()
+  // instead of threaded through AppRoot's own containers state.
+  //
+  // Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 3): TabStateProvider wraps from here too now (innermost - it
+  // needs none of the other 6 Contexts), same reason as every Provider
+  // above it on this list - AppRoot's own body calls
+  // useHasTabPanelBeenVisible() 5 times (hasReviewStatsBeenVisible etc.),
+  // which needs a genuine Provider ancestor to resolve useTabState() to
+  // anything other than this Context's no-op default.
+  //
+  // Phase H.22 (same cluster): <TabPanelVisibilitySync/> mounted as
+  // AppRoot's own sibling, inside <TabStateProvider> - a plain sibling,
+  // not a wrapper, since it owns the 9 tab panels' `hidden` attribute via
+  // a DOM write in its own effects, not by being read from Context by
+  // anything inside AppRoot's tree. Replaces `window.activateDataTab`/
+  // `window.activateManagementTab` (both deleted, along with
+  // `pr-data-tabs.helpers.js`/`pr-management-tabs.helpers.js` outright)
+  // as those panels' sole remaining writer.
+  //
+  // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
+  // SnackbarProvider wraps from here too now (innermost - it needs none of
+  // the other 7 Contexts, same reasoning TabStateProvider's own comment
+  // gives), so useQuickCheckActions/useAckLabelActions/useRunScript/
+  // useBackfillActions/useTriggerAutoRun/useRowCheckboxActions/
+  // useSinglePrUpdate/useActivityDrawerActions (called from AppRoot's own
+  // body or a descendant) and PrDataProvider.tsx (wrapping AppRoot's own
+  // returned JSX from inside, so also a genuine descendant of this) can all
+  // reach useSnackbar() directly instead of window.showErrorNotification/
+  // showWarningNotification/hideErrorNotification.
+  //
+  // Window-bridge elimination Phase 3c: OutputTextProvider wraps from here too
+  // (inside StatusTextProvider, like it; neither depends on the other).
+  //
+  // Window-bridge elimination Phase 2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // AutoRenderBlockingProvider and PrDataProvider wrap from here too now
+  // (AutoRenderBlockingProvider outside PrDataProvider, so PrDataProvider
+  // can read it), same reasoning as every Provider above - AppRoot's own
+  // body (useRunScript/useSinglePrUpdate/useAckLabelActions/
+  // useRowCheckboxActions/useRequestMoreMerged) can now call usePrData()/
+  // useAutoRenderBlocking() directly in Phase 3, instead of reaching their
+  // window.* bridges. <PrDataPolling /> moved with PrDataProvider, as
+  // AppRoot's sibling instead of a child of the Provider AppRoot rendered.
+  // Neither Provider reads anything AppRoot's own JSX used to render
+  // between them: both only need StatusText/Snackbar, already outer.
+  //
+  // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps from here
+  // too, above BackfillStatusProvider/AutoRenderBlockingProvider/PrDataProvider -
+  // all three call renderRequestActivity, and the first two used to reach it
+  // through window.* because it lived in PrDataProvider, below them. It needs no
+  // other Context. loadOnMount runs the startup scheduler-status load.
+  ReactDOM.createRoot(anchor).render(
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
+            <StatusTextProvider>
+              <OutputTextProvider>
+                <RequestActivityProvider loadOnMount>
+                  <BackfillStatusProvider>
+                    <PrActivityQueueProvider>
+                      <TabStateProvider>
+                        <SnackbarProvider>
+                          <AutoRenderBlockingProvider>
+                            <PrDataProvider
+                              initialPayload={{}}
+                              initialSelectedRepo=""
+                              initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                              loadOnMount
+                            >
+                              <TabPanelVisibilitySync />
+                              <NotesDirtyProvider>
+                                <AppRoot />
+                              </NotesDirtyProvider>
+                              <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
+                            </PrDataProvider>
+                          </AutoRenderBlockingProvider>
+                        </SnackbarProvider>
+                      </TabStateProvider>
+                    </PrActivityQueueProvider>
+                  </BackfillStatusProvider>
+                </RequestActivityProvider>
+              </OutputTextProvider>
+            </StatusTextProvider>
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
+  );
 }
 
 if (typeof window !== 'undefined') {
+  // Window-bridge elimination Phase 7.5: installed here, before mounting -
+  // index.page.js (deleted) installed them at its module load, just before
+  // this module ran.
+  installCredentialFieldErrorFilters(window);
   mountAppRoot();
-  // 'viewprs:react-ready' is now dispatched from inside AppRoot's own
-  // useEffect, once window.mountReactPrTable is actually assigned - see
-  // that effect's comment for why dispatching it here (immediately after
-  // .render(), which only schedules the initial commit) was a race.
 }

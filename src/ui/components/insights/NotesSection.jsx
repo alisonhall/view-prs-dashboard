@@ -1,10 +1,10 @@
 /**
  * NotesSection - editable manual notes (comments with author/tone, other
- * notes, PR difficulty, Rally stories/links, analysis) that persist to
+ * notes, PR difficulty, stories, analysis) that persist to
  * POST /view-prs/notes. Matches vanilla's createNotesSection (index.page.js).
  *
  * noteAuthorMatchesSelection is built directly from
- * pr-author-insights-identity.helpers.js (Phase 7, sub-phase 7.0 - see
+ * pr-author-insights-identity.helpers.ts (Phase 7, sub-phase 7.0 - see
  * REACT_MIGRATION_PLAN.md) - it's a genuinely pure function, but its
  * normalizeActorLogin/resolveActorDisplayName deps are threaded through
  * from useActorIdentity() so it resolves aliases the same way the rest of
@@ -15,9 +15,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NotesMultiEntryField } from './NotesMultiEntryField';
+import { NotesStoriesField } from './NotesStoriesField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
-import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.js';
+import { useRequestActivity } from '../../state/RequestActivityContext';
+import { useNotesDirty } from '../../state/NotesDirtyContext';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
+import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.ts';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
+import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
+import { postJson } from '../../helpers/pr-http.helpers.ts';
 
 const TONE_OPTIONS = [
   { value: 'Positive', label: '👍 Positive' },
@@ -38,12 +44,8 @@ function generateCommentId() {
   return `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
+function AutoResizeTextarea({ className, rows, placeholder, value, onChange, ariaLabel }) {
   const ref = useRef(null);
-  const autoResizeTextarea = window.autoResizeTextarea || ((el) => {
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  });
 
   return (
     <textarea
@@ -51,6 +53,7 @@ function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
       className={className}
       rows={rows}
       placeholder={placeholder}
+      aria-label={ariaLabel}
       value={value}
       onChange={(e) => {
         onChange(e.target.value);
@@ -60,34 +63,41 @@ function AutoResizeTextarea({ className, rows, placeholder, value, onChange }) {
   );
 }
 
-function areStringListsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return false;
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => String(value) === String(right[index]));
+// The story rows that will be saved: trimmed, rows with neither a name nor a
+// URL dropped.
+function cleanStories(stories) {
+  return stories
+    .map((story) => ({ name: story.name.trim(), url: story.url.trim() }))
+    .filter((story) => story.name || story.url);
 }
 
-function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStories, rallyLinks, analysisOfPr }) {
+function areStoryListsEqual(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((story, index) => story.name === right[index].name && story.url === right[index].url);
+}
+
+function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, stories, analysisOfPr }) {
   return {
     comments: comments.map((c) => ({ author: c.author, tone: c.tone, note: c.note })),
     otherNotes,
     prDifficulty,
-    rallyStories,
-    rallyLinks,
+    stories: cleanStories(stories),
     analysisOfPr,
   };
 }
 
 export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const { normalizeActorLogin, resolveActorDisplayName } = useActorIdentity();
+  const { setNotesDirty } = useNotesDirty();
   const { noteAuthorMatchesSelection } = useMemo(
     () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
     [normalizeActorLogin, resolveActorDisplayName],
   );
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-  const buildPrPeopleOptions = window.buildPrPeopleOptions || (() => []);
-  const normalizeNotesListForUi = window.normalizeNotesListForUi || ((value) => (Array.isArray(value) && value.length ? value : ['']));
-  const postJson = window.postJson || (() => Promise.reject(new Error('postJson unavailable')));
-  const recomputeDirtyPrSectionsFields = window.recomputeDirtyPrSectionsFields || (() => {});
+  const { buildPrPeopleOptions, normalizeStoriesForUi } = usePrInsightsDisplay();
+  // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
+  // untracked - a slow/hung notes save had no visibility anywhere outside
+  // this component's own "Saving..." status text.
+  const { beginRequestActivity } = useRequestActivity();
 
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const repo = entry?.repo || '';
@@ -120,21 +130,19 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   );
   const [otherNotes, setOtherNotes] = useState(String(existingNotes.otherNotes || ''));
   const [prDifficulty, setPrDifficulty] = useState(String(existingNotes.prDifficulty || ''));
-  const [rallyStories, setRallyStories] = useState(() => normalizeNotesListForUi(existingNotes.rallyStories));
-  const [rallyLinks, setRallyLinks] = useState(() => normalizeNotesListForUi(existingNotes.rallyLinks));
+  const [stories, setStories] = useState(() => normalizeStoriesForUi(existingNotes.stories));
   const [analysisOfPr, setAnalysisOfPr] = useState(String(existingNotes.analysisOfPr || ''));
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const originalRef = useRef(buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStories, rallyLinks, analysisOfPr }));
+  const originalRef = useRef(buildOriginalSnapshot({ comments, otherNotes, prDifficulty, stories, analysisOfPr }));
 
   const hasChanges = (() => {
     const original = originalRef.current;
     if (comments.length !== original.comments.length) return true;
     if (otherNotes !== original.otherNotes) return true;
     if (prDifficulty !== original.prDifficulty) return true;
-    if (!areStringListsEqual(rallyStories.filter(Boolean), original.rallyStories.filter(Boolean))) return true;
-    if (!areStringListsEqual(rallyLinks.filter(Boolean), original.rallyLinks.filter(Boolean))) return true;
+    if (!areStoryListsEqual(cleanStories(stories), original.stories)) return true;
     if (analysisOfPr !== original.analysisOfPr) return true;
     return comments.some((comment, index) => {
       const originalComment = original.comments[index];
@@ -144,17 +152,18 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   })();
 
   useEffect(() => {
-    recomputeDirtyPrSectionsFields();
+    setNotesDirty(prNumber, hasChanges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasChanges]);
+  }, [hasChanges, prNumber]);
 
   useEffect(() => {
     // If this section unmounts (row collapsed/filtered away) while still
-    // dirty, its data-has-unsaved-notes="true" node leaves the DOM without
-    // ever notifying the blocker — rescan so a stale block doesn't linger.
-    return () => recomputeDirtyPrSectionsFields();
+    // dirty, it must not leave a stale block behind — clear its entry
+    // explicitly rather than relying on the effect above (which won't
+    // re-run on unmount).
+    return () => setNotesDirty(prNumber, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [prNumber]);
 
   const updateComment = (id, patch) => {
     setComments((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -169,15 +178,14 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   const handleSave = async () => {
     setSaving(true);
     setStatus('Saving...');
+    const finishActivity = beginRequestActivity('notesSave');
     try {
-      const cleanedRallyStories = rallyStories.map((v) => v.trim()).filter(Boolean);
-      const cleanedRallyLinks = rallyLinks.map((v) => v.trim()).filter(Boolean);
+      const cleanedStories = cleanStories(stories);
       const notesPayload = {
         comments: comments.map(({ id, author, tone, note }) => ({ id, author, tone, note })),
         otherNotes,
         prDifficulty,
-        rallyStories: cleanedRallyStories,
-        rallyLinks: cleanedRallyLinks,
+        stories: cleanedStories,
         analysisOfPr,
       };
       const { response, result } = await postJson('/view-prs/notes', { prNumber, repo, ...notesPayload });
@@ -192,12 +200,10 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
         comments,
         otherNotes,
         prDifficulty,
-        rallyStories: cleanedRallyStories,
-        rallyLinks: cleanedRallyLinks,
+        stories: cleanedStories,
         analysisOfPr,
       });
-      setRallyStories(cleanedRallyStories.length ? cleanedRallyStories : ['']);
-      setRallyLinks(cleanedRallyLinks.length ? cleanedRallyLinks : ['']);
+      setStories(normalizeStoriesForUi(cleanedStories));
       if (result.prData && onDataRefresh) {
         onDataRefresh(result.prData);
       }
@@ -207,18 +213,27 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
       setStatus('Save failed.');
     } finally {
       setSaving(false);
+      finishActivity();
     }
   };
 
   return (
-    <div className="pr-notes-section" data-pr-number={prNumber} data-has-unsaved-notes={hasChanges ? 'true' : 'false'}>
+    // Accessibility naming: several PRs' notes can be open at once, so the
+    // section is a group named by its PR, and each comment row's fields are
+    // named within it ("Comment 1 author" etc.) - they had no labels at all
+    // (the note relied on its placeholder; ROADMAP's "Add proper labels to
+    // the 'Comments' fields").
+    <div className="pr-notes-section" data-pr-number={prNumber} role="group" aria-label={`Notes for PR #${prNumber}`}>
       <div className="pr-notes-title">Notes</div>
 
       <div className="pr-notes-subtitle">Comments</div>
       <div className="pr-notes-comments-list">
-        {comments.map((comment) => (
+        {comments.map((comment, index) => (
           <div key={comment.id} className="pr-notes-comment-row">
-            <select className="pr-notes-comment-author" value={comment.author} onChange={(e) => updateComment(comment.id, { author: e.target.value })}>
+            <select
+              className="pr-notes-comment-author"
+              aria-label={`Comment ${index + 1} author`}
+              value={comment.author} onChange={(e) => updateComment(comment.id, { author: e.target.value })}>
               <option value="">— Author —</option>
               {peopleOptions.map(({ login, name }) => (
                 <option key={login} value={login}>
@@ -226,7 +241,10 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
                 </option>
               ))}
             </select>
-            <select className="pr-notes-comment-tone" value={comment.tone} onChange={(e) => updateComment(comment.id, { tone: e.target.value })}>
+            <select
+              className="pr-notes-comment-tone"
+              aria-label={`Comment ${index + 1} tone`}
+              value={comment.tone} onChange={(e) => updateComment(comment.id, { tone: e.target.value })}>
               {TONE_OPTIONS.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
@@ -237,10 +255,16 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
               className="pr-notes-textarea pr-notes-comment-note"
               rows={2}
               placeholder="Note..."
+              ariaLabel={`Comment ${index + 1} note`}
               value={comment.note}
               onChange={(value) => updateComment(comment.id, { note: value })}
             />
-            <button type="button" className="pr-notes-comment-remove" onClick={() => removeComment(comment.id)}>
+            <button
+              type="button"
+              className="pr-notes-comment-remove"
+              aria-label={`Remove comment ${index + 1}`}
+              onClick={() => removeComment(comment.id)}
+            >
               ✕ Remove
             </button>
           </div>
@@ -266,8 +290,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
         </select>
       </label>
 
-      <NotesMultiEntryField title="Rally stories" placeholder="US12345" values={rallyStories} inputClassName="pr-notes-rally-story-input" onChange={setRallyStories} />
-      <NotesMultiEntryField title="Rally links" placeholder="https://rally.example/US12345" values={rallyLinks} inputClassName="pr-notes-rally-link-input" onChange={setRallyLinks} />
+      <NotesStoriesField stories={stories} onChange={setStories} />
 
       <label className="pr-notes-label">
         Analysis of PR

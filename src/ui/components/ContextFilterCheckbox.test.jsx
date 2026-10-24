@@ -4,7 +4,33 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ContextFilterCheckbox } = require('./ContextFilterCheckbox');
-const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { FilterStateProvider: RealFilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render in this file needs them too.
+function FilterStateProvider({ initialValues, children }) {
+  return (
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <RealFilterStateProvider initialValues={initialValues}>
+            <filterStateProbe.FilterStateProbe />
+            {children}
+          </RealFilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>
+  );
+}
+
+const filterStateProbe = createFilterStateProbe();
 
 const renderWithProvider = (initialValues, props) =>
   render(
@@ -14,11 +40,6 @@ const renderWithProvider = (initialValues, props) =>
   );
 
 describe('ContextFilterCheckbox', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
-  });
 
   test('given the provider seeds false for this key, when rendering, then starts unchecked', () => {
     renderWithProvider(
@@ -39,7 +60,7 @@ describe('ContextFilterCheckbox', () => {
     expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
-  test('given a user clicks the checkbox, when clicking, then it toggles and window.getFilterStateValues() reflects it', async () => {
+  test('given a user clicks the checkbox, when clicking, then it toggles and filterStateProbe.readValues() reflects it', async () => {
     const user = userEvent.setup();
     renderWithProvider(
       { attentionIgnoreMergeOnlyCommits: false },
@@ -49,7 +70,7 @@ describe('ContextFilterCheckbox', () => {
 
     await user.click(checkbox);
     expect(checkbox).toBeChecked();
-    expect(window.getFilterStateValues().attentionIgnoreMergeOnlyCommits).toBe(true);
+    expect(filterStateProbe.readValues().attentionIgnoreMergeOnlyCommits).toBe(true);
 
     await user.click(checkbox);
     expect(checkbox).not.toBeChecked();

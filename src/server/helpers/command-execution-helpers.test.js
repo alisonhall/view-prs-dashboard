@@ -372,6 +372,125 @@ describe("Command Execution Helpers", () => {
       // Assert
       expect(result).toBe(false);
     });
+
+    describe("and the command is an executable on the process PATH", () => {
+      const fs = require("fs");
+      const os = require("os");
+      const path = require("path");
+      let binDir;
+
+      // `platform` is the injected process's, which is what the helper checks
+      // (explicit so these tests don't silently depend on the OS running them).
+      const helpersWithPath = (pathValue, platform = "linux") =>
+        createCommandExecutionHelpers({
+          spawn: mockSpawn,
+          spawnSync: mockSpawnSync,
+          process: { env: { PATH: pathValue }, platform, kill: jest.fn() },
+          viewPrsDir: "/test/view-prs",
+          viewPrsScriptsDir: "/test/scripts",
+          requiredCommands: [],
+          requiredPackages: [],
+          viewPrsProgressTracker: {},
+        });
+
+      beforeEach(() => {
+        binDir = fs.mkdtempSync(path.join(os.tmpdir(), "cmd-avail-"));
+        fs.writeFileSync(path.join(binDir, "fakecmd"), "#!/bin/sh\n", { mode: 0o755 });
+        fs.writeFileSync(path.join(binDir, "notexec"), "#!/bin/sh\n", { mode: 0o644 });
+        fs.mkdirSync(path.join(binDir, "adir"), { mode: 0o755 });
+      });
+
+      afterEach(() => {
+        fs.rmSync(binDir, { recursive: true, force: true });
+      });
+
+      test("When found on PATH, Then returns true without starting a shell", () => {
+        const helpers = helpersWithPath(`/nonexistent-dir${path.delimiter}${binDir}`);
+
+        expect(helpers.isCommandAvailable("fakecmd")).toBe(true);
+        expect(mockSpawnSync).not.toHaveBeenCalled();
+      });
+
+      test("When not on PATH, Then falls back to the login-shell check and returns its result", () => {
+        mockSpawnSync.mockReturnValue({ status: 0 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("only-in-login-shell")).toBe(true);
+        expect(mockSpawnSync).toHaveBeenCalledWith(
+          "bash",
+          ["-lc", "command -v only-in-login-shell"],
+          { stdio: "ignore" },
+        );
+
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        expect(helpers.isCommandAvailable("missing-everywhere")).toBe(false);
+      });
+
+      // Windows has no executable bit: fs.accessSync(X_OK) succeeds for any
+      // readable file there, so this can only be asserted on a POSIX filesystem.
+      const testOnPosixFilesystem = process.platform === "win32" ? test.skip : test;
+
+      testOnPosixFilesystem(
+        "When the file exists but is not executable, Then it does not count as found on PATH",
+        () => {
+          mockSpawnSync.mockReturnValue({ status: 1 });
+          const helpers = helpersWithPath(binDir);
+
+          expect(helpers.isCommandAvailable("notexec")).toBe(false);
+          expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      test("When the name is a directory, Then it does not count as found on PATH", () => {
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("adir")).toBe(false);
+        expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      });
+
+      // Regression (found by CI on windows-latest): System32\bash.exe is a WSL
+      // launcher stub that exists on machines with no WSL distro and can't run
+      // a script. With a PATH shortcut on Windows, finding it made the check
+      // report "bash is available", so run-bash-script.js never printed its
+      // "requires bash" message. Windows must always run the real check.
+      test("When the platform is Windows and a file of that name is on PATH, Then it still runs the real check and trusts only its result", () => {
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        const helpers = helpersWithPath(binDir, "win32");
+
+        expect(helpers.isCommandAvailable("fakecmd")).toBe(false);
+        expect(mockSpawnSync).toHaveBeenCalledWith(
+          "bash",
+          ["-lc", "command -v fakecmd"],
+          { stdio: "ignore" },
+        );
+
+        mockSpawnSync.mockReturnValue({ status: 0 });
+        expect(helpers.isCommandAvailable("fakecmd")).toBe(true);
+      });
+
+      // Regression: isCommandAvailable(null) must not throw (a path.join on a
+      // non-string did, once the PATH lookup stopped string-templating the name).
+      test.each([[null], [undefined], [42], [{}]])(
+        "When the name is not a string (%p), Then it does not throw and defers to the real check",
+        (value) => {
+          mockSpawnSync.mockReturnValue({ status: 1 });
+          const helpers = helpersWithPath(binDir);
+
+          expect(() => helpers.isCommandAvailable(value)).not.toThrow();
+          expect(helpers.isCommandAvailable(value)).toBe(false);
+          expect(mockSpawnSync).toHaveBeenCalled();
+        },
+      );
+
+      test("When the name contains a path separator, Then it never matches via PATH", () => {
+        mockSpawnSync.mockReturnValue({ status: 1 });
+        const helpers = helpersWithPath(binDir);
+
+        expect(helpers.isCommandAvailable("../fakecmd")).toBe(false);
+        expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   describe("Given isGhAuthenticated", () => {

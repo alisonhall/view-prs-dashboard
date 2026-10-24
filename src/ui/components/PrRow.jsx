@@ -104,7 +104,7 @@ export const PrRow = memo(function PrRow({
         />
       </tr>
 
-      <tr className="insights-row" hidden={!isExpanded}>
+      <tr className="insights-row" hidden={!isExpanded} aria-label={`Insights for PR #${pr.number}`}>
         <td className="insights-row-cell" colSpan={11}>
           {isExpanded && (
             <PrInsightsRow entry={entry} pr={pr} actorsMap={actorsMap} compositeKey={compositeKey} onDataRefresh={onDataRefresh} />

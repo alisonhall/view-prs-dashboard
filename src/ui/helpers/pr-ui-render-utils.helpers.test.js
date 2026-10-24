@@ -1,6 +1,6 @@
 const {
   createPrUiRenderUtilsHelpers,
-} = require("./pr-ui-render-utils.helpers.js");
+} = require("./pr-ui-render-utils.helpers.ts");
 
 describe("pr ui render utils helpers", () => {
   test("given title display markers, when parsing marker state, then normalized marker value is returned", () => {

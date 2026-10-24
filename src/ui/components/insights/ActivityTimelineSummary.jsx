@@ -22,6 +22,7 @@
 
 import React from 'react';
 import { ActorIdentity } from '../ActorIdentity';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
 const DATE_CELL_STYLE = { paddingRight: '12px', paddingTop: '2px', paddingBottom: '2px', verticalAlign: 'top', whiteSpace: 'nowrap' };
 const ACTIVITY_CELL_STYLE = { paddingTop: '2px', paddingBottom: '2px' };
@@ -32,6 +33,7 @@ function typeLabel(type, count) {
   if (type === 'commit') return count > 1 ? 'commits' : 'commit';
   if (type === 'opened') return 'opened PR';
   if (type === 'merged') return 'merged PR';
+  if (type === 'closed') return 'closed PR';
   return count > 1 ? `${type}s` : type;
 }
 
@@ -56,8 +58,6 @@ function normalizeTimelineType(type) {
 
 // Builds { dateKeys, groupedByDate } or null if there's no usable timeline.
 function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
-  const asArray = window.asArray || ((value) => (Array.isArray(value) ? value : []));
-
   const timeline = Array.isArray(activityTimelineRaw)
     ? activityTimelineRaw
         .filter((item) => item && typeof item === 'object')

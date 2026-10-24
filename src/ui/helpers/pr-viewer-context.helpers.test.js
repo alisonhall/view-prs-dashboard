@@ -2,7 +2,7 @@
 
 const {
   createPrViewerContextHelpers,
-} = require("./pr-viewer-context.helpers.js");
+} = require("./pr-viewer-context.helpers.ts");
 
 describe("pr viewer context helpers", () => {
   test("given payload viewer login and aliases, when deriving viewer context, then payload viewer login and aliases are normalized", () => {

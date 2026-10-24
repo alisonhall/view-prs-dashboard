@@ -5,7 +5,7 @@
  * @module components/cells/PrAttentionCell
  */
 
-import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.js';
+import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 
 export function PrAttentionCell({ pr, needsAttention, isFlagged }) {
   const hasPendingComments = countPendingThreadComments(pr) > 0;

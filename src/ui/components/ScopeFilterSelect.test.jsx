@@ -5,20 +5,33 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ScopeFilterSelect } = require('./ScopeFilterSelect');
 const { FilterStateProvider } = require('../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 
+const filterStateProbe = createFilterStateProbe();
+
+// Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// FilterStateProvider's own buildOverrides() now calls
+// useRowFilterSelection()/useAuthorThreadResolutionSelection()/
+// useChangeFilterActorSelection() directly (all 3 throw without a real
+// Provider ancestor), so every render here needs them too.
 const renderWithProvider = (initialValues = { scopeMode: 'all', alwaysShowInReview: false }) =>
   render(
-    <FilterStateProvider initialValues={initialValues}>
-      <ScopeFilterSelect />
-    </FilterStateProvider>,
+    <RowFilterSelectionProvider>
+      <AuthorThreadResolutionSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <FilterStateProvider initialValues={initialValues}>
+            <filterStateProbe.FilterStateProbe />
+            <ScopeFilterSelect />
+          </FilterStateProvider>
+        </ChangeFilterActorSelectionProvider>
+      </AuthorThreadResolutionSelectionProvider>
+    </RowFilterSelectionProvider>,
   );
 
 describe('ScopeFilterSelect', () => {
-  afterEach(() => {
-    delete window.getFilterStateValues;
-    delete window.setFilterStateValue;
-    delete window.debouncedApplyFilters;
-  });
 
   test('given the provider seeds "all", when rendering, then the select starts with that value', () => {
     renderWithProvider({ scopeMode: 'all', alwaysShowInReview: false });
@@ -43,14 +56,14 @@ describe('ScopeFilterSelect', () => {
     expect(select).toHaveValue('last-run');
   });
 
-  test('given a user selects a different option, when selecting, then window.getFilterStateValues() reflects the new value', async () => {
+  test('given a user selects a different option, when selecting, then filterStateProbe.readValues() reflects the new value', async () => {
     const user = userEvent.setup();
     renderWithProvider();
     const select = screen.getByRole('combobox');
 
     await user.selectOptions(select, 'last-run');
 
-    expect(window.getFilterStateValues().scopeMode).toBe('last-run');
+    expect(filterStateProbe.readValues().scopeMode).toBe('last-run');
   });
 
   test('given an external native value change (e.g. some other legacy code manipulating this element directly), when the native setter + change event fire, then React state picks it up', () => {

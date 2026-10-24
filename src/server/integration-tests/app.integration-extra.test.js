@@ -100,10 +100,9 @@ describe("integration behavior", () => {
       comments: [{ author: "a", note: "n" }],
       otherNotes: "x",
       prDifficulty: "3",
-      rallyStories: ["US1001", "DE1002"],
-      rallyLinks: [
-        "https://rally.example/US1001",
-        "https://rally.example/DE1002",
+      stories: [
+        { name: "US1001", url: "https://stories.example/US1001" },
+        { name: "DE1002", url: "" },
       ],
       analysisOfPr: "Looks moderate overall",
     });
@@ -124,13 +123,13 @@ describe("integration behavior", () => {
       ],
       otherNotes: "x",
       prDifficulty: "3",
-      rallyStories: ["US1001", "DE1002"],
-      rallyLinks: [
-        "https://rally.example/US1001",
-        "https://rally.example/DE1002",
+      stories: [
+        { name: "US1001", url: "https://stories.example/US1001" },
+        { name: "DE1002", url: "" },
       ],
       analysisOfPr: "Looks moderate overall",
     });
+    expect(persistedUserState.notesByPrNumber[prNumber]).not.toHaveProperty("rallyStories");
   });
 
   test("preserves other PR notes when POST /notes clears fields for a single PR", async () => {
@@ -150,16 +149,16 @@ describe("integration behavior", () => {
           comments: [{ id: "c-1", author: "a", tone: "Neutral", note: "keep" }],
           otherNotes: "keep me",
           prDifficulty: "4",
+          // Saved before stories existed: read as stories, written back so.
           rallyStories: ["US1"],
-          rallyLinks: ["https://rally.example/US1"],
+          rallyLinks: ["https://stories.example/US1"],
           analysisOfPr: "retain",
         },
         [clearedPrNumber]: {
           comments: [{ id: "c-2", author: "b", tone: "Positive", note: "clear" }],
           otherNotes: "remove me",
           prDifficulty: "2",
-          rallyStories: ["US2"],
-          rallyLinks: ["https://rally.example/US2"],
+          stories: [{ name: "US2", url: "https://stories.example/US2" }],
           analysisOfPr: "clear this",
         },
       },
@@ -174,8 +173,7 @@ describe("integration behavior", () => {
       comments: [],
       otherNotes: "",
       prDifficulty: "",
-      rallyStories: [],
-      rallyLinks: [],
+      stories: [],
       analysisOfPr: "",
     });
 
@@ -188,16 +186,14 @@ describe("integration behavior", () => {
     expect(persistedUserState.notesByPrNumber[existingPrNumber]).toMatchObject({
       otherNotes: "keep me",
       prDifficulty: "4",
-      rallyStories: ["US1"],
-      rallyLinks: ["https://rally.example/US1"],
+      stories: [{ name: "US1", url: "https://stories.example/US1" }],
       analysisOfPr: "retain",
     });
     expect(persistedUserState.notesByPrNumber[clearedPrNumber]).toEqual({
       comments: [],
       otherNotes: "",
       prDifficulty: "",
-      rallyStories: [],
-      rallyLinks: [],
+      stories: [],
       analysisOfPr: "",
     });
   });
@@ -742,15 +738,23 @@ describe("integration behavior", () => {
     const origDep = app.getDependencyStatus;
     app.getDependencyStatus = () => ({ ok: true, missing: [] });
     app.viewPrsSchedulerState.isAutoRunInProgress = false;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60000,
-    ).toISOString();
+    // No-arg auto refresh targets every configured repo - populate that
+    // same set's own circuit breaker entries (circuit breaker is now
+    // per-repo - see autoCircuitByRepo's own comment in app.js).
+    const openUntilIso = new Date(Date.now() + 60000).toISOString();
+    app.getViewPrsAutoRefreshRepos().forEach((repo) => {
+      app.viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
     await runViewPrsAutoRefresh();
     expect(app.viewPrsSchedulerState.lastAutoSkipReason).toMatch(
       /auto refresh circuit open/,
     );
     app.getDependencyStatus = origDep;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = null;
+    app.viewPrsSchedulerState.autoCircuitByRepo = {};
   });
 
   test("blocks auto refresh when runViewPrsAutoRefresh detects missing dependencies", async () => {

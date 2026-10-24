@@ -2,7 +2,7 @@
 
 const {
   createPrAutoRenderBlockingHelpers,
-} = require("./pr-auto-render-blocking.helpers.js");
+} = require("./pr-auto-render-blocking.helpers.ts");
 
 describe("auto render blocking helpers", () => {
   const createHelpers = () =>

@@ -23,6 +23,16 @@ const renderControls = (statsViewState = DEFAULT_STATE, setStatsViewState = () =
   );
 
 describe('ReviewStatsControls', () => {
+  // Each select's accessible name is exactly the visible label: naming a control from
+  // its wrapping <label> leaves the control's own option text out. e2e finds
+  // it by role and name; a label-text lookup would fold the options in.
+  test('given the controls, when rendering, then the two selects are named exactly "Sort by" and "Filter"', () => {
+    renderControls();
+
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('riskyApprovals');
+    expect(screen.getByRole('combobox', { name: 'Filter' })).toHaveValue('all');
+  });
+
   test('given statsViewState, when rendering, then all six controls reflect it', () => {
     renderControls();
 

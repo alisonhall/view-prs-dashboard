@@ -5,16 +5,17 @@
  * Phase 6 (see REACT_MIGRATION_PLAN.md): migrated from local `useState` to
  * `<FilterStateProvider>`'s shared Context. This one has dependent UI (two
  * <details class="multi-select-dropdown"> sibling elements that show/hide
- * based on the selected mode) driven by
- * updateAuthorThreadResolutionRuleVisibility() in index.page.js - that
- * function reads this select's `.value` fresh via getOptionalElementById
- * each time it runs and is triggered by a real native "change" listener
- * bound directly to this element's id, so it needed no changes for the
- * Context migration either: a React-rendered <select> is a real DOM node
- * with a real, always-current `.value` regardless of whether Context or
- * local state drives it. Only `getAuthorThreadResolutionPolicy`
- * (index.page.js), the canonical filtering-pipeline read site, was
- * updated to prefer Context.
+ * based on the selected mode) - as of Phase H.7, that's
+ * AuthorThreadResolutionRuleVisibility.jsx, which reads this same Context
+ * field directly instead of a vanilla DOM-mutating bridge
+ * (updateAuthorThreadResolutionRuleVisibility, formerly in index.page.js,
+ * deleted in that phase). The one canonical read site, formerly
+ * `getAuthorThreadResolutionPolicy` (index.page.js), was updated to prefer
+ * Context then - and has since moved entirely into
+ * ReviewThreadsSection.jsx's own useAuthorThreadResolutionPolicy hook,
+ * which reads this same field from FilterStateContext directly (falling
+ * back to a DOM read only where no <FilterStateProvider> is mounted - see
+ * that hook's own comment).
  *
  * @module components/AuthorThreadResolutionModeSelect
  */

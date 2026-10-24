@@ -2,7 +2,7 @@
 
 const {
   createPrStoredDataLoadHelpers,
-} = require("./pr-stored-data-load.helpers.js");
+} = require("./pr-stored-data-load.helpers.ts");
 
 describe("pr stored data load helpers", () => {
   test("given stored data fetch succeeds, when loading stored data, then metadata, backfill status, and render wiring are updated", async () => {

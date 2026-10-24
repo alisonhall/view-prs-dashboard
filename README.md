@@ -55,12 +55,13 @@ Compatibility note: migration shims were removed in Phase 3. Use canonical `src/
 ## Architecture Snapshot
 
 - Planning and phased modernization checklist: `AI_MODERNIZATION_PLAN.md`
-- Vanilla-to-React UI migration (complete): `REACT_MIGRATION_PLAN.md`
+- Vanilla-to-React UI migration (complete): `docs/history/REACT_MIGRATION_PLAN.md`
+- Window-bridge elimination, the migration's last step (complete): `docs/history/WINDOW_BRIDGE_ELIMINATION_PLAN.md`
 - Server-side helper extraction/integration status: `PHASE_8_STATUS.md`
 
 High-level layering intent:
 
-- UI composition/wiring: `src/ui/index.page.js`
+- UI composition/wiring: `src/ui/react-app.jsx` (`mountAppRoot()` and the Providers it mounts)
 - UI components: `src/ui/components/`
 - UI pure helpers: `src/ui/helpers/`
 - Server routes/orchestration: `src/server/app.js` and `src/server/routes/`
@@ -71,7 +72,7 @@ High-level layering intent:
 
 Target module layout by layer:
 
-- UI composition/orchestration: `src/ui/index.page.js`
+- UI composition/orchestration: `src/ui/react-app.jsx` (Providers in `src/ui/components/` and `src/ui/state/`)
 - UI components (render/event wiring): `src/ui/components/`
 - UI pure helpers (formatters/transformers): `src/ui/helpers/`
 - UI test fixtures/factories: `src/ui/test-fixtures/`
@@ -90,7 +91,7 @@ These boundaries are enforced by ESLint restricted import rules in `eslint.confi
 
 Contribution guidance:
 
-- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/index.page.js`.
+- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/react-app.jsx`.
 - New server behavior should keep routes thin and place reusable logic in helper/service modules.
 - New unit tests should be co-located with source files (`src/ui/components/*.test.js`, `src/ui/helpers/*.test.js`).
 - Integration/wiring tests should remain in `src/ui/integration-tests/` and server integration test folders.
@@ -111,20 +112,22 @@ npm run test:deps
 npm run test:backfill
 npm run test:all
 npm run test:coverage
+npm run typecheck
 npm run check:all
 ```
 
 Script guide:
 
 - `npm run test:app`: server route/integration/scheduler suites (`src/server/integration-tests/`)
-- `npm run test:ui`: UI suites (`src/ui/**/*.test.js`)
+- `npm run test:ui`: UI suites (every test under `src/ui/`: `.test.js`, `.test.jsx`, `.test.ts`)
 - `npm run test:script`: shell script Jest harness (`src/script/integration-tests/*.test.js`)
 - `npm run test:schema`: schema-focused Jest suites (`src/schema/integration-tests/`)
 - `npm run test:deps`: dependency guard/unit suites (`src/dependencies/integration-tests/`)
 - `npm run test:backfill`: backfill-focused suites (`src/backfill/integration-tests/`)
 - `npm run test:all`: guard + full Jest run (no coverage output)
 - `npm run test:coverage` / `npm run test:ci`: guard + full Jest run with coverage output (`coverage/lcov-report`)
-- `npm run check:all`: dependency check + lint + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
+- `npm run typecheck`: TypeScript type check, no output files (`tsconfig.json` for UI source, `tsconfig.test.json` for tests; also run by CI)
+- `npm run check:all`: dependency check + lint + `typecheck` + persisted-schema validation + `test:coverage` (updates `coverage/lcov-report` automatically)
 - `npm run test:e2e`: real-browser Playwright suite (`e2e/*.spec.js`) against a live server; not run as part of `test:all`/`check:all`
 - `npm run stability:heap-check`: standalone long-session heap-growth diagnostic (`e2e/stability/long-session-heap-check.js`), run on demand, not part of any `test:*`/`check:*` script
 
@@ -136,10 +139,10 @@ UI test placement conventions:
 - Shared fixture/factory modules should live under `src/ui/test-fixtures/` and expose reusable builders.
 - Integration/wiring tests should remain centralized under `src/ui/integration-tests/`:
   - `index.html.test.js`
-  - `index.page.memory-leak-prevention.test.js`
+  - `index.page.memory-leak-prevention.test.jsx` (the three `index.page.*` names predate `index.page.js`'s deletion; they now test React/helper code)
   - `index.page.notifications.test.js`
   - `index.page.trends.test.js`
-- `npm run test:ui` discovers all UI tests via `src/ui/**/*.test.js`.
+- `npm run test:ui` runs every test under `src/ui/` (`jest src/ui`).
 - Real-browser regressions that jsdom can't see (asset 404s, event-delegation races between vanilla and React, charset handling) belong in `e2e/smoke.spec.js` instead.
 
 Recommended default before opening a PR: `npm run check:all`. Run `npm run test:e2e` too if you touched UI rendering/event wiring — it isn't part of `check:all`.
@@ -343,6 +346,8 @@ Use `backfill-missing-data.js` to find PR rows with schema-missing data and opti
 - Safe with active localhost usage: writes are serialized via the same state-file lock used by `src/script/check-open-pr-updates.sh`.
 - Candidate processing is prioritized by section for faster visible wins: `open` -> `draft` -> `closed` -> `merged`.
 - Backfill refreshes can run with a bounded worker pool (`--concurrency`) while keeping each PR update independent.
+- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script. The dashboard's own notes saves don't take that lock, so the file is re-read just before writing and the conversion redone if it changed; it is still safest to run while you aren't saving notes. The conversion covers every note whatever `--repo` is (notes are stored by PR number, not repo). `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way (and any notes save rewrites the whole user state in the new format), so this only tidies the files.
+- `--data`/`--user-state`/`--schema`/`--script`/`--backup-dir` override paths are relative to the current directory.
 
 Common commands:
 
@@ -351,6 +356,9 @@ cd view-prs
 
 # Inspect candidates only
 npm run backfill:missing:dry -- --max-prs 30
+
+# Only convert old-format stories (no GitHub refresh)
+npm run backfill:missing -- --migrate-only
 
 # Refresh candidates in foreground (throttled)
 npm run backfill:missing -- --max-prs 50 --delay-ms 3000
@@ -390,20 +398,39 @@ Then open:
 - `http://localhost:9000/view-prs/index.html`
 - `http://localhost:9000/health/deps` (dependency health)
 
-When localhost is running, the server starts an automatic background refresh for `view-prs` data, split into two tiers so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
+When localhost is running, the server starts an automatic background refresh for `view-prs` data, driven by a single per-repo-aware dispatcher (replacing three independent timers) so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
-- **Quick check** (every 5 minutes, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it's queued instead.
-  - A quick check does nothing if a full auto refresh (the periodic full sweep, or another repo's fast-follow) is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
+- **Quick check** (every 5 minutes per repo, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it now gets the exact same immediate fast-follow treatment (fixed - previously it only sat flagged until the merged/closed drain's own, actually *longer*, 30-minute interval).
+  - A quick check does nothing if a full auto refresh for the same repo is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
   - `Last quick check skip` in the Auto Refresh panel (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
-- **Merged/closed drain** (every 30 minutes, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
-- **Full sweep** (every 15 minutes, unchanged): runs for all configured repos regardless of the quick check, as a safety net.
+- **Merged/closed drain** (every 30 minutes per repo, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
+- **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net.
 - Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
+- Each repo's cadence/priority can be overridden individually via a `schedulerRepoConfig` key in the existing `/view-prs/user-defaults` JSON blob (`PUT` the whole object, merging your own change in - a `PUT` replaces the file, it doesn't merge for you), e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 8, "quickCheckIntervalMs": 120000}}}`. There's no settings form for this yet; the Activity drawer's "Dispatcher queue" section shows each repo's effective priority/cadence read-only. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
 - On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
 - While a run is in progress, PR rows currently being refreshed show a small spinner below the PR number link and above the relative "updated ... ago" text without forcing a full table rerender.
 - A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
 - A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
+
+An **Activity** button (top-right of the page) opens a collapsible drawer showing all of this background activity in one place:
+
+- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. Per-job-type status (running/idle, last result), not ordering - a quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position. Any PRs quick-check has flagged as changed but the merged/closed drain hasn't picked up yet show as "Update queued" on that row.
+- **Dispatcher queue** - the per-repo-aware dispatcher's own real, ordered task list (one entry per repo per job type), shown in the exact order it'll actually run: running first, then due (highest priority first), then scheduled (soonest first). Also where each repo's effective priority/cadence (including any `schedulerRepoConfig` override) is visible.
+- **Backfill** and **in-flight requests from this browser tab** - both still polled (every 5s and 1s respectively), shown in the drawer as-is.
+- **Bulk Ack/Clear or Apply-label queue** - the other real ordered queue: a batch larger than 5 PRs is split into chunks run a few at a time, and the drawer shows each chunk's real position and outcome (including a chunk that failed, distinct from one that succeeded).
+- If the live connection drops, the drawer shows its own status (reconnecting/offline).
+
+The 30s PR-data poll itself isn't fully retired - it's the only mechanism that catches a change made from a *different* browser tab or user, which has no push hook. But ack, apply-label, a manual "Run script", and "Request more merged PRs" each push a lightweight signal the moment they've actually written data, so every other open tab refreshes immediately instead of waiting out that poll's own interval; it remains as a slower fallback for anything outside those four actions.
+
+Optional tuning via env vars:
+
+- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a keep-alive comment is written to an idle `/view-prs/events` connection.
+- `VIEW_PRS_EVENTS_MAX_CLIENTS` (default `25`): how many concurrent `/view-prs/events` connections are accepted before a further one gets a 503.
+- `VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS` (default `250`): caps how often a per-PR progress update (during a refresh) actually pushes an SSE frame - set to `0` to disable throttling entirely.
+- `VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET` (default `8`): the dispatcher's single ceiling on total concurrent `gh` processes across every repo/job-type it runs at once.
+- `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS` (default `5000`): how often the dispatcher re-checks what's due. An urgency bump (a quick check finding a real change) isn't affected by this - it triggers an immediate tick regardless.
 
 Use the form to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
@@ -440,14 +467,12 @@ The `Visibility Filters` panel includes filters for custom metadata fields (manu
   - `Any (set or not set)`: Show all PRs regardless of difficulty setting
   - `1` through `5`: Show only PRs with that specific difficulty rating
   - `Not set`: Show only PRs where difficulty has not been assigned
-- **Rally stories**: Filter by presence/absence of Rally story references
-  - `Any (with or without)`: Show all PRs regardless of Rally stories
-  - `With Rally stories`: Show only PRs that have Rally story references entered
-  - `Without Rally stories`: Show only PRs with no Rally story references
-- **Rally links**: Filter by presence/absence of Rally links
-  - `Any (with or without)`: Show all PRs regardless of Rally links
-  - `With Rally links`: Show only PRs that have Rally links entered
-  - `Without Rally links`: Show only PRs with no Rally links
+- **Stories**: Filter by the PR's stories (each a name and/or URL)
+  - `Any`: Show all PRs regardless of stories
+  - `Without any story details`: Show only PRs with no stories
+  - `With only story name`: Show PRs with at least one story that has a name but no URL
+  - `With only story URL`: Show PRs with at least one story that has a URL but no name
+  - `With story and URL`: Show PRs with at least one story that has both
 - **Analysis of PR**: Filter by presence/absence of PR analysis text
   - `Any (with or without)`: Show all PRs regardless of analysis
   - `With analysis`: Show only PRs that have analysis text entered
@@ -461,7 +486,7 @@ Date columns in the web table (`YOUR LAST ACTIVITY` and `MERGED AT`) use the sam
 
 Stored PR table rows now include a `LABELS` column and each row persists the PR label names in JSON.
 
-The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (commits whose `messageHeadline` starts with "Merge" are excluded, matching the "ignore merge-only commits" attention rule's definition), deduped so a commit author who is also the PR author only appears once.
+The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (merge commits as defined by the "Merge commits" rules below), deduped so a commit author who is also the PR author only appears once.
 
 Open and draft PR sections are sorted by PR number descending (highest first). Closed PRs sort by close date descending. Merged PRs sort by merge date descending.
 
@@ -576,6 +601,24 @@ Default values:
 | Include NO_ACTIVITY drafts | `off` |
 | PR-author thread-resolution policy | `allow-all` |
 
+Merge commits:
+
+- The `Advanced visibility and attention rules` section has a `Merge commits` editor, saved to `user-defaults.json` as `mergeCommitRules` (only when it differs from the default).
+- A commit counts as a merge when its headline matches one of the **headline patterns** (regular expressions, one per line, not case-sensitive; default `^Merge\b`, i.e. any "Merge ..." headline), or when it has author logins and every one of them is in the **logins** list (e.g. `dependabot[bot]`).
+- The same definition is used everywhere: merge commits don't mark a PR CHANGED (check-open-pr-updates.sh), aren't listed in the `AUTHOR` column, and are what "Ignore merge-only commits for CHANGED" leaves out.
+- An invalid pattern is skipped (the editor names it). An emptied patterns list means no headline counts as a merge. In a hand-edited `user-defaults.json`, a list given as a single string is read as one entry, and a malformed one as its default.
+- Patterns are checked by both the browser (JavaScript regular expressions) and check-open-pr-updates.sh (jq's Oniguruma). Plain patterns (anchors, literal text, `\b`, `\s`, groups, alternation) behave the same in both; the editor only validates the JavaScript side.
+- The old "Use built-in merge commit filter" checkbox (`changeFilters.useBuiltinMergePattern`) is no longer read; the defaults above apply until you save your own rules, and the next save drops the old setting. If you had turned it off and listed your own merge patterns under "Ignore commits matching patterns", those still keep such commits from marking a PR CHANGED; add them to the headline patterns too if the Author column and the merge-only attention rule should treat them as merges.
+
+```json
+{
+  "mergeCommitRules": {
+    "headlinePatterns": ["^Merge\\b", "^Revert \"Merge"],
+    "logins": ["dependabot[bot]", "renovate[bot]"]
+  }
+}
+```
+
 Change Detection Filters:
 
 - The `Advanced visibility and attention rules` section includes `Change Detection Filters` to configure what activity should NOT trigger CHANGED status.
@@ -586,28 +629,23 @@ Change Detection Filters:
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
 - Built-in filters:
   - **Approved reviews are always ignored** (cannot be disabled)
-  - **Built-in merge commit filter** (configurable):
-    - Pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`
-    - Enabled by default via "Use built-in merge commit filter" checkbox
-    - Can be disabled to define custom merge patterns or allow all merge commits to trigger CHANGED status
-    - Useful for repos with different merge workflows (e.g., develop → main, custom branch names)
-    - When disabled, only user-defined commit patterns apply
+  - **Merge commits** never count (see "Merge commits" above)
 - Regex patterns for commits:
   - Patterns use PCRE-compatible syntax (jq's `test()` function)
   - Patterns are tested against commit message headline (first line only)
   - Multiple patterns are combined with OR logic
-  - Patterns work in addition to built-in merge filter (when enabled) or as standalone filters (when built-in is disabled)
-  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits), `^Merge branch 'develop'` (custom merge pattern)
+  - Patterns apply in addition to the merge commit rules (unlike those, they're case-sensitive)
+  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits)
 
 Comments vs Reviews vs Commits:
 
 - **Comments** (💬) are general discussion messages in the PR conversation tab (created via main comment box). Example: bot notifications, questions, status updates.
 - **Reviews** (✅) are formal code review submissions with states (APPROVED, CHANGES_REQUESTED, COMMENTED) created via the "Review changes" button. They affect PR merge status and appear with special badges.
-- **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is pattern-based, not author-based.
+- **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is by headline pattern, plus the merge commit logins.
 
 Example configurations in `user-defaults.json`:
 
-**Default configuration (built-in merge filter enabled):**
+**Example configuration:**
 
 ```json
 {
@@ -624,27 +662,6 @@ Example configurations in `user-defaults.json`:
   }
 }
 ```
-
-Note: `useBuiltinMergePattern` defaults to `true` if omitted.
-
-**Custom merge pattern configuration (built-in disabled):**
-
-```json
-{
-  "repo": "owner/repo",
-  "changeFilters": {
-    "useBuiltinMergePattern": false,
-    "ignoreCommitPatterns": [
-      "^Merge branch '(develop|staging)'",
-      "^Merge pull request #",
-      "^docs:",
-      "^test:"
-    ]
-  }
-}
-```
-
-This configuration disables the built-in merge filter and defines custom merge patterns for repos that merge from develop/staging branches.
 
 Scope mode behavior:
 
@@ -743,7 +760,7 @@ The UI includes:
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - Author Insights manual comments editor saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
 - PR-number-column relative `↻ ... ago` indicators are based on the latest successfully rendered run timestamp (`lastRun.updatedAt`), not per-row stale timestamps.
-- `YOUR LAST ACTIVITY` / `MERGED AT` date cells show six small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, Rally stories, Rally links, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
+- `YOUR LAST ACTIVITY` / `MERGED AT` date cells show five small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, stories, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
 - per-row `View PR JSON details` modal with four expanded-by-default sections:
   - `Data File Entry`
   - `PR Detail File`
@@ -774,11 +791,10 @@ Notes editor fields include:
 - comment rows (author, sentiment, note)
 - `Other Notes` (textarea)
 - `PR difficulty` (1-5)
-- `Rally stories` (multi-entry text; use `+` to add another story)
-- `Rally links` (multi-entry text; use `+` to add another link)
+- `Stories` (one row per story: a name such as `US12345` and its URL; use `+` to add another story)
 - `Analysis of PR` (textarea)
 
-`Rally stories` and `Rally links` are persisted as arrays in user state.
+Stories are persisted in user state as `stories: [{ name, url }]`. Notes saved before stories existed kept names (`rallyStories`) and URLs (`rallyLinks`) in two separate lists; those are read as stories, paired by position, and saved in the new shape on the next write.
 
 `Save notes` is enabled only when one or more notes fields are dirty (including the additional fields above).
 

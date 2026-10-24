@@ -8,36 +8,115 @@
  * and the summary toggle are read-only display state (no server calls) —
  * this is a straight port, not a simplification.
  *
- * parseSortableTime is imported directly from pr-sortable-time.helpers.js
+ * parseSortableTime is imported directly from pr-sortable-time.helpers.ts
  * (Phase 7, sub-phase 7.0 - see REACT_MIGRATION_PLAN.md) - it's a
  * genuinely pure, zero-dependency function, so no Context is needed here.
  *
  * @module components/insights/ReviewThreadsSection
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { InsightSection } from './InsightSection';
 import { ActorIdentity } from '../ActorIdentity';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
-import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.js';
-import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.js';
+import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
+import { useReviewConversationsUiState } from '../../state/ReviewConversationsUiStateContext';
+import { FilterStateContext } from '../../state/FilterStateContext';
+import { AuthorThreadResolutionSelectionContext } from '../../state/AuthorThreadResolutionSelectionContext';
+import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { parseSortableTime } from '../../helpers/pr-sortable-time.helpers.ts';
+import { asArray } from '../../helpers/pr-as-array.helpers.ts';
+import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+const { getReviewConversationsStateKey, normalizeReviewConversationsUiState } =
+  createPrReviewConversationsUiStateHelpers();
+
+// Verbatim copy of index.page.js's own normalizeAuthorThreadResolutionMode
+// (not exported as its own module, so can't be imported directly) - same
+// "copy the real logic, don't reimplement a simplified version" discipline
+// as useVisiblePrNumbers.tsx's own isInReviewEnabled copy.
+const normalizeAuthorThreadResolutionMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'allow-only' || normalized === 'deny-only') {
+    return normalized;
+  }
+  return 'allow-all';
+};
+
+const toLoginKeySet = (values) =>
+  new Set(Array.from(values || []).map((value) => String(value || '').trim().toLowerCase()));
+
+// Phase 7 (see REACT_MIGRATION_PLAN.md): the reactive replacement for
+// window.getAuthorThreadResolutionPolicy (index.page.js) - re-investigated
+// an earlier "genuinely separate concern (a DOM-scan dependency)" deferral
+// and found the DOM-scan dependency itself was real (the allow/deny
+// multi-selects' checked state had nowhere else to live) but no longer
+// true now that AuthorThreadResolutionSelectionContext exists for exactly
+// those 2 lists (same fix RowFilterSelectionContext was for the 5
+// row-filtering lists). Reads both Contexts directly (not their throwing
+// hooks) with the same permissive "allow-all, nothing checked" defaults
+// the vanilla function's own window.* fallback used - this component's
+// own existing test file mounts it standalone, with no FilterStateProvider/
+// AuthorThreadResolutionSelectionProvider ancestor, matching every other
+// Context this component already reads this same permissive way
+// (ActorIdentityContext/PrInsightsDisplayContext/
+// ReviewConversationsUiStateContext, all above).
+//
+// `mode` also falls back to a plain DOM read of the real
+// `<select id="attention-author-thread-resolution-mode">` when no
+// FilterStateContext value is available - mirroring the old vanilla
+// getAuthorThreadResolutionPolicy's own getFilterStateOverrideForFieldId/
+// DOM-read combo exactly (index.page.js). Found necessary (not just
+// precautionary) via a real test failure:
+// integration-tests/index.html.test.js's own harness deliberately never
+// mounts a real <FilterStateProvider> (see that file's own comment at
+// mountReactPrTable - avoiding it elsewhere prevents 6 unrelated
+// persisted-restore tests from regressing), so AuthorThreadResolutionModeSelect
+// is never actually rendered there either - the mode select in that
+// harness is just the plain vanilla <select> from the static index.html
+// fixture, read and written directly as a real DOM element. Without this
+// fallback, mode would silently stay "allow-all" there regardless of what
+// the test selects.
+function useAuthorThreadResolutionPolicy() {
+  const filterState = useContext(FilterStateContext);
+  const selection = useContext(AuthorThreadResolutionSelectionContext);
+  const domMode =
+    typeof document !== 'undefined'
+      ? document.getElementById('attention-author-thread-resolution-mode')?.value
+      : undefined;
+  const mode = normalizeAuthorThreadResolutionMode(
+    filterState?.values?.attentionAuthorThreadResolutionMode ?? domMode,
+  );
+  // Depend on `selection` itself (stable unless the Provider's own state
+  // actually changes), not `selection?.checkedByListId || {}` - that
+  // fallback is a fresh object on every render with no Provider ancestor,
+  // which would otherwise recompute this on every single render.
+  const checkedByListId = selection?.checkedByListId;
+
+  return useMemo(
+    () => ({
+      mode,
+      allowLoginKeys: toLoginKeySet(checkedByListId?.['attention-author-thread-resolution-allow-list']),
+      denyLoginKeys: toLoginKeySet(checkedByListId?.['attention-author-thread-resolution-deny-list']),
+    }),
+    [mode, checkedByListId],
+  );
+}
 
 function useHelpers() {
   const { getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
+  const { renderMarkdownAsHtml } = usePrInsightsDisplay();
+  const authorThreadResolutionPolicy = useAuthorThreadResolutionPolicy();
   return {
-    asArray: window.asArray || ((value) => (Array.isArray(value) ? value : [])),
+    asArray,
     getPreferredActorKey,
     resolveActorDisplayName,
-    getAuthorThreadResolutionPolicy:
-      window.getAuthorThreadResolutionPolicy || (() => ({ mode: 'allow-all', allowLoginKeys: new Set(), denyLoginKeys: new Set() })),
+    getAuthorThreadResolutionPolicy: () => authorThreadResolutionPolicy,
+    authorThreadResolutionPolicy,
     parseSortableTime,
     formatIsoDatetime,
-    renderMarkdownAsHtml: window.renderMarkdownAsHtml || ((text) => String(text || '')),
-    readReviewConversationsUiState:
-      window.readReviewConversationsUiState || (() => ({ stateKey: '', conversationFilterMode: 'unresolved', showSummaryCards: true })),
-    writeReviewConversationsUiState: window.writeReviewConversationsUiState || (() => {}),
+    renderMarkdownAsHtml,
   };
 }
 
@@ -342,14 +421,38 @@ function computeReviewThreadsData(pr, actorsMap, helpers) {
 
 export function ReviewThreadsSection({ pr, actorsMap }) {
   const helpers = useHelpers();
-  const data = useMemo(() => computeReviewThreadsData(pr, actorsMap, helpers), [pr, actorsMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Phase H.19 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): `helpers` itself is a fresh object literal every render
+  // (useHelpers() isn't memoized), so listing it whole here would make this
+  // memo pointless (recompute on every render regardless of pr/actorsMap).
+  // `helpers.authorThreadResolutionPolicy` is the one piece of `helpers`
+  // that both (a) actually affects computeReviewThreadsData's output
+  // (via getAuthorThreadResolutionPolicy()) and (b) is itself a stable
+  // reference unless its own live Context inputs (allow/deny-mode select,
+  // the 2 checklists) really changed - useAuthorThreadResolutionPolicy()'s
+  // own useMemo guarantees that. Depending on it directly (instead of on
+  // the whole non-memoized helpers object) is what makes the warning text
+  // ("Warning: N thread(s) incorrectly resolved") recompute live when the
+  // policy changes, instead of only on the next pr/actorsMap reference
+  // change - previously only forced by the vanilla renderPrData pipeline's
+  // (applyFiltersFromCache/debouncedApplyFilters) re-render side effect,
+  // confirmed via the same empirical stub-and-test check Phase H.18 used.
+  const data = useMemo(
+    () => computeReviewThreadsData(pr, actorsMap, helpers),
+    [pr, actorsMap, helpers.authorThreadResolutionPolicy], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-  const uiState = useMemo(() => helpers.readReviewConversationsUiState(pr), [pr]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { getReviewConversationsUiState, setReviewConversationsUiState } = useReviewConversationsUiState();
+  const stateKey = useMemo(() => getReviewConversationsStateKey(pr), [pr]);
+  const uiState = useMemo(
+    () => normalizeReviewConversationsUiState(getReviewConversationsUiState(stateKey)),
+    [stateKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [filterMode, setFilterMode] = useState(uiState.conversationFilterMode);
   const [showSummaryCards, setShowSummaryCards] = useState(uiState.showSummaryCards);
 
   const updateUiState = (nextFilterMode, nextShowSummaryCards) => {
-    helpers.writeReviewConversationsUiState(uiState.stateKey, nextFilterMode, nextShowSummaryCards);
+    setReviewConversationsUiState(stateKey, nextFilterMode, nextShowSummaryCards);
   };
 
   const { reviewThreads, unresolvedReviewThreads, resolvedReviewThreads, incorrectlyResolvedByAuthorCount, reviewSummaries, topLevelComments, prAuthorLogin, policy } = data;

@@ -2,7 +2,7 @@
 
 const {
   createPrAutoRenderIndicatorHelpers,
-} = require("./pr-auto-render-indicator.helpers.js");
+} = require("./pr-auto-render-indicator.helpers.ts");
 
 describe("auto render indicator helpers", () => {
   const createHelpers = () =>

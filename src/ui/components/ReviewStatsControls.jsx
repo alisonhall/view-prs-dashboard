@@ -11,7 +11,7 @@
  * then on, with no restore-race handling needed.
  *
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): reads/writes
- * statsViewState via useReviewStats() (state/ReviewStatsContext.jsx)
+ * statsViewState via useReviewStats() (state/ReviewStatsContext.tsx)
  * directly now, instead of receiving initialState/onChange props that
  * bridged into index.page.js's window.updateStatsViewStateAndRerender -
  * that bridge also had the unrelated side effect of re-running the PR
@@ -23,6 +23,7 @@
 
 import { useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
 
 const SORT_OPTIONS = [
   ['riskyApprovals', 'Risky approvals'],
@@ -42,16 +43,10 @@ const FILTER_MODE_OPTIONS = [
   ['useful-comments', 'Only useful-comment signals'],
 ];
 
-const NON_CREDENTIAL_DATE_ATTRS = {
-  autoComplete: 'off',
-  autoCapitalize: 'off',
-  autoCorrect: 'off',
-  spellCheck: false,
-  'data-lpignore': 'true',
-  'data-1p-ignore': 'true',
-  'data-bwignore': 'true',
-  'data-form-type': 'other',
-};
+// The shared non-credential-field attributes (form-parsing.helpers.ts);
+// this file had its own identical copy until the window-bridge elimination
+// Phase 7.5 follow-up.
+const NON_CREDENTIAL_DATE_ATTRS = NON_CREDENTIAL_INPUT_PROPS;
 
 export function ReviewStatsControls() {
   const { statsViewState, setStatsViewState } = useReviewStats();

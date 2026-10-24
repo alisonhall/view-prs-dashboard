@@ -1,0 +1,11 @@
+{
+  // Tests and their fixtures/setup, with Jest and Node globals. Source files
+  // are pulled in through the tests' imports; tsconfig.json is what keeps
+  // those globals out of browser code.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest", "node"]
+  },
+  "include": ["src/ui/**/*"],
+  "exclude": ["src/ui/vendor/**"]
+}

@@ -1,0 +1,38 @@
+{
+  // Type-checking only (`npm run typecheck`): Vite compiles .ts/.tsx for the
+  // browser and Babel (babel.config.jest.js) for Jest, so tsc never emits.
+  // Covers the UI only for now; the server joins in Phase 12F
+  // (AI_MODERNIZATION_PLAN.md). allowJs lets .ts files import the
+  // not-yet-converted .js/.jsx modules, which tsc reads for inferred types
+  // but doesn't report errors in (checkJs is off).
+  //
+  // This config is browser code only: no Jest or Node globals, so a stray
+  // `process`, `require` or `expect` in UI code is a type error. Tests are
+  // checked by tsconfig.test.json, which adds those types.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/ui/**/*"],
+  "exclude": [
+    "src/ui/vendor/**",
+    "src/ui/**/*.test.*",
+    "src/ui/integration-tests/**",
+    "src/ui/test-fixtures/**"
+  ]
+}

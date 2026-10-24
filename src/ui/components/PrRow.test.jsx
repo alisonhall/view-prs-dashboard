@@ -1,6 +1,16 @@
 /** @jest-environment jsdom */
 
-const { render } = require('@testing-library/react');
+const { render: baseRender, screen } = require('@testing-library/react');
+const { RequestActivityContext } = require('../state/RequestActivityContext');
+
+// NotesSection (rendered for real by this file's rows) reads
+// beginRequestActivity from usePrData() now, not window.beginRequestActivity
+// (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+const render = (ui, options) =>
+  baseRender(
+    <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} }}>{ui}</RequestActivityContext.Provider>,
+    options,
+  );
 require('@testing-library/jest-dom');
 const { PrRow } = require('./PrRow');
 
@@ -61,6 +71,15 @@ describe('PrRow', () => {
     const mainRow = document.querySelector('tr.pr-row');
     expect(mainRow).toHaveAttribute('data-pr-number', '101');
     expect(mainRow).toHaveAttribute('data-section-key', 'open');
+  });
+
+  // Accessibility naming: the insights row is named by its PR, so tests can
+  // find it by role. Checked expanded: an accessible name is only computed
+  // for a visible element (Playwright's includeHidden still computes it, which
+  // is how e2e finds the row while collapsed).
+  test('given an expanded PR row, when rendering, then its insights row is named "Insights for PR #N"', () => {
+    renderRow({ isExpanded: true });
+    expect(screen.getByRole('row', { name: 'Insights for PR #101' })).not.toHaveAttribute('hidden');
   });
 
   test('given isExpanded=false, when rendering, then the insights row is hidden and its cell spans all 11 columns', () => {

@@ -7,10 +7,7 @@
  * Action Log's conversion, this tab's own buttons/status/rows are ALL now
  * React-owned (not a container-split leaving vanilla buttons calling a
  * bridge), matching how ReviewStatsControls/AuthorInsightsSelector fully
- * own their own controls - the tab-switch chrome
- * (pr-management-tabs.helpers.js) still calls a `loadActorNameCache`
- * reference on tab activation, which index.page.js now points at
- * `window.triggerActorNameCacheLoad`, a bridge this component registers.
+ * own their own controls.
  *
  * Behavior preserved exactly from the vanilla version, including one
  * quirk: both mapping editors' "Refresh" buttons trigger the SAME combined
@@ -22,15 +19,32 @@
  *
  * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
  * component is now lazy-loaded (react-app.jsx), mounting only once the
- * Actor Names tab is first activated - see ActionLogSection.jsx's own
- * comment for the exact race this created (activateTab("actor-name-cache")
- * calls loadActorNameCache() synchronously on click, always before this
- * component's lazy chunk has mounted on a first visit) and why loading
- * once on mount (below) is the correct fix rather than a workaround.
+ * Actor Names tab is first activated.
+ *
+ * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 3): re-triggering the combined reload on every later
+ * re-activation (switch away, then back) used to be
+ * `pr-management-tabs.helpers.js`'s `activateTab("actor-name-cache")`
+ * calling `loadActorNameCache()` directly, outside React entirely - that
+ * function is deleted outright this phase. Now owned by this component's
+ * own second effect below, watching
+ * `useIsTabPanelVisible('tab-panel-actor-name-cache')` - same shape
+ * `useBackfillTabAutoRefresh.tsx`/`ActionLogSection.jsx` already
+ * established.
+ *
+ * Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+ * audit"): `window.triggerActorNameCacheLoad` had zero real external
+ * callers (unlike ActionLogSection.jsx's bridge, this tab's own "Refresh"
+ * buttons were already wired through `onRefresh`/`refreshBoth` below, a
+ * plain React prop, not the bridge) - a grep confirmed only this
+ * component's own 2 internal call sites and its own tests ever referenced
+ * it. Deleted outright: `load` is now a local `useCallback`, called
+ * directly by both the re-activation effect and `refreshBoth`.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MappingRowsEditor, entriesToRows } from './MappingRowsEditor';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 
 export function ActorNamesTab() {
   const [nameCacheRows, setNameCacheRows] = useState([]);
@@ -38,47 +52,62 @@ export function ActorNamesTab() {
   const [aliasRows, setAliasRows] = useState([]);
   const [aliasStatus, setAliasStatus] = useState({ text: 'Loading aliases...', tone: 'info' });
 
-  useEffect(() => {
-    const load = async () => {
-      setNameCacheStatus({ text: 'Loading cache...', tone: 'info' });
-      try {
-        const response = await fetch('/view-prs/actor-name-cache');
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false) {
-          throw new Error(payload?.error || 'Failed to load actor name cache');
-        }
-        const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
-        setNameCacheRows(entriesToRows(entries));
-        const count = Object.keys(entries).length;
-        setNameCacheStatus({ text: `Loaded ${count} mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
-      } catch (error) {
-        setNameCacheStatus({ text: `Failed to load cache: ${error.message || String(error)}`, tone: 'error' });
+  const load = useCallback(async () => {
+    setNameCacheStatus({ text: 'Loading cache...', tone: 'info' });
+    try {
+      const response = await fetch('/view-prs/actor-name-cache');
+      const payload = await response.json();
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Failed to load actor name cache');
       }
+      const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
+      setNameCacheRows(entriesToRows(entries));
+      const count = Object.keys(entries).length;
+      setNameCacheStatus({ text: `Loaded ${count} mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
+    } catch (error) {
+      setNameCacheStatus({ text: `Failed to load cache: ${error.message || String(error)}`, tone: 'error' });
+    }
 
-      setAliasStatus({ text: 'Loading aliases...', tone: 'info' });
-      try {
-        const response = await fetch('/view-prs/actor-login-aliases');
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false) {
-          throw new Error(payload?.error || 'Failed to load actor login aliases');
-        }
-        const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
-        setAliasRows(entriesToRows(entries));
-        const count = Object.keys(entries).length;
-        setAliasStatus({ text: `Loaded ${count} alias mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
-      } catch (error) {
-        setAliasStatus({ text: `Failed to load aliases: ${error.message || String(error)}`, tone: 'error' });
+    setAliasStatus({ text: 'Loading aliases...', tone: 'info' });
+    try {
+      const response = await fetch('/view-prs/actor-login-aliases');
+      const payload = await response.json();
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Failed to load actor login aliases');
       }
-    };
-
-    window.triggerActorNameCacheLoad = load;
-    load();
-    return () => {
-      delete window.triggerActorNameCacheLoad;
-    };
+      const entries = payload?.entries && typeof payload.entries === 'object' ? payload.entries : {};
+      setAliasRows(entriesToRows(entries));
+      const count = Object.keys(entries).length;
+      setAliasStatus({ text: `Loaded ${count} alias mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
+    } catch (error) {
+      setAliasStatus({ text: `Failed to load aliases: ${error.message || String(error)}`, tone: 'error' });
+    }
   }, []);
 
-  const refreshBoth = () => window.triggerActorNameCacheLoad?.();
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Phase H.22 (see this module's own header comment): re-trigger on
+  // every later re-activation, matching activateTab("actor-name-cache")'s
+  // old behavior exactly - skips this effect's own first run via a ref,
+  // not the `isVisible` value itself, since on a first mount where the
+  // tab is already active this effect's first run would otherwise
+  // double-fire right alongside the mount effect's own load() call above
+  // (same reasoning as ActionLogSection.jsx's own identical guard).
+  const isVisible = useIsTabPanelVisible('tab-panel-actor-name-cache');
+  const hasSkippedFirstRunRef = useRef(false);
+  useEffect(() => {
+    if (!hasSkippedFirstRunRef.current) {
+      hasSkippedFirstRunRef.current = true;
+      return;
+    }
+    if (isVisible) {
+      load();
+    }
+  }, [isVisible, load]);
+
+  const refreshBoth = load;
 
   return (
     <>

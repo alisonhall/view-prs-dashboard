@@ -48,14 +48,14 @@ describe('PrTitleCell', () => {
 
   test('given isExpanded is false, when rendering, then the toggle reads "More insights"', () => {
     renderCell({ isExpanded: false });
-    const toggle = screen.getByRole('button', { name: 'More insights' });
+    const toggle = screen.getByRole('button', { name: 'More insights for PR #101' });
     expect(toggle).toHaveTextContent('More insights');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('given isExpanded is true, when rendering, then the toggle reads "Hide insights"', () => {
     renderCell({ isExpanded: true });
-    const toggle = screen.getByRole('button', { name: 'Hide insights' });
+    const toggle = screen.getByRole('button', { name: 'Hide insights for PR #101' });
     expect(toggle).toHaveTextContent('Hide insights');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
@@ -63,7 +63,7 @@ describe('PrTitleCell', () => {
   test('given a toggle click, when clicked, then onToggleInsights is called with the PR number, section, and repo', () => {
     const onToggleInsights = jest.fn();
     renderCell({ pr: { number: '101' }, sectionKey: 'open', repo: 'owner/repo', onToggleInsights });
-    screen.getByRole('button', { name: 'More insights' }).click();
+    screen.getByRole('button', { name: 'More insights for PR #101' }).click();
     // repo disambiguates PR numbers that collide across repos - see
     // PrTableApp's buildExpandedInsightsKey.
     expect(onToggleInsights).toHaveBeenCalledWith('101', 'open', 'owner/repo');

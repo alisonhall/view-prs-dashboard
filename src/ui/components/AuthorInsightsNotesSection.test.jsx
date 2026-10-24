@@ -4,6 +4,10 @@ const { render, screen, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorInsightsNotesSection } = require('./AuthorInsightsNotesSection');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
 
 const buildEntry = (overrides = {}) => ({
@@ -21,6 +25,7 @@ const renderSection = (rows, selectedAuthorLogin, actorsMap = {}, authorInsights
   });
   return render(
     <PrDataProvider initialPayload={{ byPrNumber, actorsMap }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
         <AuthorInsightsNotesSection />
       </AuthorInsightsContext.Provider>
@@ -60,7 +65,7 @@ describe('AuthorInsightsNotesSection', () => {
     expect(screen.queryByText('For other')).not.toBeInTheDocument();
 
     act(() => {
-      window.updateReactSelectedAuthorLogin('other');
+      prDataProbe.setSelectedAuthorLogin('other');
     });
     expect(screen.queryByText('For octocat')).not.toBeInTheDocument();
     expect(screen.getByText('For other')).toBeInTheDocument();

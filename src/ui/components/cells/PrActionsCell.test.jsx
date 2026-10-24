@@ -3,22 +3,23 @@
 const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrActionsCell } = require('./PrActionsCell');
+const { RepoLabelsContext } = require('../../state/RepoLabelsContext');
 
 describe('PrActionsCell', () => {
-  afterEach(() => {
-    delete window.runSinglePrUpdate;
-    delete window.getAvailableRepoLabels;
-  });
-
-  const renderCell = (props = {}) =>
+  // repoLabels comes from useRepoLabels() now (Phase 7, see
+  // REACT_MIGRATION_PLAN.md) instead of window.getAvailableRepoLabels -
+  // wraps in a RepoLabelsContext.Provider instead of stubbing window.
+  const renderCell = (props = {}, repoLabels = []) =>
     render(
-      <table>
-        <tbody>
-          <tr>
-            <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} {...props} />
-          </tr>
-        </tbody>
-      </table>,
+      <RepoLabelsContext.Provider value={{ labels: repoLabels }}>
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} {...props} />
+            </tr>
+          </tbody>
+        </table>
+      </RepoLabelsContext.Provider>,
     );
 
   test('given isInReview/isFlagged, when rendering, then reflects checked state on each toggle', () => {
@@ -43,14 +44,14 @@ describe('PrActionsCell', () => {
 
   test('given isAcknowledged=false, when rendering, then the Ack button reads "Ack", is not styled as selected, and aria-pressed is false', () => {
     renderCell({ isAcknowledged: false });
-    const button = screen.getByRole('button', { name: '✓ Ack' });
+    const button = screen.getByRole('button', { name: 'Ack PR #101' });
     expect(button).toHaveAttribute('aria-pressed', 'false');
     expect(button.className).not.toContain('is-acked');
   });
 
   test('given isAcknowledged=true, when rendering, then the Ack button reads "Ack\'d", is styled as selected, and aria-pressed is true', () => {
     renderCell({ isAcknowledged: true });
-    const button = screen.getByRole('button', { name: "✓ Ack'd" });
+    const button = screen.getByRole('button', { name: "Ack'd PR #101" });
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button.className).toContain('is-acked');
   });
@@ -58,42 +59,36 @@ describe('PrActionsCell', () => {
   test('given isAcknowledged=false, when the Ack button is clicked, then onAckAction fires with isAcked=false (not-yet-acked -> ack)', () => {
     const onAckAction = jest.fn();
     renderCell({ isAcknowledged: false, onAckAction });
-    screen.getByRole('button', { name: '✓ Ack' }).click();
+    screen.getByRole('button', { name: 'Ack PR #101' }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', false, 'owner/repo');
   });
 
   test('given isAcknowledged=true, when the same button is clicked, then onAckAction fires with isAcked=true (already-acked -> clear)', () => {
     const onAckAction = jest.fn();
     renderCell({ isAcknowledged: true, onAckAction });
-    screen.getByRole('button', { name: "✓ Ack'd" }).click();
+    screen.getByRole('button', { name: "Ack'd PR #101" }).click();
     expect(onAckAction).toHaveBeenCalledWith('101', true, 'owner/repo');
   });
 
-  test('given the Update button and no onUpdatePr prop, when clicked, then falls back to window.runSinglePrUpdate with an entry carrying the repo', async () => {
-    const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
-    window.runSinglePrUpdate = runSinglePrUpdate;
+  test('given the Update button and no onUpdatePr prop, when clicked, then nothing throws (no crash)', async () => {
+    // onUpdatePr is always wired by the real PrTableApp (useSinglePrUpdate,
+    // see REACT_MIGRATION_PLAN.md) - this covers only the isolated-render
+    // case where it's omitted.
     renderCell({ pr: { number: '101' } });
-    screen.getByRole('button', { name: '↻ Update' }).click();
+    screen.getByRole('button', { name: 'Update PR #101' }).click();
     await Promise.resolve();
-    expect(runSinglePrUpdate).toHaveBeenCalledWith(
-      { prNumber: '101', repo: 'owner/repo' },
-      { number: '101' },
-    );
   });
 
-  test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr (not window.runSinglePrUpdate) with the PR number and entry', async () => {
-    const runSinglePrUpdate = jest.fn().mockResolvedValue(undefined);
-    window.runSinglePrUpdate = runSinglePrUpdate;
+  test('given the Update button and an onUpdatePr prop, when clicked, then calls onUpdatePr with the PR number and entry', async () => {
     const onUpdatePr = jest.fn().mockResolvedValue(undefined);
     renderCell({ pr: { number: '101' }, onUpdatePr });
-    screen.getByRole('button', { name: '↻ Update' }).click();
+    screen.getByRole('button', { name: 'Update PR #101' }).click();
     await Promise.resolve();
     expect(onUpdatePr).toHaveBeenCalledWith(
       '101',
       { prNumber: '101', repo: 'owner/repo' },
       { number: '101' },
     );
-    expect(runSinglePrUpdate).not.toHaveBeenCalled();
   });
 
   test('given the {} button and no onViewJson prop, when clicked, then does nothing (no crash)', () => {
@@ -113,12 +108,14 @@ describe('PrActionsCell', () => {
     );
   });
 
-  test('given repo labels from window.getAvailableRepoLabels, when rendering, then lists labels not already on the PR', () => {
-    window.getAvailableRepoLabels = () => [
-      { name: 'bug', color: 'd73a4a' },
-      { name: 'dependencies', color: '0366d6' },
-    ];
-    renderCell({ pr: { number: '101', labels: ['dependencies'] } });
+  test('given repo labels from RepoLabelsContext, when rendering, then lists labels not already on the PR', () => {
+    renderCell(
+      { pr: { number: '101', labels: ['dependencies'] } },
+      [
+        { name: 'bug', color: 'd73a4a' },
+        { name: 'dependencies', color: '0366d6' },
+      ],
+    );
 
     const select = screen.getByLabelText('Add label to PR #101');
     const optionLabels = Array.from(select.options).map((option) => option.textContent);
@@ -126,9 +123,8 @@ describe('PrActionsCell', () => {
   });
 
   test('given the label select, when a label is chosen, then onApplyLabel fires with (number, label, repo) and the select resets', () => {
-    window.getAvailableRepoLabels = () => [{ name: 'bug', color: 'd73a4a' }];
     const onApplyLabel = jest.fn();
-    renderCell({ pr: { number: '101' }, onApplyLabel });
+    renderCell({ pr: { number: '101' }, onApplyLabel }, [{ name: 'bug', color: 'd73a4a' }]);
 
     const select = screen.getByLabelText('Add label to PR #101');
     require('@testing-library/react').fireEvent.change(select, { target: { value: 'bug' } });
@@ -137,9 +133,22 @@ describe('PrActionsCell', () => {
     expect(select.value).toBe('');
   });
 
-  test('given no window.getAvailableRepoLabels, when rendering, then only the placeholder option is shown', () => {
+  test('given no repo labels at all, when rendering, then only the placeholder option is shown', () => {
     renderCell({ pr: { number: '101' } });
     const select = screen.getByLabelText('Add label to PR #101');
     expect(select.options).toHaveLength(1);
+  });
+
+  test('given no RepoLabelsProvider ancestor at all, when rendering, then it falls back to just the placeholder option', () => {
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} />
+          </tr>
+        </tbody>
+      </table>,
+    );
+    expect(screen.getByLabelText('Add label to PR #101').options).toHaveLength(1);
   });
 });

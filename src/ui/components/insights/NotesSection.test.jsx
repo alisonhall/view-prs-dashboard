@@ -1,25 +1,43 @@
 /** @jest-environment jsdom */
 
-const { render, screen, fireEvent } = require('@testing-library/react');
+const { render: baseRender, screen, fireEvent, cleanup, within } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { NotesSection } = require('./NotesSection');
 
-function installDefaultHelpers() {
-  window.asArray = (v) => (Array.isArray(v) ? v : []);
-  window.buildPrPeopleOptions = () => [{ login: 'alice', name: 'Alice' }];
-  window.normalizeNotesListForUi = (value) => (Array.isArray(value) && value.length ? value : ['']);
-  window.recomputeDirtyPrSectionsFields = () => {};
+// postJson is a plain ES import now (Phase 7, see REACT_MIGRATION_PLAN.md) -
+// a jest.mock is the equivalent of swapping a window.* global, same pattern
+// this codebase already uses for pr-row-sorting.helpers.ts/
+// pr-section-config.helpers.ts in PrTableApp.test.jsx.
+jest.mock('../../helpers/pr-http.helpers.ts', () => ({
+  postJson: jest.fn(),
+}));
+
+const { NotesSection } = require('./NotesSection');
+const { RequestActivityContext } = require('../../state/RequestActivityContext');
+const { NotesDirtyContext } = require('../../state/NotesDirtyContext');
+const { postJson } = require('../../helpers/pr-http.helpers.ts');
+
+// NotesSection reads beginRequestActivity from usePrData() now, not
+// window.beginRequestActivity (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+function render(ui) {
+  return baseRender(
+    <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} }}>
+      {ui}
+    </RequestActivityContext.Provider>,
+  );
 }
 
-function clearHelpers() {
-  ['asArray', 'buildPrPeopleOptions', 'normalizeNotesListForUi', 'postJson', 'recomputeDirtyPrSectionsFields'].forEach(
-    (key) => delete window[key],
+function renderWithNotesDirty(ui, { setNotesDirty = () => {} } = {}) {
+  return render(
+    <NotesDirtyContext.Provider value={{ dirtyPrNumbers: [], setNotesDirty }}>
+      {ui}
+    </NotesDirtyContext.Provider>,
   );
 }
 
 describe('NotesSection', () => {
-  beforeEach(installDefaultHelpers);
-  afterEach(clearHelpers);
+  afterEach(() => {
+    postJson.mockReset();
+  });
 
   test('given no existing notes, when rendering, then the Save button starts disabled', () => {
     render(<NotesSection entry={{}} pr={{ number: '1' }} actorsMap={{}} />);
@@ -32,6 +50,22 @@ describe('NotesSection', () => {
     textarea.focus();
     require('@testing-library/react').fireEvent.change(textarea, { target: { value: 'a note' } });
     expect(screen.getByRole('button', { name: 'Save notes' })).toBeEnabled();
+  });
+
+  // Accessibility naming: the section is a group named by its PR, and each
+  // comment row's fields are named within it (they had no labels before).
+  test('given two comment rows, when rendering, then the section is named by its PR and the fields of each row are named by role', () => {
+    render(<NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />);
+    const section = screen.getByRole('group', { name: 'Notes for PR #42' });
+    fireEvent.click(within(section).getByRole('button', { name: '+ Add comment' }));
+    fireEvent.click(within(section).getByRole('button', { name: '+ Add comment' }));
+
+    [1, 2].forEach((n) => {
+      expect(within(section).getByRole('combobox', { name: `Comment ${n} author` })).toBeInTheDocument();
+      expect(within(section).getByRole('combobox', { name: `Comment ${n} tone` })).toBeInTheDocument();
+      expect(within(section).getByRole('textbox', { name: `Comment ${n} note` })).toBeInTheDocument();
+      expect(within(section).getByRole('button', { name: `Remove comment ${n}` })).toBeInTheDocument();
+    });
   });
 
   test('given the "+ Add comment" button, when clicked, then adds a new comment row with an author dropdown', () => {
@@ -50,8 +84,7 @@ describe('NotesSection', () => {
   });
 
   test('given unsaved changes, when Save notes is clicked, then POSTs to /view-prs/notes with the current field values', async () => {
-    const postJson = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: true } });
-    window.postJson = postJson;
+    postJson.mockResolvedValue({ response: { ok: true }, result: { ok: true } });
     const entry = { repo: 'owner/repo' };
     render(<NotesSection entry={entry} pr={{ number: '42' }} actorsMap={{}} />);
 
@@ -69,7 +102,7 @@ describe('NotesSection', () => {
 
   test('given a successful save that returns prData, when it resolves, then calls onDataRefresh with it', async () => {
     const prData = { byPrNumber: {} };
-    window.postJson = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: true, prData } });
+    postJson.mockResolvedValue({ response: { ok: true }, result: { ok: true, prData } });
     const onDataRefresh = jest.fn();
     render(<NotesSection entry={{}} pr={{ number: '1' }} actorsMap={{}} onDataRefresh={onDataRefresh} />);
 
@@ -80,5 +113,47 @@ describe('NotesSection', () => {
     await Promise.resolve();
 
     expect(onDataRefresh).toHaveBeenCalledWith(prData);
+  });
+
+  // Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): dirty state is
+  // now reported via NotesDirtyContext's setNotesDirty, replacing the old
+  // data-has-unsaved-notes DOM attribute + direct
+  // window.recomputeDirtyPrSectionsFields() call.
+  describe('dirty-state reporting (NotesDirtyContext)', () => {
+    test('given an edit that makes the section dirty, when it renders, then setNotesDirty is called with the PR number and true', () => {
+      const setNotesDirty = jest.fn();
+      renderWithNotesDirty(<NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />, { setNotesDirty });
+
+      fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'a note' } });
+
+      expect(setNotesDirty).toHaveBeenLastCalledWith('42', true);
+    });
+
+    test('given no edits, when it renders, then setNotesDirty is called with false', () => {
+      const setNotesDirty = jest.fn();
+      renderWithNotesDirty(<NotesSection entry={{}} pr={{ number: '7' }} actorsMap={{}} />, { setNotesDirty });
+
+      expect(setNotesDirty).toHaveBeenCalledWith('7', false);
+    });
+
+    test('given a dirty section, when it unmounts, then setNotesDirty is called one last time with false', () => {
+      const setNotesDirty = jest.fn();
+      renderWithNotesDirty(<NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />, { setNotesDirty });
+
+      fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'a note' } });
+      setNotesDirty.mockClear();
+
+      cleanup();
+
+      expect(setNotesDirty).toHaveBeenCalledWith('42', false);
+    });
+
+    test('given no NotesDirtyProvider ancestor, when rendering and editing, then it does not throw (safe default Context)', () => {
+      render(<NotesSection entry={{}} pr={{ number: '1' }} actorsMap={{}} />);
+
+      expect(() =>
+        fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'a note' } }),
+      ).not.toThrow();
+    });
   });
 });

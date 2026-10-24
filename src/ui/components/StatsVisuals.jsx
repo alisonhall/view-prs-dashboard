@@ -8,18 +8,18 @@
  * around a vanilla DOM builder). Phase 7, sub-phase 7.0 (see
  * REACT_MIGRATION_PLAN.md): the reviewer-activity timeline
  * aggregation/date-range helpers, and the sort-by write path, now come
- * from useReviewStats() (state/ReviewStatsContext.jsx) instead of window.
+ * from useReviewStats() (state/ReviewStatsContext.tsx) instead of window.
  *
  * @module components/StatsVisuals
  */
 
 import { GraphCard } from './GraphCard';
 import { ReviewerActivityChart } from './ReviewerActivityChart';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.js';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
-const asArray = (value) => (window.asArray ? window.asArray(value) : Array.isArray(value) ? value : []);
 
 const sumReviewerMetric = (reviewerRows, key) => asArray(reviewerRows).reduce((total, reviewer) => total + toCount(reviewer?.[key]), 0);
 

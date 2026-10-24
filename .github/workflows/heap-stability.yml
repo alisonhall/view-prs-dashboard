@@ -1,0 +1,49 @@
+name: Heap stability
+
+# Long-running (~5 min) memory-leak check, kept out of the per-push Tests
+# workflow on purpose. Run it from the Actions tab: "Heap stability" ->
+# "Run workflow". Fails when the page's JS heap grows more than the
+# script's MAX_GROWTH_RATIO across the run (see
+# e2e/stability/long-session-heap-check.js).
+on:
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: "Interaction cycles"
+        type: number
+        default: 200
+      dataset-size:
+        description: "PRs in the fixture dataset"
+        type: number
+        default: 40
+      data-change-every:
+        description: "Rewrite the server's data every N cycles (0 disables)"
+        type: number
+        default: 1
+
+jobs:
+  heap-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run heap check
+        env:
+          CYCLES: ${{ inputs.cycles }}
+          DATASET_SIZE: ${{ inputs.dataset-size }}
+          DATA_CHANGE_EVERY: ${{ inputs.data-change-every }}
+        run: >-
+          npm run stability:heap-check --
+          "--cycles=$CYCLES"
+          "--dataset-size=$DATASET_SIZE"
+          "--data-change-every=$DATA_CHANGE_EVERY"

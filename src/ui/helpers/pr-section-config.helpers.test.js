@@ -2,7 +2,7 @@
 
 const {
   createPrSectionConfigHelpers,
-} = require("./pr-section-config.helpers.js");
+} = require("./pr-section-config.helpers.ts");
 
 describe("pr section config helpers", () => {
   test("given grouped rows and open-state resolver, when building section configs, then four ordered section configs are returned", () => {

@@ -63,6 +63,9 @@ export function PrSection({
   return (
     <details
       className={`pr-group-section pr-group-section-${key}`}
+      // Named by its title so the section (a <details>, role "group") can
+      // be found by role; its table carries the same name as role "table".
+      aria-label={title}
       data-pr-section={key}
       open={isOpen}
       onToggle={(e) => {
@@ -91,6 +94,7 @@ export function PrSection({
             prs={prs}
             repo={repo}
             sectionKey={key}
+            label={title}
             isSmartGroup={isSmartGroup}
             lifecycleSection={lifecycleSection}
             dateHeader={dateHeader}

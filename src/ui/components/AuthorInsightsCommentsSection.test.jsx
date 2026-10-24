@@ -5,8 +5,26 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AuthorInsightsCommentsSection } = require('./AuthorInsightsCommentsSection');
 const { AuthorInsightsProvider } = require('./AuthorInsightsProvider');
+const { AuthorInsightsDraftsProvider } = require('./AuthorInsightsDraftsProvider');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
+const { useAuthorInsightsDrafts, useAuthorInsightsDraftsVersion } = require('../state/AuthorInsightsDraftsContext');
+
+// Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
+// audit"): window.getAuthorInsightsComposerDraft is gone - this probe
+// reads the same Context value directly, the same way the component
+// itself does via useAuthorInsightsDrafts().
+let draftsProbeValue;
+let draftsProbeVersion;
+function DraftsProbe() {
+  draftsProbeValue = useAuthorInsightsDrafts();
+  draftsProbeVersion = useAuthorInsightsDraftsVersion();
+  return null;
+}
 
 const SENTIMENT_OPTIONS = [
   { value: 'positive', label: 'Positive' },
@@ -22,69 +40,37 @@ const authorInsightsOverrides = {
   sortAuthorInsightsManualCommentsDesc: (comments) => comments,
 };
 
+// Phase 7 (see REACT_MIGRATION_PLAN.md): mounts the real
+// AuthorInsightsDraftsProvider now instead of hand-rolled window.*
+// stubs - the component reads/writes that Context directly, so exercising
+// it through the real Provider (same as this session's ExportTab.test.jsx
+// rewrite) proves the actual wiring works, not a mocked stand-in.
 const renderSection = (selectedAuthorLogin) =>
   render(
     <PrDataProvider initialSelectedAuthorLogin={selectedAuthorLogin}>
-      <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
-        <AuthorInsightsCommentsSection />
-      </AuthorInsightsContext.Provider>
+      <prDataProbe.PrDataProbe />
+      <AuthorInsightsDraftsProvider>
+        <DraftsProbe />
+        <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
+          <AuthorInsightsCommentsSection />
+        </AuthorInsightsContext.Provider>
+      </AuthorInsightsDraftsProvider>
     </PrDataProvider>,
   );
 
 describe('AuthorInsightsCommentsSection', () => {
-  let composerDrafts;
-  let editDrafts;
-  let commentsByLogin;
-
+  // loadManualComments (AuthorInsightsDraftsProvider) calls the real
+  // pr-author-insights-data.helpers.ts loadAuthorManualComments now, which
+  // fetches /view-prs/author-comments for real - the old test's blanket
+  // window.loadAuthorManualComments stub made that call a no-op; this
+  // default (an empty, successful load) reproduces the same baseline for
+  // every test that doesn't need its own fetch behavior.
   beforeEach(() => {
-    composerDrafts = {};
-    editDrafts = {};
-    commentsByLogin = {};
-
-    window.recomputeDirtyPrSectionsFields = jest.fn();
-
-    window.getAuthorInsightsComposerDraft = (login) => composerDrafts[login] || { note: '', sentiment: 'neutral' };
-    window.updateAuthorInsightsComposerDraft = (login, draft) => {
-      composerDrafts[login] = { ...composerDrafts[login], ...draft };
-      return composerDrafts[login];
-    };
-    window.resetAuthorInsightsComposerDraft = (login) => {
-      composerDrafts[login] = { note: '', sentiment: 'neutral' };
-    };
-
-    window.getAuthorInsightsEditDraft = (login, comment) =>
-      (editDrafts[login] || {})[comment?.id] || { note: comment?.note || '', sentiment: comment?.sentiment || 'neutral', isEditing: false };
-    window.updateAuthorInsightsEditDraft = (login, id, draft) => {
-      editDrafts[login] = editDrafts[login] || {};
-      editDrafts[login][id] = { ...editDrafts[login][id], ...draft };
-      return editDrafts[login][id];
-    };
-    window.resetAuthorInsightsEditDraft = (login, id) => {
-      if (editDrafts[login]) delete editDrafts[login][id];
-    };
-
-    window.getAuthorManualCommentsForLogin = (login) => commentsByLogin[login] || [];
-    window.setAuthorInsightsManualComments = (login, comments) => {
-      commentsByLogin[login] = Array.isArray(comments) ? comments : [];
-    };
-    window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: false, error: '' });
-    window.loadAuthorManualComments = (_login, onComplete) => onComplete();
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, comments: [] }) });
   });
 
   afterEach(() => {
-    delete window.recomputeDirtyPrSectionsFields;
-    delete window.getAuthorInsightsComposerDraft;
-    delete window.updateAuthorInsightsComposerDraft;
-    delete window.resetAuthorInsightsComposerDraft;
-    delete window.getAuthorInsightsEditDraft;
-    delete window.updateAuthorInsightsEditDraft;
-    delete window.resetAuthorInsightsEditDraft;
-    delete window.getAuthorManualCommentsForLogin;
-    delete window.setAuthorInsightsManualComments;
-    delete window.getAuthorInsightsManualCommentsLoadState;
-    delete window.loadAuthorManualComments;
-    delete window.saveAuthorManualComment;
-    delete window.updateAuthorManualComment;
+    delete global.fetch;
   });
 
   test('given no selected author, when rendering, then nothing renders', () => {
@@ -92,33 +78,65 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  test('given a selected author with no saved comments, when rendering, then the empty message shows', () => {
+  // Accessibility naming: saved comments form a list (so a test can find the
+  // item holding given text and use its own Edit button); the empty message
+  // is a plain paragraph, so the container is not a list then.
+  test('given saved comments, when rendering, then they are list items; with none, there is no list', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+    });
+    const { unmount } = renderSection('octocat');
+    await waitFor(() => expect(screen.getByRole('list')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('listitem')).toHaveTextContent('Nice work');
+    unmount();
+
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, comments: [] }) });
     renderSection('octocat');
-    expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument());
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  test('given a selected author with no saved comments, when rendering, then the empty message shows', async () => {
+    renderSection('octocat');
+    await waitFor(() => expect(screen.getByText('No manual comments saved for this author.')).toBeInTheDocument());
     expect(screen.getByPlaceholderText('Add a manual comment about this author...')).toBeInTheDocument();
   });
 
-  test('given loading state, when rendering, then the loading message shows', () => {
-    window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: true, error: '' });
+  test('given an author whose manual-comments fetch is still pending, when rendering, then the loading message shows', () => {
+    // loadManualComments (AuthorInsightsDraftsProvider -> pr-author-insights-
+    // data.helpers.js's loadAuthorManualComments) fetches /view-prs/author-
+    // comments - never resolving it here keeps the real "loading" state
+    // active, instead of mocking window.getAuthorInsightsManualCommentsLoadState
+    // directly (that bridge no longer exists as an overridable stub on its
+    // own - it's real Context-backed state now).
+    global.fetch = jest.fn(() => new Promise(() => {}));
     renderSection('octocat');
     expect(screen.getByText('Loading author comments...')).toBeInTheDocument();
+    delete global.fetch;
   });
 
-  test('given an error state, when rendering, then the error message shows', () => {
-    window.getAuthorInsightsManualCommentsLoadState = () => ({ loading: false, error: 'Failed to load author comments' });
+  test('given an author whose manual-comments fetch fails, when rendering, then the error message shows', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ error: 'Failed to load author comments' }) });
     renderSection('octocat');
-    expect(screen.getByText('Failed to load author comments')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Failed to load author comments')).toBeInTheDocument());
+    delete global.fetch;
   });
 
-  test('given text typed into the composer, when typing, then the draft bridge is updated and dirty-tracking recomputed', async () => {
+  // Window-bridge elimination Phase 7.4: the drafts version Context bump is
+  // what makes AutoRenderBlockingSync recompute (it was a
+  // window.recomputeDirtyPrSectionsFields call).
+  test('given text typed into the composer, when typing, then the draft Context is updated and the drafts version bumps', async () => {
     const user = userEvent.setup();
     renderSection('octocat');
+    const versionBefore = draftsProbeVersion;
 
     const textarea = screen.getByPlaceholderText('Add a manual comment about this author...');
     await user.type(textarea, 'Hi');
 
-    expect(composerDrafts.octocat.note).toBe('Hi');
-    expect(window.recomputeDirtyPrSectionsFields).toHaveBeenCalled();
+    expect(draftsProbeValue.getComposerDraft('octocat').note).toBe('Hi');
+    expect(draftsProbeVersion).toBeGreaterThan(versionBefore);
   });
 
   test('given an empty composer note, when Save comment is clicked, then a validation message shows and nothing is saved', async () => {
@@ -129,11 +147,22 @@ describe('AuthorInsightsCommentsSection', () => {
     expect(screen.getByText('Comment note is required')).toBeInTheDocument();
   });
 
+  // Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.saveAuthorManualComment/updateAuthorManualComment
+  // are deleted outright - drafts.saveManualComment/updateManualComment
+  // (AuthorInsightsDraftsProvider.tsx) call the real postJson/fetchFn
+  // helpers now, so these tests mock global.fetch by HTTP method instead
+  // of stubbing a window.* bridge.
   test('given a valid composer note, when Save comment succeeds, then the comment list updates and "Saved." shows', async () => {
     const user = userEvent.setup();
-    window.saveAuthorManualComment = jest.fn().mockResolvedValue({
-      response: { ok: true },
-      result: { ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Nice work', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, comments: [] }) });
     });
 
     renderSection('octocat');
@@ -141,14 +170,25 @@ describe('AuthorInsightsCommentsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Save comment' }));
 
     await waitFor(() => expect(screen.getByText('Saved.')).toBeInTheDocument());
-    expect(window.saveAuthorManualComment).toHaveBeenCalledWith({ authorLogin: 'octocat', note: 'Nice work', sentiment: 'neutral' });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/author-comments',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ authorLogin: 'octocat', note: 'Nice work', sentiment: 'neutral' }),
+      }),
+    );
     expect(screen.getByText('Nice work')).toBeInTheDocument();
-    expect(commentsByLogin.octocat).toHaveLength(1);
+    expect(draftsProbeValue.getManualComments('octocat')).toHaveLength(1);
   });
 
   test('given a save failure, when Save comment is clicked, then the error message shows', async () => {
     const user = userEvent.setup();
-    window.saveAuthorManualComment = jest.fn().mockResolvedValue({ response: { ok: true }, result: { ok: false, error: 'Save failed' } });
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: false, error: 'Save failed' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, comments: [] }) });
+    });
 
     renderSection('octocat');
     await user.type(screen.getByPlaceholderText('Add a manual comment about this author...'), 'Nice work');
@@ -159,29 +199,67 @@ describe('AuthorInsightsCommentsSection', () => {
 
   test('given a saved comment, when Edit then Cancel is clicked, then no network call happens and the read-only view is restored', async () => {
     const user = userEvent.setup();
-    commentsByLogin.octocat = [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
-    window.updateAuthorManualComment = jest.fn();
+    // Seeding via the real initial fetch (not a post-mount window.*
+    // bridge call) - AuthorInsightsCommentsSection only re-reads the
+    // drafts Context's manual-comments cache at specific trigger points
+    // (its own mount effect, a save/edit success), not on every Context
+    // write, so a bridge call after mount with this author already
+    // selected would never be observed; this mirrors how the real app
+    // actually gets comments onto the screen.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }] }),
+    });
 
-    renderSection('octocat');
-    expect(screen.getByText('Original text')).toBeInTheDocument();
+    render(
+      <PrDataProvider initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
+        <AuthorInsightsDraftsProvider>
+          <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
+            <AuthorInsightsCommentsSection />
+          </AuthorInsightsContext.Provider>
+        </AuthorInsightsDraftsProvider>
+      </PrDataProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Original text')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
 
+    global.fetch.mockClear();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('Original text')).toBeInTheDocument();
-    expect(window.updateAuthorManualComment).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('given a saved comment, when edited and Save changes succeeds, then the comment list updates via the PUT bridge', async () => {
+  test('given a saved comment, when edited and Save changes succeeds, then the comment list updates via the PUT call', async () => {
     const user = userEvent.setup();
-    commentsByLogin.octocat = [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
-    window.updateAuthorManualComment = jest.fn().mockResolvedValue({
-      response: { ok: true },
-      result: { ok: true, comments: [{ id: 'c1', note: 'Updated text', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] },
+    global.fetch = jest.fn((_url, init = {}) => {
+      if (String(init?.method || 'GET').toUpperCase() === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Updated text', sentiment: 'positive', createdAt: '2026-07-01T00:00:00Z' }] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }] }),
+      });
     });
 
-    renderSection('octocat');
+    render(
+      <PrDataProvider initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
+        <AuthorInsightsDraftsProvider>
+          <DraftsProbe />
+          <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, ...authorInsightsOverrides }}>
+            <AuthorInsightsCommentsSection />
+          </AuthorInsightsContext.Provider>
+        </AuthorInsightsDraftsProvider>
+      </PrDataProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Original text')).toBeInTheDocument());
+
     await user.click(screen.getByRole('button', { name: 'Edit' }));
 
     const editTextarea = screen.getByDisplayValue('Original text');
@@ -190,46 +268,65 @@ describe('AuthorInsightsCommentsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(screen.getByText('Updated text')).toBeInTheDocument());
-    expect(window.updateAuthorManualComment).toHaveBeenCalledWith({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' });
-    expect(commentsByLogin.octocat[0].note).toBe('Updated text');
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/view-prs/author-comments',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ authorLogin: 'octocat', id: 'c1', note: 'Updated text', sentiment: 'neutral' }),
+      }),
+    );
+    expect(draftsProbeValue.getManualComments('octocat')[0].note).toBe('Updated text');
   });
 
   test('given a comment is being edited, when an unrelated payload update lands, then the edit form stays open (regression: AuthorInsightsProvider must not hand out a new sortAuthorInsightsManualCommentsDesc reference just because payload changed)', async () => {
     const user = userEvent.setup();
-    commentsByLogin.octocat = [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, comments: [{ id: 'c1', note: 'Original text', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }] }),
+    });
 
     // Uses the real AuthorInsightsProvider (not the static override above)
     // since the bug only manifests when the Context value's functions are
     // rebuilt on a payload change - a static mock value can't reproduce it.
     render(
       <PrDataProvider initialSelectedAuthorLogin="octocat" initialPayload={{ byPrNumber: {} }}>
-        <AuthorInsightsProvider>
-          <AuthorInsightsCommentsSection />
-        </AuthorInsightsProvider>
+        <prDataProbe.PrDataProbe />
+        <AuthorInsightsDraftsProvider>
+          <AuthorInsightsProvider>
+            <AuthorInsightsCommentsSection />
+          </AuthorInsightsProvider>
+        </AuthorInsightsDraftsProvider>
       </PrDataProvider>,
     );
+    await waitFor(() => expect(screen.getByText('Original text')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
 
     act(() => {
-      window.updateReactPrTable({ byPrNumber: { 1: {} } });
+      prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: {} } });
     });
 
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
   });
 
-  test('given a change to the selected author in Context, when it updates, then the composer/list reflect the new author', () => {
-    commentsByLogin.octocat = [{ id: 'c1', note: 'For octocat', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
-    commentsByLogin.other = [{ id: 'c2', note: 'For other', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }];
+  test('given a change to the selected author in Context, when it updates, then the composer/list reflect the new author', async () => {
+    global.fetch = jest.fn((url) => {
+      const authorLogin = new URL(String(url), 'http://localhost').searchParams.get('authorLogin');
+      const commentsByLogin = {
+        octocat: [{ id: 'c1', note: 'For octocat', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }],
+        other: [{ id: 'c2', note: 'For other', sentiment: 'neutral', createdAt: '2026-07-01T00:00:00Z' }],
+      };
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, comments: commentsByLogin[authorLogin] || [] }) });
+    });
 
     renderSection('octocat');
-    expect(screen.getByText('For octocat')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('For octocat')).toBeInTheDocument());
 
     act(() => {
-      window.updateReactSelectedAuthorLogin('other');
+      prDataProbe.setSelectedAuthorLogin('other');
     });
-    expect(screen.getByText('For other')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('For other')).toBeInTheDocument());
     expect(screen.queryByText('For octocat')).not.toBeInTheDocument();
   });
 });

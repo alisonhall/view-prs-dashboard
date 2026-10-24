@@ -1,6 +1,6 @@
 const {
   createPrNeedsAttentionHelpers,
-} = require("./pr-needs-attention.helpers.js");
+} = require("./pr-needs-attention.helpers.ts");
 
 describe("pr needs attention helpers", () => {
   test("given explicit reason text, when parsing changed reason tokens, then pipe-delimited lowercase tokens are returned", () => {
@@ -45,6 +45,29 @@ describe("pr needs attention helpers", () => {
           commits: [{ messageHeadline: "feat: update behavior" }],
         },
         { ignoreMergeOnlyCommits: true },
+      ),
+    ).toBe(true);
+  });
+
+  test("given merge commit rules with a bot login, when merge-only filtering is enabled, then the bot's commits count as merges", () => {
+    const helpers = createPrNeedsAttentionHelpers();
+    const config = {
+      ignoreMergeOnlyCommits: true,
+      mergeCommitRules: { headlinePatterns: [], logins: ["dependabot[bot]"] },
+    };
+    const row = (commits) => ({ status: "CHANGED(commit)", reason: "commit", commits });
+
+    expect(
+      helpers.shouldTreatChangedAsAttention(
+        row([{ messageHeadline: "chore(deps): bump x", authors: [{ login: "dependabot[bot]" }] }]),
+        config,
+      ),
+    ).toBe(false);
+    // With these rules a "Merge ..." headline is real work.
+    expect(
+      helpers.shouldTreatChangedAsAttention(
+        row([{ messageHeadline: "Merge branch 'main'", authors: [{ login: "alice" }] }]),
+        config,
       ),
     ).toBe(true);
   });

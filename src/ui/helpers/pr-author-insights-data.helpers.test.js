@@ -6,7 +6,7 @@
 
 const {
   createPrAuthorInsightsDataHelpers,
-} = require("./pr-author-insights-data.helpers.js");
+} = require("./pr-author-insights-data.helpers.ts");
 
 describe("pr author insights data helpers", () => {
   const createDependencies = (overrides = {}) => ({

@@ -1,6 +1,6 @@
 const {
   createPrAssignedUsersHelpers,
-} = require("./pr-assigned-users.helpers.js");
+} = require("./pr-assigned-users.helpers.ts");
 
 describe("pr assigned users helpers", () => {
   const createHelpers = () =>
