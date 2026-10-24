@@ -22,7 +22,26 @@
 // FILTER_STATE_FIELD_MAP). Fields typed code reads are listed; the rest
 // are covered by the index signature until their readers are typed.
 export interface FilterValues {
+  // Run Script options
   repo?: string;
+  prNumbersInput?: string;
+  limit?: string;
+  mergedLimit?: string;
+  jobs?: string;
+  openMode?: string;
+  ackChanged?: boolean;
+  showReason?: boolean;
+  quiet?: boolean;
+  // Row filters
+  scopeMode?: string;
+  filterPrNumbers?: string;
+  alwaysShowInReview?: boolean;
+  filterCustomComments?: string;
+  filterOtherNotes?: string;
+  filterPrDifficulty?: string;
+  filterRallyStories?: string;
+  filterRallyLinks?: string;
+  filterAnalysisOfPr?: string;
   // "Advanced visibility and attention rules"
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;

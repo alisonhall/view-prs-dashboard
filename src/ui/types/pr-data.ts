@@ -145,6 +145,8 @@ export interface PrMetrics {
 }
 
 export interface PrData {
+  // "true"/"false" as stored (see isInReviewEnabled in useVisiblePrNumbers.tsx).
+  inReview?: string | boolean;
   // Digits-only string in the data file; some callers pass a number.
   number?: string | number;
   title?: string;

@@ -130,7 +130,7 @@ export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
   // GET the status (and, with
   // includeLog, the log tail) and render it here. Only the factory's load
   // functions are used, so only their DI is passed; the action functions
-  // (handleBackfillAction) live in useBackfillActions.jsx's own instance.
+  // (handleBackfillAction) live in useBackfillActions.tsx's own instance.
   // autoScrollBackfillLogToBottom is a no-op for the same reason as there:
   // BackfillLogControls syncs its scroll position itself on each log update.
   const loadBackfillStatus = useMemo(

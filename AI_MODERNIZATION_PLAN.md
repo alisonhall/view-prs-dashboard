@@ -1090,6 +1090,13 @@ No static type checking leads to:
     useSinglePrUpdate. A new useNotifyFailureSnackbar hook replaces the
     failure-snackbar wrapper each action hook wrote out; the batch 10 hooks
     adopt it as they convert.
+  - State batch 10 (2026-10-24): useQuickCheckActions, useRunScript,
+    useAckLabelActions, useVisiblePrNumbers and useBackfillActions. The
+    state layer (src/ui/state/ and the Providers) is now all TypeScript.
+    FilterValues lists the Run Script and row-filter fields, PrData gains
+    inReview, the scope/visible-rows helpers take a typed AttentionConfig,
+    and parseCsvTokens is one shared form-parsing helper (it was copied in
+    three places).
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

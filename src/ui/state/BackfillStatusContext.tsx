@@ -12,7 +12,7 @@ import type { BackfillBadge, BackfillButtonState, BackfillStatus } from '../help
  * Context in this app.
  */
 // How many log lines a status/log load asks for. Shared by the Provider's
-// own loadBackfillStatus and useBackfillActions.jsx's factory instance.
+// own loadBackfillStatus and useBackfillActions.tsx's factory instance.
 export const BACKFILL_LOG_TAIL_LINES = 120;
 
 // The Backfill tab's 4 button-disabled flags; AppRoot reads them. Matches

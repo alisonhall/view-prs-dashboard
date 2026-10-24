@@ -52,7 +52,7 @@ export function useFormBody(): () => FormBody {
       limit: String(values.limit || '').trim(),
       mergedLimit: String(values.mergedLimit || '').trim(),
       jobs: String(values.jobs || '').trim(),
-      openMode: String(values.openMode || 'none'),
+      openMode: values.openMode || 'none',
       label: checkedList(checkedByListId, 'label-list').join(', '),
       excludeLabel: checkedList(checkedByListId, 'exclude-label-list').join(', '),
       author: checkedList(checkedByListId, 'author-list').join(', '),

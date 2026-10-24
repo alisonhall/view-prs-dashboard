@@ -41,7 +41,7 @@ export function PrTableApp() {
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
-  // Context instead. See useVisiblePrNumbers.jsx's own comment.
+  // Context instead. See useVisiblePrNumbers.tsx's own comment.
   const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 

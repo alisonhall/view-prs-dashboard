@@ -41,6 +41,13 @@ export const createFormParsingHelpers = () => {
       .filter(Boolean);
   };
 
+  // Comma-separated values, trimmed, empty ones dropped.
+  const parseCsvTokens = (rawValue: unknown): string[] =>
+    String(rawValue || "")
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean);
+
   // Format commit patterns array for textarea display (one per line).
   const formatCommitPatternsForTextarea = (patterns: unknown): string => {
     if (!Array.isArray(patterns)) return "";
@@ -51,6 +58,7 @@ export const createFormParsingHelpers = () => {
     toBoolean,
     parsePrNumbersInput,
     parseCommitPatterns,
+    parseCsvTokens,
     formatCommitPatternsForTextarea,
   };
 };
@@ -59,5 +67,6 @@ export const {
   toBoolean,
   parsePrNumbersInput,
   parseCommitPatterns,
+  parseCsvTokens,
   formatCommitPatternsForTextarea,
 } = createFormParsingHelpers();

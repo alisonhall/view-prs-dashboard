@@ -1,4 +1,5 @@
 import type { PrEntry } from "../types/pr-data.ts";
+import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 
 // The "View scope" filter: normalizes the selected scope and narrows the
 // repo's rows to it (last run, needs attention, or needs attention or
@@ -17,7 +18,7 @@ const SELECTED_SCOPES: readonly string[] = [
 ];
 
 export interface PrScopeSelectionDeps {
-  entryNeedsAttention?: (entry: PrEntry, attentionConfig: unknown) => boolean;
+  entryNeedsAttention?: (entry: PrEntry, attentionConfig: AttentionConfig | undefined) => boolean;
   entryHasYourLastActivity?: (entry: PrEntry) => boolean;
 }
 
@@ -27,7 +28,7 @@ export interface ResolveScopedRowsInput<E extends PrEntry> {
   runStamp?: string;
   useLastRunScope?: boolean;
   selectedScope?: string;
-  attentionConfig?: unknown;
+  attentionConfig?: AttentionConfig;
 }
 
 const createPrScopeSelectionHelpers = ({

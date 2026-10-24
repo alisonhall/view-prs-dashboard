@@ -1,5 +1,7 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filtering.helpers.ts";
+import { parseCsvTokens } from "./form-parsing.helpers.ts";
+import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 
 // Which PRs the table shows for the current filters, computed reactively
 // (useVisiblePrNumbers wires it to Context). Composes the injected scope
@@ -7,12 +9,6 @@ import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filteri
 // applyRowUiFilters) rather than reimplementing them. Returns
 // `{ visiblePrNumbers, scopeLabel }`: useAppliedFilterSummary needs the
 // scope label too, and it falls out of the same scope-resolution pass.
-const parseCsvTokens = (rawValue: unknown): string[] =>
-  String(rawValue || "")
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean);
-
 export interface RowFilterSelections {
   includeLabels?: string[];
   excludeLabels?: string[];
@@ -27,7 +23,7 @@ interface ScopedRowsInput {
   runStamp: string;
   useLastRunScope: boolean;
   selectedScope: string;
-  attentionConfig: unknown;
+  attentionConfig: AttentionConfig | undefined;
 }
 
 export interface PrVisiblePrNumbersDeps {
@@ -41,7 +37,7 @@ export interface VisiblePrNumbersInput {
   payload?: PrDataPayload | null;
   scopeMode?: string;
   filterPrNumbersRaw?: string;
-  attentionConfig?: unknown;
+  attentionConfig?: AttentionConfig;
   rowFilterSelections?: RowFilterSelections;
   alwaysShowInReview?: boolean;
   customComments?: string;

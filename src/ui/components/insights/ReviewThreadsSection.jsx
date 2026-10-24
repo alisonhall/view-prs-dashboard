@@ -35,7 +35,7 @@ const { getReviewConversationsStateKey, normalizeReviewConversationsUiState } =
 // Verbatim copy of index.page.js's own normalizeAuthorThreadResolutionMode
 // (not exported as its own module, so can't be imported directly) - same
 // "copy the real logic, don't reimplement a simplified version" discipline
-// as useVisiblePrNumbers.jsx's own isInReviewEnabled copy.
+// as useVisiblePrNumbers.tsx's own isInReviewEnabled copy.
 const normalizeAuthorThreadResolutionMode = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'allow-only' || normalized === 'deny-only') {

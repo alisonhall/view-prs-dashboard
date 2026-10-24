@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
  * value is returned immediately (no artificial initial delay) - only
  * subsequent changes are debounced.
  *
- * Used for `useVisiblePrNumbers.jsx`'s `filterPrNumbers` input - the one
+ * Used for `useVisiblePrNumbers.tsx`'s `filterPrNumbers` input - the one
  * free-text field in that hook's filter criteria a user types into
  * character by character. Without this, every keystroke re-filters the
  * whole table immediately, which visibly flickers through wrong

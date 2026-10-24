@@ -3,7 +3,7 @@
 const React = require('react');
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useAckLabelActions } = require('./useAckLabelActions.jsx');
+const { useAckLabelActions } = require('./useAckLabelActions.tsx');
 const { RequestActivityContext } = require('./RequestActivityContext');
 const { OutputTextSetterContext } = require('./OutputTextContext');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');

@@ -15,17 +15,11 @@ import {
   type UiOptionOverrides,
 } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
-import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers.ts';
+import { formatCommitPatternsForTextarea, parseCsvTokens } from '../helpers/form-parsing.helpers.ts';
 
 // Built once, not per render: its only dependency is the real fetch.
 const { getUiOptionDefaults, FILTER_STATE_FIELD_MAP, readUiSessionOverrides, writeUiSessionOverrides } =
   createPrUiOptionPersistenceHelpers({ fetch: (input, init) => fetch(input, init) });
-
-const parseCsvTokens = (rawValue: unknown): string[] =>
-  String(rawValue || '')
-    .split(',')
-    .map((token) => token.trim())
-    .filter(Boolean);
 
 const TEXT_FIELD_IDS = [
   'repo',

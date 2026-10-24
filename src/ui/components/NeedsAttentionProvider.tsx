@@ -16,7 +16,7 @@ const { isChangedStatus } = createPrStatusDisplayHelpers();
 // (pr-ui-option-persistence.helpers.ts) assigns these 6 fields - used only
 // as a fallback for when there's no <FilterStateProvider> ancestor at all
 // (integration-tests/index.html.test.js's isolated PrTableApp mounts),
-// same shape useVisiblePrNumbers.jsx's own DEFAULT_FILTER_STATE_VALUES
+// same shape useVisiblePrNumbers.tsx's own DEFAULT_FILTER_STATE_VALUES
 // fallback already uses for its own fields.
 const DEFAULT_ATTENTION_VALUES = {
   attentionNoActivityMode: 'all',

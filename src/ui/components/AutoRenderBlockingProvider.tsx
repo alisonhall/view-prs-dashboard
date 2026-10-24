@@ -128,7 +128,7 @@ export function AutoRenderBlockingProvider({ children }: { children?: ReactNode 
     bump();
     freshPayloadApplierRef.current?.(payload);
     // Nothing else re-renders the activity badges for this one-shot action
-    // (same as useRunScript.jsx).
+    // (same as useRunScript.tsx).
     setStatusText('Applied latest updates and discarded unsaved edits.');
     renderRequestActivity();
   }, [bump, setStatusText, renderRequestActivity]);

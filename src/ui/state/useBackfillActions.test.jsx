@@ -2,7 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useBackfillActions } = require('./useBackfillActions.jsx');
+const { useBackfillActions } = require('./useBackfillActions.tsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');

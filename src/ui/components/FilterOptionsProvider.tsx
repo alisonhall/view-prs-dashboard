@@ -46,7 +46,7 @@ const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([valu
  * collectAssignedUsers/collectApproversFromRow (the latter two walk
  * activityTimeline/commits/reviewers) don't re-run for every entry each
  * time, their per-entry results go in a WeakMap-keyed cache
- * (createEntryDerivedCache, also used by useVisiblePrNumbers.jsx) held in
+ * (createEntryDerivedCache, also used by useVisiblePrNumbers.tsx) held in
  * a ref: an entry whose reference is unchanged across a poll
  * (mergeDataDeltaPayload keeps unchanged entries' references) reuses its
  * cached values. Only the raw entry-derived output is cached, not the

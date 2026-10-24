@@ -12,7 +12,7 @@ import type { FilterValues } from './filterValuesStore';
 const { buildSelectedFiltersViewModel } = createPrSelectedFiltersHelpers();
 const { buildAppliedSummaryViewModel } = createPrAppliedSummaryHelpers();
 
-// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.jsx
+// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.tsx
 // is - see that file's comment for why (integration-tests/index.html.test.js's
 // isolated mounts).
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
@@ -23,7 +23,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
 
 /**
  * The "Applied filters" summary text and chips. Composes:
- * - useFilteredPrRows() (useVisiblePrNumbers.jsx) for the filtered row
+ * - useFilteredPrRows() (useVisiblePrNumbers.tsx) for the filtered row
  *   count and scopeLabel - the same live derivation the table uses, so
  *   this text never disagrees with what's shown.
  * - RowFilterSelectionContext's checked multi-selects, run through
@@ -53,10 +53,7 @@ export function useAppliedFilterSummary(): { summaryText: string; filterChips: s
   const { schedulerSummary } = useJobEvents();
   const filterState = useContext(FilterStateContext);
   const values = filterState?.values || DEFAULT_FILTER_STATE_VALUES;
-  const debouncedFilterPrNumbers = useDebouncedValue(
-    values.filterPrNumbers === undefined ? undefined : String(values.filterPrNumbers),
-    FILTER_PR_NUMBERS_DEBOUNCE_MS,
-  );
+  const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
 
   return useMemo(() => {
     const selectedFilters = buildSelectedFiltersViewModel({
@@ -65,7 +62,7 @@ export function useAppliedFilterSummary(): { summaryText: string; filterChips: s
       selectedAuthorLogins: Array.from(checkedByListId['author-list'] || []),
       selectedAssignedLogins: Array.from(checkedByListId['assigned-list'] || []),
       selectedApproverLogins: Array.from(checkedByListId['approver-list'] || []),
-      openModeFilter: values.openMode === undefined ? undefined : String(values.openMode),
+      openModeFilter: values.openMode,
       alwaysShowInReview: values.alwaysShowInReview,
     });
 

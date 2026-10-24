@@ -6,7 +6,7 @@ const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpe
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): wires the real
 // scope-selection/row-filtering/row-matching factories together (not
 // mocks) so this is an integration-style test of the exact composition
-// useVisiblePrNumbers.jsx uses - the one new piece of logic this slice
+// useVisiblePrNumbers.tsx uses - the one new piece of logic this slice
 // adds, everything else reused from the existing vanilla pipeline as-is.
 //
 // computeVisiblePrNumbers returns { visiblePrNumbers, scopeLabel } (not a

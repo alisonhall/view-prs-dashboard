@@ -7,6 +7,7 @@ const {
   NON_CREDENTIAL_INPUT_PROPS,
   parsePrNumbersInput,
   parseCommitPatterns,
+  parseCsvTokens,
   formatCommitPatternsForTextarea,
 } = require("../helpers/form-parsing.helpers");
 const React = require("react");
@@ -94,6 +95,17 @@ describe("form-parsing.helpers", () => {
     test("given empty and non-numeric tokens when parsing then only numeric IDs are kept", () => {
       expect(parsePrNumbersInput("912, , 921")).toEqual(["912", "921"]);
       expect(parsePrNumbersInput("912,foo, 921 bar")).toEqual(["912", "921"]);
+    });
+  });
+
+  describe("parseCsvTokens", () => {
+    test("given comma-separated values with spaces and empty entries, when parsing, then returns the trimmed non-empty values", () => {
+      expect(parseCsvTokens(" bug , ,needs-review,")).toEqual(["bug", "needs-review"]);
+    });
+
+    test("given an empty or missing value, when parsing, then returns an empty array", () => {
+      expect(parseCsvTokens("")).toEqual([]);
+      expect(parseCsvTokens(undefined)).toEqual([]);
     });
   });
 

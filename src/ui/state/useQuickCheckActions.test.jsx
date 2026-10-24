@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataActionsContext } = require('./PrDataActionsContext');
-const { useQuickCheckActions } = require('./useQuickCheckActions.jsx');
+const { useQuickCheckActions } = require('./useQuickCheckActions.tsx');
 const { PrActivityQueueProvider } = require('../components/PrActivityQueueProvider');
 const { usePrActivityQueue } = require('./PrActivityQueueContext');
 const { FilterStateContext } = require('./FilterStateContext');

@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataActionsContext } = require('./PrDataActionsContext');
-const { useRunScript } = require('./useRunScript.jsx');
+const { useRunScript } = require('./useRunScript.tsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionContext } = require('./RowFilterSelectionContext');

@@ -81,8 +81,8 @@ const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
 // window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
 // tests below that used to drive busy/queued state through those bridges
 // now call this Context value's own markPrBusy/clearPrBusy/markPrQueued/
-// clearPrQueued directly instead, same functions useAckLabelActions.jsx/
-// useQuickCheckActions.jsx already call.
+// clearPrQueued directly instead, same functions useAckLabelActions.tsx/
+// useQuickCheckActions.tsx already call.
 let capturedActivityQueue;
 function ActivityQueueProbe() {
   capturedActivityQueue = usePrActivityQueue();
@@ -886,7 +886,7 @@ describe('PrTableApp', () => {
     });
 
     // Bulk counterpart to the single-row wrappers above - covers
-    // useAckLabelActions.jsx's own per-PR-loop wrapping of markPrBusy/
+    // useAckLabelActions.tsx's own per-PR-loop wrapping of markPrBusy/
     // clearPrBusy (usePrActivityQueue()), marking every PR number in a
     // multi-PR batch request busy, not just the row a user directly
     // clicked.

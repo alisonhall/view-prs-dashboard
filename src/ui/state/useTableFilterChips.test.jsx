@@ -76,7 +76,7 @@ describe('useTableFilterChips', () => {
     await user.click(screen.getByRole('button', { name: 'remove PR #: 42' }));
 
     // filterPrNumbers is debounced the same way the table's own live
-    // filtering is (useVisiblePrNumbers.jsx) - the chip's disappearance
+    // filtering is (useVisiblePrNumbers.tsx) - the chip's disappearance
     // lags the click by up to FILTER_PR_NUMBERS_DEBOUNCE_MS, same as
     // typing into the real field would.
     await waitFor(() => expect(screen.queryByText('PR #: 42')).not.toBeInTheDocument());

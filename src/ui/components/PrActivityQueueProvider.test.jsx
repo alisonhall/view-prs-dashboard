@@ -107,7 +107,7 @@ describe('PrActivityQueueProvider', () => {
 
   // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
   // window.beginBulkActionBatch/markBulkActionChunkInFlight/
-  // markBulkActionChunkDone/finishBulkActionBatch are gone - useAckLabelActions.jsx
+  // markBulkActionChunkDone/finishBulkActionBatch are gone - useAckLabelActions.tsx
   // is the only real caller, and it already calls these 4 directly via
   // usePrActivityQueue(), so every test below exercises that path only.
   test('a multi-chunk bulk batch flows through begin -> in-flight -> done -> finish', () => {
