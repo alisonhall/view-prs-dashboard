@@ -11,7 +11,7 @@
  * unmigrated consumers), so there was no reason to fork a parallel
  * Context-backed component here; every usage just gained the prop. Each
  * field is part of FilterStateContext's own `values` object, so
- * FilterStateProvider.jsx's debounced persistence watcher already covers
+ * FilterStateProvider.tsx's debounced persistence watcher already covers
  * it with no separate read path needed.
  *
  * @module components/FilterOptionSelect

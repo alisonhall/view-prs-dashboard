@@ -1078,6 +1078,9 @@ No static type checking leads to:
     getOpenConversationCount is now shared (it was written out twice), and
     the author-insights display helpers lose their unused
     normalizeActorLogin option.
+  - State batch 7 (2026-10-24): FilterStateProvider and PrDataProvider,
+    checked against their already-typed contexts. Every Context and
+    Provider is now TypeScript; the state-layer hooks remain.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -1068,7 +1068,7 @@ const clickMultiSelectCheckbox = async (listId, value, user) => {
 // installFilterStateProviderBridge's own comment), so a plain DOM
 // interaction (user.click/selectOptions/type) never reaches
 // FilterStateProvider's `values` the way the real app's own field
-// components do via their own onChange. FilterStateProvider.jsx's
+// components do via their own onChange. FilterStateProvider.tsx's
 // persistRunScriptOptions/persistViewFilterOptions read `values` directly,
 // with no DOM-read fallback - call this right after simulating the
 // interaction (reads the DOM's current value, so order matters) wherever
@@ -4567,7 +4567,7 @@ describe("index page rendering with Testing Library", () => {
       // file), so nothing else keeps Context in step with the DOM value.
       // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
       // effort audit", cluster 1): persistence itself is no longer tied
-      // to this "change" event's own timing at all - FilterStateProvider.jsx's
+      // to this "change" event's own timing at all - FilterStateProvider.tsx's
       // debounced Context-level watcher picks up the Context write below
       // on its own, whether or not a native event ever fires.
       modeField.value = "deny-only";
@@ -4597,7 +4597,7 @@ describe("index page rendering with Testing Library", () => {
       // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
       // effort audit", cluster 1): persistence is no longer a synchronous
       // vanilla listener firing off the same event (that whole mechanism
-      // is deleted outright, superseded by FilterStateProvider.jsx's own
+      // is deleted outright, superseded by FilterStateProvider.tsx's own
       // debounced Context-level watcher) - without clearing the mock
       // first, the next waitFor below would trivially find the PUT call
       // just asserted on above (already non-undefined) before the new,

@@ -153,7 +153,7 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * real async fetch) still overwrites these with any saved overrides once
  * it resolves - a direct `setValues` call from inside that effect, not a
  * flushSync-wrapped bridge call reaching in from outside (see
- * state/FilterStateProvider.jsx's own header comment).
+ * state/FilterStateProvider.tsx's own header comment).
  */
 // Context-backed checkboxes with no field-specific behavior (see
 // ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
@@ -330,7 +330,7 @@ function buildFilterStateFieldPortals() {
 // FilterOptionSelect.jsx) - each `key` matches the field's `name`
 // attribute and has a corresponding entry in index.page.js's
 // FILTER_STATE_FIELD_MAP, and each is part of FilterStateContext's own
-// `values` object, so FilterStateProvider.jsx's debounced persistence
+// `values` object, so FilterStateProvider.tsx's debounced persistence
 // watcher already covers every one of these keys with no extra wiring
 // needed here.
 const FILTER_OPTION_SELECT_FIELDS = [
@@ -1290,7 +1290,7 @@ function mountAppRoot() {
   // gives), so useQuickCheckActions/useAckLabelActions/useRunScript/
   // useBackfillActions/useTriggerAutoRun/useRowCheckboxActions/
   // useSinglePrUpdate/useActivityDrawerActions (called from AppRoot's own
-  // body or a descendant) and PrDataProvider.jsx (wrapping AppRoot's own
+  // body or a descendant) and PrDataProvider.tsx (wrapping AppRoot's own
   // returned JSX from inside, so also a genuine descendant of this) can all
   // reach useSnackbar() directly instead of window.showErrorNotification/
   // showWarningNotification/hideErrorNotification.

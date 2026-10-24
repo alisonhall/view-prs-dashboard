@@ -260,7 +260,7 @@ describe('RepoLabelsProvider repo-change trigger', () => {
 
 // Cleanup pass (prompted by a direct instruction to reconsider the
 // structure so no window.* bridge is needed at all - see this file's own
-// header comment): FilterStateProvider.jsx's restore-on-mount effect used
+// header comment): FilterStateProvider.tsx's restore-on-mount effect used
 // to reach window.refreshAvailableRepoLabels directly once a *saved* repo
 // override was known. It's a genuine ANCESTOR of this Provider
 // (FilterStateProvider wraps <AppRoot/>; this Provider is a descendant

@@ -49,7 +49,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // Single source of truth mapping a form-field id (the shape
   // /view-prs/user-defaults stores overrides under) to its
   // FilterStateProvider Context key - both the restore effect and the
-  // persist callbacks (FilterStateProvider.jsx) need it.
+  // persist callbacks (FilterStateProvider.tsx) need it.
   const FILTER_STATE_FIELD_MAP: Record<string, string> = {
     "scope-mode": "scopeMode",
     "always-show-in-review": "alwaysShowInReview",

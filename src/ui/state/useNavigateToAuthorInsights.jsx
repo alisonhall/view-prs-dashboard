@@ -13,7 +13,7 @@ import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.h
  * The validation rule (resolveValidAuthorLogin), the option list
  * (useAuthorInsights().buildAuthorInsightsEntries, same pure function
  * renderAuthorInsights itself still uses vanilla-side), and the write
- * target (selectedAuthorLogin, PrDataProvider.jsx's own
+ * target (selectedAuthorLogin, PrDataProvider.tsx's own
  * setSelectedAuthorLogin) are all real React state/Context already - no
  * vanilla authorInsightsState mutation needed here, unlike the retired
  * vanilla version. Only the focusUnsaved DOM-node resolution is a direct

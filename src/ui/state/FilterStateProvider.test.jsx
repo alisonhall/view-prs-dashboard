@@ -143,7 +143,7 @@ describe('FilterStateProvider', () => {
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): the 5 tests that used to live here asserted on
   // window.debouncedApplyFilters's own call count/timing - that bridge
-  // (and the useDebouncedEffect call in FilterStateProvider.jsx that fired
+  // (and the useDebouncedEffect call in FilterStateProvider.tsx that fired
   // it) is deleted outright, confirmed to have had zero remaining real
   // effect. Removed rather than rewritten, since there's no replacement
   // mechanism to assert on - this file's own debounced-timer test

@@ -61,7 +61,7 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
   }, [selectedRepo, refresh]);
 
   // Mirrors the effect above, for the one case selectedRepo alone can't
-  // cover: a *saved* repo override being restored (FilterStateProvider.jsx)
+  // cover: a *saved* repo override being restored (FilterStateProvider.tsx)
   // ahead of selectedRepo (PrDataContext) necessarily catching up to it.
   useEffect(() => {
     if (!restoredRepoOverride || restoredRepoOverride === lastTriggeredRepoRef.current) {

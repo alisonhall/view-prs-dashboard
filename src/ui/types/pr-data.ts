@@ -222,6 +222,9 @@ export interface PrDataPayload {
   scheduler?: unknown;
   // Login -> display name for every actor seen (ActorsMap).
   actorsMap?: Record<string, string | undefined>;
+  // The configured viewer login and login aliases (see deriveViewerContext).
+  viewerLogin?: string;
+  actorLoginAliases?: unknown;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
 }

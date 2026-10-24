@@ -102,7 +102,7 @@ const AUTHOR_THREAD_RESOLUTION_LIST_IDS = new Set([
 ]);
 
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// last 2 lists to get a Context mirror - FilterStateProvider.jsx's own
+// last 2 lists to get a Context mirror - FilterStateProvider.tsx's own
 // buildOverrides() reads these via ChangeFilterActorSelectionContext
 // instead of a DOM-scan window.* bridge.
 const CHANGE_FILTER_LIST_IDS = new Set([
@@ -137,7 +137,7 @@ const CHANGE_FILTER_LIST_IDS = new Set([
  * AuthorThreadResolutionSelectionContext (ReviewThreadsSection.jsx's own
  * read, previously a DOM-scan behind window.getAuthorThreadResolutionPolicy),
  * and the 2 change-filter actor lists into ChangeFilterActorSelectionContext
- * (Phase G.3, see REACT_MIGRATION_PLAN.md - FilterStateProvider.jsx's own
+ * (Phase G.3, see REACT_MIGRATION_PLAN.md - FilterStateProvider.tsx's own
  * buildOverrides() needs to read "currently checked" directly instead of
  * a DOM-scan window.* bridge). The seeding logic itself (seedCheckedState,
  * existingChecked/pendingSelections precedence) is identical regardless of

@@ -66,7 +66,7 @@ describe('AuthorInsightsSelector', () => {
 
   // Phase H.17 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 2): selecting a different author now writes
-  // setSelectedAuthorLogin (PrDataProvider.jsx) directly - no more
+  // setSelectedAuthorLogin (PrDataProvider.tsx) directly - no more
   // window.selectAuthorInsightsAuthor bridge/onChange prop round-trip.
   test('given a user selects a different author, when selecting, then the Context-driven value updates', async () => {
     const user = userEvent.setup();

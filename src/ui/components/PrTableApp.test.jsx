@@ -382,7 +382,7 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps[0].getPrFlags('1')).toEqual({ isFlagged: false, isInReview: false, isAcknowledged: false });
   });
 
-  test('given applyFreshTablePayload delivers a fresh payload (the real post-mount update path - see PrDataProvider.jsx, Track C slice C2c), when called, then the new payload is reflected', () => {
+  test('given applyFreshTablePayload delivers a fresh payload (the real post-mount update path - see PrDataProvider.tsx, Track C slice C2c), when called, then the new payload is reflected', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     const payloadB = {
       byPrNumber: {
