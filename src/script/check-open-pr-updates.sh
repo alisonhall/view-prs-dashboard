@@ -674,14 +674,21 @@ load_change_filter_config() {
   CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(jq -r '.changeFilters.ignoreCommentsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(jq -r '.changeFilters.ignoreReviewsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(jq -r '.changeFilters.ignoreCommitPatterns // [] | join("|")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
-  # mergeCommitRules when saved; otherwise the default ^Merge\b, or no
-  # headline patterns when it was saved before mergeCommitRules existed with
-  # the built-in merge filter turned off (changeFilters.useBuiltinMergePattern).
+  # mergeCommitRules' two lists, the same way the UI reads them
+  # (FilterStateProvider's asMergeCommitRules): a list as saved, a single
+  # string as a one-entry list, and anything else (missing or malformed) as
+  # the default - ^Merge\b for the patterns, none for the logins. The old
+  # changeFilters.useBuiltinMergePattern setting is no longer read.
   MERGE_COMMIT_HEADLINE_PATTERNS_JSON=$(jq -c '
-    if (.mergeCommitRules | type) == "object" then [(.mergeCommitRules.headlinePatterns // [])[] | tostring | select(length > 0)]
-    elif .changeFilters.useBuiltinMergePattern == false then []
-    else ["^Merge\\b"] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '["^Merge\\b"]')
-  MERGE_COMMIT_LOGINS_JSON=$(jq -c '[(.mergeCommitRules.logins // [])[] | tostring | select(length > 0)]' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '[]')
+    (try .mergeCommitRules.headlinePatterns catch null) as $patterns
+    | if ($patterns | type) == "array" then [$patterns[] | tostring | select(length > 0)]
+      elif ($patterns | type) == "string" then [$patterns | select(length > 0)]
+      else ["^Merge\\b"] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '["^Merge\\b"]')
+  MERGE_COMMIT_LOGINS_JSON=$(jq -c '
+    (try .mergeCommitRules.logins catch null) as $logins
+    | if ($logins | type) == "array" then [$logins[] | tostring | select(length > 0)]
+      elif ($logins | type) == "string" then [$logins | select(length > 0)]
+      else [] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '[]')
 
   debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS merge_commit_patterns=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON merge_commit_logins=$MERGE_COMMIT_LOGINS_JSON"
 }

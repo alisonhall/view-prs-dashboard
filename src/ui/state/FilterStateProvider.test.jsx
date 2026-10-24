@@ -215,11 +215,20 @@ describe('FilterStateProvider', () => {
       expect(screen.getByTestId('merge-logins').textContent).toBe(JSON.stringify('bot[bot]'));
     });
 
-    test('given settings saved with the old built-in merge filter turned off, when the restore resolves, then there are no headline patterns', async () => {
-      mockUserDefaults({ changeFilters: { useBuiltinMergePattern: false } });
+    test('given settings saved with the old built-in merge filter turned off, when the restore resolves, then the default rules stay', async () => {
+      mockUserDefaults({ changeFilters: { useBuiltinMergePattern: false, ignoreCommitPatterns: ['^docs:'] } });
+      renderProbe();
+      await act(async () => {});
+
+      expect(screen.getByTestId('merge-patterns').textContent).toBe(JSON.stringify('^Merge\\b'));
+    });
+
+    test('given lists saved as a single string or malformed (e.g. hand-edited), when the restore resolves, then a string is one entry and anything else is the default', async () => {
+      mockUserDefaults({ mergeCommitRules: { headlinePatterns: ' ^Sync ', logins: 5 } });
       renderProbe();
 
-      await screen.findByText('""');
+      await waitFor(() => expect(screen.getByTestId('merge-patterns').textContent).toBe(JSON.stringify('^Sync')));
+      expect(screen.getByTestId('merge-logins').textContent).toBe(JSON.stringify(''));
     });
 
     test('given changed merge logins, when the persist debounce fires, then mergeCommitRules is saved (trimmed, one per entry)', async () => {

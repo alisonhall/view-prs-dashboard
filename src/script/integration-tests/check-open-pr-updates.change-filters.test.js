@@ -227,13 +227,19 @@ describe("count_external_commits (merge commit rules and ignore patterns)", () =
     expect(count).toBe("1");
   });
 
-  test("given settings saved with the old built-in merge filter turned off, when counting, then 'Merge ...' commits count", () => {
+  test("given settings saved with the old built-in merge filter turned off, when counting, then the default rules apply and the ignore patterns still do", () => {
     const count = countCommits({
-      userDefaults: { changeFilters: { useBuiltinMergePattern: false } },
-      commits: [commit("alice", "Merge branch 'main' into x"), commit("bob", "feat: real work")],
+      userDefaults: {
+        changeFilters: { useBuiltinMergePattern: false, ignoreCommitPatterns: ["^Sync from develop"] },
+      },
+      commits: [
+        commit("alice", "Merge branch 'main' into x"),
+        commit("alice", "Sync from develop"),
+        commit("bob", "feat: real work"),
+      ],
     });
 
-    expect(count).toBe("2");
+    expect(count).toBe("1");
   });
 });
 
@@ -259,7 +265,22 @@ describe("merge commit rules configuration", () => {
     expect(loadRules(null)).toBe('["^Merge\\\\b"]|[]');
   });
 
-  test("given the old built-in merge filter turned off and no mergeCommitRules, when loading, then there are no headline patterns", () => {
-    expect(loadRules({ changeFilters: { useBuiltinMergePattern: false } })).toBe("[]|[]");
+  test("given the old built-in merge filter turned off and no mergeCommitRules, when loading, then the defaults are used", () => {
+    expect(loadRules({ changeFilters: { useBuiltinMergePattern: false } })).toBe('["^Merge\\\\b"]|[]');
+  });
+
+  test("given lists saved as single strings, when loading, then each is a one-entry list", () => {
+    expect(loadRules({ mergeCommitRules: { headlinePatterns: "^Sync", logins: "bot[bot]" } })).toBe(
+      '["^Sync"]|["bot[bot]"]',
+    );
+  });
+
+  test("given malformed mergeCommitRules, when loading, then the defaults are used", () => {
+    expect(loadRules({ mergeCommitRules: "oops" })).toBe('["^Merge\\\\b"]|[]');
+    expect(loadRules({ mergeCommitRules: { headlinePatterns: 5, logins: { a: 1 } } })).toBe('["^Merge\\\\b"]|[]');
+  });
+
+  test("given an emptied patterns list, when loading, then there are no headline patterns", () => {
+    expect(loadRules({ mergeCommitRules: { headlinePatterns: [], logins: [] } })).toBe("[]|[]");
   });
 });

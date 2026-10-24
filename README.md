@@ -606,8 +606,9 @@ Merge commits:
 - The `Advanced visibility and attention rules` section has a `Merge commits` editor, saved to `user-defaults.json` as `mergeCommitRules` (only when it differs from the default).
 - A commit counts as a merge when its headline matches one of the **headline patterns** (regular expressions, one per line, not case-sensitive; default `^Merge\b`, i.e. any "Merge ..." headline), or when it has author logins and every one of them is in the **logins** list (e.g. `dependabot[bot]`).
 - The same definition is used everywhere: merge commits don't mark a PR CHANGED (check-open-pr-updates.sh), aren't listed in the `AUTHOR` column, and are what "Ignore merge-only commits for CHANGED" leaves out.
-- An invalid pattern is skipped (the editor names it). An emptied patterns list means no headline counts as a merge.
-- Settings saved before this existed with the old "Use built-in merge commit filter" checkbox turned off (`changeFilters.useBuiltinMergePattern: false`) are read as no headline patterns, and saved as `mergeCommitRules` on the next save.
+- An invalid pattern is skipped (the editor names it). An emptied patterns list means no headline counts as a merge. In a hand-edited `user-defaults.json`, a list given as a single string is read as one entry, and a malformed one as its default.
+- Patterns are checked by both the browser (JavaScript regular expressions) and check-open-pr-updates.sh (jq's Oniguruma). Plain patterns (anchors, literal text, ``, `s`, groups, alternation) behave the same in both; the editor only validates the JavaScript side.
+- The old "Use built-in merge commit filter" checkbox (`changeFilters.useBuiltinMergePattern`) is no longer read; the defaults above apply until you save your own rules, and the next save drops the old setting. If you had turned it off and listed your own merge patterns under "Ignore commits matching patterns", those still keep such commits from marking a PR CHANGED; add them to the headline patterns too if the Author column and the merge-only attention rule should treat them as merges.
 
 ```json
 {

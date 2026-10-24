@@ -61,14 +61,28 @@ const CHECKBOX_FIELD_IDS = [
 const asChangeFilters = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
-// The saved mergeCommitRules, when it's an object with the two lists.
+// The saved mergeCommitRules (null when there is none). Each list is read
+// as saved, a single string as a one-entry list, and anything else (a
+// missing or malformed list, e.g. from a hand edit) as its default -
+// check-open-pr-updates.sh reads it the same way.
 const asMergeCommitRules = (value: unknown): MergeCommitRules | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
   const rules = value as Record<string, unknown>;
-  const asList = (list: unknown) => (Array.isArray(list) ? list.map((item) => String(item ?? '').trim()).filter(Boolean) : []);
-  return { headlinePatterns: asList(rules.headlinePatterns), logins: asList(rules.logins) };
+  const asList = (list: unknown, fallback: string[]) => {
+    if (Array.isArray(list)) {
+      return list.map((item) => String(item ?? '').trim()).filter(Boolean);
+    }
+    if (typeof list === 'string') {
+      return list.trim() ? [list.trim()] : [];
+    }
+    return fallback;
+  };
+  return {
+    headlinePatterns: asList(rules.headlinePatterns, DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
+    logins: asList(rules.logins, DEFAULT_MERGE_COMMIT_RULES.logins),
+  };
 };
 
 const areListsEqual = (left: string[], right: string[]) =>
@@ -184,14 +198,13 @@ export function FilterStateProvider({
 
       const changeFilters = asChangeFilters(overrides.changeFilters);
       const mergeCommitRules = asMergeCommitRules(overrides.mergeCommitRules);
+      // Without saved rules, the defaults (from initialValues) stay - also
+      // when the old changeFilters.useBuiltinMergePattern was turned off:
+      // its custom merge patterns lived in ignoreCommitPatterns, which
+      // still applies to the CHANGED check.
       if (mergeCommitRules) {
         mapped.mergeCommitHeadlinePatterns = formatRuleLines(mergeCommitRules.headlinePatterns);
         mapped.mergeCommitLogins = formatRuleLines(mergeCommitRules.logins);
-      } else if (changeFilters?.useBuiltinMergePattern === false) {
-        // Saved before mergeCommitRules existed: the built-in merge filter
-        // was turned off, i.e. no headline counts as a merge. Saved as
-        // mergeCommitRules on the next save.
-        mapped.mergeCommitHeadlinePatterns = '';
       }
       if (changeFilters) {
         if (Array.isArray(changeFilters.ignoreCommitPatterns)) {
@@ -364,7 +377,7 @@ export function FilterStateProvider({
       includeField('change-filter-ignore-commit-patterns')
     ) {
       const changeFilters = { ...asChangeFilters(existingOverrides.changeFilters) };
-      // Replaced by mergeCommitRules (converted on restore).
+      // Replaced by mergeCommitRules.
       delete changeFilters.useBuiltinMergePattern;
       if (includeField('change-filter-ignore-comment-authors')) {
         const selected = checkedList(
