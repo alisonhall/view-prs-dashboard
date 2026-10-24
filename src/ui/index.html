@@ -268,6 +268,25 @@
                                 </fieldset>
 
                                 <fieldset>
+                                    <legend>Merge commits</legend>
+                                    <p class="subtle-copy" id="merge-commit-rules-help">🔀 A commit counts as a merge
+                                        when its headline matches one of the patterns, or when every one of its authors
+                                        is in the logins list (e.g. bots). Merge commits don't mark a PR CHANGED, aren't
+                                        listed in the Author column, and are what "Exclude merge-only commit activity"
+                                        leaves out. Default pattern: <code>^Merge\b</code>.</p>
+
+                                    <label for="merge-commit-headline-patterns">Headline patterns (regular expressions,
+                                        one per line, not case-sensitive)</label>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="merge-commit-headline-patterns-root"></span>
+
+                                    <label for="merge-commit-logins">Logins whose commits always count as merges (one
+                                        per line)</label>
+                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                    <span id="merge-commit-logins-root"></span>
+                                </fieldset>
+
+                                <fieldset>
                                     <legend>Change Detection Filters</legend>
                                     <p class="subtle-copy">Configure what activity should NOT trigger CHANGED status.
                                         Use this to filter out automated notifications or non-blocking feedback.</p>
@@ -295,19 +314,6 @@
                                         request states (created via "Review changes" button). Use this to ignore
                                         optional
                                         reviewers whose approval isn't required.
-                                    </p>
-
-                                    <label class="checkbox-row">
-                                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                        <span id="change-filter-use-builtin-merge-pattern-root"></span>
-                                        Use built-in merge commit filter (merges from main/origin/main)
-                                    </label>
-                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
-                                        🔀 Built-in pattern:
-                                        <code>^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main
-                                            into )</code><br>
-                                        Uncheck to use only your custom patterns below, or to define your own merge
-                                        filter.
                                     </p>
 
                                     <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns

@@ -486,7 +486,7 @@ Date columns in the web table (`YOUR LAST ACTIVITY` and `MERGED AT`) use the sam
 
 Stored PR table rows now include a `LABELS` column and each row persists the PR label names in JSON.
 
-The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (commits whose `messageHeadline` starts with "Merge" are excluded, matching the "ignore merge-only commits" attention rule's definition), deduped so a commit author who is also the PR author only appears once.
+The `AUTHOR` column in the PR data table displays resolved real names from `actorsMap` when available. It shows the official PR author (styled distinctly, same treatment as elsewhere in the app) plus every other distinct person with a non-merge commit on the branch (merge commits as defined by the "Merge commits" rules below), deduped so a commit author who is also the PR author only appears once.
 
 Open and draft PR sections are sorted by PR number descending (highest first). Closed PRs sort by close date descending. Merged PRs sort by merge date descending.
 
@@ -601,6 +601,23 @@ Default values:
 | Include NO_ACTIVITY drafts | `off` |
 | PR-author thread-resolution policy | `allow-all` |
 
+Merge commits:
+
+- The `Advanced visibility and attention rules` section has a `Merge commits` editor, saved to `user-defaults.json` as `mergeCommitRules` (only when it differs from the default).
+- A commit counts as a merge when its headline matches one of the **headline patterns** (regular expressions, one per line, not case-sensitive; default `^Merge\b`, i.e. any "Merge ..." headline), or when it has author logins and every one of them is in the **logins** list (e.g. `dependabot[bot]`).
+- The same definition is used everywhere: merge commits don't mark a PR CHANGED (check-open-pr-updates.sh), aren't listed in the `AUTHOR` column, and are what "Ignore merge-only commits for CHANGED" leaves out.
+- An invalid pattern is skipped (the editor names it). An emptied patterns list means no headline counts as a merge.
+- Settings saved before this existed with the old "Use built-in merge commit filter" checkbox turned off (`changeFilters.useBuiltinMergePattern: false`) are read as no headline patterns, and saved as `mergeCommitRules` on the next save.
+
+```json
+{
+  "mergeCommitRules": {
+    "headlinePatterns": ["^Merge\\b", "^Revert \"Merge"],
+    "logins": ["dependabot[bot]", "renovate[bot]"]
+  }
+}
+```
+
 Change Detection Filters:
 
 - The `Advanced visibility and attention rules` section includes `Change Detection Filters` to configure what activity should NOT trigger CHANGED status.
@@ -611,28 +628,23 @@ Change Detection Filters:
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
 - Built-in filters:
   - **Approved reviews are always ignored** (cannot be disabled)
-  - **Built-in merge commit filter** (configurable):
-    - Pattern: `^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )`
-    - Enabled by default via "Use built-in merge commit filter" checkbox
-    - Can be disabled to define custom merge patterns or allow all merge commits to trigger CHANGED status
-    - Useful for repos with different merge workflows (e.g., develop → main, custom branch names)
-    - When disabled, only user-defined commit patterns apply
+  - **Merge commits** never count (see "Merge commits" above)
 - Regex patterns for commits:
   - Patterns use PCRE-compatible syntax (jq's `test()` function)
   - Patterns are tested against commit message headline (first line only)
   - Multiple patterns are combined with OR logic
-  - Patterns work in addition to built-in merge filter (when enabled) or as standalone filters (when built-in is disabled)
-  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits), `^Merge branch 'develop'` (custom merge pattern)
+  - Patterns apply in addition to the merge commit rules (unlike those, they're case-sensitive)
+  - Example patterns: `^docs:` (ignores doc commits), `^test:` (ignores test commits), `^chore\\(deps\\):` (ignores dependency updates), `(?i)^wip:` (case-insensitive WIP commits)
 
 Comments vs Reviews vs Commits:
 
 - **Comments** (💬) are general discussion messages in the PR conversation tab (created via main comment box). Example: bot notifications, questions, status updates.
 - **Reviews** (✅) are formal code review submissions with states (APPROVED, CHANGES_REQUESTED, COMMENTED) created via the "Review changes" button. They affect PR merge status and appear with special badges.
-- **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is pattern-based, not author-based.
+- **Commits** (📝) are code changes pushed to the PR branch. Commit filtering is by headline pattern, plus the merge commit logins.
 
 Example configurations in `user-defaults.json`:
 
-**Default configuration (built-in merge filter enabled):**
+**Example configuration:**
 
 ```json
 {
@@ -649,27 +661,6 @@ Example configurations in `user-defaults.json`:
   }
 }
 ```
-
-Note: `useBuiltinMergePattern` defaults to `true` if omitted.
-
-**Custom merge pattern configuration (built-in disabled):**
-
-```json
-{
-  "repo": "owner/repo",
-  "changeFilters": {
-    "useBuiltinMergePattern": false,
-    "ignoreCommitPatterns": [
-      "^Merge branch '(develop|staging)'",
-      "^Merge pull request #",
-      "^docs:",
-      "^test:"
-    ]
-  }
-}
-```
-
-This configuration disables the built-in merge filter and defines custom merge patterns for repos that merge from develop/staging branches.
 
 Scope mode behavior:
 

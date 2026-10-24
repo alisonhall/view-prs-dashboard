@@ -1,16 +1,12 @@
 import type { PrData } from "../types/pr-data.ts";
 import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
-
-// A commit whose headline starts with "Merge" (merging a branch/PR into
-// another) - same definition pr-needs-attention.helpers.ts's
-// isMergeCommitHeadline uses for "ignore merge-only commits", duplicated
-// here (rather than threaded through as a dependency) since it's a pure
-// one-liner with no state of its own.
-const isMergeCommitHeadline = (messageHeadline: unknown = ""): boolean =>
-  /^Merge\b/i.test(String(messageHeadline || "").trim());
+import { getMergeCommitMatcher, type MergeCommitRules } from "./pr-merge-commit-rules.helpers.ts";
 
 export interface PrAuthorCellDeps {
   getPreferredActorKey?: GetPreferredActorKey;
+  // What counts as a merge commit (pr-merge-commit-rules.helpers.ts);
+  // defaults to DEFAULT_MERGE_COMMIT_RULES.
+  mergeCommitRules?: MergeCommitRules;
 }
 
 export interface PrAuthor {
@@ -21,7 +17,9 @@ export interface PrAuthor {
 
 const createPrAuthorCellHelpers = ({
   getPreferredActorKey,
+  mergeCommitRules,
 }: PrAuthorCellDeps = {}) => {
+  const isMergeCommit = getMergeCommitMatcher(mergeCommitRules);
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function"
       ? getPreferredActorKey
@@ -48,7 +46,7 @@ const createPrAuthorCellHelpers = ({
     addAuthor(row?.authorLogin, row?.author, true);
 
     (Array.isArray(row?.commits) ? row.commits : []).forEach((commit) => {
-      if (isMergeCommitHeadline(commit?.messageHeadline)) {
+      if (isMergeCommit(commit)) {
         return;
       }
       (Array.isArray(commit?.authors) ? commit.authors : []).forEach((author) => {

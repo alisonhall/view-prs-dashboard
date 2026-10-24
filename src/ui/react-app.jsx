@@ -23,6 +23,8 @@ import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
 import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
+import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
+import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
 import { AutoRenderBlockedLinksLive } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
@@ -174,15 +176,6 @@ const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
   { id: 'ack-changed', name: 'ackChanged', key: 'ackChanged', defaultValue: false },
   { id: 'show-reason', name: 'showReason', key: 'showReason', defaultValue: true },
   { id: 'quiet', name: 'quiet', key: 'quiet', defaultValue: false },
-  // change-filter-use-builtin-merge-pattern DOES auto-persist+apply on
-  // change (its own special-case branch in the delegated #run-script-form
-  // listener, index.page.js) - but that stays owned entirely by the
-  // delegated listener reacting to the real native "change" event this
-  // element always fires, unaffected by Context migration, so it's added
-  // to FilterStateProvider's own debounced-apply deps below only for the
-  // same "harmless double-hookup" consistency every other auto-apply
-  // field gets, not because it's required for correctness.
-  { id: 'change-filter-use-builtin-merge-pattern', name: 'changeFilterUseBuiltinMergePattern', key: 'changeFilterUseBuiltinMergePattern', defaultValue: true },
 ];
 
 // Context-backed text/number inputs (see ContextRunScriptTextInput.jsx) -
@@ -226,6 +219,8 @@ function buildFilterStateInitialValues() {
     filterPrNumbers: '',
     attentionAuthorThreadResolutionMode: 'allow-all',
     changeFilterIgnoreCommitPatterns: '',
+    mergeCommitHeadlinePatterns: formatRuleLines(DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
+    mergeCommitLogins: '',
   };
   FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.forEach((field) => {
     initialValues[field.key] = field.defaultValue;
@@ -253,6 +248,8 @@ function buildFilterStateFieldPortals() {
   const ignoreCommitPatternsContainer = document.getElementById(
     'change-filter-ignore-commit-patterns-root',
   );
+  const mergeCommitHeadlinePatternsContainer = document.getElementById('merge-commit-headline-patterns-root');
+  const mergeCommitLoginsContainer = document.getElementById('merge-commit-logins-root');
   const contextCheckboxContainers = FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.map((field) => ({
     ...field,
     container: document.getElementById(`${field.id}-root`),
@@ -282,6 +279,27 @@ function buildFilterStateFieldPortals() {
     <AuthorThreadResolutionRuleVisibility key="author-thread-resolution-visibility" />,
     ignoreCommitPatternsContainer &&
       createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer, 'ignore-commit-patterns'),
+    mergeCommitHeadlinePatternsContainer &&
+      createPortal(
+        <MergeCommitRulesTextarea
+          id="merge-commit-headline-patterns"
+          filterStateKey="mergeCommitHeadlinePatterns"
+          placeholder={'^Merge\\b\n^Revert "Merge'}
+          validatePatterns
+        />,
+        mergeCommitHeadlinePatternsContainer,
+        'merge-commit-headline-patterns',
+      ),
+    mergeCommitLoginsContainer &&
+      createPortal(
+        <MergeCommitRulesTextarea
+          id="merge-commit-logins"
+          filterStateKey="mergeCommitLogins"
+          placeholder={'dependabot[bot]\nrenovate[bot]'}
+        />,
+        mergeCommitLoginsContainer,
+        'merge-commit-logins',
+      ),
     ...contextCheckboxContainers.map(
       (field) =>
         field.container &&

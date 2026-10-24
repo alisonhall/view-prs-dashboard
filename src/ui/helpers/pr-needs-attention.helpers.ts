@@ -1,4 +1,5 @@
-import type { PrData, PrEntry } from "../types/pr-data.ts";
+import type { PrCommit, PrData, PrEntry } from "../types/pr-data.ts";
+import { getMergeCommitMatcher, type MergeCommitRules } from "./pr-merge-commit-rules.helpers.ts";
 
 // The "Needs attention" rules (configured under "Advanced visibility and
 // attention rules"): whether a PR's change or lack of activity should flag
@@ -8,6 +9,8 @@ import type { PrData, PrEntry } from "../types/pr-data.ts";
 // the form fields onto these).
 export interface AttentionConfig {
   ignoreMergeOnlyCommits?: boolean;
+  // What counts as a merge commit (defaults to DEFAULT_MERGE_COMMIT_RULES).
+  mergeCommitRules?: MergeCommitRules;
   noActivityMode?: string;
   includePendingComments?: boolean;
   includeClosedMerged?: boolean;
@@ -69,9 +72,6 @@ const createPrNeedsAttentionHelpers = ({
       .filter(Boolean);
   };
 
-  const isMergeCommitHeadline = (messageHeadline: unknown = ""): boolean =>
-    /^Merge\b/i.test(String(messageHeadline || "").trim());
-
   const shouldTreatChangedAsAttention = (row: PrData = {}, config: AttentionConfig = {}): boolean => {
     if (!isChangedStatus(row?.status)) return false;
     if (!config?.ignoreMergeOnlyCommits) return true;
@@ -80,9 +80,8 @@ const createPrNeedsAttentionHelpers = ({
     if (tokens.length === 0) return true;
     if (tokens.some((token) => token !== "commit")) return true;
 
-    return (asArray(row?.commits) as { messageHeadline?: string }[]).some(
-      (commit) => !isMergeCommitHeadline(commit?.messageHeadline),
-    );
+    const isMergeCommit = getMergeCommitMatcher(config?.mergeCommitRules);
+    return (asArray(row?.commits) as PrCommit[]).some((commit) => !isMergeCommit(commit));
   };
 
   const shouldTreatNoActivityAsAttention = (row: PrData = {}, config: AttentionConfig = {}): boolean => {
@@ -177,7 +176,6 @@ const createPrNeedsAttentionHelpers = ({
 
   return {
     parseChangedReasonTokens,
-    isMergeCommitHeadline,
     shouldTreatChangedAsAttention,
     shouldTreatNoActivityAsAttention,
     shouldShowNeedsAttention,

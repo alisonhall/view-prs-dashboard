@@ -117,7 +117,10 @@ DEBUG_LOG_FILE="${CHECK_OPEN_PR_DEBUG_LOG:-}"
 CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=''
 CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=''
 CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=''
-CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN='true'
+# What counts as a merge commit (user-defaults.json's mergeCommitRules), as
+# JSON arrays for jq; see count_external_commits.
+MERGE_COMMIT_HEADLINE_PATTERNS_JSON='["^Merge\\b"]'
+MERGE_COMMIT_LOGINS_JSON='[]'
 USER_DEFAULTS_FILE=''
 
 debug_log() {
@@ -671,9 +674,48 @@ load_change_filter_config() {
   CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(jq -r '.changeFilters.ignoreCommentsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(jq -r '.changeFilters.ignoreReviewsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(jq -r '.changeFilters.ignoreCommitPatterns // [] | join("|")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
-  CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN=$(jq -r 'if .changeFilters.useBuiltinMergePattern == null then true else .changeFilters.useBuiltinMergePattern end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo 'true')
-  
-  debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS use_builtin_merge=$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN"
+  # mergeCommitRules when saved; otherwise the default ^Merge\b, or no
+  # headline patterns when it was saved before mergeCommitRules existed with
+  # the built-in merge filter turned off (changeFilters.useBuiltinMergePattern).
+  MERGE_COMMIT_HEADLINE_PATTERNS_JSON=$(jq -c '
+    if (.mergeCommitRules | type) == "object" then [(.mergeCommitRules.headlinePatterns // [])[] | tostring | select(length > 0)]
+    elif .changeFilters.useBuiltinMergePattern == false then []
+    else ["^Merge\\b"] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '["^Merge\\b"]')
+  MERGE_COMMIT_LOGINS_JSON=$(jq -c '[(.mergeCommitRules.logins // [])[] | tostring | select(length > 0)]' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '[]')
+
+  debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS merge_commit_patterns=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON merge_commit_logins=$MERGE_COMMIT_LOGINS_JSON"
+}
+
+# Counts the PR's commits ($1: the PR detail JSON) with at least one author
+# other than the viewer, committed after $2 (every commit when $2 is empty),
+# leaving out merge commits and commits matching the change filter's ignore
+# patterns. Merge commits follow the same rules as the UI
+# (src/ui/helpers/pr-merge-commit-rules.helpers.ts): the headline matches one
+# of the patterns (case-insensitive; an invalid pattern matches nothing), or
+# every author login is in the merge logins list.
+count_external_commits() {
+  local detail_json="$1"
+  local since="${2:-}"
+  printf '%s' "$detail_json" | jq -r \
+    --arg me "$VIEWER_LOGIN" \
+    --arg since "$since" \
+    --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" \
+    --argjson mergePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" \
+    --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" '
+    ($mergeLogins | map(ascii_downcase)) as $mergeLoginList
+    | [
+      .commits[]?
+      | select(any(.authors[]?; .login != null and .login != $me))
+      | select($since == "" or (.committedDate // "") > $since)
+      | (.messageHeadline // "") as $headline
+      | select((any($mergePatterns[]; . as $pattern | try ($headline | test($pattern; "i")) catch false)) | not)
+      | select(([.authors[]? | .login // empty | ascii_downcase] as $logins
+          | ($mergeLoginList | length) > 0 and ($logins | length) > 0
+            and all($logins[]; . as $login | $mergeLoginList | index($login) != null)) | not)
+      | select(($ignorePatterns | length) == 0 or (($headline | test($ignorePatterns)) | not))
+    ]
+    | length
+  '
 }
 
 lock_info_file() {
@@ -2240,18 +2282,7 @@ compute_pr_state_json() {
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
-      # Build combined pattern: optionally include built-in merge pattern + user patterns
-      ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
-       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
-      | [
-        .commits[]?
-        | select(any(.authors[]?; .login != null and .login != $me))
-        | select((.committedDate // "") > $since)
-        | select(($combinedPattern | length) == 0 or (((.messageHeadline // "") | test($combinedPattern)) | not))
-      ]
-      | length
-    ')
+    external_commit_count=$(count_external_commits "$detail_json" "$effective_last")
   else
     external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" '
       ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
@@ -2271,17 +2302,7 @@ compute_pr_state_json() {
       ]
       | length
     ')
-    external_commit_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson useBuiltin "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN" '
-      # Build combined pattern: optionally include built-in merge pattern + user patterns
-      ((if $useBuiltin then "^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" else "" end) + 
-       (if ($ignorePatterns | length) > 0 then (if $useBuiltin then "|" else "" end) + $ignorePatterns else "" end)) as $combinedPattern
-      | [
-        .commits[]?
-        | select(any(.authors[]?; .login != null and .login != $me))
-        | select(($combinedPattern | length) == 0 or (((.messageHeadline // "") | test($combinedPattern)) | not))
-      ]
-      | length
-    ')
+    external_commit_count=$(count_external_commits "$detail_json")
   fi
 
   my_latest_review_state=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '

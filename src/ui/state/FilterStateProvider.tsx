@@ -16,6 +16,12 @@ import {
 } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
 import { formatCommitPatternsForTextarea, parseCsvTokens } from '../helpers/form-parsing.helpers.ts';
+import {
+  DEFAULT_MERGE_COMMIT_RULES,
+  formatRuleLines,
+  parseRuleLines,
+  type MergeCommitRules,
+} from '../helpers/pr-merge-commit-rules.helpers.ts';
 
 // Built once, not per render: its only dependency is the real fetch.
 const { getUiOptionDefaults, FILTER_STATE_FIELD_MAP, readUiSessionOverrides, writeUiSessionOverrides } =
@@ -54,6 +60,19 @@ const CHECKBOX_FIELD_IDS = [
 // The saved changeFilters object, when it is one.
 const asChangeFilters = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+// The saved mergeCommitRules, when it's an object with the two lists.
+const asMergeCommitRules = (value: unknown): MergeCommitRules | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const rules = value as Record<string, unknown>;
+  const asList = (list: unknown) => (Array.isArray(list) ? list.map((item) => String(item ?? '').trim()).filter(Boolean) : []);
+  return { headlinePatterns: asList(rules.headlinePatterns), logins: asList(rules.logins) };
+};
+
+const areListsEqual = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
 
 // A list's checked values, in insertion order.
 const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<string>>>, listId: L): string[] =>
@@ -164,10 +183,17 @@ export function FilterStateProvider({
       });
 
       const changeFilters = asChangeFilters(overrides.changeFilters);
+      const mergeCommitRules = asMergeCommitRules(overrides.mergeCommitRules);
+      if (mergeCommitRules) {
+        mapped.mergeCommitHeadlinePatterns = formatRuleLines(mergeCommitRules.headlinePatterns);
+        mapped.mergeCommitLogins = formatRuleLines(mergeCommitRules.logins);
+      } else if (changeFilters?.useBuiltinMergePattern === false) {
+        // Saved before mergeCommitRules existed: the built-in merge filter
+        // was turned off, i.e. no headline counts as a merge. Saved as
+        // mergeCommitRules on the next save.
+        mapped.mergeCommitHeadlinePatterns = '';
+      }
       if (changeFilters) {
-        if (typeof changeFilters.useBuiltinMergePattern === 'boolean') {
-          mapped.changeFilterUseBuiltinMergePattern = changeFilters.useBuiltinMergePattern;
-        }
         if (Array.isArray(changeFilters.ignoreCommitPatterns)) {
           mapped.changeFilterIgnoreCommitPatterns = formatCommitPatternsForTextarea(
             changeFilters.ignoreCommitPatterns,
@@ -312,22 +338,34 @@ export function FilterStateProvider({
       }
     }
 
+    // Saved only when they differ from the defaults (an emptied patterns
+    // list is kept, as "no headline counts as a merge").
+    if (includeField('merge-commit-rules')) {
+      const rules: MergeCommitRules = {
+        // A missing value is the default (as in NeedsAttentionProvider).
+        headlinePatterns: parseRuleLines(
+          currentValues.mergeCommitHeadlinePatterns ?? formatRuleLines(DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
+        ),
+        logins: parseRuleLines(currentValues.mergeCommitLogins),
+      };
+      if (
+        areListsEqual(rules.headlinePatterns, DEFAULT_MERGE_COMMIT_RULES.headlinePatterns) &&
+        areListsEqual(rules.logins, DEFAULT_MERGE_COMMIT_RULES.logins)
+      ) {
+        delete overrides.mergeCommitRules;
+      } else {
+        overrides.mergeCommitRules = rules;
+      }
+    }
+
     if (
-      includeField('change-filter-use-builtin-merge-pattern') ||
       includeField('change-filter-ignore-comment-authors') ||
       includeField('change-filter-ignore-review-authors') ||
       includeField('change-filter-ignore-commit-patterns')
     ) {
       const changeFilters = { ...asChangeFilters(existingOverrides.changeFilters) };
-
-      if (includeField('change-filter-use-builtin-merge-pattern')) {
-        const useBuiltin = getCheckbox('change-filter-use-builtin-merge-pattern');
-        if (useBuiltin !== true) {
-          changeFilters.useBuiltinMergePattern = useBuiltin;
-        } else {
-          delete changeFilters.useBuiltinMergePattern;
-        }
-      }
+      // Replaced by mergeCommitRules (converted on restore).
+      delete changeFilters.useBuiltinMergePattern;
       if (includeField('change-filter-ignore-comment-authors')) {
         const selected = checkedList(
           changeFilterActorSelection.checkedByListId,
@@ -402,7 +440,7 @@ export function FilterStateProvider({
         'attention-author-thread-resolution-mode',
         'attention-author-thread-resolution-allow',
         'attention-author-thread-resolution-deny',
-        'change-filter-use-builtin-merge-pattern',
+        'merge-commit-rules',
         'change-filter-ignore-comment-authors',
         'change-filter-ignore-review-authors',
         'change-filter-ignore-commit-patterns',

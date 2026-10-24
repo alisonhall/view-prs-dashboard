@@ -2,7 +2,8 @@
  * PrAuthorCell - Author identity/identities plus a manual-notes indicator.
  * Shows the official PR author (styled distinctly via ActorIdentity's
  * isPrAuthor state, same as before) plus every distinct person with a
- * non-merge commit on the branch. Matches vanilla's author-cell
+ * non-merge commit on the branch (merge commits as defined by the "Merge
+ * commits" rules, read from NeedsAttentionContext's attentionConfig). Matches vanilla's author-cell
  * (helpers/pr-author-cell.helpers.ts).
  *
  * @module components/cells/PrAuthorCell
@@ -11,11 +12,13 @@
 import { useMemo } from 'react';
 import { ActorIdentity } from '../ActorIdentity';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useNeedsAttention } from '../../state/NeedsAttentionContext';
 import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
 import { getManualNotesSummary } from '../../helpers/pr-manual-notes-summary.helpers.ts';
 
 export function PrAuthorCell({ entry, pr, actorsMap = {} }) {
   const { getPreferredActorKey } = useActorIdentity();
+  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
   // createPrAuthorCellHelpers is threaded with the real, alias-resolving
   // getPreferredActorKey (rather than its own viewer-unaware fallback) so
   // a co-author who's also an alias of the PR author is correctly deduped
@@ -23,8 +26,8 @@ export function PrAuthorCell({ entry, pr, actorsMap = {} }) {
   // already resolves aliases - same reasoning as insights/NotesSection.jsx's
   // own noteAuthorMatchesSelection wiring.
   const { collectPrAuthors } = useMemo(
-    () => createPrAuthorCellHelpers({ getPreferredActorKey }),
-    [getPreferredActorKey],
+    () => createPrAuthorCellHelpers({ getPreferredActorKey, mergeCommitRules }),
+    [getPreferredActorKey, mergeCommitRules],
   );
 
   const authors = collectPrAuthors(pr);

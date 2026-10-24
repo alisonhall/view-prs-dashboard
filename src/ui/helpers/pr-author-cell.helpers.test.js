@@ -88,6 +88,25 @@ describe("pr author cell helpers", () => {
       ]);
     });
 
+    test("given merge commit rules, when collecting, then commits they count as merges are skipped and others kept", () => {
+      const { collectPrAuthors } = createPrAuthorCellHelpers({
+        getPreferredActorKey,
+        mergeCommitRules: { headlinePatterns: ["^Sync "], logins: ["renovate[bot]"] },
+      });
+
+      const result = collectPrAuthors({
+        authorLogin: "pr-author",
+        author: "PR Author",
+        commits: [
+          { messageHeadline: "Sync upstream", authors: [{ login: "syncer" }] },
+          { messageHeadline: "chore: bump", authors: [{ login: "renovate[bot]" }] },
+          { messageHeadline: "Merge branch 'main'", authors: [{ login: "merger" }] },
+        ],
+      });
+
+      expect(result.map((author) => author.key)).toEqual(["pr-author", "merger"]);
+    });
+
     test("given no PR author and no commits, when collecting, then an empty array is returned", () => {
       const { collectPrAuthors } = createPrAuthorCellHelpers({
         getPreferredActorKey: () => "",

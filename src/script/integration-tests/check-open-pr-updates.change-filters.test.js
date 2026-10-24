@@ -1,4 +1,6 @@
 const { execFileSync } = require("child_process");
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const scriptDir = path.join(__dirname, "..");
@@ -135,140 +137,129 @@ describe("change filter application in jq queries", () => {
 
     expect(count).toBe("2"); // alice COMMENTED and bob CHANGES_REQUESTED
   });
+});
 
-  test("given detail JSON with commits matching ignore patterns, when counting external commits, then matching commits are excluded", () => {
-    const detailJson = JSON.stringify({
+// A temp directory the tests write JSON into with Node rather than a bash
+// heredoc (on Windows the command line passed to bash -c loses backslashes,
+// e.g. in a ^Merge\b pattern), as a forward-slash path bash and jq accept.
+const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "change-filters-")).split(path.sep).join("/");
+const writeJson = (dir, name, value) => fs.writeFileSync(path.join(dir, name), JSON.stringify(value));
+
+// The script's own count_external_commits (sourced, not a copy of its jq),
+// with the config load_change_filter_config reads from user-defaults.json.
+const countCommits = ({ commits, userDefaults, since = "" }) => {
+  const tempDir = makeTempDir();
+  writeJson(tempDir, "detail.json", { commits });
+  if (userDefaults) {
+    writeJson(tempDir, "user-defaults.json", userDefaults);
+  }
+  return runShell(
+    `source "${scriptPath}"; DATA_DIR="${tempDir}"; VIEWER_LOGIN="viewer"; load_change_filter_config; count_external_commits "$(cat "${tempDir}/detail.json")" "${since}"`,
+  );
+};
+
+const commit = (login, messageHeadline, committedDate = "2024-01-15T10:00:00Z") => ({
+  authors: [{ login }],
+  committedDate,
+  messageHeadline,
+});
+
+describe("count_external_commits (merge commit rules and ignore patterns)", () => {
+  test("given the default rules, when counting, then any 'Merge ...' headline (any case) and the viewer's own commits are left out", () => {
+    const count = countCommits({
       commits: [
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "feat: add new feature" },
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T11:00:00Z", messageHeadline: "docs: update README" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T12:00:00Z", messageHeadline: "fix: resolve bug" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T13:00:00Z", messageHeadline: "test: add unit tests" },
-        { authors: [{ login: "carol" }], committedDate: "2024-01-15T14:00:00Z", messageHeadline: "Merge main into feature" },
+        commit("alice", "Merge branch 'feature-x' into y"),
+        commit("alice", "merge main into feature"),
+        commit("bob", "feat: add banner"),
+        commit("viewer", "fix: my own change"),
       ],
     });
 
-    const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
-    );
-
-    expect(count).toBe("2"); // Only "feat: add new feature" and "fix: resolve bug"
+    expect(count).toBe("1");
   });
 
-  test("given empty ignore patterns, when counting external commits, then only built-in merge pattern is applied", () => {
-    const detailJson = JSON.stringify({
-      commits: [
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "feat: add feature" },
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T11:00:00Z", messageHeadline: "Merge main into feature" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T12:00:00Z", messageHeadline: "docs: update docs" },
-      ],
+  test("given saved headline patterns, when counting, then they replace the default", () => {
+    const count = countCommits({
+      userDefaults: { mergeCommitRules: { headlinePatterns: ["^Sync "], logins: [] } },
+      commits: [commit("alice", "Merge branch 'main' into x"), commit("alice", "Sync upstream")],
     });
 
-    const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
-    );
-
-    expect(count).toBe("2"); // "feat: add feature" and "docs: update docs" (merge filtered)
+    expect(count).toBe("1");
   });
 
-  test("given multiple commit patterns, when counting external commits, then all patterns are applied with OR logic", () => {
-    const detailJson = JSON.stringify({
-      commits: [
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "feat: new feature" },
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T11:00:00Z", messageHeadline: "docs: update README" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T12:00:00Z", messageHeadline: "test: add tests" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T13:00:00Z", messageHeadline: "style: formatting" },
-        { authors: [{ login: "carol" }], committedDate: "2024-01-15T14:00:00Z", messageHeadline: "chore: update deps" },
-      ],
+  test("given an invalid headline pattern, when counting, then it is skipped and the valid ones still apply", () => {
+    const count = countCommits({
+      userDefaults: { mergeCommitRules: { headlinePatterns: ["(", "^Merge\\b"], logins: [] } },
+      commits: [commit("alice", "Merge branch 'main' into x"), commit("bob", "feat: real work")],
     });
 
-    const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^docs:|^test:|^style:|^chore:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
-    );
-
-    expect(count).toBe("1"); // Only "feat: new feature"
+    expect(count).toBe("1");
   });
 
-  test("given commit pattern with special regex characters, when counting external commits, then pattern is applied correctly", () => {
-    const detailJson = JSON.stringify({
+  test("given merge logins, when counting, then commits whose every author is listed (any case) are left out, but not co-authored ones", () => {
+    const count = countCommits({
+      userDefaults: { mergeCommitRules: { headlinePatterns: [], logins: ["Dependabot[bot]"] } },
       commits: [
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "chore(deps): bump library" },
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T11:00:00Z", messageHeadline: "chore: general maintenance" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T12:00:00Z", messageHeadline: "feat: new feature" },
+        commit("dependabot[bot]", "chore(deps): bump x"),
+        { authors: [{ login: "dependabot[bot]" }, { login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "chore(deps): bump y" },
+        commit("bob", "feat: real work"),
       ],
     });
 
-    const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "^chore\\(deps\\):" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
-    );
-
-    expect(count).toBe("2"); // "chore: general maintenance" and "feat: new feature"
+    expect(count).toBe("2");
   });
 
-  test("given case-insensitive commit pattern, when counting external commits, then case is ignored", () => {
-    const detailJson = JSON.stringify({
-      commits: [
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T10:00:00Z", messageHeadline: "WIP: work in progress" },
-        { authors: [{ login: "alice" }], committedDate: "2024-01-15T11:00:00Z", messageHeadline: "wip: another wip commit" },
-        { authors: [{ login: "bob" }], committedDate: "2024-01-15T12:00:00Z", messageHeadline: "feat: completed feature" },
-      ],
+  test("given ignore patterns, when counting, then matching commits are still left out alongside merges", () => {
+    const count = countCommits({
+      userDefaults: { changeFilters: { ignoreCommitPatterns: ["^docs:"] } },
+      commits: [commit("alice", "docs: readme"), commit("alice", "Merge main into x"), commit("bob", "feat: real work")],
     });
 
-    const count = runShell(
-      `printf '%s' '${detailJson}' | jq -r --arg me "viewer" --arg ignorePatterns "(?i)^wip:" '("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )" + (if ($ignorePatterns | length) > 0 then "|" + $ignorePatterns else "" end)) as $combinedPattern | [.commits[]? | select(any(.authors[]?; .login != null and .login != $me)) | select(((.messageHeadline // "") | test($combinedPattern)) | not)] | length'`,
-    );
+    expect(count).toBe("1");
+  });
 
-    expect(count).toBe("1"); // Only "feat: completed feature"
+  test("given a since time, when counting, then only later commits count", () => {
+    const count = countCommits({
+      since: "2024-01-15T12:00:00Z",
+      commits: [commit("alice", "feat: before", "2024-01-15T11:00:00Z"), commit("bob", "feat: after", "2024-01-15T13:00:00Z")],
+    });
+
+    expect(count).toBe("1");
+  });
+
+  test("given settings saved with the old built-in merge filter turned off, when counting, then 'Merge ...' commits count", () => {
+    const count = countCommits({
+      userDefaults: { changeFilters: { useBuiltinMergePattern: false } },
+      commits: [commit("alice", "Merge branch 'main' into x"), commit("bob", "feat: real work")],
+    });
+
+    expect(count).toBe("2");
   });
 });
 
-describe("useBuiltinMergePattern configuration (config loading only)", () => {
-  test("given useBuiltinMergePattern is true (default), when load_change_filter_config is called, then variable is set to true", () => {
-    const tempDir = runShell("mktemp -d");
-    const userDefaultsPath = `${tempDir}/user-defaults.json`;
-
-    runShell(
-      `cat > "${userDefaultsPath}" <<'EOF'\n{\n  "repo": "owner/repo",\n  "changeFilters": {\n    "useBuiltinMergePattern": true\n  }\n}\nEOF`,
+describe("merge commit rules configuration", () => {
+  const loadRules = (userDefaults) => {
+    const tempDir = makeTempDir();
+    if (userDefaults) {
+      writeJson(tempDir, "user-defaults.json", userDefaults);
+    }
+    return runShell(
+      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; echo "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|$MERGE_COMMIT_LOGINS_JSON"`,
     );
+  };
 
-    const result = runShell(
-      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; echo "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN"`,
+  test("given saved mergeCommitRules, when loading, then both lists are read", () => {
+    expect(loadRules({ mergeCommitRules: { headlinePatterns: ["^Sync "], logins: ["bot[bot]"] } })).toBe(
+      '["^Sync "]|["bot[bot]"]',
     );
-
-    expect(result).toBe("true");
   });
 
-  test("given useBuiltinMergePattern is false, when load_change_filter_config is called, then variable is set to false", () => {
-    const tempDir = runShell("mktemp -d");
-    const userDefaultsPath = `${tempDir}/user-defaults.json`;
-
-    runShell(
-      `cat > "${userDefaultsPath}" <<'EOF'\n{\n  "repo": "owner/repo",\n  "changeFilters": {\n    "useBuiltinMergePattern": false\n  }\n}\nEOF`,
-    );
-
-    const result = runShell(
-      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; echo "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN"`,
-    );
-
-    expect(result).toBe("false");
+  test("given no mergeCommitRules, when loading, then the default ^Merge\\b pattern and no logins are used", () => {
+    expect(loadRules({ repo: "owner/repo" })).toBe('["^Merge\\\\b"]|[]');
+    expect(loadRules(null)).toBe('["^Merge\\\\b"]|[]');
   });
 
-  test("given no useBuiltinMergePattern in config, when load_change_filter_config is called, then defaults to true", () => {
-    const tempDir = runShell("mktemp -d");
-    const userDefaultsPath = `${tempDir}/user-defaults.json`;
-
-    runShell(
-      `cat > "${userDefaultsPath}" <<'EOF'\n{\n  "repo": "owner/repo",\n  "changeFilters": {}\n}\nEOF`,
-    );
-
-    const result = runShell(
-      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; echo "$CHANGE_FILTER_USE_BUILTIN_MERGE_PATTERN"`,
-    );
-
-    expect(result).toBe("true");
+  test("given the old built-in merge filter turned off and no mergeCommitRules, when loading, then there are no headline patterns", () => {
+    expect(loadRules({ changeFilters: { useBuiltinMergePattern: false } })).toBe("[]|[]");
   });
-
-  // Note: jq pattern matching tests are skipped due to complex shell escaping issues.
-  // The actual pattern logic is tested via integration tests and manual testing.
-  // Config loading tests above verify the flag is correctly read from user-defaults.json.
-  // The jq logic in check-open-pr-updates.sh (lines 2074-2082, 2104-2112) is production-tested.
 });

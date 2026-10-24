@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen, act } = require('@testing-library/react');
+const { render, screen, act, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterStateProvider: RealFilterStateProvider } = require('./FilterStateProvider');
@@ -160,6 +160,96 @@ describe('FilterStateProvider', () => {
   // signal itself, at the source; RepoLabelsProvider.test.jsx's own
   // "reacts to a restored repo override" suite covers the real consumer
   // reacting to it end-to-end.
+  describe('merge commit rules (saved as mergeCommitRules)', () => {
+    let putBody;
+    const mockUserDefaults = (overrides) => {
+      putBody = null;
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    };
+
+    function MergeRulesProbe() {
+      const { values, setValue } = useFilterState();
+      return (
+        <div>
+          <span data-testid="merge-patterns">{JSON.stringify(values.mergeCommitHeadlinePatterns)}</span>
+          <span data-testid="merge-logins">{JSON.stringify(values.mergeCommitLogins)}</span>
+          <button onClick={() => setValue('mergeCommitLogins', 'dependabot[bot]\n renovate[bot] ')}>add bots</button>
+          <button onClick={() => setValue('scopeMode', 'last-run')}>change scope</button>
+        </div>
+      );
+    }
+
+    const renderProbe = () =>
+      render(
+        <FilterStateProviderWithSelectionContexts
+          initialValues={{ scopeMode: 'all', mergeCommitHeadlinePatterns: '^Merge\\b', mergeCommitLogins: '' }}
+        >
+          <MergeRulesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    const flushPersist = () =>
+      act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    test('given saved mergeCommitRules, when the restore resolves, then both lists show one entry per line', async () => {
+      mockUserDefaults({ mergeCommitRules: { headlinePatterns: ['^Sync', '^Merge\\b'], logins: ['bot[bot]'] } });
+      renderProbe();
+
+      await waitFor(() =>
+        expect(screen.getByTestId('merge-patterns').textContent).toBe(JSON.stringify('^Sync\n^Merge\\b')),
+      );
+      expect(screen.getByTestId('merge-logins').textContent).toBe(JSON.stringify('bot[bot]'));
+    });
+
+    test('given settings saved with the old built-in merge filter turned off, when the restore resolves, then there are no headline patterns', async () => {
+      mockUserDefaults({ changeFilters: { useBuiltinMergePattern: false } });
+      renderProbe();
+
+      await screen.findByText('""');
+    });
+
+    test('given changed merge logins, when the persist debounce fires, then mergeCommitRules is saved (trimmed, one per entry)', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({});
+      renderProbe();
+
+      await user.click(screen.getByText('add bots'));
+      await flushPersist();
+
+      expect(putBody.mergeCommitRules).toEqual({
+        headlinePatterns: ['^Merge\\b'],
+        logins: ['dependabot[bot]', 'renovate[bot]'],
+      });
+    });
+
+    test('given the default rules and an old useBuiltinMergePattern setting, when saved, then neither mergeCommitRules nor the old setting is kept', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({ changeFilters: { useBuiltinMergePattern: true, ignoreCommitPatterns: ['^docs:'] } });
+      renderProbe();
+      await act(async () => {});
+
+      await user.click(screen.getByText('change scope'));
+      await flushPersist();
+
+      expect(putBody).not.toHaveProperty('mergeCommitRules');
+      expect(putBody.changeFilters).toEqual({ ignoreCommitPatterns: ['^docs:'] });
+    });
+  });
+
   describe('restoredRepoOverride (restore-on-mount)', () => {
     afterEach(() => {
       delete global.fetch;

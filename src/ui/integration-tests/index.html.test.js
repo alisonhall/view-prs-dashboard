@@ -358,10 +358,6 @@ const injectRunFilterFieldElements = () => {
     '<select id="attention-author-thread-resolution-mode" name="attentionAuthorThreadResolutionMode"><option value="allow-all" selected>Allow PR authors to resolve all own-PR threads</option><option value="allow-only">Allow only for selected thread starters</option><option value="deny-only">Disallow for selected thread starters</option></select>',
   );
   setRootContent(
-    "change-filter-use-builtin-merge-pattern-root",
-    '<input type="checkbox" id="change-filter-use-builtin-merge-pattern" name="changeFilterUseBuiltinMergePattern" checked />',
-  );
-  setRootContent(
     "change-filter-ignore-commit-patterns-root",
     '<textarea id="change-filter-ignore-commit-patterns" name="changeFilterIgnoreCommitPatterns" rows="4" aria-describedby="commit-patterns-help"></textarea>',
   );
@@ -589,13 +585,9 @@ function BackfillControlsTestHarness() {
 // function's own earlier comment) - seeding them with a real default
 // would make every reader that prefers Context over DOM
 // (getFilterStateOverrideForFieldId's callers, e.g. the data-meta summary)
-// silently ignore those tests' DOM-only changes. Only
-// change-filter-use-builtin-merge-pattern is seeded with its real default
-// (`true`) - confirmed via grep that no test anywhere manipulates that one
-// field directly, so there's nothing for a wrong seeded value to mask;
-// without this, persistViewFilterOptions would see `undefined` (reads as
-// `false`) and incorrectly treat an untouched checkbox as a non-default
-// override.
+// silently ignore those tests' DOM-only changes. (The merge commit rules
+// need no seed: persistViewFilterOptions treats a missing value as the
+// default.)
 //
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the PR table subtree, portaled into #pr-sections once the real
@@ -814,7 +806,7 @@ const installFilterStateProviderBridge = () => {
   const container = document.createElement("div");
   rtlRender(
     React.createElement(FilterStateTestRootHarness, {
-      initialValues: { changeFilterUseBuiltinMergePattern: true },
+      initialValues: {},
     }),
     { container },
   );

@@ -9,11 +9,17 @@ import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-revie
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
+import {
+  DEFAULT_MERGE_COMMIT_RULES,
+  formatRuleLines,
+  parseRuleLines,
+  type MergeCommitRules,
+} from '../helpers/pr-merge-commit-rules.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
 
 // Same defaults FilterStateProvider's own getUiOptionDefaults()
-// (pr-ui-option-persistence.helpers.ts) assigns these 6 fields - used only
+// (pr-ui-option-persistence.helpers.ts) assigns these fields - used only
 // as a fallback for when there's no <FilterStateProvider> ancestor at all
 // (integration-tests/index.html.test.js's isolated PrTableApp mounts),
 // same shape useVisiblePrNumbers.tsx's own DEFAULT_FILTER_STATE_VALUES
@@ -25,6 +31,8 @@ const DEFAULT_ATTENTION_VALUES = {
   attentionIncludeClosedMerged: true,
   attentionIncludeDraftChanged: true,
   attentionIncludeDraftNoActivity: false,
+  mergeCommitHeadlinePatterns: formatRuleLines(DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
+  mergeCommitLogins: '',
 };
 
 /**
@@ -62,6 +70,18 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
     });
   }, [normalizeActorLogin, resolveActorDisplayName, getEffectiveViewerLogin]);
 
+  // Its own memo, so the rules object (and the merge-commit matcher compiled
+  // from it) only changes when the rules do.
+  const mergeCommitRules = useMemo<MergeCommitRules>(
+    () => ({
+      headlinePatterns: parseRuleLines(
+        values.mergeCommitHeadlinePatterns ?? DEFAULT_ATTENTION_VALUES.mergeCommitHeadlinePatterns,
+      ),
+      logins: parseRuleLines(values.mergeCommitLogins ?? DEFAULT_ATTENTION_VALUES.mergeCommitLogins),
+    }),
+    [values.mergeCommitHeadlinePatterns, values.mergeCommitLogins],
+  );
+
   const attentionConfig = useMemo<AttentionConfig>(
     () => ({
       noActivityMode: values.attentionNoActivityMode ?? DEFAULT_ATTENTION_VALUES.attentionNoActivityMode,
@@ -73,6 +93,7 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
       includeDraftChanged: values.attentionIncludeDraftChanged ?? DEFAULT_ATTENTION_VALUES.attentionIncludeDraftChanged,
       includeDraftNoActivity:
         values.attentionIncludeDraftNoActivity ?? DEFAULT_ATTENTION_VALUES.attentionIncludeDraftNoActivity,
+      mergeCommitRules,
     }),
     [
       values.attentionNoActivityMode,
@@ -81,6 +102,7 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
       values.attentionIncludeClosedMerged,
       values.attentionIncludeDraftChanged,
       values.attentionIncludeDraftNoActivity,
+      mergeCommitRules,
     ],
   );
 

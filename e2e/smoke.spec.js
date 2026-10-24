@@ -1081,28 +1081,28 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   await expect(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true })).not.toBeChecked();
 });
 
-test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-persists on change and survives a restore", async ({ page }) => {
-  // Regression coverage for the last checkbox converted (see
-  // REACT_MIGRATION_PLAN.md): toggling it fires a real PUT to
-  // /view-prs/user-defaults on its own, without clicking "Apply filters
-  // (local)" (gone entirely now, Phase H.26) - persistence for every
-  // field here, this one included, is owned by FilterStateProvider.tsx's
-  // own debounced Context-level watcher, not a per-field special case
-  // any more.
+test("the \"Merge commits\" rules auto-persist on change and survive a restore", async ({ page }) => {
+  // A real PUT to /view-prs/user-defaults (as mergeCommitRules) fires on
+  // its own from FilterStateProvider.tsx's debounced watcher, and a reload
+  // restores both lists.
   await page.goto("/");
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  const checkbox = page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true });
-  await expect(checkbox).toBeChecked();
+  const patterns = page.getByLabel("Headline patterns (regular expressions, one per line, not case-sensitive)");
+  const logins = page.getByLabel("Logins whose commits always count as merges (one per line)");
+  await expect(patterns).toHaveValue("^Merge\\b");
+  await expect(logins).toHaveValue("");
 
   // waitForFilterPersist, not a bare "wait for *a* PUT" listener: the
   // debounced watcher also re-persists once right after the mount-time
   // restore (see that helper's own comment), so a bare URL/method match
   // could resolve against that unrelated, earlier write instead of this one.
-  await checkbox.uncheck();
+  await logins.fill("dependabot[bot]");
+  await patterns.fill("^Merge\\b\n(");
+  await expect(page.getByRole("status").filter({ hasText: "not a valid regular expression" })).toContainText('"("');
   await waitForFilterPersist(page);
 
   await page.reload();
@@ -1110,11 +1110,13 @@ test("React-owned change-filter \"use built-in merge pattern\" checkbox auto-per
   await page.getByRole("tab", { name: "Run & Filter" }).click();
   await page.getByText("Advanced visibility and attention rules").click();
 
-  await expect(page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true })).not.toBeChecked();
+  await expect(patterns).toHaveValue("^Merge\\b\n(");
+  await expect(logins).toHaveValue("dependabot[bot]");
 
   // Reset so this test's persisted state doesn't affect whatever unrelated
   // test happens to load next against this suite's one shared webServer.
-  await page.getByLabel("Use built-in merge commit filter (merges from main/origin/main)", { exact: true }).check();
+  await patterns.fill("^Merge\\b");
+  await logins.fill("");
   await waitForFilterPersist(page);
 });
 

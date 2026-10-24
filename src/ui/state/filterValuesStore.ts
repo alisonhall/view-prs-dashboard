@@ -48,6 +48,9 @@ export interface FilterValues {
   attentionIncludeClosedMerged?: boolean;
   attentionIncludeDraftChanged?: boolean;
   attentionIncludeDraftNoActivity?: boolean;
+  // "Merge commits" rules, one entry per line (pr-merge-commit-rules.helpers.ts)
+  mergeCommitHeadlinePatterns?: string;
+  mergeCommitLogins?: string;
   [key: string]: unknown;
 }
 

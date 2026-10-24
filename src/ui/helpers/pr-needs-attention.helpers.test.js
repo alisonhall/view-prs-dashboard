@@ -49,6 +49,29 @@ describe("pr needs attention helpers", () => {
     ).toBe(true);
   });
 
+  test("given merge commit rules with a bot login, when merge-only filtering is enabled, then the bot's commits count as merges", () => {
+    const helpers = createPrNeedsAttentionHelpers();
+    const config = {
+      ignoreMergeOnlyCommits: true,
+      mergeCommitRules: { headlinePatterns: [], logins: ["dependabot[bot]"] },
+    };
+    const row = (commits) => ({ status: "CHANGED(commit)", reason: "commit", commits });
+
+    expect(
+      helpers.shouldTreatChangedAsAttention(
+        row([{ messageHeadline: "chore(deps): bump x", authors: [{ login: "dependabot[bot]" }] }]),
+        config,
+      ),
+    ).toBe(false);
+    // With these rules a "Merge ..." headline is real work.
+    expect(
+      helpers.shouldTreatChangedAsAttention(
+        row([{ messageHeadline: "Merge branch 'main'", authors: [{ login: "alice" }] }]),
+        config,
+      ),
+    ).toBe(true);
+  });
+
   test("given no-activity mode mine-only and viewer is assignee, when checking no-activity attention, then result is true", () => {
     const helpers = createPrNeedsAttentionHelpers({
       getEffectiveViewerLogin: () => "alice",
