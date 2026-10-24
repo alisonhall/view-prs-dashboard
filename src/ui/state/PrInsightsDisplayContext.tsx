@@ -40,7 +40,8 @@ const {
  * is a safe fallback when unwrapped, like ActorIdentityContext's.
  *
  * The PR author thread-resolution allow/deny policy is deliberately not
- * here: AuthorThreadResolutionSelectionContext owns it.
+ * here: ReviewThreadsSection.jsx's useAuthorThreadResolutionPolicy hook
+ * builds it from AuthorThreadResolutionSelectionContext's selections.
  */
 const buildDefaultPrInsightsDisplay = () => {
   const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
