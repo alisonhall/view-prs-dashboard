@@ -6,13 +6,19 @@ require('@testing-library/jest-dom');
 
 const { ExportTab } = require('./ExportTab');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { PrTableOpenSectionsContext } = require('../state/PrTableUiStateContext');
 
-const renderExportTab = ({ initialPayload, selectedRepo } = {}) =>
-  render(
-    <PrDataProvider initialPayload={initialPayload} initialSelectedRepo={selectedRepo}>
+// The PRs Export treats as visible (those in the table's open sections)
+// come from PrTableOpenSectionsContext; `uiState` overrides it per test.
+// The default is one open section showing PR 11, matching samplePayload.
+const buildTree = ({ initialPayload, selectedRepo, uiState } = {}) => (
+  <PrDataProvider initialPayload={initialPayload} initialSelectedRepo={selectedRepo}>
+    <PrTableOpenSectionsContext.Provider value={{ prNumbersInOpenSections: ['11'], openSectionCount: 1, ...uiState }}>
       <ExportTab />
-    </PrDataProvider>,
-  );
+    </PrTableOpenSectionsContext.Provider>
+  </PrDataProvider>
+);
+const renderExportTab = (options) => render(buildTree(options));
 
 // No `repo` field on the entry itself (deliberately) - getPerPrUserStateFromPayload
 // always contributes 4 fixed userStatePaths (ackByRepo/inReviewByRepo/
@@ -29,38 +35,16 @@ const samplePayload = {
   lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
 };
 
-// getVisiblePrNumbersFromSectionsHost (pr-export.helpers.ts) is a real,
-// unmockable function now (Phase 7, see REACT_MIGRATION_PLAN.md -
-// ExportTab.jsx imports it directly instead of reading window.
-// getVisiblePrNumbersFromSectionsHost) - it reads the real #pr-sections
-// markup PrSection.jsx/PrNumberCell.jsx render in the actual app, which
-// this isolated ExportTab-only test harness never mounts. Build the same
-// shape by hand (an open .pr-group-section containing a .pr-number-cell
-// with matching data-pr-number) so "visible PR" assertions still have a
-// real, non-mocked #pr-sections to read from.
-const mountPrSectionsHost = (prNumbers) => {
-  const host = document.createElement('div');
-  host.id = 'pr-sections';
-  const section = document.createElement('details');
-  section.className = 'pr-group-section';
-  section.open = true;
-  prNumbers.forEach((prNumber) => {
-    const cell = document.createElement('td');
-    cell.className = 'pr-number-cell';
-    cell.setAttribute('data-pr-number', String(prNumber));
-    section.appendChild(cell);
-  });
-  host.appendChild(section);
-  document.body.appendChild(host);
-  return host;
+const twoPrPayload = {
+  byPrNumber: {
+    11: { prNumber: 11, title: 'PR 11' },
+    12: { prNumber: 12, title: 'PR 12' },
+  },
+  lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
 };
 
 describe('ExportTab', () => {
-  let prSectionsHost;
-
   beforeEach(() => {
-    prSectionsHost = mountPrSectionsHost([11]);
-
     global.fetch = jest.fn((url, init = {}) => {
       const method = String(init.method || 'GET').toUpperCase();
       if (String(url) === '/view-prs/user-defaults' && method === 'GET') {
@@ -74,8 +58,64 @@ describe('ExportTab', () => {
   });
 
   afterEach(() => {
-    prSectionsHost?.remove();
     jest.restoreAllMocks();
+  });
+
+  const waitForAllFieldsSelected = () =>
+    waitFor(() => {
+      expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0);
+      screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked());
+    });
+
+  test('given PRs in open and closed sections, when exporting, then only the open sections\' PRs are included', async () => {
+    const user = userEvent.setup();
+    renderExportTab({
+      initialPayload: twoPrPayload,
+      selectedRepo: 'owner/repo',
+      uiState: { prNumbersInOpenSections: ['12'], openSectionCount: 1 },
+    });
+    await waitForAllFieldsSelected();
+
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+
+    await waitFor(() => expect(screen.getByText('Prepared export JSON for 1 visible PR.')).toBeInTheDocument());
+    const preview = screen.getByRole('region', { name: 'Export preview' });
+    expect(preview).toHaveTextContent('"prNumber": "12"');
+    expect(preview).not.toHaveTextContent('"prNumber": "11"');
+  });
+
+  test('given no open sections, when exporting, then no PRs are included', async () => {
+    const user = userEvent.setup();
+    renderExportTab({
+      initialPayload: twoPrPayload,
+      selectedRepo: 'owner/repo',
+      uiState: { prNumbersInOpenSections: [], openSectionCount: 0 },
+    });
+    await waitForAllFieldsSelected();
+
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+
+    await waitFor(() => expect(screen.getByText('Prepared export JSON for 0 visible PRs.')).toBeInTheDocument());
+  });
+
+  test('given the table\'s open sections change, when the tab re-renders, then its summary updates without a click', () => {
+    const { rerender } = renderExportTab({
+      initialPayload: twoPrPayload,
+      selectedRepo: 'owner/repo',
+      uiState: { prNumbersInOpenSections: ['11'], openSectionCount: 1 },
+    });
+    expect(screen.getByText(/Visible PR rows eligible for export: 1\/2/)).toBeInTheDocument();
+    expect(screen.getByText(/Expanded PR sections: 1/)).toBeInTheDocument();
+
+    rerender(
+      buildTree({
+        initialPayload: twoPrPayload,
+        selectedRepo: 'owner/repo',
+        uiState: { prNumbersInOpenSections: ['11', '12'], openSectionCount: 3 },
+      }),
+    );
+    expect(screen.getByText(/Visible PR rows eligible for export: 2\/2/)).toBeInTheDocument();
+    expect(screen.getByText(/Expanded PR sections: 3/)).toBeInTheDocument();
   });
 
   // Accessibility naming: the field list, status and preview are findable by

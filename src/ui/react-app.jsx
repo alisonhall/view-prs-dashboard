@@ -54,6 +54,7 @@ import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
+import { PrTableUiStateProvider } from './state/PrTableUiStateProvider';
 import { useFilterState } from './state/FilterStateContext';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
@@ -1347,7 +1348,9 @@ function mountAppRoot() {
                             >
                               <TabPanelVisibilitySync />
                               <NotesDirtyProvider>
-                                <AppRoot />
+                                <PrTableUiStateProvider>
+                                  <AppRoot />
+                                </PrTableUiStateProvider>
                               </NotesDirtyProvider>
                               <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                             </PrDataProvider>

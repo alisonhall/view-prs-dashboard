@@ -76,6 +76,8 @@ const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThre
 const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
+const { PrTableUiStateProvider } = require('../state/PrTableUiStateProvider');
+const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableUiStateContext');
 
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
@@ -96,14 +98,30 @@ function ActivityQueueProbe() {
 // Provider ancestor) - the 3 selection Providers wrap PrDataProvider/
 // FilterStateProvider now, not the other way around, matching
 // react-app.jsx's real AppRoot order after this phase's reorder.
+//
+// UI redesign phase 1: section open state and expanded rows moved to
+// PrTableUiStateProvider (react-app.jsx wraps AppRoot in it), so it wraps
+// every render here too. UiStateProbe exposes its value.
 function AllSelectionProviders({ children }) {
   return (
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
-        <ChangeFilterActorSelectionProvider>{children}</ChangeFilterActorSelectionProvider>
+        <ChangeFilterActorSelectionProvider>
+          <PrTableUiStateProvider>{children}</PrTableUiStateProvider>
+        </ChangeFilterActorSelectionProvider>
       </AuthorThreadResolutionSelectionProvider>
     </RowFilterSelectionProvider>
   );
+}
+let capturedUiState;
+let capturedOpenSections;
+function UiStateProbe() {
+  capturedUiState = usePrTableUiState();
+  return null;
+}
+function OpenSectionsProbe() {
+  capturedOpenSections = usePrTableOpenSections();
+  return null;
 }
 const { createPrSectionConfigHelpers } = require('../helpers/pr-section-config.helpers.ts');
 const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpers.ts');
@@ -172,6 +190,8 @@ const renderPrTableApp = ({
           <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, ...needsAttention }}>
             <PrActivityQueueProvider>
               <ActivityQueueProbe />
+              <UiStateProbe />
+              <OpenSectionsProbe />
               <PrTableApp {...tableProps} />
             </PrActivityQueueProvider>
           </NeedsAttentionContext.Provider>
@@ -472,6 +492,79 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
   });
 
+  describe('sections that are open by default', () => {
+    const installDefaultOpenNeedsAttention = () =>
+      createPrSmartGroupsHelpers.mockImplementation(() => ({
+        buildSmartGroupConfigs: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true } }),
+        applySmartGroups: () => ({ needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: [] } }),
+      }));
+
+    test('given one is closed in the page, when PrSection reports the new state, then it is recorded as closed', () => {
+      installDefaultOpenNeedsAttention();
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+      const section = capturedSectionProps.find((p) => p.section.key === 'needsAttention');
+      expect(section.isOpen).toBe(true);
+
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        section.onToggleSection('needsAttention', false);
+      });
+      expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(false);
+      expect(capturedUiState.isSectionOpen('needsAttention', true)).toBe(false);
+    });
+
+    test('given one is toggled without a new state, when it has not been toggled before, then it closes (flipping "no choice yet" used to give "open")', () => {
+      installDefaultOpenNeedsAttention();
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+      const section = capturedSectionProps.find((p) => p.section.key === 'needsAttention');
+
+      capturedSectionProps.length = 0;
+      React.act(() => {
+        section.onToggleSection('needsAttention');
+      });
+      expect(capturedSectionProps.find((p) => p.section.key === 'needsAttention').isOpen).toBe(false);
+    });
+  });
+
+  test('given the rendered sections, when one is opened, then PrTableUiStateProvider lists the open sections\' PR numbers for Export', () => {
+    const payload = {
+      byPrNumber: {
+        10: makeEntry({ prNumber: '10', repo: 'owner/repo', section: 'open' }),
+        20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }),
+      },
+    };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+    // Every section here defaults closed (the mocked helper).
+    expect(capturedOpenSections.openSectionCount).toBe(0);
+    expect(capturedOpenSections.prNumbersInOpenSections).toEqual([]);
+
+    React.act(() => {
+      capturedSectionProps.find((p) => p.section.key === 'open').onToggleSection('open', true);
+    });
+    expect(capturedOpenSections.openSectionCount).toBe(1);
+    expect(capturedOpenSections.prNumbersInOpenSections).toEqual(['20', '10']);
+  });
+
+  test('given a new PR arrives, when the sections are rebuilt and reported, then the table renders once (the report goes to Export\'s context, not back to the table)', () => {
+    const payload = { byPrNumber: { 10: makeEntry({ prNumber: '10', repo: 'owner/repo', section: 'open' }) } };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+    const openSectionRenders = () => capturedSectionProps.filter((p) => p.section.key === 'open').length;
+    expect(openSectionRenders()).toBe(1);
+
+    capturedSectionProps.length = 0;
+    React.act(() => {
+      prDataProbe.applyFreshTablePayload(
+        { byPrNumber: { ...payload.byPrNumber, 20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }) } },
+        '',
+      );
+    });
+
+    expect(openSectionRenders()).toBe(1);
+    expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(2);
+  });
+
   test('given a fresh load with no prior toggles, when sections are built, then lifecycle sections default closed and a smart group configured with defaultOpen:true (e.g. "Needs Attention") defaults open', () => {
     // Regression test: PrTableApp used to pass `resolvePrSectionOpenState: () => true`
     // to createPrSectionConfigHelpers, forcing every section open on every
@@ -650,16 +743,48 @@ describe('PrTableApp', () => {
       expect(needsAttentionSection.section.prs.map((entry) => entry.prNumber)).toEqual(['2', '1']);
     });
 
-    test('given an unrelated re-render (toggling a section), when sections are rebuilt, then the shared grouping helper reuses its cache instead of re-sorting', () => {
+    test('given an unrelated rebuild (the attention rules change), when sections are rebuilt, then the shared grouping helper reuses its cache instead of re-sorting', () => {
       // Item 2 of the deferred-items follow-up (see REACT_MIGRATION_PLAN.md):
       // PrTableApp now calls the real, shared buildGroupedPrSections instead
       // of duplicating its filter/sort logic inline - this is the one
       // behavior that's actually new as a result (the shared helper's own
       // reference-equality cache, added in the Phase 5 residual slice, now
-      // has a real consumer here). Toggling a section changes `openSections`
-      // (a `sections` useMemo dependency) without changing `payload`, so
-      // `entriesForRepo`'s entry objects are the exact same references -
-      // the cache should hit and skip re-sorting entirely.
+      // has a real consumer here). A new entryNeedsAttention (a `sections`
+      // useMemo dependency, through checkNeedsAttention) rebuilds the
+      // sections without changing `payload`, so `entriesForRepo`'s entry
+      // objects are the exact same references - the cache should hit and
+      // skip re-sorting entirely. (This used to toggle a section; that no
+      // longer rebuilds the sections at all - see the next test.)
+      sortRowsByPrNumberDesc.mockClear();
+      const payload = {
+        byPrNumber: {
+          10: makeEntry({ prNumber: '10', repo: 'owner/repo', section: 'open' }),
+          20: makeEntry({ prNumber: '20', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      const buildTree = (attentionFlag) => (
+        <AllSelectionProviders>
+          <PrDataProvider initialPayload={payload} initialSelectedRepo="">
+            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+              <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
+                <PrTableApp />
+              </NeedsAttentionContext.Provider>
+            </FilterStateProvider>
+          </PrDataProvider>
+        </AllSelectionProviders>
+      );
+      const { rerender } = render(buildTree(false));
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2); // open + draft, per section-grouping's own shape
+
+      capturedSectionProps.length = 0;
+      rerender(buildTree(true));
+
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs.map((e) => e.prNumber)).toEqual(['20', '10']);
+      // Not called again - the cache returned the previous result untouched.
+      expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
+    });
+
+    test('given a section is toggled, when the table re-renders, then the sections are not rebuilt (open state is no longer an input to them)', () => {
       // sortRowsByPrNumberDesc is the module-level jest.fn()-wrapped real
       // implementation set up at the top of this file (see the
       // jest.mock('../helpers/pr-row-sorting.helpers.ts', ...) call) -
@@ -683,7 +808,8 @@ describe('PrTableApp', () => {
       });
 
       expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs.map((e) => e.prNumber)).toEqual(['20', '10']);
-      // Not called again - the cache returned the previous result untouched.
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
+      // Not called again - toggling doesn't rebuild the sections.
       expect(sortRowsByPrNumberDesc).toHaveBeenCalledTimes(2);
     });
   });
@@ -1186,6 +1312,104 @@ describe('PrTableApp', () => {
 
       await waitFor(() => {
         expect(document.activeElement).toBe(link);
+      });
+    });
+
+    test('given the row is already expanded, when the event fires, then it still focuses (expanding an expanded row changes nothing, so that alone can\'t trigger it)', async () => {
+      const notesSection = document.createElement('div');
+      notesSection.className = 'pr-notes-section';
+      notesSection.setAttribute('data-pr-number', '1');
+      notesSection.setAttribute('data-test-standalone', 'true');
+      const saveButton = document.createElement('button');
+      saveButton.className = 'pr-notes-save';
+      notesSection.appendChild(saveButton);
+      document.body.appendChild(notesSection);
+
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+      React.act(() => {
+        capturedSectionProps.find((p) => p.section.key === 'open').onToggleInsights('1', 'open', 'owner/repo');
+      });
+      expect(capturedUiState.expandedRows['open:owner/repo:1']).toBe(true);
+      expect(document.activeElement).not.toBe(saveButton);
+
+      fireEvent(
+        window,
+        new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1', focusUnsaved: true } }),
+      );
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(saveButton);
+      });
+    });
+
+    // A flagged PR is in the Flagged group (listed first, closed by
+    // default) and also in an open group. Taking the first section it's in
+    // used to expand its row inside the closed Flagged group.
+    const installFlaggedAndNeedsAttention = () =>
+      createPrSmartGroupsHelpers.mockImplementation(() => ({
+        buildSmartGroupConfigs: () => ({}),
+        applySmartGroups: (allEntries) => ({
+          flagged: { title: 'Flagged', defaultOpen: false, rows: allEntries },
+          needsAttention: { title: 'Needs Attention', defaultOpen: true, rows: allEntries },
+        }),
+      }));
+
+    test('given the PR is in a closed section listed first and an open one, when the event fires, then its row is expanded in the open one', () => {
+      installFlaggedAndNeedsAttention();
+      const payload = { byPrNumber: { 2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '2' } }));
+
+      expect(capturedUiState.expandedRows['needsAttention:owner/repo:2']).toBe(true);
+      expect(capturedUiState.expandedRows['flagged:owner/repo:2']).toBeFalsy();
+      expect(capturedUiState.isSectionOpen('flagged', false)).toBe(false);
+    });
+
+    test('given the PR is only in closed sections, when the event fires, then the first one is opened and its row expanded', () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(false);
+
+      capturedSectionProps.length = 0;
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+
+      expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
+      expect(capturedUiState.expandedRows['open:owner/repo:1']).toBe(true);
+    });
+
+    test('given the PR\'s row is in two sections, when the event fires, then focus goes to the copy in the section it was expanded in', async () => {
+      installFlaggedAndNeedsAttention();
+      const makeSectionWithLink = (sectionKey) => {
+        const section = document.createElement('div');
+        section.setAttribute('data-pr-section', sectionKey);
+        section.setAttribute('data-test-standalone', 'true');
+        const cell = document.createElement('div');
+        cell.setAttribute('data-pr-number', '2');
+        cell.setAttribute('data-repo', 'owner/repo');
+        const link = document.createElement('a');
+        link.className = 'pr-link';
+        link.href = 'https://github.com/owner/repo/pull/2';
+        cell.appendChild(link);
+        section.appendChild(cell);
+        document.body.appendChild(section);
+        return link;
+      };
+      makeSectionWithLink('flagged');
+      const needsAttentionLink = makeSectionWithLink('needsAttention');
+
+      const payload = { byPrNumber: { 2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '2', repo: 'owner/repo' } }));
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(needsAttentionLink);
       });
     });
   });

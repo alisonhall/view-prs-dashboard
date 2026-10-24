@@ -18,6 +18,7 @@ import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
+import { usePrTableUiState } from '../state/PrTableUiStateContext';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
@@ -45,11 +46,19 @@ export function PrTableApp() {
   const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
 
-  // State: Section open/closed (keyed by section key: 'flagged', 'open', etc.)
-  const [openSections, setOpenSections] = useState({});
-
-  // State: Expanded insights rows (keyed by composite: 'section:prNumber')
-  const [expandedInsights, setExpandedInsights] = useState({});
+  // Section open/closed and expanded insights rows live in
+  // PrTableUiStateProvider (above AppRoot), not here, so the Export tab can
+  // read which sections are open from state instead of the DOM
+  // (UI_REDESIGN_PLAN.md, phase 1). Sections are keyed by section key
+  // ('flagged', 'open', etc.), rows by buildExpandedInsightsKey.
+  const {
+    isSectionOpen,
+    setSectionOpen,
+    expandedRows: expandedInsights,
+    setRowExpanded,
+    toggleRowExpanded,
+    reportRenderedSections,
+  } = usePrTableUiState();
 
   // PR numbers are only unique within a repo, and rows from repos other
   // than the currently-configured one now render alongside it (see
@@ -401,13 +410,14 @@ export function PrTableApp() {
       return [];
     }
 
-    // Section open/closed state lives in the `openSections` React state
-    // (see PrSection's `isOpen={openSections[section.key] ?? section.defaultOpen}`),
+    // Section open/closed state lives in PrTableUiStateProvider (see
+    // PrSection's `isOpen={isSectionOpen(section.key, section.defaultOpen)}`),
     // not in a captured DOM snapshot like vanilla's resolvePrSectionOpenState
-    // does — so just fall through to each section's own configured default
+    // does — so each section's `defaultOpen` is its own configured default
     // (lifecycle sections default closed; "In Review"/"Needs Attention"
-    // smart groups default open — see pr-smart-groups.helpers.ts) by not
-    // overriding it at all.
+    // smart groups default open — see pr-smart-groups.helpers.ts): no open
+    // state is passed in below, which also means toggling a section doesn't
+    // rebuild every section.
     const { buildPrSectionConfigs } = helpers.createPrSectionConfigHelpers();
 
     // Get PR entries from payload.byPrNumber (the real stored-data shape),
@@ -500,7 +510,7 @@ export function PrTableApp() {
     const sectionConfigs = buildPrSectionConfigs({
       grouped,
       smartGroups,
-      prSectionOpenState: openSections,
+      prSectionOpenState: {},
       lastCheckedAt: payload.lastCheckedAt || '',
       actorsMapFromPayload: payload.actorsMap || {},
     });
@@ -531,7 +541,7 @@ export function PrTableApp() {
         return shouldShowNeedsAttention({ row, sectionKey: config.sectionKey, hasPendingComments, config: attentionConfig });
       }).length,
     }));
-  }, [payload, visiblePrNumbers, openSections, checkNeedsAttention, checkUserInteraction, shouldShowNeedsAttention, attentionConfig]);
+  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction, shouldShowNeedsAttention, attentionConfig]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead
@@ -540,6 +550,19 @@ export function PrTableApp() {
   useEffect(() => {
     sectionsRef.current = sections;
   }, [sections]);
+
+  // Tell PrTableUiStateProvider which sections are on screen and which PRs
+  // each shows, so the Export tab can export the open sections' rows. The
+  // numbers are each row's `data.number`, which PrNumberCell renders.
+  useEffect(() => {
+    reportRenderedSections(
+      sections.map((section) => ({
+        key: section.key,
+        defaultOpen: Boolean(section.defaultOpen),
+        prNumbers: (section.prs || []).map((entry) => String(entry?.data?.number || '')),
+      })),
+    );
+  }, [sections, reportRenderedSections]);
 
   // Listen for "View in table" clicks from the Author Insights tab. Vanilla
   // handles this by finding the PR's row and directly flipping
@@ -560,6 +583,16 @@ export function PrTableApp() {
   // (setExpandedInsights is async), since the scroll/focus target doesn't
   // exist in the DOM yet at the moment this listener runs.
   const pendingNavigationRef = useRef(null);
+  // Bumped on every navigation request, so the scroll/focus effect below
+  // runs even when the row was already expanded (setRowExpanded then
+  // leaves the expanded rows unchanged, so they alone don't re-run it).
+  const [navigationRequestCount, setNavigationRequestCount] = useState(0);
+  // The listener below is subscribed once, so it reads open state through
+  // this ref rather than a stale closure.
+  const isSectionOpenRef = useRef(isSectionOpen);
+  useEffect(() => {
+    isSectionOpenRef.current = isSectionOpen;
+  }, [isSectionOpen]);
   useEffect(() => {
     const handleNavigateToInsights = (event) => {
       const prNumber = String(event.detail?.prNumber ?? '').trim();
@@ -574,34 +607,45 @@ export function PrTableApp() {
       // number match, same as before this parameter existed.
       const repo = event.detail?.repo ? String(event.detail.repo) : '';
       const focusUnsaved = Boolean(event.detail?.focusUnsaved);
-      let matchingSection = null;
-      let matchingEntry = null;
-      sectionsRef.current.some((section) => {
+      // A PR can be in several sections (smart groups plus its lifecycle
+      // section). Prefer one that's already open; otherwise open the first
+      // one it's in. Taking the first match regardless used to pick the
+      // Flagged group (listed first, closed by default) for a flagged PR,
+      // expanding a row nobody could see.
+      const matches = [];
+      sectionsRef.current.forEach((section) => {
         const entry = (section.prs || []).find(
           (candidate) =>
             String(candidate?.data?.number ?? '') === prNumber &&
             (!repo || candidate?.repo === repo),
         );
-        if (entry) {
-          matchingSection = section;
-          matchingEntry = entry;
-          return true;
-        }
-        return false;
+        if (entry) matches.push({ section, entry });
       });
-      if (!matchingSection) {
+      const target =
+        matches.find(({ section }) => isSectionOpenRef.current(section.key, Boolean(section.defaultOpen))) ||
+        matches[0];
+      if (!target) {
         return;
       }
+      const { section: matchingSection, entry: matchingEntry } = target;
       const compositeKey = buildExpandedInsightsKey(matchingSection.key, matchingEntry?.repo, prNumber);
-      pendingNavigationRef.current = { compositeKey, prNumber, repo: matchingEntry?.repo || '', focusUnsaved };
-      setExpandedInsights((prev) => ({ ...prev, [compositeKey]: true }));
+      pendingNavigationRef.current = {
+        compositeKey,
+        sectionKey: matchingSection.key,
+        prNumber,
+        repo: matchingEntry?.repo || '',
+        focusUnsaved,
+      };
+      setSectionOpen(matchingSection.key, true);
+      setRowExpanded(compositeKey, true);
+      setNavigationRequestCount((count) => count + 1);
     };
 
     window.addEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     return () => {
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
-  }, []);
+  }, [setRowExpanded, setSectionOpen]);
 
   // Runs after the insights row for a pending navigation target has
   // actually committed to the DOM (expandedInsights flips synchronously in
@@ -622,15 +666,17 @@ export function PrTableApp() {
     const rowSelector = pending.repo
       ? `[data-pr-number="${pending.prNumber}"][data-repo="${pending.repo}"]`
       : `[data-pr-number="${pending.prNumber}"]`;
+    // The same PR's row also appears in its other sections; look in the
+    // section it was expanded in first, so focus lands on the visible copy.
+    const sectionHost = document.querySelector(`[data-pr-section="${pending.sectionKey}"]`);
+    const findTarget = (selector) => sectionHost?.querySelector(selector) || document.querySelector(selector);
 
     let focusTarget = null;
     if (pending.focusUnsaved) {
-      focusTarget = document.querySelector(
-        `.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`,
-      );
+      focusTarget = findTarget(`.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`);
     }
     if (!focusTarget) {
-      focusTarget = document.querySelector(`${rowSelector} .pr-link`);
+      focusTarget = findTarget(`${rowSelector} .pr-link`);
     }
     if (!focusTarget) {
       return;
@@ -641,14 +687,18 @@ export function PrTableApp() {
     if (typeof focusTarget.focus === 'function') {
       focusTarget.focus();
     }
-  }, [expandedInsights]);
+  }, [expandedInsights, navigationRequestCount]);
 
-  // Handler: Toggle section open/closed
-  const handleToggleSection = (sectionKey) => {
-    setOpenSections((prev) => ({
-      ...prev,
-      [sectionKey]: !prev[sectionKey],
-    }));
+  // Handler: Open/close a section. PrSection passes the <details> element's
+  // new state; without one, flip the section's current state. That has to
+  // start from its default when the user hasn't toggled it yet: flipping
+  // "no choice yet" (undefined) always gave "open", so closing a section
+  // that's open by default (In Review, Needs Attention) used to record it
+  // as open, while the <details> itself showed closed.
+  const handleToggleSection = (sectionKey, nextOpen) => {
+    const section = sections.find((candidate) => candidate.key === sectionKey);
+    const currentlyOpen = isSectionOpen(sectionKey, Boolean(section?.defaultOpen));
+    setSectionOpen(sectionKey, typeof nextOpen === 'boolean' ? nextOpen : !currentlyOpen);
   };
 
   // Handler: Open the PR JSON details modal for a row ((entry, pr)
@@ -662,11 +712,7 @@ export function PrTableApp() {
   // other repos' PRs render alongside the current one now) - see
   // buildExpandedInsightsKey's own comment.
   const handleToggleInsights = (prNumber, sectionKey, repo) => {
-    const compositeKey = buildExpandedInsightsKey(sectionKey, repo, prNumber);
-    setExpandedInsights((prev) => ({
-      ...prev,
-      [compositeKey]: !prev[compositeKey],
-    }));
+    toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, prNumber));
   };
 
   // Loading state: Show message while data loads
@@ -704,7 +750,7 @@ export function PrTableApp() {
           section={section}
           repo={effectiveRepo}
           actorsMap={payload?.actorsMap || {}}
-          isOpen={openSections[section.key] ?? section.defaultOpen}
+          isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
           expandedInsights={expandedInsights}
           onToggleSection={handleToggleSection}
           onToggleInsights={handleToggleInsights}

@@ -1,26 +1,4 @@
-const { createPrExportHelpers } = require("./pr-export.helpers.ts");
-
-const makeNode = (overrides = {}) => {
-  const attrs = { ...(overrides.attributes || {}) };
-  const node = {
-    className: "",
-    children: [],
-    open: false,
-    attributes: attrs,
-    appendChild(child) {
-      this.children.push(child);
-    },
-    setAttribute(name, value) {
-      this.attributes[name] = String(value);
-    },
-    getAttribute(name) {
-      return this.attributes[name];
-    },
-  };
-
-  Object.assign(node, overrides);
-  return node;
-};
+const { createPrExportHelpers, getPrNumbersInOpenSections } = require("./pr-export.helpers.ts");
 
 const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
   notesByPrNumber: entry?.notes || null,
@@ -57,26 +35,22 @@ describe("pr export helpers", () => {
     ]);
   });
 
-  test("getVisiblePrNumbersFromSectionsHost returns only rows from expanded sections", () => {
-    const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
-    const sectionsHost = makeNode({ className: "host" });
+  test("getPrNumbersInOpenSections returns only rows from expanded sections", () => {
+    expect(
+      getPrNumbersInOpenSections([
+        { open: true, prNumbers: ["101"] },
+        { open: false, prNumbers: ["202"] },
+      ]),
+    ).toEqual(["101"]);
+  });
 
-    const openSection = makeNode({ className: "pr-group-section", open: true });
-    const openCell = makeNode({ className: "pr-number-cell" });
-    openCell.setAttribute("data-pr-number", "101");
-    openSection.appendChild(openCell);
-
-    const closedSection = makeNode({ className: "pr-group-section", open: false });
-    const closedCell = makeNode({ className: "pr-number-cell" });
-    closedCell.setAttribute("data-pr-number", "202");
-    closedSection.appendChild(closedCell);
-
-    sectionsHost.appendChild(openSection);
-    sectionsHost.appendChild(closedSection);
-
-    expect(helpers.getVisiblePrNumbersFromSectionsHost(sectionsHost)).toEqual([
-      "101",
-    ]);
+  test("getPrNumbersInOpenSections keeps display order and lists a PR shown in two open sections once", () => {
+    expect(
+      getPrNumbersInOpenSections([
+        { open: true, prNumbers: ["7", "3"] },
+        { open: true, prNumbers: ["3", "9", ""] },
+      ]),
+    ).toEqual(["7", "3", "9"]);
   });
 
   test("buildExportPayload applies selected data/user-state field paths per visible PR", () => {

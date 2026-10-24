@@ -133,6 +133,50 @@ Nothing uses the primitives yet; phase 2 is their first user.
   stays the same: it covers rows in expanded sections only.
 - Convert `ExportTab` to `.tsx` here, since it's being rewritten anyway.
 
+**Progress (2026-10-24).** Done on branch `ui-redesign/phase-1`:
+
+- `state/PrTableUiStateContext.tsx` and `state/PrTableUiStateProvider.tsx`
+  hold section open state (only the user's choices; otherwise each
+  section's default), expanded rows, and the selected PR. The Provider
+  wraps `AppRoot`.
+- `PrTableApp` reports the sections it rendered and their PR numbers. The
+  Provider derives the open-section count and the PR numbers in open
+  sections from that, in a second context (`PrTableOpenSectionsContext`)
+  that only Export reads. So a report doesn't re-render the table, and
+  Export only re-renders when the open sections' PRs change. With one
+  context, every change of section contents rendered the whole table
+  twice.
+- `ExportTab.tsx` (converted) reads those instead of walking the DOM, so
+  its summary now updates as sections open and close. The DOM walker
+  `getVisiblePrNumbersFromSectionsHost` is replaced by the pure
+  `getPrNumbersInOpenSections`.
+- Fixed a latent bug: closing a section that's open by default (In Review,
+  Needs Attention) was recorded as open, because flipping "no choice yet"
+  always gave "open". The DOM showed it closed, so nothing noticed until
+  Export read state. `PrSection` now passes the new state.
+- Sections are no longer rebuilt when one is opened or closed: open state
+  isn't an input to building them any more.
+- "Jump to PR" (the Auto update paused chips, "View in table") scrolls and
+  focuses after every request, including when the row is already
+  expanded. It used to rely on the expanded rows always changing; the
+  Provider leaves them unchanged when nothing changes, so a request
+  counter now triggers it.
+- Older bug fixed: "Jump to PR" expanded the row in the first section the
+  PR was in, which for a flagged PR is the Flagged group (listed first,
+  closed by default), so nothing showed and focus went nowhere. It now
+  prefers an open section, opens the section when there's none, and
+  focuses the row in that section.
+- Tests:
+  - Provider tests, including which consumers a report re-renders.
+  - The toggle bug (unit and e2e).
+  - Export using the open sections (unit and e2e).
+  - The table rendering once when a new PR arrives.
+  - Jumping to an already-expanded row, and to a flagged PR (unit and e2e).
+
+  Putting each bug back fails a test: the old toggle, removing the
+  request counter, picking the first section, unscoped focus, and a
+  single context.
+
 ### Phase 2 - Rows and cells
 
 - Rewrite `PrTableApp`, `PrSection`, `PrTable` and `PrRow` as `.tsx`. Keep a

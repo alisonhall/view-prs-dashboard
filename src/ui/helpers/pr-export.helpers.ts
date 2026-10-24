@@ -37,16 +37,6 @@ export interface ExportPayload {
   prs: ExportedPr[];
 }
 
-// The DOM-ish shape getVisiblePrNumbersFromSectionsHost walks (a real
-// element in the app; plain objects in tests).
-interface SectionNode {
-  className?: unknown;
-  open?: boolean;
-  children?: ArrayLike<SectionNode> | null;
-  getAttribute?: (name: string) => string | null;
-  attributes?: Record<string, unknown> | null;
-}
-
 type PlainObject = Record<string, unknown>;
 
 const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) => {
@@ -140,57 +130,6 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
     return output;
   };
 
-  const collectNodesByClass = (root: SectionNode | null | undefined, className: string): SectionNode[] => {
-    const results: SectionNode[] = [];
-    const visit = (node: SectionNode | null | undefined) => {
-      if (!node || typeof node !== "object") return;
-      const classNames = String(node.className || "")
-        .split(/\s+/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      if (classNames.includes(className)) {
-        results.push(node);
-      }
-      const children = node.children ? Array.from(node.children) : [];
-      children.forEach(visit);
-    };
-    visit(root);
-    return results;
-  };
-
-  const readAttribute = (element: SectionNode | null | undefined, name: string): string => {
-    if (!element || !name) return "";
-    if (typeof element.getAttribute === "function") {
-      return String(element.getAttribute(name) || "");
-    }
-    if (element.attributes && typeof element.attributes === "object") {
-      return String(element.attributes[name] || "");
-    }
-    return "";
-  };
-
-  // PR numbers in the open (expanded) sections of the rendered table, in
-  // display order, each once.
-  const getVisiblePrNumbersFromSectionsHost = (sectionsHost: SectionNode | null | undefined): string[] => {
-    const result: string[] = [];
-    const seen = new Set<string>();
-    const sections = collectNodesByClass(sectionsHost, "pr-group-section");
-    sections.forEach((section) => {
-      if (section.open !== true) {
-        return;
-      }
-
-      const numberCells = collectNodesByClass(section, "pr-number-cell");
-      numberCells.forEach((cell) => {
-        const prNumber = readAttribute(cell, "data-pr-number").trim();
-        if (!prNumber || seen.has(prNumber)) return;
-        seen.add(prNumber);
-        result.push(prNumber);
-      });
-    });
-    return result;
-  };
-
   // The entry without its notes (those export as user state instead).
   const buildDataSourceEntry = (entry: unknown): PlainObject => {
     if (!isPlainObject(entry)) {
@@ -272,9 +211,33 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
 
   return {
     getFieldCatalog,
-    getVisiblePrNumbersFromSectionsHost,
     buildExportPayload,
   };
 };
 
-export { createPrExportHelpers };
+// One rendered table section, as the Export tab needs it: whether it's
+// open and the PR numbers of its rows, in display order.
+export interface ExportSection {
+  open: boolean;
+  prNumbers: string[];
+}
+
+// PR numbers in the open (expanded) sections of the table, in display
+// order, each once - the "visible" PRs the Export tab exports. A PR shown
+// in a smart group and again in its lifecycle section counts once.
+const getPrNumbersInOpenSections = (sections: ExportSection[]): string[] => {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  sections.forEach((section) => {
+    if (!section.open) return;
+    section.prNumbers.forEach((value) => {
+      const prNumber = String(value || "").trim();
+      if (!prNumber || seen.has(prNumber)) return;
+      seen.add(prNumber);
+      result.push(prNumber);
+    });
+  });
+  return result;
+};
+
+export { createPrExportHelpers, getPrNumbersInOpenSections };

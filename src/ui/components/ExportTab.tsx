@@ -1,38 +1,13 @@
 /**
  * ExportTab - React-owned content for the Management "Export" tab, mounted
- * into `#export-container`.
+ * into `#export-container`: the field catalog, field selection (saved to
+ * user-defaults), and Preview / Copy / Download of the export JSON.
  *
- * Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md), second slice of the
- * second not-yet-converted-tabs survey category (Action Log, then this).
- * Replaces the vanilla field-catalog/selection/preview/copy/download
- * machinery in index.page.js (getExportFieldCheckboxes/
- * getSelectedExportFieldPaths/persistExportFieldSelections/
- * renderExportFieldCatalog/renderExportSelectionSummary/
- * setExportCheckboxSelection, all deleted) and the three helper files that
- * only existed to wrap DOM reads/writes around it
- * (pr-export-actions.helpers.js, pr-export-preview-summary.helpers.js,
- * pr-export-json-build.helpers.js, all deleted). Like ActorNamesTab (and
- * unlike Action Log's container-split), this tab's buttons/status/preview
- * are ALL React-owned now - there's no vanilla chrome left to bridge to.
- *
- * Phase 7 (see REACT_MIGRATION_PLAN.md): the field catalog, export payload
- * building, and visible-PR-numbers-from-DOM read all used to be exposed on
- * window by index.page.js (getExportFieldCatalog/buildExportPayload/
- * getVisiblePrNumbersFromSectionsHost) - re-investigated rather than
- * trusting that framing (this migration's own track record of finding
- * "deliberate" window.* bridges that were actually just unexamined
- * defaults) and found all 3 are genuinely zero-dependency given what this
- * component already has: pr-export.helpers.ts's createPrExportHelpers only
- * needs getPerPrUserStateFromPayload (already a bare, directly-importable
- * export - see helpers/pr-per-pr-user-state.helpers.ts), and
- * getVisiblePrNumbersFromSectionsHost is pure given a DOM node as its own
- * argument - it doesn't need to be *exposed* via window to read live DOM,
- * it only needs the node passed in, which this component already queries
- * itself (document.getElementById('pr-sections'), below). Still a real,
- * necessary DOM read, not a fallback: the tab's own description says it
- * exports "only sections currently expanded", which is `<details open>`
- * UI state PrDataContext doesn't (and shouldn't) track - just no longer a
- * reason for the *function* itself to go through window.*.
+ * It exports "only sections currently expanded": the PR numbers in the
+ * table's open sections, from PrTableOpenSectionsContext. Until UI redesign
+ * phase 1 that was read from the DOM (`<details open>` and the
+ * `pr-group-section` / `pr-number-cell` classes), which would have broken
+ * as soon as the table's markup changed.
  *
  * Field selection is real React state, not the vanilla version's
  * DOM-checkbox scraping - which existed only because the vanilla catalog
@@ -47,19 +22,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
+import { usePrTableOpenSections } from '../state/PrTableUiStateContext';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
-import { createPrExportHelpers } from '../helpers/pr-export.helpers.ts';
+import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../helpers/pr-export.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 
-const { getFieldCatalog, getVisiblePrNumbersFromSectionsHost, buildExportPayload } =
-  createPrExportHelpers({ getPerPrUserStateFromPayload });
+const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
 
-const fieldId = (source, path) => `${source}:${path}`;
+type FieldSource = 'data' | 'user-state';
+type Overrides = Record<string, unknown>;
 
-const readUserDefaults = async () => {
+const fieldId = (source: FieldSource, path: string) => `${source}:${path}`;
+
+const readUserDefaults = async (): Promise<Overrides> => {
   try {
     const response = await fetch('/view-prs/user-defaults');
     if (!response.ok) return {};
@@ -71,7 +49,7 @@ const readUserDefaults = async () => {
   }
 };
 
-const writeUserDefaults = async (overrides) => {
+const writeUserDefaults = async (overrides: Overrides): Promise<void> => {
   try {
     await fetch('/view-prs/user-defaults', {
       method: 'PUT',
@@ -83,15 +61,7 @@ const writeUserDefaults = async (overrides) => {
   }
 };
 
-const collectOpenSectionCount = () => {
-  const sectionsHost = document.getElementById('pr-sections');
-  if (!sectionsHost) return 0;
-  return Array.from(sectionsHost.getElementsByClassName('pr-group-section')).filter(
-    (section) => section.open === true,
-  ).length;
-};
-
-const formatExportDownloadFileName = (payload, selectedRepo) => {
+const formatExportDownloadFileName = (payload: ExportPayloadSource, selectedRepo: string) => {
   const repo = String(payload?.lastRun?.repo || selectedRepo || 'all-repos')
     .trim()
     .replace(/[^a-z0-9_.-]+/gi, '-')
@@ -101,9 +71,16 @@ const formatExportDownloadFileName = (payload, selectedRepo) => {
   return `view-prs-export-${repo || 'all-repos'}-${stamp}.json`;
 };
 
+const toErrorMessage = (error: unknown, fallback: string) =>
+  String((error as { message?: unknown } | null)?.message || error || fallback);
+
+const describeCount = (verb: string, exportPayload: ExportPayload) =>
+  `${verb} export JSON for ${exportPayload.prCount} visible PR${exportPayload.prCount === 1 ? '' : 's'}.`;
+
 export function ExportTab() {
   const { payload, selectedRepo } = usePrData();
-  const [selectedFieldIds, setSelectedFieldIds] = useState(null); // null until initialized
+  const { prNumbersInOpenSections, openSectionCount } = usePrTableOpenSections();
+  const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string> | null>(null); // null until initialized
   const [status, setStatus] = useState('Waiting for data...');
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
   const initializedRef = useRef(false);
@@ -116,29 +93,27 @@ export function ExportTab() {
   // on the first pass (e.g. payload hadn't loaded yet) and later gains
   // fields, but never re-runs once a real selection exists.
   useEffect(() => {
-    if (initializedRef.current) return;
+    if (initializedRef.current) return undefined;
     const allFieldIds = [
       ...catalog.dataPaths.map((path) => fieldId('data', path)),
       ...catalog.userStatePaths.map((path) => fieldId('user-state', path)),
     ];
-    if (allFieldIds.length === 0) return;
+    if (allFieldIds.length === 0) return undefined;
 
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const overrides = await readUserDefaults();
       if (cancelled || initializedRef.current) return;
-      const savedData = Array.isArray(overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY])
-        ? overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY]
-        : null;
-      const savedUserState = Array.isArray(overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY])
-        ? overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]
-        : null;
+      const savedData = overrides[EXPORT_DATA_FIELDS_OVERRIDE_KEY];
+      const savedUserState = overrides[EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY];
+      const savedDataPaths = Array.isArray(savedData) ? savedData.map(String) : null;
+      const savedUserStatePaths = Array.isArray(savedUserState) ? savedUserState.map(String) : null;
 
       const initial =
-        savedData || savedUserState
+        savedDataPaths || savedUserStatePaths
           ? new Set([
-              ...(savedData || []).map((path) => fieldId('data', path)),
-              ...(savedUserState || []).map((path) => fieldId('user-state', path)),
+              ...(savedDataPaths || []).map((path) => fieldId('data', path)),
+              ...(savedUserStatePaths || []).map((path) => fieldId('user-state', path)),
             ])
           : new Set(allFieldIds);
 
@@ -151,12 +126,12 @@ export function ExportTab() {
     };
   }, [catalog]);
 
-  const isSelected = (source, path) => selectedFieldIds?.has(fieldId(source, path)) ?? false;
+  const isSelected = (source: FieldSource, path: string) => selectedFieldIds?.has(fieldId(source, path)) ?? false;
 
   // Marking the ref here (not just inside the mount effect) closes a real
   // race: a user who interacts before the saved-selection fetch resolves
   // must not have that manual choice silently clobbered once it does.
-  const toggleField = (source, path) => {
+  const toggleField = (source: FieldSource, path: string) => {
     initializedRef.current = true;
     setSelectedFieldIds((previous) => {
       const next = new Set(previous || []);
@@ -170,13 +145,13 @@ export function ExportTab() {
     });
   };
 
-  const setSelectionByPredicate = (predicate) => {
+  const setSelectionByPredicate = (predicate: (source: FieldSource, path: string) => boolean) => {
     initializedRef.current = true;
     setSelectedFieldIds(
       new Set(
         [
-          ...catalog.dataPaths.map((path) => ({ source: 'data', path })),
-          ...catalog.userStatePaths.map((path) => ({ source: 'user-state', path })),
+          ...catalog.dataPaths.map((path) => ({ source: 'data' as const, path })),
+          ...catalog.userStatePaths.map((path) => ({ source: 'user-state' as const, path })),
         ]
           .filter(({ source, path }) => predicate(source, path))
           .map(({ source, path }) => fieldId(source, path)),
@@ -185,9 +160,9 @@ export function ExportTab() {
   };
 
   const getSelectedPaths = () => {
-    const dataPaths = [];
-    const userStatePaths = [];
-    (selectedFieldIds || new Set()).forEach((id) => {
+    const dataPaths: string[] = [];
+    const userStatePaths: string[] = [];
+    (selectedFieldIds || new Set<string>()).forEach((id) => {
       const [source, ...rest] = id.split(':');
       const path = rest.join(':');
       if (source === 'user-state') {
@@ -216,10 +191,9 @@ export function ExportTab() {
       throw new Error('Select at least one field before exporting.');
     }
 
-    const visiblePrNumbers = getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections'));
     const exportPayload = buildExportPayload({
       payload,
-      visiblePrNumbers,
+      visiblePrNumbers: prNumbersInOpenSections,
       selectedDataPaths: selected.dataPaths,
       selectedUserStatePaths: selected.userStatePaths,
     });
@@ -228,14 +202,12 @@ export function ExportTab() {
     return { jsonText, exportPayload };
   };
 
-  const toErrorMessage = (error, fallback) => String(error?.message || error || fallback);
-
   const handlePreview = async () => {
     await persistSelection();
     try {
       const { jsonText, exportPayload } = buildVisibleExportJson();
       setPreview(jsonText);
-      setStatus(`Prepared export JSON for ${exportPayload.prCount} visible PR${exportPayload.prCount === 1 ? '' : 's'}.`);
+      setStatus(describeCount('Prepared', exportPayload));
     } catch (error) {
       setStatus(toErrorMessage(error, 'Failed to build export JSON.'));
     }
@@ -249,7 +221,7 @@ export function ExportTab() {
         throw new Error('Clipboard API not available in this browser.');
       }
       await navigator.clipboard.writeText(jsonText);
-      setStatus(`Copied export JSON for ${exportPayload.prCount} visible PR${exportPayload.prCount === 1 ? '' : 's'}.`);
+      setStatus(describeCount('Copied', exportPayload));
     } catch (error) {
       setStatus(toErrorMessage(error, 'Copy failed.'));
     }
@@ -258,7 +230,7 @@ export function ExportTab() {
   const handleDownload = async () => {
     await persistSelection();
     let objectUrl = '';
-    let anchor = null;
+    let anchor: HTMLAnchorElement | null = null;
     try {
       const { jsonText, exportPayload } = buildVisibleExportJson();
       if (typeof Blob === 'undefined' || !window.URL?.createObjectURL) {
@@ -272,7 +244,7 @@ export function ExportTab() {
       anchor.style.display = 'none';
       document.body.appendChild(anchor);
       anchor.click();
-      setStatus(`Downloaded export JSON for ${exportPayload.prCount} visible PR${exportPayload.prCount === 1 ? '' : 's'}.`);
+      setStatus(describeCount('Downloaded', exportPayload));
     } catch (error) {
       setStatus(toErrorMessage(error, 'Download failed.'));
     } finally {
@@ -282,15 +254,14 @@ export function ExportTab() {
   };
 
   const selected = getSelectedPaths();
-  const visibleCount = getVisiblePrNumbersFromSectionsHost(document.getElementById('pr-sections')).length;
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,
-    `Visible PR rows eligible for export: ${visibleCount}/${totalVisibleCount}`,
-    `Expanded PR sections: ${collectOpenSectionCount()}`,
+    `Visible PR rows eligible for export: ${prNumbersInOpenSections.length}/${totalVisibleCount}`,
+    `Expanded PR sections: ${openSectionCount}`,
   ].join('\n');
 
-  const renderFieldOption = (source, path) => (
+  const renderFieldOption = (source: FieldSource, path: string) => (
     <label className="export-field-option" key={fieldId(source, path)}>
       <input
         type="checkbox"

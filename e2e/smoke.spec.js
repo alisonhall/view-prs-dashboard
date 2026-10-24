@@ -52,6 +52,10 @@ const filterDropdownSummary = (list) => list.locator("xpath=ancestor::details[1]
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
   prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
+// A section's own <summary> (its header), which opens and closes it.
+// <summary> has no standard role, so like filterDropdownSummary this
+// helper holds the structural lookup.
+const prSectionSummary = (section) => section.locator("xpath=./summary");
 // PR N's insights toggle in either state ("More insights for PR #N" /
 // "Hide insights for PR #N"), so a locator still matches after a click.
 const insightsToggleFor = (scope, prNumber) =>
@@ -669,6 +673,27 @@ test("'View in table' from Author Insights actually expands the insights row con
 
   const insightsRow = await insightsRowUnderExpandedToggle(page);
   await expect(insightsRow).toHaveJSProperty("hidden", false);
+});
+
+test("'View in table' for a flagged PR shows and focuses it in an open section, not the closed Flagged group", async ({ page }) => {
+  // A flagged PR is in the Flagged group (listed first, closed by default)
+  // and in other sections. Navigation used to expand its row in the first
+  // section it was in - the closed Flagged group - so nothing showed and
+  // focus went nowhere. The fixture flags Hubot's PR 2, which also needs
+  // attention.
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(
+    prSection(page, "Flagged").getByRole("button", { name: "More insights for PR #2", exact: true, includeHidden: true }),
+  ).toBeAttached();
+
+  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("combobox", { name: /^Author/ }).selectOption("hubot");
+  await page.getByRole("button", { name: "View in table", exact: true }).first().click();
+
+  const visiblePrLinks = prTables(page).getByRole("link", { name: "#2", exact: true }).filter({ visible: true });
+  await expect(visiblePrLinks.first()).toBeFocused();
+  await expect(prTables(page).getByRole("button", { name: "Hide insights for PR #2", exact: true })).toBeVisible();
 });
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {
@@ -2581,6 +2606,37 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   expect(Array.isArray(exportPayload.prs)).toBe(true);
   expect(exportPayload.prs).toHaveLength(exportPayload.prCount);
   expect(exportPayload.prs[0]).toHaveProperty("prNumber");
+});
+
+test("Export follows the table's open sections: closing the sections that are open by default drops their PRs", async ({ page }) => {
+  // UI redesign phase 1: Export reads the open sections from React state
+  // (PrTableUiStateProvider) instead of `<details open>` in the DOM.
+  // Closing a section that's open by default used to be recorded as "open"
+  // in that state (flipping "no choice yet" gave true), which Export would
+  // now trust - this checks the real toggle end to end. On a fresh page
+  // only "In Review" and "Needs Attention" are open (their defaults); which
+  // PRs they hold can change as earlier tests edit the shared server's
+  // data, so this checks the counts reach zero rather than exact numbers.
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  await page.getByRole("tab", { name: "Export" }).click();
+  const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
+  await expect(exportPanel.getByText(/Expanded PR sections: 2$/m)).toBeVisible();
+  await expect(exportPanel.getByText(/Visible PR rows eligible for export: [1-9]\d*\//)).toBeVisible();
+
+  await prSectionSummary(prSection(page, "In Review")).click();
+  // The summary follows without a click on the Export tab.
+  await expect(exportPanel.getByText(/Expanded PR sections: 1$/m)).toBeVisible();
+
+  await prSectionSummary(prSection(page, "Needs Attention")).click();
+  await expect(exportPanel.getByText(/Expanded PR sections: 0$/m)).toBeVisible();
+  await expect(exportPanel.getByText(/Visible PR rows eligible for export: 0\//)).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview JSON" }).click();
+  await expect(exportPanel.getByRole("region", { name: "Export status", exact: true })).toHaveText(
+    "Prepared export JSON for 0 visible PRs.",
+  );
 });
 
 test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {

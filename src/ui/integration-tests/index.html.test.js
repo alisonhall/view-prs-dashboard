@@ -36,6 +36,7 @@ const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { useFilterState } = require("../state/FilterStateContext");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { PrTableUiStateProvider } = require("../state/PrTableUiStateProvider");
 const { useNotesDirty } = require("../state/NotesDirtyContext");
 const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
 const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
@@ -756,15 +757,22 @@ function FilterStateTestRootHarness({ initialValues }) {
                     // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
                     // which computes the blocking state the deferred-poll
                     // tests below depend on. index.page.js used to compute it.
+                    // UI redesign phase 1: PrTableUiStateProvider (section
+                    // open state, expanded rows) wraps AppRoot inside
+                    // NotesDirtyProvider in production; same here.
                     React.createElement(
                       NotesDirtyProvider,
                       null,
                       React.createElement(
-                        AuthorInsightsDraftsProvider,
+                        PrTableUiStateProvider,
                         null,
-                        React.createElement(AutoRenderBlockingSync),
-                        React.createElement(NotesDirtyTestHandle),
-                        React.createElement(PrTablePortalTestLive),
+                        React.createElement(
+                          AuthorInsightsDraftsProvider,
+                          null,
+                          React.createElement(AutoRenderBlockingSync),
+                          React.createElement(NotesDirtyTestHandle),
+                          React.createElement(PrTablePortalTestLive),
+                        ),
                       ),
                     ),
                     // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration

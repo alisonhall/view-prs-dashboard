@@ -70,7 +70,7 @@ export function PrSection({
       open={isOpen}
       onToggle={(e) => {
         if (e.target.open !== isOpen) {
-          onToggleSection(key);
+          onToggleSection(key, e.target.open);
         }
       }}
     >

@@ -1097,6 +1097,12 @@ No static type checking leads to:
     inReview, the scope/visible-rows helpers take a typed AttentionConfig,
     and parseCsvTokens is one shared form-parsing helper (it was copied in
     three places).
+  - UI redesign (`UI_REDESIGN_PLAN.md`), where the presentational
+    components convert as each phase rewrites them:
+    - Phase 0 (2026-10-24): new shared components in `components/ui/`
+      (Icon, Tooltip, Button/IconButton, Chip, Tabs), all `.tsx`.
+    - Phase 1 (2026-10-24): ExportTab, plus the new PrTableUiState context
+      and Provider.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
