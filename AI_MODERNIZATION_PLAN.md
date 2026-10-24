@@ -1070,6 +1070,9 @@ No static type checking leads to:
     the NeedsAttention and PrActivityQueue contexts with their Providers.
   - State batch 4 (2026-10-23): the JobEvents and RequestActivity contexts
     with their Providers.
+  - State batch 5 (2026-10-23): the ReviewStats, PrInsightsDisplay and
+    FilterOptions contexts with their Providers. The review-stats trend
+    note is now built by one shared function (it was written out twice).
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

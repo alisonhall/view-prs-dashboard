@@ -1,24 +1,25 @@
-import { useMemo } from 'react';
-import { ReviewStatsContext } from '../state/ReviewStatsContext';
+import { useMemo, type ReactNode } from 'react';
+import { buildActivityTrendNote, ReviewStatsContext, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 import { createPrReviewStatsTimelineHelpers } from '../helpers/pr-review-stats-timeline.helpers.ts';
-import { createPrReviewStatsDateBucketingHelpers } from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
+import {
+  createPrReviewStatsDateBucketingHelpers,
+  type StatsDateRange,
+} from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
 
 /**
- * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md, and
- * state/ReviewStatsContext.jsx's own comment): derives the Review Stats
- * aggregation functions straight from PrDataContext's statsViewState (real
- * React state, owned by ReviewStatsControls via setStatsViewState) and
- * ActorIdentityContext, replacing the ~10 window.* bridges index.page.js
- * used to assign for this tab.
+ * Derives the Review Stats aggregation functions (see
+ * state/ReviewStatsContext.tsx) from PrDataContext's statsViewState (React
+ * state, set by ReviewStatsControls via setStatsViewState) and
+ * ActorIdentityContext.
  *
  * Must be mounted inside both <PrDataProvider> and the
  * <ActorIdentityContext.Provider> it sets up - see react-app.jsx's AppRoot
@@ -27,11 +28,11 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
  * reconciliation bailout" trick is needed here - this component already
  * genuinely depends on PrDataContext's value.
  */
-export function ReviewStatsProvider({ children }) {
+export function ReviewStatsProvider({ children }: { children?: ReactNode }) {
   const { statsViewState, setStatsViewState } = usePrData();
   const { normalizeActorLogin, getPreferredActorKey, resolveActorDisplayName } = useActorIdentity();
 
-  const value = useMemo(() => {
+  const value = useMemo<ReviewStatsValue>(() => {
     const getNormalizedStatsDateRange = () => {
       const rawStart = String(statsViewState?.startDate || '').trim();
       const rawEnd = String(statsViewState?.endDate || '').trim();
@@ -44,7 +45,7 @@ export function ReviewStatsProvider({ children }) {
       return { start, end, startDate: rawStart, endDate: rawEnd };
     };
 
-    const isWithinStatsDateRange = (isoValue, range = getNormalizedStatsDateRange()) => {
+    const isWithinStatsDateRange = (isoValue: unknown, range: StatsDateRange = getNormalizedStatsDateRange()) => {
       const value = String(isoValue || '').trim();
       if (!range.start && !range.end) return true;
       if (!value) return false;
@@ -82,20 +83,6 @@ export function ReviewStatsProvider({ children }) {
       getTimelineDateKeys,
     });
 
-    const renderActivityTrendNote = (rows, actorsMap = {}) => {
-      const range = getNormalizedStatsDateRange();
-      const chartData = aggregateReviewerActivityTimeline(rows, actorsMap, range);
-      if (!chartData?.series || chartData.series.length === 0) {
-        return 'No reviewer activity data available to render trends.';
-      }
-      const totalActivity = chartData.series.reduce(
-        (sum, s) => sum + s.points.reduce((ps, p) => ps + p.value, 0),
-        0,
-      );
-      const avgDaily = chartData.dates.length > 0 ? Math.round(totalActivity / chartData.dates.length) : 0;
-      return `Total reviewer activity: ${totalActivity} events across ${chartData.dates.length} days (~${avgDaily}/day). Showing top ${chartData.series.length} reviewers. Activity includes comments and submitted reviews on PRs authored by others, excluding Copilot actors.`;
-    };
-
     return {
       statsViewState,
       setStatsViewState,
@@ -103,7 +90,8 @@ export function ReviewStatsProvider({ children }) {
       buildReviewerStats,
       applyStatsControls,
       getNormalizedStatsDateRange,
-      renderActivityTrendNote,
+      renderActivityTrendNote: (rows, actorsMap = {}) =>
+        buildActivityTrendNote(aggregateReviewerActivityTimeline(rows, actorsMap, getNormalizedStatsDateRange())),
       bucketTimelineChartData,
       aggregateReviewerCommentsTimeline,
       aggregateReviewerApprovalsTimeline,

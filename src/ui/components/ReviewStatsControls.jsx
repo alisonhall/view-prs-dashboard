@@ -11,7 +11,7 @@
  * then on, with no restore-race handling needed.
  *
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): reads/writes
- * statsViewState via useReviewStats() (state/ReviewStatsContext.jsx)
+ * statsViewState via useReviewStats() (state/ReviewStatsContext.tsx)
  * directly now, instead of receiving initialState/onChange props that
  * bridged into index.page.js's window.updateStatsViewStateAndRerender -
  * that bridge also had the unrelated side effect of re-running the PR

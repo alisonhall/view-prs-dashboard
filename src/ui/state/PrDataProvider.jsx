@@ -593,7 +593,7 @@ export function PrDataProvider({
   // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Review Stats
   // tab's sort/filter/topN/minComments/date-range settings - real state
   // now, written directly by ReviewStatsControls/StatsVisuals (see
-  // components/ReviewStatsProvider.jsx), replacing
+  // components/ReviewStatsProvider.tsx), replacing
   // window.updateStatsViewStateAndRerender's mutate-vanilla-then-rerender
   // round trip (which also had the unrelated side effect of re-running the
   // PR table's whole local-filter pipeline on every stats-control change).

@@ -1,95 +1,76 @@
-import { useMemo, useRef } from 'react';
-import { FilterOptionsContext } from '../state/FilterOptionsContext';
+import { useMemo, useRef, type ReactNode } from 'react';
+import { FilterOptionsContext, type FilterOption, type FilterOptionsValue } from '../state/FilterOptionsContext';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
-import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
+import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
+import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
 
-const sortByDisplayName = (entries) =>
+// [value, label] pairs.
+type OptionEntry = [string, string];
+
+const sortByDisplayName = (entries: OptionEntry[]): OptionEntry[] =>
   entries.sort((a, b) => {
     const textA = String(a[1] || a[0]).toLowerCase();
     const textB = String(b[1] || b[0]).toLowerCase();
     return textA.localeCompare(textB);
   });
 
-const toOptions = (entries) => entries.map(([value, label]) => ({ value, label }));
+const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([value, label]) => ({ value, label }));
 
 /**
- * Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): derives the 9
- * multi-select filter lists' option lists straight from PrDataContext's
- * payload (via usePrData()) and ActorIdentityContext, replacing the
- * vanilla populateXOptions functions (pr-filter-panel.helpers.js,
- * index.page.js) this cluster used to be computed by. The logic below is
- * moved verbatim from those deleted functions - only *where* it runs has
- * changed.
+ * Derives the 9 multi-select filter lists' option lists from
+ * PrDataContext's payload (via usePrData()) and ActorIdentityContext.
  *
  * Must be mounted inside both <PrDataProvider> and the
  * <ActorIdentityContext.Provider> it sets up (see react-app.jsx's AppRoot
- * for the actual nesting) - matches ReviewStatsProvider/AuthorInsightsProvider's
- * own established shape, including genuinely consuming usePrData() (not
- * just wrapping stable children) to avoid the reconciliation-bailout bug
- * documented in REACT_MIGRATION_PLAN.md around sub-phase 7.0's
- * needs-attention writeup.
+ * for the actual nesting). It genuinely consumes usePrData(), like
+ * ReviewStatsProvider, so it re-renders when the payload changes.
  *
- * Checked state (which options are ticked) is NOT computed here - that
- * depends on the currently-rendered DOM state and each list's pending
- * restore-time selections, and is seeded by react-app.jsx's
- * MultiSelectListPortals via pr-multi-select-checked-state.helpers.ts's
- * seedCheckedState, same as it always was.
+ * Checked state (which options are ticked) is NOT computed here - it is
+ * seeded by MultiSelectListPortals.jsx via
+ * pr-multi-select-checked-state.helpers.ts's seedCheckedState.
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter
- * ignore-comment/review-authors) are genuinely identical derivations in
- * the deleted vanilla code (each independently built from the same
- * actorsMap, same sort) - computed once here as `actorOptions` and shared
- * across all 4, rather than recomputing the same result 4 times.
+ * ignore-comment/review-authors) are the same derivation (every actor in
+ * actorsMap, sorted by display name), computed once as `actorOptions`.
  *
- * ROADMAP.md follow-up (Phase 5, "Performance Validation" - found during
- * the multi-select-options-to-React sub-phase review, 2026-09-30): this
- * useMemo depends on `payload`, which gets a new object reference on
- * every poll tick (~30s) regardless of whether any PR data actually
- * changed, so it used to fully re-loop every entry and re-run
- * extractRowLabelNames/collectAssignedUsers/collectApproversFromRow
- * (the latter two walk activityTimeline/commits/reviewers) unconditionally
- * - even on an unrelated tab where these lists aren't rendered. Fixed with
- * a WeakMap-keyed per-entry cache (createEntryDerivedCache,
- * pr-entry-derived-cache.helpers.ts - the same module useVisiblePrNumbers.jsx
- * already uses for the row-filtering predicate), held in a useRef so it
- * survives this Provider's own re-renders: an entry whose reference is
- * unchanged across a poll (mergeDataDeltaPayload's shallow merge keeps an
- * unchanged entry's exact object reference) reuses its cached
- * label-names/preferred-author-key/assignees/approvers instead of
- * re-deriving them. Deliberately caches only the entry-derived *raw*
- * output (label name list, {login,name} assignee/approver lists, the
- * preferred author key) - not the final actorsMap-dependent display-name
- * resolution below, which is already cheap (once per unique login in the
- * outer Maps, not once per entry) and reads the always-current `actorsMap`
- * fresh every time. Same accepted tradeoff pr-row-filtering.helpers.ts's
- * own cache already has: if the actor-login-alias map changes without the
- * entry itself changing, a cached per-entry value could theoretically lag
- * by one entry-change - not handled there either, and not handled here,
- * matching that established precedent rather than inventing a stricter
- * one.
+ * Performance: `payload` gets a new reference on every poll tick (~30s)
+ * whether or not any PR changed. So that extractRowLabelNames/
+ * collectAssignedUsers/collectApproversFromRow (the latter two walk
+ * activityTimeline/commits/reviewers) don't re-run for every entry each
+ * time, their per-entry results go in a WeakMap-keyed cache
+ * (createEntryDerivedCache, also used by useVisiblePrNumbers.jsx) held in
+ * a ref: an entry whose reference is unchanged across a poll
+ * (mergeDataDeltaPayload keeps unchanged entries' references) reuses its
+ * cached values. Only the raw entry-derived output is cached, not the
+ * display-name resolution, which is cheap (once per unique login) and
+ * reads the current `actorsMap` every time. Accepted tradeoff, as in
+ * pr-row-filtering.helpers.ts: if the actor-login-alias map changes
+ * without the entry changing, a cached value can lag until the entry
+ * changes.
  */
-export function FilterOptionsProvider({ children }) {
+export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
   const { payload, selectedRepo } = usePrData();
   const { getPreferredActorKey, resolveActorDisplayName, normalizeActorLogin } = useActorIdentity();
-  const cacheRef = useRef(null);
+  const cacheRef = useRef<EntryDerivedCache | null>(null);
   if (!cacheRef.current) {
     cacheRef.current = createEntryDerivedCache();
   }
+  const cache = cacheRef.current;
 
-  const value = useMemo(() => {
+  const value = useMemo<FilterOptionsValue>(() => {
     const allEntries = Object.values(payload?.byPrNumber || {});
     const repoFilter = String(selectedRepo || '').trim();
-    const actorsMap = payload?.actorsMap && typeof payload.actorsMap === 'object' ? payload.actorsMap : {};
+    const actorsMap: ActorsMap = payload?.actorsMap && typeof payload.actorsMap === 'object' ? payload.actorsMap : {};
     const scopedEntries = repoFilter ? allEntries.filter((entry) => entry?.repo === repoFilter) : allEntries;
-    const { getOrCompute } = cacheRef.current;
+    const { getOrCompute } = cache;
 
     const { collectAssignedUsers } = createPrAssignedUsersHelpers({
       asArray,
@@ -103,7 +84,7 @@ export function FilterOptionsProvider({ children }) {
       formatIsoDatetime,
     });
 
-    const labelsByToken = new Map();
+    const labelsByToken = new Map<string, string>();
     scopedEntries.forEach((entry) => {
       getOrCompute(entry, 'labelNames', () => extractRowLabelNames(entry?.data || {})).forEach((labelName) => {
         const token = normalizeFilterToken(labelName);
@@ -115,7 +96,7 @@ export function FilterOptionsProvider({ children }) {
       .map((labelName) => ({ value: labelName, label: labelName }))
       .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
 
-    const authors = new Map();
+    const authors = new Map<string, string>();
     scopedEntries.forEach((entry) => {
       const row = entry?.data || {};
       const login = getOrCompute(entry, 'preferredAuthorKey', () => getPreferredActorKey(row.authorLogin, row.author));
@@ -124,7 +105,7 @@ export function FilterOptionsProvider({ children }) {
     });
     const authorOptions = toOptions(sortByDisplayName(Array.from(authors.entries())));
 
-    const assignees = new Map();
+    const assignees = new Map<string, string>();
     scopedEntries.forEach((entry) => {
       getOrCompute(entry, 'assignedUsers', () => collectAssignedUsers(entry?.data || {})).forEach((assignee) => {
         const login = String(assignee?.login || '').trim();
@@ -134,7 +115,7 @@ export function FilterOptionsProvider({ children }) {
     });
     const assignedOptions = toOptions(sortByDisplayName(Array.from(assignees.entries())));
 
-    const approvers = new Map();
+    const approvers = new Map<string, string>();
     scopedEntries.forEach((entry) => {
       getOrCompute(entry, 'approversFromRow', () => collectApproversFromRow(entry?.data || {})).forEach((approver) => {
         const login = String(approver?.login || '').trim();
@@ -150,9 +131,9 @@ export function FilterOptionsProvider({ children }) {
           .map(([login, displayName]) => {
             const loginValue = String(login || '').trim();
             if (!loginValue) return null;
-            return [loginValue, resolveActorDisplayName(loginValue, actorsMap, displayName)];
+            return [loginValue, resolveActorDisplayName(loginValue, actorsMap, displayName)] as OptionEntry;
           })
-          .filter(Boolean),
+          .filter((entry): entry is OptionEntry => entry !== null),
       ),
     );
 
@@ -167,7 +148,7 @@ export function FilterOptionsProvider({ children }) {
       changeFilterIgnoreCommentAuthorsOptions: actorOptions,
       changeFilterIgnoreReviewAuthorsOptions: actorOptions,
     };
-  }, [payload, selectedRepo, getPreferredActorKey, resolveActorDisplayName, normalizeActorLogin]);
+  }, [cache, payload, selectedRepo, getPreferredActorKey, resolveActorDisplayName, normalizeActorLogin]);
 
   return <FilterOptionsContext.Provider value={value}>{children}</FilterOptionsContext.Provider>;
 }

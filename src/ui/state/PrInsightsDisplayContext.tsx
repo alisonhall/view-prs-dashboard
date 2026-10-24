@@ -16,11 +16,11 @@ import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-op
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { defaultActorIdentity } from './ActorIdentityContext';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
 const { toCount } = createPrFormattingHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
 const {
   normalizeActorLogin,
   resolveActorDisplayName,
@@ -29,31 +29,18 @@ const {
 } = defaultActorIdentity;
 
 /**
- * Phase 7 (see REACT_MIGRATION_PLAN.md): the "More insights" expandable row
- * panel's formatting/badge-class functions (PrInsightsRow.jsx and
- * components/insights/*) used to live on ~18 window.* bridges assigned by
- * index.page.js. Most are genuinely zero-dependency (pure formatters); a
- * handful (formatApproversDisplay, formatRequestedReviewersDisplay,
- * formatAssignedUsersDisplay, buildPrPeopleOptions,
- * getOpenConversationCountWithMe) need actor/viewer identity, confirmed by
- * reading each body directly - not assumed from their names.
+ * The "More insights" row panel's formatting/badge-class functions
+ * (PrInsightsRow.jsx and components/insights/*). Most are pure formatters;
+ * formatApproversDisplay, formatRequestedReviewersDisplay,
+ * formatAssignedUsersDisplay, buildPrPeopleOptions and
+ * getOpenConversationCountWithMe need actor/viewer identity, which
+ * PrInsightsDisplayProvider supplies.
  *
- * Default value (factories called with defaultActorIdentity's own
- * zero-arg-equivalent functions) matches every consuming component's old
- * permissive `window.x || fallback` behavior, same "safe no-op when
- * unwrapped" shape as ActorIdentityContext/AuthorInsightsContext.
+ * Default value (factories called with defaultActorIdentity's functions)
+ * is a safe fallback when unwrapped, like ActorIdentityContext's.
  *
- * getAuthorThreadResolutionPolicy is deliberately NOT part of this
- * Context - it's its own concern (the PR author thread-resolution
- * allow/deny policy), with its own dedicated
- * AuthorThreadResolutionSelectionContext + a useAuthorThreadResolutionPolicy
- * hook local to ReviewThreadsSection.jsx (see REACT_MIGRATION_PLAN.md) -
- * not a window.* bridge any more, and not folded into this Context either,
- * since it's unrelated to what this one covers. readReviewConversationsUiState/
- * writeReviewConversationsUiState used to be deferred here for a similar
- * reason (a module-scope Map) but have since been fully retired - see
- * state/ReviewConversationsUiStateContext.tsx, which owns that state with
- * no window.* bridge at all.
+ * The PR author thread-resolution allow/deny policy is deliberately not
+ * here: AuthorThreadResolutionSelectionContext owns it.
  */
 const buildDefaultPrInsightsDisplay = () => {
   const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
@@ -126,8 +113,10 @@ const buildDefaultPrInsightsDisplay = () => {
 
 export const defaultPrInsightsDisplay = buildDefaultPrInsightsDisplay();
 
-export const PrInsightsDisplayContext = createContext(defaultPrInsightsDisplay);
+export type PrInsightsDisplayValue = ReturnType<typeof buildDefaultPrInsightsDisplay>;
 
-export function usePrInsightsDisplay() {
+export const PrInsightsDisplayContext = createContext<PrInsightsDisplayValue>(defaultPrInsightsDisplay);
+
+export function usePrInsightsDisplay(): PrInsightsDisplayValue {
   return useContext(PrInsightsDisplayContext);
 }

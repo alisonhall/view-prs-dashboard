@@ -12,7 +12,7 @@
  *
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `buildReviewerStats`/
  * `applyStatsControls` now come from useReviewStats()
- * (state/ReviewStatsContext.jsx, components/ReviewStatsProvider.jsx),
+ * (state/ReviewStatsContext.tsx, components/ReviewStatsProvider.tsx),
  * which derives them from PrDataContext's `statsViewState` - now real
  * state (owned by ReviewStatsControls), not just an invalidation-trigger
  * snapshot, so the `stats` useMemo below can depend on it directly with no
@@ -211,7 +211,7 @@ export function ReviewStatsContent() {
   // payload, so this still only recomputes when the underlying data or
   // Review Stats settings actually change (buildReviewerStats/
   // applyStatsControls get a new reference from useReviewStats() whenever
-  // statsViewState does - see ReviewStatsProvider.jsx). While hidden, skips
+  // statsViewState does - see ReviewStatsProvider.tsx). While hidden, skips
   // straight to the last computed value instead of re-running them -
   // isVisible flipping back to true re-triggers this useMemo, so the very
   // next payload/settings change while visible again catches up

@@ -11,7 +11,7 @@
  * writes, manual event handlers) is replaced with React state.
  *
  * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): bucketTimelineChartData
- * comes from useReviewStats() (state/ReviewStatsContext.jsx) instead of
+ * comes from useReviewStats() (state/ReviewStatsContext.tsx) instead of
  * window - its default (unwrapped) context value already provides a real
  * bucketing function, so this no longer needs its own crude fallback.
  *

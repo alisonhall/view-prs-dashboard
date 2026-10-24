@@ -8,7 +8,7 @@
  * around a vanilla DOM builder). Phase 7, sub-phase 7.0 (see
  * REACT_MIGRATION_PLAN.md): the reviewer-activity timeline
  * aggregation/date-range helpers, and the sort-by write path, now come
- * from useReviewStats() (state/ReviewStatsContext.jsx) instead of window.
+ * from useReviewStats() (state/ReviewStatsContext.tsx) instead of window.
  *
  * @module components/StatsVisuals
  */

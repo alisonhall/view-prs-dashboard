@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { PrInsightsDisplayContext } from '../state/PrInsightsDisplayContext';
+import { useMemo, type ReactNode } from 'react';
+import { PrInsightsDisplayContext, type PrInsightsDisplayValue } from '../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
@@ -18,10 +18,10 @@ import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-op
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
 const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
 
 // These only close over the module-level constants above - never actor/
 // viewer identity - so they're built once here, not inside the
@@ -71,10 +71,8 @@ const stableValue = {
 };
 
 /**
- * Phase 7 (see REACT_MIGRATION_PLAN.md, and
- * state/PrInsightsDisplayContext.jsx's own comment): derives the "More
- * insights" panel's formatting/badge-class functions, replacing the
- * window.* bridges index.page.js used to assign for this cluster.
+ * Derives the "More insights" panel's formatting/badge-class functions
+ * (see state/PrInsightsDisplayContext.tsx).
  *
  * Only formatApproversDisplay/formatRequestedReviewersDisplay/
  * formatAssignedUsersDisplay/buildPrPeopleOptions/
@@ -87,11 +85,11 @@ const stableValue = {
  * usePrData() itself - every consumer already receives `row`/`actorsMap`
  * as props and passes them as plain arguments into these functions.
  */
-export function PrInsightsDisplayProvider({ children }) {
+export function PrInsightsDisplayProvider({ children }: { children?: ReactNode }) {
   const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } =
     useActorIdentity();
 
-  const value = useMemo(() => {
+  const value = useMemo<PrInsightsDisplayValue>(() => {
     const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
       asArray,
       resolveActorDisplayName,

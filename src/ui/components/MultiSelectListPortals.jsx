@@ -43,7 +43,7 @@ export const MULTI_SELECT_LIST_ID_PREFIXES = {
 };
 
 // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): each list's pure
-// option list, as a key into useFilterOptions()'s value (FilterOptionsProvider.jsx).
+// option list, as a key into useFilterOptions()'s value (FilterOptionsProvider.tsx).
 const MULTI_SELECT_OPTIONS_KEYS = {
   'label-list': 'labelOptions',
   'exclude-label-list': 'excludeLabelOptions',

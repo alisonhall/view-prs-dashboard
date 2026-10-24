@@ -220,6 +220,8 @@ export interface PrDataPayload {
   lastRun?: LastRun | null;
   dataMeta?: { dataVersion?: string } | null;
   scheduler?: unknown;
+  // Login -> display name for every actor seen (ActorsMap).
+  actorsMap?: Record<string, string | undefined>;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
 }

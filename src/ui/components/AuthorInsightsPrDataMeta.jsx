@@ -12,7 +12,7 @@
  * formatChkDisplay: the same zero-arg createPrStatusDisplayHelpers()
  * isChangedStatus/statusIcon already import directly elsewhere;
  * getViewedFilesSummary: createPrViewedFilesSummaryHelpers({ toCount }),
- * the exact same composition PrInsightsDisplayProvider.jsx already builds
+ * the exact same composition PrInsightsDisplayProvider.tsx already builds
  * at module scope) - no Context needed, now built the same way here.
  * getAuthorInsightsCreatedPrStatus/getAuthorInsightsStatusBadgeClassName/
  * getOpenConversationCount come from useAuthorInsights() (Phase 7,
