@@ -32,7 +32,7 @@ const { shouldAutoScrollBackfillLog, getBackfillScrollTop } = createPrBackfillHe
  *
  * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 4): `isBackfillRunning` now read via `useBackfillStatus()`
- * (BackfillStatusProvider.jsx, state/BackfillStatusContext.jsx) instead of
+ * (BackfillStatusProvider.tsx, state/BackfillStatusContext.tsx) instead of
  * `window.getBackfillTrackingState()` - this component is a genuine
  * Context descendant of that Provider (mounted from mountAppRoot(),
  * wrapping <AppRoot/>, same as StatusTextProvider).

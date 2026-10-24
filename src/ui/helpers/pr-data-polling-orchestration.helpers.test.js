@@ -203,7 +203,7 @@ describe("pr data polling orchestration helpers", () => {
   // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // this call site no longer renders the indicator or arms its own blur
   // listener directly for "queue-render-and-listen" - setPendingAutoRenderPayload
-  // (the bridge to AutoRenderBlockingProvider.jsx) now triggers that
+  // (the bridge to AutoRenderBlockingProvider.tsx) now triggers that
   // Provider's own reactive effect to do both, so a focused element's
   // addEventListener is no longer called from here at all. Confirmed via
   // AutoRenderBlockingProvider.test.jsx that the Provider itself does

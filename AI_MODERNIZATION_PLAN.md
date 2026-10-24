@@ -1073,6 +1073,11 @@ No static type checking leads to:
   - State batch 5 (2026-10-23): the ReviewStats, PrInsightsDisplay and
     FilterOptions contexts with their Providers. The review-stats trend
     note is now built by one shared function (it was written out twice).
+  - State batch 6 (2026-10-23): the AutoRenderBlocking, BackfillStatus,
+    AuthorInsights and AuthorInsightsDrafts contexts with their Providers.
+    getOpenConversationCount is now shared (it was written out twice), and
+    the author-insights display helpers lose their unused
+    normalizeActorLogin option.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -6,73 +6,59 @@ import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.ts';
+import type { PrData } from '../types/pr-data.ts';
 import { defaultActorIdentity } from './ActorIdentityContext';
 
 const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
 const { isChangedStatus } = createPrStatusDisplayHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
+const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey } = defaultActorIdentity;
 
+// A PR's open conversation count: the row's own count when it has one,
+// otherwise estimated from its metrics. Shared by the default value and
+// AuthorInsightsProvider.
+export const getOpenConversationCount = (row: PrData | null | undefined): number => {
+  const openConversationCountRaw = row?.openConversationCount;
+  const metrics = normalizeRowMetrics(row);
+  const fallbackOpenConversations =
+    metrics.conversationSummary.estimatedOpenConversations ||
+    metrics.counts.openConversations ||
+    metrics.conversationSummary.openThreads;
+
+  return Number.isFinite(Number(openConversationCountRaw))
+    ? Number(openConversationCountRaw)
+    : toCount(fallbackOpenConversations);
+};
+
 /**
- * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): the Author Insights
- * tab's display/formatting/sorting functions (getAuthorInsightsDisplayName,
- * noteAuthorMatchesSelection, buildAuthorInsightsEntries,
- * getAuthorInsightsSentimentLabel/BadgeClassName/StatusBadgeClassName/
- * CreatedPrStatus, the 3 sortAuthorInsightsXDesc functions,
- * getAuthorInsightsNoteDisplayTimestamp, normalizeAuthorInsightsSentiment,
- * getOpenConversationCount) used to live in index.page.js, reachable only
- * via window.* bridges. AuthorInsightsProvider
- * (components/AuthorInsightsProvider.jsx) derives all of it fresh from
- * PrDataContext's payload.actorsMap + ActorIdentityContext instead - none
- * of these actually need `authorInsightsState` itself (confirmed by
- * reading each helper module's own DI signature), only a "get the current
- * actors map" callback, which payload.actorsMap already satisfies.
+ * The Author Insights tab's display/formatting/sorting functions.
+ * AuthorInsightsProvider (components/AuthorInsightsProvider.tsx) builds
+ * them from PrDataContext's payload.actorsMap and ActorIdentityContext.
  *
- * The manual-comment draft/cache CRUD functions (getAuthorInsightsComposerDraft,
- * updateAuthorInsightsEditDraft, getAuthorManualCommentsForLogin,
- * saveAuthorManualComment, etc.) - which DO need authorInsightsState, a
- * genuinely mutable per-author cache - are a separate, not-yet-migrated
- * concern; they stay on their existing window.* bridges for now (still
- * read by AuthorInsightsCommentsSection.jsx) rather than being
- * force-fitted into this Context.
+ * The manual-comment drafts and comments cache are a separate concern,
+ * owned by AuthorInsightsDraftsContext.
  *
- * Default value (factories called with no arguments / an empty actors map)
- * matches every consuming component's old permissive `window.x || fallback`
- * behavior, so a component rendered without an <AuthorInsightsProvider>
- * ancestor still gets sane, actor-unaware behavior with no wrapping
- * required.
+ * Default value (factories called with defaultActorIdentity's functions
+ * and an empty actors map) gives a component rendered without an
+ * <AuthorInsightsProvider> ancestor sane, actor-unaware behavior.
  */
 const buildDefaultAuthorInsights = () => {
   const { normalizeAuthorInsightsSentiment, DEFAULT_AUTHOR_INSIGHTS_SENTIMENT } =
     createPrAuthorInsightsDraftsHelpers();
   const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = createPrAuthorInsightsDataHelpers();
-  const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 
   const identity = createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName });
   const display = createPrAuthorInsightsDisplayHelpers({
     resolveActorDisplayName,
     getPreferredActorKey,
-    normalizeActorLogin,
     normalizeAuthorInsightsSentiment,
     isChangedStatus,
     asArray,
     parseSortableTime,
     formatIsoDatetime,
   });
-
-  const getOpenConversationCount = (row) => {
-    const openConversationCountRaw = row?.openConversationCount;
-    const metrics = normalizeRowMetrics(row);
-    const fallbackOpenConversations =
-      metrics.conversationSummary.estimatedOpenConversations ||
-      metrics.counts.openConversations ||
-      metrics.conversationSummary.openThreads;
-
-    return Number.isFinite(Number(openConversationCountRaw))
-      ? Number(openConversationCountRaw)
-      : toCount(fallbackOpenConversations);
-  };
 
   return {
     getAuthorInsightsDisplayName: identity.getAuthorInsightsDisplayName,
@@ -94,10 +80,12 @@ const buildDefaultAuthorInsights = () => {
   };
 };
 
-export const defaultAuthorInsights = buildDefaultAuthorInsights();
+export type AuthorInsightsValue = ReturnType<typeof buildDefaultAuthorInsights>;
 
-export const AuthorInsightsContext = createContext(defaultAuthorInsights);
+export const defaultAuthorInsights: AuthorInsightsValue = buildDefaultAuthorInsights();
 
-export function useAuthorInsights() {
+export const AuthorInsightsContext = createContext<AuthorInsightsValue>(defaultAuthorInsights);
+
+export function useAuthorInsights(): AuthorInsightsValue {
   return useContext(AuthorInsightsContext);
 }

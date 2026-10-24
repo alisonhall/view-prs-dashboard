@@ -11,7 +11,7 @@ import { useSnackbar } from './SnackbarContext';
 import { usePrDataActions } from './PrDataActionsContext';
 
 // Built once, not per-render - these close over nothing but each other
-// (same "stable, zero-per-render-state" precedent as AuthorInsightsProvider.jsx's
+// (same "stable, zero-per-render-state" precedent as AuthorInsightsProvider.tsx's
 // own module-level stableDisplay).
 const { stripAnsi } = createPrFormattingHelpers();
 const { getGithubAuthFailureHint, formatCommandOutputWithAuthHint } =

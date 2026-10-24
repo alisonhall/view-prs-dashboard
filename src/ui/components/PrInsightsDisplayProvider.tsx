@@ -29,7 +29,7 @@ const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
 // give them a fresh reference every time the identity functions changed
 // (e.g. on every poll tick, since ActorIdentityContext's value is itself
 // payload-derived), the same stale-dependency-array risk
-// AuthorInsightsProvider.jsx's own comment documents and was fixed for.
+// AuthorInsightsProvider.tsx's own comment documents and was fixed for.
 const { getBadgeClassForStatus, getBadgeClassForCheck, getBadgeClassForMerge } =
   createPrInsightBadgeClassHelpers({ isChangedStatus });
 const {

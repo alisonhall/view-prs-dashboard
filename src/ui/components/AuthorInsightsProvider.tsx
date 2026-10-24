@@ -1,22 +1,24 @@
-import { useMemo } from 'react';
-import { AuthorInsightsContext } from '../state/AuthorInsightsContext';
+import { useMemo, type ReactNode } from 'react';
+import {
+  AuthorInsightsContext,
+  getOpenConversationCount,
+  type AuthorInsightsValue,
+} from '../state/AuthorInsightsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 import { createPrAuthorInsightsDisplayHelpers } from '../helpers/pr-author-insights-display.helpers.ts';
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.ts';
 import { createPrAuthorInsightsDataHelpers } from '../helpers/pr-author-insights-data.helpers.ts';
-import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { parseSortableTime } from '../helpers/pr-sortable-time.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
-const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
-const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
+const { formatIsoDatetime } = createPrFormattingHelpers();
 const { normalizeAuthorInsightsSentiment, DEFAULT_AUTHOR_INSIGHTS_SENTIMENT } = createPrAuthorInsightsDraftsHelpers();
 const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = createPrAuthorInsightsDataHelpers();
-const asArray = (value) => (Array.isArray(value) ? value : []);
 
 // These only close over the module-level constants above - never
 // `payload` or actor identity - so they're built once here, not inside
@@ -36,19 +38,6 @@ const stableDisplay = createPrAuthorInsightsDisplayHelpers({
   formatIsoDatetime,
 });
 
-const getOpenConversationCount = (row) => {
-  const openConversationCountRaw = row?.openConversationCount;
-  const metrics = normalizeRowMetrics(row);
-  const fallbackOpenConversations =
-    metrics.conversationSummary.estimatedOpenConversations ||
-    metrics.counts.openConversations ||
-    metrics.conversationSummary.openThreads;
-
-  return Number.isFinite(Number(openConversationCountRaw))
-    ? Number(openConversationCountRaw)
-    : toCount(fallbackOpenConversations);
-};
-
 const stableValue = {
   getAuthorInsightsSentimentLabel: stableDisplay.getAuthorInsightsSentimentLabel,
   getAuthorInsightsSentimentBadgeClassName: stableDisplay.getAuthorInsightsSentimentBadgeClassName,
@@ -66,11 +55,8 @@ const stableValue = {
 };
 
 /**
- * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md, and
- * state/AuthorInsightsContext.jsx's own comment): derives the Author
- * Insights tab's display/formatting/sorting functions straight from
- * PrDataContext's payload.actorsMap + ActorIdentityContext, replacing the
- * window.* bridges index.page.js used to assign for this cluster.
+ * Builds the Author Insights tab's display/formatting/sorting functions
+ * (see state/AuthorInsightsContext.tsx).
  *
  * Only getAuthorInsightsDisplayName/noteAuthorMatchesSelection/
  * buildAuthorInsightsEntries genuinely need payload/actor identity -
@@ -81,11 +67,11 @@ const stableValue = {
  * <ActorIdentityContext.Provider> it sets up - see react-app.jsx's AppRoot
  * for the actual nesting.
  */
-export function AuthorInsightsProvider({ children }) {
+export function AuthorInsightsProvider({ children }: { children?: ReactNode }) {
   const { payload } = usePrData();
   const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey } = useActorIdentity();
 
-  const value = useMemo(() => {
+  const value = useMemo<AuthorInsightsValue>(() => {
     const getLatestActorsMap = () => payload?.actorsMap || {};
 
     const { getAuthorInsightsDisplayName, noteAuthorMatchesSelection } = createPrAuthorInsightsIdentityHelpers({
@@ -97,7 +83,6 @@ export function AuthorInsightsProvider({ children }) {
     const { buildAuthorInsightsEntries } = createPrAuthorInsightsDisplayHelpers({
       resolveActorDisplayName,
       getPreferredActorKey,
-      normalizeActorLogin,
     });
 
     return {

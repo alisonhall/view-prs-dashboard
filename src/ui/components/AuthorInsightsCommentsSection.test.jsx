@@ -150,7 +150,7 @@ describe('AuthorInsightsCommentsSection', () => {
   // Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 2): window.saveAuthorManualComment/updateAuthorManualComment
   // are deleted outright - drafts.saveManualComment/updateManualComment
-  // (AuthorInsightsDraftsProvider.jsx) call the real postJson/fetchFn
+  // (AuthorInsightsDraftsProvider.tsx) call the real postJson/fetchFn
   // helpers now, so these tests mock global.fetch by HTTP method instead
   // of stubbing a window.* bridge.
   test('given a valid composer note, when Save comment succeeds, then the comment list updates and "Saved." shows', async () => {

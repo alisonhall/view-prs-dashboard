@@ -38,7 +38,7 @@ const { formatBackfillLogMessage } = createPrBackfillHelpers();
  *
  * Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 4): these 6 bridges are now answered by
- * BackfillStatusProvider.jsx (components/), not index.page.js - this
+ * BackfillStatusProvider.tsx (components/), not index.page.js - this
  * hook's own call sites are unchanged, since the bridge names stay the
  * same; only who defines them moved.
  * Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the

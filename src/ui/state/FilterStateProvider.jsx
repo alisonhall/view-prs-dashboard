@@ -11,7 +11,7 @@ import { formatCommitPatternsForTextarea } from '../helpers/form-parsing.helpers
 
 // Built once, not per-render - zero per-instance dependency other than the
 // real fetch (same "stable, zero-per-render-state" precedent as
-// AuthorInsightsProvider.jsx's own module-level stableDisplay).
+// AuthorInsightsProvider.tsx's own module-level stableDisplay).
 const { getUiOptionDefaults, FILTER_STATE_FIELD_MAP, readUiSessionOverrides, writeUiSessionOverrides } =
   createPrUiOptionPersistenceHelpers({ fetch: (...args) => fetch(...args) });
 

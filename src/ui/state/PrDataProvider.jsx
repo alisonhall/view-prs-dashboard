@@ -420,8 +420,8 @@ export function PrDataProvider({
       },
       // Phase B (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // pendingAutoRenderPayload/hasDirtyPrSectionsFields live in
-      // AutoRenderBlockingProvider.jsx, read via its Context (stable
-      // functions - see AutoRenderBlockingContext.jsx).
+      // AutoRenderBlockingProvider.tsx, read via its Context (stable
+      // functions - see AutoRenderBlockingContext.tsx).
       getHasDirtyPrSectionsFields,
       getPendingAutoRenderPayload,
       setPendingAutoRenderPayload,

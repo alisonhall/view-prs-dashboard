@@ -102,11 +102,9 @@ describe('BackfillStatusProvider', () => {
     test('given setBackfillLogMessage is called with identical text twice, when read, then the text is set and the update tick still bumps both times', () => {
       const { read } = mountProvider();
 
-      let returned;
       act(() => {
-        returned = read().actions.setBackfillLogMessage('log line');
+        read().actions.setBackfillLogMessage('log line');
       });
-      expect(returned).toBe(true);
       expect(read().backfillLogText).toBe('log line');
       expect(read().backfillLogUpdateTick).toBe(1);
 

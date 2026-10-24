@@ -10,7 +10,7 @@ import { createPrAutoRenderStateHelpers } from '../helpers/pr-auto-render-state.
 import { createPrAuthorInsightsDraftsHelpers } from '../helpers/pr-author-insights-drafts.helpers.ts';
 import { createPrAuthorInsightsIdentityHelpers } from '../helpers/pr-author-insights-identity.helpers.ts';
 
-// Zero-dependency, built once - same precedent as AutoRenderBlockingProvider.jsx.
+// Zero-dependency, built once - same precedent as AutoRenderBlockingProvider.tsx.
 const { isAuthorInsightsComposerDraftDirty, isAuthorInsightsEditDraftDirty } =
   createPrAuthorInsightsDraftsHelpers();
 

@@ -2,7 +2,6 @@ import type { PrEntry } from "../types/pr-data.ts";
 import type {
   ActorsMap,
   GetPreferredActorKey,
-  NormalizeActorLogin,
   ResolveActorDisplayName,
 } from "./pr-actor-identity.helpers.ts";
 import type { AuthorManualComment } from "./pr-author-insights-data.helpers.ts";
@@ -29,7 +28,6 @@ export interface AuthorNoteMatch {
 export interface PrAuthorInsightsDisplayDeps {
   resolveActorDisplayName?: ResolveActorDisplayName;
   getPreferredActorKey?: GetPreferredActorKey;
-  normalizeActorLogin?: NormalizeActorLogin;
   normalizeAuthorInsightsSentiment?: (value: unknown) => string;
   isChangedStatus?: (status: unknown) => boolean;
   asArray?: (value: unknown) => unknown[];

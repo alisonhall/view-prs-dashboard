@@ -8277,7 +8277,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       // Still deferred - the dirty field hasn't cleared yet. The indicator
-      // itself is now toggled by AutoRenderBlockingProvider.jsx's own
+      // itself is now toggled by AutoRenderBlockingProvider.tsx's own
       // effect (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"),
       // one React commit after the bridge call above - waitFor accounts
       // for that, where this used to be a synchronous vanilla DOM write.
@@ -8864,7 +8864,7 @@ describe("index page rendering with Testing Library", () => {
   // vanilla-DOM fallback left for this jsdom-only suite to render into.
   // The actual mechanism under test (composer draft state surviving an
   // async author-comments load) lives entirely in
-  // AuthorInsightsDraftsProvider.jsx's real Context state now - see
+  // AuthorInsightsDraftsProvider.tsx's real Context state now - see
   // AuthorInsightsCommentsSection.test.jsx's own draft/dirty-tracking
   // tests for the equivalent coverage, tested directly against that
   // mechanism instead.

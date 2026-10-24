@@ -16,7 +16,6 @@ describe("pr author insights display helpers", () => {
   const createDependencies = (overrides = {}) => ({
     resolveActorDisplayName: (login, map, fallback) => map[login] || fallback || login,
     getPreferredActorKey: (login, name) => login || name,
-    normalizeActorLogin: (login) => String(login || "").toLowerCase().trim(),
     normalizeAuthorInsightsSentiment: (value) => {
       const sentiment = String(value || "").toLowerCase().trim();
       if (sentiment === "positive") return "positive";

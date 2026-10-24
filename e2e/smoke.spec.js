@@ -553,7 +553,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 
   // The "Auto update paused" indicator (and its chips) only shows once a
   // real poll's fresh data has actually been held back, not merely because
-  // a field is dirty (AutoRenderBlockingProvider.jsx's `isBlocked` needs
+  // a field is dirty (AutoRenderBlockingProvider.tsx's `isBlocked` needs
   // both). Clicking the "Author Insights" tab below blurs the dirty textarea,
   // but the field is still dirty, so the poll stays held back.
   await changeServerData(page);

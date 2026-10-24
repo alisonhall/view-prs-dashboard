@@ -22,7 +22,7 @@
  *
  * Phase H.15 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 2): handleSaveComment/EditForm's handleSave call
- * drafts.saveManualComment/updateManualComment (AuthorInsightsDraftsProvider.jsx)
+ * drafts.saveManualComment/updateManualComment (AuthorInsightsDraftsProvider.tsx)
  * directly now, not window.saveAuthorManualComment/updateAuthorManualComment
  * (deleted outright) - same underlying fetch calls, just reached via the
  * Context this component already consumes for draft state, instead of a
