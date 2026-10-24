@@ -75,7 +75,7 @@ const renderProbe = (onReady, { setStatusText = () => {}, values = {}, checkedBy
 // useAckLabelActions() now reads busy/queued/bulk-batch state via
 // usePrActivityQueue() (Context) instead of window.markPrsBusy/
 // beginBulkActionBatch/etc. - without a real Provider mounted, the
-// Context's own no-op defaults (PrActivityQueueContext.jsx) are used
+// Context's own no-op defaults (PrActivityQueueContext.tsx) are used
 // automatically, so the 3 tests below (which don't exercise busy/queued
 // behavior directly) need no Provider wrapper to keep passing.
 //

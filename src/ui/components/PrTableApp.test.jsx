@@ -118,7 +118,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // payload" test below for the real post-mount update path.
 //
 // Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `needsAttention`
-// merges onto defaultNeedsAttention (state/NeedsAttentionContext.jsx) and is
+// merges onto defaultNeedsAttention (state/NeedsAttentionContext.tsx) and is
 // provided via Context - the real app's <NeedsAttentionProvider /> derives
 // this from FilterStateProvider/ActorIdentityContext, but tests here want
 // direct per-test control instead, the same way renderCell's
@@ -126,7 +126,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 //
 // Activity drawer feature (see REACT_MIGRATION_PLAN.md): busyPrNumbers/
 // queuedPrNumbers moved from PrTableApp's own local state into
-// PrActivityQueueProvider.jsx - this wraps every render the same way
+// PrActivityQueueProvider.tsx - this wraps every render the same way
 // react-app.jsx's real AppRoot now does. Tenth follow-up (see
 // REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): the markPrsBusy/
 // clearPrsBusy/markPrsQueued/clearPrsQueued window bridges that used to

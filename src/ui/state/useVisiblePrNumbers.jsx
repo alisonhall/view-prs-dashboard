@@ -72,7 +72,7 @@ const DEFAULT_FILTER_STATE_VALUES = {
  * sits inside every Context this composes), not routed through an
  * intermediate "bridge" component pushing into PrDataProvider's own state,
  * to avoid the stable-children reconciliation-bailout bug class
- * NeedsAttentionProvider.jsx had to work around previously (see that
+ * NeedsAttentionProvider.tsx had to work around previously (see that
  * file's own comment).
  *
  * Reuses the exact same pure helpers the vanilla pipeline uses

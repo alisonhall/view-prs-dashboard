@@ -1,16 +1,16 @@
-import { useContext, useMemo } from 'react';
+import { useContext, useMemo, type ReactNode } from 'react';
 import { NeedsAttentionContext } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { FilterStateContext } from '../state/FilterStateContext';
-import { createPrNeedsAttentionHelpers } from '../helpers/pr-needs-attention.helpers.ts';
+import type { FilterValues } from '../state/filterValuesStore';
+import { createPrNeedsAttentionHelpers, type AttentionConfig } from '../helpers/pr-needs-attention.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
+import { asArray } from '../helpers/pr-as-array.helpers.ts';
 
 const { isChangedStatus } = createPrStatusDisplayHelpers();
-
-const asArray = (value) => (Array.isArray(value) ? value : []);
 
 // Same defaults FilterStateProvider's own getUiOptionDefaults()
 // (pr-ui-option-persistence.helpers.ts) assigns these 6 fields - used only
@@ -28,35 +28,18 @@ const DEFAULT_ATTENTION_VALUES = {
 };
 
 /**
- * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md, and
- * state/NeedsAttentionContext.jsx's own comment): derives the "needs
- * attention" config and classification helpers, replacing the
- * window.entryNeedsAttention/window.getNeedsAttentionConfig/
- * window.shouldShowNeedsAttention bridges for PrTableApp specifically.
+ * Derives the "needs attention" config and classification helpers from the
+ * Run & Filter form's attention fields and the actor identity.
  *
- * Phase H.18 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
- * cluster 1): attentionConfig now reads FilterStateContext directly
- * (`useContext`, same as useVisiblePrNumbers.jsx's own
- * useFilteredPrRows() already does for its own fields) instead of
- * window.getFilterStateValues()/raw DOM reads. That indirection used to
- * need *something else* to force this component to re-render at all,
- * since it sits between PrDataProvider and PrTableApp as a stable
- * children element (created once, never recreated on PrDataProvider's
- * own re-renders) - a bare usePrData() call existed purely to punch
- * through React's "same children element" reconciliation bailout, with
- * its own returned value unused. Subscribing to FilterStateContext
- * directly makes that punch-through unnecessary - the Context *value*
- * changing is what triggers the re-render now, regardless of whether
- * this component is a stable children element, the same way any other
- * useContext() consumer anywhere in this app already works. User-visible
- * effect of this phase (confirmed intentional, not a side effect): these
- * 6 fields now update attention icons/smart-group membership instantly,
- * like every other Context-migrated filter field, instead of only after
- * "Apply filters (local)" (or the previous 150ms-debounced auto-apply).
+ * It reads FilterStateContext directly, so a change to any attention rule
+ * re-renders it (and updates attention icons and smart-group membership)
+ * straight away, even though it sits between PrDataProvider and PrTableApp
+ * as a stable children element that a parent re-render alone wouldn't
+ * reach.
  */
-export function NeedsAttentionProvider({ children }) {
+export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
   const filterState = useContext(FilterStateContext);
-  const values = filterState?.values || DEFAULT_ATTENTION_VALUES;
+  const values: FilterValues = filterState?.values || DEFAULT_ATTENTION_VALUES;
   const { normalizeActorLogin, resolveActorDisplayName, getEffectiveViewerLogin } = useActorIdentity();
 
   const helpers = useMemo(() => {
@@ -79,7 +62,7 @@ export function NeedsAttentionProvider({ children }) {
     });
   }, [normalizeActorLogin, resolveActorDisplayName, getEffectiveViewerLogin]);
 
-  const attentionConfig = useMemo(
+  const attentionConfig = useMemo<AttentionConfig>(
     () => ({
       noActivityMode: values.attentionNoActivityMode ?? DEFAULT_ATTENTION_VALUES.attentionNoActivityMode,
       includePendingComments:

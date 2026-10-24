@@ -6,7 +6,7 @@
  * number-only key can collide across repos with the same PR number.
  *
  * Imported directly by PrTableApp.jsx, PrTable.jsx, PrRow.jsx and
- * PrActivityQueueProvider.jsx - pulling it out of PrTableApp.jsx itself
+ * PrActivityQueueProvider.tsx - pulling it out of PrTableApp.jsx itself
  * avoids a PrTableApp -> PrSection -> PrTable -> PrTableApp import cycle.
  *
  * @module components/pr-row-keys

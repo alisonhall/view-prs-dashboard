@@ -17,7 +17,7 @@ import type { ConversationFilterMode } from '../helpers/pr-review-conversations-
  * remembers its choice across a remount.
  */
 export interface SavedReviewConversationsUiState {
-  conversationFilterMode: ConversationFilterMode | string;
+  conversationFilterMode: ConversationFilterMode;
   showSummaryCards: boolean;
 }
 
@@ -25,7 +25,7 @@ export interface ReviewConversationsUiStateValue {
   getReviewConversationsUiState: (stateKey: string) => SavedReviewConversationsUiState | null;
   setReviewConversationsUiState: (
     stateKey: string,
-    conversationFilterMode: ConversationFilterMode | string,
+    conversationFilterMode: ConversationFilterMode,
     showSummaryCards: boolean,
   ) => void;
 }

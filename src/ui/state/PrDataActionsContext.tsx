@@ -1,10 +1,8 @@
 import { createContext, useContext } from 'react';
+import type { PrDataPayload } from '../types/pr-data.ts';
 
 /**
- * Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
- * the PR-data pipeline that used to live in index.page.js and reach React
- * through window.loadStoredData/applyFreshPrPayload/applyLatestPrData/
- * getLatestStoredPayload, now owned by <PrDataProvider />.
+ * The PR-data pipeline's actions, owned by <PrDataProvider />:
  *
  * - `loadStoredData(selectedRepo?)`: GET /view-prs/data and render it.
  * - `applyFreshPrPayload(payload, repo?)`: render a payload a caller already
@@ -22,16 +20,22 @@ import { createContext, useContext } from 'react';
  * identity never changes.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context in
- * this app - the same inert fallback these hooks had when they read
- * `window.loadStoredData?.()` before the Provider mounted.
+ * this app.
  */
-export const PrDataActionsContext = createContext({
+export interface PrDataActionsValue {
+  loadStoredData: (selectedRepo?: string, options?: Record<string, unknown>) => Promise<PrDataPayload | null>;
+  applyFreshPrPayload: (payload: PrDataPayload, repo?: string) => void;
+  applyLatestPrData: (update?: { payload?: PrDataPayload | null; selectedRepo?: string }) => void;
+  getLatestStoredPayload: () => PrDataPayload | null;
+}
+
+export const PrDataActionsContext = createContext<PrDataActionsValue>({
   loadStoredData: async () => null,
   applyFreshPrPayload: () => {},
   applyLatestPrData: () => {},
   getLatestStoredPayload: () => null,
 });
 
-export function usePrDataActions() {
+export function usePrDataActions(): PrDataActionsValue {
   return useContext(PrDataActionsContext);
 }

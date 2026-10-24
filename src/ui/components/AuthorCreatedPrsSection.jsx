@@ -13,7 +13,7 @@
  * auto-select-first-author fallback).
  *
  * getPreferredActorKey comes from useActorIdentity() (see
- * state/ActorIdentityContext.jsx); sortAuthorInsightsCreatedPrsDesc comes
+ * state/ActorIdentityContext.tsx); sortAuthorInsightsCreatedPrsDesc comes
  * from useAuthorInsights() (Phase 7, sub-phase 7.0 - see
  * REACT_MIGRATION_PLAN.md).
  *

@@ -7,7 +7,7 @@
  * superseded it - see REACT_MIGRATION_PLAN.md's 2026-09-20 entry).
  *
  * The viewer-login resolution and class/title *logic* come from
- * useActorIdentity() (state/ActorIdentityContext.jsx) - `getEffectiveViewerLogin`
+ * useActorIdentity() (state/ActorIdentityContext.tsx) - `getEffectiveViewerLogin`
  * (helpers/pr-actor-identity-render.helpers.ts) and
  * `buildActorIdentityClassName`/`buildActorIdentityTitle`
  * (helpers/pr-actor-identity-style.helpers.ts) - so behavior can't drift.

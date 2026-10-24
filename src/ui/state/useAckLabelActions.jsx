@@ -46,7 +46,7 @@ const parseCsvTokens = (rawValue) =>
  * busy/queued Context functions are singular/per-PR
  * (markPrBusy(prNumber, repo)) where the factory wants plural/array-taking
  * (markPrsBusy(prNumbers, repo)) - wrapped in the same per-PR loop
- * PrActivityQueueProvider.jsx's own window-bridge effect already uses, not
+ * PrActivityQueueProvider.tsx's own window-bridge effect already uses, not
  * forwarded 1:1. The 4 bulk-batch functions match the factory's expected
  * shape exactly - direct passthrough.
  *

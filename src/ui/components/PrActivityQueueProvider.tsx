@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { PrActivityQueueContext } from '../state/PrActivityQueueContext';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { PrActivityQueueContext, type PrActivityQueueValue } from '../state/PrActivityQueueContext';
+import type { BatchesState } from '../helpers/pr-bulk-action-batches.helpers.ts';
 import { buildActivePrKey } from './pr-row-keys';
 import { createPrBulkActionBatchesHelpers } from '../helpers/pr-bulk-action-batches.helpers.ts';
 
@@ -13,35 +14,14 @@ const {
 } = createPrBulkActionBatchesHelpers();
 
 /**
- * Activity drawer feature (see REACT_MIGRATION_PLAN.md): owns the
- * busyPrNumbers/queuedPrNumbers Sets that used to live locally inside
- * PrTableApp.jsx (lifted verbatim - same Set-of-"repo::prNumber"-keys
- * shape, same markPrBusy/clearPrBusy/markPrQueued/clearPrQueued
- * semantics), plus the bulk ack/apply-label batch manifest the drawer's
- * queue section needs.
- *
- * Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the 4
- * bulk-batch mutators are exposed via Context, so state/useAckLabelActions.jsx's
- * own instance calls them directly via usePrActivityQueue(). Mounted
- * wrapping <AppRoot /> itself now (react-app.jsx's mountAppRoot), not
- * nested inside its own returned JSX - AppRoot's own body calls
- * useAckLabelActions() directly, so it has to be a real Context
- * descendant, not an ancestor, for that to reach this Provider's live
- * state.
- *
- * Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
- * window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued/
- * beginBulkActionBatch/markBulkActionChunkInFlight/markBulkActionChunkDone/
- * finishBulkActionBatch all deleted outright - their "real external
- * callers" (pr-ack-label-actions.helpers.ts/pr-quick-check-actions.helpers.ts)
- * are pure DI factories with zero window.* references of their own; their
- * only actual callers are useAckLabelActions.jsx/useQuickCheckActions.jsx,
- * both hooks that already inject these Context functions directly, not
- * through window. A grep confirmed zero remaining references outside this
- * file's own (now rewritten) tests and PrTableApp.test.jsx's.
+ * Owns which PRs are busy/queued and the bulk ack/apply-label batch
+ * manifest (see PrActivityQueueContext). Wraps <AppRoot /> from
+ * react-app.jsx's mountAppRoot(), not nested inside AppRoot's JSX, because
+ * AppRoot's own body calls useAckLabelActions(), which needs this
+ * Provider as an ancestor to reach its live state.
  */
-export function PrActivityQueueProvider({ children }) {
-  const [busyPrNumbers, setBusyPrNumbers] = useState(() => new Set());
+export function PrActivityQueueProvider({ children }: { children?: ReactNode }) {
+  const [busyPrNumbers, setBusyPrNumbers] = useState<Set<string>>(() => new Set());
 
   // ROADMAP.md follow-up (found during the "Quick check all" feature
   // review, 2026-09-30): busyPrNumbers used to be a plain Set, with
@@ -59,9 +39,9 @@ export function PrActivityQueueProvider({ children }) {
   // claims on the same PR both have to clear before the spinner does.
   // busyPrNumbers' own external shape (a Set of keys, spread/iterated by
   // PrTableApp.jsx) is completely unchanged.
-  const busyCountByKeyRef = useRef(new Map());
+  const busyCountByKeyRef = useRef(new Map<string, number>());
 
-  const markPrBusy = useCallback((prNumber, repo) => {
+  const markPrBusy = useCallback<PrActivityQueueValue['markPrBusy']>((prNumber, repo) => {
     const key = buildActivePrKey(prNumber, repo);
     const counts = busyCountByKeyRef.current;
     const nextCount = (counts.get(key) || 0) + 1;
@@ -71,7 +51,7 @@ export function PrActivityQueueProvider({ children }) {
     }
   }, []);
 
-  const clearPrBusy = useCallback((prNumber, repo) => {
+  const clearPrBusy = useCallback<PrActivityQueueValue['clearPrBusy']>((prNumber, repo) => {
     const key = buildActivePrKey(prNumber, repo);
     const counts = busyCountByKeyRef.current;
     const currentCount = counts.get(key) || 0;
@@ -94,14 +74,14 @@ export function PrActivityQueueProvider({ children }) {
     }
   }, []);
 
-  const [queuedPrNumbers, setQueuedPrNumbers] = useState(() => new Set());
+  const [queuedPrNumbers, setQueuedPrNumbers] = useState<Set<string>>(() => new Set());
 
-  const markPrQueued = useCallback((prNumber, repo) => {
+  const markPrQueued = useCallback<PrActivityQueueValue['markPrQueued']>((prNumber, repo) => {
     const key = buildActivePrKey(prNumber, repo);
     setQueuedPrNumbers((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   }, []);
 
-  const clearPrQueued = useCallback((prNumber, repo) => {
+  const clearPrQueued = useCallback<PrActivityQueueValue['clearPrQueued']>((prNumber, repo) => {
     const key = buildActivePrKey(prNumber, repo);
     setQueuedPrNumbers((prev) => {
       if (!prev.has(key)) {
@@ -118,28 +98,26 @@ export function PrActivityQueueProvider({ children }) {
   // Map in a ref would avoid re-renders too, but this state IS the
   // drawer's own display data, so it needs to trigger a re-render on every
   // chunk transition.
-  const [bulkBatchesState, setBulkBatchesState] = useState(getInitialBatchesState);
+  const [bulkBatchesState, setBulkBatchesState] = useState<BatchesState>(getInitialBatchesState);
 
-  // Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): these
-  // 4 are stable useCallbacks (same shape as markPrBusy/clearPrBusy above)
-  // so useAckLabelActions.jsx can call them directly via
-  // usePrActivityQueue().
-  const beginBulkActionBatch = useCallback(({ batchId, actionLabel, repo, chunks }) => {
+  // Stable useCallbacks (same shape as markPrBusy/clearPrBusy above) so
+  // useAckLabelActions can call them directly via usePrActivityQueue().
+  const beginBulkActionBatch = useCallback<PrActivityQueueValue['beginBulkActionBatch']>(({ batchId, actionLabel, repo, chunks }) => {
     setBulkBatchesState((prev) => beginBatch(prev, { batchId, actionLabel, repo, chunks }));
   }, []);
-  const markBulkActionChunkInFlight = useCallback(({ batchId, chunkIndex }) => {
+  const markBulkActionChunkInFlight = useCallback<PrActivityQueueValue['markBulkActionChunkInFlight']>(({ batchId, chunkIndex }) => {
     setBulkBatchesState((prev) => markChunkInFlight(prev, { batchId, chunkIndex }));
   }, []);
-  const markBulkActionChunkDone = useCallback(({ batchId, chunkIndex, ok }) => {
+  const markBulkActionChunkDone = useCallback<PrActivityQueueValue['markBulkActionChunkDone']>(({ batchId, chunkIndex, ok }) => {
     setBulkBatchesState((prev) => markChunkDone(prev, { batchId, chunkIndex, ok }));
   }, []);
-  const finishBulkActionBatch = useCallback(({ batchId }) => {
+  const finishBulkActionBatch = useCallback<PrActivityQueueValue['finishBulkActionBatch']>(({ batchId }) => {
     setBulkBatchesState((prev) => finishBatch(prev, { batchId }));
   }, []);
 
   const bulkBatches = useMemo(() => getBulkQueueViewModel(bulkBatchesState), [bulkBatchesState]);
 
-  const value = useMemo(
+  const value = useMemo<PrActivityQueueValue>(
     () => ({
       busyPrNumbers,
       queuedPrNumbers,

@@ -630,7 +630,7 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
 });
 
 // A dedicated real-browser reproduction of the "queued, not yet started"
-// sub-state (PrActivityQueueProvider.jsx's markPrQueued/clearPrQueued,
+// sub-state (PrActivityQueueProvider.tsx's markPrQueued/clearPrQueued,
 // PrNumberCell.jsx's .pr-progress-indicator--queued) used to live here too,
 // driven via the now-deleted window.markPrsQueued/markPrsBusy bridges.
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):

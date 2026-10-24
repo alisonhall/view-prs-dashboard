@@ -23,6 +23,13 @@
 // are covered by the index signature until their readers are typed.
 export interface FilterValues {
   repo?: string;
+  // "Advanced visibility and attention rules"
+  attentionNoActivityMode?: string;
+  attentionIncludePendingComments?: boolean;
+  attentionIgnoreMergeOnlyCommits?: boolean;
+  attentionIncludeClosedMerged?: boolean;
+  attentionIncludeDraftChanged?: boolean;
+  attentionIncludeDraftNoActivity?: boolean;
   [key: string]: unknown;
 }
 

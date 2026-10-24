@@ -1065,6 +1065,9 @@ No static type checking leads to:
     the FilterState and PrData contexts. Those two contexts are typed ahead
     of their (large) Providers, which stay .jsx until a later batch and are
     checked against the context types when they convert.
+  - State batch 3 (2026-10-23): the ActorIdentity and PrDataActions
+    contexts (also provided by PrDataProvider, so typed ahead of it), and
+    the NeedsAttention and PrActivityQueue contexts with their Providers.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
