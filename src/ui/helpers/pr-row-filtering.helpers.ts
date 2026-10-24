@@ -88,7 +88,7 @@ const createPrRowFilteringHelpers = ({
     //
     // Only the latest criteria's result is kept per entry
     // (getOrComputeLatest), NOT one result per fingerprint ever seen:
-    // the 6 free-text filter fields are undebounced, so every keystroke
+    // the 5 free-text filter fields are undebounced, so every keystroke
     // is a new fingerprint, and a key-per-fingerprint cache grew by one
     // permanent result per keystroke per loaded PR until Chrome killed
     // the renderer ("Error code: 5"). Callers that only inject a plain

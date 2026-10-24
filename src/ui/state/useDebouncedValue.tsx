@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
  * whole table immediately, which visibly flickers through wrong
  * intermediate matches while typing (e.g. typing "12" briefly shows PR #1
  * before showing PR #12). Every other input this hook reads (scope,
- * multi-select checkboxes, the 6 "Any" selects) is a discrete click/
+ * multi-select checkboxes, the 5 "Any" selects) is a discrete click/
  * selection, so this is deliberately NOT applied generically to every
  * field.
  */

@@ -3,7 +3,7 @@
 // Regression test for the renderer out-of-memory crash (Chrome "Error code:
 // 5"): the per-entry filter-match cache used to gain one permanent result per
 // distinct filter-criteria fingerprint - i.e. one per keystroke typed into
-// any of the 6 undebounced free-text filter fields, for every loaded PR.
+// any of the 5 undebounced free-text filter fields, for every loaded PR.
 // This drives the real hook (not just the helpers) so it also proves
 // useFilteredPrRows actually wires the bounded cache in.
 

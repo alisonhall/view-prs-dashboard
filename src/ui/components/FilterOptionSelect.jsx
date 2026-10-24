@@ -1,12 +1,12 @@
 /**
  * FilterOptionSelect - generic React-owned "Any (with/without)"-style
- * select for the six near-identical plain-metadata filters in the "Run &
+ * select for the five near-identical plain-metadata filters in the "Run &
  * Filter" tab: Custom comments, Other notes, PR difficulty, Stories,
  * Analysis of PR.
  *
  * Phase 6 (see REACT_MIGRATION_PLAN.md): migrated from local `useState` to
  * `<FilterStateProvider>`'s shared Context via a `filterStateKey` prop -
- * all six of this component's consumers are migrating in the same slice
+ * all of this component's consumers were migrating in the same slice
  * (unlike FilterCheckbox/RunScriptTextInput, which have other,
  * unmigrated consumers), so there was no reason to fork a parallel
  * Context-backed component here; every usage just gained the prop. Each
