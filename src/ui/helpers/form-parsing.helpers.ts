@@ -4,7 +4,7 @@
 // The attributes that tell browsers and password managers (LastPass,
 // 1Password, Bitwarden) a plain text field isn't a credential field, as
 // React props - spread onto the Run Script/filter/notes text inputs
-// (ContextRunScriptTextInput, PrNumberFilterInput, NotesMultiEntryField,
+// (ContextRunScriptTextInput, PrNumberFilterInput, NotesStoriesField,
 // ReviewStatsControls).
 export const NON_CREDENTIAL_INPUT_PROPS = Object.freeze({
   autoComplete: "off",

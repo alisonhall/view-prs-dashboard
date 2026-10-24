@@ -36,8 +36,7 @@ describe("pr-row-match-filters helpers", () => {
     customComments: "",
     otherNotes: "",
     prDifficulty: "",
-    rallyStories: "",
-    rallyLinks: "",
+    stories: "",
     analysisOfPr: "",
   });
 
@@ -128,18 +127,36 @@ describe("pr-row-match-filters helpers", () => {
     expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), assignedLogins: ["bob"] })).toBe(true);
   });
 
+  describe("the Stories filter (matches when at least one story row fits)", () => {
+    const matches = (stories, notesSummary) => {
+      const { rowMatchesUiFilters } = makeHelpers();
+      return rowMatchesUiFilters({ data: { number: 1, notesSummary } }, { ...emptyCriteria(), stories });
+    };
+
+    test.each([
+      ["none", { hasStories: false }, true],
+      ["none", { hasStories: true }, false],
+      ["name-only", { hasStoryNameOnly: true }, true],
+      ["name-only", { hasStoryNameOnly: false, hasStoryNameAndUrl: true }, false],
+      ["url-only", { hasStoryUrlOnly: true }, true],
+      ["url-only", { hasStoryUrlOnly: false }, false],
+      ["name-and-url", { hasStoryNameAndUrl: true }, true],
+      ["name-and-url", { hasStoryNameOnly: true, hasStoryUrlOnly: true, hasStoryNameAndUrl: false }, false],
+    ])("given stories=%s and summary %j, when called, then match is %s", (stories, notesSummary, expected) => {
+      expect(matches(stories, notesSummary)).toBe(expected);
+    });
+  });
+
   test("given an approver filter, when none of the row's approvers match, then it doesn't match", () => {
     const { rowMatchesUiFilters } = makeHelpers();
     const entry = { data: { number: 1, approverLogins: ["alice"] } };
     expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), approverLogins: ["bob"] })).toBe(false);
   });
 
-  describe("the 6 'Any (with/without)' filters", () => {
+  describe("the 'Any (with/without)' filters", () => {
     const cases = [
       ["customComments", "hasCustomComments"],
       ["otherNotes", "hasOtherNotes"],
-      ["rallyStories", "hasRallyStories"],
-      ["rallyLinks", "hasRallyLinks"],
       ["analysisOfPr", "hasAnalysisOfPr"],
     ];
 

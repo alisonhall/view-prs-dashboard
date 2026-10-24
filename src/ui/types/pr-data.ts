@@ -98,12 +98,17 @@ export interface PrNotesComment {
   note?: string;
 }
 
+// One of a PR's stories: a name (e.g. "US12345") and/or its URL.
+export interface PrStory {
+  name?: string;
+  url?: string;
+}
+
 export interface PrNotes {
   comments?: PrNotesComment[];
   otherNotes?: string;
   prDifficulty?: string;
-  rallyStories?: string[];
-  rallyLinks?: string[];
+  stories?: PrStory[];
   analysisOfPr?: string;
 }
 

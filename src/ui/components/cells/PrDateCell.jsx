@@ -49,8 +49,7 @@ export function PrDateCell({ entry, pr }) {
           text={fieldSummary.hasDifficulty ? fieldSummary.difficultyLevelText : ''}
           extraClass="author-notes-field-indicator-difficulty"
         />
-        <FieldIndicator hasData={fieldSummary.hasRallyStories} title="Rally stories" />
-        <FieldIndicator hasData={fieldSummary.hasRallyLinks} title="Rally links" />
+        <FieldIndicator hasData={fieldSummary.hasStories} title="Stories" />
         <FieldIndicator hasData={fieldSummary.hasAnalysisOfPr} title="Analysis of PR" />
       </div>
     </td>

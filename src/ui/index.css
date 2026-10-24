@@ -81,8 +81,7 @@
         #filter-custom-comments-root,
         #filter-other-notes-root,
         #filter-pr-difficulty-root,
-        #filter-rally-stories-root,
-        #filter-rally-links-root,
+        #filter-stories-root,
         #filter-analysis-of-pr-root {
             display: contents;
         }
@@ -3017,6 +3016,11 @@
             grid-template-columns: 1fr auto;
             gap: 6px;
             align-items: center;
+        }
+
+        /* Story name, URL, remove button. */
+        .pr-notes-story-row {
+            grid-template-columns: 1fr 2fr auto;
         }
 
         .pr-notes-add-entry,

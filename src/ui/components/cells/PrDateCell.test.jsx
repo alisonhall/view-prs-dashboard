@@ -59,6 +59,7 @@ describe('PrDateCell', () => {
       notes: {
         comments: [{ note: 'a custom comment', author: 'alice' }],
         prDifficulty: '3',
+        stories: [{ name: 'US1', url: '' }],
       },
     };
     render(
@@ -71,10 +72,13 @@ describe('PrDateCell', () => {
       </table>,
     );
     const indicators = document.querySelectorAll('.author-notes-field-indicator');
-    expect(indicators).toHaveLength(6);
+    expect(indicators).toHaveLength(5);
     expect(indicators[0]).toHaveClass('author-notes-field-indicator-filled'); // custom comments
     expect(indicators[1]).toHaveClass('author-notes-field-indicator-empty'); // other notes
     expect(indicators[2]).toHaveClass('author-notes-field-indicator-filled', 'author-notes-field-indicator-difficulty');
     expect(indicators[2]).toHaveTextContent('3');
+    expect(indicators[3]).toHaveClass('author-notes-field-indicator-filled'); // stories
+    expect(indicators[3]).toHaveAttribute('title', 'Stories');
+    expect(indicators[4]).toHaveClass('author-notes-field-indicator-empty'); // analysis
   });
 });

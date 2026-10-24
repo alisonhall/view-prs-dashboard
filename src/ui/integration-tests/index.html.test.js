@@ -318,12 +318,8 @@ const injectRunFilterFieldElements = () => {
     '<select id="filter-pr-difficulty" name="filterPrDifficulty"><option value="" selected>Any (set or not set)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="not-set">Not set</option></select>',
   );
   setRootContent(
-    "filter-rally-stories-root",
-    '<select id="filter-rally-stories" name="filterRallyStories"><option value="" selected>Any (with or without)</option><option value="with">With Rally stories</option><option value="without">Without Rally stories</option></select>',
-  );
-  setRootContent(
-    "filter-rally-links-root",
-    '<select id="filter-rally-links" name="filterRallyLinks"><option value="" selected>Any (with or without)</option><option value="with">With Rally links</option><option value="without">Without Rally links</option></select>',
+    "filter-stories-root",
+    '<select id="filter-stories" name="filterStories"><option value="" selected>Any</option><option value="none">Without any story details</option><option value="name-only">With only story name</option><option value="url-only">With only story URL</option><option value="name-and-url">With story and URL</option></select>',
   );
   setRootContent(
     "filter-analysis-of-pr-root",
@@ -4191,8 +4187,7 @@ describe("index page rendering with Testing Library", () => {
                 ],
                 otherNotes: "Follow up after release",
                 prDifficulty: "4",
-                rallyStories: ["US12345"],
-                rallyLinks: ["https://rally.example/US12345"],
+                stories: [{ name: "US12345", url: "https://stories.example/US12345" }],
                 analysisOfPr: "Risk is moderate due to API coupling.",
               },
               data: {
@@ -4302,7 +4297,7 @@ describe("index page rendering with Testing Library", () => {
     const pr11FieldIndicators = Array.from(
       pr11DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
     );
-    expect(pr11FieldIndicators.length).toBe(6);
+    expect(pr11FieldIndicators.length).toBe(5);
     expect(
       pr11FieldIndicators.every((node) =>
         String(node?.className || "").includes("author-notes-field-indicator-filled"),
@@ -4326,7 +4321,7 @@ describe("index page rendering with Testing Library", () => {
     const pr12FieldIndicators = Array.from(
       pr12DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
     );
-    expect(pr12FieldIndicators.length).toBe(6);
+    expect(pr12FieldIndicators.length).toBe(5);
     expect(
       pr12FieldIndicators.every((node) =>
         String(node?.className || "").includes("author-notes-field-indicator-empty"),
@@ -6755,8 +6750,7 @@ describe("index page rendering with Testing Library", () => {
                   comments: [savedNote],
                   otherNotes: "",
                   prDifficulty: "5",
-                  rallyStories: [],
-                  rallyLinks: [],
+                  stories: [],
                   analysisOfPr: "Deep analysis for save test",
                 },
               },
@@ -6843,7 +6837,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("enables Save notes when only difficulty or rally fields are edited", async () => {
+  test("enables Save notes when only difficulty or story fields are edited", async () => {
     const renderCleanNotesSection = async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
@@ -6902,10 +6896,7 @@ describe("index page rendering with Testing Library", () => {
 
     {
       const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyStoryInput = notesSection.querySelector(
-        ".pr-notes-rally-story-input",
-      );
-      expect(rallyStoryInput).toBeInTheDocument();
+      const storyNameInput = within(notesSection).getByRole("textbox", { name: "Story 1 name" });
       // fireEvent.change (one direct value-set + 'change' dispatch), not
       // user.type (many sequential per-keystroke events) - see this
       // test's own renderCleanNotesSection() comment for why: by the time
@@ -6914,15 +6905,14 @@ describe("index page rendering with Testing Library", () => {
       // input's onChange/state at all (confirmed via the component's own
       // internal state tracing - the DOM value updated, React's state
       // never did), while a single fireEvent.change reliably still does.
-      fireEvent.change(rallyStoryInput, { target: { value: "US12345" } });
+      fireEvent.change(storyNameInput, { target: { value: "US12345" } });
       expect(saveNotesButton).toBeEnabled();
     }
 
     {
       const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyLinkInput = notesSection.querySelector(".pr-notes-rally-link-input");
-      expect(rallyLinkInput).toBeInTheDocument();
-      fireEvent.change(rallyLinkInput, { target: { value: "https://rally.example/US12345" } });
+      const storyUrlInput = within(notesSection).getByRole("textbox", { name: "Story 1 URL" });
+      fireEvent.change(storyUrlInput, { target: { value: "https://stories.example/US12345" } });
       expect(saveNotesButton).toBeEnabled();
     }
   });
@@ -9044,15 +9034,15 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
-  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 6
-  // FilterOptionSelect "Any (with/without)" fields (filter-custom-comments,
-  // filter-other-notes, filter-pr-difficulty, filter-rally-stories,
-  // filter-rally-links, filter-analysis-of-pr) were never included in
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the
+  // FilterOptionSelect "Any" fields (filter-custom-comments,
+  // filter-other-notes, filter-pr-difficulty, filter-stories,
+  // filter-analysis-of-pr) were never included in
   // persistUiOptionOverrides/restoreUiOptionOverrides/getUiOptionDefaults -
   // a real, undocumented persistence gap, not an intentional exclusion
   // (unlike their separate, deliberate exclusion from auto-apply-on-change).
   // Covers both directions of that fix for one representative field
-  // (filter-pr-difficulty); the other 5 share the exact same code path.
+  // (filter-pr-difficulty); the others share the exact same code path.
   describe("FilterOptionSelect persistence (persistence-gap fix)", () => {
     test("given a FilterOptionSelect value, when it changes, then it is persisted to user-defaults", async () => {
       initTestPage({

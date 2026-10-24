@@ -4,8 +4,8 @@
       "comments": [],
       "otherNotes": "",
       "prDifficulty": "3",
-      "rallyStories": "",
-      "rallyLinks": "",
+      "rallyStories": ["US1001"],
+      "rallyLinks": [],
       "analysisOfPr": ""
     }
   },

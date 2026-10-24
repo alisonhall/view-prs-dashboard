@@ -44,8 +44,10 @@ describe("pr manual notes summary helpers", () => {
         hasOtherNotes: false,
         hasDifficulty: false,
         difficultyLevelText: "",
-        hasRallyStories: false,
-        hasRallyLinks: false,
+        hasStories: false,
+        hasStoryNameOnly: false,
+        hasStoryUrlOnly: false,
+        hasStoryNameAndUrl: false,
         hasAnalysisOfPr: false,
       });
     });
@@ -57,18 +59,44 @@ describe("pr manual notes summary helpers", () => {
       expect(result.difficultyLevelText).toBe("3");
     });
 
-    test("given rally stories/links and an analysis field, when summarizing, then all 3 are flagged true", () => {
+    test("given stories and an analysis field, when summarizing, then both are flagged true", () => {
       const entry = {
         notes: {
-          rallyStories: ["US123", ""],
-          rallyLinks: ["http://example.com"],
+          stories: [{ name: "US123", url: "http://example.com" }],
           analysisOfPr: "looks fine",
         },
       };
       const result = getManualNotesFieldSummary(entry, {});
-      expect(result.hasRallyStories).toBe(true);
-      expect(result.hasRallyLinks).toBe(true);
+      expect(result.hasStories).toBe(true);
       expect(result.hasAnalysisOfPr).toBe(true);
+    });
+
+    test("given story rows with only a name, only a URL, and both, when summarizing, then each kind is flagged per row", () => {
+      const summarize = (stories) => getManualNotesFieldSummary({ notes: { stories } }, {});
+
+      expect(summarize([{ name: "US1", url: "" }])).toMatchObject({
+        hasStories: true,
+        hasStoryNameOnly: true,
+        hasStoryUrlOnly: false,
+        hasStoryNameAndUrl: false,
+      });
+      expect(summarize([{ name: "", url: "http://x/US2" }])).toMatchObject({
+        hasStoryNameOnly: false,
+        hasStoryUrlOnly: true,
+        hasStoryNameAndUrl: false,
+      });
+      // Mixed rows: one name-only and one URL-only row is not "name and URL".
+      expect(summarize([{ name: "US1", url: "" }, { name: "", url: "http://x/US2" }])).toMatchObject({
+        hasStoryNameOnly: true,
+        hasStoryUrlOnly: true,
+        hasStoryNameAndUrl: false,
+      });
+    });
+
+    test("given only blank story rows, when summarizing, then there are no stories", () => {
+      expect(
+        getManualNotesFieldSummary({ notes: { stories: [{ name: "  ", url: "" }] } }, {}).hasStories,
+      ).toBe(false);
     });
   });
 });

@@ -20,8 +20,7 @@ describe("pr table filter chips helpers", () => {
           filterCustomComments: "",
           filterOtherNotes: "",
           filterPrDifficulty: "",
-          filterRallyStories: "",
-          filterRallyLinks: "",
+          filterStories: "",
           filterAnalysisOfPr: "",
         }),
       ).toEqual([]);
@@ -134,8 +133,6 @@ describe("pr table filter chips helpers", () => {
       ["filterCustomComments", "Custom comments", "with"],
       ["filterCustomComments", "Custom comments", "without"],
       ["filterOtherNotes", "Other notes", "with"],
-      ["filterRallyStories", "Rally stories", "without"],
-      ["filterRallyLinks", "Rally links", "with"],
       ["filterAnalysisOfPr", "Analysis of PR", "without"],
     ])("given %s set to '%s', when building chips, then includes a '%s: %s' chip clearing back to ''", (key, prefix, value) => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
@@ -144,6 +141,19 @@ describe("pr table filter chips helpers", () => {
 
       expect(chips).toEqual([
         { id: key, label: `${prefix}: ${value}`, clear: { kind: "field", key, value: "" } },
+      ]);
+    });
+
+    test.each([
+      ["none", "without any story details"],
+      ["name-only", "with only story name"],
+      ["url-only", "with only story URL"],
+      ["name-and-url", "with story and URL"],
+    ])("given filterStories set to '%s', when building chips, then includes a 'Stories: %s' chip clearing back to ''", (value, label) => {
+      const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
+
+      expect(buildTableFilterChipsViewModel({ filterStories: value })).toEqual([
+        { id: "filterStories", label: `Stories: ${label}`, clear: { kind: "field", key: "filterStories", value: "" } },
       ]);
     });
 

@@ -20,8 +20,7 @@ describe("pr row filtering helpers", () => {
       customComments: "with",
       otherNotes: "without",
       prDifficulty: "3",
-      rallyStories: "with",
-      rallyLinks: "without",
+      stories: "name-only",
       analysisOfPr: "with",
     });
 
@@ -36,8 +35,7 @@ describe("pr row filtering helpers", () => {
       customComments: "with",
       otherNotes: "without",
       prDifficulty: "3",
-      rallyStories: "with",
-      rallyLinks: "without",
+      stories: "name-only",
       analysisOfPr: "with",
     });
   });
@@ -58,8 +56,7 @@ describe("pr row filtering helpers", () => {
       customComments: "",
       otherNotes: "",
       prDifficulty: "",
-      rallyStories: "",
-      rallyLinks: "",
+      stories: "",
       analysisOfPr: "",
     });
   });
@@ -144,8 +141,7 @@ describe("pr row filtering helpers", () => {
       "customComments",
       "otherNotes",
       "prDifficulty",
-      "rallyStories",
-      "rallyLinks",
+      "stories",
       "analysisOfPr",
     ];
 

@@ -462,14 +462,12 @@ The `Visibility Filters` panel includes filters for custom metadata fields (manu
   - `Any (set or not set)`: Show all PRs regardless of difficulty setting
   - `1` through `5`: Show only PRs with that specific difficulty rating
   - `Not set`: Show only PRs where difficulty has not been assigned
-- **Rally stories**: Filter by presence/absence of Rally story references
-  - `Any (with or without)`: Show all PRs regardless of Rally stories
-  - `With Rally stories`: Show only PRs that have Rally story references entered
-  - `Without Rally stories`: Show only PRs with no Rally story references
-- **Rally links**: Filter by presence/absence of Rally links
-  - `Any (with or without)`: Show all PRs regardless of Rally links
-  - `With Rally links`: Show only PRs that have Rally links entered
-  - `Without Rally links`: Show only PRs with no Rally links
+- **Stories**: Filter by the PR's stories (each a name and/or URL)
+  - `Any`: Show all PRs regardless of stories
+  - `Without any story details`: Show only PRs with no stories
+  - `With only story name`: Show PRs with at least one story that has a name but no URL
+  - `With only story URL`: Show PRs with at least one story that has a URL but no name
+  - `With story and URL`: Show PRs with at least one story that has both
 - **Analysis of PR**: Filter by presence/absence of PR analysis text
   - `Any (with or without)`: Show all PRs regardless of analysis
   - `With analysis`: Show only PRs that have analysis text entered
@@ -765,7 +763,7 @@ The UI includes:
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - Author Insights manual comments editor saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
 - PR-number-column relative `↻ ... ago` indicators are based on the latest successfully rendered run timestamp (`lastRun.updatedAt`), not per-row stale timestamps.
-- `YOUR LAST ACTIVITY` / `MERGED AT` date cells show six small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, Rally stories, Rally links, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
+- `YOUR LAST ACTIVITY` / `MERGED AT` date cells show five small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, stories, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
 - per-row `View PR JSON details` modal with four expanded-by-default sections:
   - `Data File Entry`
   - `PR Detail File`
@@ -796,11 +794,10 @@ Notes editor fields include:
 - comment rows (author, sentiment, note)
 - `Other Notes` (textarea)
 - `PR difficulty` (1-5)
-- `Rally stories` (multi-entry text; use `+` to add another story)
-- `Rally links` (multi-entry text; use `+` to add another link)
+- `Stories` (one row per story: a name such as `US12345` and its URL; use `+` to add another story)
 - `Analysis of PR` (textarea)
 
-`Rally stories` and `Rally links` are persisted as arrays in user state.
+Stories are persisted in user state as `stories: [{ name, url }]`. Notes saved before stories existed kept names (`rallyStories`) and URLs (`rallyLinks`) in two separate lists; those are read as stories, paired by position, and saved in the new shape on the next write.
 
 `Save notes` is enabled only when one or more notes fields are dirty (including the additional fields above).
 

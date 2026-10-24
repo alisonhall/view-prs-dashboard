@@ -20,8 +20,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   filterCustomComments: '',
   filterOtherNotes: '',
   filterPrDifficulty: '',
-  filterRallyStories: '',
-  filterRallyLinks: '',
+  filterStories: '',
   filterAnalysisOfPr: '',
 };
 
@@ -69,8 +68,7 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
       filterCustomComments: values.filterCustomComments,
       filterOtherNotes: values.filterOtherNotes,
       filterPrDifficulty: values.filterPrDifficulty,
-      filterRallyStories: values.filterRallyStories,
-      filterRallyLinks: values.filterRallyLinks,
+      filterStories: values.filterStories,
       filterAnalysisOfPr: values.filterAnalysisOfPr,
     });
 

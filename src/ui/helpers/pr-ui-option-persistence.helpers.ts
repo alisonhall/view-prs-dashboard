@@ -41,8 +41,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "filter-custom-comments": "",
     "filter-other-notes": "",
     "filter-pr-difficulty": "",
-    "filter-rally-stories": "",
-    "filter-rally-links": "",
+    "filter-stories": "",
     "filter-analysis-of-pr": "",
   });
 
@@ -75,8 +74,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "filter-custom-comments": "filterCustomComments",
     "filter-other-notes": "filterOtherNotes",
     "filter-pr-difficulty": "filterPrDifficulty",
-    "filter-rally-stories": "filterRallyStories",
-    "filter-rally-links": "filterRallyLinks",
+    "filter-stories": "filterStories",
     "filter-analysis-of-pr": "filterAnalysisOfPr",
   };
 

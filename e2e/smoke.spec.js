@@ -430,7 +430,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await expect(indicator).toBeHidden();
 });
 
-test("typing character-by-character into the Rally stories/links inputs keeps every keystroke", async ({ page }) => {
+test("typing character-by-character into the story name/URL inputs keeps every keystroke", async ({ page }) => {
   // Regression coverage for a real bug only a real browser could catch:
   // index.page.js's recomputeDirtyOnEvent (deleted in window-bridge
   // elimination Phase 7.4 - the blocking state is now recomputed in
@@ -444,7 +444,7 @@ test("typing character-by-character into the Rally stories/links inputs keeps ev
   // debounced) triggers a React state update (AutoRenderBlockingProvider's
   // bump()) *before* React's own event handling for that same native
   // event starts, so React doesn't batch it - it flushes synchronously,
-  // reconciling the controlled Rally stories/links input back to its
+  // reconciling the controlled story input back to its
   // pre-keystroke value before React's own onChange ever runs. Each
   // keystroke was silently dropped - .fill() didn't catch this (jsdom's
   // event delegation model doesn't reproduce the real listener-ordering
@@ -456,23 +456,28 @@ test("typing character-by-character into the Rally stories/links inputs keeps ev
   await insightsToggle.click();
   await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
 
-  const rallyStoryInput = prTables(page).getByRole("group", { name: "Rally stories", exact: true }).getByRole("textbox").first();
-  await expect(rallyStoryInput).toBeVisible();
-  await rallyStoryInput.click();
-  await rallyStoryInput.pressSequentially("US12345");
-  await expect(rallyStoryInput).toHaveValue("US12345");
-  await rallyStoryInput.fill("");
+  // A new row, so this works whether or not the PR already has stories;
+  // removing it afterwards leaves the notes unchanged.
+  const stories = prTables(page).getByRole("group", { name: "Stories", exact: true }).first();
+  await stories.getByRole("button", { name: "Add story" }).click();
 
-  const rallyLinkInput = prTables(page).getByRole("group", { name: "Rally links", exact: true }).getByRole("textbox").first();
-  await rallyLinkInput.click();
-  await rallyLinkInput.pressSequentially("https://rally.example/US12345");
-  await expect(rallyLinkInput).toHaveValue("https://rally.example/US12345");
-  await rallyLinkInput.fill("");
+  const storyNameInput = stories.getByRole("textbox", { name: / name$/ }).last();
+  await expect(storyNameInput).toBeVisible();
+  await storyNameInput.click();
+  await storyNameInput.pressSequentially("US12345");
+  await expect(storyNameInput).toHaveValue("US12345");
+
+  const storyUrlInput = stories.getByRole("textbox", { name: / URL$/ }).last();
+  await storyUrlInput.click();
+  await storyUrlInput.pressSequentially("https://stories.example/US12345");
+  await expect(storyUrlInput).toHaveValue("https://stories.example/US12345");
+
+  await stories.getByRole("button", { name: /^Remove story / }).last().click();
 });
 
 test("selecting an option in the Notes section's author/tone/difficulty dropdowns actually applies it", async ({ page }) => {
-  // Regression coverage for the same root cause as the Rally stories/
-  // links keystroke bug above, on recomputeDirtyOnEvent's "change"/"click"
+  // Regression coverage for the same root cause as the story-input
+  // keystroke bug above, on recomputeDirtyOnEvent's "change"/"click"
   // branches instead of "input" - a native <select> fires only "change"
   // (no "input"), and clicking the closed <select> to open its dropdown
   // is itself a "click" on a .pr-notes-* element, both of which this
@@ -1774,9 +1779,9 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 });
 
 test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually filter the table", async ({ page }) => {
-  // Covers the six "Any (with/without)"-style selects (custom comments,
-  // other notes, PR difficulty, Rally stories, Rally links, analysis of
-  // PR) converted via the generic FilterOptionSelect component - see
+  // Covers the "Any"-style selects (custom comments, other notes, PR
+  // difficulty, stories, analysis of PR) converted via the generic
+  // FilterOptionSelect component - see
   // REACT_MIGRATION_PLAN.md. Unlike almost every other Phase 2 field,
   // none of these ever had a vanilla "change" listener or a persisted
   // override (only read via .value when "Apply filters (local)" is
@@ -1786,7 +1791,7 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
   // This also covers a real, pre-existing bug found and fixed alongside
   // this conversion (not caused by it, but caught while testing it):
   // deriveFilterPipelineState (pr-filter-pipeline.helpers.js) used to read
-  // customComments/otherNotes/prDifficulty/rallyStories/rallyLinks/
+  // customComments/otherNotes/prDifficulty/(then) rallyStories/rallyLinks/
   // analysisOfPr off its input but never forward them into
   // buildRowFilterCriteria, so rowMatchesUiFilters always saw empty-string
   // criteria for all six fields regardless of what was selected - `git
@@ -1810,6 +1815,20 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
   await page.selectOption("#filter-pr-difficulty", "");
+  await waitForFilterPersist(page);
+
+  // Stories: PR #1's fixture notes use the pre-stories rallyStories list,
+  // which the server converts to one name-only story.
+  await page.selectOption("#filter-stories", "name-only");
+  await waitForFilterPersist(page);
+  await expect(prTables(page)).toContainText("Add welcome banner");
+  await expect(prTables(page)).not.toContainText("Fix flaky test");
+
+  await page.selectOption("#filter-stories", "name-and-url");
+  await waitForFilterPersist(page);
+  await expect(prTables(page)).not.toContainText("Add welcome banner");
+
+  await page.selectOption("#filter-stories", "");
   await waitForFilterPersist(page);
 });
 

@@ -14,8 +14,9 @@ export interface RowFilterCriteria {
   customComments: string;
   otherNotes: string;
   prDifficulty: string;
-  rallyStories: string;
-  rallyLinks: string;
+  // The Stories filter: "" (any), "none", "name-only", "url-only" or
+  // "name-and-url".
+  stories: string;
   analysisOfPr: string;
 }
 
@@ -57,8 +58,7 @@ const createPrRowFilteringHelpers = ({
     customComments,
     otherNotes,
     prDifficulty,
-    rallyStories,
-    rallyLinks,
+    stories,
     analysisOfPr,
   }: RowFilterCriteriaInput = {}): RowFilterCriteria => ({
     prNumbers: asStringArray(prNumbers),
@@ -71,8 +71,7 @@ const createPrRowFilteringHelpers = ({
     customComments: String(customComments || ""),
     otherNotes: String(otherNotes || ""),
     prDifficulty: String(prDifficulty || ""),
-    rallyStories: String(rallyStories || ""),
-    rallyLinks: String(rallyLinks || ""),
+    stories: String(stories || ""),
     analysisOfPr: String(analysisOfPr || ""),
   });
 

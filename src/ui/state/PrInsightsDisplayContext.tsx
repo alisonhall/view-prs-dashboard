@@ -70,7 +70,7 @@ const buildDefaultPrInsightsDisplay = () => {
   } = createPrInsightMetricsSummaryHelpers();
   const { parseMarkerState } = createPrUiRenderUtilsHelpers();
   const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
-  const { normalizeNotesListForUi } = createPrNotesHelpers();
+  const { normalizeStoriesForUi } = createPrNotesHelpers();
   const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
   const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
     createPrActivityEventsHelpers({ asArray });
@@ -107,7 +107,7 @@ const buildDefaultPrInsightsDisplay = () => {
     buildActivityEventKey,
     normalizePrRootUrl,
     buildPrPeopleOptions,
-    normalizeNotesListForUi,
+    normalizeStoriesForUi,
     renderMarkdownAsHtml,
   };
 };

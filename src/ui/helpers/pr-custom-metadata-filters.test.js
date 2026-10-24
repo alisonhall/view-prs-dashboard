@@ -1,106 +1,37 @@
 /** @jest-environment jsdom */
 
 /**
- * Unit tests for custom metadata filtering logic in rowMatchesUiFilters.
- * Tests the new visibility filters for: custom comments, other notes, PR difficulty,
- * rally stories, rally links, and analysis of PR.
+ * The notes-based row filters in rowMatchesUiFilters
+ * (pr-row-match-filters.helpers.ts): custom comments, other notes, PR
+ * difficulty, stories, and analysis of PR. The notes summary is injected,
+ * so each test sets exactly the flags it needs.
  */
+
+const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpers.ts");
+
+const EMPTY_CRITERIA = {
+  prNumbers: [],
+  includeLabels: [],
+  excludeLabels: [],
+  authorLogins: [],
+  assignedLogins: [],
+  approverLogins: [],
+  alwaysShowInReview: false,
+  customComments: "",
+  otherNotes: "",
+  prDifficulty: "",
+  stories: "",
+  analysisOfPr: "",
+};
 
 describe("Custom Metadata Filters", () => {
   let getManualNotesFieldSummary;
   let rowMatchesUiFilters;
 
   beforeEach(() => {
-    // Mock getManualNotesFieldSummary function
-    getManualNotesFieldSummary = jest.fn((_entry, _row) => ({
-      hasCustomComments: false,
-      hasOtherNotes: false,
-      hasDifficulty: false,
-      difficultyLevelText: "",
-      hasRallyStories: false,
-      hasRallyLinks: false,
-      hasAnalysisOfPr: false,
-    }));
-
-    // Mock minimal dependencies
-    global.getManualNotesFieldSummary = getManualNotesFieldSummary;
-    global.getPreferredActorKey = jest.fn((login) => login || "");
-    global.collectAssignedUsers = jest.fn(() => []);
-    global.collectApproversFromRow = jest.fn(() => []);
-    global.extractRowLabelNames = jest.fn(() => []);
-    global.isInReviewEnabled = jest.fn(() => false);
-
-    // Load the actual rowMatchesUiFilters function from index.page.js
-    // Note: In a real test, this would be extracted to a testable helper module
-    // For this test, we'll create a simplified version
-    rowMatchesUiFilters = (entry, filters) => {
-      const row = entry?.data || {};
-      const notesSummary = getManualNotesFieldSummary(entry, row);
-
-      // Custom comments filter
-      if (filters.customComments === "with" && !notesSummary.hasCustomComments) {
-        return false;
-      }
-      if (filters.customComments === "without" && notesSummary.hasCustomComments) {
-        return false;
-      }
-
-      // Other notes filter
-      if (filters.otherNotes === "with" && !notesSummary.hasOtherNotes) {
-        return false;
-      }
-      if (filters.otherNotes === "without" && notesSummary.hasOtherNotes) {
-        return false;
-      }
-
-      // PR difficulty filter
-      if (filters.prDifficulty === "not-set" && notesSummary.hasDifficulty) {
-        return false;
-      }
-      if (
-        filters.prDifficulty &&
-        filters.prDifficulty !== "not-set" &&
-        notesSummary.difficultyLevelText !== filters.prDifficulty
-      ) {
-        return false;
-      }
-
-      // Rally stories filter
-      if (filters.rallyStories === "with" && !notesSummary.hasRallyStories) {
-        return false;
-      }
-      if (filters.rallyStories === "without" && notesSummary.hasRallyStories) {
-        return false;
-      }
-
-      // Rally links filter
-      if (filters.rallyLinks === "with" && !notesSummary.hasRallyLinks) {
-        return false;
-      }
-      if (filters.rallyLinks === "without" && notesSummary.hasRallyLinks) {
-        return false;
-      }
-
-      // Analysis of PR filter
-      if (filters.analysisOfPr === "with" && !notesSummary.hasAnalysisOfPr) {
-        return false;
-      }
-      if (filters.analysisOfPr === "without" && notesSummary.hasAnalysisOfPr) {
-        return false;
-      }
-
-      return true;
-    };
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
-    delete global.getManualNotesFieldSummary;
-    delete global.getPreferredActorKey;
-    delete global.collectAssignedUsers;
-    delete global.collectApproversFromRow;
-    delete global.extractRowLabelNames;
-    delete global.isInReviewEnabled;
+    getManualNotesFieldSummary = jest.fn(() => ({}));
+    const helpers = createPrRowMatchFiltersHelpers({ getManualNotesFieldSummary });
+    rowMatchesUiFilters = (entry, filters) => helpers.rowMatchesUiFilters(entry, { ...EMPTY_CRITERIA, ...filters });
   });
 
   describe("Custom Comments Filter", () => {
@@ -239,71 +170,21 @@ describe("Custom Metadata Filters", () => {
     });
   });
 
-  describe("Rally Stories Filter", () => {
-    test("given filter set to 'with', when PR has rally stories, then row matches", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyStories: true });
-      const entry = { data: {} };
-      const filters = { rallyStories: "with" };
+  describe("Stories Filter", () => {
+    test.each([
+      ["none", { hasStories: false }, true],
+      ["none", { hasStories: true }, false],
+      ["name-only", { hasStories: true, hasStoryNameOnly: true }, true],
+      ["name-only", { hasStories: true, hasStoryNameAndUrl: true }, false],
+      ["url-only", { hasStories: true, hasStoryUrlOnly: true }, true],
+      ["url-only", { hasStories: true, hasStoryNameOnly: true }, false],
+      ["name-and-url", { hasStories: true, hasStoryNameAndUrl: true }, true],
+      ["name-and-url", { hasStories: true, hasStoryNameOnly: true, hasStoryUrlOnly: true }, false],
+      ["", { hasStories: true, hasStoryNameOnly: true }, true],
+    ])("given filter set to '%s' and summary %j, when matching, then the result is %s", (stories, summary, expected) => {
+      getManualNotesFieldSummary.mockReturnValue(summary);
 
-      expect(rowMatchesUiFilters(entry, filters)).toBe(true);
-    });
-
-    test("given filter set to 'with', when PR has no rally stories, then row does not match", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyStories: false });
-      const entry = { data: {} };
-      const filters = { rallyStories: "with" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(false);
-    });
-
-    test("given filter set to 'without', when PR has rally stories, then row does not match", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyStories: true });
-      const entry = { data: {} };
-      const filters = { rallyStories: "without" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(false);
-    });
-
-    test("given filter set to 'without', when PR has no rally stories, then row matches", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyStories: false });
-      const entry = { data: {} };
-      const filters = { rallyStories: "without" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(true);
-    });
-  });
-
-  describe("Rally Links Filter", () => {
-    test("given filter set to 'with', when PR has rally links, then row matches", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyLinks: true });
-      const entry = { data: {} };
-      const filters = { rallyLinks: "with" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(true);
-    });
-
-    test("given filter set to 'with', when PR has no rally links, then row does not match", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyLinks: false });
-      const entry = { data: {} };
-      const filters = { rallyLinks: "with" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(false);
-    });
-
-    test("given filter set to 'without', when PR has rally links, then row does not match", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyLinks: true });
-      const entry = { data: {} };
-      const filters = { rallyLinks: "without" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(false);
-    });
-
-    test("given filter set to 'without', when PR has no rally links, then row matches", () => {
-      getManualNotesFieldSummary.mockReturnValue({ hasRallyLinks: false });
-      const entry = { data: {} };
-      const filters = { rallyLinks: "without" };
-
-      expect(rowMatchesUiFilters(entry, filters)).toBe(true);
+      expect(rowMatchesUiFilters({ data: {} }, { stories })).toBe(expected);
     });
   });
 
@@ -348,8 +229,8 @@ describe("Custom Metadata Filters", () => {
         hasOtherNotes: false,
         hasDifficulty: true,
         difficultyLevelText: "4",
-        hasRallyStories: true,
-        hasRallyLinks: false,
+        hasStories: true,
+        hasStoryNameAndUrl: true,
         hasAnalysisOfPr: true,
       });
       const entry = { data: {} };
@@ -357,8 +238,7 @@ describe("Custom Metadata Filters", () => {
         customComments: "with",
         otherNotes: "without",
         prDifficulty: "4",
-        rallyStories: "with",
-        rallyLinks: "without",
+        stories: "name-and-url",
         analysisOfPr: "with",
       };
 
@@ -371,8 +251,8 @@ describe("Custom Metadata Filters", () => {
         hasOtherNotes: true, // This will fail the otherNotes: "without" filter
         hasDifficulty: true,
         difficultyLevelText: "4",
-        hasRallyStories: true,
-        hasRallyLinks: false,
+        hasStories: true,
+        hasStoryNameAndUrl: true,
         hasAnalysisOfPr: true,
       });
       const entry = { data: {} };
@@ -380,8 +260,7 @@ describe("Custom Metadata Filters", () => {
         customComments: "with",
         otherNotes: "without",
         prDifficulty: "4",
-        rallyStories: "with",
-        rallyLinks: "without",
+        stories: "name-and-url",
         analysisOfPr: "with",
       };
 

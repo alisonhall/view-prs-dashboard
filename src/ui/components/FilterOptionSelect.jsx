@@ -1,8 +1,8 @@
 /**
  * FilterOptionSelect - generic React-owned "Any (with/without)"-style
  * select for the six near-identical plain-metadata filters in the "Run &
- * Filter" tab: Custom comments, Other notes, PR difficulty, Rally
- * stories, Rally links, Analysis of PR.
+ * Filter" tab: Custom comments, Other notes, PR difficulty, Stories,
+ * Analysis of PR.
  *
  * Phase 6 (see REACT_MIGRATION_PLAN.md): migrated from local `useState` to
  * `<FilterStateProvider>`'s shared Context via a `filterStateKey` prop -

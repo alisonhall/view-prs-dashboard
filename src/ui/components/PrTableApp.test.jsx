@@ -164,8 +164,7 @@ const renderPrTableApp = ({
             filterCustomComments: '',
             filterOtherNotes: '',
             filterPrDifficulty: '',
-            filterRallyStories: '',
-            filterRallyLinks: '',
+            filterStories: '',
             filterAnalysisOfPr: '',
             ...filterStateValues,
           }}

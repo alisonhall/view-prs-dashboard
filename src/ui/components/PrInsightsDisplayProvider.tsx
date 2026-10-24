@@ -40,7 +40,7 @@ const {
 } = createPrInsightMetricsSummaryHelpers();
 const { parseMarkerState } = createPrUiRenderUtilsHelpers();
 const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
-const { normalizeNotesListForUi } = createPrNotesHelpers();
+const { normalizeStoriesForUi } = createPrNotesHelpers();
 const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
 const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
   createPrActivityEventsHelpers({ asArray });
@@ -66,7 +66,7 @@ const stableValue = {
   buildFallbackActivityEvents,
   buildActivityEventKey,
   normalizePrRootUrl,
-  normalizeNotesListForUi,
+  normalizeStoriesForUi,
   renderMarkdownAsHtml,
 };
 

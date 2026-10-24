@@ -39,8 +39,7 @@ export interface FilterValues {
   filterCustomComments?: string;
   filterOtherNotes?: string;
   filterPrDifficulty?: string;
-  filterRallyStories?: string;
-  filterRallyLinks?: string;
+  filterStories?: string;
   filterAnalysisOfPr?: string;
   // "Advanced visibility and attention rules"
   attentionNoActivityMode?: string;

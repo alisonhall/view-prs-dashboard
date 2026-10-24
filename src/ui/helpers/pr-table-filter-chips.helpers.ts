@@ -25,12 +25,18 @@ export interface TableFilterChipsInput {
   filterCustomComments?: string;
   filterOtherNotes?: string;
   filterPrDifficulty?: string;
-  filterRallyStories?: string;
-  filterRallyLinks?: string;
+  filterStories?: string;
   filterAnalysisOfPr?: string;
 }
 
 const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
+
+const STORIES_FILTER_LABELS: Record<string, string> = {
+  none: "without any story details",
+  "name-only": "with only story name",
+  "url-only": "with only story URL",
+  "name-and-url": "with story and URL",
+};
 
 const createPrTableFilterChipsHelpers = () => {
   const fieldChip = (id: string, label: string, key: string, defaultValue: unknown): FilterChip => ({
@@ -58,8 +64,7 @@ const createPrTableFilterChipsHelpers = () => {
     filterCustomComments,
     filterOtherNotes,
     filterPrDifficulty,
-    filterRallyStories,
-    filterRallyLinks,
+    filterStories,
     filterAnalysisOfPr,
   }: TableFilterChipsInput = {}): FilterChip[] => {
     const chips: FilterChip[] = [];
@@ -106,8 +111,10 @@ const createPrTableFilterChipsHelpers = () => {
       );
     }
 
-    withWithoutChip("filterRallyStories", "Rally stories", "filterRallyStories", filterRallyStories);
-    withWithoutChip("filterRallyLinks", "Rally links", "filterRallyLinks", filterRallyLinks);
+    if (filterStories) {
+      const label = STORIES_FILTER_LABELS[filterStories] || filterStories;
+      chips.push(fieldChip("filterStories", `Stories: ${label}`, "filterStories", ""));
+    }
     withWithoutChip("filterAnalysisOfPr", "Analysis of PR", "filterAnalysisOfPr", filterAnalysisOfPr);
 
     return chips;

@@ -109,12 +109,36 @@ const normalizeNotes = (notes) => {
     return singleValue ? [singleValue] : [];
   };
 
+  // The PR's stories, each a name and/or URL; rows with neither are dropped.
+  // Notes saved before `stories` existed kept names (rallyStories) and URLs
+  // (rallyLinks) in two lists, entered side by side - those are paired by
+  // position.
+  const normalizeStories = () => {
+    if (Array.isArray(notes.stories)) {
+      return notes.stories
+        .map((story) =>
+          isObject(story)
+            ? {
+                name: String(story.name ?? "").trim(),
+                url: String(story.url ?? "").trim(),
+              }
+            : { name: String(story ?? "").trim(), url: "" },
+        )
+        .filter((story) => story.name || story.url);
+    }
+    const names = normalizeStringList(notes.rallyStories);
+    const urls = normalizeStringList(notes.rallyLinks);
+    return Array.from({ length: Math.max(names.length, urls.length) }, (_, index) => ({
+      name: names[index] || "",
+      url: urls[index] || "",
+    }));
+  };
+
   return {
     comments,
     otherNotes: String(notes.otherNotes ?? ""),
     prDifficulty: normalizeDifficulty(notes.prDifficulty),
-    rallyStories: normalizeStringList(notes.rallyStories),
-    rallyLinks: normalizeStringList(notes.rallyLinks),
+    stories: normalizeStories(),
     analysisOfPr: String(notes.analysisOfPr ?? ""),
   };
 };

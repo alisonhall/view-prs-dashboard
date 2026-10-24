@@ -51,8 +51,12 @@ export interface ManualNotesFieldSummary {
   hasOtherNotes: boolean;
   hasDifficulty: boolean;
   difficultyLevelText: string;
-  hasRallyStories: boolean;
-  hasRallyLinks: boolean;
+  // Any story row at all, and whether at least one row has only a name,
+  // only a URL, or both (the Stories filter matches per row).
+  hasStories: boolean;
+  hasStoryNameOnly: boolean;
+  hasStoryUrlOnly: boolean;
+  hasStoryNameAndUrl: boolean;
   hasAnalysisOfPr: boolean;
 }
 
@@ -64,12 +68,12 @@ export const getManualNotesFieldSummary = (
   const comments = nonEmptyComments(notes);
   const otherNotes = String(notes?.otherNotes || "").trim();
   const difficultyRaw = String(notes?.prDifficulty || "").trim();
-  const rallyStories = asArray(notes?.rallyStories).filter((story) =>
-    Boolean(String(story || "").trim()),
-  );
-  const rallyLinks = asArray(notes?.rallyLinks).filter((link) =>
-    Boolean(String(link || "").trim()),
-  );
+  const stories = asArray(notes?.stories)
+    .map((story) => ({
+      hasName: Boolean(String(story?.name || "").trim()),
+      hasUrl: Boolean(String(story?.url || "").trim()),
+    }))
+    .filter((story) => story.hasName || story.hasUrl);
   const analysisOfPr = String(notes?.analysisOfPr || "").trim();
 
   return {
@@ -77,8 +81,10 @@ export const getManualNotesFieldSummary = (
     hasOtherNotes: Boolean(otherNotes),
     hasDifficulty: Boolean(difficultyRaw),
     difficultyLevelText: getNotesDifficultyLevelText(difficultyRaw),
-    hasRallyStories: rallyStories.length > 0,
-    hasRallyLinks: rallyLinks.length > 0,
+    hasStories: stories.length > 0,
+    hasStoryNameOnly: stories.some((story) => story.hasName && !story.hasUrl),
+    hasStoryUrlOnly: stories.some((story) => !story.hasName && story.hasUrl),
+    hasStoryNameAndUrl: stories.some((story) => story.hasName && story.hasUrl),
     hasAnalysisOfPr: Boolean(analysisOfPr),
   };
 };

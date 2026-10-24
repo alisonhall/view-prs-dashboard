@@ -43,8 +43,7 @@ export interface VisiblePrNumbersInput {
   customComments?: string;
   otherNotes?: string;
   prDifficulty?: string;
-  rallyStories?: string;
-  rallyLinks?: string;
+  stories?: string;
   analysisOfPr?: string;
 }
 
@@ -87,8 +86,7 @@ const createPrVisiblePrNumbersHelpers = ({
     customComments,
     otherNotes,
     prDifficulty,
-    rallyStories,
-    rallyLinks,
+    stories,
     analysisOfPr,
   }: VisiblePrNumbersInput = {}): VisiblePrNumbersResult => {
     const allEntries = Object.values(payload?.byPrNumber || {});
@@ -123,8 +121,7 @@ const createPrVisiblePrNumbersHelpers = ({
       customComments,
       otherNotes,
       prDifficulty,
-      rallyStories,
-      rallyLinks,
+      stories,
       analysisOfPr,
     });
 

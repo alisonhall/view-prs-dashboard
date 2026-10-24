@@ -1,6 +1,6 @@
 /**
  * NotesSection - editable manual notes (comments with author/tone, other
- * notes, PR difficulty, Rally stories/links, analysis) that persist to
+ * notes, PR difficulty, stories, analysis) that persist to
  * POST /view-prs/notes. Matches vanilla's createNotesSection (index.page.js).
  *
  * noteAuthorMatchesSelection is built directly from
@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NotesMultiEntryField } from './NotesMultiEntryField';
+import { NotesStoriesField } from './NotesStoriesField';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useRequestActivity } from '../../state/RequestActivityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
@@ -63,19 +63,25 @@ function AutoResizeTextarea({ className, rows, placeholder, value, onChange, ari
   );
 }
 
-function areStringListsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return false;
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => String(value) === String(right[index]));
+// The story rows that will be saved: trimmed, rows with neither a name nor a
+// URL dropped.
+function cleanStories(stories) {
+  return stories
+    .map((story) => ({ name: story.name.trim(), url: story.url.trim() }))
+    .filter((story) => story.name || story.url);
 }
 
-function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStories, rallyLinks, analysisOfPr }) {
+function areStoryListsEqual(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((story, index) => story.name === right[index].name && story.url === right[index].url);
+}
+
+function buildOriginalSnapshot({ comments, otherNotes, prDifficulty, stories, analysisOfPr }) {
   return {
     comments: comments.map((c) => ({ author: c.author, tone: c.tone, note: c.note })),
     otherNotes,
     prDifficulty,
-    rallyStories,
-    rallyLinks,
+    stories: cleanStories(stories),
     analysisOfPr,
   };
 }
@@ -87,7 +93,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
     () => createPrAuthorInsightsIdentityHelpers({ normalizeActorLogin, resolveActorDisplayName }),
     [normalizeActorLogin, resolveActorDisplayName],
   );
-  const { buildPrPeopleOptions, normalizeNotesListForUi } = usePrInsightsDisplay();
+  const { buildPrPeopleOptions, normalizeStoriesForUi } = usePrInsightsDisplay();
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md): previously
   // untracked - a slow/hung notes save had no visibility anywhere outside
   // this component's own "Saving..." status text.
@@ -124,21 +130,19 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
   );
   const [otherNotes, setOtherNotes] = useState(String(existingNotes.otherNotes || ''));
   const [prDifficulty, setPrDifficulty] = useState(String(existingNotes.prDifficulty || ''));
-  const [rallyStories, setRallyStories] = useState(() => normalizeNotesListForUi(existingNotes.rallyStories));
-  const [rallyLinks, setRallyLinks] = useState(() => normalizeNotesListForUi(existingNotes.rallyLinks));
+  const [stories, setStories] = useState(() => normalizeStoriesForUi(existingNotes.stories));
   const [analysisOfPr, setAnalysisOfPr] = useState(String(existingNotes.analysisOfPr || ''));
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const originalRef = useRef(buildOriginalSnapshot({ comments, otherNotes, prDifficulty, rallyStories, rallyLinks, analysisOfPr }));
+  const originalRef = useRef(buildOriginalSnapshot({ comments, otherNotes, prDifficulty, stories, analysisOfPr }));
 
   const hasChanges = (() => {
     const original = originalRef.current;
     if (comments.length !== original.comments.length) return true;
     if (otherNotes !== original.otherNotes) return true;
     if (prDifficulty !== original.prDifficulty) return true;
-    if (!areStringListsEqual(rallyStories.filter(Boolean), original.rallyStories.filter(Boolean))) return true;
-    if (!areStringListsEqual(rallyLinks.filter(Boolean), original.rallyLinks.filter(Boolean))) return true;
+    if (!areStoryListsEqual(cleanStories(stories), original.stories)) return true;
     if (analysisOfPr !== original.analysisOfPr) return true;
     return comments.some((comment, index) => {
       const originalComment = original.comments[index];
@@ -176,14 +180,12 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
     setStatus('Saving...');
     const finishActivity = beginRequestActivity('notesSave');
     try {
-      const cleanedRallyStories = rallyStories.map((v) => v.trim()).filter(Boolean);
-      const cleanedRallyLinks = rallyLinks.map((v) => v.trim()).filter(Boolean);
+      const cleanedStories = cleanStories(stories);
       const notesPayload = {
         comments: comments.map(({ id, author, tone, note }) => ({ id, author, tone, note })),
         otherNotes,
         prDifficulty,
-        rallyStories: cleanedRallyStories,
-        rallyLinks: cleanedRallyLinks,
+        stories: cleanedStories,
         analysisOfPr,
       };
       const { response, result } = await postJson('/view-prs/notes', { prNumber, repo, ...notesPayload });
@@ -198,12 +200,10 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
         comments,
         otherNotes,
         prDifficulty,
-        rallyStories: cleanedRallyStories,
-        rallyLinks: cleanedRallyLinks,
+        stories: cleanedStories,
         analysisOfPr,
       });
-      setRallyStories(cleanedRallyStories.length ? cleanedRallyStories : ['']);
-      setRallyLinks(cleanedRallyLinks.length ? cleanedRallyLinks : ['']);
+      setStories(normalizeStoriesForUi(cleanedStories));
       if (result.prData && onDataRefresh) {
         onDataRefresh(result.prData);
       }
@@ -290,8 +290,7 @@ export function NotesSection({ entry, pr, actorsMap, onDataRefresh }) {
         </select>
       </label>
 
-      <NotesMultiEntryField title="Rally stories" placeholder="US12345" values={rallyStories} inputClassName="pr-notes-rally-story-input" onChange={setRallyStories} />
-      <NotesMultiEntryField title="Rally links" placeholder="https://rally.example/US12345" values={rallyLinks} inputClassName="pr-notes-rally-link-input" onChange={setRallyLinks} />
+      <NotesStoriesField stories={stories} onChange={setStories} />
 
       <label className="pr-notes-label">
         Analysis of PR

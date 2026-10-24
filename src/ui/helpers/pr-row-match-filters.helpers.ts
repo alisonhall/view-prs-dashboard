@@ -137,17 +137,18 @@ const createPrRowMatchFiltersHelpers = ({
       return false;
     }
 
-    if (filters.rallyStories === "with" && !notesSummary.hasRallyStories) {
+    // Stories: "none" means no story rows; the others match when at least
+    // one row has only a name, only a URL, or both.
+    if (filters.stories === "none" && notesSummary.hasStories) {
       return false;
     }
-    if (filters.rallyStories === "without" && notesSummary.hasRallyStories) {
+    if (filters.stories === "name-only" && !notesSummary.hasStoryNameOnly) {
       return false;
     }
-
-    if (filters.rallyLinks === "with" && !notesSummary.hasRallyLinks) {
+    if (filters.stories === "url-only" && !notesSummary.hasStoryUrlOnly) {
       return false;
     }
-    if (filters.rallyLinks === "without" && notesSummary.hasRallyLinks) {
+    if (filters.stories === "name-and-url" && !notesSummary.hasStoryNameAndUrl) {
       return false;
     }
 

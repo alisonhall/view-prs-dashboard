@@ -368,23 +368,17 @@ const FILTER_OPTION_SELECT_FIELDS = [
     ],
   },
   {
-    id: 'filter-rally-stories',
-    name: 'filterRallyStories',
-    key: 'filterRallyStories',
+    // A PR matches name-only/url-only/name-and-url when at least one of
+    // its stories does (pr-row-match-filters.helpers.ts).
+    id: 'filter-stories',
+    name: 'filterStories',
+    key: 'filterStories',
     options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With Rally stories' },
-      { value: 'without', label: 'Without Rally stories' },
-    ],
-  },
-  {
-    id: 'filter-rally-links',
-    name: 'filterRallyLinks',
-    key: 'filterRallyLinks',
-    options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With Rally links' },
-      { value: 'without', label: 'Without Rally links' },
+      { value: '', label: 'Any' },
+      { value: 'none', label: 'Without any story details' },
+      { value: 'name-only', label: 'With only story name' },
+      { value: 'url-only', label: 'With only story URL' },
+      { value: 'name-and-url', label: 'With story and URL' },
     ],
   },
   {

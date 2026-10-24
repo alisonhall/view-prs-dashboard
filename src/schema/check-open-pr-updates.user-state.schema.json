@@ -74,6 +74,19 @@
       },
       "additionalProperties": false
     },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
     "notesComment": {
       "type": "object",
       "additionalProperties": false,
@@ -118,13 +131,21 @@
           "type": "string",
           "enum": ["", "1", "2", "3", "4", "5"]
         },
+        "stories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/story"
+          }
+        },
         "rallyStories": {
+          "description": "Deprecated: story names from before stories existed. Read (paired with rallyLinks by position) and replaced by stories on the next save.",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "rallyLinks": {
+          "description": "Deprecated: story URLs from before stories existed. See rallyStories.",
           "type": "array",
           "items": {
             "type": "string"

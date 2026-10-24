@@ -49,8 +49,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   filterCustomComments: '',
   filterOtherNotes: '',
   filterPrDifficulty: '',
-  filterRallyStories: '',
-  filterRallyLinks: '',
+  filterStories: '',
   filterAnalysisOfPr: '',
 };
 
@@ -162,8 +161,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
         customComments: values.filterCustomComments,
         otherNotes: values.filterOtherNotes,
         prDifficulty: values.filterPrDifficulty,
-        rallyStories: values.filterRallyStories,
-        rallyLinks: values.filterRallyLinks,
+        stories: values.filterStories,
         analysisOfPr: values.filterAnalysisOfPr,
       }),
     [helpers, payload, values, attentionConfig, checkedByListId, debouncedFilterPrNumbers],

@@ -35,8 +35,7 @@ const TEXT_FIELD_IDS = [
   'filter-custom-comments',
   'filter-other-notes',
   'filter-pr-difficulty',
-  'filter-rally-stories',
-  'filter-rally-links',
+  'filter-stories',
   'filter-analysis-of-pr',
 ];
 
@@ -410,12 +409,15 @@ export function FilterStateProvider({
         'filter-custom-comments',
         'filter-other-notes',
         'filter-pr-difficulty',
-        'filter-rally-stories',
-        'filter-rally-links',
+        'filter-stories',
         'filter-analysis-of-pr',
       ],
       existingOverrides,
     );
+    // The two separate Rally filters the Stories filter replaced; their
+    // with/without values don't carry over.
+    delete overrides['filter-rally-stories'];
+    delete overrides['filter-rally-links'];
     await writeUiSessionOverrides(overrides);
   }, [buildOverrides]);
 

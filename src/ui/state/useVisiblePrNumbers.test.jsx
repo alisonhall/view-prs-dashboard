@@ -33,8 +33,7 @@ const BASE_FILTER_VALUES = {
   filterCustomComments: '',
   filterOtherNotes: '',
   filterPrDifficulty: '',
-  filterRallyStories: '',
-  filterRallyLinks: '',
+  filterStories: '',
   filterAnalysisOfPr: '',
 };
 
@@ -42,8 +41,7 @@ const FREE_TEXT_FIELDS = [
   'filterCustomComments',
   'filterOtherNotes',
   'filterPrDifficulty',
-  'filterRallyStories',
-  'filterRallyLinks',
+  'filterStories',
   'filterAnalysisOfPr',
 ];
 

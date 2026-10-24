@@ -47,8 +47,7 @@ const renderProbe = ({ filterStateValues, seedListId, seedValues } = {}) =>
               filterCustomComments: '',
               filterOtherNotes: '',
               filterPrDifficulty: '',
-              filterRallyStories: '',
-              filterRallyLinks: '',
+              filterStories: '',
               filterAnalysisOfPr: '',
               ...filterStateValues,
             }}
