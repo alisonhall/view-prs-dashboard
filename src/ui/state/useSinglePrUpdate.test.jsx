@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataActionsContext } = require('./PrDataActionsContext');
-const { useSinglePrUpdate } = require('./useSinglePrUpdate.jsx');
+const { useSinglePrUpdate } = require('./useSinglePrUpdate.tsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');

@@ -957,7 +957,7 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
 });
 
 test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
-  // Regression coverage for TableFilterChips.jsx/useTableFilterChips.jsx:
+  // Regression coverage for TableFilterChips.jsx/useTableFilterChips.tsx:
   // unlike the "Applied filters" summary (Run & Filter tab, tested above),
   // these chips live above the table itself (Data Views tab) and are each
   // individually removable - clicking a chip's "x" must clear just that
@@ -1014,7 +1014,7 @@ test("a removable filter chip appears above the table for each non-default filte
 
   // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
   // audit", cluster 1): a chip's "x" clears the filter via a direct
-  // Context update (useTableFilterChips.jsx's own onRemove), not a
+  // Context update (useTableFilterChips.tsx's own onRemove), not a
   // native "change" event on the checkbox - the earlier .check() above
   // already persisted "enhancement" via the vanilla auto-persist-on-change
   // listener, but this chip-driven clear never fires that listener to
@@ -1029,7 +1029,7 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   // Regression coverage for a real bug found during Phase H.26's own code
   // review (see REACT_MIGRATION_PLAN.md): deleting the "Apply filters
   // (local)" button removed the only persist trigger for a filter
-  // chip's "x", since useTableFilterChips.jsx's onRemove clears the
+  // chip's "x", since useTableFilterChips.tsx's onRemove clears the
   // filter via a direct Context update (setValue/toggle), never a native
   // DOM "change" event - the vanilla auto-persist-on-change listeners
   // (index.page.js) can't see that. Fixed by reinstating a debounced

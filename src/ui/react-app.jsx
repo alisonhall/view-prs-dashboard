@@ -828,7 +828,7 @@ function AppRoot() {
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
             JobEventsProvider widened from "just the drawer portal" (its own
             prior comment here predicted this) to wrap everything
-            RowFilterSelectionProvider does - useAppliedFilterSummary.jsx
+            RowFilterSelectionProvider does - useAppliedFilterSummary.tsx
             (consumed inside the prTable portal below AND by the
             appliedFilterSummary portal further down) needs useJobEvents()'s
             schedulerSummary too, and those are sibling portals relative to

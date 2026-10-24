@@ -14,7 +14,7 @@ import { usePrDataActions } from './PrDataActionsContext';
 import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 
-// Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
+// Built once, not per-render - same precedent as useSinglePrUpdate.tsx's own
 // module-level instantiation.
 const { stripAnsi } = createPrFormattingHelpers();
 const { getGithubAuthFailureHint, formatCommandOutput, formatCommandOutputWithAuthHint } =
@@ -34,7 +34,7 @@ const parseCsvTokens = (rawValue) =>
  * replaces window.handleAckOnly/handleClearOnly/handleApplyLabelClick -
  * RunScriptActionButton.jsx's 3 matching instances now call this hook's
  * returned functions directly. Builds its own createPrAckLabelActionsHelpers
- * instance, same shape as useSinglePrUpdate.jsx and useBackfillActions.jsx.
+ * instance, same shape as useSinglePrUpdate.tsx and useBackfillActions.jsx.
  *
  * Phase G (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
  * busy/queued/bulk-batch DI params now come from usePrActivityQueue()

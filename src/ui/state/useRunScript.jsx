@@ -10,7 +10,7 @@ import { useFormBody } from './useFormBody';
 import { useSnackbar } from './SnackbarContext';
 import { usePrDataActions } from './PrDataActionsContext';
 
-// Built once, not per-render - same precedent as useSinglePrUpdate.jsx's own
+// Built once, not per-render - same precedent as useSinglePrUpdate.tsx's own
 // module-level instantiation.
 const { stripAnsi } = createPrFormattingHelpers();
 const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ stripAnsi });
@@ -22,7 +22,7 @@ const { formatCommandOutputWithAuthHint } = createPrCommandOutputHelpers({ strip
  *
  * handleRunScript never had its own pure DI-factory (unlike backfill/ack-
  * label) - it was always a plain top-level function in index.page.js, so
- * (matching useSinglePrUpdate.jsx's own precedent for pieces with no
+ * (matching useSinglePrUpdate.tsx's own precedent for pieces with no
  * separate factory) its logic is inlined here rather than inventing a
  * factory that wouldn't otherwise exist.
  *

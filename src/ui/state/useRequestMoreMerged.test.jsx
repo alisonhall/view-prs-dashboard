@@ -3,7 +3,7 @@
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrDataActionsContext } = require('./PrDataActionsContext');
-const { useRequestMoreMerged } = require('./useRequestMoreMerged.jsx');
+const { useRequestMoreMerged } = require('./useRequestMoreMerged.tsx');
 const { StatusTextContext } = require('./StatusTextContext');
 const { SnackbarContext } = require('./SnackbarContext');
 const { RequestActivityContext } = require('./RequestActivityContext');

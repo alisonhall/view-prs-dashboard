@@ -2,7 +2,7 @@
 
 const { render, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { useActivityDrawerActions } = require('./useActivityDrawerActions.jsx');
+const { useActivityDrawerActions } = require('./useActivityDrawerActions.tsx');
 const { SnackbarContext } = require('./SnackbarContext');
 
 function Probe({ onReady }) {

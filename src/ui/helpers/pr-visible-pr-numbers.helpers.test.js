@@ -11,7 +11,7 @@ const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpe
 //
 // computeVisiblePrNumbers returns { visiblePrNumbers, scopeLabel } (not a
 // bare array) - scopeLabel feeds the Applied-filters-chip-text follow-up
-// (state/useAppliedFilterSummary.jsx) and falls out of the same
+// (state/useAppliedFilterSummary.tsx) and falls out of the same
 // scope-resolution pass for free.
 describe("pr-visible-pr-numbers helpers", () => {
   const makeEntry = (number, overrides = {}) => ({

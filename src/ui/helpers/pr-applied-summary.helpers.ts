@@ -3,10 +3,11 @@
 export interface SchedulerSummaryFields {
   intervalMinutes?: number;
   manualCooldownMinutes?: number;
-  lastManualRunAt?: string;
-  lastAutoRunAt?: string;
-  lastAutoSkipReason?: string;
-  lastAutoError?: string;
+  // Only interpolated into the text, so any value is accepted.
+  lastManualRunAt?: unknown;
+  lastAutoRunAt?: unknown;
+  lastAutoSkipReason?: unknown;
+  lastAutoError?: unknown;
 }
 
 export interface AppliedSummaryInput {

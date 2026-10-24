@@ -12,7 +12,7 @@ import { useSetOutputText } from './OutputTextContext';
 import { useSnackbar } from './SnackbarContext';
 
 // Built once, not per-render - same "stable, zero-per-render-state"
-// precedent as useSinglePrUpdate.jsx's own module-level instantiation.
+// precedent as useSinglePrUpdate.tsx's own module-level instantiation.
 const { stripAnsi } = createPrFormattingHelpers();
 const { formatCommandOutput } = createPrCommandOutputHelpers({ stripAnsi });
 const { formatBackfillLogMessage } = createPrBackfillHelpers();
@@ -24,7 +24,7 @@ const { formatBackfillLogMessage } = createPrBackfillHelpers();
  * window.* bridges straight into index.page.js's own
  * createPrBackfillActionHelpers instance. This hook builds its own
  * instance of the same pure factory directly instead - same shape as
- * useSinglePrUpdate.jsx.
+ * useSinglePrUpdate.tsx.
  *
  * A handful of DI params read/write shared state owned by
  * BackfillStatusProvider (getBackfillTrackingState/setSupportsBackfillLogPolling/

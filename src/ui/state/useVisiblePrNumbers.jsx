@@ -34,7 +34,7 @@ const isInReviewEnabled = (row) => {
 // Same delay FilterStateProvider's own debounced-apply effect already
 // uses (DEBOUNCE_MS there) - not imported directly since that module
 // doesn't export the constant, just kept in sync by convention. Exported
-// so useAppliedFilterSummary.jsx can debounce its own
+// so useAppliedFilterSummary.tsx can debounce its own
 // filterPrNumbersRaw-for-display the same way - without this, its chip
 // text's "pr-numbers=..." entry (undebounced) and "Rows: N" entry (from
 // useFilteredPrRows() below, debounced) would visibly disagree with each
@@ -88,7 +88,7 @@ const DEFAULT_FILTER_STATE_VALUES = {
  * Returns `{ visiblePrNumbers, scopeLabel }`, not just the table's visible
  * set - `scopeLabel` (e.g. "all stored rows"/"needs attention rows") falls
  * out of the same scope-resolution pass and feeds the "Applied filters"
- * chip text's "scope=..." entry (see useAppliedFilterSummary.jsx, which
+ * chip text's "scope=..." entry (see useAppliedFilterSummary.tsx, which
  * calls this same hook rather than re-deriving scope on its own).
  *
  * `filterPrNumbers` specifically is debounced (useDebouncedValue, same

@@ -11,7 +11,7 @@ const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
 const { buildMergedRequestMoreActionOptions } = createPrMergedRequestMoreConfigHelpers();
 
 // Same permissive "no <FilterStateProvider> ancestor" fallback
-// useVisiblePrNumbers.jsx/useAppliedFilterSummary.jsx already use - only
+// useVisiblePrNumbers.jsx/useAppliedFilterSummary.tsx already use - only
 // scopeMode is needed here, unlike those two, so this doesn't need their
 // full DEFAULT_FILTER_STATE_VALUES shape.
 const DEFAULT_SCOPE_MODE = 'all';
