@@ -140,6 +140,14 @@ export default defineConfig([
     extends: ["css/recommended"],
   },
   {
+    // The redesign's stylesheets use variables from src/ui/styles/tokens.css,
+    // which the linter can't see from another file.
+    files: ["src/ui/styles/**/*.css"],
+    rules: {
+      "css/no-invalid-properties": ["error", { allowUnknownVariables: true }],
+    },
+  },
+  {
     files: ["**/*.{js,mjs,cjs,jsx}"],
     rules: {
       "no-unused-vars": [

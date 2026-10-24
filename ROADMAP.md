@@ -84,6 +84,8 @@ Improve UI and style it more similarly to GitKraken's LaunchPad.
 
 For planned steps, see [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md)
 
+The redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer) is planned in [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md)
+
 ### Future Performance Opportunities
 
 - [ ] Virtual scrolling for 200+ PR lists (10-50x faster initial render)

@@ -1,0 +1,191 @@
+/*
+ * Shared UI primitives (src/ui/components/ui/). Uses tokens.css.
+ */
+
+.ui-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: middle;
+}
+
+/* Tooltip */
+.ui-tooltip-anchor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-tooltip-target {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.ui-tooltip-target:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Portaled to <body>; Tooltip.tsx sets top/left from the trigger. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 9px;
+  border-radius: var(--radius-md);
+  background: var(--color-tooltip-bg);
+  color: var(--color-tooltip-text);
+  box-shadow: var(--shadow-tooltip);
+  font: 500 var(--font-size-sm) / 1.45 var(--font-sans);
+  text-align: left;
+  white-space: pre-line;
+}
+
+/* Buttons */
+.ui-button,
+.ui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-button {
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.ui-button:hover {
+  background: var(--color-surface-muted);
+}
+
+.ui-button[data-variant="primary"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-on-strong);
+}
+
+.ui-button[aria-pressed="true"] {
+  border-color: var(--color-border-selected);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.ui-icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.ui-icon-button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.ui-icon-button[aria-pressed="true"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.ui-icon-button[aria-pressed="true"][data-tone="danger"] {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ui-button:disabled,
+.ui-icon-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ui-button:focus-visible,
+.ui-icon-button:focus-visible,
+.ui-chip:focus-visible,
+.ui-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Chips */
+.ui-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font: 500 var(--font-size-sm) var(--font-sans);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-chip[aria-pressed="true"] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-text-on-strong);
+}
+
+.ui-chip-count {
+  opacity: 0.75;
+}
+
+/* Tabs */
+.ui-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ui-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.ui-tab[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--color-text);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.ui-tab-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.ui-tab-badge[data-tone="attention"] {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-text);
+}
