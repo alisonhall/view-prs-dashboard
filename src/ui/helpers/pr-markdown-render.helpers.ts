@@ -1,6 +1,7 @@
-// Renders GitHub comment/review markdown (ReviewThreadsSection.jsx) to HTML
-// for dangerouslySetInnerHTML. Depends on the window.marked and
-// window.DOMPurify globals, both vendored via <script> tags in index.html.
+// Renders GitHub comment/review markdown (the detail pane's Conversations
+// and Activity tabs) to HTML for dangerouslySetInnerHTML. Depends on the
+// window.marked and window.DOMPurify globals, both vendored via <script>
+// tags in index.html.
 //
 // Comment bodies are written by anyone who can comment on the PR, and
 // marked passes raw HTML straight through, so the output is always

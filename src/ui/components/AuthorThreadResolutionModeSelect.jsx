@@ -11,8 +11,9 @@
  * (updateAuthorThreadResolutionRuleVisibility, formerly in index.page.js,
  * deleted in that phase). The one canonical read site, formerly
  * `getAuthorThreadResolutionPolicy` (index.page.js), was updated to prefer
- * Context then - and has since moved entirely into
- * ReviewThreadsSection.jsx's own useAuthorThreadResolutionPolicy hook,
+ * Context then - and has since moved entirely into the
+ * useAuthorThreadResolutionPolicy hook (state/, used by the detail pane's
+ * Conversations tab),
  * which reads this same field from FilterStateContext directly (falling
  * back to a DOM read only where no <FilterStateProvider> is mounted - see
  * that hook's own comment).

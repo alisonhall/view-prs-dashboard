@@ -215,8 +215,8 @@ describe('PrDetailPane', () => {
           <PrDetailPane {...paneProps({ tab: 'conversations', entry: withThread('7') })} />
         </Providers>,
       );
-      await user.click(screen.getByRole('button', { name: /^All \(/ }));
-      expect(screen.getByRole('button', { name: /^All \(/ })).toHaveClass('insight-thread-filter-btn-active');
+      await user.click(screen.getByRole('button', { name: /^All/ }));
+      expect(screen.getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'true');
 
       rerender(
         <Providers>
@@ -224,7 +224,7 @@ describe('PrDetailPane', () => {
         </Providers>,
       );
       // The default (Unresolved), as for any PR looked at for the first time.
-      expect(screen.getByRole('button', { name: /^Unresolved \(/ })).toHaveClass('insight-thread-filter-btn-active');
+      expect(screen.getByRole('button', { name: /^Unresolved/ })).toHaveAttribute('aria-pressed', 'true');
     });
   });
 

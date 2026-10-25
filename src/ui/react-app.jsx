@@ -799,7 +799,7 @@ function AppRoot() {
           ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
           from here (same reasoning as the comment that used to sit at this
           spot: cross-portal sharing between MultiSelectListPortals and
-          PrTableApp/ReviewThreadsSection, sibling portals not an
+          PrTableApp/ReviewThreadsSection (now PrConversationsTab), sibling portals not an
           ancestor/descendant pair). They now wrap <AppRoot/> itself instead,
           from mountAppRoot() below - closing window.getFormBody required
           useRunScript/useAckLabelActions/useQuickCheckActions (called from

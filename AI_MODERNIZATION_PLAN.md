@@ -1117,6 +1117,10 @@ No static type checking leads to:
     - Phase 5 (2026-10-25): the Activity tab (PrActivityTab, replacing
       ActivityEventsSection.jsx), ActivityEventDescription and
       ActivityTimelineSummary, on the new pr-activity-feed.helpers.ts.
+    - Phase 6 (2026-10-25): the Conversations tab (PrConversationsTab,
+      replacing ReviewThreadsSection.jsx), on the new
+      pr-review-threads.helpers.ts, with the thread-resolution policy hook
+      moved to state/useAuthorThreadResolutionPolicy.ts.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

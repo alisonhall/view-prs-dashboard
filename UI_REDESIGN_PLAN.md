@@ -498,6 +498,38 @@ app working:
 - The filters are Unresolved / Waiting on me / All. They replace the current
   unresolved/all toggle, and Unresolved stays the default.
 - Add "Next unresolved", and keep the wrong-resolver callout.
+- **Done (2026-10-25)** on branch `ui-redesign/phase-6`:
+  - `helpers/pr-review-threads.helpers.ts` (tested): the thread-resolution
+    policy (`getThreadResolutionInfo`), "waiting on me" (decision 2:
+    unresolved, the viewer started or replied, and the latest submitted
+    comment is someone else's or mentions them; pending comments don't
+    count), each thread's view (state waiting / open / wrong / resolved,
+    file, line, participants, link), the counts and filters, grouping by
+    file (files in order of first appearance, threads by line, those with
+    no file last), the next thread the Unresolved filter shows after a
+    given one (the wrongly resolved included, as that filter shows them),
+    and the top-level comments and review summaries.
+  - `pane/PrConversationsTab.tsx` replaces `ReviewThreadsSection`
+    (deleted): the summary line, the Show chips with counts (Waiting on
+    me only when the viewer is known; a saved Waiting on me shows as
+    Unresolved without them), "Next unresolved" (opens the thread's file
+    group and the thread, focuses it, and leaves Waiting on me if that
+    hides it), collapsible file groups, one-line threads that
+    expand to their comments (markdown, Pending marked), the wrong-resolver
+    callout, a "N resolved conversations hidden · Show all" note, and the
+    PR comments and review summaries as collapsed groups. The filter is
+    kept per PR in `ReviewConversationsUiStateProvider`, which no longer
+    stores the "Summaries" toggle (the summary cards are now the
+    collapsed groups).
+  - `useAuthorThreadResolutionPolicy` moves to `state/`.
+  - The e2e fixture's PR #2 has two review threads (one waiting on the
+    viewer, one resolved), so the e2e test checks the summary, filters,
+    file group and Next unresolved for real. That adds `e2e-viewer` to
+    the actor lists the thread-resolution test counts.
+  - The old conversation and "View" link CSS in `index.css`
+    (`.insight-thread*` but its body, `.insight-comment-state-badge`,
+    `.insight-event-link`) is removed. Resolved threads keep full contrast
+    (a faded row would fail it), marked by their state label.
 
 ### Phase 7 - Notes tab
 

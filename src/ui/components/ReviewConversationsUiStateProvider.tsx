@@ -6,13 +6,12 @@ import {
 } from '../state/ReviewConversationsUiStateContext';
 
 /**
- * Owns the per-PR "Review conversations" filter-mode/summary-cards-toggle
- * choice.
+ * Owns the per-PR Conversations tab filter choice.
  *
  * A useRef-held Map, not useState - writes don't need to trigger a
- * re-render anywhere: each ReviewThreadsSection instance already manages
- * its own re-render via its own local useState, this Provider only needs
- * to remember the value across that instance's own unmount/remount.
+ * re-render anywhere: the tab manages its own re-render with local
+ * useState; this Provider only remembers the value across the tab's
+ * unmount/remount (another PR, another tab).
  */
 export function ReviewConversationsUiStateProvider({ children }: { children?: ReactNode }) {
   const stateByKeyRef = useRef(new Map<string, SavedReviewConversationsUiState>());
@@ -25,11 +24,11 @@ export function ReviewConversationsUiStateProvider({ children }: { children?: Re
   );
 
   const setReviewConversationsUiState = useCallback<ReviewConversationsUiStateValue['setReviewConversationsUiState']>(
-    (stateKey, conversationFilterMode, showSummaryCards) => {
+    (stateKey, conversationFilterMode) => {
       if (!stateKey) {
         return;
       }
-      stateByKeyRef.current.set(stateKey, { conversationFilterMode, showSummaryCards });
+      stateByKeyRef.current.set(stateKey, { conversationFilterMode });
     },
     [],
   );

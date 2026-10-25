@@ -400,6 +400,39 @@ test("the detail pane's Activity tab groups events by day, filters by type and c
   expect(consoleErrors).toEqual([]);
 });
 
+test("the detail pane's Conversations tab lists unresolved threads by file and opens them with Next unresolved", async ({ page }) => {
+  // The fixture's PR #2 has a thread the viewer started that hubot answered
+  // (waiting on the viewer) and one octocat resolved.
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  await paneTab(page, "Conversations").click();
+
+  const pane = detailPane(page);
+  await expect(pane.getByText("1 waiting on you")).toBeVisible();
+  const show = pane.getByRole("group", { name: "Show", exact: true });
+  await expect(show.getByRole("button", { name: /^Unresolved/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(pane.getByRole("button", { name: /src\/parser\.js/ })).toBeVisible();
+  await expect(pane.getByText("Typo in the test name")).toHaveCount(0);
+
+  await pane.getByRole("button", { name: "Next unresolved", exact: true }).click();
+  const thread = pane.getByRole("button", { name: /Can this retry forever\?/ });
+  await expect(thread).toHaveAttribute("aria-expanded", "true");
+  await expect(thread).toBeFocused();
+  await expect(pane.getByText("No, it stops after three tries.")).toBeVisible();
+  await expect(pane.getByRole("strong").filter({ hasText: "forever" })).toBeVisible();
+
+  await show.getByRole("button", { name: /^All/ }).click();
+  await expect(pane.getByText("Typo in the test name")).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});
+
 test("hiding the detail pane is remembered after a reload", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
@@ -1827,18 +1860,20 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   const ignoreReviewAuthorsList = page.getByRole("group", { name: "Ignore reviews from these authors (GitHub logins)", exact: true, includeHidden: true });
   const openDropdown = (list) => filterDropdownSummary(list).click();
 
+  // The fixture's three PR authors, plus e2e-viewer from PR #2's review
+  // threads.
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
-  await expect(allowList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(allowList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await expect(allowList).toContainText("The Octocat");
 
   await page.selectOption("#attention-author-thread-resolution-mode", "deny-only");
-  await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await expect(denyList).toContainText("Hubot");
 
   await openDropdown(ignoreCommentAuthorsList);
-  await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await openDropdown(ignoreReviewAuthorsList);
-  await expect(ignoreReviewAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(ignoreReviewAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
 
   // Persist directly via the same /view-prs/user-defaults shape
   // restoreUiOptionOverrides expects (allow/deny are top-level array keys;

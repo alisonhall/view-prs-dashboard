@@ -329,6 +329,201 @@
   margin: var(--space-3) 0;
 }
 
+/* Conversations tab (PrConversationsTab) */
+.pr-conv-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-conv-summary strong {
+  color: var(--color-text);
+}
+
+.pr-conv-summary [data-tone="attention"],
+.pr-conv-summary [data-tone="attention"] strong {
+  color: var(--color-attention);
+}
+
+.pr-conv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.pr-conv-file + .pr-conv-file {
+  margin-top: var(--space-2);
+}
+
+.pr-conv-file-toggle,
+.pr-conv-thread-row,
+.pr-conv-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pr-conv-file-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.pr-conv-file-toggle code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.pr-conv-file-count {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.pr-conv-threads {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-conv-thread {
+  border-left: 2px solid transparent;
+}
+
+.pr-conv-thread[data-state="waiting"] { border-left-color: var(--color-accent); }
+.pr-conv-thread[data-state="wrong"] { border-left-color: var(--color-attention); }
+.pr-conv-thread[data-state="resolved"] { border-left-color: var(--color-border-subtle); }
+
+.pr-conv-thread-row {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr);
+  gap: 2px var(--space-2);
+  align-items: baseline;
+  width: 100%;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.pr-conv-thread-row:hover {
+  background: var(--color-surface-muted);
+}
+
+.pr-conv-thread-who {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pr-conv-thread-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Line, state, replies and badges wrap under the text. */
+.pr-conv-thread-meta {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.pr-conv-state[data-state="waiting"] { color: var(--color-accent-text); font-weight: 600; }
+.pr-conv-state[data-state="wrong"] { color: var(--color-attention); font-weight: 600; }
+
+.pr-conv-badge {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.pr-conv-thread-body {
+  margin: 0 0 var(--space-2) calc(14px + var(--space-2) * 2);
+}
+
+.pr-conv-callout {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0 0 var(--space-2);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-attention-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--color-attention-text);
+}
+
+.pr-conv-comment {
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.pr-conv-comment + .pr-conv-comment {
+  margin-top: 4px;
+}
+
+.pr-conv-comment[data-pending="true"] {
+  border: 1px dashed var(--color-border-strong);
+}
+
+.pr-conv-comment-meta {
+  margin: 0 0 2px;
+  font-size: var(--font-size-sm);
+}
+
+.pr-conv-comment-time {
+  color: var(--color-text-muted);
+}
+
+.pr-conv-comment .insight-thread-body {
+  overflow-wrap: anywhere;
+}
+
+.pr-conv-comment .insight-thread-body > :first-child { margin-top: 0; }
+.pr-conv-comment .insight-thread-body > :last-child { margin-bottom: 0; }
+
+.pr-conv-thread-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-conv-thread-footer a,
+.pr-conv-link-button {
+  color: var(--color-accent-text);
+}
+
+.pr-conv-hidden {
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 /* Empty state */
 .pr-pane-empty {
   display: flex;

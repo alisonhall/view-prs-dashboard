@@ -40,6 +40,16 @@ const openPrPane = async (user, row, tab = "Overview") => {
   }
   return within(document.querySelector(".pr-pane")).getByRole("tabpanel");
 };
+// Expands one thread on the Conversations tab and returns its list item.
+const openConversation = async (user, panel, threadId) => {
+  const item = panel.querySelector(`.pr-conv-thread[data-thread-id="${threadId}"]`);
+  const row = within(item).getByRole("button", { expanded: false });
+  await user.click(row);
+  return item;
+};
+// The Conversations tab's filter chip whose name starts with `name`.
+const conversationChip = (panel, name) =>
+  within(within(panel).getByRole("group", { name: "Show" })).getByRole("button", { name: new RegExp(`^${name}`) });
 // Starts the page with the detail pane hidden (the saved choice), so the
 // table shows its Size and Activity columns.
 const hideDetailPane = () => {
@@ -1518,7 +1528,8 @@ describe("index page rendering with Testing Library", () => {
     expect(row).toBeTruthy();
 
     const insightsContent = await openPrPane(user, row, "Conversations");
-    const placeholder = insightsContent?.querySelector(".md-image-expired");
+    const thread = await openConversation(user, insightsContent, "thread-attachments-1");
+    const placeholder = thread.querySelector(".md-image-expired");
     expect(placeholder).toBeTruthy();
     expect(String(placeholder?.textContent || "")).toContain("image unavailable");
 
@@ -1760,35 +1771,25 @@ describe("index page rendering with Testing Library", () => {
       return document.querySelector('[data-pr-section="open"]');
     };
 
-    const openReviewSection = async () => {
+    const openConversationsTab = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#77").closest("tr");
-      const insightsContent = await openPrPane(user, row, "Conversations");
-      return Array.from(
-        insightsContent?.querySelectorAll("details.insight-section") || [],
-      ).find((node) => {
-        const summary = node.querySelector("summary");
-        return String(summary?.textContent || "").startsWith("Review conversations");
-      });
+      return openPrPane(user, row, "Conversations");
     };
 
+    // A wrongly resolved thread is counted in the summary line and listed
+    // under Unresolved; a rightly resolved one is hidden there.
     const expectWarningState = async (expectedWarning) => {
-      const reviewSection = await openReviewSection();
-      const summaryText = String(
-        reviewSection?.querySelector("summary")?.textContent || "",
-      );
+      const panel = await openConversationsTab();
+      const summaryText = String(panel.querySelector(".pr-conv-summary")?.textContent || "");
+      const thread = panel.querySelector('.pr-conv-thread[data-thread-id="thread-author-resolved"]');
       if (expectedWarning) {
-        expect(summaryText).toContain(
-          "Warning: 1 thread incorrectly resolved by PR author",
-        );
-        expect(String(reviewSection?.className || "")).toContain(
-          "insight-section-warning",
-        );
+        expect(summaryText).toContain("1 resolved by the wrong person");
+        expect(thread).toHaveAttribute("data-state", "wrong");
       } else {
-        expect(summaryText).toBe("Review conversations (1/1)");
-        expect(String(reviewSection?.className || "")).not.toContain(
-          "insight-section-warning",
-        );
+        expect(summaryText).not.toContain("wrong person");
+        expect(thread).toBeNull();
+        expect(panel).toHaveTextContent("1 resolved conversation hidden");
       }
     };
 
@@ -1904,29 +1905,15 @@ describe("index page rendering with Testing Library", () => {
       return document.querySelector('[data-pr-section="open"]');
     };
 
-    const openReviewSection = async () => {
+    const expectWarningState = async (expectedWarning) => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#177").closest("tr");
-      const insightsContent = await openPrPane(user, row, "Conversations");
-      return Array.from(
-        insightsContent?.querySelectorAll("details.insight-section") || [],
-      ).find((node) => {
-        const summary = node.querySelector("summary");
-        return String(summary?.textContent || "").startsWith("Review conversations");
-      });
-    };
-
-    const expectWarningState = async (expectedWarning) => {
-      const reviewSection = await openReviewSection();
-      const summaryText = String(
-        reviewSection?.querySelector("summary")?.textContent || "",
-      );
+      const panel = await openPrPane(user, row, "Conversations");
+      const summaryText = String(panel.querySelector(".pr-conv-summary")?.textContent || "");
       if (expectedWarning) {
-        expect(summaryText).toContain(
-          "Warning: 1 thread incorrectly resolved by PR author",
-        );
+        expect(summaryText).toContain("1 resolved by the wrong person");
       } else {
-        expect(summaryText).toBe("Review conversations (1/1)");
+        expect(summaryText).not.toContain("wrong person");
       }
     };
 
@@ -1975,7 +1962,7 @@ describe("index page rendering with Testing Library", () => {
     await expectWarningState(true);
   });
 
-  test("given mixed resolved and unresolved conversations, when opening Review conversations, then the heading shows resolved over total counts", async () => {
+  test("given mixed resolved and unresolved conversations, when opening Conversations, then the summary and filter chips count them", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -2044,13 +2031,11 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#79").closest("tr");
-    const reviewSection = (await openPrPane(user, row, "Conversations"))?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection).toBeTruthy();
-    expect(String(reviewSection?.querySelector("summary")?.textContent || "")).toBe(
-      "Review conversations (1/2)",
-    );
+    const panel = await openPrPane(user, row, "Conversations");
+    expect(panel.querySelector(".pr-conv-summary")).toHaveTextContent("1 unresolved");
+    expect(conversationChip(panel, "Unresolved")).toHaveTextContent("1");
+    expect(conversationChip(panel, "All")).toHaveTextContent("2");
+    expect(panel).toHaveTextContent("1 resolved conversation hidden");
   });
 
   test("given the current user and PR author appear in PR details, when insights render, then each actor gets its matching identity styling", async () => {
@@ -2162,13 +2147,11 @@ describe("index page rendering with Testing Library", () => {
     const insightsContent = await openPrPane(user, row, "Conversations");
     expect(insightsContent).toBeTruthy();
 
-    const reviewSection = insightsContent?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection?.querySelector(".actor-identity-pr-author")?.textContent).toContain(
+    const thread = await openConversation(user, insightsContent, "thread-identity-1");
+    expect(thread.querySelector(".actor-identity-pr-author")?.textContent).toContain(
       "PR Author",
     );
-    expect(reviewSection?.querySelector(".actor-identity-viewer")?.textContent).toContain(
+    expect(thread.querySelector(".actor-identity-viewer")?.textContent).toContain(
       "Alison Hall",
     );
 
@@ -2214,7 +2197,7 @@ describe("index page rendering with Testing Library", () => {
     expect(indexCss).toMatch(/\.actor-identity-pr-author\s*\{/);
   });
 
-  test("given a review thread with multiple comments, when opening Review conversations, then the View link targets the full thread starter URL", async () => {
+  test("given a review thread with multiple comments, when opening it on Conversations, then its GitHub link targets the thread starter URL", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -2277,16 +2260,11 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#78").closest("tr");
-    const reviewSection = (await openPrPane(user, row, "Conversations"))?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection).toBeTruthy();
+    const panel = await openPrPane(user, row, "Conversations");
+    const thread = await openConversation(user, panel, "thread-link-target");
 
-    const viewLink = reviewSection?.querySelector(
-      ".insight-thread .insight-thread-title .insight-event-link",
-    );
-    expect(viewLink).toBeTruthy();
-    expect(viewLink?.getAttribute("href")).toBe(
+    const viewLink = within(thread).getByRole("link", { name: "View this conversation on GitHub" });
+    expect(viewLink.getAttribute("href")).toBe(
       "https://github.com/owner/repo/pull/78#discussion_r_root",
     );
   });
@@ -7703,7 +7681,7 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
-  test("given review conversations view controls changed, when polling rerenders the row, then filter mode and summaries toggle remain selected", async () => {
+  test("given review conversations view controls changed, when polling rerenders the row, then the conversation and activity filters stay as picked", async () => {
     const buildPayload = ({
       dataVersion,
       titleDisplay,
@@ -7826,31 +7804,19 @@ describe("index page rendering with Testing Library", () => {
 
       const row = screen.getByText("#101").closest("tr");
 
-      // The pane's Conversations tab (its section open) and Activity tab.
-      const reviewSectionSelector =
-        '.pr-pane details.insight-section[data-insight-key="review-conversations"]';
-      const getReviewSection = () => document.querySelector(reviewSectionSelector);
+      // The pane's Conversations and Activity tabs.
       const getActivitySection = () => document.querySelector(".pr-pane .pr-activity");
       const commentsChip = () =>
         within(document.querySelector(".pr-pane")).getByRole("button", { name: /^Comments/ });
-      await openPrPane(user, row, "Conversations");
-      expect(getReviewSection()?.open).toBe(true);
+      const threadIds = (panel) =>
+        Array.from(panel.querySelectorAll(".pr-conv-thread")).map((thread) => thread.getAttribute("data-thread-id"));
+      const conversations = await openPrPane(user, row, "Conversations");
+      expect(threadIds(conversations)).toEqual(["thread-open-1"]);
 
-      const resolvedButtonSelector =
-        ".insight-thread-filter-btn:nth-child(3)";
-      const summaryToggleSelector = ".insight-thread-summary-toggle-btn";
-
-      await user.click(getReviewSection()?.querySelector(resolvedButtonSelector));
-      await user.click(getReviewSection()?.querySelector(summaryToggleSelector));
-
-      expect(
-        String(getReviewSection()?.querySelector(summaryToggleSelector)?.textContent || ""),
-      ).toBe("Summaries: Off");
-      expect(
-        String(getReviewSection()?.querySelector(resolvedButtonSelector)?.className || ""),
-      ).toContain("insight-thread-filter-btn-active");
-      expect(String(getReviewSection()?.textContent || "")).toContain("Resolved thread");
-      expect(String(getReviewSection()?.textContent || "")).not.toContain("Open thread");
+      // Picked by the user, so the poll below must keep it.
+      await user.click(conversationChip(conversations, "All"));
+      expect(conversationChip(conversations, "All")).toHaveAttribute("aria-pressed", "true");
+      expect(threadIds(conversations)).toContain("thread-resolved-1");
 
       await openPrPane(user, row, "Activity");
       // Turned off by the user, so the poll below must keep it off.
@@ -7913,25 +7879,13 @@ describe("index page rendering with Testing Library", () => {
       const refreshedActivitySection = getActivitySection();
       expect(commentsChip()).toHaveAttribute("aria-pressed", "false");
 
-      // The conversation filters survive too (the tab remounts its section).
-      await openPrPane(user, refreshedRow, "Conversations");
-      const refreshedReviewSection = getReviewSection();
-      expect(refreshedReviewSection?.open).toBe(true);
-      expect(
-        String(
-          refreshedReviewSection?.querySelector(summaryToggleSelector)?.textContent || "",
-        ),
-      ).toBe("Summaries: Off");
-      expect(
-        String(
-          refreshedReviewSection?.querySelector(resolvedButtonSelector)?.className || "",
-        ),
-      ).toContain("insight-thread-filter-btn-active");
-      expect(String(refreshedReviewSection?.textContent || "")).toContain(
-        "Resolved thread",
-      );
-      expect(String(refreshedReviewSection?.textContent || "")).not.toContain(
-        "Open thread",
+      // The conversation filter survives too (the tab remounts), over the
+      // new data: one more resolved thread.
+      const refreshedConversations = await openPrPane(user, refreshedRow, "Conversations");
+      expect(conversationChip(refreshedConversations, "All")).toHaveAttribute("aria-pressed", "true");
+      expect(conversationChip(refreshedConversations, "All")).toHaveTextContent("4");
+      expect(threadIds(refreshedConversations)).toEqual(
+        expect.arrayContaining(["thread-open-1", "thread-resolved-1", "thread-author-warning-1", "thread-author-warning-2"]),
       );
       expect(String(refreshedActivitySection?.textContent || "")).not.toContain(
         "Thread: resolved",

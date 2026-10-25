@@ -94,8 +94,8 @@ const ROW_FILTER_LIST_IDS = new Set([
 
 // Phase 7 (see REACT_MIGRATION_PLAN.md): the 2 thread-resolution lists
 // whose checked-state now also lives in AuthorThreadResolutionSelectionContext
-// (ReviewThreadsSection.jsx reads it from there instead of DOM-scanning via
-// window.getAuthorThreadResolutionPolicy).
+// (useAuthorThreadResolutionPolicy reads it from there instead of
+// DOM-scanning via window.getAuthorThreadResolutionPolicy).
 const AUTHOR_THREAD_RESOLUTION_LIST_IDS = new Set([
   'attention-author-thread-resolution-allow-list',
   'attention-author-thread-resolution-deny-list',
@@ -134,7 +134,7 @@ const CHANGE_FILTER_LIST_IDS = new Set([
  * (Phase 7, see REACT_MIGRATION_PLAN.md "live filtering" - the reactive
  * visible-PR-numbers derivation needs to read "currently checked" without
  * a DOM query), the 2 thread-resolution lists (allow/deny) into
- * AuthorThreadResolutionSelectionContext (ReviewThreadsSection.jsx's own
+ * AuthorThreadResolutionSelectionContext (useAuthorThreadResolutionPolicy's
  * read, previously a DOM-scan behind window.getAuthorThreadResolutionPolicy),
  * and the 2 change-filter actor lists into ChangeFilterActorSelectionContext
  * (Phase G.3, see REACT_MIGRATION_PLAN.md - FilterStateProvider.tsx's own

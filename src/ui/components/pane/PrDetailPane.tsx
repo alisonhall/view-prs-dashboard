@@ -9,7 +9,7 @@ import { Icon } from '../ui/Icon';
 import { MenuButton } from '../ui/MenuButton';
 import { Tabs, TabPanel, type TabItem } from '../ui/Tabs';
 import { useTooltipController } from '../ui/Tooltip';
-import { ReviewThreadsSection } from '../insights/ReviewThreadsSection';
+import { PrConversationsTab } from './PrConversationsTab';
 import { NotesSection } from '../insights/NotesSection';
 import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHook';
 import { PrOverview } from './PrOverview';
@@ -293,20 +293,10 @@ function PaneContent({
             onFiltersChange={onActivityFiltersChange}
           />
         )}
-        {selectedTab === 'conversations' && <ConversationsTab pr={pr} actorsMap={rowActorsMap} />}
+        {selectedTab === 'conversations' && <PrConversationsTab pr={pr} actorsMap={rowActorsMap} />}
         {selectedTab === 'notes' && <NotesSection entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />}
         {selectedTab === 'custom' && hookHtml && <InsightsHookContent html={hookHtml} />}
       </TabPanel>
     </>
   );
-}
-
-// ReviewThreadsSection renders nothing for a PR with no conversations.
-function ConversationsTab({ pr, actorsMap }: { pr: PrData; actorsMap: ActorsMap }) {
-  const hasConversations =
-    (Array.isArray(pr.reviewThreads) && pr.reviewThreads.length > 0) ||
-    (Array.isArray(pr.comments) && pr.comments.length > 0) ||
-    (Array.isArray(pr.reviews) && pr.reviews.some((review) => String(review?.body || '').trim()));
-  if (!hasConversations) return <p className="pr-pane-none">No conversations</p>;
-  return <ReviewThreadsSection pr={pr} actorsMap={actorsMap} defaultOpen />;
 }

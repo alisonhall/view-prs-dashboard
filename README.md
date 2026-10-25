@@ -691,8 +691,13 @@ Insights behavior notes:
   - Chips filter by event type (Commits, Reviews, Comments, PR events), each showing its count. The scope and types stay as picked for the next PR.
   - The daily summary table (below) is a collapsed group at the end.
 - The Activity tab suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
-- `Review conversations` (the detail pane's Conversations tab) shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
-- The `Review conversations` summary heading now includes resolved/total thread counts in the format `Review conversations (<resolved>/<total>)` (for example `Review conversations (12/43)`).
+- The detail pane's Conversations tab lists the PR's review threads, grouped by file (in line order, threads not on a file last). Each group collapses.
+  - A summary line counts the unresolved threads, those waiting on you, and any resolved by the wrong person.
+  - Chips filter to `Unresolved` (the default, which includes threads resolved by the wrong person), `Waiting on me` (unresolved threads you started or replied in whose latest comment is by someone else or mentions you; only shown when your login is known; without it, `Unresolved` applies) or `All`. Each shows its count, and the choice is kept per PR. A note says how many threads the filter hides, with a `Show all` link.
+  - Each thread is one line: who started it, the start of its first comment, its line, its state, the number of replies, and `outdated`/`Pending` where they apply. It expands to show every comment as markdown, who resolved it, and a link to it on GitHub.
+  - `Next unresolved` opens and focuses each thread `Unresolved` shows (so those resolved by the wrong person too) in turn, opening its file group and switching from `Waiting on me` to `Unresolved` if that filter would hide it.
+  - Threads the PR author resolved against the thread-resolution rule (Run & Filter) are flagged, with an explanation when opened.
+  - Top-level PR comments and review summaries are collapsed groups at the end.
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
