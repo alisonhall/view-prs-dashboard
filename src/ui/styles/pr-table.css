@@ -1,7 +1,8 @@
 /*
  * The PR table: sections, column headers, rows and cells (PrSection.tsx,
- * PrTable.tsx, PrRow.tsx, components/cells/). Uses tokens.css. The
- * insights row's content is still styled by index.css (insight-*).
+ * PrTable.tsx, PrRow.tsx, PrRowSummary.tsx, components/cells/). Uses
+ * tokens.css. The insights row's content is still styled by index.css
+ * (insight-*).
  */
 
 /* Sections */
@@ -308,4 +309,110 @@
   display: flex;
   justify-content: flex-end;
   gap: 2px;
+}
+
+/* Row summary (PrRowSummary): three columns under the row. Each event and
+   thread is one line, cut off with an ellipsis, so the summary keeps the
+   same height; the full text is in the details. The table in the selector
+   so the indent beats `.pr-table td:first-child`. */
+.pr-table .pr-summary-row > td {
+  padding: var(--space-3) 14px 14px 48px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-subtle);
+}
+
+.pr-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
+}
+
+.pr-summary-heading {
+  margin: 0 0 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.pr-summary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+}
+
+.pr-summary-reasons {
+  font-weight: 600;
+  color: var(--color-attention-text);
+}
+
+.pr-summary-item,
+.pr-summary-thread {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pr-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-summary-snippet {
+  color: var(--color-text-muted);
+}
+
+/* A thread's comment is the line's main text, not an aside. */
+.pr-summary-thread .pr-summary-snippet {
+  color: var(--color-text);
+}
+
+.pr-summary-reasons + .pr-summary-markers {
+  margin-top: 2px;
+}
+
+.pr-summary-age {
+  flex: none;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-summary-file {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+a.pr-summary-file {
+  color: var(--color-accent-text);
+}
+
+.pr-summary-status,
+.pr-summary-empty,
+.pr-summary-more {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-summary-empty {
+  margin-top: 0;
+}
+
+.pr-summary-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
 }

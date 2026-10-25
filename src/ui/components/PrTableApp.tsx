@@ -79,6 +79,9 @@ export function PrTableApp() {
     expandedRows: expandedInsights,
     setRowExpanded,
     toggleRowExpanded,
+    detailRows,
+    setRowDetailsOpen,
+    toggleRowDetails,
     reportRenderedSections,
   } = usePrTableUiState();
 
@@ -681,7 +684,10 @@ export function PrTableApp() {
         focusUnsaved,
       };
       setSectionOpen(matchingSection.key, true);
+      // The summary and its details: the full insights (Notes included,
+      // for focusUnsaved) are what "View in table" and "Jump to PR" show.
       setRowExpanded(compositeKey, true);
+      setRowDetailsOpen(compositeKey, true);
       setNavigationRequestCount((count) => count + 1);
     };
 
@@ -689,7 +695,7 @@ export function PrTableApp() {
     return () => {
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
-  }, [setRowExpanded, setSectionOpen]);
+  }, [setRowExpanded, setRowDetailsOpen, setSectionOpen]);
 
   // Runs after the insights row for a pending navigation target has
   // actually committed to the DOM (expandedInsights flips synchronously in
@@ -702,7 +708,7 @@ export function PrTableApp() {
   // cross-cutting DOM scan.
   useEffect(() => {
     const pending = pendingNavigationRef.current;
-    if (!pending || !expandedInsights[pending.compositeKey]) {
+    if (!pending || !expandedInsights[pending.compositeKey] || !detailRows[pending.compositeKey]) {
       return;
     }
     pendingNavigationRef.current = null;
@@ -731,7 +737,7 @@ export function PrTableApp() {
     if (typeof focusTarget.focus === 'function') {
       focusTarget.focus();
     }
-  }, [expandedInsights, navigationRequestCount]);
+  }, [expandedInsights, detailRows, navigationRequestCount]);
 
   // Handler: Open/close a section. PrSection passes the <details> element's
   // new state; without one, flip the section's current state. That has to
@@ -740,7 +746,7 @@ export function PrTableApp() {
   // that's open by default (In Review, Needs Attention) used to record it
   // as open, while the <details> itself showed closed.
   //
-  // These three, like the handlers above, are useStableCallback: every
+  // These, like the handlers above, are useStableCallback: every
   // memoized PrRow receives them, and a new function each render re-rendered
   // every row on every table render.
   const handleToggleSection = useStableCallback((sectionKey: string, nextOpen?: boolean) => {
@@ -755,12 +761,23 @@ export function PrTableApp() {
     setJsonModalTarget({ entry, pr });
   });
 
-  // Handler: Toggle insights row for a PR. `repo` disambiguates PR numbers
-  // that collide across repos in the same section (see entriesForRepo -
-  // other repos' PRs render alongside the current one now) - see
-  // buildExpandedInsightsKey's own comment.
+  // Handler: Toggle a PR's summary row (the chevron). `repo` disambiguates
+  // PR numbers that collide across repos in the same section (see
+  // entriesForRepo - other repos' PRs render alongside the current one now)
+  // - see buildExpandedInsightsKey's own comment. Closing a summary closes
+  // its details too, so reopening it shows the summary, not the full
+  // insights it was left with (e.g. by "View in table").
   const handleToggleInsights = useStableCallback((prNumber: PrNumber, sectionKey: string, repo: string) => {
-    toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, String(prNumber)));
+    const key = buildExpandedInsightsKey(sectionKey, repo, String(prNumber));
+    if (expandedInsights[key]) {
+      setRowDetailsOpen(key, false);
+    }
+    toggleRowExpanded(key);
+  });
+
+  // Handler: Toggle the full insights under a PR's summary ("Show details").
+  const handleToggleDetails = useStableCallback((prNumber: PrNumber, sectionKey: string, repo: string) => {
+    toggleRowDetails(buildExpandedInsightsKey(sectionKey, repo, String(prNumber)));
   });
 
   // The same object until the payload's own map changes (a fresh `{}` each
@@ -805,8 +822,10 @@ export function PrTableApp() {
           actorsMap={actorsMap}
           isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
           expandedInsights={expandedInsights}
+          openDetails={detailRows}
           onToggleSection={handleToggleSection}
           onToggleInsights={handleToggleInsights}
+          onToggleDetails={handleToggleDetails}
           onCheckboxChange={handleCheckboxChange}
           onAckAction={handleAckActionBusy}
           onApplyLabel={handleApplyLabelBusy}

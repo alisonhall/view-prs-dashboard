@@ -9,7 +9,7 @@ const { ReviewThreadsSection } = require('./insights/ReviewThreadsSection');
 // existing test proved the filter-mode/summary-cards choice actually
 // survives a real ReviewThreadsSection instance unmounting and
 // remounting (the scenario this Provider exists for - collapsing and
-// re-expanding a row's "More insights" panel). ReviewThreadsSection.test.jsx
+// re-opening a row's details). ReviewThreadsSection.test.jsx
 // only ever renders one instance per test and never remounts it.
 describe('ReviewConversationsUiStateProvider + ReviewThreadsSection wiring', () => {
   const pr = {

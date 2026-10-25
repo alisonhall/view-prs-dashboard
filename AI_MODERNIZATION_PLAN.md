@@ -1107,6 +1107,9 @@ No static type checking leads to:
       (rewritten), the Signal, Avatar and MenuButton components, the
       NowContext clock, and PrTableApp. PrDataPayload gains the user
       state's ackByRepo, flaggedByRepo and inReviewByRepo maps.
+    - Phase 3 (2026-10-25): the new PrRowSummary, with its tested helpers;
+      the activity feed builder moves out of ActivityEventsSection.jsx
+      into the typed pr-activity-events.helpers.ts.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

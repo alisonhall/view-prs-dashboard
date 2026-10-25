@@ -18,13 +18,20 @@ export interface PrComment {
 // A comment in a review thread ($defs.reviewThreadComment).
 export interface ReviewThreadComment extends PrComment {
   state?: string;
+  // Where the comment is in the diff ($defs.reviewThreadComment).
+  path?: string;
+  line?: number | null;
+  originalLine?: number | null;
 }
 
 export interface ReviewThread {
   id?: string;
   isResolved?: boolean;
+  isOutdated?: boolean;
   comments?: ReviewThreadComment[];
   participants?: string[];
+  latestCommentAt?: string;
+  resolvedByLogin?: string;
 }
 
 // One entry of a PR's activity lists ($defs.activityEvent; commentEvents

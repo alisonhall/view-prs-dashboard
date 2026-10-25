@@ -67,6 +67,20 @@ describe('PrTableUiStateProvider', () => {
     expect(table().expandedRows['open:owner/repo:2']).toBe(true);
   });
 
+  test("rows' details open, close and toggle by composite key, apart from their summary", () => {
+    renderProvider();
+
+    act(() => table().setRowDetailsOpen('open:owner/repo:1', true));
+    expect(table().detailRows['open:owner/repo:1']).toBe(true);
+    expect(table().expandedRows['open:owner/repo:1']).toBeUndefined();
+
+    act(() => table().toggleRowDetails('open:owner/repo:1'));
+    expect(table().detailRows['open:owner/repo:1']).toBe(false);
+
+    act(() => table().toggleRowDetails('open:owner/repo:2'));
+    expect(table().detailRows['open:owner/repo:2']).toBe(true);
+  });
+
   test('holds the selected PR', () => {
     renderProvider();
     expect(table().selectedPr).toBeNull();
@@ -125,12 +139,14 @@ describe('PrTableUiStateProvider', () => {
     act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
+    act(() => table().setRowDetailsOpen('open:owner/repo:3', true));
     const tableCount = tableRenders.length;
     const openSectionsCount = openSectionsRenders.length;
 
     act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
+    act(() => table().setRowDetailsOpen('open:owner/repo:3', true));
     expect(tableRenders.length).toBe(tableCount);
     expect(openSectionsRenders.length).toBe(openSectionsCount);
   });

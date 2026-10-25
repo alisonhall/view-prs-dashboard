@@ -65,31 +65,47 @@ const openRowMenu = async (page, prNumber) => {
 // <summary> has no standard role, so like filterDropdownSummary this
 // helper holds the structural lookup.
 const prSectionSummary = (section) => section.locator("xpath=./summary");
-// PR N's insights toggle in either state ("More insights for PR #N" /
-// "Hide insights for PR #N"), so a locator still matches after a click.
-const insightsToggleFor = (scope, prNumber) =>
-  scope.getByRole("button", { name: new RegExp(`^(More|Hide) insights for PR #${prNumber}$`) });
+// PR N's summary toggle (the row chevron) in either state ("Show summary
+// for PR #N" / "Hide summary for PR #N"), so a locator still matches after
+// a click.
+const summaryToggleFor = (scope, prNumber) =>
+  scope.getByRole("button", { name: new RegExp(`^(Show|Hide) summary for PR #${prNumber}$`) });
 const prNumberFromLabel = (label) => String(label || "").match(/#(\d+)$/)[1];
-// The first visible "More insights" toggle, pinned to its PR.
-const firstInsightsToggle = async (page) => {
+// The first visible "Show summary" toggle, pinned to its PR.
+const firstSummaryToggle = async (page) => {
   const label = await prTables(page)
-    .getByRole("button", { name: /^More insights for PR #\d+$/ })
+    .getByRole("button", { name: /^Show summary for PR #\d+$/ })
     .first()
     .getAttribute("aria-label");
-  return insightsToggleFor(prTables(page), prNumberFromLabel(label)).first();
+  return summaryToggleFor(prTables(page), prNumberFromLabel(label)).first();
 };
-// The insights row under PR N's expanded toggle, in the same table. Found by
-// name ("Insights for PR #N"), hidden included: its own `hidden` is what
-// the tests check, and its section may be collapsed.
-const insightsRowUnderExpandedToggle = async (page) => {
-  const expanded = prTables(page)
-    .getByRole("button", { name: /^Hide insights for PR #\d+$/, includeHidden: true })
+// Opens the first visible row's summary, then its details (the full
+// insights, Notes included), checking each opens. Returns the PR number.
+const openFirstRowDetails = async (page) => {
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.click();
+  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
+  const detailsToggle = prTables(page)
+    .getByRole("button", { name: new RegExp(`^(Show|Hide) details for PR #${prNumber}$`) })
     .first();
-  await expect(expanded).toBeAttached();
-  const prNumber = prNumberFromLabel(await expanded.getAttribute("aria-label"));
+  await detailsToggle.click();
+  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
+  return prNumber;
+};
+// The insights (details) row under PR N's open "Hide details" button, in
+// the same table. Found by name ("Insights for PR #N"), hidden included:
+// its own `hidden` is what the tests check, and its section may be
+// collapsed.
+const insightsRowUnderOpenDetails = async (page) => {
+  const open = prTables(page)
+    .getByRole("button", { name: /^Hide details for PR #\d+$/, includeHidden: true })
+    .first();
+  await expect(open).toBeAttached();
+  const prNumber = prNumberFromLabel(await open.getAttribute("aria-label"));
   const table = prTables(page)
     .getByRole("table", { includeHidden: true })
-    .filter({ has: page.getByRole("button", { name: `Hide insights for PR #${prNumber}`, exact: true, includeHidden: true }) })
+    .filter({ has: page.getByRole("button", { name: `Hide details for PR #${prNumber}`, exact: true, includeHidden: true }) })
     .first();
   return table.getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true, includeHidden: true });
 };
@@ -268,7 +284,7 @@ test("non-ASCII glyphs render correctly (charset regression guard)", async ({ pa
   expect(charset.toUpperCase()).toBe("UTF-8");
 });
 
-test("checkbox toggle and More insights expand work", async ({ page }) => {
+test("In review toggle, row summary and its details expand work", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
 
   await page.goto("/");
@@ -282,9 +298,12 @@ test("checkbox toggle and More insights expand work", async ({ page }) => {
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  const prNumber = await openFirstRowDetails(page);
+  const summaryRow = prTables(page).getByRole("row", { name: `Summary for PR #${prNumber}`, exact: true }).first();
+  await expect(summaryRow.getByRole("heading", { name: "Latest activity" })).toBeVisible();
+  // Indented under the title (`.pr-table td:first-child` used to win).
+  await expect(summaryRow.getByRole("cell")).toHaveCSS("padding-left", "48px");
+  await expect(prTables(page).getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true }).first()).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
 });
@@ -420,9 +439,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await waitForPrTable(page);
   const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowDetails(page);
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
   const prNumber = prNumberFromLabel(await notesSection.getAttribute("aria-label"));
@@ -464,9 +481,7 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowDetails(page);
 
   // A new row, so this works whether or not the PR already has stories;
   // removing it afterwards leaves the notes unchanged.
@@ -498,9 +513,7 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowDetails(page);
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
 
@@ -554,12 +567,17 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   if (!(await openSection.evaluate((el) => el.open))) {
     await openSection.getByText("Open PRs", { exact: true }).click();
   }
-  const insightsToggle = insightsToggleFor(prSection(page, "Open PRs"), 1);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  // The summary, then its details (where Notes are).
+  const summaryToggle = summaryToggleFor(prSection(page, "Open PRs"), 1);
+  await summaryToggle.click();
+  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
+  // Either state, so the locator still matches after the click.
+  const detailsToggle = prSection(page, "Open PRs").getByRole("button", { name: /^(Show|Hide) details for PR #1$/ });
+  await detailsToggle.click();
+  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
 
   // Scoped to the "open" section specifically (not just [data-pr-number="1"])
-  // for the same non-exclusive-smart-group reason as insightsToggle above -
+  // for the same non-exclusive-smart-group reason as summaryToggle above -
   // PR #1's row (and its own Notes section) can render twice.
   const notesTextarea = prSection(page, "Open PRs")
     .getByRole("group", { name: "Notes for PR #1", exact: true })
@@ -588,7 +606,8 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await chip.click();
 
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
   const saveButton = prSection(page, "Open PRs")
     .getByRole("group", { name: "Notes for PR #1", exact: true })
     .getByRole("button", { name: "Save notes", exact: true });
@@ -677,7 +696,7 @@ test("'View in table' from Author Insights actually expands the insights row con
   await tableLink.waitFor();
   await tableLink.click();
 
-  const insightsRow = await insightsRowUnderExpandedToggle(page);
+  const insightsRow = await insightsRowUnderOpenDetails(page);
   await expect(insightsRow).toHaveJSProperty("hidden", false);
 });
 
@@ -690,7 +709,7 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   await page.goto("/");
   await waitForPrTable(page);
   await expect(
-    prSection(page, "Flagged").getByRole("button", { name: "More insights for PR #2", exact: true, includeHidden: true }),
+    prSection(page, "Flagged").getByRole("button", { name: "Show summary for PR #2", exact: true, includeHidden: true }),
   ).toBeAttached();
 
   await page.getByRole("tab", { name: "Author Insights" }).click();
@@ -699,7 +718,8 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
 
   const visiblePrLinks = prTables(page).getByRole("link", { name: "#2", exact: true }).filter({ visible: true });
   await expect(visiblePrLinks.first()).toBeFocused();
-  await expect(prTables(page).getByRole("button", { name: "Hide insights for PR #2", exact: true })).toBeVisible();
+  await expect(prTables(page).getByRole("button", { name: "Hide summary for PR #2", exact: true })).toBeVisible();
+  await expect(prTables(page).getByRole("button", { name: "Hide details for PR #2", exact: true })).toBeVisible();
 });
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {
@@ -2015,15 +2035,15 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // React-owned PR table (the insights row never actually expanded, even
   // though the vanilla code "succeeded" at finding the link and
   // scrolling to it) - now it both switches tabs and expands the row.
-  // Checks the toggle's aria-expanded and the insights row's `hidden` DOM
-  // property directly (not Playwright's toBeVisible/toBeHidden), the same
+  // Checks the insights (details) row's `hidden` DOM property directly
+  // (not Playwright's toBeVisible/toBeHidden), the same
   // pattern the sibling Author Insights "View in table" test above uses
   // and for the same reason: PR #1 can legitimately end up inside a
   // currently-collapsed lifecycle/smart-group section depending on what
   // earlier tests in this shared-webServer suite did to its flagged/
   // in-review state, without that being a regression in this feature.
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  const insightsRow = await insightsRowUnderExpandedToggle(page);
+  const insightsRow = await insightsRowUnderOpenDetails(page);
   await expect(insightsRow).toHaveJSProperty("hidden", false);
 });
 

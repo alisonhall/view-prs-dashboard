@@ -83,6 +83,15 @@ describe('PrTable', () => {
     expect(within(row1 as HTMLElement).getByRole('img', { name: 'Needs attention' })).toBeInTheDocument();
   });
 
+  test('gives each row its own summary and details state, by composite key', () => {
+    renderTable({
+      expandedInsights: { 'open:owner/repo:1': true, 'open:owner/repo:2': true },
+      openDetails: { 'open:owner/repo:2': true },
+    });
+    expect(screen.getByRole('button', { name: 'Hide details for PR #2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show details for PR #1' })).toBeInTheDocument();
+  });
+
   test('marks only the busy row\'s repo-specific key as active', () => {
     renderTable({ activePrNumbers: ['owner/repo::1'] });
     expect(screen.getByRole('img', { name: 'PR #1 update in progress' })).toBeInTheDocument();

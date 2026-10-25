@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { RequestActivityContext } from '../state/RequestActivityContext';
 import { PrRow, type PrRowProps } from './PrRow';
 
-// The expanded insights row renders NotesSection for real, which reads
+// The details row renders NotesSection for real, which reads
 // beginRequestActivity from this context.
 const render = (ui: ReactNode) =>
   baseRender(
@@ -26,6 +26,7 @@ const renderRow = (props: Partial<PrRowProps> = {}) =>
           sectionKey="open"
           lifecycleSection="open"
           isExpanded={false}
+          isDetailsOpen={false}
           isFlagged={false}
           isInReview={false}
           isAcknowledged={false}
@@ -75,20 +76,45 @@ describe('PrRow', () => {
     expect(row).toHaveAttribute('data-section-key', 'needs-attention');
   });
 
-  test('a collapsed row\'s insights row is hidden and spans every column', () => {
+  test('a collapsed row\'s summary and details rows are hidden and span every column', () => {
     renderRow({ columnCount: 9 });
-    // Testing Library doesn't name hidden elements, so find it by its label.
-    const insightsRow = document.querySelector('tr[aria-label="Insights for PR #101"]') as HTMLElement;
-    expect(insightsRow).not.toBeVisible();
-    expect(insightsRow.querySelector('td')).toHaveAttribute('colspan', '9');
+    // Testing Library doesn't name hidden elements, so find them by label.
+    for (const label of ['Summary for PR #101', 'Insights for PR #101']) {
+      const row = document.querySelector(`tr[aria-label="${label}"]`) as HTMLElement;
+      expect(row).not.toBeVisible();
+      expect(row.querySelector('td')).toHaveAttribute('colspan', '9');
+    }
   });
 
-  test('an expanded row shows its insights row', () => {
+  test('an expanded row shows its summary, with the details still closed', () => {
     renderRow({ isExpanded: true });
+    expect(screen.getByRole('row', { name: 'Summary for PR #101' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Latest activity' })).toBeInTheDocument();
+    expect(document.querySelector('tr[aria-label="Insights for PR #101"]')).not.toBeVisible();
+    expect(document.querySelector('tr.pr-row')).toHaveAttribute('data-expanded', 'true');
+  });
+
+  test('an expanded row with its details open shows the full insights, which the Details button controls', () => {
+    renderRow({ isExpanded: true, isDetailsOpen: true });
     const insightsRow = screen.getByRole('row', { name: 'Insights for PR #101' });
     expect(insightsRow).toBeVisible();
     expect(insightsRow.textContent).not.toBe('');
-    expect(document.querySelector('tr.pr-row')).toHaveAttribute('data-expanded', 'true');
+    const detailsButton = screen.getByRole('button', { name: 'Hide details for PR #101' });
+    expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
+    expect(detailsButton).toHaveAttribute('aria-controls', insightsRow.id);
+  });
+
+  test('details open without the summary (row collapsed) stay hidden', () => {
+    renderRow({ isExpanded: false, isDetailsOpen: true });
+    expect(document.querySelector('tr[aria-label="Insights for PR #101"]')).not.toBeVisible();
+  });
+
+  test('the Details button reports the PR, section and repo', async () => {
+    const user = userEvent.setup();
+    const onToggleDetails = jest.fn();
+    renderRow({ isExpanded: true, sectionKey: 'needs-attention', onToggleDetails });
+    await user.click(screen.getByRole('button', { name: 'Show details for PR #101' }));
+    expect(onToggleDetails).toHaveBeenCalledWith('101', 'needs-attention', 'owner/repo');
   });
 
   test('passes the attention reasons to the Signals cell', () => {

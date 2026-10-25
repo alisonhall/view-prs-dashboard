@@ -42,7 +42,7 @@ const { parseMarkerState } = createPrUiRenderUtilsHelpers();
 const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 const { normalizeStoriesForUi } = createPrNotesHelpers();
 const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
-const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
+const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEvents } =
   createPrActivityEventsHelpers({ asArray });
 const { formatDurationMinutes } = createPrApprovalDurationHelpers({ toCount });
 const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
@@ -65,13 +65,14 @@ const stableValue = {
   formatDurationMinutes,
   buildFallbackActivityEvents,
   buildActivityEventKey,
+  buildActivityEvents,
   normalizePrRootUrl,
   normalizeStoriesForUi,
   renderMarkdownAsHtml,
 };
 
 /**
- * Derives the "More insights" panel's formatting/badge-class functions
+ * Derives the row insights' formatting/badge-class functions
  * (see state/PrInsightsDisplayContext.tsx).
  *
  * Only formatApproversDisplay/formatRequestedReviewersDisplay/

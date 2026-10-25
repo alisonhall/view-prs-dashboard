@@ -26,6 +26,21 @@ const openPrJsonDetails = async (user, prNumber) => {
   await user.click(moreButton);
   await user.click(await screen.findByRole("menuitem", { name: "View PR JSON details" }));
 };
+// Opens a PR row's full insights: its chevron opens the summary row
+// beneath it, whose "Show details" opens the insights row after that.
+// Leaves either open if it already is. Returns the insights row.
+const openRowInsights = async (user, row) => {
+  const toggle = row.querySelector(".pr-expand-toggle");
+  if (toggle.getAttribute("aria-expanded") !== "true") {
+    await user.click(toggle);
+  }
+  const summaryRow = row.nextElementSibling;
+  const showDetails = within(summaryRow).queryByRole("button", { name: /^Show details for PR #/ });
+  if (showDetails) {
+    await user.click(showDetails);
+  }
+  return summaryRow.nextElementSibling;
+};
 // A tooltip's text, through its trigger's aria-describedby.
 const tooltipDescription = (element) => {
   const id = element?.closest(".ui-tooltip-target, [aria-describedby]")?.getAttribute("aria-describedby") || "";
@@ -1398,19 +1413,26 @@ describe("index page rendering with Testing Library", () => {
       within(openSection).getByRole("button", { name: "More actions for PR #11" }),
     ).toBeInTheDocument();
 
-    const insightsToggle = within(row).getByRole("button", { name: "More insights for PR #11" });
+    const summaryToggle = within(row).getByRole("button", { name: "Show summary for PR #11" });
     expect(within(row).getByText("1 pending comment")).toBeInTheDocument();
 
-    const insightsRow = row?.nextElementSibling;
+    // The chevron opens the summary; its "Show details" the full insights.
+    const summaryRow = row?.nextElementSibling;
+    const insightsRow = summaryRow?.nextElementSibling;
+    expect(summaryRow?.hidden).toBe(true);
     expect(insightsRow?.hidden).toBe(true);
-    await user.click(insightsToggle);
+    await user.click(summaryToggle);
+    expect(summaryRow?.hidden).toBe(false);
+    expect(summaryToggle).toHaveAccessibleName("Hide summary for PR #11");
+    expect(within(summaryRow).getByRole("heading", { name: "Why it's here" })).toBeInTheDocument();
+    expect(insightsRow?.hidden).toBe(true);
+    await user.click(within(summaryRow).getByRole("button", { name: "Show details for PR #11" }));
     expect(insightsRow?.hidden).toBe(false);
-    expect(insightsToggle).toHaveAccessibleName("Hide insights for PR #11");
     // One cell spanning every column: select, Signals, Pull request, Who,
     // Review, CHK·MRG, Size, Activity, Actions.
-    expect(insightsRow?.querySelector(".insights-row-cell")?.getAttribute("colspan")).toBe(
-      "9",
-    );
+    for (const cell of [summaryRow?.querySelector("td"), insightsRow?.querySelector("td")]) {
+      expect(cell?.getAttribute("colspan")).toBe("9");
+    }
 
     const insightsContent = insightsRow?.querySelector(".row-insights-content");
     expect(insightsContent).toBeTruthy();
@@ -1479,11 +1501,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".pr-expand-toggle");
-    expect(insightsToggle).toBeTruthy();
-    await user.click(insightsToggle);
-
-    const insightsRow = row?.nextElementSibling;
+    const insightsRow = await openRowInsights(user, row);
     expect(insightsRow?.hidden).toBe(false);
 
     const insightsContent = insightsRow?.querySelector(".row-insights-content");
@@ -1497,7 +1515,7 @@ describe("index page rendering with Testing Library", () => {
     expect(retainedAttachmentImage).toBeNull();
   });
 
-  test("given additions and deletions are available, when More insights is expanded, then Lines changed renders GitHub-style totals", async () => {
+  test("given additions and deletions are available, when the insights are opened, then Lines changed renders GitHub-style totals", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1529,11 +1547,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".pr-expand-toggle");
-    expect(insightsToggle).toBeTruthy();
-    await user.click(insightsToggle);
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
     expect(insightsContent).toBeTruthy();
     const insightsText = String(insightsContent?.textContent || "");
     expect(insightsText).toContain("Lines changed");
@@ -1732,11 +1746,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#77").closest("tr");
-      const toggle = row?.querySelector(".pr-expand-toggle");
-      if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
-        await user.click(toggle);
-      }
-      const insightsRow = row?.nextElementSibling;
+      const insightsRow = await openRowInsights(user, row);
       const insightsContent = insightsRow?.querySelector(".row-insights-content");
       return Array.from(
         insightsContent?.querySelectorAll("details.insight-section") || [],
@@ -1881,11 +1891,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#177").closest("tr");
-      const toggle = row?.querySelector(".pr-expand-toggle");
-      if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
-        await user.click(toggle);
-      }
-      const insightsRow = row?.nextElementSibling;
+      const insightsRow = await openRowInsights(user, row);
       const insightsContent = insightsRow?.querySelector(".row-insights-content");
       return Array.from(
         insightsContent?.querySelectorAll("details.insight-section") || [],
@@ -2023,9 +2029,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#79").closest("tr");
-    await user.click(row?.querySelector(".pr-expand-toggle"));
-
-    const reviewSection = row?.nextElementSibling?.querySelector(
+    const reviewSection = (await openRowInsights(user, row))?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
     );
     expect(reviewSection).toBeTruthy();
@@ -2140,9 +2144,7 @@ describe("index page rendering with Testing Library", () => {
     const authorAvatar = within(row).getByRole("img", { name: "Author: PR Author" });
     expect(authorAvatar.querySelector(".ui-avatar")).not.toHaveAttribute("data-viewer");
 
-    await user.click(row?.querySelector(".pr-expand-toggle"));
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
     expect(insightsContent).toBeTruthy();
 
     const reviewSection = insightsContent?.querySelector(
@@ -2258,9 +2260,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#78").closest("tr");
-    await user.click(row?.querySelector(".pr-expand-toggle"));
-
-    const reviewSection = row?.nextElementSibling?.querySelector(
+    const reviewSection = (await openRowInsights(user, row))?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
     );
     expect(reviewSection).toBeTruthy();
@@ -2321,9 +2321,7 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
     const row = (await screen.findByText("#801")).closest("tr");
-    await user.click(row?.querySelector(".pr-expand-toggle"));
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
     const reviewersKey = Array.from(
       insightsContent?.querySelectorAll(".insight-key") || [],
     ).find((node) => String(node.textContent || "").trim() === "Reviewers");
@@ -4287,11 +4285,7 @@ describe("index page rendering with Testing Library", () => {
     expect(pr999Row).toBeTruthy();
     expect(signalNames(pr999Row)).toContain("Status: NO_LOCAL_DATA");
 
-    const pr999InsightsButton = pr999Row?.querySelector(".pr-expand-toggle");
-    expect(pr999InsightsButton).toBeTruthy();
-    await user.click(pr999InsightsButton);
-
-    const pr999InsightsRow = pr999Row?.nextElementSibling;
+    const pr999InsightsRow = await openRowInsights(user, pr999Row);
     expect(pr999InsightsRow?.hidden).toBe(false);
     const mergedCommentNote = pr999InsightsRow?.querySelector(
       ".pr-notes-comment-note",
@@ -6692,10 +6686,10 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    const insightsButton = await screen.findByRole("button", {
-      name: /^More insights for PR #/,
+    const summaryButton = await screen.findByRole("button", {
+      name: /^Show summary for PR #/,
     });
-    await user.click(insightsButton);
+    await openRowInsights(user, summaryButton.closest("tr"));
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -6790,10 +6784,10 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const localUser = userEvent.setup();
-      const insightsButton = await screen.findByRole("button", {
-        name: /^More insights for PR #/,
+      const summaryButton = await screen.findByRole("button", {
+        name: /^Show summary for PR #/,
       });
-      await localUser.click(insightsButton);
+      await openRowInsights(localUser, summaryButton.closest("tr"));
 
       const saveNotesButton = await screen.findByRole("button", {
         name: "Save notes",
@@ -6918,7 +6912,7 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    await user.click(await screen.findByRole("button", { name: /^More insights for PR #/ }));
+    await openRowInsights(user, (await screen.findByRole("button", { name: /^Show summary for PR #/ })).closest("tr"));
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -7815,7 +7809,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const row = screen.getByText("#101").closest("tr");
-      await user.click(row?.querySelector(".pr-expand-toggle"));
+      await openRowInsights(user, row);
 
       const reviewSectionSelector =
         '.row-insights-content details.insight-section[data-insight-key="review-conversations"]';
@@ -8398,14 +8392,14 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const insightsToggle = await screen.findByRole("button", {
-        name: /^More insights for PR #/,
+      const summaryToggle = await screen.findByRole("button", {
+        name: /^Show summary for PR #/,
       });
       // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
       // describe block's fake timers would otherwise hang userEvent's own
       // internal setTimeout-based delays forever.
       const user = userEvent.setup({ delay: null });
-      await user.click(insightsToggle);
+      await openRowInsights(user, summaryToggle.closest("tr"));
 
       await waitFor(() => {
         expect(
@@ -8504,6 +8498,8 @@ describe("index page rendering with Testing Library", () => {
         const toggle = document.querySelector(".pr-expand-toggle");
         expect(toggle?.getAttribute("aria-expanded")).toBe("true");
       });
+      // The details stay open too.
+      expect(screen.getByRole("button", { name: /^Hide details for PR #/ })).toHaveAttribute("aria-expanded", "true");
 
       const insightsPanelAfter = document.querySelector(
         ".row-insights-content",
@@ -8922,12 +8918,8 @@ describe("index page rendering with Testing Library", () => {
 
       const prLink = await screen.findByText("#123");
       const row = prLink.closest("tr");
-      const insightsToggle = row?.querySelector(".pr-expand-toggle");
-
-      await user.click(insightsToggle);
-
       // Find the activity timeline table in the insights
-      const insightsRow = row?.nextElementSibling;
+      const insightsRow = await openRowInsights(user, row);
       const timelineTable = insightsRow?.querySelector("table");
       expect(timelineTable).toBeTruthy();
 

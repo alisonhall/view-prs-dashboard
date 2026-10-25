@@ -49,7 +49,10 @@ export interface PrTableProps extends PrRowHandlers {
   isSmartGroup?: boolean;
   lifecycleSection?: string;
   actorsMap?: ActorsMap;
+  // By composite key (buildExpandedInsightsKey): rows showing their
+  // summary, and rows whose summary has its details open.
   expandedInsights: Record<string, boolean>;
+  openDetails?: Record<string, boolean>;
   getPrFlags?: (prNumber: string | number | undefined, repo?: string) => PrFlags;
   getAttentionReasons?: (entry: PrEntry) => string[];
   activePrNumbers?: string[];
@@ -59,6 +62,7 @@ export interface PrTableProps extends PrRowHandlers {
 
 const NO_FLAGS: PrFlags = { isFlagged: false, isInReview: false, isAcknowledged: false };
 const NO_REASONS: string[] = [];
+const NO_OPEN_DETAILS: Record<string, boolean> = {};
 
 export function PrTable({
   prs,
@@ -69,6 +73,7 @@ export function PrTable({
   lifecycleSection,
   actorsMap = {},
   expandedInsights,
+  openDetails = NO_OPEN_DETAILS,
   getPrFlags,
   getAttentionReasons,
   activePrNumbers,
@@ -120,6 +125,7 @@ export function PrTable({
           // re-renders when one actually changes.
           const flags = getPrFlags ? getPrFlags(data.number, entry.repo) : NO_FLAGS;
           const attentionReasons = (getAttentionReasons ? getAttentionReasons(entry) : NO_REASONS).join('\n');
+          const rowKey = buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '');
           return (
             <PrRow
               // PR numbers are only unique within a repo.
@@ -133,7 +139,8 @@ export function PrTable({
               isSmartGroup={isSmartGroup}
               lifecycleSection={entry.section || lifecycleSection}
               actorsMap={actorsMap}
-              isExpanded={expandedInsights[buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '')] ?? false}
+              isExpanded={expandedInsights[rowKey] ?? false}
+              isDetailsOpen={openDetails[rowKey] ?? false}
               isFlagged={flags.isFlagged}
               isInReview={flags.isInReview}
               isAcknowledged={flags.isAcknowledged}

@@ -5,7 +5,8 @@ import { createContext, useContext } from 'react';
  * wraps <AppRoot/> from mountAppRoot()): which sections are open, which
  * rows are expanded, and the selected PR (the detail pane, phase 4 of
  * UI_REDESIGN_PLAN.md). It lives above the table so the Export tab can
- * read it: Export exports the rows of the open sections, and used to work
+ * read it (and so "Jump to PR" can open a row's details): Export exports
+ * the rows of the open sections, and used to work
  * that out by reading `<details open>` and class names from the DOM.
  *
  * Two contexts, so the table doesn't re-render for what only Export uses:
@@ -38,10 +39,15 @@ export interface PrTableUiStateValue {
   sectionOpenOverrides: Record<string, boolean>;
   isSectionOpen: (key: string, defaultOpen: boolean) => boolean;
   setSectionOpen: (key: string, open: boolean) => void;
-  // By composite key (buildExpandedInsightsKey).
+  // By composite key (buildExpandedInsightsKey). An expanded row shows its
+  // summary; a row whose details are open also shows the full insights
+  // under it (until phase 4 moves them to the detail pane).
   expandedRows: Record<string, boolean>;
   setRowExpanded: (key: string, expanded: boolean) => void;
   toggleRowExpanded: (key: string) => void;
+  detailRows: Record<string, boolean>;
+  setRowDetailsOpen: (key: string, open: boolean) => void;
+  toggleRowDetails: (key: string) => void;
   selectedPr: SelectedPr | null;
   setSelectedPr: (pr: SelectedPr | null) => void;
   reportRenderedSections: (sections: RenderedSection[]) => void;
@@ -61,6 +67,9 @@ export const defaultPrTableUiState: PrTableUiStateValue = {
   expandedRows: {},
   setRowExpanded: () => {},
   toggleRowExpanded: () => {},
+  detailRows: {},
+  setRowDetailsOpen: () => {},
+  toggleRowDetails: () => {},
   selectedPr: null,
   setSelectedPr: () => {},
   reportRenderedSections: () => {},

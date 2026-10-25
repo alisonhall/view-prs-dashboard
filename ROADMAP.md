@@ -57,7 +57,7 @@
 - [x] Add right padding for the 'In Review' column and 'CHK' column content to prevent it touching the border
 - [x] Update styling for target branch details within the 'Title' column cells
 - [x] Add styling for status and sentiment within the 'Author Insights' cards
-- [ ] Change the 'More insights' content to be in multiple columns for ease of reading
+- [ ] Change the 'More insights' content to be in multiple columns for ease of reading - in progress (UI_REDESIGN_PLAN.md): each row's chevron now opens a three-column summary (2026-10-25, phase 3); the full content moves to the detail pane's grouped Overview tab in phase 4
 - [x] Have the PR comments' 'Note...' textarea vertically expand to include all of the text content
 - [x] Align the PR comments' 'Note...' textarea properly with the other fields
 - [ ] Style the code examples differently from text

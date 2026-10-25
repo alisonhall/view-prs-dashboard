@@ -672,7 +672,9 @@ Scope mode behavior:
 
 Insights behavior notes:
 
-- `More insights` stays open across automatic data refresh rerenders.
+- A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
+- The summary's `Show details` button opens the row's full insights (the details) under it. `View in table` and the `Auto update paused` chips open both.
+- Open summaries and details stay open across automatic data refresh rerenders.
 - Open inner insight groups (for example `Activity sequence`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any PR-section field is unsaved (including Notes text/select changes and Notes comment add/remove changes).
 - Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
@@ -681,16 +683,16 @@ Insights behavior notes:
 - The polling warning snackbar is automatically cleared after a successful poll.
 - `Activity sequence` visually distinguishes event kinds (approval/review/thread/top-level/commit/system).
 - `Activity sequence` suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
-- `Review conversations` in `More insights` shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
+- `Review conversations` in a row's details shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
 - The `Review conversations` summary heading now includes resolved/total thread counts in the format `Review conversations (<resolved>/<total>)` (for example `Review conversations (12/43)`).
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
   - If viewer identity cannot be determined, it safely falls back to total open conversations and omits `with me` wording.
 
-### Custom "More insights" hook
+### Custom insights hook
 
-`More insights` can render a `Custom insights` section populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
+A row's details can render a `Custom insights` section populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
 
 To enable it:
 
@@ -1071,7 +1073,7 @@ When status is `CHANGED`, optional reason tags can be shown inline:
 
 Below the summary, assigned users and requested reviewers show as small initials badges:
 
-- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the `More insights` reviewers list.
+- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the reviewers list in the row's details.
 - The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
 - A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
 - A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
@@ -1156,7 +1158,7 @@ Additional notes:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
-  - Source rows in the statistics panel include a `View in table` button that switches to the PR Data tab, scrolls to the matching PR, and expands its `More insights`.
+  - Source rows in the statistics panel include a `View in table` button that switches to the PR Data tab, scrolls to the matching PR, and opens its summary and details.
 - The page now includes an `Author Insights` tab that shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in Author Insights include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 

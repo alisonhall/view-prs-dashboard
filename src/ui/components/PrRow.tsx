@@ -1,5 +1,7 @@
 /**
- * PrRow - one PR's row, plus its collapsible insights row underneath.
+ * PrRow - one PR's row, plus two collapsible rows underneath: its summary
+ * (PrRowSummary, opened by the chevron), and the full insights, opened from
+ * the summary's "Show details" until phase 4 moves them to the detail pane.
  *
  * Memoized: only re-renders when one of its own props changes, so every
  * prop is a plain value or a stable callback (PrTableApp's handlers are
@@ -9,7 +11,7 @@
  * @module components/PrRow
  */
 
-import { memo } from 'react';
+import { memo, useId } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { PrSelectionCell } from './cells/PrSelectionCell';
@@ -21,10 +23,14 @@ import { PrChecksCell } from './cells/PrChecksCell';
 import { PrActivityCell, PrSizeCell } from './cells/PrSizeActivityCells';
 import { PrActionsCell, type PrActionsCellProps } from './cells/PrActionsCell';
 import { PrInsightsRow } from './PrInsightsRow';
+import { PrRowSummary } from './PrRowSummary';
 import { buildExpandedInsightsKey } from './pr-row-keys';
 
 export interface PrRowHandlers {
+  // The chevron: the row's summary.
   onToggleInsights: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
+  // The summary's "Show details": the full insights.
+  onToggleDetails?: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
   onCheckboxChange?: PrActionsCellProps['onCheckboxChange'];
   onAckAction?: PrActionsCellProps['onAckAction'];
   onApplyLabel?: PrActionsCellProps['onApplyLabel'];
@@ -42,6 +48,7 @@ export interface PrRowProps extends PrRowHandlers {
   lifecycleSection?: string;
   actorsMap?: ActorsMap;
   isExpanded: boolean;
+  isDetailsOpen: boolean;
   isFlagged: boolean;
   isInReview: boolean;
   isAcknowledged: boolean;
@@ -61,6 +68,7 @@ export const PrRow = memo(function PrRow({
   lifecycleSection,
   actorsMap = {},
   isExpanded,
+  isDetailsOpen,
   isFlagged,
   isInReview,
   isAcknowledged,
@@ -70,6 +78,7 @@ export const PrRow = memo(function PrRow({
   columnCount,
   showSizeAndActivity,
   onToggleInsights,
+  onToggleDetails,
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
@@ -79,6 +88,9 @@ export const PrRow = memo(function PrRow({
 }: PrRowProps) {
   const compositeKey = buildExpandedInsightsKey(sectionKey, repo, pr.number ?? '');
   const lastCheckedAt = String(entry?.updatedAt || '').trim();
+  const detailsId = useId();
+  const reasons = attentionReasons ? attentionReasons.split('\n') : [];
+  const showDetails = isExpanded && isDetailsOpen;
 
   return (
     <>
@@ -86,7 +98,7 @@ export const PrRow = memo(function PrRow({
         <PrSelectionCell pr={pr} />
         <PrSignalsCell
           pr={pr}
-          attentionReasons={attentionReasons ? attentionReasons.split('\n') : []}
+          attentionReasons={reasons}
           isFlagged={isFlagged}
           isInReview={isInReview}
         />
@@ -124,9 +136,26 @@ export const PrRow = memo(function PrRow({
         />
       </tr>
 
-      <tr className="insights-row" hidden={!isExpanded} aria-label={`Insights for PR #${pr.number}`}>
-        <td className="insights-row-cell" colSpan={columnCount}>
+      <tr className="pr-summary-row" hidden={!isExpanded} aria-label={`Summary for PR #${pr.number}`}>
+        <td className="pr-summary-cell" colSpan={columnCount}>
           {isExpanded && (
+            <PrRowSummary
+              pr={pr}
+              attentionReasons={reasons}
+              isFlagged={isFlagged}
+              isInReview={isInReview}
+              actorsMap={actorsMap}
+              isDetailsOpen={isDetailsOpen}
+              detailsId={detailsId}
+              onToggleDetails={() => onToggleDetails?.(pr.number, sectionKey, repo)}
+            />
+          )}
+        </td>
+      </tr>
+
+      <tr id={detailsId} className="insights-row" hidden={!showDetails} aria-label={`Insights for PR #${pr.number}`}>
+        <td className="insights-row-cell" colSpan={columnCount}>
+          {showDetails && (
             <PrInsightsRow entry={entry} pr={pr} actorsMap={actorsMap} compositeKey={compositeKey} onDataRefresh={onDataRefresh} />
           )}
         </td>

@@ -33,6 +33,7 @@ const sameSections = (a: RenderedSection[], b: RenderedSection[]): boolean =>
 export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const [sectionOpenOverrides, setSectionOpenOverrides] = useState<Record<string, boolean>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [detailRows, setDetailRows] = useState<Record<string, boolean>>({});
   const [selectedPr, setSelectedPr] = useState<SelectedPr | null>(null);
   const [renderedSections, setRenderedSections] = useState<RenderedSection[]>([]);
 
@@ -49,6 +50,12 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const toggleRowExpanded = useCallback((key: string) => {
     setExpandedRows((previous) => ({ ...previous, [key]: !previous[key] }));
   }, []);
+  const setRowDetailsOpen = useCallback((key: string, open: boolean) => {
+    setDetailRows((previous) => (Boolean(previous[key]) === open ? previous : { ...previous, [key]: open }));
+  }, []);
+  const toggleRowDetails = useCallback((key: string) => {
+    setDetailRows((previous) => ({ ...previous, [key]: !previous[key] }));
+  }, []);
   // The table reports on every sections rebuild; an unchanged report keeps
   // the same state.
   const reportRenderedSections = useCallback((sections: RenderedSection[]) => {
@@ -63,11 +70,26 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
       expandedRows,
       setRowExpanded,
       toggleRowExpanded,
+      detailRows,
+      setRowDetailsOpen,
+      toggleRowDetails,
       selectedPr,
       setSelectedPr,
       reportRenderedSections,
     }),
-    [sectionOpenOverrides, isSectionOpen, setSectionOpen, expandedRows, setRowExpanded, toggleRowExpanded, selectedPr, reportRenderedSections],
+    [
+      sectionOpenOverrides,
+      isSectionOpen,
+      setSectionOpen,
+      expandedRows,
+      setRowExpanded,
+      toggleRowExpanded,
+      detailRows,
+      setRowDetailsOpen,
+      toggleRowDetails,
+      selectedPr,
+      reportRenderedSections,
+    ],
   );
 
   // Reuse the previous array while its contents are the same, and the

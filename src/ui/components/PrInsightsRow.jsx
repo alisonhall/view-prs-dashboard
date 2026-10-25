@@ -1,5 +1,6 @@
 /**
- * PrInsightsRow - the full "More insights" panel content.
+ * PrInsightsRow - a row's full insights (its details, opened from the row
+ * summary's "Show details"; the detail pane's content from phase 4).
  *
  * Matches vanilla's createInsightsDetails (components/pr-row-insights.component.js):
  * status/check/merge badges, a key/value grid, then the Activity sequence,

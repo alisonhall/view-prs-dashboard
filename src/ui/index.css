@@ -1450,7 +1450,7 @@
             font-weight: 700;
         }
 
-        /* Contains the custom "More insights" hook script's returned HTML
+        /* Contains the custom insights hook script's returned HTML
            (see InsightsHookSection.jsx). Sanitization (DOMPurify) stops
            script execution, but not layout-breaking inline styles - CSS
            containment establishes this element as the containing block for

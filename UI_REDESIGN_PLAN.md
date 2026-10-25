@@ -325,6 +325,42 @@ app working:
 - The full insights content (`PrInsightsRow` and `insights/*`) stays
   reachable through a temporary "Details" control until phase 4 gives it a
   home in the pane.
+- **Done (2026-10-25):**
+  - The chevron is now "Show summary for PR #N" and opens a summary row
+    (`PrRowSummary.tsx`) in the design's three columns:
+    - "Why it's here": the attention reasons, then Flagged / In review
+      (which put the row in those groups), or "Nothing needs your
+      attention", over a status line ("Checks failing · Has conflicts · 1
+      approval · 3 of 4 files viewed").
+    - "Latest activity": the newest three events (who, what, a one-line
+      snippet, and the age with the full time on hover).
+    - "Open conversations": the two most recently active unresolved
+      threads (file and line linking to the thread, with the latest
+      comment), "+N more open", or "None open".
+  - Events and threads are one line each, cut off with an ellipsis, so the
+    summary keeps its height; a cut-off snippet shows in full on hover.
+    Snippets are plain text: HTML tags and markdown syntax go, images read
+    `[image]`, and only paired emphasis is unwrapped, so `user_id` and
+    `2 * 3` stay as written.
+  - The columns are labelled groups, not regions, so open rows don't add
+    landmarks. Closing a summary closes its details too.
+  - "Show details" in the summary opens the full insights row under it.
+    Which rows have their details open lives in `PrTableUiStateProvider`
+    (`detailRows`) next to the expanded rows, so "View in table" and the
+    "Auto update paused" chips open both, and focusing an unsaved Notes
+    save button still works.
+  - The activity feed (`buildActivityEvents`) moved from
+    `ActivityEventsSection` into `pr-activity-events.helpers.ts`, now
+    tested, and the summary and the section share it (phase 5 builds on
+    it). The status line and the thread picks are
+    `pr-row-summary.helpers.ts`.
+  - `ReviewThread` and its comments gain the schema's `latestCommentAt`,
+    `resolvedByLogin`, `isOutdated`, `path`, `line` and `originalLine`.
+  - Tests: the helpers, `PrRowSummary`, the rows' summary and details
+    state through the Provider, `PrTable`, `PrRow` and `PrTableApp`
+    (including navigation opening the details); `index.html.test.js`
+    opens insights through an `openRowInsights` helper, and the e2e spec
+    through `openFirstRowDetails`.
 
 ### Phase 4 - Docked detail pane
 

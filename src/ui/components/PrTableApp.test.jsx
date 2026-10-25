@@ -827,7 +827,7 @@ describe('PrTableApp', () => {
     const second = capturedSectionProps.find((p) => p.section.key === 'open');
 
     expect(second).not.toBe(first);
-    ['onToggleInsights', 'onToggleSection', 'onViewJson', 'onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'].forEach(
+    ['onToggleInsights', 'onToggleDetails', 'onToggleSection', 'onViewJson', 'onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'].forEach(
       (name) => expect([name, second[name]]).toEqual([name, first[name]]),
     );
     // No actorsMap in the payload: still the same (empty) object.
@@ -848,6 +848,47 @@ describe('PrTableApp', () => {
       onToggleInsights('1', 'open', 'owner/repo');
     });
     expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
+  });
+
+  test('given onToggleDetails is called for a PR, when toggled twice, then its details open and close without touching its summary', () => {
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+    const { onToggleDetails } = capturedSectionProps[0];
+
+    React.act(() => {
+      onToggleDetails('1', 'open', 'owner/repo');
+    });
+    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(true);
+    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
+
+    React.act(() => {
+      onToggleDetails('1', 'open', 'owner/repo');
+    });
+    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBeFalsy();
+  });
+
+  test('given a summary with its details open, when the summary is closed and reopened, then it opens without its details', () => {
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+    const { onToggleInsights, onToggleDetails } = capturedSectionProps[0];
+
+    React.act(() => {
+      onToggleInsights('1', 'open', 'owner/repo');
+    });
+    React.act(() => {
+      onToggleDetails('1', 'open', 'owner/repo');
+    });
+    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(true);
+
+    React.act(() => {
+      onToggleInsights('1', 'open', 'owner/repo');
+    });
+    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(false);
+    React.act(() => {
+      onToggleInsights('1', 'open', 'owner/repo');
+    });
+    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBe(true);
+    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(false);
   });
 
   test('given two repos with the same PR number in the same section, when one is toggled, then the other repo\'s insights row is unaffected (PR numbers are only unique within a repo)', () => {
@@ -1478,6 +1519,19 @@ describe('PrTableApp', () => {
 
       expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
       expect(capturedUiState.expandedRows['open:owner/repo:1']).toBe(true);
+    });
+
+    // The summary alone has no Notes section to focus, and "View in table"
+    // used to show the full insights: the event opens the details too.
+    test('given a navigation request, when the event fires, then the row\'s details open as well as its summary', () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+
+      expect(capturedUiState.detailRows['open:owner/repo:1']).toBe(true);
+      const latestOpenSection = capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
+      expect(latestOpenSection.openDetails['open:owner/repo:1']).toBe(true);
     });
 
     test('given the PR\'s row is in two sections, when the event fires, then focus goes to the copy in the section it was expanded in', async () => {

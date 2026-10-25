@@ -30,8 +30,8 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
  * - the label chips
  *
  * A second line holds a non-main target branch, unsubmitted pending
- * comments, and "update queued". The chevron opens the row's insights
- * (phase 3 turns that into the row summary). The cell carries
+ * comments, and "update queued". The chevron opens the row's summary
+ * (PrRowSummary). The cell carries
  * data-pr-number / data-repo and the .pr-link class, which "Jump to PR"
  * looks for.
  */
@@ -76,7 +76,7 @@ export function PrTitleCell({
           type="button"
           className="ui-icon-button pr-expand-toggle"
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Hide insights' : 'More insights'} for PR #${prNumber}`}
+          aria-label={`${isExpanded ? 'Hide summary' : 'Show summary'} for PR #${prNumber}`}
           onClick={() => onToggleInsights(pr?.number, sectionKey, repo)}
         >
           <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} />

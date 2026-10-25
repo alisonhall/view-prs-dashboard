@@ -8,7 +8,7 @@ import type { ConversationFilterMode } from '../helpers/pr-review-conversations-
  * pr-review-conversations-ui-state.helpers.ts's
  * getReviewConversationsStateKey). Exists purely so a ReviewThreadsSection
  * instance remembers its own choice across its own remount (collapsing/
- * re-expanding a row's "More insights" panel resets its local useState) -
+ * re-opening a row's details resets its local useState) -
  * nothing outside ReviewThreadsSection.jsx ever reads or writes this.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context

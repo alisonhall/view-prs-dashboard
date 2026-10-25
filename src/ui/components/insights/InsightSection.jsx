@@ -1,6 +1,6 @@
 /**
- * InsightSection - generic collapsible sub-section used throughout the
- * "More insights" panel. Matches vanilla's createInsightSection()
+ * InsightSection - generic collapsible sub-section used throughout a
+ * row's insights (its details). Matches vanilla's createInsightSection()
  * (index.page.js): a bare <details class="insight-section"> with a
  * data-insight-key attribute and a plain-text <summary>.
  *

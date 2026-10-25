@@ -29,8 +29,8 @@ const {
 } = defaultActorIdentity;
 
 /**
- * The "More insights" row panel's formatting/badge-class functions
- * (PrInsightsRow.jsx and components/insights/*). Most are pure formatters;
+ * The row insights' formatting/badge-class functions (PrInsightsRow.jsx,
+ * PrRowSummary.tsx and components/insights/*). Most are pure formatters;
  * formatApproversDisplay, formatRequestedReviewersDisplay,
  * formatAssignedUsersDisplay, buildPrPeopleOptions and
  * getOpenConversationCountWithMe need actor/viewer identity, which
@@ -72,7 +72,7 @@ const buildDefaultPrInsightsDisplay = () => {
   const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
   const { normalizeStoriesForUi } = createPrNotesHelpers();
   const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
-  const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
+  const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEvents } =
     createPrActivityEventsHelpers({ asArray });
   const { formatDurationMinutes } = createPrApprovalDurationHelpers({ toCount });
   const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
@@ -105,6 +105,7 @@ const buildDefaultPrInsightsDisplay = () => {
     formatDurationMinutes,
     buildFallbackActivityEvents,
     buildActivityEventKey,
+    buildActivityEvents,
     normalizePrRootUrl,
     buildPrPeopleOptions,
     normalizeStoriesForUi,

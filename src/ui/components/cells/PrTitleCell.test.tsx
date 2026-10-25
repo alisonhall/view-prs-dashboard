@@ -79,15 +79,15 @@ describe('PrTitleCell', () => {
     const user = userEvent.setup();
     const { onToggleInsights } = renderCell({ sectionKey: 'needs-attention' });
 
-    const toggle = screen.getByRole('button', { name: 'More insights for PR #101' });
+    const toggle = screen.getByRole('button', { name: 'Show summary for PR #101' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await user.click(toggle);
     expect(onToggleInsights).toHaveBeenCalledWith('101', 'needs-attention', 'owner/repo');
   });
 
-  test('an expanded row names its toggle "Hide insights"', () => {
+  test('an expanded row names its toggle "Hide summary"', () => {
     renderCell({ isExpanded: true });
-    expect(screen.getByRole('button', { name: 'Hide insights for PR #101' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Hide summary for PR #101' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('shows unsubmitted pending comments, and nothing without them', () => {
