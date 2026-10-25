@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NowContext } from '../../state/NowContext';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
@@ -148,17 +148,55 @@ describe('PrActivityTab', () => {
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('a long comment that fits within the fold once laid out (a wide pane) gets no "Show more"', () => {
-    const clientHeight = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
-    const scrollHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(100);
-    try {
+  describe('folding by the laid-out height (16px text: the fold is 144px)', () => {
+    let textHeight = 0;
+    let resize: (() => void) | undefined;
+    let style: HTMLStyleElement;
+
+    beforeEach(() => {
+      jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => textHeight);
+      // A real rule, so getComputedStyle (which role queries use too) has it.
+      style = document.createElement('style');
+      style.textContent = '.pr-activity-text { font-size: 16px; }';
+      document.head.appendChild(style);
+      // jsdom has no ResizeObserver; this one lets a test resize the text.
+      (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      };
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      style.remove();
+      delete (window as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+      resize = undefined;
+    });
+
+    test('a long comment that fits within the fold (a wide pane) gets no "Show more"', () => {
+      textHeight = 100;
       render(<Harness pr={basePr([event('c', '2026-10-24T15:00:00Z', { body: 'word '.repeat(100) })])} />);
       expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
       expect(document.querySelector('.pr-activity-text')).not.toHaveAttribute('data-folded');
-    } finally {
-      clientHeight.mockRestore();
-      scrollHeight.mockRestore();
-    }
+    });
+
+    test('it folds once the pane gets narrower and the text taller, and unfolds when it gets wider again', () => {
+      textHeight = 100;
+      render(<Harness pr={basePr([event('c', '2026-10-24T15:00:00Z', { body: 'word '.repeat(100) })])} />);
+      expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
+
+      textHeight = 300;
+      act(() => resize?.());
+      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+      expect(document.querySelector('.pr-activity-text')).toHaveAttribute('data-folded', 'true');
+
+      textHeight = 120;
+      act(() => resize?.());
+      expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
+    });
   });
 
   test('a commit message is plain text, its line breaks kept - not markdown', () => {
@@ -199,6 +237,18 @@ describe('PrActivityTab', () => {
     // Hiding comments moves the run to the top of the day.
     await user.click(within(screen.getByRole('group', { name: 'Event types' })).getByRole('button', { name: /Comments/ }));
     expect(screen.getByRole('button', { name: /pushed 2 commits/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('an expanded run stays open when a newer commit joins it (it is keyed by its oldest)', async () => {
+    const user = userEvent.setup();
+    const commit = (sha: string, at: string) => event(sha, at, { type: 'commit', channel: 'commit', messageHeadline: `Commit ${sha}` });
+    const older = [commit('k2', '2026-10-24T15:00:00Z'), commit('k1', '2026-10-24T14:00:00Z')];
+    const { rerender } = render(<Harness pr={basePr(older)} />);
+    await user.click(screen.getByRole('button', { name: /pushed 2 commits/ }));
+
+    // The pane's data updates with a new commit at the top of the run.
+    rerender(<Harness pr={basePr([commit('k3', '2026-10-24T16:00:00Z'), ...older])} />);
+    expect(screen.getByRole('button', { name: /pushed 3 commits/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('a short comment does not fold', () => {

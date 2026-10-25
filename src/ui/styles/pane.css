@@ -267,7 +267,8 @@
 .pr-activity-text > :first-child { margin-top: 0; }
 .pr-activity-text > :last-child { margin-bottom: 0; }
 
-/* A long body folds to about six lines until "Show more". */
+/* A long body folds to about six lines until "Show more" (PrActivityTab's
+   FOLD_EMS matches this height). */
 .pr-activity-text[data-folded="true"] {
   max-height: 9em;
   overflow: hidden;

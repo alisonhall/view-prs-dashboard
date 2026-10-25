@@ -15,6 +15,7 @@ import {
   activityKindOf,
   buildActivityFeed,
   describeDay,
+  formatTimeOfDay,
   type ActivityKind,
   type ActivityScope,
   type FeedItem,
@@ -78,10 +79,9 @@ const iconFor = (event: PrActivityEvent): { icon: IconName; tone: Tone } => {
 };
 
 function Time({ value, timeZone }: { value: string | undefined; timeZone?: string }) {
-  const time = Date.parse(String(value || ''));
-  if (!Number.isFinite(time)) return null;
+  const short = formatTimeOfDay(value, timeZone);
+  if (!short) return null;
   const full = formatIsoDatetime(String(value));
-  const short = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(time);
   return (
     <time className="pr-activity-time" dateTime={String(value)} data-tip={full} data-tip-on="hover">
       <span aria-hidden="true">{short}</span>
@@ -92,23 +92,36 @@ function Time({ value, timeZone }: { value: string | undefined; timeZone?: strin
 
 // The text in full: a comment or review as markdown, a commit message as
 // plain text (it isn't markdown: "# Conflicts:" isn't a heading). A long
-// one folds behind "Show more": long by its length, unless it turns out to
-// fit within the fold once laid out (a wide pane fits more per line).
+// one folds behind "Show more". Long means taller than the fold (FOLD_EMS,
+// pane.css' max-height), measured when the text changes and whenever its
+// width does (docked or drawer, a window resize); where nothing can be
+// measured (no layout, e.g. jsdom), by its length.
+const FOLD_EMS = 9;
+
 function Body({ text, markdown }: { text: string; markdown: boolean }) {
   const { renderMarkdownAsHtml } = usePrInsightsDisplay();
   const textRef = useRef<HTMLDivElement>(null);
-  const [fits, setFits] = useState(false);
-  const long = !fits && (text.length > FOLD_CHARACTERS || text.split('\n').length > FOLD_LINES);
+  // null until measured.
+  const [overflows, setOverflows] = useState<boolean | null>(null);
+  const long = overflows ?? (text.length > FOLD_CHARACTERS || text.split('\n').length > FOLD_LINES);
   const [open, setOpen] = useState(false);
   const folded = long && !open;
 
-  // Measured while folded; with no layout (clientHeight 0, e.g. jsdom) the
-  // length rule stands.
   useLayoutEffect(() => {
     const element = textRef.current;
-    if (!element || !folded || element.clientHeight === 0) return;
-    if (element.scrollHeight <= element.clientHeight + 1) setFits(true);
-  }, [folded, text]);
+    if (!element) return undefined;
+    // scrollHeight is the whole text's height, folded or not.
+    const measure = () => {
+      const foldHeight = Number.parseFloat(window.getComputedStyle(element).fontSize) * FOLD_EMS;
+      if (!(foldHeight > 0) || element.scrollHeight === 0) return;
+      setOverflows(element.scrollHeight > foldHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text]);
 
   return (
     <div className="pr-activity-body">
@@ -203,11 +216,13 @@ function CommitsItem({ actor, events, pr, actorsMap, timeZone }: { actor: string
 
 // A key from the item itself, not its position: what's expanded or
 // unfolded stays with its event when a filter changes what's around it.
-// Repeats (one commit by two authors, say) get a counter.
+// A run of commits is keyed by its oldest, which a newer commit joining
+// the run doesn't change. Repeats (one commit by two authors, say) get a
+// counter.
 const itemKeys = (items: FeedItem[]): string[] => {
   const seen = new Map<string, number>();
   return items.map((item) => {
-    const event = item.kind === 'event' ? item.event : item.kind === 'commits' ? item.events[0] : undefined;
+    const event = item.kind === 'event' ? item.event : item.kind === 'commits' ? item.events[item.events.length - 1] : undefined;
     const base =
       item.kind === 'marker'
         ? 'marker'

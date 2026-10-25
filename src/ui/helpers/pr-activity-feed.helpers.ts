@@ -72,16 +72,15 @@ export interface ActivityFeedOptions {
   timeZone?: string;
 }
 
-// One formatter per time zone, made once: the tab re-renders on every
-// clock tick and poll, and a busy PR has hundreds of events.
-const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
-const dayKeyFormatter = (timeZone?: string): Intl.DateTimeFormat => {
-  const cacheKey = timeZone ?? "";
-  let formatter = dayKeyFormatters.get(cacheKey);
+// Each formatter is made once, per locale and options: the tab re-renders
+// on every clock tick and poll, and a busy PR has hundreds of events.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const cachedFormatter = (locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat => {
+  const cacheKey = `${locale}|${JSON.stringify(options)}`;
+  let formatter = formatters.get(cacheKey);
   if (!formatter) {
-    // en-CA formats a date as YYYY-MM-DD.
-    formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-    dayKeyFormatters.set(cacheKey, formatter);
+    formatter = new Intl.DateTimeFormat(locale, options);
+    formatters.set(cacheKey, formatter);
   }
   return formatter;
 };
@@ -89,7 +88,15 @@ const dayKeyFormatter = (timeZone?: string): Intl.DateTimeFormat => {
 export const dayKeyOf = (value: unknown, timeZone?: string): string => {
   const time = parseTime(value);
   if (!Number.isFinite(time)) return "";
-  return dayKeyFormatter(timeZone).format(time);
+  // en-CA formats a date as YYYY-MM-DD.
+  return cachedFormatter("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(time);
+};
+
+// An event's time of day ("3:05 PM"); empty for a missing or invalid time.
+export const formatTimeOfDay = (value: unknown, timeZone?: string): string => {
+  const time = parseTime(value);
+  if (!Number.isFinite(time)) return "";
+  return cachedFormatter("en-US", { hour: "numeric", minute: "2-digit", timeZone }).format(time);
 };
 
 export const buildActivityFeed = (events: readonly PrActivityEvent[], options: ActivityFeedOptions): ActivityFeed => {
@@ -147,7 +154,7 @@ export const buildActivityFeed = (events: readonly PrActivityEvent[], options: A
   };
 };
 
-const dayFormatter = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" });
+const dayFormatter = (options: Intl.DateTimeFormatOptions) => cachedFormatter("en-US", { ...options, timeZone: "UTC" });
 
 // A day heading: "Today", "Yesterday", else "Tue · Oct 22" (with the year
 // when it isn't this year's). `key` is a dayKeyOf day.

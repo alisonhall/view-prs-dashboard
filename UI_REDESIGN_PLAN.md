@@ -467,10 +467,13 @@ app working:
     headings ("Today", "Yesterday", "Tue · Oct 22"), each event's icon,
     who and what, time (full on hover), GitHub link, and the full text -
     markdown for comments and reviews, plain for commit messages - folding
-    past about six lines when it really overflows; "Show N earlier events"
+    when it's taller than about six lines (measured again when the text or
+    its width changes, e.g. docked to drawer); "Show N earlier events"
     (counted within the chosen types) in the Since scope, a "You last
-    looked" divider in All. Items are keyed by their event, so what's
-    expanded stays with it when a filter changes.
+    looked" divider in All. Items are keyed by their event (a commit run
+    by its oldest commit), so what's expanded stays with it when a filter
+    changes or a new commit joins the run. Date formatters are made once
+    each and reused.
   - The e2e fixture's PR #2 has a few activity events (two comments, a
     run of two commits), so the e2e test checks the day grouping, the type
     filter and the commit run for real. The daily summary

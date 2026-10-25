@@ -5,6 +5,7 @@ import {
   buildActivityFeed,
   dayKeyOf,
   describeDay,
+  formatTimeOfDay,
   getLastLookedAt,
   type ActivityFeedOptions,
 } from './pr-activity-feed.helpers.ts';
@@ -99,16 +100,28 @@ describe('buildActivityFeed', () => {
     expect(feed.earlierCount).toBe(1);
   });
 
-  test('dayKeyOf reuses one formatter per time zone', () => {
+  test('day keys, times of day and day headings each reuse their formatter', () => {
     const spy = jest.spyOn(Intl, 'DateTimeFormat');
+    const now = Date.parse('2026-10-24T12:00:00Z');
     try {
-      dayKeyOf('2026-01-01T00:00:00Z', 'Asia/Tokyo');
-      dayKeyOf('2026-01-02T00:00:00Z', 'Asia/Tokyo');
-      dayKeyOf('2026-01-03T00:00:00Z', 'Asia/Tokyo');
-      expect(spy.mock.calls.filter(([, options]) => options?.timeZone === 'Asia/Tokyo')).toHaveLength(1);
+      for (const day of ['01', '02', '03']) {
+        dayKeyOf(`2026-01-${day}T00:00:00Z`, 'Asia/Tokyo');
+        formatTimeOfDay(`2026-01-${day}T00:00:00Z`, 'Asia/Tokyo');
+        describeDay(`2026-02-${day}`, now, 'Asia/Tokyo');
+      }
+      // The day key formatter (also used by describeDay for today/yesterday)
+      // and the time-of-day one, once each for this zone.
+      expect(spy.mock.calls.filter(([, options]) => options?.timeZone === 'Asia/Tokyo')).toHaveLength(2);
+      // describeDay's weekday and month-day formatters (UTC), at most once each.
+      expect(spy.mock.calls.filter(([, options]) => options?.timeZone === 'UTC').length).toBeLessThanOrEqual(2);
     } finally {
       spy.mockRestore();
     }
+  });
+
+  test('formatTimeOfDay gives the time of day in the zone, and nothing for no time', () => {
+    expect(formatTimeOfDay('2026-01-01T15:05:00Z', 'UTC')).toBe('3:05 PM');
+    expect(formatTimeOfDay('', 'UTC')).toBe('');
   });
 
   test('without a last-looked time, "Since" shows everything and there is no marker', () => {
