@@ -170,8 +170,162 @@
   color: var(--color-text-muted);
 }
 
-.pr-pane-timeline {
+/* Activity tab (PrActivityTab) */
+.pr-activity-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
+}
+
+.pr-activity-day + .pr-activity-day {
+  margin-top: var(--space-3);
+}
+
+.pr-activity-day-heading {
+  margin: 0 0 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.pr-activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-activity-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+  padding: 6px 0;
+}
+
+.pr-activity-icon {
+  display: inline-flex;
+  padding-top: 2px;
+  color: var(--color-text-muted);
+}
+
+.pr-activity-icon[data-tone="success"] { color: var(--color-success); }
+.pr-activity-icon[data-tone="attention"] { color: var(--color-attention); }
+.pr-activity-icon[data-tone="danger"] { color: var(--color-danger); }
+.pr-activity-icon[data-tone="done"] { color: var(--color-done); }
+
+.pr-activity-main {
+  min-width: 0;
+}
+
+.pr-activity-line,
+.pr-activity-commit {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.pr-activity-link {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-text);
+}
+
+.pr-activity-commit code,
+.pr-activity-commits code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.pr-activity-time {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.pr-activity-body {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.pr-activity-text {
+  overflow-wrap: anywhere;
+}
+
+/* A commit message: plain text, its line breaks kept. */
+.pr-activity-plain {
+  white-space: pre-wrap;
+}
+
+.pr-activity-text > :first-child { margin-top: 0; }
+.pr-activity-text > :last-child { margin-bottom: 0; }
+
+/* A long body folds to about six lines until "Show more". */
+.pr-activity-text[data-folded="true"] {
+  max-height: 9em;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.pr-activity-fold,
+.pr-activity-run {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.pr-activity-fold {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+}
+
+.pr-activity-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  text-align: left;
+}
+
+.pr-activity-commits {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+/* Where the events you'd already seen begin ("All" scope). */
+.pr-activity-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-activity-marker::before,
+.pr-activity-marker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border-strong);
+}
+
+.pr-activity-earlier {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-3) 0;
 }
 
 /* Empty state */

@@ -79,7 +79,13 @@
         "viewedFilesSummary": "0/2 viewed",
         "comments": [],
         "reviews": [],
-        "commits": []
+        "commits": [],
+        "activityEvents": [
+          { "sourceId": "e2e-c2", "threadId": "", "occurredAt": "2026-01-05T15:00:00Z", "date": "2026-01-05", "actor": "octocat", "type": "comment", "channel": "top-level", "body": "Second comment on the fix" },
+          { "sourceId": "e2e-c1", "threadId": "", "occurredAt": "2026-01-05T10:00:00Z", "date": "2026-01-05", "actor": "octocat", "type": "comment", "channel": "top-level", "body": "First comment on the fix" },
+          { "sourceId": "e2e-k2", "threadId": "", "occurredAt": "2026-01-02T12:00:00Z", "date": "2026-01-02", "actor": "hubot", "type": "commit", "channel": "commit", "messageHeadline": "Handle the empty case" },
+          { "sourceId": "e2e-k1", "threadId": "", "occurredAt": "2026-01-02T11:00:00Z", "date": "2026-01-02", "actor": "hubot", "type": "commit", "channel": "commit", "messageHeadline": "Fix the parser" }
+        ]
       }
     },
     "3": {

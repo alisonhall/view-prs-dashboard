@@ -88,9 +88,9 @@ describe('PrRowSummary', () => {
 
     const items = within(column('Latest activity')).getAllByRole('listitem');
     expect(items).toHaveLength(3);
-    expect(items[0]).toHaveTextContent(/alice comment: Looks good/);
+    expect(items[0]).toHaveTextContent(/alice commented: Looks good/);
     expect(items[0]).toHaveTextContent('5m');
-    expect(items[1]).toHaveTextContent(/bob commit: Fix the tests/);
+    expect(items[1]).toHaveTextContent(/bob pushed a commit: Fix the tests/);
     expect(items[1]).toHaveTextContent('3h');
     expect(items[2]).toHaveTextContent(/carol approved/);
     expect(items[2]).toHaveTextContent('2d');

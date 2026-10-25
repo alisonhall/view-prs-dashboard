@@ -2172,10 +2172,10 @@ describe("index page rendering with Testing Library", () => {
       "Alison Hall",
     );
 
-    // The activity sequence and timeline are on the Activity tab.
+    // The activity feed and daily summary are on the Activity tab.
     const activityContent = await openPrPane(user, row, "Activity");
     const activitySequenceSection = Array.from(
-      activityContent?.querySelectorAll('details.insight-section[data-insight-key="activity sequence"] .actor-identity') || [],
+      activityContent?.querySelectorAll(".pr-activity-list .actor-identity") || [],
     );
     expect(
       activitySequenceSection.some(
@@ -7826,13 +7826,13 @@ describe("index page rendering with Testing Library", () => {
 
       const row = screen.getByText("#101").closest("tr");
 
-      // The pane's Conversations and Activity tabs, each its section open.
+      // The pane's Conversations tab (its section open) and Activity tab.
       const reviewSectionSelector =
         '.pr-pane details.insight-section[data-insight-key="review-conversations"]';
-      const activitySectionSelector =
-        '.pr-pane details.insight-section[data-insight-key="activity sequence"]';
       const getReviewSection = () => document.querySelector(reviewSectionSelector);
-      const getActivitySection = () => document.querySelector(activitySectionSelector);
+      const getActivitySection = () => document.querySelector(".pr-pane .pr-activity");
+      const commentsChip = () =>
+        within(document.querySelector(".pr-pane")).getByRole("button", { name: /^Comments/ });
       await openPrPane(user, row, "Conversations");
       expect(getReviewSection()?.open).toBe(true);
 
@@ -7853,9 +7853,9 @@ describe("index page rendering with Testing Library", () => {
       expect(String(getReviewSection()?.textContent || "")).not.toContain("Open thread");
 
       await openPrPane(user, row, "Activity");
-      // Closed by the user, so the poll below must keep it closed.
-      await user.click(getActivitySection()?.querySelector("summary"));
-      expect(getActivitySection()?.open).toBe(false);
+      // Turned off by the user, so the poll below must keep it off.
+      await user.click(commentsChip());
+      expect(commentsChip()).toHaveAttribute("aria-pressed", "false");
       expect(String(getActivitySection()?.textContent || "")).not.toContain(
         "Thread: resolved",
       );
@@ -7907,11 +7907,11 @@ describe("index page rendering with Testing Library", () => {
         expect(prRow()).toBeInTheDocument();
       });
 
-      // Still selected, on the same tab, with the section as the user left it.
+      // Still selected, on the same tab, with the filter as the user left it.
       const refreshedRow = prRow();
       expect(refreshedRow).toHaveAttribute("aria-current", "true");
       const refreshedActivitySection = getActivitySection();
-      expect(refreshedActivitySection?.open).toBe(false);
+      expect(commentsChip()).toHaveAttribute("aria-pressed", "false");
 
       // The conversation filters survive too (the tab remounts its section).
       await openPrPane(user, refreshedRow, "Conversations");
@@ -8429,12 +8429,14 @@ describe("index page rendering with Testing Library", () => {
         ).toBeTruthy();
       });
       expect(insightsPanel).toBeTruthy();
+      // The Activity tab's collapsible group (closed until opened).
       const activityDetails = Array.from(
         insightsPanel.querySelectorAll("details[data-insight-key]"),
       ).find(
-        (d) => d.getAttribute("data-insight-key") === "activity sequence",
+        (d) => d.getAttribute("data-insight-key") === "daily summary",
       );
       expect(activityDetails).toBeTruthy();
+      expect(activityDetails.open).toBe(false);
       activityDetails.open = true;
       if (typeof activityDetails.setAttribute === "function") {
         activityDetails.setAttribute("open", "");
@@ -8527,7 +8529,7 @@ describe("index page rendering with Testing Library", () => {
       const activityDetailsAfter = Array.from(
         insightsPanelAfter.querySelectorAll("details[data-insight-key]"),
       ).find(
-        (d) => d.getAttribute("data-insight-key") === "activity sequence",
+        (d) => d.getAttribute("data-insight-key") === "daily summary",
       );
       expect(activityDetailsAfter).toBeTruthy();
       expect(activityDetailsAfter.open).toBe(true);

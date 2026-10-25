@@ -20,14 +20,42 @@
  * @module components/insights/ActivityTimelineSummary
  */
 
-import React from 'react';
+import { Fragment, type CSSProperties } from 'react';
+import type { PrActivityTimelineBucket, PrData } from '../../types/pr-data.ts';
+import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from '../ActorIdentity';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
 
-const DATE_CELL_STYLE = { paddingRight: '12px', paddingTop: '2px', paddingBottom: '2px', verticalAlign: 'top', whiteSpace: 'nowrap' };
-const ACTIVITY_CELL_STYLE = { paddingTop: '2px', paddingBottom: '2px' };
+const DATE_CELL_STYLE: CSSProperties = { paddingRight: '12px', paddingTop: '2px', paddingBottom: '2px', verticalAlign: 'top', whiteSpace: 'nowrap' };
+const ACTIVITY_CELL_STYLE: CSSProperties = { paddingTop: '2px', paddingBottom: '2px' };
 
-function typeLabel(type, count) {
+// A timeline bucket as stored (the type lists only what's read here).
+type TimelineBucket = PrActivityTimelineBucket & {
+  date?: string;
+  actor?: string;
+  type?: string;
+  count?: number | string;
+  latestAt?: string;
+  author?: { name?: string } | string;
+};
+
+interface TimelineItem {
+  actor: string;
+  fallbackName: string;
+  label: string;
+  count: number;
+}
+
+interface TimelineRow {
+  key: string;
+  items: TimelineItem[];
+  rangeStartKey?: string;
+  dayCount?: number;
+}
+
+const nameOf = (author: { name?: string } | string | undefined) => (typeof author === 'object' ? author?.name : author);
+
+function typeLabel(type: string, count: number) {
   if (type === 'comment') return count > 1 ? 'comments' : 'comment';
   if (type === 'approval') return 'approved';
   if (type === 'commit') return count > 1 ? 'commits' : 'commit';
@@ -37,27 +65,27 @@ function typeLabel(type, count) {
   return count > 1 ? `${type}s` : type;
 }
 
-function parseDay(value) {
+function parseDay(value: string | undefined) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
   const dt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-function formatDay(date) {
+function formatDay(date: Date) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-function normalizeTimelineType(type) {
+function normalizeTimelineType(type: unknown) {
   const normalized = String(type || 'activity').trim() || 'activity';
   return normalized === 'review' ? 'comment' : normalized;
 }
 
 // Builds { dateKeys, groupedByDate } or null if there's no usable timeline.
-function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
+function computeTimelineRows(activityTimelineRaw: TimelineBucket[] | undefined, pr: PrData, actorsMap: ActorsMap | undefined) {
   const timeline = Array.isArray(activityTimelineRaw)
     ? activityTimelineRaw
         .filter((item) => item && typeof item === 'object')
@@ -73,25 +101,31 @@ function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
 
   if (!timeline.length) return null;
 
-  const actorNameMap = new Map(Object.entries(actorsMap || {}).filter(([k, v]) => k && v));
-  const learnFrom = (login, name) => {
+  const actorNameMap = new Map(
+    Object.entries(actorsMap || {}).filter((pair): pair is [string, string] => Boolean(pair[0] && pair[1])),
+  );
+  const learnFrom = (login: unknown, name: unknown) => {
     const l = String(login || '').trim();
     if (l && !actorNameMap.has(l)) {
       const n = String(name || '').trim();
       if (n && n !== l) actorNameMap.set(l, n);
     }
   };
+  // Raw `gh` shapes carry `author: { name }`; the typed fields don't list it.
+  type Named = { author?: { name?: string } | string; authorName?: string; actorName?: string };
   asArray(activityTimelineRaw).forEach((bucket) => {
-    learnFrom(bucket?.actor, bucket?.author?.name || bucket?.author);
-    asArray(bucket?.events).forEach((event) => learnFrom(event?.actor, event?.author?.name || event?.author));
+    learnFrom(bucket?.actor, nameOf(bucket?.author));
+    asArray(bucket?.events).forEach((event) => learnFrom(event?.actor, nameOf((event as Named)?.author)));
   });
-  asArray(pr.comments).forEach((c) => learnFrom(c?.authorLogin, c?.author?.name || c?.authorName));
-  asArray(pr.commentEvents).forEach((e) => learnFrom(e?.actor, e?.actorName));
-  asArray(pr.reviews).forEach((r) => learnFrom(r?.authorLogin, r?.author?.name || r?.authorName));
-  asArray(pr.reviewThreads).forEach((t) => asArray(t?.comments).forEach((c) => learnFrom(c?.authorLogin, c?.author?.name || c?.authorName)));
+  asArray(pr.comments).forEach((c) => learnFrom(c?.authorLogin, nameOf((c as Named)?.author) || c?.authorName));
+  asArray(pr.commentEvents).forEach((e) => learnFrom(e?.actor, (e as Named)?.actorName));
+  asArray(pr.reviews).forEach((r) => learnFrom(r?.authorLogin, nameOf(r?.author) || r?.authorName));
+  asArray(pr.reviewThreads).forEach((t) =>
+    asArray(t?.comments).forEach((c) => learnFrom(c?.authorLogin, nameOf((c as Named)?.author) || c?.authorName)),
+  );
   asArray(pr.commits).forEach((commit) => asArray(commit?.authors).forEach((a) => learnFrom(a?.login, a?.name)));
 
-  const getActorDisplay = (login) => (actorNameMap.has(login) ? actorNameMap.get(login) : login);
+  const getActorDisplay = (login: string) => actorNameMap.get(login) ?? login;
 
   const sorted = timeline.slice().sort((a, b) => {
     if (a.date !== b.date) return String(b.date).localeCompare(String(a.date));
@@ -101,8 +135,8 @@ function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
   });
 
   let currentDate = '';
-  let itemsByActorType = new Map();
-  const groupedByDate = new Map();
+  let itemsByActorType = new Map<string, { actor: string; type: string; count: number; latestAt: string }>();
+  const groupedByDate = new Map<string, TimelineItem[]>();
   const flush = () => {
     if (!currentDate) return;
     groupedByDate.set(
@@ -138,21 +172,33 @@ function computeTimelineRows(activityTimelineRaw, pr, actorsMap) {
   return { dateKeys, groupedByDate };
 }
 
-function TimelineItems({ items, pr, actorsMap }) {
-  if (!items.length) return '-';
-  return items.map((item, index) => (
-    <React.Fragment key={index}>
-      {index > 0 && '; '}
-      <ActorIdentity row={pr} login={item.actor} actorsMap={actorsMap} fallbackName={item.fallbackName} />
-      {item.count > 1 ? ` ${item.label} (${item.count})` : ` ${item.label}`}
-    </React.Fragment>
-  ));
+function TimelineItems({ items, pr, actorsMap }: { items: TimelineItem[]; pr: PrData; actorsMap?: ActorsMap }) {
+  if (!items.length) return <>-</>;
+  return (
+    <>
+      {items.map((item, index) => (
+        <Fragment key={index}>
+          {index > 0 && '; '}
+          <ActorIdentity row={pr} login={item.actor} actorsMap={actorsMap} fallbackName={item.fallbackName} />
+          {item.count > 1 ? ` ${item.label} (${item.count})` : ` ${item.label}`}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
-export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, isOpen, pr, actorsMap }) {
+export interface ActivityTimelineSummaryProps {
+  activityTimelineRaw: TimelineBucket[] | undefined;
+  fallbackSummary?: string;
+  isOpen: boolean;
+  pr: PrData;
+  actorsMap?: ActorsMap;
+}
+
+export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, isOpen, pr, actorsMap }: ActivityTimelineSummaryProps) {
   const computed = computeTimelineRows(activityTimelineRaw, pr, actorsMap);
   if (!computed) {
-    return String(fallbackSummary || '').trim() || '-';
+    return <>{String(fallbackSummary || '').trim() || '-'}</>;
   }
   const { dateKeys, groupedByDate } = computed;
 
@@ -161,7 +207,7 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
 
   // If dates don't parse as plain calendar days, just list what we have
   // without extending the range (matches vanilla's fallback branch).
-  const rows = [];
+  const rows: TimelineRow[] = [];
   if (!newest || !oldest) {
     for (const date of dateKeys) {
       rows.push({ key: date, items: groupedByDate.get(date) || [] });
@@ -176,8 +222,8 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
     // stretch doesn't dominate the timeline - weekends stay excluded from
     // both the row list and this day count, exactly as before (they never
     // break a run in progress, and never add to its count).
-    let gapNewestKey = null;
-    let gapOldestKey = null;
+    let gapNewestKey = '';
+    let gapOldestKey = '';
     let gapDayCount = 0;
 
     const flushGap = () => {
@@ -192,8 +238,8 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
           items: [],
         });
       }
-      gapNewestKey = null;
-      gapOldestKey = null;
+      gapNewestKey = '';
+      gapOldestKey = '';
       gapDayCount = 0;
     };
 
@@ -205,7 +251,7 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
 
       if (hasActivity) {
         flushGap();
-        rows.push({ key, items: groupedByDate.get(key) });
+        rows.push({ key, items: groupedByDate.get(key) || [] });
       } else if (isWeekday) {
         if (gapDayCount === 0) gapNewestKey = key;
         gapOldestKey = key;
@@ -218,7 +264,7 @@ export function ActivityTimelineSummary({ activityTimelineRaw, fallbackSummary, 
     flushGap();
   }
 
-  if (!rows.length) return '-';
+  if (!rows.length) return <>-</>;
 
   return (
     <table style={{ borderCollapse: 'collapse', width: '100%' }}>

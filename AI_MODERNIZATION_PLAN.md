@@ -1114,6 +1114,9 @@ No static type checking leads to:
       replacing PrInsightsRow.jsx), CopyIconButton, LinesChangedInsight,
       ApprovalRiskSection, InsightSection and the insights hook
       (InsightsHook.tsx), plus the useMediaQuery and useFocusTrap hooks.
+    - Phase 5 (2026-10-25): the Activity tab (PrActivityTab, replacing
+      ActivityEventsSection.jsx), ActivityEventDescription and
+      ActivityTimelineSummary, on the new pr-activity-feed.helpers.ts.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

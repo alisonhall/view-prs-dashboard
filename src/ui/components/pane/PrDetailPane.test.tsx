@@ -228,6 +228,48 @@ describe('PrDetailPane', () => {
     });
   });
 
+  describe('Activity tab', () => {
+    const withEvents = (number: string, baseline = ''): PrEntry => ({
+      ...baseEntry,
+      prNumber: number,
+      data: {
+        ...baseEntry.data,
+        number,
+        baseline,
+        activityEvents: [
+          { sourceId: 'n', occurredAt: '2026-01-05T00:00:00Z', actor: 'bob', type: 'comment', channel: 'top-level' },
+          { sourceId: 'o', occurredAt: '2026-01-02T00:00:00Z', actor: 'bob', type: 'comment', channel: 'top-level' },
+        ],
+      },
+    });
+
+    test('"Since I last looked" goes from the later of your last activity and your last Ack', () => {
+      const { view } = renderPane({ tab: 'activity', entry: withEvents('7', '2026-01-01T00:00:00Z'), ackedAt: '2026-01-03T00:00:00Z' });
+      const scope = within(view.container).getByRole('group', { name: 'Scope' });
+      // Only the event after the Ack (Jan 3), not both after the last activity (Jan 1).
+      expect(within(scope).getByRole('button', { name: /Since I last looked/ })).toHaveTextContent('1');
+    });
+
+    test('its filters stay as picked for the next PR', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry: withEvents('7') })} />
+        </Providers>,
+      );
+      await user.click(screen.getByRole('button', { name: /Comments/ }));
+      expect(screen.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false');
+
+      rerender(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry: withEvents('8') })} />
+        </Providers>,
+      );
+      expect(screen.getByRole('tablist', { name: 'PR #8 details' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
   describe('tabs', () => {
     test('Activity counts every event, not just the feed\'s first 60', () => {
       const activityEvents = Array.from({ length: 75 }, (_, index) => ({

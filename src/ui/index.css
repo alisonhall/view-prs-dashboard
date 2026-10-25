@@ -1499,59 +1499,6 @@
             text-decoration: underline;
         }
 
-        .insight-event-body {
-            margin-top: 4px;
-            white-space: pre-wrap;
-            font-size: 12px;
-        }
-
-        /* Activity sequence event kind variants */
-        .insight-event-kind-approval {
-            border-color: #1a7f37;
-            background: #ecfdf3;
-            box-shadow: inset 3px 0 0 #2da44e;
-        }
-        .insight-event-kind-review {
-            border-color: #b54708;
-            background: #fff7ed;
-            box-shadow: inset 3px 0 0 #f79009;
-        }
-        .insight-event-kind-thread {
-            border-color: #bf8700;
-            background: #fffbe6;
-            box-shadow: inset 3px 0 0 #d4a017;
-        }
-        .insight-event-kind-top-level {
-            border-color: #0969da;
-            background: #f0f6ff;
-            box-shadow: inset 3px 0 0 #388bfd;
-        }
-        .insight-event-kind-commit {
-            border-color: #8250df;
-            background: #fbefff;
-            box-shadow: inset 3px 0 0 #a371f7;
-        }
-        .insight-event-kind-merged {
-            border-color: #6639ba;
-            background: #f5f0ff;
-            box-shadow: inset 3px 0 0 #8957e5;
-        }
-        .insight-event-kind-opened {
-            border-color: #1a7f37;
-            background: #ecfdf3;
-            box-shadow: inset 3px 0 0 #2da44e;
-        }
-        .insight-event-kind-closed {
-            border-color: #cf222e;
-            background: #fff0f0;
-            box-shadow: inset 3px 0 0 #cf222e;
-        }
-        .insight-event-kind-system {
-            border-color: #8c959f;
-            background: #f6f8fa;
-            box-shadow: inset 3px 0 0 #afb8c1;
-        }
-
         .insight-thread {
             margin-top: 8px;
             padding: 8px;

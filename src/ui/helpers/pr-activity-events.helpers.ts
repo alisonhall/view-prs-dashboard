@@ -1,6 +1,6 @@
 import type { PrActivityEvent, PrData } from "../types/pr-data.ts";
 
-// Event-list helpers for ActivityEventsSection and the row summary: a
+// Event-list helpers for the detail pane's Activity tab and the row summary: a
 // dedupe key per event, a PR URL without hash/query, a fallback event list
 // built from a PR's comments, threads, reviews, commits and merge/close
 // time when it has no activity events of its own, and the deduplicated

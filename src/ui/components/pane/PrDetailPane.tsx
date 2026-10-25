@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import type { PaneTab } from '../../state/PrTableUiStateContext';
@@ -9,12 +9,12 @@ import { Icon } from '../ui/Icon';
 import { MenuButton } from '../ui/MenuButton';
 import { Tabs, TabPanel, type TabItem } from '../ui/Tabs';
 import { useTooltipController } from '../ui/Tooltip';
-import { ActivityEventsSection } from '../insights/ActivityEventsSection';
-import { ActivityTimelineSummary } from '../insights/ActivityTimelineSummary';
 import { ReviewThreadsSection } from '../insights/ReviewThreadsSection';
 import { NotesSection } from '../insights/NotesSection';
 import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHook';
 import { PrOverview } from './PrOverview';
+import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
+import { getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
 import { useRepoLabels } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
@@ -54,6 +54,8 @@ export interface PrDetailPaneProps {
   isFlagged: boolean;
   isInReview: boolean;
   isAcknowledged: boolean;
+  // When the PR was last Ack'd (the user state), for "Since I last looked".
+  ackedAt?: string;
   tab: PaneTab;
   onTabChange: (tab: PaneTab) => void;
   onPrevious?: () => void;
@@ -86,6 +88,9 @@ export function PrDetailPane(props: PrDetailPaneProps) {
   const { entry, mode, onClose } = props;
   useTooltipController();
   const containerRef = useRef<HTMLElement>(null);
+  // The Activity tab's filters, held here (not in the per-PR content) so
+  // they stay as picked for the next PR.
+  const [activityFilters, setActivityFilters] = useState<ActivityFilters>(DEFAULT_ACTIVITY_FILTERS);
   const isDrawer = mode === 'drawer';
   useFocusTrap(containerRef, isDrawer && Boolean(entry), onClose);
 
@@ -115,7 +120,14 @@ export function PrDetailPane(props: PrDetailPaneProps) {
         // insights used to. Notes and Conversations keep the user's edits
         // and choices in state set up when they mount; kept across a
         // switch, PR A's unsaved notes would show (and save) under PR B.
-        <PaneContent key={`${entry.repo || props.repo}#${prNumber}`} {...props} entry={entry} prNumber={prNumber} />
+        <PaneContent
+          key={`${entry.repo || props.repo}#${prNumber}`}
+          {...props}
+          entry={entry}
+          prNumber={prNumber}
+          activityFilters={activityFilters}
+          onActivityFiltersChange={setActivityFilters}
+        />
       ) : (
         <EmptyState />
       )}
@@ -140,6 +152,9 @@ function PaneContent({
   isFlagged,
   isInReview,
   isAcknowledged,
+  ackedAt,
+  activityFilters,
+  onActivityFiltersChange,
   tab,
   onTabChange,
   onPrevious,
@@ -151,7 +166,12 @@ function PaneContent({
   onUpdatePr,
   onViewJson,
   onDataRefresh,
-}: PrDetailPaneProps & { entry: PrEntry; prNumber: string }) {
+}: PrDetailPaneProps & {
+  entry: PrEntry;
+  prNumber: string;
+  activityFilters: ActivityFilters;
+  onActivityFiltersChange: (filters: ActivityFilters) => void;
+}) {
   const pr = entry.data || {};
   const repo = entry.repo || fallbackRepo;
   const ref = { prNumber, repo };
@@ -192,9 +212,6 @@ function PaneContent({
   ];
   // The remembered tab may not exist for this PR (Custom insights).
   const selectedTab: PaneTab = tabs.some((item) => item.id === tab) ? tab : 'overview';
-  // A closed PR's activity timeline stops at its close date (mergedAt wins,
-  // else closedAt), not today.
-  const isOpen = !String(pr.mergedAt || pr.closedAt || '').trim();
 
   return (
     <>
@@ -268,23 +285,13 @@ function PaneContent({
       <TabPanel idPrefix={TAB_ID_PREFIX} tabId={selectedTab} className="pr-pane-panel">
         {selectedTab === 'overview' && <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} />}
         {selectedTab === 'activity' && (
-          <>
-            <div className="pr-pane-timeline">
-              <h3 className="pr-overview-heading">Activity timeline</h3>
-              <ActivityTimelineSummary
-                activityTimelineRaw={pr.activityTimeline}
-                fallbackSummary={pr.activityTimelineSummary}
-                isOpen={isOpen}
-                pr={pr}
-                actorsMap={rowActorsMap}
-              />
-            </div>
-            {eventCount > 0 ? (
-              <ActivityEventsSection pr={pr} actorsMap={rowActorsMap} defaultOpen />
-            ) : (
-              <p className="pr-pane-none">No activity recorded</p>
-            )}
-          </>
+          <PrActivityTab
+            pr={pr}
+            actorsMap={rowActorsMap}
+            lastLookedAt={getLastLookedAt(pr.baseline, ackedAt)}
+            filters={activityFilters}
+            onFiltersChange={onActivityFiltersChange}
+          />
         )}
         {selectedTab === 'conversations' && <ConversationsTab pr={pr} actorsMap={rowActorsMap} />}
         {selectedTab === 'notes' && <NotesSection entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />}

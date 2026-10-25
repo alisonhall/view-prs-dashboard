@@ -455,6 +455,35 @@ app working:
   - not truncating activity comments
   - styling the PR author's and the viewer's names
   - the activity height limits (the pane scrolls instead)
+- **Done (2026-10-25)** on branch `ui-redesign/phase-5`:
+  - `helpers/pr-activity-feed.helpers.ts` (tested): event kinds (Commits,
+    Reviews, Comments, PR events), "when I last looked" (`baseline` or the
+    Ack's time, whichever is later - decision 1), the scope and type
+    filters with their counts, grouping by calendar day (in a given time
+    zone, for tests), one person's runs of commits collapsed, and a marker
+    where the already-seen events begin.
+  - `pane/PrActivityTab.tsx` replaces `ActivityEventsSection` (deleted):
+    scope and type chips (the pane keeps them for the next PR), day
+    headings ("Today", "Yesterday", "Tue · Oct 22"), each event's icon,
+    who and what, time (full on hover), GitHub link, and the full text -
+    markdown for comments and reviews, plain for commit messages - folding
+    past about six lines when it really overflows; "Show N earlier events"
+    (counted within the chosen types) in the Since scope, a "You last
+    looked" divider in All. Items are keyed by their event, so what's
+    expanded stays with it when a filter changes.
+  - The e2e fixture's PR #2 has a few activity events (two comments, a
+    run of two commits), so the e2e test checks the day grouping, the type
+    filter and the commit run for real. The daily summary
+    (`ActivityTimelineSummary`, now `.tsx`, logic unchanged) is a collapsed
+    group below. `ActivityEventDescription` is `.tsx` with plainer wording
+    ("requested changes", "commented in a thread", "pushed a commit",
+    "PR merged" when no actor is recorded), shared with the row summary.
+  - The pane gets the PR's Ack time from the user state (`ackedAt`).
+  - No "Thread open/resolve" chip: the data has no such events, only a
+    resolved flag on each thread comment with no time it changed. That
+    flag was already not shown, so the ROADMAP item is done.
+  - CSS for the old activity cards (`.insight-event-kind-*`,
+    `.insight-event-body`) is removed.
 
 ### Phase 6 - Conversations tab
 

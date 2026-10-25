@@ -361,6 +361,45 @@ test("below 900px the detail pane is a modal drawer: Esc closes it and focus goe
   await expect(showDetails).toBeFocused();
 });
 
+test("the detail pane's Activity tab groups events by day, filters by type and collapses commit runs", async ({ page }) => {
+  // The fixture's PR #2 has two comments on Jan 5 and Hubot's two commits
+  // on Jan 2 (and no last-looked time, so the scope is All).
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  await paneTab(page, "Activity").click();
+
+  const pane = detailPane(page);
+  const dayHeadings = pane.getByRole("heading", { level: 3 });
+  await expect(dayHeadings).toHaveCount(2);
+  await expect(dayHeadings.nth(0)).toHaveText(/Jan 5/);
+  await expect(dayHeadings.nth(1)).toHaveText(/Jan 2/);
+  await expect(pane.getByText("Second comment on the fix")).toBeVisible();
+
+  const types = pane.getByRole("group", { name: "Event types", exact: true });
+  const comments = types.getByRole("button", { name: /^Comments/ });
+  await expect(comments).toContainText("2");
+  await comments.click();
+  await expect(comments).toHaveAttribute("aria-pressed", "false");
+  await expect(dayHeadings).toHaveCount(1);
+  await expect(pane.getByText("Second comment on the fix")).toHaveCount(0);
+
+  const run = pane.getByRole("button", { name: /pushed 2 commits/ });
+  await expect(run).toHaveAttribute("aria-expanded", "false");
+  await run.click();
+  await expect(pane.getByText("Fix the parser", { exact: false })).toBeVisible();
+
+  await comments.click();
+  await expect(dayHeadings).toHaveCount(2);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("hiding the detail pane is remembered after a reload", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

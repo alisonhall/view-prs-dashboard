@@ -880,6 +880,8 @@ export function PrTableApp() {
   const paneMode = isNarrow ? 'drawer' : 'docked';
   const isPaneDocked = isPaneVisible && !isNarrow;
   const paneFlags = selectedPr ? getPrFlags(selectedPr.prNumber, selectedPr.repo) : null;
+  // The Ack's time (the user state stores when), for "Since I last looked".
+  const paneAckedAt = selectedPr ? String(payload?.ackByRepo?.[selectedPr.repo]?.[selectedPr.prNumber] || '') : '';
 
   // NowProvider: one clock for the rows' relative times (Activity ages).
   return (
@@ -928,6 +930,7 @@ export function PrTableApp() {
             isFlagged={Boolean(paneFlags?.isFlagged)}
             isInReview={Boolean(paneFlags?.isInReview)}
             isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+            ackedAt={paneAckedAt}
             tab={paneTab}
             onTabChange={setPaneTab}
             onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}

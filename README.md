@@ -680,14 +680,17 @@ Insights behavior notes:
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
-- Open inner insight groups (for example `Activity sequence`) also stay open across rerenders.
+- Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any PR-section field is unsaved (including Notes text/select changes and Notes comment add/remove changes).
 - Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
 - When auto-refresh is paused, a floating `Auto update paused` indicator appears with clickable blocker chips (PR numbers and author-draft chips) that jump directly to the matching unsaved UI, plus a `Discard unsaved` action (manual override to render the pending update and discard unsaved edits).
 - Polling failures now show a persistent warning snackbar that includes `Last successful check` and `Last error at` timestamps.
 - The polling warning snackbar is automatically cleared after a successful poll.
-- `Activity sequence` visually distinguishes event kinds (approval/review/thread/top-level/commit/system).
-- `Activity sequence` suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
+- The detail pane's Activity tab lists the PR's events grouped by day, newest first: who did what (approved, requested changes, commented, pushed a commit, merged the PR...), when (the full time on hover), a link to GitHub, and the comment or review text in full - long ones fold behind `Show more`. One person's run of commits on a day is one line that expands to list them. The PR author's name and yours are styled.
+  - `Since I last looked` shows only what happened after your last activity on the PR or your last Ack, whichever is later, with a button to show the earlier events; `All` shows everything, with a divider where the events you'd already seen begin. Without either time, only `All` applies.
+  - Chips filter by event type (Commits, Reviews, Comments, PR events), each showing its count. The scope and types stay as picked for the next PR.
+  - The daily summary table (below) is a collapsed group at the end.
+- The Activity tab suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
 - `Review conversations` (the detail pane's Conversations tab) shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
 - The `Review conversations` summary heading now includes resolved/total thread counts in the format `Review conversations (<resolved>/<total>)` (for example `Review conversations (12/43)`).
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
@@ -1158,7 +1161,7 @@ Additional notes:
 - Existing inline-heavy rows can be migrated once with `npm run migrate:pr-detail:v1` from `view-prs/`.
 - `activityTimeline` now collapses only consecutive runs of the same actor and activity type, so interruptions by another person or another type of event are preserved.
 - `reviewThreads`, `commentEvents`, and `activityEvents` keep the richer raw history needed for later analytics and reviewer-behavior views.
-- **Activity Timeline filtering**: The Activity timeline in PR insights displays all dates with activity, and omits weekend dates (Sat-Sun) without activity. A run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row (with the date range) instead of a dash row per day; an isolated single no-activity weekday still shows its own dash ("-") row. This reduces visual clutter while maintaining visibility of business-week activity patterns.
+- **Activity Timeline filtering**: The daily summary on the detail pane's Activity tab displays all dates with activity, and omits weekend dates (Sat-Sun) without activity. A run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row (with the date range) instead of a dash row per day; an isolated single no-activity weekday still shows its own dash ("-") row. This reduces visual clutter while maintaining visibility of business-week activity patterns.
 - The page now includes a `Review Statistics` tab with dedicated controls (`Sort by`, `Filter`, `Min comments`, `Top reviewers`) to rank and focus reviewer activity. Reviewer names are resolved using `actorsMap` display names. The statistics view features prominent graph cards:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)

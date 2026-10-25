@@ -2,7 +2,7 @@
 
 ## Possible improvements
 
-- [ ] Remove the "thread open" and "thread resolved" details from the 'Activity sequence' cards
+- [x] ~~Remove the "thread open" and "thread resolved" details from the 'Activity sequence' cards~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 5): the Activity tab's events don't show a thread's open/resolved state (the data only has it as a flag on each comment, with no time it changed, so it isn't an event of its own)
 - [x] ~~Determine what determines the 'MRG' values~~ - answered (2026-10-22): MRG is GitHub's `mergeable` field, not anything to do with merge commits. YES = no conflicts, NO = conflicts, UNK = GitHub hasn't computed it yet. Still to do: add a tooltip explaining this on the badge.
 - [ ] Add explanations for how things like some of the 'Review statistics' table column data is calculated
 - [ ] Move the 'View Filters' section out of the tabs section - decided (2026-10-22): a collapsible filter bar directly above the PR table; the applied-filter chips stay visible when it's collapsed. Run Script options stay in the Script tab.
@@ -19,7 +19,7 @@
 - [ ] Extend the 'Your last activity' column data so that it shows the relative difference too
 - [ ] Add additional expandable sections under each PR to contain things like the user's PR description, an AI description of the PR changes, a large textarea where I can paste in AI review of the PR quality, etc.
 - [x] ~~Have the content of the 'More insights' section be with tabs~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 4): the detail pane's tabs, as decided below. Original item: Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
-- [ ] Don't truncate comments/details under the 'Activity sequence' cards
+- [x] ~~Don't truncate comments/details under the 'Activity sequence' cards~~ - done (2026-10-25, phase 5): the Activity tab shows comment and review text in full, rendered as markdown; long ones fold behind "Show more"
 - [x] Add a toggle within the 'Review conversations' section for viewing all vs only unresolved conversations. The default value should be viewing only the unresolved conversations.
 - [x] Call out places where the wrong person resolved a conversation
 - [x] Exclude weekends from Activity Timeline empty dates
@@ -52,7 +52,7 @@
 ### Styling
 
 - [ ] Add different styling for when my name appears
-- [ ] Add styling for when the PR author's name appears in the 'Activity timeline' or 'Activity sequence' or 'Review conversations'
+- [x] ~~Add styling for when the PR author's name appears in the 'Activity timeline' or 'Activity sequence' or 'Review conversations'~~ - done: names there go through ActorIdentity, which styles the PR author and the viewer (`.actor-identity-pr-author` / `-viewer`); the Activity tab's feed and daily summary use it too (2026-10-25, phase 5)
 - [x] Add markdown styling to content of comments and threads
 - [x] Add right padding for the 'In Review' column and 'CHK' column content to prevent it touching the border
 - [x] Update styling for target branch details within the 'Title' column cells
@@ -62,8 +62,8 @@
 - [x] Align the PR comments' 'Note...' textarea properly with the other fields
 - [ ] Style the code examples differently from text
 - [ ] Remove all the unneeded extra padding around markdown paragraphs/bulleted lists/etc
-- [ ] Set max-height on 'Activity timeline' and add scroll when it overflows
-- [ ] Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows
+- [x] ~~Set max-height on 'Activity timeline' and add scroll when it overflows~~ - superseded (2026-10-25, UI_REDESIGN_PLAN.md phases 4-5): the timeline is a collapsed "Daily summary" in the detail pane, which scrolls as a whole
+- [x] ~~Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows~~ - superseded (2026-10-25, phases 4-5): each is its own tab in the detail pane, which scrolls
 - [ ] Add sticky table row
 
 ### Accessibility fixes
