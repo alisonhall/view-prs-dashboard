@@ -1,12 +1,8 @@
-import type { PrEntry } from "../types/pr-data.ts";
+import type { PrEntry, PrFlagsByRepo } from "../types/pr-data.ts";
 
 // Smart groups: accordion sections a PR can appear in alongside its
 // lifecycle section (Flagged, In Review, Needs Attention, Open PRs I'm
 // Involved In), each defined by a predicate over the entry.
-
-// repo -> PR number -> flag value (the user state's flaggedByRepo /
-// inReviewByRepo).
-export type PrFlagsByRepo = Record<string, Record<string, unknown> | undefined>;
 
 export interface PrSmartGroupsDeps {
   hasNeedsAttentionFlag?: (entry: PrEntry) => boolean;

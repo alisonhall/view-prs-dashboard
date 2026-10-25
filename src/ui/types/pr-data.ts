@@ -234,6 +234,10 @@ export interface LastRun {
   updatedAt?: string;
 }
 
+// repo -> PR number -> value (PrDataPayload's ackByRepo/flaggedByRepo/
+// inReviewByRepo).
+export type PrFlagsByRepo = Record<string, Record<string, string | boolean | undefined> | undefined>;
+
 // The /view-prs/data response: the data file plus the server's additions.
 // Only the fields converted code reads are listed.
 export interface PrDataPayload {
@@ -250,6 +254,11 @@ export interface PrDataPayload {
   actorLoginAliases?: unknown;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
+  // The user state's per-repo maps, repo -> PR number -> value: ack
+  // values are strings, flagged/in review are booleans.
+  ackByRepo?: PrFlagsByRepo;
+  flaggedByRepo?: PrFlagsByRepo;
+  inReviewByRepo?: PrFlagsByRepo;
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

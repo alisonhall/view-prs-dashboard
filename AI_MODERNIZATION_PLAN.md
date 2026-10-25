@@ -1103,6 +1103,10 @@ No static type checking leads to:
       (Icon, Tooltip, Button/IconButton, Chip, Tabs), all `.tsx`.
     - Phase 1 (2026-10-24): ExportTab, plus the new PrTableUiState context
       and Provider.
+    - Phase 2 (2026-10-24): PrSection, PrTable, PrRow and its cells
+      (rewritten), the Signal, Avatar and MenuButton components, the
+      NowContext clock, and PrTableApp. PrDataPayload gains the user
+      state's ackByRepo, flaggedByRepo and inReviewByRepo maps.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -290,7 +290,25 @@ app working:
     - **Menu events:** the More menu keeps its clicks and keys from
       reaching the row (React bubbles portal events through it), ready
       for phase 4's clickable rows.
-- **2d - `PrTableApp` to `.tsx`.**
+- **2d - `PrTableApp` to `.tsx`.** Done (2026-10-24), finishing phase 2:
+  - Its handlers, state, refs and event listeners are typed;
+    `PrDataPayload` gains the user state's `ackByRepo`, `flaggedByRepo`
+    and `inReviewByRepo` maps, and `PrRow`'s `onDataRefresh` takes a
+    payload.
+  - Typing it found a bug: "Open PRs I'm Involved In" read comments' and
+    reviews' `author.login`, which the data doesn't have (they carry
+    `authorLogin`), so a PR you had only commented on or reviewed was
+    missing from it. Fixed, with a test.
+  - An action result with no payload now keeps the table as it is (the
+    provider's rule for a missing payload); it used to blank the table
+    back to "Loading". Tested.
+  - The section-grouping helpers are created once with lazy `useState`
+    instead of a ref. The unused `renderRows` read is gone, and so is the
+    section configs' `lastCheckedAt`, which the payload never had (rows
+    take their check time from their own `updatedAt`).
+  - One `PrFlagsByRepo` type, in `types/pr-data.ts`; the smart-groups
+    helper had its own looser copy. `index.html.test.js` no longer sets
+    two `window` helper globals nothing reads.
 - **2e - tests and old CSS.** Done (2026-10-24):
   - New `.tsx` tests replace each old cell's tests, carrying over every
     behaviour that still applies.

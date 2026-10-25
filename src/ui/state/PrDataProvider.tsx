@@ -444,7 +444,7 @@ export function PrDataProvider({
   }, []);
 
   // newPayload falls back to the previous payload if undefined,
-  // newSelectedRepo to the previous selectedRepo if falsy. PrTableApp.jsx's
+  // newSelectedRepo to the previous selectedRepo if falsy. PrTableApp.tsx's
   // per-row Ack/Apply-Label handlers need both fields updated together;
   // bare setPayload would drop a selectedRepo change.
   const applyFreshTablePayload = useCallback<PrDataValue['applyFreshTablePayload']>((newPayload, newSelectedRepo) => {

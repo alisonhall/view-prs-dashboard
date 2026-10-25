@@ -38,7 +38,7 @@ export function PrActivityQueueProvider({ children }: { children?: ReactNode }) 
   // leaves the Set once its count returns to 0, so two concurrent "busy"
   // claims on the same PR both have to clear before the spinner does.
   // busyPrNumbers' own external shape (a Set of keys, spread/iterated by
-  // PrTableApp.jsx) is completely unchanged.
+  // PrTableApp.tsx) is completely unchanged.
   const busyCountByKeyRef = useRef(new Map<string, number>());
 
   const markPrBusy = useCallback<PrActivityQueueValue['markPrBusy']>((prNumber, repo) => {

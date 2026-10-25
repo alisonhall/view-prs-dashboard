@@ -96,18 +96,6 @@ const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
 const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
 const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
-// Phase 6 (see REACT_MIGRATION_PLAN.md): these two are plain UMD helper
-// modules (require()-able directly), but in the browser PrTableApp.jsx and
-// index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
-// own <script> tags, which this suite never loads) rather than importing
-// them - see the initTestPage() wiring below for where they get attached.
-// Phase H.6 (see REACT_MIGRATION_PLAN.md): react-callbacks.helpers.js
-// (formerly the third of these three) was deleted outright - its own
-// createReactCallbackHelpers factory had zero remaining callers once
-// handleCheckboxChange moved to PrTableApp.jsx, following
-// handleAckAction/handleApplyLabel in Phase H.5.
-const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.ts");
-const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.ts");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
@@ -982,8 +970,6 @@ function ActionButtonsTestHarness() {
 // as react-app.jsx's does.
 const installReactTestGlobals = () => {
   cleanup();
-  window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
-  window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
   // index.html loads DOMPurify from a vendored <script>; without it the
   // review-comment markdown renderer fails closed to escaped text.
   window.DOMPurify = require("dompurify");
@@ -3641,7 +3627,7 @@ describe("index page rendering with Testing Library", () => {
     // needing attention - it's a separate, manually-set flag (see
     // isInReviewEnabled/AlwaysShowInReviewCheckbox), independent of whether
     // the PR actually has unreviewed activity (checkNeedsAttention in
-    // PrTableApp.jsx delegates to window.entryNeedsAttention only). This
+    // PrTableApp.tsx delegates to window.entryNeedsAttention only). This
     // row's status is NO_CHANGE ("open-in-review" fixture), so only the
     // flag icon should render on every rendered copy of the row. (The
     // fixture's data.inReview isn't what marks a PR in review - the user

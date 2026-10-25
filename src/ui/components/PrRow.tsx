@@ -10,7 +10,7 @@
  */
 
 import { memo } from 'react';
-import type { PrData, PrEntry } from '../types/pr-data.ts';
+import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { PrSelectionCell } from './cells/PrSelectionCell';
 import { PrSignalsCell } from './cells/PrSignalsCell';
@@ -30,7 +30,7 @@ export interface PrRowHandlers {
   onApplyLabel?: PrActionsCellProps['onApplyLabel'];
   onUpdatePr?: PrActionsCellProps['onUpdatePr'];
   onViewJson?: PrActionsCellProps['onViewJson'];
-  onDataRefresh?: (payload: unknown) => void;
+  onDataRefresh?: (payload: PrDataPayload) => void;
 }
 
 export interface PrRowProps extends PrRowHandlers {

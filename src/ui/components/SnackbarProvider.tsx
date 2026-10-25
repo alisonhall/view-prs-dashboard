@@ -11,7 +11,7 @@ import {
  * Owns the error/warning snackbar's state, wrapping <AppRoot/> from
  * mountAppRoot() (react-app.jsx) - like StatusTextProvider and
  * PrActivityQueueProvider - because several hooks that AppRoot's own body
- * (or a descendant like PrTableApp.jsx) calls need a genuine Context
+ * (or a descendant like PrTableApp.tsx) calls need a genuine Context
  * ancestor for useSnackbar() to resolve to anything other than the no-op
  * default.
  *

@@ -26,9 +26,28 @@ import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
+import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
+
+type PrNumber = string | number | undefined;
+
+// A scheduler-running PR, from 'pr-active-progress-update' events.
+interface ActivePr {
+  repo?: string;
+  prNumber?: string | number;
+}
+
+// The row a 'pr-navigate-to-insights' request expanded, waiting for it to
+// render so it can be scrolled to and focused.
+interface PendingNavigation {
+  compositeKey: string;
+  sectionKey: string;
+  prNumber: string;
+  repo: string;
+  focusUnsaved: boolean;
+}
 
 // Shared by every render without an actorsMap in the payload.
-const NO_ACTORS = {};
+const NO_ACTORS: Record<string, string | undefined> = {};
 
 /**
  * Main PR Table Application Component
@@ -81,11 +100,12 @@ export function PrTableApp() {
   // raw { repo, prNumber } pairs from the event detail (see app.js's
   // buildActivePrKey/syncSchedulerActivePrNumbers) - composite-keyed in
   // combinedActivePrNumbers below, alongside busyPrNumbers.
-  const [activePrNumbers, setActivePrNumbers] = useState([]);
+  const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>([]);
 
   useEffect(() => {
-    const handleActiveProgressUpdate = (event) => {
-      setActivePrNumbers(event.detail?.activePrNumbers || []);
+    const handleActiveProgressUpdate = (event: Event) => {
+      const { detail } = event as CustomEvent<{ activePrNumbers?: ActivePr[] } | undefined>;
+      setActivePrNumbers(detail?.activePrNumbers || []);
     };
 
     window.addEventListener('pr-active-progress-update', handleActiveProgressUpdate);
@@ -122,14 +142,28 @@ export function PrTableApp() {
   // this component builds its own real handler now too, the same way.
   const { toggleInReviewForRow, toggleFlaggedForRow } = useRowCheckboxActions();
 
-  // Matches react-callbacks.helpers.js's old handleCheckboxChange exactly -
+  // Puts a row action's result on screen. A result without a payload (the
+  // stored data couldn't be re-read) keeps the table as it is, the
+  // provider's rule for a missing payload; passing its null through used
+  // to blank the table back to "Loading".
+  const applyActionResult = (
+    result: { payload?: PrDataPayload | null; selectedRepo?: string } | null,
+    repo: string,
+  ) => {
+    if (result) {
+      applyFreshTablePayload(result.payload ?? undefined, result.selectedRepo || repo);
+    }
+  };
+
+  // Matches react-callbacks.helpers.js's old handleCheckboxChange, apart
+  // from applyActionResult's handling of a missing payload -
   // toggleInReviewForRow/toggleFlaggedForRow's own applyLatestPrData DI
   // only syncs index.page.js's vanilla payload/repo mirror (confirmed by
   // reading its real definition), it doesn't touch React - this handler's
   // own applyFreshTablePayload call afterward is the actual push into
   // Context, same two-step shape handleAckAction/handleApplyLabel use.
   const handleCheckboxChange = useStableCallback(
-    async (prNumber, type, checked, repoOverride) => {
+    async (prNumber: PrNumber, type: 'inReview' | 'flagged', checked: boolean, repoOverride?: string) => {
       try {
         const repo = repoOverride || selectedRepo;
         const entry = { prNumber: String(prNumber), repo };
@@ -143,30 +177,26 @@ export function PrTableApp() {
               ? await toggleInReviewForRow(entry, row, checked, mockCheckbox)
               : null;
 
-        if (result) {
-          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
-        }
+        applyActionResult(result, repo);
       } catch (error) {
         console.error('[PrTableApp] Error handling checkbox change:', error);
       }
     },
   );
 
-  // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel
-  // exactly, including the try/catch - a thrown/rejected workflow is caught
-  // and logged here, not propagated to withPrBusy's caller (byte-for-byte
-  // behavior parity, not just the happy path).
+  // Matches react-callbacks.helpers.js's old handleAckAction/handleApplyLabel,
+  // including the try/catch - a thrown/rejected workflow is caught and
+  // logged here, not propagated to withPrBusy's caller. The one difference
+  // is applyActionResult's handling of a missing payload.
   const handleAckAction = useStableCallback(
-    async (prNumber, isAcked, repoOverride) => {
+    async (prNumber: PrNumber, isAcked: boolean, repoOverride?: string) => {
       try {
         const prNumberStr = String(prNumber);
         const repo = repoOverride || selectedRepo;
         const result = isAcked
           ? await runClearOnlyWorkflow(prNumberStr, repo)
           : await runAckOnlyWorkflow(prNumberStr, repo);
-        if (result) {
-          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
-        }
+        applyActionResult(result, repo);
       } catch (error) {
         console.error('[PrTableApp] Error handling Ack action:', error);
       }
@@ -174,13 +204,11 @@ export function PrTableApp() {
   );
 
   const handleApplyLabel = useStableCallback(
-    async (prNumber, label, repoOverride) => {
+    async (prNumber: PrNumber, label: string, repoOverride?: string) => {
       try {
         const repo = repoOverride || selectedRepo;
         const result = await runApplyLabelWorkflow(String(prNumber), label, repo);
-        if (result) {
-          applyFreshTablePayload(result.payload, result.selectedRepo || repo);
-        }
+        applyActionResult(result, repo);
       } catch (error) {
         console.error('[PrTableApp] Error handling Apply Label action:', error);
       }
@@ -189,32 +217,33 @@ export function PrTableApp() {
 
   // Wraps the Ack/Apply-Label/Update handlers so the acted-on row shows the
   // in-progress spinner for the duration of the request, regardless of
-  // outcome (success, failure, or thrown error). useStableCallback keeps
-  // these (and the wrapped handlers above) referentially stable across
-  // every render - PrRow is memoized, so a fresh function identity on every
-  // PrTableApp render would defeat that memoization for every row, not just
-  // the busy one. Not useCallback: these handlers are held by every
+  // outcome (success, failure, or thrown error). withPrBusy itself is only
+  // called from inside the stable wrappers below, so its identity doesn't
+  // matter. useStableCallback keeps those wrappers (and the wrapped handlers
+  // above) referentially stable across every render - PrRow is memoized, so
+  // a fresh function identity on every PrTableApp render would defeat that
+  // memoization for every row, not just the busy one. Not useCallback: these handlers are held by every
   // memoized row, and useCallbacks with differing deps chained older render
   // scopes together, each pinning that render's payload - one full payload
   // leaked per data change (see useStableCallback.tsx).
-  const withPrBusy = useStableCallback(
-    (prNumber, repo, action) => async (...args) => {
-      markPrBusy(prNumber, repo);
+  const withPrBusy =
+    <A extends unknown[], R>(prNumber: PrNumber, repo: string | undefined, action: (...args: A) => R) =>
+    async (...args: A) => {
+      markPrBusy(String(prNumber), repo);
       try {
-        return await action?.(...args);
+        return await action(...args);
       } finally {
-        clearPrBusy(prNumber, repo);
+        clearPrBusy(String(prNumber), repo);
       }
-    },
-  );
+    };
 
   const handleAckActionBusy = useStableCallback(
-    (prNumber, isAcked, repoOverride) =>
+    (prNumber: PrNumber, isAcked: boolean, repoOverride: string) =>
       withPrBusy(prNumber, repoOverride, handleAckAction)(prNumber, isAcked, repoOverride),
   );
 
   const handleApplyLabelBusy = useStableCallback(
-    (prNumber, label, repoOverride) =>
+    (prNumber: PrNumber, label: string, repoOverride: string) =>
       withPrBusy(prNumber, repoOverride, handleApplyLabel)(prNumber, label, repoOverride),
   );
 
@@ -224,7 +253,7 @@ export function PrTableApp() {
   // real caller was already this component).
   const runSinglePrUpdate = useSinglePrUpdate();
   const handleUpdatePrBusy = useStableCallback(
-    (prNumber, entry, pr) =>
+    (prNumber: PrNumber, entry: Pick<PrEntry, 'prNumber' | 'repo'>, pr: PrData) =>
       withPrBusy(prNumber, entry?.repo, runSinglePrUpdate)(entry, pr),
   );
 
@@ -233,7 +262,7 @@ export function PrTableApp() {
       Array.from(
         new Set([
           ...(activePrNumbers || []).map((entry) =>
-            buildActivePrKey(entry?.prNumber, entry?.repo),
+            buildActivePrKey(String(entry?.prNumber), entry?.repo),
           ),
           ...busyPrNumbers,
         ]),
@@ -250,7 +279,7 @@ export function PrTableApp() {
   }, [queuedPrNumbers, combinedActivePrNumbers]);
 
   // State: PR JSON details modal target ({ entry, pr } | null)
-  const [jsonModalTarget, setJsonModalTarget] = useState(null);
+  const [jsonModalTarget, setJsonModalTarget] = useState<{ entry: Pick<PrEntry, 'prNumber' | 'repo'>; pr: PrData } | null>(null);
 
   // Helper: Find the default repo present in the stored data. Prefers
   // `lastRun.repo` (the repo the scanner script most recently scanned,
@@ -262,14 +291,14 @@ export function PrTableApp() {
   // single synthetic/fixture entry (e.g. a seeded row with a placeholder
   // repo like "owner/repo") sorted first by PR number can't hijack the
   // entire table into showing just that one row.
-  const getDefaultRepo = (currentPayload) => {
+  const getDefaultRepo = (currentPayload: PrDataPayload | null | undefined): string => {
     const lastRunRepo = String(currentPayload?.lastRun?.repo || '').trim();
     if (lastRunRepo) {
       return lastRunRepo;
     }
 
     const entries = Object.values(currentPayload?.byPrNumber || {});
-    const countsByRepo = {};
+    const countsByRepo: Record<string, number> = {};
     entries.forEach((entry) => {
       const repo = entry?.repo;
       if (!repo) return;
@@ -305,22 +334,23 @@ export function PrTableApp() {
   // always reading effectiveRepo's maps would show another repo's flags
   // (or none at all) for a foreign-repo row.
   const getPrFlags = useMemo(() => {
-    return (prNumber, repo = effectiveRepo) => {
+    return (prNumber: PrNumber, repo: string = effectiveRepo) => {
+      const key = String(prNumber);
       const flaggedSet = payload?.flaggedByRepo?.[repo] || {};
       const inReviewSet = payload?.inReviewByRepo?.[repo] || {};
       const ackSet = payload?.ackByRepo?.[repo] || {};
 
       return {
-        isFlagged: Boolean(flaggedSet[prNumber]),
-        isInReview: Boolean(inReviewSet[prNumber]),
-        isAcknowledged: Boolean(ackSet[prNumber]),
+        isFlagged: Boolean(flaggedSet[key]),
+        isInReview: Boolean(inReviewSet[key]),
+        isAcknowledged: Boolean(ackSet[key]),
       };
     };
   }, [payload, effectiveRepo]);
 
   // Helper: Check if PR needs attention
   const checkNeedsAttention = useMemo(() => {
-    return (entry) => {
+    return (entry: PrEntry) => {
       // The "In Review" checkbox is a manual, user-set flag (see
       // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
       // NOT feed into needs-attention - it's independent of whether the PR
@@ -337,7 +367,7 @@ export function PrTableApp() {
   // Why each row needs attention, for its attention icon's tooltip (empty
   // when it doesn't) - the same rules as checkNeedsAttention.
   const getAttentionReasons = useMemo(() => {
-    return (entry) => {
+    return (entry: PrEntry) => {
       try {
         return entryNeedsAttentionReasons(entry, attentionConfig);
       } catch (e) {
@@ -349,7 +379,7 @@ export function PrTableApp() {
 
   // Helper: Check if viewer has interacted with PR
   const checkUserInteraction = useMemo(() => {
-    return (entry) => {
+    return (entry: PrEntry) => {
       // Only show OPEN PRs that viewer has interacted with
       const isOpenPr = entry?.section === 'open' || entry?.section === 'draft';
       if (!isOpenPr) return false;
@@ -362,15 +392,16 @@ export function PrTableApp() {
       const authorLogin = String(row?.authorLogin || '').toLowerCase();
       if (authorLogin === viewerLogin) return true;
 
-      // Check if viewer has commented
+      // Check if viewer has commented. Comments and reviews carry
+      // `authorLogin` (the data schema), not `author.login`.
       const comments = row?.comments || [];
-      if (comments.some((c) => String(c?.author?.login || '').toLowerCase() === viewerLogin)) {
+      if (comments.some((c) => String(c?.authorLogin || '').toLowerCase() === viewerLogin)) {
         return true;
       }
 
       // Check if viewer has reviewed
       const reviews = row?.reviews || [];
-      if (reviews.some((r) => String(r?.author?.login || '').toLowerCase() === viewerLogin)) {
+      if (reviews.some((r) => String(r?.authorLogin || '').toLowerCase() === viewerLogin)) {
         return true;
       }
 
@@ -394,20 +425,19 @@ export function PrTableApp() {
   // pr-section-grouping.helpers.ts's createPrSectionGroupingHelpers() must
   // be instantiated once, not on every render, or its internal
   // reference-equality cache (Phase 5 residual slice) never gets a chance
-  // to hit - a lazily-initialized ref keeps exactly one instance for the
+  // to hit - lazily-initialized state keeps exactly one instance for the
   // component's lifetime, mirroring how index.page.js's own module-level
   // instantiation works.
-  const sectionGroupingHelpersRef = useRef(null);
-  if (!sectionGroupingHelpersRef.current) {
-    // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
-    // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.ts -
-    // genuinely zero-dependency, so this is a direct import now instead
-    // of a window.* bridge read.
-    sectionGroupingHelpersRef.current = prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
+  // Phase 7 (see REACT_MIGRATION_PLAN.md): sortRowsByPrNumberDesc/
+  // sortRowsByDateFieldDesc moved to helpers/pr-row-sorting.helpers.ts -
+  // genuinely zero-dependency, so this is a direct import now instead
+  // of a window.* bridge read.
+  const [{ buildGroupedPrSections }] = useState(() =>
+    prSectionGroupingHelperFactory.createPrSectionGroupingHelpers({
       sortRowsByPrNumberDesc,
       sortRowsByDateFieldDesc,
-    });
-  }
+    }),
+  );
 
   // Build sections from payload using existing vanilla JS helpers
   const sections = useMemo(() => {
@@ -473,7 +503,6 @@ export function PrTableApp() {
     // logic, so this also benefits from that helper's reference-equality
     // cache (skips re-filtering/re-sorting when `entriesForRepo` is
     // unchanged position-by-position from the last call).
-    const { buildGroupedPrSections } = sectionGroupingHelpersRef.current;
     const grouped = buildGroupedPrSections(entriesForRepo);
 
     // Build smart groups (pr-smart-groups.helpers.ts is a real ES module
@@ -527,7 +556,6 @@ export function PrTableApp() {
       grouped,
       smartGroups,
       prSectionOpenState: {},
-      lastCheckedAt: payload.lastCheckedAt || '',
       actorsMapFromPayload: payload.actorsMap || {},
     });
 
@@ -541,7 +569,7 @@ export function PrTableApp() {
       // kept as separate fields so PrSection's "Total PRs" badge has a
       // stable name to read regardless of how rendering/counting evolve
       // independently in the future.
-      prs: config.renderRows || config.rows || [],
+      prs: config.rows || [],
       totalCount: (config.rows || []).length,
       isSmartGroup: config.isSmartGroup,
       lifecycleSection: config.sectionKey,
@@ -554,7 +582,7 @@ export function PrTableApp() {
       // headers showed no attention even when their rows did.
       attentionCount: (config.rows || []).filter((entry) => checkNeedsAttention(entry)).length,
     }));
-  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction]);
+  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction, buildGroupedPrSections]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead
@@ -595,7 +623,7 @@ export function PrTableApp() {
   // composite key to scroll/focus once its insights row actually renders
   // (setExpandedInsights is async), since the scroll/focus target doesn't
   // exist in the DOM yet at the moment this listener runs.
-  const pendingNavigationRef = useRef(null);
+  const pendingNavigationRef = useRef<PendingNavigation | null>(null);
   // Bumped on every navigation request, so the scroll/focus effect below
   // runs even when the row was already expanded (setRowExpanded then
   // leaves the expanded rows unchanged, so they alone don't re-run it).
@@ -607,8 +635,11 @@ export function PrTableApp() {
     isSectionOpenRef.current = isSectionOpen;
   }, [isSectionOpen]);
   useEffect(() => {
-    const handleNavigateToInsights = (event) => {
-      const prNumber = String(event.detail?.prNumber ?? '').trim();
+    const handleNavigateToInsights = (event: Event) => {
+      const { detail } = event as CustomEvent<
+        { prNumber?: string | number; repo?: string; focusUnsaved?: boolean } | undefined
+      >;
+      const prNumber = String(detail?.prNumber ?? '').trim();
       if (!prNumber) {
         return;
       }
@@ -618,14 +649,14 @@ export function PrTableApp() {
       // Stats' "View in table", whose source items don't carry a repo
       // field yet) has it, in which case this falls back to the first
       // number match, same as before this parameter existed.
-      const repo = event.detail?.repo ? String(event.detail.repo) : '';
-      const focusUnsaved = Boolean(event.detail?.focusUnsaved);
+      const repo = detail?.repo ? String(detail.repo) : '';
+      const focusUnsaved = Boolean(detail?.focusUnsaved);
       // A PR can be in several sections (smart groups plus its lifecycle
       // section). Prefer one that's already open; otherwise open the first
       // one it's in. Taking the first match regardless used to pick the
       // Flagged group (listed first, closed by default) for a flagged PR,
       // expanding a row nobody could see.
-      const matches = [];
+      const matches: { section: (typeof sections)[number]; entry: PrEntry }[] = [];
       sectionsRef.current.forEach((section) => {
         const entry = (section.prs || []).find(
           (candidate) =>
@@ -682,7 +713,7 @@ export function PrTableApp() {
     // The same PR's row also appears in its other sections; look in the
     // section it was expanded in first, so focus lands on the visible copy.
     const sectionHost = document.querySelector(`[data-pr-section="${pending.sectionKey}"]`);
-    const findTarget = (selector) => sectionHost?.querySelector(selector) || document.querySelector(selector);
+    const findTarget = (selector: string): HTMLElement | null => sectionHost?.querySelector(selector) || document.querySelector(selector);
 
     let focusTarget = null;
     if (pending.focusUnsaved) {
@@ -712,7 +743,7 @@ export function PrTableApp() {
   // These three, like the handlers above, are useStableCallback: every
   // memoized PrRow receives them, and a new function each render re-rendered
   // every row on every table render.
-  const handleToggleSection = useStableCallback((sectionKey, nextOpen) => {
+  const handleToggleSection = useStableCallback((sectionKey: string, nextOpen?: boolean) => {
     const section = sections.find((candidate) => candidate.key === sectionKey);
     const currentlyOpen = isSectionOpen(sectionKey, Boolean(section?.defaultOpen));
     setSectionOpen(sectionKey, typeof nextOpen === 'boolean' ? nextOpen : !currentlyOpen);
@@ -720,7 +751,7 @@ export function PrTableApp() {
 
   // Handler: Open the PR JSON details modal for a row ((entry, pr)
   // signature, matching PrActionsCell's onViewJson call).
-  const handleViewJson = useStableCallback((entry, pr) => {
+  const handleViewJson = useStableCallback((entry: Pick<PrEntry, 'prNumber' | 'repo'>, pr: PrData) => {
     setJsonModalTarget({ entry, pr });
   });
 
@@ -728,8 +759,8 @@ export function PrTableApp() {
   // that collide across repos in the same section (see entriesForRepo -
   // other repos' PRs render alongside the current one now) - see
   // buildExpandedInsightsKey's own comment.
-  const handleToggleInsights = useStableCallback((prNumber, sectionKey, repo) => {
-    toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, prNumber));
+  const handleToggleInsights = useStableCallback((prNumber: PrNumber, sectionKey: string, repo: string) => {
+    toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, String(prNumber)));
   });
 
   // The same object until the payload's own map changes (a fresh `{}` each

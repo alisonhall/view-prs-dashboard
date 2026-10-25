@@ -118,7 +118,7 @@ describe('PrDataProvider', () => {
   });
 
   // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // PrTableApp.jsx's own per-row Ack/Apply-Label handlers call this
+  // PrTableApp.tsx's own per-row Ack/Apply-Label handlers call this
   // directly via Context. (It had the same merge semantics as the deleted
   // window.updateReactPrTable.)
   describe('applyFreshTablePayload', () => {

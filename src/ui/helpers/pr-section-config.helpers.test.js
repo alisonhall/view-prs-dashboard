@@ -24,7 +24,6 @@ describe("pr section config helpers", () => {
         merged: [{ data: { number: 4, mergedAt: "2026-01-04" } }],
       },
       prSectionOpenState: new Map(),
-      lastCheckedAt: "2026-01-10T00:00:00.000Z",
       actorsMapFromPayload: { alice: { login: "alice" } },
     });
 
@@ -38,7 +37,6 @@ describe("pr section config helpers", () => {
     expect(configs[0].title).toBe("Open PRs");
     expect(configs[3].title).toBe("Latest Merged PRs");
     expect(configs[2].dateHeader).toBe("CLOSED AT");
-    expect(configs[0].lastCheckedAt).toBe("2026-01-10T00:00:00.000Z");
     expect(configs[0].actorsMapFromPayload).toEqual({
       alice: { login: "alice" },
     });
@@ -223,7 +221,6 @@ describe("pr section config helpers", () => {
       const configs = buildPrSectionConfigs({
         grouped: { open: [], draft: [], closed: [], merged: [] },
         smartGroups,
-        lastCheckedAt: "2026-01-10T00:00:00Z",
         actorsMapFromPayload: { bob: { login: "bob" } },
       });
 
@@ -233,7 +230,6 @@ describe("pr section config helpers", () => {
         rows: expect.any(Array),
         dateHeader: "LAST ACTIVITY",
         sectionKey: "flagged",
-        lastCheckedAt: "2026-01-10T00:00:00Z",
         actorsMapFromPayload: { bob: { login: "bob" } },
         isOpen: true,
         isSmartGroup: true,

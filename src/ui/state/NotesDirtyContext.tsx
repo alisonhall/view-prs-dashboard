@@ -6,7 +6,7 @@ import { createContext, useContext } from 'react';
  * refreshes while notes are unsaved.
  *
  * `dirtyPrNumbers` is a list, not a single boolean, since multiple
- * NotesSection instances can be dirty at once (PrTableApp.jsx's
+ * NotesSection instances can be dirty at once (PrTableApp.tsx's
  * `expandedInsights` is a map, not a single "open row" - more than one
  * row's insights panel can be expanded simultaneously).
  *

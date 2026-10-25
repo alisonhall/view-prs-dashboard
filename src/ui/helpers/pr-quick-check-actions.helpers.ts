@@ -4,7 +4,7 @@ import type { PostJsonResult } from "./pr-http.helpers.ts";
 // "Quick check" and "Quick check all": checks whether PRs changed upstream
 // without a full run. "Quick check all" checks every PR number already
 // loaded, grouped by repo: the loaded table isn't scoped to one repo -
-// PrTableApp.jsx deliberately renders rows from every repo ever loaded
+// PrTableApp.tsx deliberately renders rows from every repo ever loaded
 // together (see its own comment) - so this sends every repo in one POST
 // /view-prs/quick-check-all request (one lock acquisition server-side for
 // the whole sweep, rather than firing one /quick-check request per repo

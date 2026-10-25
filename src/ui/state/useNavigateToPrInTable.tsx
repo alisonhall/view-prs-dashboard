@@ -4,7 +4,7 @@ import { useTabState } from './TabStateContext';
 /**
  * Returns a function that shows a PR in the PR table: it switches to the
  * PR Data tab and dispatches the `pr-navigate-to-insights` event, which
- * PrTableApp.jsx handles (it finds the row, scrolls to it and focuses it,
+ * PrTableApp.tsx handles (it finds the row, scrolls to it and focuses it,
  * since it renders that markup). Used by AutoRenderBlockedLinks.jsx's
  * "jump to unsaved PR" links (with `focusUnsaved`) and by
  * AuthorInsightsPrLink.jsx/ReviewStatsContent.jsx (with `repo`, which

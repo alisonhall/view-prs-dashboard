@@ -1,4 +1,4 @@
-import type { PrData, PrDataPayload, PrEntry } from "../types/pr-data.ts";
+import type { PrData, PrDataPayload, PrEntry, PrFlagsByRepo } from "../types/pr-data.ts";
 
 // The In Review and Flagged checkboxes' server calls
 // (useRowCheckboxActions, used by PrTableApp): POST /view-prs/ack, then
@@ -30,8 +30,8 @@ type ToggleEntry = Pick<PrEntry, "prNumber" | "repo">;
 
 interface AckToggleResult {
   ok?: boolean;
-  flaggedByRepo?: unknown;
-  inReviewByRepo?: unknown;
+  flaggedByRepo?: PrFlagsByRepo;
+  inReviewByRepo?: PrFlagsByRepo;
   prData?: PrDataPayload;
 }
 

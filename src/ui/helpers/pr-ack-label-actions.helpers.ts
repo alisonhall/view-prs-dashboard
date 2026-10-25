@@ -42,7 +42,7 @@ import type { PostJsonResult } from "./pr-http.helpers.ts";
 // a multi-chunk batch specifically.
 //
 // Queued state: a multi-chunk batch marks every PR number queued
-// (markPrsQueued) up front - distinct from busy, see PrTableApp.jsx/
+// (markPrsQueued) up front - distinct from busy, see PrTableApp.tsx/
 // PrNumberCell.jsx's own comments - then each chunk moves its own PR
 // numbers queued -> busy right before that chunk's request actually fires
 // (only once a concurrency slot frees up via runWithConcurrencyLimit), not

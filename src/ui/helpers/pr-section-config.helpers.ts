@@ -18,7 +18,6 @@ export interface PrSectionConfig {
   dateHeader: string;
   dateResolver: (row: PrData & { baseline?: string }) => string | undefined;
   sectionKey: string;
-  lastCheckedAt: string;
   actorsMapFromPayload: Record<string, unknown>;
   isOpen: boolean;
   isSmartGroup: boolean;
@@ -32,7 +31,6 @@ export interface BuildPrSectionConfigsInput {
   grouped?: Partial<GroupedPrSections<PrEntry>> | null;
   smartGroups?: Record<string, SmartGroupData> | null;
   prSectionOpenState?: unknown;
-  lastCheckedAt?: string;
   actorsMapFromPayload?: Record<string, unknown>;
 }
 
@@ -48,7 +46,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
     grouped,
     smartGroups = null,
     prSectionOpenState,
-    lastCheckedAt = "",
     actorsMapFromPayload = {},
   }: BuildPrSectionConfigsInput = {}): PrSectionConfig[] => {
     // Build smart group sections (non-exclusive, appear above lifecycle sections)
@@ -61,7 +58,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
             dateHeader: "LAST ACTIVITY",
             dateResolver: baselineOf,
             sectionKey: groupKey,
-            lastCheckedAt,
             actorsMapFromPayload,
             isOpen: resolvePrSectionOpenStateSafe(
               prSectionOpenState,
@@ -90,7 +86,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
         dateHeader: "LAST ACTIVITY",
         dateResolver: baselineOf,
         sectionKey: "open",
-        lastCheckedAt,
         actorsMapFromPayload,
         isOpen: resolvePrSectionOpenStateSafe(prSectionOpenState, "open", false),
         isSmartGroup: false,
@@ -101,7 +96,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
         dateHeader: "LAST ACTIVITY",
         dateResolver: baselineOf,
         sectionKey: "draft",
-        lastCheckedAt,
         actorsMapFromPayload,
         isOpen: resolvePrSectionOpenStateSafe(prSectionOpenState, "draft", false),
         isSmartGroup: false,
@@ -112,7 +106,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
         dateHeader: "CLOSED AT",
         dateResolver: baselineOf,
         sectionKey: "closed",
-        lastCheckedAt,
         actorsMapFromPayload,
         isOpen: resolvePrSectionOpenStateSafe(prSectionOpenState, "closed", false),
         isSmartGroup: false,
@@ -123,7 +116,6 @@ const createPrSectionConfigHelpers = ({ resolvePrSectionOpenState }: PrSectionCo
         dateHeader: "MERGED AT",
         dateResolver: baselineOf,
         sectionKey: "merged",
-        lastCheckedAt,
         actorsMapFromPayload,
         isOpen: resolvePrSectionOpenStateSafe(prSectionOpenState, "merged", false),
         isSmartGroup: false,

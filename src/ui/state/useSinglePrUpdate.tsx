@@ -27,7 +27,7 @@ export type SinglePrUpdate = (
 ) => Promise<void>;
 
 /**
- * PrTableApp.jsx's per-row "Update" action: runs the script for one PR
+ * PrTableApp.tsx's per-row "Update" action: runs the script for one PR
  * (POST /view-prs/run), showing progress in the status and output text,
  * an auth hint and failure snackbar on error, and applying the returned
  * payload with applyFreshPrPayload. Tracked as a "singlePr" request

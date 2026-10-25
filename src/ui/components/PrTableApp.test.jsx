@@ -25,7 +25,7 @@ jest.mock('./PrSection', () => {
 
 // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts/
 // pr-smart-groups.helpers.ts are real ES modules now, imported directly by
-// PrTableApp.jsx instead of read off window.ViewPrsSectionConfigHelpers/
+// PrTableApp.tsx instead of read off window.ViewPrsSectionConfigHelpers/
 // window.ViewPrsSmartGroupsHelpers - these tests used to swap window
 // globals per-test to control their behavior; jest.mock + mockImplementation
 // is the equivalent for a real import.
@@ -36,7 +36,7 @@ jest.mock('../helpers/pr-smart-groups.helpers.ts', () => ({
   createPrSmartGroupsHelpers: jest.fn(),
 }));
 // Phase 7 (see REACT_MIGRATION_PLAN.md): pr-row-sorting.helpers.ts is a
-// real ES module now too, imported directly by PrTableApp.jsx instead of
+// real ES module now too, imported directly by PrTableApp.tsx instead of
 // read off window.sortRowsByPrNumberDesc/etc - same "jest.mock is the
 // equivalent for a real import" reasoning as above. Unlike those two,
 // this mock keeps the REAL sorting behavior for every export (tests rely
@@ -50,7 +50,7 @@ jest.mock('../helpers/pr-row-sorting.helpers.ts', () => {
 });
 
 // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// PrTableApp.jsx no longer accepts onAckAction/onApplyLabel as props - it
+// PrTableApp.tsx no longer accepts onAckAction/onApplyLabel as props - it
 // builds its own real handlers via useAckLabelActions(), which reaches
 // the real pr-ack-label-actions.helpers.ts factory and (through it) the
 // real postJson. Mocking postJson here is the new seam for the
@@ -277,13 +277,13 @@ describe('PrTableApp', () => {
     capturedSectionProps.length = 0;
     postJson.mockReset();
     installSectionHelpers();
-    // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.jsx's
+    // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.tsx's
     // `if (prSmartGroupsHelperFactory)` guard is always true now (a real
     // import, unlike the old `if (window.ViewPrsSmartGroupsHelpers)` check
     // most tests here relied on being falsy by default to skip smart
     // groups entirely) - this default mock produces the same *observable*
     // result buildPrSectionConfigs saw before (`smartGroups` empty/absent),
-    // without changing PrTableApp.jsx's own structure. Tests that actually
+    // without changing PrTableApp.tsx's own structure. Tests that actually
     // exercise smart groups override this via installSmartGroupHelpers()
     // or a one-off mockImplementation.
     createPrSmartGroupsHelpers.mockImplementation(() => ({
@@ -301,7 +301,7 @@ describe('PrTableApp', () => {
 
   // ES module cleanup (see REACT_MIGRATION_PLAN.md): the "helpers module
   // entirely missing" scenario this used to cover (window.ViewPrsX never
-  // set) is structurally impossible now that PrTableApp.jsx imports
+  // set) is structurally impossible now that PrTableApp.tsx imports
   // pr-section-config.helpers.ts directly - a real ES import always
   // resolves before this component's own code runs, so `helpers` can never
   // be falsy via this path. Removed rather than kept as dead coverage for
@@ -654,7 +654,7 @@ describe('PrTableApp', () => {
     test('given the "Needs Attention rules" config changes, when no section is toggled, then the Needs Attention smart group\'s membership updates immediately', () => {
       // Regression test: attentionConfig/entryNeedsAttention come from
       // NeedsAttentionContext, a real Context value the `sections` useMemo
-      // depends on directly (see PrTableApp.jsx) - a change to either must
+      // depends on directly (see PrTableApp.tsx) - a change to either must
       // recompute smart-group membership on its own, without needing an
       // unrelated re-render (e.g. toggling a section) to happen to
       // invalidate the memo first.
@@ -1018,6 +1018,28 @@ describe('PrTableApp', () => {
       });
     });
 
+    test('given an Ack action whose result has no payload, when it settles, then the table keeps its rows rather than going back to "Loading"', async () => {
+      const ackLabelActionsModule = require('../state/useAckLabelActions');
+      const realUseAckLabelActions = ackLabelActionsModule.useAckLabelActions;
+      const spy = jest.spyOn(ackLabelActionsModule, 'useAckLabelActions').mockImplementation(() => ({
+        ...realUseAckLabelActions(),
+        runAckOnlyWorkflow: async () => ({ payload: null, selectedRepo: 'owner/repo' }),
+      }));
+      try {
+        const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+        renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+        await React.act(async () => {
+          await capturedSectionProps[0].onAckAction('1', false, 'owner/repo');
+        });
+
+        expect(screen.queryByText('Loading Pull Requests...')).not.toBeInTheDocument();
+        expect(prDataProbe.readPayload()).toBe(payload);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
       let resolvePostJson;
       postJson.mockImplementation(() => new Promise((resolve) => { resolvePostJson = resolve; }));
@@ -1236,6 +1258,32 @@ describe('PrTableApp', () => {
       );
       createPrSectionConfigHelpers.mockImplementation(realCreatePrSectionConfigHelpers);
       window.isInReviewEnabled = () => false;
+    });
+
+    test("given open PRs the viewer only commented on or reviewed, when building the smart groups, then \"Open PRs I'm Involved In\" includes them (comments and reviews carry authorLogin)", () => {
+      const { createPrSmartGroupsHelpers: realCreatePrSmartGroupsHelpers } = jest.requireActual(
+        '../helpers/pr-smart-groups.helpers.ts',
+      );
+      createPrSmartGroupsHelpers.mockImplementation(realCreatePrSmartGroupsHelpers);
+      const withData = (entry, data) => ({ ...entry, data: { ...entry.data, viewerLogin: 'me', ...data } });
+      const payload = {
+        byPrNumber: {
+          1: withData(makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }), {
+            comments: [{ authorLogin: 'Me' }],
+          }),
+          2: withData(makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }), {
+            reviews: [{ authorLogin: 'me', state: 'COMMENTED' }],
+          }),
+          3: withData(makeEntry({ prNumber: '3', repo: 'owner/repo', section: 'open' }), {
+            comments: [{ authorLogin: 'someone-else' }],
+            reviews: [{ authorLogin: 'someone-else' }],
+          }),
+        },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+
+      const involved = capturedSectionProps.filter((p) => p.section.key === 'interacted').at(-1);
+      expect(involved.section.prs.map((entry) => entry.prNumber).sort()).toEqual(['1', '2']);
     });
 
     test('given a PR that also belongs to a smart group, when computing the open section, then it still renders there (both totalCount and prs include it)', () => {

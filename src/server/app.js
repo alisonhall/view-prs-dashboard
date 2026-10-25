@@ -2930,7 +2930,7 @@ const isProductionEnv = process.env.NODE_ENV === "production";
 // This app is mounted at /view-prs by the root server (index.js), but Vite
 // needs to know that prefix too: it uses `base` to emit browser-facing URLs
 // for its client script, HMR, and resolved imports (/@vite/client, /@fs/...,
-// /components/PrTableApp.jsx, etc). Without it those come back rooted at
+// /components/PrTableApp.tsx, etc). Without it those come back rooted at
 // "/" and 404 once the browser requests them.
 const VIEW_PRS_MOUNT_PATH = "/view-prs";
 let viteDevServerPromise = null;
