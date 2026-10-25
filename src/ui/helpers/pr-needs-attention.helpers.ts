@@ -51,6 +51,33 @@ const CHANGE_REASON_TEXT: Record<string, string> = {
   "ack-cleared": "Ack was cleared",
 };
 
+// The change-reason tokens of a changed PR: its `reason` field ("|"-
+// separated), else the reasons older data put in the status
+// ("CHANGED(commit, review)").
+const parseChangeReasonTokens = (row: PrData = {}): string[] => {
+  const reason = String(row?.reason || "").trim();
+  if (reason && reason !== "-") {
+    return reason
+      .split("|")
+      .map((token) => String(token || "").trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  const status = String(row?.status || "").trim();
+  const statusReasonMatch = status.match(/^CHANGED\(([^)]+)\)/i);
+  if (!statusReasonMatch || !statusReasonMatch[1]) return [];
+  return String(statusReasonMatch[1])
+    .split(/[|,]/)
+    .map((token) => String(token || "").trim().toLowerCase())
+    .filter(Boolean);
+};
+
+// What changed, in words, one per token (empty when there are none):
+// shown with every changed PR's unread dot, whether or not its section
+// counts the change as needing attention.
+export const describeChangeReasons = (row: PrData = {}): string[] =>
+  parseChangeReasonTokens(row).map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
+
 const NO_ACTIVITY_TEXT: Record<string, string> = {
   "assigned-only": "No recent activity on a PR assigned to you",
   "reviewer-only": "No recent activity on a PR you're reviewing",
@@ -64,31 +91,7 @@ const createPrNeedsAttentionHelpers = ({
   collectRequestedReviewers = () => [],
   countPendingThreadComments = () => 0,
 }: PrNeedsAttentionDeps = {}) => {
-  const parseChangedReasonTokens = (row: PrData = {}): string[] => {
-    const reason = String(row?.reason || "").trim();
-    if (reason && reason !== "-") {
-      return reason
-        .split("|")
-        .map((token) =>
-          String(token || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean);
-    }
-
-    const status = String(row?.status || "").trim();
-    const statusReasonMatch = status.match(/^CHANGED\(([^)]+)\)/i);
-    if (!statusReasonMatch || !statusReasonMatch[1]) return [];
-    return String(statusReasonMatch[1])
-      .split(/[|,]/)
-      .map((token) =>
-        String(token || "")
-          .trim()
-          .toLowerCase(),
-      )
-      .filter(Boolean);
-  };
+  const parseChangedReasonTokens = parseChangeReasonTokens;
 
   const shouldTreatChangedAsAttention = (row: PrData = {}, config: AttentionConfig = {}): boolean => {
     if (!isChangedStatus(row?.status)) return false;
@@ -160,9 +163,8 @@ const createPrNeedsAttentionHelpers = ({
   };
 
   const describeChange = (row: PrData): string[] => {
-    const tokens = parseChangedReasonTokens(row);
-    if (tokens.length === 0) return ["Changed since your last ack"];
-    return tokens.map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
+    const reasons = describeChangeReasons(row);
+    return reasons.length ? reasons : ["Changed since your last ack"];
   };
 
   // Why a PR needs attention, in words (the attention icon's tooltip, the
@@ -199,21 +201,27 @@ const createPrNeedsAttentionHelpers = ({
   const shouldShowNeedsAttention = (input: ShouldShowNeedsAttentionInput): boolean =>
     getNeedsAttentionReasons(input).length > 0;
 
-  const entryNeedsAttention = (entry: PrEntry = {}, config: AttentionConfig = {}): boolean => {
+  // The reasons for an entry, judged by its own lifecycle section (not the
+  // smart group it's shown in).
+  const entryNeedsAttentionReasons = (entry: PrEntry = {}, config: AttentionConfig = {}): string[] => {
     const row = entry?.data || {};
 
     const sectionKey = String(entry?.section || "")
       .trim()
       .toLowerCase();
-    const hasPendingComments = countPendingThreadComments(row) > 0;
+    const pendingCommentCount = countPendingThreadComments(row);
 
-    return shouldShowNeedsAttention({
+    return getNeedsAttentionReasons({
       row,
       sectionKey,
-      hasPendingComments,
+      hasPendingComments: pendingCommentCount > 0,
+      pendingCommentCount,
       config,
     });
   };
+
+  const entryNeedsAttention = (entry: PrEntry = {}, config: AttentionConfig = {}): boolean =>
+    entryNeedsAttentionReasons(entry, config).length > 0;
 
   const entryHasYourLastActivity = (entry: PrEntry = {}): boolean => {
     const row = entry?.data || {};
@@ -227,6 +235,7 @@ const createPrNeedsAttentionHelpers = ({
     shouldTreatNoActivityAsAttention,
     getNeedsAttentionReasons,
     shouldShowNeedsAttention,
+    entryNeedsAttentionReasons,
     entryNeedsAttention,
     entryHasYourLastActivity,
   };

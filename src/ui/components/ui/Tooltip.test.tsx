@@ -183,13 +183,12 @@ describe('Tooltip', () => {
 
   test('places the bubble from the trigger’s position on screen', async () => {
     const user = userEvent.setup();
-    const rects = new Map<string, Partial<DOMRect>>([
-      ['ui-tooltip-anchor', { left: 400, top: 300, width: 20, height: 20, bottom: 320, right: 420 }],
-      ['ui-tooltip', { left: 0, top: 0, width: 200, height: 40, bottom: 40, right: 200 }],
-    ]);
+    // The trigger (the element carrying data-tip) and the bubble.
+    const triggerRect = { left: 400, top: 300, width: 20, height: 20, bottom: 320, right: 420 };
+    const bubbleRect = { left: 0, top: 0, width: 200, height: 40, bottom: 40, right: 200 };
     const spy = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      const key = [...rects.keys()].find((name) => this.classList.contains(name));
-      return { x: 0, y: 0, left: 0, top: 0, width: 0, height: 0, bottom: 0, right: 0, toJSON: () => ({}), ...(key ? rects.get(key) : {}) } as DOMRect;
+      const rect = this.hasAttribute('data-tip') ? triggerRect : this.classList.contains('ui-tooltip') ? bubbleRect : {};
+      return { x: 0, y: 0, left: 0, top: 0, width: 0, height: 0, bottom: 0, right: 0, toJSON: () => ({}), ...rect } as DOMRect;
     });
     try {
       render(
@@ -263,6 +262,81 @@ describe('Tooltip', () => {
     await user.hover(button);
     expect(screen.getByRole('tooltip')).toHaveTextContent('Update PR #1');
     expect(button).not.toHaveAttribute('aria-describedby');
+  });
+});
+
+describe('the shared tooltip', () => {
+  test('is one bubble for the page, however many tooltips there are', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <Tooltip content="First">
+          <button type="button">One</button>
+        </Tooltip>
+        <Tooltip content="Second">
+          <button type="button">Two</button>
+        </Tooltip>
+      </>,
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'One' }));
+    await user.hover(screen.getByRole('button', { name: 'Two' }));
+    expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Second');
+  });
+
+  test('hover wins over focus, and focus comes back when the hover ends', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <Tooltip content="Focused one">
+          <button type="button">Focused</button>
+        </Tooltip>
+        <Tooltip content="Hovered one">
+          <button type="button">Hovered</button>
+        </Tooltip>
+        <button type="button">Plain</button>
+      </>,
+    );
+
+    await user.tab();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Focused one');
+
+    await user.hover(screen.getByRole('button', { name: 'Hovered' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Hovered one');
+
+    await user.hover(screen.getByRole('button', { name: 'Plain' }));
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Focused one'));
+  });
+
+  test('follows a change of text while open (e.g. "Copied!")', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <Tooltip content="Copy">
+        <button type="button">Copy</button>
+      </Tooltip>,
+    );
+    await user.hover(screen.getByRole('button', { name: 'Copy' }));
+    rerender(
+      <Tooltip content="Copied!">
+        <button type="button">Copy</button>
+      </Tooltip>,
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Copied!');
+  });
+
+  test('goes away with the last tooltip on the page', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <Tooltip content="Checks: PASS">
+        <button type="button">CHK</button>
+      </Tooltip>,
+    );
+    await user.hover(screen.getByRole('button', { name: 'CHK' }));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    unmount();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 });
 

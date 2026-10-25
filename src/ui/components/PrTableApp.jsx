@@ -19,13 +19,16 @@ import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState } from '../state/PrTableUiStateContext';
+import { NowProvider } from '../state/NowContext';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
-import { countPendingThreadComments } from '../helpers/pr-thread-comments.helpers.ts';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
+
+// Shared by every render without an actorsMap in the payload.
+const NO_ACTORS = {};
 
 /**
  * Main PR Table Application Component
@@ -44,7 +47,7 @@ export function PrTableApp() {
   // vanilla "Apply filters" pipeline) - now reactively derived live from
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
   const visiblePrNumbers = useVisiblePrNumbers();
-  const { entryNeedsAttention, shouldShowNeedsAttention, attentionConfig } = useNeedsAttention();
+  const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
 
   // Section open/closed and expanded insights rows live in
   // PrTableUiStateProvider (above AppRoot), not here, so the Export tab can
@@ -321,7 +324,7 @@ export function PrTableApp() {
       // The "In Review" checkbox is a manual, user-set flag (see
       // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
       // NOT feed into needs-attention - it's independent of whether the PR
-      // actually has unreviewed activity per shouldShowNeedsAttention below.
+      // actually has unreviewed activity per the attention rules.
       try {
         return entryNeedsAttention(entry, attentionConfig);
       } catch (e) {
@@ -330,6 +333,19 @@ export function PrTableApp() {
       }
     };
   }, [entryNeedsAttention, attentionConfig]);
+
+  // Why each row needs attention, for its attention icon's tooltip (empty
+  // when it doesn't) - the same rules as checkNeedsAttention.
+  const getAttentionReasons = useMemo(() => {
+    return (entry) => {
+      try {
+        return entryNeedsAttentionReasons(entry, attentionConfig);
+      } catch (e) {
+        console.warn('[PrTableApp] Error checking needs attention:', e);
+        return [];
+      }
+    };
+  }, [entryNeedsAttentionReasons, attentionConfig]);
 
   // Helper: Check if viewer has interacted with PR
   const checkUserInteraction = useMemo(() => {
@@ -531,17 +547,14 @@ export function PrTableApp() {
       lifecycleSection: config.sectionKey,
       dateHeader: config.dateHeader,
       defaultOpen: config.isOpen,
-      // Section header counts use shouldShowNeedsAttention directly (same
-      // status/pending-comments logic checkNeedsAttention above delegates
-      // to via entryNeedsAttention), so the header count always matches
-      // however many rows in this section actually show the attention icon.
-      attentionCount: (config.rows || []).filter((entry) => {
-        const row = entry?.data || {};
-        const hasPendingComments = countPendingThreadComments(row) > 0;
-        return shouldShowNeedsAttention({ row, sectionKey: config.sectionKey, hasPendingComments, config: attentionConfig });
-      }).length,
+      // The same check as each row's attention icon (checkNeedsAttention,
+      // judged by the PR's own lifecycle section), so the header count
+      // matches the icons. It used to judge by this section's key, which
+      // never counts for a smart group (Flagged, In Review...), so those
+      // headers showed no attention even when their rows did.
+      attentionCount: (config.rows || []).filter((entry) => checkNeedsAttention(entry)).length,
     }));
-  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction, shouldShowNeedsAttention, attentionConfig]);
+  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead
@@ -695,25 +708,33 @@ export function PrTableApp() {
   // "no choice yet" (undefined) always gave "open", so closing a section
   // that's open by default (In Review, Needs Attention) used to record it
   // as open, while the <details> itself showed closed.
-  const handleToggleSection = (sectionKey, nextOpen) => {
+  //
+  // These three, like the handlers above, are useStableCallback: every
+  // memoized PrRow receives them, and a new function each render re-rendered
+  // every row on every table render.
+  const handleToggleSection = useStableCallback((sectionKey, nextOpen) => {
     const section = sections.find((candidate) => candidate.key === sectionKey);
     const currentlyOpen = isSectionOpen(sectionKey, Boolean(section?.defaultOpen));
     setSectionOpen(sectionKey, typeof nextOpen === 'boolean' ? nextOpen : !currentlyOpen);
-  };
+  });
 
   // Handler: Open the PR JSON details modal for a row ((entry, pr)
   // signature, matching PrActionsCell's onViewJson call).
-  const handleViewJson = (entry, pr) => {
+  const handleViewJson = useStableCallback((entry, pr) => {
     setJsonModalTarget({ entry, pr });
-  };
+  });
 
   // Handler: Toggle insights row for a PR. `repo` disambiguates PR numbers
   // that collide across repos in the same section (see entriesForRepo -
   // other repos' PRs render alongside the current one now) - see
   // buildExpandedInsightsKey's own comment.
-  const handleToggleInsights = (prNumber, sectionKey, repo) => {
+  const handleToggleInsights = useStableCallback((prNumber, sectionKey, repo) => {
     toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, prNumber));
-  };
+  });
+
+  // The same object until the payload's own map changes (a fresh `{}` each
+  // render defeated row memoization when the payload has none).
+  const actorsMap = useMemo(() => payload?.actorsMap || NO_ACTORS, [payload?.actorsMap]);
 
   // Loading state: Show message while data loads
   if (sections.length === 0) {
@@ -742,14 +763,15 @@ export function PrTableApp() {
     );
   }
 
+  // NowProvider: one clock for the rows' relative times (Activity ages).
   return (
-    <>
+    <NowProvider>
       {sections.map((section) => (
         <PrSection
           key={section.key}
           section={section}
           repo={effectiveRepo}
-          actorsMap={payload?.actorsMap || {}}
+          actorsMap={actorsMap}
           isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
           expandedInsights={expandedInsights}
           onToggleSection={handleToggleSection}
@@ -761,12 +783,12 @@ export function PrTableApp() {
           onDataRefresh={setPayload}
           onViewJson={handleViewJson}
           getPrFlags={getPrFlags}
-          checkNeedsAttention={checkNeedsAttention}
+          getAttentionReasons={getAttentionReasons}
           activePrNumbers={combinedActivePrNumbers}
           queuedPrNumbers={combinedQueuedPrNumbers}
         />
       ))}
       <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
-    </>
+    </NowProvider>
   );
 }

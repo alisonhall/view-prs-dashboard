@@ -52,6 +52,15 @@ const filterDropdownSummary = (list) => list.locator("xpath=ancestor::details[1]
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
   prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
+// A PR row's busy icon, shown only while that PR is refreshing (it's named
+// for screen readers; each rendered copy of the row has one).
+const prBusyIcon = (page, prNumber) =>
+  prTables(page).getByRole("img", { name: `PR #${prNumber} update in progress`, exact: true, includeHidden: true });
+// Opens the first rendered copy of a row's More menu and returns the menu.
+const openRowMenu = async (page, prNumber) => {
+  await prTables(page).getByRole("button", { name: `More actions for PR #${prNumber}`, exact: true }).first().click();
+  return page.getByRole("menu", { name: `More actions for PR #${prNumber}`, exact: true });
+};
 // A section's own <summary> (its header), which opens and closes it.
 // <summary> has no standard role, so like filterDropdownSummary this
 // helper holds the structural lookup.
@@ -265,12 +274,13 @@ test("checkbox toggle and More insights expand work", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
 
-  // Flagged/in-review checkboxes live in the smart groups, open by default.
-  const checkbox = prTables(page).getByRole("checkbox", { name: /^In Review for PR #/ }).first();
-  await expect(checkbox).toHaveCount(1);
-  const before = await checkbox.isChecked();
-  await checkbox.click();
-  await expect(checkbox).toHaveJSProperty("checked", !before);
+  // In review is a toggle button (aria-pressed); the smart groups holding
+  // it are open by default.
+  const toggle = prTables(page).getByRole("button", { name: /^In Review for PR #/ }).first();
+  await expect(toggle).toHaveCount(1);
+  const before = await toggle.getAttribute("aria-pressed");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
 
   const insightsToggle = await firstInsightsToggle(page);
   await insightsToggle.click();
@@ -372,16 +382,14 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await page.goto("/");
   await waitForPrTable(page);
 
-  // Checks the `hidden` DOM property directly (not Playwright's
-  // toBeVisible/toBeHidden) because this test verifies the React prop
-  // wiring, not whether a human could currently see the row - PR #1 can
-  // legitimately be sitting inside a collapsed lifecycle section
-  // (collapsed by default, and its exact section/smart-group membership
-  // can shift as other tests in this suite toggle its flagged/in-review
-  // state against the same shared dev server) without that being a
-  // regression in this feature.
-  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
+  // Checks whether the busy icon exists (hidden included), not whether it's
+  // visible: this verifies the React prop wiring, not whether a human could
+  // currently see the row - PR #1 can legitimately be sitting inside a
+  // collapsed lifecycle section (collapsed by default, and its exact
+  // section/smart-group membership can shift as other tests in this suite
+  // toggle its flagged/in-review state against the same shared dev server)
+  // without that being a regression in this feature.
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
 
   await page.evaluate(() => {
     // activePrNumbers entries are { repo, prNumber } pairs, not bare
@@ -395,7 +403,7 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
     );
   });
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
+  await expect(prBusyIcon(page, 1)).not.toHaveCount(0);
 });
 
 test("editing a PR Notes field in the real React-owned row holds back a real data poll until the edit is undone", async ({ page }) => {
@@ -609,10 +617,8 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   await page.goto("/");
   await waitForPrTable(page);
 
-  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
-  const pr2Indicator = prTables(page).getByTitle("PR #2 update in progress", { exact: true }).first();
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).toHaveCount(0);
 
   await page.route("**/view-prs/ack", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -631,11 +637,11 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   await page.getByLabel("PR number(s) (comma-separated)", { exact: true }).fill("1,2");
   await page.getByRole("button", { name: "Apply ack only" }).click();
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", false);
+  await expect(prBusyIcon(page, 1)).not.toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).not.toHaveCount(0);
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).toHaveCount(0);
 });
 
 // A dedicated real-browser reproduction of the "queued, not yet started"
@@ -1403,7 +1409,8 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
       });
     });
 
-  await prTables(page).getByRole("button", { name: "View PR JSON details for #1", exact: true }).first().click();
+  const menu = await openRowMenu(page, 1);
+  await menu.getByRole("menuitem", { name: "View PR JSON details", exact: true }).click();
 
   const dataFileJson = page.getByRole("dialog").getByRole("region", { name: "Data File Entry", exact: true });
   await expect(dataFileJson).toBeVisible();
@@ -1454,10 +1461,10 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
   await expect(runFilterSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
 
   // PR #1's own fixture already carries the "enhancement" label (see
-  // e2e/fixtures/data.json) - its row select correctly excludes that one
-  // (PrActionsCell.jsx's own existing-label filter), leaving just "bug" +
-  // the placeholder, proving both the shared-Context wiring and the
-  // per-row exclusion logic together.
+  // e2e/fixtures/data.json) - its row's More menu correctly excludes that
+  // one (PrActionsCell's existing-label filter), leaving just "bug",
+  // proving both the shared-Context wiring and the per-row exclusion
+  // logic together.
   await prTables(page)
     .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
     .evaluateAll((checkboxes) => {
@@ -1465,10 +1472,11 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
         checkbox.closest("details").open = true;
       });
     });
-  const rowSelect = prTables(page).getByRole("combobox", { name: "Add label to PR #1", exact: true }).first();
-  await expect(rowSelect.getByRole("option", { includeHidden: true })).toHaveCount(2);
-  await expect(rowSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
-  await expect(rowSelect.getByRole("option", { name: "enhancement", exact: true, includeHidden: true })).toHaveCount(0);
+  const menu = await openRowMenu(page, 1);
+  const addLabel = menu.getByRole("group", { name: "Add label", exact: true });
+  await expect(addLabel.getByRole("menuitem")).toHaveCount(1);
+  await expect(addLabel.getByRole("menuitem", { name: "bug", exact: true })).toHaveCount(1);
+  await expect(addLabel.getByRole("menuitem", { name: "enhancement", exact: true })).toHaveCount(0);
 });
 
 test("a failed In Review toggle reverts the checkbox back to its real state, instead of leaving it stuck on the click", async ({ page }) => {
@@ -1491,8 +1499,10 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
       });
     });
 
-  const checkbox = prTables(page).getByRole("checkbox", { name: "In Review for PR #1", exact: true }).first();
-  const before = await checkbox.isChecked();
+  // In review is a toggle button now (aria-pressed); still controlled, with
+  // no local optimistic state.
+  const toggle = prTables(page).getByRole("button", { name: "In Review for PR #1", exact: true }).first();
+  const before = await toggle.getAttribute("aria-pressed");
 
   await page.route("**/view-prs/ack", (route) =>
     route.fulfill({
@@ -1502,12 +1512,10 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
     }),
   );
 
-  await checkbox.click();
-  // The click's own native DOM toggle happens immediately; the app's async
-  // round-trip (even against a mocked route) still takes a tick - wait for
-  // it to settle back to the pre-click value rather than asserting
-  // immediately, which would just catch the transient optimistic state.
-  await expect(checkbox).toHaveJSProperty("checked", before);
+  await toggle.click();
+  // The app's async round-trip (even against a mocked route) takes a tick -
+  // wait for it to settle on the pre-click value.
+  await expect(toggle).toHaveAttribute("aria-pressed", before);
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {

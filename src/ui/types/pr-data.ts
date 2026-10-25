@@ -168,6 +168,11 @@ export interface PrData {
   // Set by the server (app.js) on a PR whose change was detected but whose
   // full details are still queued to refresh; not in the data file.
   updatePending?: boolean;
+  sourceBranch?: string;
+  targetBranch?: string;
+  // "YES" / "NO", and the approvals count as a digits-only string.
+  approved?: string;
+  approvalCount?: string | number;
   // The script's change status: "CHANGED", "NO_CHANGE" or "NO_ACTIVITY"
   // (older data wrote "CHANGED(<reasons>)"), and the change reasons as
   // "|"-separated tokens such as "commit|review" ("-" when none).

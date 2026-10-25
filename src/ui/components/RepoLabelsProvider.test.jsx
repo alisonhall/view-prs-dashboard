@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
-const { render, screen, act, waitFor } = require('@testing-library/react');
+const { render, screen, act, waitFor, within } = require('@testing-library/react');
+const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { RepoLabelsProvider } = require('./RepoLabelsProvider');
 const { ApplyLabelSelect } = require('./ApplyLabelSelect');
@@ -71,6 +72,15 @@ const mockFetch = (labels, userDefaultsOverrides = {}) => {
 
 const labelsFetchCalls = () => fetch.mock.calls.filter(([url]) => String(url).startsWith('/view-prs/labels'));
 
+// The row's labels are in its More menu's "Add label" group (UI redesign
+// phase 2; it was a "+ Label" select). Opens the menu and returns the
+// group, which stays live while the menu is open.
+const openRowAddLabelGroup = async (user, prNumber) => {
+  await user.click(screen.getByRole('button', { name: `More actions for PR #${prNumber}` }));
+  return screen.getByRole('group', { name: 'Add label' });
+};
+const labelNames = (group) => within(group).queryAllByRole('menuitem').map((item) => item.textContent);
+
 describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
   afterEach(() => {
     prDataProbe.reset();
@@ -87,6 +97,7 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
   // end-to-end (triggered automatically by the initial selectedRepo, same
   // as the real app).
   test('given both real consumers mounted under one Provider, when the real fetch resolves, then both see the same labels', async () => {
+    const user = userEvent.setup();
     mockFetch([{ name: 'bug' }, { name: 'enhancement' }]);
 
     render(
@@ -102,7 +113,8 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
       </TestProviders>,
     );
 
-    expect(screen.getByLabelText('Add label to PR #101').options).toHaveLength(1);
+    // Before the fetch resolves (opening the menu takes long enough for it
+    // to finish, so only the Run tab select can show this state).
     expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo');
 
     await waitFor(() => {
@@ -115,11 +127,12 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
     });
     expect(labelsFetchCalls()).toEqual([['/view-prs/labels?repo=owner%2Frepo']]);
 
-    const rowSelect = screen.getByLabelText('Add label to PR #101');
-    expect(Array.from(rowSelect.options).map((option) => option.value)).toEqual(['', 'bug', 'enhancement']);
+    const rowGroup = await openRowAddLabelGroup(user, '101');
+    expect(labelNames(rowGroup)).toEqual(['bug', 'enhancement']);
   });
 
-  test('given a PR that already has one of the labels, when rendering its row select, then that label is excluded but the Run tab select still lists it', async () => {
+  test('given a PR that already has one of the labels, when opening its row menu, then that label is excluded but the Run tab select still lists it', async () => {
+    const user = userEvent.setup();
     mockFetch([{ name: 'bug' }, { name: 'enhancement' }]);
 
     render(
@@ -140,9 +153,9 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
       </TestProviders>,
     );
 
+    const rowGroup = await openRowAddLabelGroup(user, '101');
     await waitFor(() => {
-      const rowSelect = screen.getByLabelText('Add label to PR #101');
-      expect(Array.from(rowSelect.options).map((option) => option.value)).toEqual(['', 'enhancement']);
+      expect(labelNames(rowGroup)).toEqual(['enhancement']);
     });
 
     const runFilterSelect = document.getElementById('apply-label-select');

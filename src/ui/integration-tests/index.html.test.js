@@ -20,6 +20,21 @@ const { createPortal, flushSync } = require("react-dom");
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
+// UI redesign phase 2: "View PR JSON details" is in each row's More menu.
+const openPrJsonDetails = async (user, prNumber) => {
+  const [moreButton] = await screen.findAllByRole("button", { name: `More actions for PR #${prNumber}` });
+  await user.click(moreButton);
+  await user.click(await screen.findByRole("menuitem", { name: "View PR JSON details" }));
+};
+// A tooltip's text, through its trigger's aria-describedby.
+const tooltipDescription = (element) => {
+  const id = element?.closest(".ui-tooltip-target, [aria-describedby]")?.getAttribute("aria-describedby") || "";
+  return document.getElementById(id)?.textContent || "";
+};
+const { formatIsoDatetime } = require("../helpers/pr-formatting.helpers.ts").createPrFormattingHelpers();
+// The accessible names of a row's Signals icons, in slot order.
+const signalNames = (row) =>
+  Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
 const { PrDataPolling } = require("../components/PrDataPolling");
@@ -1391,25 +1406,24 @@ describe("index page rendering with Testing Library", () => {
     expect(row?.querySelector("input[type='checkbox']")).toBeTruthy();
     expect(within(openSection).getByLabelText("In Review for PR #11")).toBeInTheDocument();
     expect(within(openSection).getByLabelText("Flagged for PR #11")).toBeInTheDocument();
-    expect(row?.querySelector(".row-action-btn.update")).toBeTruthy();
-    expect(row?.querySelector(".row-action-btn.ack")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Update PR #11" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Ack PR #11" })).toBeInTheDocument();
     expect(
-      within(openSection).getByRole("button", { name: "View PR JSON details for #11" }),
+      within(openSection).getByRole("button", { name: "More actions for PR #11" }),
     ).toBeInTheDocument();
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
-    expect(insightsToggle?.textContent).toBe("More insights");
-    expect(String(row?.querySelector(".row-pending-comments-chip")?.textContent || "")).toBe(
-      "Pending comments: 1",
-    );
+    const insightsToggle = within(row).getByRole("button", { name: "More insights for PR #11" });
+    expect(within(row).getByText("1 pending comment")).toBeInTheDocument();
 
     const insightsRow = row?.nextElementSibling;
     expect(insightsRow?.hidden).toBe(true);
     await user.click(insightsToggle);
     expect(insightsRow?.hidden).toBe(false);
-    expect(insightsToggle?.textContent).toBe("Hide insights");
+    expect(insightsToggle).toHaveAccessibleName("Hide insights for PR #11");
+    // One cell spanning every column: select, Signals, Pull request, Who,
+    // Review, CHK·MRG, Size, Activity, Actions.
     expect(insightsRow?.querySelector(".insights-row-cell")?.getAttribute("colspan")).toBe(
-      "11",
+      "9",
     );
 
     const insightsContent = insightsRow?.querySelector(".row-insights-content");
@@ -1479,7 +1493,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
+    const insightsToggle = row?.querySelector(".pr-expand-toggle");
     expect(insightsToggle).toBeTruthy();
     await user.click(insightsToggle);
 
@@ -1529,7 +1543,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
+    const insightsToggle = row?.querySelector(".pr-expand-toggle");
     expect(insightsToggle).toBeTruthy();
     await user.click(insightsToggle);
 
@@ -1603,31 +1617,29 @@ describe("index page rendering with Testing Library", () => {
         expect(screen.getByText("#11")).toBeInTheDocument();
       });
 
+      // UI redesign phase 2: the last check is in the Activity cell's
+      // tooltip (it was the Status column's "↻ 20m ago"), and a stale one
+      // is marked on the age.
       const openRow = screen.getByText("#11").closest("tr");
       const mergedRow = screen.getByText("#99").closest("tr");
-      const openIndicator = openRow?.querySelector(
-        ".status-cell .pr-last-checked-indicator",
-      );
-      const mergedIndicator = mergedRow?.querySelector(
-        ".status-cell .pr-last-checked-indicator",
-      );
+      const openActivity = openRow?.querySelector(".pr-activity");
+      const mergedActivity = mergedRow?.querySelector(".pr-activity");
 
-      expect(openIndicator).toBeTruthy();
-      expect(mergedIndicator).toBeTruthy();
-      expect(String(openIndicator?.textContent || "")).toBe("↻ 20m ago");
-      expect(String(mergedIndicator?.textContent || "")).toBe("↻ 10m ago");
-      expect(String(openIndicator?.className || "")).toContain(
-        "pr-last-checked-indicator-stale",
+      expect(tooltipDescription(openActivity)).toContain(
+        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}. (stale)`,
       );
-      expect(String(mergedIndicator?.className || "")).not.toContain(
-        "pr-last-checked-indicator-stale",
+      expect(tooltipDescription(mergedActivity)).toContain(
+        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:20:00Z")}.`,
       );
+      expect(tooltipDescription(mergedActivity)).not.toContain("(stale)");
+      expect(openActivity).toHaveAttribute("data-stale", "true");
+      expect(mergedActivity).not.toHaveAttribute("data-stale");
     } finally {
       nowSpy.mockRestore();
     }
   });
 
-  test("given an open PR row, when rendering PR and status cells, then progress stays in the PR cell and relative last-checked text appears in the status cell", async () => {
+  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and the last check is in the Activity cell's tooltip", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1655,26 +1667,13 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    const prCellContent = document.querySelector(
-      '.pr-number-cell[data-pr-number="12"] .pr-number-cell-content',
+    const titleCell = document.querySelector('.pr-cell-title[data-pr-number="12"]');
+    expect(titleCell?.querySelector(".pr-link")).toHaveTextContent("#12");
+    expect(titleCell?.querySelector(".pr-busy")).toBeNull();
+    const row = titleCell?.closest("tr");
+    expect(tooltipDescription(row?.querySelector(".pr-activity"))).toContain(
+      `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}.`,
     );
-    expect(prCellContent).toBeTruthy();
-
-    const firstChild = prCellContent?.children?.[0];
-    const secondChild = prCellContent?.children?.[1];
-    const thirdChild = prCellContent?.children?.[2];
-
-    expect(String(firstChild?.className || "")).toContain("pr-number-cell-top");
-    expect(String(secondChild?.className || "")).toContain("pr-number-cell-progress");
-    expect(thirdChild).toBeUndefined();
-
-    expect(firstChild?.querySelector(".pr-link")).toBeTruthy();
-    expect(firstChild?.querySelector(".pr-progress-indicator")).toBeNull();
-    expect(secondChild?.querySelector(".pr-progress-indicator")).toBeTruthy();
-    const statusLastChecked = document.querySelector(
-      '.status-cell .pr-last-checked-indicator',
-    );
-    expect(statusLastChecked).toBeTruthy();
   });
 
   test("given author thread-resolution policy modes, when PR author resolves a review thread, then warning behavior follows the selected rule", async () => {
@@ -1747,7 +1746,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#77").closest("tr");
-      const toggle = row?.querySelector(".row-insights-toggle");
+      const toggle = row?.querySelector(".pr-expand-toggle");
       if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
         await user.click(toggle);
       }
@@ -1896,7 +1895,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#177").closest("tr");
-      const toggle = row?.querySelector(".row-insights-toggle");
+      const toggle = row?.querySelector(".pr-expand-toggle");
       if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
         await user.click(toggle);
       }
@@ -2038,7 +2037,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#79").closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
+    await user.click(row?.querySelector(".pr-expand-toggle"));
 
     const reviewSection = row?.nextElementSibling?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
@@ -2151,11 +2150,11 @@ describe("index page rendering with Testing Library", () => {
     const row = within(openSection).getByText("#80").closest("tr");
     expect(row).toBeTruthy();
 
-    const authorCellIdentity = row?.querySelector(".author-cell-name.actor-identity-pr-author");
-    expect(authorCellIdentity).toBeTruthy();
-    expect(authorCellIdentity?.className).not.toContain("actor-identity-viewer");
+    // The Who column names the author, and only rings the viewer's avatar.
+    const authorAvatar = within(row).getByRole("img", { name: "Author: PR Author" });
+    expect(authorAvatar.querySelector(".ui-avatar")).not.toHaveAttribute("data-viewer");
 
-    await user.click(row?.querySelector(".row-insights-toggle"));
+    await user.click(row?.querySelector(".pr-expand-toggle"));
 
     const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
     expect(insightsContent).toBeTruthy();
@@ -2273,7 +2272,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#78").closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
+    await user.click(row?.querySelector(".pr-expand-toggle"));
 
     const reviewSection = row?.nextElementSibling?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
@@ -2336,7 +2335,7 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
     const row = (await screen.findByText("#801")).closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
+    await user.click(row?.querySelector(".pr-expand-toggle"));
 
     const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
     const reviewersKey = Array.from(
@@ -3446,10 +3445,10 @@ describe("index page rendering with Testing Library", () => {
     // Matches the real, fully-wired app's own precedence (also covered by
     // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
     expect(
-      screen.getAllByRole("button", { name: "View PR JSON details for #1" }).length,
+      screen.getAllByRole("button", { name: "More actions for PR #1" }).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.queryByRole("button", { name: "View PR JSON details for #2" }),
+      screen.queryByRole("button", { name: "More actions for PR #2" }),
     ).not.toBeInTheDocument();
   });
 
@@ -3599,10 +3598,11 @@ describe("index page rendering with Testing Library", () => {
     // Flagged group specifically so the query is unambiguous.
     const flaggedSection = document.querySelector('[data-pr-section="flagged"]');
     const row = within(flaggedSection).getByText("#101").closest("tr");
-    const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
-
-    expect(icons.map((node) => node.textContent)).toEqual(["⚠️", "🚩"]);
-    expect(icons[1]?.getAttribute("title")).toBe("PR was flagged");
+    // Attention, then Flagged, in their fixed Signals slots.
+    expect(signalNames(row).filter((name) => name === "Needs attention" || name === "Flagged")).toEqual([
+      "Needs attention",
+      "Flagged",
+    ]);
   });
 
   test("given a PR that is in-review (but otherwise NO_CHANGE) and flagged, when rows render, then only the flag icon is shown, not attention", async () => {
@@ -3643,16 +3643,15 @@ describe("index page rendering with Testing Library", () => {
     // the PR actually has unreviewed activity (checkNeedsAttention in
     // PrTableApp.jsx delegates to window.entryNeedsAttention only). This
     // row's status is NO_CHANGE ("open-in-review" fixture), so only the
-    // flag icon should render on every rendered copy of the row - it still
-    // appears in both its "open" lifecycle section and the (unrelated) "In
-    // Review" smart group, since that group is keyed off inReview directly.
+    // flag icon should render on every rendered copy of the row. (The
+    // fixture's data.inReview isn't what marks a PR in review - the user
+    // state's inReviewByRepo is, and this payload only flags it - so there's
+    // no In review signal either.)
     const rows = screen.getAllByText("#202").map((link) => link.closest("tr"));
     expect(rows.length).toBeGreaterThan(0);
 
     rows.forEach((row) => {
-      const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
-      expect(icons.map((node) => node.textContent)).toEqual(["🚩"]);
-      expect(icons[0]?.getAttribute("title")).toBe("PR was flagged");
+      expect(signalNames(row)).toEqual(["Flagged"]);
     });
   });
 
@@ -3712,14 +3711,14 @@ describe("index page rendering with Testing Library", () => {
         expect(within(openSection).getByText("#1")).toBeInTheDocument();
       });
 
-      const getIndicator = () => {
-        const row = within(openSection).getByText("#1").closest("tr");
-        return row?.querySelector(".pr-progress-indicator");
-      };
+      // UI redesign phase 2: the busy indicator is only rendered while the
+      // PR is refreshing; "without row rerender" is checked on the row
+      // element itself staying the same.
+      const getRow = () => within(openSection).getByText("#1").closest("tr");
+      const getIndicator = () => getRow()?.querySelector('.pr-busy[data-busy="active"]');
 
-      const initialIndicator = getIndicator();
-      expect(initialIndicator).toBeTruthy();
-      expect(initialIndicator?.hidden).toBe(true);
+      const initialRow = getRow();
+      expect(getIndicator()).toBeNull();
 
       // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // window.pollSchedulerStatus (a poll wrapper around a now-retired
@@ -3741,9 +3740,8 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        const updatedIndicator = getIndicator();
-        expect(updatedIndicator).toBe(initialIndicator);
-        expect(updatedIndicator?.hidden).toBe(false);
+        expect(getRow()).toBe(initialRow);
+        expect(getIndicator()).toBeTruthy();
       });
 
       schedulerActivePrNumbers = [];
@@ -3757,9 +3755,8 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        const updatedIndicator = getIndicator();
-        expect(updatedIndicator).toBe(initialIndicator);
-        expect(updatedIndicator?.hidden).toBe(true);
+        expect(getRow()).toBe(initialRow);
+        expect(getIndicator()).toBeNull();
       });
     }
   });
@@ -3866,7 +3863,7 @@ describe("index page rendering with Testing Library", () => {
       const sectionEl = document.querySelector(`[data-pr-section="${sectionKey}"]`);
       const prLink = within(sectionEl).getByText(`#${prNumber}`);
       const row = prLink.closest("tr");
-      return Boolean(row?.querySelector(".attention-icon"));
+      return Boolean(row?.querySelector('.pr-cell-signals [aria-label="Needs attention"]'));
     };
 
     document.getElementById("status").textContent = "Viewer : ahall236_uhg";
@@ -4155,17 +4152,17 @@ describe("index page rendering with Testing Library", () => {
     const closedSection = document.querySelector("details[data-pr-section='closed']");
     const mergedSection = document.querySelector("details[data-pr-section='merged']");
 
-    const openAttention = openSection?.querySelector(".pr-group-section-attention-count");
-    const draftAttention = draftSection?.querySelector(".pr-group-section-attention-count");
-    const closedAttention = closedSection?.querySelector(".pr-group-section-attention-count");
-    const mergedAttention = mergedSection?.querySelector(
-      ".pr-group-section-attention-count",
-    );
+    // UI redesign phase 2: a collapsed section's header summarises its
+    // attention count (it was an "Attention: N" badge). These lifecycle
+    // sections start collapsed.
+    const attentionSummary = (section) =>
+      section?.querySelector('.pr-section-summary-item[data-tone="attention"] .ui-visually-hidden');
 
-    expect(String(openAttention?.textContent || "")).toBe("Attention: 1");
-    expect(String(draftAttention?.textContent || "")).toBe("Attention: 1");
-    expect(String(closedAttention?.textContent || "")).toBe("Attention: 1");
-    expect(mergedAttention).toBeNull();
+    expect(openSection).not.toHaveAttribute("open");
+    expect(String(attentionSummary(openSection)?.textContent || "")).toBe("1 needs attention");
+    expect(String(attentionSummary(draftSection)?.textContent || "")).toBe("1 needs attention");
+    expect(String(attentionSummary(closedSection)?.textContent || "")).toBe("1 needs attention");
+    expect(attentionSummary(mergedSection)).toBeFalsy();
   });
 
   test("renders compact table headers, author-note indicators, and merged note-only rows", async () => {
@@ -4264,82 +4261,47 @@ describe("index page rendering with Testing Library", () => {
     // membership by design) - scope every lookup below to the "Open PRs"
     // lifecycle section specifically so these queries stay unambiguous.
     await waitFor(() => {
-      expect(
-        document.querySelector("details[data-pr-section='open'] table.pr-data-table"),
-      ).toBeTruthy();
+      expect(screen.getByRole("table", { name: "Open PRs", hidden: true })).toBeTruthy();
     });
 
-    const openSectionTable = document.querySelector(
-      "details[data-pr-section='open'] table.pr-data-table",
-    );
+    const openSectionTable = screen.getByRole("table", { name: "Open PRs", hidden: true });
 
     await waitFor(() => {
       expect(within(openSectionTable).getByText("#11")).toBeInTheDocument();
       expect(within(openSectionTable).getByText("#999")).toBeInTheDocument();
     });
 
+    // UI redesign phase 2: the select column's header is for screen
+    // readers only, then Signals (it was "Sel" / "Attn").
     const openHeaderCells = openSectionTable.querySelectorAll("thead th");
-    expect(String(openHeaderCells[0]?.textContent || "")).toContain("Sel");
-    expect(openHeaderCells[0]).toHaveAttribute("title", "Select PR");
-    expect(String(openHeaderCells[1]?.textContent || "")).toContain("Attn");
-    expect(openHeaderCells[1]).toHaveAttribute("title", "Needs Attention");
+    expect(String(openHeaderCells[0]?.textContent || "")).toBe("Select");
+    expect(openHeaderCells[0]?.querySelector(".ui-visually-hidden")).toBeTruthy();
+    // Shows "Signals"; screen readers get the full name.
+    expect(openHeaderCells[1]?.querySelector('[aria-hidden="true"]')?.textContent).toBe("Signals");
+    expect(openHeaderCells[1]?.querySelector(".ui-visually-hidden")?.textContent).toBe(
+      "Signals: changed, needs attention, flagged, in review",
+    );
 
-    const pr11Link = within(openSectionTable).getByText("#11");
-    const pr11Row = pr11Link.closest("tr");
+    // The author in the Who column, and one notes icon listing the fields
+    // with content (it was a "📝 Notes" marker plus five squares).
+    const pr11Row = within(openSectionTable).getByText("#11").closest("tr");
     expect(pr11Row).toBeTruthy();
-    const pr11AuthorCell = pr11Row?.children?.[6];
-    expect(String(pr11AuthorCell?.textContent || "")).toContain("Alison Hall");
-    expect(String(pr11AuthorCell?.textContent || "")).toContain("📝 Notes");
-    const pr11Indicator = pr11AuthorCell?.querySelector(".author-notes-indicator");
-    expect(String(pr11Indicator?.className || "")).toContain("author-notes-indicator-has");
-
-    const pr11DateCell = pr11Row?.children?.[9];
-    const pr11FieldIndicators = Array.from(
-      pr11DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
+    expect(pr11Row?.querySelector(".pr-cell-who [role='img']")).toHaveAttribute("aria-label", "Author: Alison Hall");
+    expect(pr11Row?.querySelector(".pr-cell-review [aria-label^='Notes:']")).toHaveAttribute(
+      "aria-label",
+      "Notes: 1 comment · other notes · difficulty 4 · stories · analysis of PR",
     );
-    expect(pr11FieldIndicators.length).toBe(5);
-    expect(
-      pr11FieldIndicators.every((node) =>
-        String(node?.className || "").includes("author-notes-field-indicator-filled"),
-      ),
-    ).toBe(true);
-    expect(
-      String(
-        pr11DateCell?.querySelector(".author-notes-field-indicator-difficulty")
-          ?.textContent || "",
-      ),
-    ).toBe("4");
 
-    const pr12Link = within(openSectionTable).getByText("#12");
-    const pr12Row = pr12Link.closest("tr");
+    const pr12Row = within(openSectionTable).getByText("#12").closest("tr");
     expect(pr12Row).toBeTruthy();
-    const pr12AuthorCell = pr12Row?.children?.[6];
-    const pr12Indicator = pr12AuthorCell?.querySelector(".author-notes-indicator");
-    expect(String(pr12Indicator?.className || "")).toContain("author-notes-indicator-none");
+    expect(pr12Row?.querySelector(".pr-cell-review [aria-label^='Notes:']")).toBeNull();
 
-    const pr12DateCell = pr12Row?.children?.[9];
-    const pr12FieldIndicators = Array.from(
-      pr12DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
-    );
-    expect(pr12FieldIndicators.length).toBe(5);
-    expect(
-      pr12FieldIndicators.every((node) =>
-        String(node?.className || "").includes("author-notes-field-indicator-empty"),
-      ),
-    ).toBe(true);
-    expect(
-      String(
-        pr12DateCell?.querySelector(".author-notes-field-indicator-difficulty")
-          ?.textContent || "",
-      ),
-    ).toBe("");
-
-    const pr999Link = within(openSectionTable).getByText("#999");
-    const pr999Row = pr999Link.closest("tr");
+    // A PR with stored notes but no local data shows its status.
+    const pr999Row = within(openSectionTable).getByText("#999").closest("tr");
     expect(pr999Row).toBeTruthy();
-    expect(String(pr999Row?.textContent || "")).toContain("NO_LOCAL_DATA");
+    expect(signalNames(pr999Row)).toContain("Status: NO_LOCAL_DATA");
 
-    const pr999InsightsButton = pr999Row?.querySelector(".row-insights-toggle");
+    const pr999InsightsButton = pr999Row?.querySelector(".pr-expand-toggle");
     expect(pr999InsightsButton).toBeTruthy();
     await user.click(pr999InsightsButton);
 
@@ -4426,7 +4388,7 @@ describe("index page rendering with Testing Library", () => {
       return within(openSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
-        ?.querySelector(".attention-icon");
+        ?.querySelector('.pr-cell-signals [aria-label="Needs attention"]');
     };
 
     activateManagementTabForTest("script");
@@ -4467,7 +4429,7 @@ describe("index page rendering with Testing Library", () => {
     await user.selectOptions(noActivityModeSelect, "all");
     syncFilterStateFromElement(noActivityModeSelect, "attentionNoActivityMode");
     await waitFor(() => {
-      expect(getAttentionIcon("101")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("101")).toBeTruthy();
     });
 
     ignoreMergeOnlyToggle.checked = true;
@@ -4749,7 +4711,7 @@ describe("index page rendering with Testing Library", () => {
       return within(draftSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
-        ?.querySelector(".attention-icon");
+        ?.querySelector('.pr-cell-signals [aria-label="Needs attention"]');
     };
 
     activateManagementTabForTest("script");
@@ -4787,7 +4749,7 @@ describe("index page rendering with Testing Library", () => {
     includeDraftChangedToggle.checked = true;
     syncFilterStateFromElement(includeDraftChangedToggle, "attentionIncludeDraftChanged");
     await waitFor(() => {
-      expect(getAttentionIcon("201")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("201")).toBeTruthy();
     });
 
     const includeDraftNoActivityToggle = document.getElementById(
@@ -4802,7 +4764,7 @@ describe("index page rendering with Testing Library", () => {
     includeDraftNoActivityToggle.checked = true;
     syncFilterStateFromElement(includeDraftNoActivityToggle, "attentionIncludeDraftNoActivity");
     await waitFor(() => {
-      expect(getAttentionIcon("202")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("202")).toBeTruthy();
     });
   });
 
@@ -5113,8 +5075,8 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("approver=alice");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #401" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #402" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More actions for PR #402" })).not.toBeInTheDocument();
   });
 
   test("given assigned and approver entries without login, when filter options are rendered, then fallback names are used as option keys", async () => {
@@ -5256,9 +5218,9 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#453")).toBeInTheDocument();
     });
 
-    const badge = document.querySelector(".approved-assigned-badge");
-    expect(badge).toBeTruthy();
-    expect(String(badge?.getAttribute("title") || "")).toBe("Alison Hall");
+    // The Review column's assigned-user avatar, named from the actor-name cache.
+    const assigned = screen.getAllByRole("group", { name: "Assigned" })[0];
+    expect(within(assigned).getByRole("img", { name: "Alison Hall" })).toBeInTheDocument();
   });
 
   test("given approver filter applied, when scope changes and filters are reapplied, then approver selection is preserved", async () => {
@@ -5482,9 +5444,9 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #601" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #602" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #603" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More actions for PR #602" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More actions for PR #603" })).not.toBeInTheDocument();
   });
 
   test("given no PRs have approval data, when data loads, then approver select is disabled", async () => {
@@ -5670,8 +5632,8 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #901" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #902" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More actions for PR #902" })).not.toBeInTheDocument();
   });
 
   test("cycles focus within PR JSON modal with Tab and Shift+Tab", async () => {
@@ -5699,10 +5661,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const openButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-    await user.click(openButton);
+    await openPrJsonDetails(user, "101");
 
     const modal = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -5954,10 +5913,10 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("In Review for PR #101")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "In Review for PR #101", pressed: false })).toBeInTheDocument();
     });
 
-    const labelChip = document.querySelector(".labels-cell .label-chip");
+    const labelChip = document.querySelector(".pr-cell-title .pr-label");
     expect(labelChip?.textContent).toBe("bug");
   });
 
@@ -5992,11 +5951,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const detailsButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-
-    await user.click(detailsButton);
+    await openPrJsonDetails(user, "101");
 
     const dialog = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -6082,11 +6037,7 @@ describe("index page rendering with Testing Library", () => {
       configurable: true,
     });
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const copyAllButton = await screen.findByRole("button", {
       name: "Copy all PR JSON details for AI chat",
@@ -6150,11 +6101,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const detailsButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-
-    await user.click(detailsButton);
+    await openPrJsonDetails(user, "101");
 
     const dialog = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -6171,7 +6118,8 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.queryByRole("dialog", { name: "PR JSON Details" })).not.toBeInTheDocument();
     });
 
-    expect(detailsButton).toHaveFocus();
+    // Focus returns to the row's More button, which opened the dialog.
+    expect(screen.getByRole("button", { name: "More actions for PR #101" })).toHaveFocus();
   });
 
   test("copies the diff text to clipboard when a user clicks Copy diff in the details modal", async () => {
@@ -6210,11 +6158,7 @@ describe("index page rendering with Testing Library", () => {
       configurable: true,
     });
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const copyDiffButton = await screen.findByRole("button", {
       name: "Copy diff",
@@ -6301,11 +6245,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "PR JSON Details" })).toBeInTheDocument();
@@ -6361,11 +6301,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const wrapDiffButton = await screen.findByRole("button", {
       name: "Wrap lines",
@@ -7664,12 +7600,12 @@ describe("index page rendering with Testing Library", () => {
 
       await waitFor(() => {
         const row = document.querySelector(
-          "#pr-sections .pr-group-section-content table tbody tr",
+          "#pr-sections .pr-section-content table tbody tr",
         );
         expect(row).toBeTruthy();
       });
       const firstMainRowTextBefore = String(
-        document.querySelector("#pr-sections .pr-group-section-content table tbody tr")
+        document.querySelector("#pr-sections .pr-section-content table tbody tr")
           ?.textContent || "",
       );
 
@@ -7743,7 +7679,7 @@ describe("index page rendering with Testing Library", () => {
       let firstMainRowTextAfter = "";
       await waitFor(() => {
         firstMainRowTextAfter = String(
-          document.querySelector("#pr-sections .pr-group-section-content table tbody tr")
+          document.querySelector("#pr-sections .pr-section-content table tbody tr")
             ?.textContent || "",
         );
         expect(firstMainRowTextAfter).toContain("author-beta-002");
@@ -7893,7 +7829,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const row = screen.getByText("#101").closest("tr");
-      await user.click(row?.querySelector(".row-insights-toggle"));
+      await user.click(row?.querySelector(".pr-expand-toggle"));
 
       const reviewSectionSelector =
         '.row-insights-content details.insight-section[data-insight-key="review-conversations"]';
@@ -7974,7 +7910,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const refreshedRow = screen.getByText("#101").closest("tr");
-      const refreshedToggle = refreshedRow?.querySelector(".row-insights-toggle");
+      const refreshedToggle = refreshedRow?.querySelector(".pr-expand-toggle");
       expect(refreshedToggle?.getAttribute("aria-expanded")).toBe("true");
 
       const refreshedReviewSection = getReviewSection();
@@ -8487,7 +8423,7 @@ describe("index page rendering with Testing Library", () => {
 
       await waitFor(() => {
         expect(
-          document.querySelector(".row-insights-toggle[aria-expanded='true']"),
+          document.querySelector(".pr-expand-toggle[aria-expanded='true']"),
         ).toBeTruthy();
       });
 
@@ -8579,7 +8515,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       await waitFor(() => {
-        const toggle = document.querySelector(".row-insights-toggle");
+        const toggle = document.querySelector(".pr-expand-toggle");
         expect(toggle?.getAttribute("aria-expanded")).toBe("true");
       });
 
@@ -8691,17 +8627,17 @@ describe("index page rendering with Testing Library", () => {
 
     await waitFor(() => {
       const closedPrsSection = Array.from(
-        document.querySelectorAll(".pr-group-section"),
+        document.querySelectorAll(".pr-section"),
       ).find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"));
       expect(closedPrsSection).toBeTruthy();
     });
 
     const closedPrsSection = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     ).find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"));
 
     const mergedPrsSection = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     ).find((s) => s.querySelector("summary")?.textContent?.includes("Latest Merged"));
 
     // Verify closed PRs sorted by closedAt descending (400 before 300)
@@ -8823,7 +8759,7 @@ describe("index page rendering with Testing Library", () => {
 
     await waitFor(() => {
       const closedTable = Array.from(
-        document.querySelectorAll(".pr-group-section"),
+        document.querySelectorAll(".pr-section"),
       )
         .find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"))
         ?.querySelector("table");
@@ -8832,7 +8768,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const closedTableAfter = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     )
       .find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"))
       ?.querySelector("table");
@@ -8840,7 +8776,7 @@ describe("index page rendering with Testing Library", () => {
     expect(firstClosedLinkAfter?.textContent).toBe("#400");
 
     const mergedTableAfter = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     )
       .find((s) => s.querySelector("summary")?.textContent?.includes("Latest Merged"))
       ?.querySelector("table");
@@ -9000,7 +8936,7 @@ describe("index page rendering with Testing Library", () => {
 
       const prLink = await screen.findByText("#123");
       const row = prLink.closest("tr");
-      const insightsToggle = row?.querySelector(".row-insights-toggle");
+      const insightsToggle = row?.querySelector(".pr-expand-toggle");
 
       await user.click(insightsToggle);
 

@@ -224,11 +224,80 @@ app working:
   pattern, portaled to `<body>` like the tooltip. A tooltip now has a
   `disabled` option: while a button's menu is open, its tooltip used to
   take the menu's Escape.
-- **2c - the new cells, rows, table and section headers** (`.tsx`, with
-  `styles/pr-table.css`).
+- **2c - the new cells, rows, table and section headers.** Done
+  (2026-10-24):
+  - `PrSection`, `PrTable` and `PrRow` are `.tsx`. The cells are Signals,
+    Pull request, Who, Review, CHK·MRG, Size, Activity and Actions, plus
+    the selection checkbox. They use `styles/pr-table.css` and new
+    `Signal` and `Avatar` components. The row's More menu holds View PR
+    JSON details and Add label.
+  - Every value the old cells showed has a place:
+
+    | Old cell / value | Now |
+    | --- | --- |
+    | Status (CHANGED / NO_CHANGE / NO_ACTIVITY / other) | Signals: a dot for changed (its tooltip lists what changed), a ring for no recent activity, nothing for no change, an info icon naming any other status (e.g. NO_LOCAL_DATA for a notes-only PR) |
+    | Status: viewed files | Review: viewed-files icon with "3/4" (green once all are viewed) |
+    | Status: last checked ("↻ 5m ago") | Activity: in the tooltip, with a dotted underline on the age when an open PR's check is stale |
+    | Status: "Update queued" | Pull request: an "Update queued" note on the second line |
+    | Attention / flagged icons | Signals: needs attention (reasons in the tooltip), flagged, in review |
+    | PR number and busy / queued spinner | Pull request: the #number link after the title, and a busy icon while refreshing or queued |
+    | Approved: YES/NO (count) | Review: approvals icon with the count, green once approved; approvers by name in the tooltip |
+    | Approved: assigned users | Review: small avatars after the slots, the viewer ringed; the viewer also appears when a requested reviewer but not assigned |
+    | Approved: open conversations | Review: conversations icon with the count ("with you" in the tooltip when that's what's counted) |
+    | Title, copy button, lifecycle badge (smart groups), target branch, pending comments | Pull request: the title wraps; copy button on hover/focus; a PR-state icon in smart groups; non-main target branch, pending comments and "Update queued" on a second line |
+    | Labels | Pull request: chips after the title |
+    | Author and co-authors, notes marker | Who: the author's avatar and "+N" for others with non-merge commits (names in the tooltip); notes moved to Review |
+    | CHK | CHK·MRG: checks icon; mergeability is new here (it was only in the insights) |
+    | Date: last activity, your last activity | Activity: the age, with both times in the tooltip |
+    | Date: the five note-field squares | Review: one notes icon listing the fields that have content |
+    | Actions: In Review / Flagged checkboxes | Actions: toggle buttons (aria-pressed) with the same names |
+    | Actions: Update, Ack | Actions: icon buttons |
+    | Actions: JSON, "+ Label" select | Actions: the More menu (View PR JSON details, Add label) |
+    | Insights toggle | Pull request: the row chevron (phase 3 turns it into the row summary) |
+
+    An integration test caught NO_LOCAL_DATA going missing at first: the
+    old Status column showed it as text.
+  - Collapsed sections summarise attention, failing checks, conflicts and
+    unread changes in their header.
+  - Fixed two older bugs:
+    - Section attention counts are judged by each PR's own lifecycle
+      section, the same check as the row icon, so smart groups (Flagged,
+      In Review) count their rows; they never did.
+    - A smart-group row's last-checked staleness is judged the same way.
+  - Review fixes:
+    - **Keyboard:** each signal cell (Signals, Review, CHK·MRG) is one
+      keyboard stop (`SignalGroup`: a named group whose focus tooltip and
+      description list every value). The icons and avatars in it keep
+      their own hover tooltips. A busy row went from about 20 Tab stops to
+      15.
+    - **Headers:** abbreviated column headers ("CHK·MRG", "Who"...) give
+      screen readers the full name, with the abbreviation hidden from
+      them and a hover tooltip.
+    - **Change reasons:** the unread dot's tooltip lists what changed for
+      every changed PR. They were only in the attention tooltip, which
+      only exists when the section counts the change.
+    - **Approvers:** listed by name only, without the insights text's
+      "at" and approval time ("at -" when there is none).
+    - **One shared tooltip:** `tooltip-controller.ts` is one bubble with
+      document-level listeners, driven by `data-tip` attributes. A
+      `Tooltip` is a lightweight wrapper with no state of its own, and a
+      signal inside a group isn't a component instance at all.
+    - **Row memoization:** `PrTableApp`'s handlers are stable and
+      `actorsMap` is the same object between renders, so memoized rows
+      can skip re-rendering.
+    - **Ages keep moving:** a shared clock (`NowContext`, one timer for
+      the table) ticks once a minute.
+    - **Menu events:** the More menu keeps its clicks and keys from
+      reaching the row (React bubbles portal events through it), ready
+      for phase 4's clickable rows.
 - **2d - `PrTableApp` to `.tsx`.**
-- **2e - tests:** update the integration and e2e tests, then delete the
-  old cells and their CSS.
+- **2e - tests and old CSS.** Done (2026-10-24):
+  - New `.tsx` tests replace each old cell's tests, carrying over every
+    behaviour that still applies.
+  - `index.html.test.js` and the e2e tests use the new names (In Review is
+    a toggle button; JSON and labels are in the More menu; the busy
+    indicator only exists while busy).
+  - 118 rules for the old table are removed from `index.css`.
 
 ### Phase 3 - Inline summary
 

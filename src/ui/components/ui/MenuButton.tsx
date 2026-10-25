@@ -19,6 +19,9 @@ import { Tooltip } from './Tooltip';
  * - Arrow keys, Home and End move between items; Enter or Space chooses.
  * - Escape closes and returns focus to the button; Tab, or a click
  *   outside, closes.
+ * - Its clicks and keys don't reach the components above it (React
+ *   bubbles portal events through them), so a clickable row around it
+ *   doesn't also act.
  * - Items can sit in a labelled group (Add label > each label). A group
  *   with no items shows `emptyText` instead.
  *
@@ -145,6 +148,10 @@ export function MenuButton({ icon, label, entries }: MenuButtonProps) {
   };
 
   const handleMenuKeyDown = (event: KeyboardEvent) => {
+    // The menu is portaled, but React still bubbles its events through the
+    // components above the button (a clickable row, from phase 4); keep
+    // them to the menu.
+    event.stopPropagation();
     const items = itemRefs.current;
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'ArrowDown') {
@@ -206,7 +213,11 @@ export function MenuButton({ icon, label, entries }: MenuButtonProps) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
-          onClick={() => (open ? close(false) : openMenu('first'))}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (open) close(false);
+            else openMenu('first');
+          }}
           onKeyDown={handleButtonKeyDown}
         >
           <Icon name={icon} />
@@ -222,6 +233,7 @@ export function MenuButton({ icon, label, entries }: MenuButtonProps) {
             className="ui-menu"
             style={menuStyle}
             onKeyDown={handleMenuKeyDown}
+            onClick={(event) => event.stopPropagation()}
           >
             {entries.map((entry) =>
               isGroup(entry) ? (

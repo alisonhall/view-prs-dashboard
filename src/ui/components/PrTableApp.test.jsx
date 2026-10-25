@@ -814,6 +814,26 @@ describe('PrTableApp', () => {
     });
   });
 
+  test('given the table re-renders, when PrSection receives its handlers and actorsMap, then they are the same objects (so memoized rows can skip re-rendering)', () => {
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+    const first = capturedSectionProps.find((p) => p.section.key === 'open');
+
+    // Any state change re-renders the table: expand a row.
+    capturedSectionProps.length = 0;
+    React.act(() => {
+      first.onToggleInsights('1', 'open', 'owner/repo');
+    });
+    const second = capturedSectionProps.find((p) => p.section.key === 'open');
+
+    expect(second).not.toBe(first);
+    ['onToggleInsights', 'onToggleSection', 'onViewJson', 'onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'].forEach(
+      (name) => expect([name, second[name]]).toEqual([name, first[name]]),
+    );
+    // No actorsMap in the payload: still the same (empty) object.
+    expect(second.actorsMap).toBe(first.actorsMap);
+  });
+
   test('given onToggleInsights is called for a PR, when toggled twice, then expandedInsights returns to its original state', () => {
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payload, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
@@ -869,7 +889,7 @@ describe('PrTableApp', () => {
     expect(flaggedSection.section.prs.map((e) => e.prNumber)).toEqual(['1']);
   });
 
-  test('given the narrower shouldShowNeedsAttention helper, when a row matches, then the section attentionCount reflects it', () => {
+  test('given the attention check, when a row matches, then the section attentionCount reflects it', () => {
     const payload = {
       byPrNumber: {
         1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
@@ -879,12 +899,41 @@ describe('PrTableApp', () => {
     renderPrTableApp({
       initialPayload: payload,
       selectedRepo: '',
-      onCheckboxChange: () => {},
-      onAckAction: () => {},
-      needsAttention: { shouldShowNeedsAttention: ({ row }) => row.number === '1' },
+      needsAttention: { entryNeedsAttention: (entry) => entry.data.number === '1' },
     });
     const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
     expect(openSection.section.attentionCount).toBe(1);
+  });
+
+  test('given a smart group, when its rows need attention, then its header counts them (it used to judge by the group\'s own key, which never counts)', () => {
+    installSmartGroupHelpers();
+    const payload = {
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+      },
+    };
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      // The real rules, so the count goes through each entry's own section.
+      needsAttention: {
+        entryNeedsAttention: (entry) => entry.section === 'open',
+      },
+    });
+    const flaggedSection = capturedSectionProps.find((p) => p.section.key === 'flagged');
+    expect(flaggedSection.section.prs).toHaveLength(1);
+    expect(flaggedSection.section.attentionCount).toBe(1);
+  });
+
+  test('given rows that need attention, when sections are built, then each row\'s reasons come from entryNeedsAttentionReasons', () => {
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+    renderPrTableApp({
+      initialPayload: payload,
+      selectedRepo: '',
+      needsAttention: { entryNeedsAttentionReasons: (entry) => (entry.data.number === '1' ? ['New commits'] : []) },
+    });
+    const openSection = capturedSectionProps.find((p) => p.section.key === 'open');
+    expect(openSection.getAttentionReasons(openSection.section.prs[0])).toEqual(['New commits']);
   });
 
   // Phase H.6 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):

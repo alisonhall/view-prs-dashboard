@@ -70,6 +70,10 @@ const ICON_SHAPES = {
       <path d="m6 6 12 12" />
     </>
   ),
+  // A filled dot (unread change) and a hollow ring (no recent activity):
+  // the dot's own fill beats the icon's inherited `fill: none`.
+  dot: <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />,
+  ring: <circle cx="12" cy="12" r="3.5" />,
   commit: (
     <>
       <circle cx="12" cy="12" r="3" />
@@ -105,6 +109,13 @@ const ICON_SHAPES = {
   ),
   filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />,
   flag: <path d="M5 21V4h12l-2.5 4.5L17 13H5" />,
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </>
+  ),
   merge: (
     <>
       <circle cx="18" cy="18" r="3" />

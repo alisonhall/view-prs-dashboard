@@ -104,6 +104,27 @@ describe('MenuButton', () => {
     expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus();
   });
 
+  test('its clicks and keys don\'t reach a clickable row around it (React bubbles portal events)', async () => {
+    const user = userEvent.setup();
+    const onRowClick = jest.fn();
+    const onRowKeyDown = jest.fn();
+    const onJson = jest.fn();
+    render(
+      // A stand-in for phase 4's clickable row.
+      <div onClick={onRowClick} onKeyDown={onRowKeyDown}>
+        <MenuButton icon="more" label="More actions for PR #2" entries={buildEntries(onJson)} />
+      </div>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #2' }));
+    await user.keyboard('{ArrowDown}{ArrowUp}');
+    await user.click(screen.getByRole('menuitem', { name: 'View JSON' }));
+
+    expect(onJson).toHaveBeenCalledTimes(1);
+    expect(onRowClick).not.toHaveBeenCalled();
+    expect(onRowKeyDown).not.toHaveBeenCalled();
+  });
+
   test('a group with no items shows its empty text', async () => {
     const user = userEvent.setup();
     renderMenu(buildEntries(jest.fn(), jest.fn(), []));
