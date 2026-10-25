@@ -11,10 +11,17 @@ import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { asArray } from '../../helpers/pr-as-array.helpers.ts';
+import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
+import type { NormalizedRowMetrics } from '../../helpers/pr-review-stats-aggregation.helpers.ts';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
-export function ApprovalRiskSection({ metrics, actorsMap }) {
+export interface ApprovalRiskSectionProps {
+  metrics: Pick<NormalizedRowMetrics, 'approvals'> | null | undefined;
+  actorsMap?: ActorsMap;
+}
+
+export function ApprovalRiskSection({ metrics, actorsMap }: ApprovalRiskSectionProps) {
   const { resolveActorDisplayName } = useActorIdentity();
   const { formatDurationMinutes } = usePrInsightsDisplay();
 

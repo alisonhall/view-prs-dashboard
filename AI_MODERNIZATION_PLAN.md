@@ -1110,6 +1110,10 @@ No static type checking leads to:
     - Phase 3 (2026-10-25): the new PrRowSummary, with its tested helpers;
       the activity feed builder moves out of ActivityEventsSection.jsx
       into the typed pr-activity-events.helpers.ts.
+    - Phase 4 (2026-10-25): the detail pane (PrDetailPane, PrOverview,
+      replacing PrInsightsRow.jsx), CopyIconButton, LinesChangedInsight,
+      ApprovalRiskSection, InsightSection and the insights hook
+      (InsightsHook.tsx), plus the useMediaQuery and useFocusTrap hooks.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -1,17 +1,8 @@
 /** @jest-environment jsdom */
 
-import type { ReactNode } from 'react';
-import { render as baseRender, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RequestActivityContext } from '../state/RequestActivityContext';
 import { PrRow, type PrRowProps } from './PrRow';
-
-// The details row renders NotesSection for real, which reads
-// beginRequestActivity from this context.
-const render = (ui: ReactNode) =>
-  baseRender(
-    <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>{ui}</RequestActivityContext.Provider>,
-  );
 
 const basePr = { number: '101', title: 'Fix bug', labels: [] };
 
@@ -26,7 +17,6 @@ const renderRow = (props: Partial<PrRowProps> = {}) =>
           sectionKey="open"
           lifecycleSection="open"
           isExpanded={false}
-          isDetailsOpen={false}
           isFlagged={false}
           isInReview={false}
           isAcknowledged={false}
@@ -76,45 +66,63 @@ describe('PrRow', () => {
     expect(row).toHaveAttribute('data-section-key', 'needs-attention');
   });
 
-  test('a collapsed row\'s summary and details rows are hidden and span every column', () => {
+  test('a collapsed row\'s summary row is hidden and spans every column', () => {
     renderRow({ columnCount: 9 });
-    // Testing Library doesn't name hidden elements, so find them by label.
-    for (const label of ['Summary for PR #101', 'Insights for PR #101']) {
-      const row = document.querySelector(`tr[aria-label="${label}"]`) as HTMLElement;
-      expect(row).not.toBeVisible();
-      expect(row.querySelector('td')).toHaveAttribute('colspan', '9');
-    }
+    // Testing Library doesn't name hidden elements, so find it by label.
+    const summaryRow = document.querySelector('tr[aria-label="Summary for PR #101"]') as HTMLElement;
+    expect(summaryRow).not.toBeVisible();
+    expect(summaryRow.querySelector('td')).toHaveAttribute('colspan', '9');
   });
 
-  test('an expanded row shows its summary, with the details still closed', () => {
+  test('an expanded row shows its summary', () => {
     renderRow({ isExpanded: true });
     expect(screen.getByRole('row', { name: 'Summary for PR #101' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Latest activity' })).toBeInTheDocument();
-    expect(document.querySelector('tr[aria-label="Insights for PR #101"]')).not.toBeVisible();
     expect(document.querySelector('tr.pr-row')).toHaveAttribute('data-expanded', 'true');
   });
 
-  test('an expanded row with its details open shows the full insights, which the Details button controls', () => {
-    renderRow({ isExpanded: true, isDetailsOpen: true });
-    const insightsRow = screen.getByRole('row', { name: 'Insights for PR #101' });
-    expect(insightsRow).toBeVisible();
-    expect(insightsRow.textContent).not.toBe('');
-    const detailsButton = screen.getByRole('button', { name: 'Hide details for PR #101' });
-    expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
-    expect(detailsButton).toHaveAttribute('aria-controls', insightsRow.id);
-  });
-
-  test('details open without the summary (row collapsed) stay hidden', () => {
-    renderRow({ isExpanded: false, isDetailsOpen: true });
-    expect(document.querySelector('tr[aria-label="Insights for PR #101"]')).not.toBeVisible();
-  });
-
-  test('the Details button reports the PR, section and repo', async () => {
+  test('the summary\'s "Show details" reports the PR and repo', async () => {
     const user = userEvent.setup();
-    const onToggleDetails = jest.fn();
-    renderRow({ isExpanded: true, sectionKey: 'needs-attention', onToggleDetails });
+    const onShowDetails = jest.fn();
+    renderRow({ isExpanded: true, onShowDetails });
     await user.click(screen.getByRole('button', { name: 'Show details for PR #101' }));
-    expect(onToggleDetails).toHaveBeenCalledWith('101', 'needs-attention', 'owner/repo');
+    expect(onShowDetails).toHaveBeenCalledWith('101', 'owner/repo');
+  });
+
+  test('a click on the row, not on a control, selects it', async () => {
+    const user = userEvent.setup();
+    const onSelectRow = jest.fn();
+    renderRow({ onSelectRow });
+    await user.click(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+  });
+
+  test('a click on a signal icon (inside a focusable group, not a control) selects it too', async () => {
+    const user = userEvent.setup();
+    const onSelectRow = jest.fn();
+    const pr = { ...basePr, approved: 'YES', approvalCount: '1' };
+    renderRow({ pr, entry: { prNumber: '101', repo: 'owner/repo', section: 'open', data: pr }, onSelectRow });
+    const reviewGroup = screen.getByRole('group', { name: 'Review' });
+    expect(reviewGroup).toHaveAttribute('tabindex', '0');
+    await user.click(within(reviewGroup).getAllByRole('img')[0] as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+  });
+
+  test('clicks on the row\'s controls and links do not select it', async () => {
+    const user = userEvent.setup();
+    const onSelectRow = jest.fn();
+    renderRow({ onSelectRow });
+    await user.click(screen.getByRole('button', { name: 'Show summary for PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'Update PR #101' }));
+    await user.click(screen.getByRole('checkbox'));
+    expect(onSelectRow).not.toHaveBeenCalled();
+  });
+
+  test('a selected row is marked as the current one, and tagged with its repo', () => {
+    renderRow({ isSelected: true });
+    const row = document.querySelector('tr.pr-row');
+    expect(row).toHaveAttribute('aria-current', 'true');
+    expect(row).toHaveAttribute('data-repo', 'owner/repo');
   });
 
   test('passes the attention reasons to the Signals cell', () => {

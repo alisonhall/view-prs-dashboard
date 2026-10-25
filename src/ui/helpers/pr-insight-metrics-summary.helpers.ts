@@ -1,7 +1,9 @@
 import type { PrMetrics } from "../types/pr-data.ts";
 
-// One-line summaries of a PR's insight metrics for PrInsightsRow.
-type Metrics = PrMetrics | null | undefined;
+// One-line summaries of a PR's insight metrics for the detail pane's
+// Overview tab. Only the summary parts are read, so the raw metrics and
+// normalizeRowMetrics' output both fit.
+type Metrics = Pick<PrMetrics, "counts" | "conversationSummary" | "approvalSummary" | "commentUsefulnessSummary"> | null | undefined;
 
 const createPrInsightMetricsSummaryHelpers = () => {
   const formatReviewFootprint = (metrics: Metrics = {}): string => {

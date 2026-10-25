@@ -1,0 +1,221 @@
+/*
+ * The PR table's workspace and the detail pane (PrTableApp.tsx,
+ * components/pane/). Docked beside the table on wide screens; below 900px
+ * an overlay drawer with a backdrop. Uses tokens.css.
+ */
+
+.pr-workspace-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+.pr-workspace {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.pr-workspace-list {
+  flex: 1;
+  min-width: 0;
+}
+
+/* With the pane docked, Size and Activity are hidden, so the table can be
+   narrower before it scrolls. */
+.pr-workspace[data-pane="docked"] .pr-table {
+  min-width: 720px;
+}
+
+/* Rows select for the pane */
+.pr-row {
+  cursor: pointer;
+}
+
+.pr-row[aria-current="true"] > td {
+  background: var(--color-surface-selected);
+}
+
+.pr-row[aria-current="true"] > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* The pane */
+.pr-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-md);
+}
+
+.pr-pane:focus {
+  outline: none;
+}
+
+.pr-pane[data-mode="docked"] {
+  flex: none;
+  width: clamp(360px, 34vw, 560px);
+  position: sticky;
+  top: var(--space-3);
+  max-height: calc(100vh - var(--space-6));
+  overflow-y: auto;
+}
+
+.pr-pane-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.pr-pane-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(31, 35, 40, 0.4);
+}
+
+.pr-pane[data-mode="drawer"] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(520px, 100%);
+  overflow-y: auto;
+  border-radius: 0;
+  box-shadow: var(--shadow-drawer);
+}
+
+.pr-pane-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.pr-pane-nav {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  gap: 2px;
+}
+
+.pr-pane-title {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pr-pane-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  color: var(--color-accent-text);
+  white-space: nowrap;
+}
+
+.pr-pane-meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.pr-pane-branch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-pane-branch code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.pr-pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pr-pane .ui-tab-list {
+  padding: 0 var(--space-4);
+}
+
+.pr-pane-panel {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.pr-pane-panel:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.pr-pane-none {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.pr-pane-timeline {
+  margin-bottom: var(--space-3);
+}
+
+/* Empty state */
+.pr-pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.pr-pane-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+
+.pr-pane-empty-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.pr-pane-empty-hint {
+  margin: 0;
+  max-width: 28ch;
+}
+
+/* Overview tab */
+.pr-overview-group + .pr-overview-group {
+  margin-top: var(--space-4);
+}
+
+.pr-overview-heading {
+  margin: 0 0 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}

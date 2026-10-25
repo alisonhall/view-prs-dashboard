@@ -26,20 +26,25 @@ const openPrJsonDetails = async (user, prNumber) => {
   await user.click(moreButton);
   await user.click(await screen.findByRole("menuitem", { name: "View PR JSON details" }));
 };
-// Opens a PR row's full insights: its chevron opens the summary row
-// beneath it, whose "Show details" opens the insights row after that.
-// Leaves either open if it already is. Returns the insights row.
-const openRowInsights = async (user, row) => {
-  const toggle = row.querySelector(".pr-expand-toggle");
-  if (toggle.getAttribute("aria-expanded") !== "true") {
-    await user.click(toggle);
+// Shows a PR row in the detail pane on one of its tabs (Overview,
+// Activity, Conversations, Notes): clicks the row (its Signals cell, which
+// isn't a control) unless it's already selected, then the tab unless it's
+// already open. Returns the tab's panel.
+const openPrPane = async (user, row, tab = "Overview") => {
+  if (row.getAttribute("aria-current") !== "true") {
+    await user.click(row.querySelector(".pr-cell-signals"));
   }
-  const summaryRow = row.nextElementSibling;
-  const showDetails = within(summaryRow).queryByRole("button", { name: /^Show details for PR #/ });
-  if (showDetails) {
-    await user.click(showDetails);
+  const tabButton = within(document.querySelector(".pr-pane")).getByRole("tab", { name: new RegExp(`^${tab}`) });
+  if (tabButton.getAttribute("aria-selected") !== "true") {
+    await user.click(tabButton);
   }
-  return summaryRow.nextElementSibling;
+  return within(document.querySelector(".pr-pane")).getByRole("tabpanel");
+};
+// Starts the page with the detail pane hidden (the saved choice), so the
+// table shows its Size and Activity columns.
+const hideDetailPane = () => {
+  const { PANE_VISIBLE_STORAGE_KEY } = require("../state/PrTableUiStateProvider");
+  window.localStorage.setItem(PANE_VISIBLE_STORAGE_KEY, "false");
 };
 // A tooltip's text, through its trigger's aria-describedby.
 const tooltipDescription = (element) => {
@@ -52,6 +57,8 @@ const signalNames = (row) =>
   Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
 const { PrTableApp } = require("../components/PrTableApp");
+const { PrInsightsDisplayProvider } = require("../components/PrInsightsDisplayProvider");
+const { ReviewConversationsUiStateProvider } = require("../components/ReviewConversationsUiStateProvider");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
@@ -620,15 +627,26 @@ function PrTablePortalTestLive() {
   if (!container || !hasRenderedPrData) return null;
   // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up (it
   // wraps the harness's data-level children, like mountAppRoot wraps AppRoot).
+  // The same Providers as react-app.jsx's PrTablePortal: the detail pane's
+  // tabs remount their sections, and ReviewConversationsUiStateProvider is
+  // what keeps a Conversations tab's filters across that.
   return createPortal(
     React.createElement(
       NeedsAttentionProvider,
       null,
-      // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
-      // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
-      // onCheckboxChange as props - it builds its own real handlers via
-      // useAckLabelActions()/useRowCheckboxActions().
-      React.createElement(PrTableApp),
+      React.createElement(
+        PrInsightsDisplayProvider,
+        null,
+        React.createElement(
+          ReviewConversationsUiStateProvider,
+          null,
+          // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
+          // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
+          // onCheckboxChange as props - it builds its own real handlers via
+          // useAckLabelActions()/useRowCheckboxActions().
+          React.createElement(PrTableApp),
+        ),
+      ),
     ),
     container,
     "pr-table",
@@ -1206,6 +1224,8 @@ describe("index page rendering with Testing Library", () => {
   let trackedTimeoutIds = [];
 
   beforeEach(async () => {
+    // The detail pane's shown/hidden choice is saved here; start shown.
+    window.localStorage.clear();
     trackedIntervalIds = [];
     const trackingSetInterval = (...args) => {
       const id = realSetInterval(...args);
@@ -1416,28 +1436,24 @@ describe("index page rendering with Testing Library", () => {
     const summaryToggle = within(row).getByRole("button", { name: "Show summary for PR #11" });
     expect(within(row).getByText("1 pending comment")).toBeInTheDocument();
 
-    // The chevron opens the summary; its "Show details" the full insights.
+    // The chevron opens the summary; its "Show details" shows the PR in the
+    // detail pane.
     const summaryRow = row?.nextElementSibling;
-    const insightsRow = summaryRow?.nextElementSibling;
     expect(summaryRow?.hidden).toBe(true);
-    expect(insightsRow?.hidden).toBe(true);
     await user.click(summaryToggle);
     expect(summaryRow?.hidden).toBe(false);
     expect(summaryToggle).toHaveAccessibleName("Hide summary for PR #11");
     expect(within(summaryRow).getByRole("heading", { name: "Why it's here" })).toBeInTheDocument();
-    expect(insightsRow?.hidden).toBe(true);
-    await user.click(within(summaryRow).getByRole("button", { name: "Show details for PR #11" }));
-    expect(insightsRow?.hidden).toBe(false);
     // One cell spanning every column: select, Signals, Pull request, Who,
-    // Review, CHK·MRG, Size, Activity, Actions.
-    for (const cell of [summaryRow?.querySelector("td"), insightsRow?.querySelector("td")]) {
-      expect(cell?.getAttribute("colspan")).toBe("9");
-    }
+    // Review, CHK·MRG, Actions (Size and Activity make room for the pane).
+    expect(summaryRow?.querySelector("td")?.getAttribute("colspan")).toBe("7");
 
-    const insightsContent = insightsRow?.querySelector(".row-insights-content");
-    expect(insightsContent).toBeTruthy();
-    expect(indexCss).toMatch(/\.row-insights-content\s*\{[^}]*max-height:\s*80vh;[^}]*overflow-y:\s*auto;/s);
-    expect(insightsContent?.querySelector(".pr-notes-section")).toBeTruthy();
+    const pane = screen.getByRole("complementary", { name: "PR details" });
+    expect(pane).toHaveTextContent("No PR selected");
+    await user.click(within(summaryRow).getByRole("button", { name: "Show details for PR #11" }));
+    expect(row).toHaveAttribute("aria-current", "true");
+    const notesPanel = await openPrPane(user, row, "Notes");
+    expect(notesPanel.querySelector(".pr-notes-section")).toBeTruthy();
   });
 
   test("given review comment markdown with github user attachments when insights render then blocked image tags are replaced with unavailable placeholders", async () => {
@@ -1501,10 +1517,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsRow = await openRowInsights(user, row);
-    expect(insightsRow?.hidden).toBe(false);
-
-    const insightsContent = insightsRow?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row, "Conversations");
     const placeholder = insightsContent?.querySelector(".md-image-expired");
     expect(placeholder).toBeTruthy();
     expect(String(placeholder?.textContent || "")).toContain("image unavailable");
@@ -1547,7 +1560,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row);
     expect(insightsContent).toBeTruthy();
     const insightsText = String(insightsContent?.textContent || "");
     expect(insightsText).toContain("Lines changed");
@@ -1569,6 +1582,8 @@ describe("index page rendering with Testing Library", () => {
   });
 
   test("given open and merged rows when rendering PR cells then relative last-checked indicators use each row's updated timestamp", async () => {
+    // The Activity column only shows while the detail pane is hidden.
+    hideDetailPane();
     const nowSpy = jest
       .spyOn(Date, "now")
       .mockReturnValue(new Date("2026-06-16T10:30:00Z").getTime());
@@ -1640,6 +1655,8 @@ describe("index page rendering with Testing Library", () => {
   });
 
   test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and the last check is in the Activity cell's tooltip", async () => {
+    // The Activity column only shows while the detail pane is hidden.
+    hideDetailPane();
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1746,8 +1763,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#77").closest("tr");
-      const insightsRow = await openRowInsights(user, row);
-      const insightsContent = insightsRow?.querySelector(".row-insights-content");
+      const insightsContent = await openPrPane(user, row, "Conversations");
       return Array.from(
         insightsContent?.querySelectorAll("details.insight-section") || [],
       ).find((node) => {
@@ -1891,8 +1907,7 @@ describe("index page rendering with Testing Library", () => {
     const openReviewSection = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#177").closest("tr");
-      const insightsRow = await openRowInsights(user, row);
-      const insightsContent = insightsRow?.querySelector(".row-insights-content");
+      const insightsContent = await openPrPane(user, row, "Conversations");
       return Array.from(
         insightsContent?.querySelectorAll("details.insight-section") || [],
       ).find((node) => {
@@ -2029,7 +2044,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#79").closest("tr");
-    const reviewSection = (await openRowInsights(user, row))?.querySelector(
+    const reviewSection = (await openPrPane(user, row, "Conversations"))?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
     );
     expect(reviewSection).toBeTruthy();
@@ -2144,7 +2159,7 @@ describe("index page rendering with Testing Library", () => {
     const authorAvatar = within(row).getByRole("img", { name: "Author: PR Author" });
     expect(authorAvatar.querySelector(".ui-avatar")).not.toHaveAttribute("data-viewer");
 
-    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row, "Conversations");
     expect(insightsContent).toBeTruthy();
 
     const reviewSection = insightsContent?.querySelector(
@@ -2157,8 +2172,10 @@ describe("index page rendering with Testing Library", () => {
       "Alison Hall",
     );
 
+    // The activity sequence and timeline are on the Activity tab.
+    const activityContent = await openPrPane(user, row, "Activity");
     const activitySequenceSection = Array.from(
-      insightsContent?.querySelectorAll('details.insight-section[data-insight-key="activity sequence"] .actor-identity') || [],
+      activityContent?.querySelectorAll('details.insight-section[data-insight-key="activity sequence"] .actor-identity') || [],
     );
     expect(
       activitySequenceSection.some(
@@ -2176,7 +2193,7 @@ describe("index page rendering with Testing Library", () => {
     ).toBe(true);
 
     const activityTimelineActors = Array.from(
-      insightsContent?.querySelectorAll("table .actor-identity") || [],
+      activityContent?.querySelectorAll("table .actor-identity") || [],
     );
     expect(
       activityTimelineActors.some(
@@ -2260,7 +2277,7 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#78").closest("tr");
-    const reviewSection = (await openRowInsights(user, row))?.querySelector(
+    const reviewSection = (await openPrPane(user, row, "Conversations"))?.querySelector(
       'details.insight-section[data-insight-key="review-conversations"]',
     );
     expect(reviewSection).toBeTruthy();
@@ -2321,7 +2338,7 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
     const row = (await screen.findByText("#801")).closest("tr");
-    const insightsContent = (await openRowInsights(user, row))?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row);
     const reviewersKey = Array.from(
       insightsContent?.querySelectorAll(".insight-key") || [],
     ).find((node) => String(node.textContent || "").trim() === "Reviewers");
@@ -4285,8 +4302,7 @@ describe("index page rendering with Testing Library", () => {
     expect(pr999Row).toBeTruthy();
     expect(signalNames(pr999Row)).toContain("Status: NO_LOCAL_DATA");
 
-    const pr999InsightsRow = await openRowInsights(user, pr999Row);
-    expect(pr999InsightsRow?.hidden).toBe(false);
+    const pr999InsightsRow = await openPrPane(user, pr999Row, "Notes");
     const mergedCommentNote = pr999InsightsRow?.querySelector(
       ".pr-notes-comment-note",
     );
@@ -6689,7 +6705,7 @@ describe("index page rendering with Testing Library", () => {
     const summaryButton = await screen.findByRole("button", {
       name: /^Show summary for PR #/,
     });
-    await openRowInsights(user, summaryButton.closest("tr"));
+    await openPrPane(user, summaryButton.closest("tr"), "Notes");
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -6787,7 +6803,7 @@ describe("index page rendering with Testing Library", () => {
       const summaryButton = await screen.findByRole("button", {
         name: /^Show summary for PR #/,
       });
-      await openRowInsights(localUser, summaryButton.closest("tr"));
+      await openPrPane(localUser, summaryButton.closest("tr"), "Notes");
 
       const saveNotesButton = await screen.findByRole("button", {
         name: "Save notes",
@@ -6912,7 +6928,7 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    await openRowInsights(user, (await screen.findByRole("button", { name: /^Show summary for PR #/ })).closest("tr"));
+    await openPrPane(user, (await screen.findByRole("button", { name: /^Show summary for PR #/ })).closest("tr"), "Notes");
 
     const addCommentButton = await screen.findByRole("button", {
       name: "+ Add comment",
@@ -7809,21 +7825,16 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const row = screen.getByText("#101").closest("tr");
-      await openRowInsights(user, row);
 
+      // The pane's Conversations and Activity tabs, each its section open.
       const reviewSectionSelector =
-        '.row-insights-content details.insight-section[data-insight-key="review-conversations"]';
+        '.pr-pane details.insight-section[data-insight-key="review-conversations"]';
       const activitySectionSelector =
-        '.row-insights-content details.insight-section[data-insight-key="activity sequence"]';
+        '.pr-pane details.insight-section[data-insight-key="activity sequence"]';
       const getReviewSection = () => document.querySelector(reviewSectionSelector);
       const getActivitySection = () => document.querySelector(activitySectionSelector);
-      await waitFor(() => {
-        expect(getReviewSection()).toBeTruthy();
-        expect(getActivitySection()).toBeTruthy();
-      });
-
-      await user.click(getReviewSection()?.querySelector("summary"));
-      await user.click(getActivitySection()?.querySelector("summary"));
+      await openPrPane(user, row, "Conversations");
+      expect(getReviewSection()?.open).toBe(true);
 
       const resolvedButtonSelector =
         ".insight-thread-filter-btn:nth-child(3)";
@@ -7840,6 +7851,11 @@ describe("index page rendering with Testing Library", () => {
       ).toContain("insight-thread-filter-btn-active");
       expect(String(getReviewSection()?.textContent || "")).toContain("Resolved thread");
       expect(String(getReviewSection()?.textContent || "")).not.toContain("Open thread");
+
+      await openPrPane(user, row, "Activity");
+      // Closed by the user, so the poll below must keep it closed.
+      await user.click(getActivitySection()?.querySelector("summary"));
+      expect(getActivitySection()?.open).toBe(false);
       expect(String(getActivitySection()?.textContent || "")).not.toContain(
         "Thread: resolved",
       );
@@ -7885,18 +7901,22 @@ describe("index page rendering with Testing Library", () => {
         await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
       });
 
+      // The row (the pane's title links "#101" too).
+      const prRow = () => document.querySelector('tr.pr-row[data-pr-number="101"]');
       await waitFor(() => {
-        expect(screen.getByText("#101")).toBeInTheDocument();
+        expect(prRow()).toBeInTheDocument();
       });
 
-      const refreshedRow = screen.getByText("#101").closest("tr");
-      const refreshedToggle = refreshedRow?.querySelector(".pr-expand-toggle");
-      expect(refreshedToggle?.getAttribute("aria-expanded")).toBe("true");
-
-      const refreshedReviewSection = getReviewSection();
+      // Still selected, on the same tab, with the section as the user left it.
+      const refreshedRow = prRow();
+      expect(refreshedRow).toHaveAttribute("aria-current", "true");
       const refreshedActivitySection = getActivitySection();
+      expect(refreshedActivitySection?.open).toBe(false);
+
+      // The conversation filters survive too (the tab remounts its section).
+      await openPrPane(user, refreshedRow, "Conversations");
+      const refreshedReviewSection = getReviewSection();
       expect(refreshedReviewSection?.open).toBe(true);
-      expect(refreshedActivitySection?.open).toBe(true);
       expect(
         String(
           refreshedReviewSection?.querySelector(summaryToggleSelector)?.textContent || "",
@@ -8399,15 +8419,15 @@ describe("index page rendering with Testing Library", () => {
       // describe block's fake timers would otherwise hang userEvent's own
       // internal setTimeout-based delays forever.
       const user = userEvent.setup({ delay: null });
-      await openRowInsights(user, summaryToggle.closest("tr"));
+      // The row's summary open, and the PR in the pane on its Activity tab.
+      await user.click(summaryToggle);
+      const insightsPanel = await openPrPane(user, summaryToggle.closest("tr"), "Activity");
 
       await waitFor(() => {
         expect(
           document.querySelector(".pr-expand-toggle[aria-expanded='true']"),
         ).toBeTruthy();
       });
-
-      const insightsPanel = document.querySelector(".row-insights-content");
       expect(insightsPanel).toBeTruthy();
       const activityDetails = Array.from(
         insightsPanel.querySelectorAll("details[data-insight-key]"),
@@ -8498,12 +8518,11 @@ describe("index page rendering with Testing Library", () => {
         const toggle = document.querySelector(".pr-expand-toggle");
         expect(toggle?.getAttribute("aria-expanded")).toBe("true");
       });
-      // The details stay open too.
-      expect(screen.getByRole("button", { name: /^Hide details for PR #/ })).toHaveAttribute("aria-expanded", "true");
+      // The pane still shows the PR, on the same tab.
+      expect(document.querySelector('tr.pr-row[data-pr-number="101"]')).toHaveAttribute("aria-current", "true");
+      expect(within(document.querySelector(".pr-pane")).getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
 
-      const insightsPanelAfter = document.querySelector(
-        ".row-insights-content",
-      );
+      const insightsPanelAfter = within(document.querySelector(".pr-pane")).getByRole("tabpanel");
       expect(insightsPanelAfter).toBeTruthy();
       const activityDetailsAfter = Array.from(
         insightsPanelAfter.querySelectorAll("details[data-insight-key]"),
@@ -8918,8 +8937,8 @@ describe("index page rendering with Testing Library", () => {
 
       const prLink = await screen.findByText("#123");
       const row = prLink.closest("tr");
-      // Find the activity timeline table in the insights
-      const insightsRow = await openRowInsights(user, row);
+      // The activity timeline table, on the pane's Activity tab
+      const insightsRow = await openPrPane(user, row, "Activity");
       const timelineTable = insightsRow?.querySelector("table");
       expect(timelineTable).toBeTruthy();
 

@@ -1,7 +1,10 @@
 /**
- * PrRow - one PR's row, plus two collapsible rows underneath: its summary
- * (PrRowSummary, opened by the chevron), and the full insights, opened from
- * the summary's "Show details" until phase 4 moves them to the detail pane.
+ * PrRow - one PR's row, plus its collapsible summary row underneath
+ * (PrRowSummary, opened by the chevron).
+ *
+ * Clicking anywhere on the row that isn't a control selects it for the
+ * detail pane, and clicking the selected row again deselects it (PrTable
+ * handles ↑/↓ and Esc). The selected row is marked `aria-current`.
  *
  * Memoized: only re-renders when one of its own props changes, so every
  * prop is a plain value or a stable callback (PrTableApp's handlers are
@@ -11,8 +14,8 @@
  * @module components/PrRow
  */
 
-import { memo, useId } from 'react';
-import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
+import { memo, useId, type MouseEvent } from 'react';
+import type { PrData, PrEntry } from '../types/pr-data.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { PrSelectionCell } from './cells/PrSelectionCell';
 import { PrSignalsCell } from './cells/PrSignalsCell';
@@ -22,21 +25,22 @@ import { PrReviewCell } from './cells/PrReviewCell';
 import { PrChecksCell } from './cells/PrChecksCell';
 import { PrActivityCell, PrSizeCell } from './cells/PrSizeActivityCells';
 import { PrActionsCell, type PrActionsCellProps } from './cells/PrActionsCell';
-import { PrInsightsRow } from './PrInsightsRow';
 import { PrRowSummary } from './PrRowSummary';
-import { buildExpandedInsightsKey } from './pr-row-keys';
+
+type PrNumber = string | number | undefined;
 
 export interface PrRowHandlers {
   // The chevron: the row's summary.
-  onToggleInsights: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
-  // The summary's "Show details": the full insights.
-  onToggleDetails?: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
+  onToggleInsights: (prNumber: PrNumber, sectionKey: string, repo: string) => void;
+  // A click on the row: select it, or deselect it if it's selected.
+  onSelectRow?: (prNumber: PrNumber, repo: string) => void;
+  // The summary's "Show details": show it in the pane.
+  onShowDetails?: (prNumber: PrNumber, repo: string) => void;
   onCheckboxChange?: PrActionsCellProps['onCheckboxChange'];
   onAckAction?: PrActionsCellProps['onAckAction'];
   onApplyLabel?: PrActionsCellProps['onApplyLabel'];
   onUpdatePr?: PrActionsCellProps['onUpdatePr'];
   onViewJson?: PrActionsCellProps['onViewJson'];
-  onDataRefresh?: (payload: PrDataPayload) => void;
 }
 
 export interface PrRowProps extends PrRowHandlers {
@@ -48,7 +52,7 @@ export interface PrRowProps extends PrRowHandlers {
   lifecycleSection?: string;
   actorsMap?: ActorsMap;
   isExpanded: boolean;
-  isDetailsOpen: boolean;
+  isSelected?: boolean;
   isFlagged: boolean;
   isInReview: boolean;
   isAcknowledged: boolean;
@@ -59,6 +63,10 @@ export interface PrRowProps extends PrRowHandlers {
   showSizeAndActivity: boolean;
 }
 
+// Clicks on these do their own thing, not select the row. (The Signals and
+// Review cells' focusable groups aren't controls: a click there selects.)
+const INTERACTIVE = 'a, button, input, select, textarea, label, summary, [role="menu"]';
+
 export const PrRow = memo(function PrRow({
   entry,
   pr,
@@ -68,7 +76,7 @@ export const PrRow = memo(function PrRow({
   lifecycleSection,
   actorsMap = {},
   isExpanded,
-  isDetailsOpen,
+  isSelected = false,
   isFlagged,
   isInReview,
   isAcknowledged,
@@ -78,23 +86,36 @@ export const PrRow = memo(function PrRow({
   columnCount,
   showSizeAndActivity,
   onToggleInsights,
-  onToggleDetails,
+  onSelectRow,
+  onShowDetails,
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
   onUpdatePr,
   onViewJson,
-  onDataRefresh,
 }: PrRowProps) {
-  const compositeKey = buildExpandedInsightsKey(sectionKey, repo, pr.number ?? '');
   const lastCheckedAt = String(entry?.updatedAt || '').trim();
-  const detailsId = useId();
+  const summaryId = useId();
   const reasons = attentionReasons ? attentionReasons.split('\n') : [];
-  const showDetails = isExpanded && isDetailsOpen;
+
+  const handleClick = (event: MouseEvent<HTMLTableRowElement>) => {
+    const target = event.target as Element;
+    // Not when the click was on a control, or ended a text selection.
+    if (target.closest(INTERACTIVE) || String(window.getSelection?.() ?? '').trim()) return;
+    onSelectRow?.(pr.number, repo);
+  };
 
   return (
     <>
-      <tr className="pr-row" data-pr-number={String(pr.number ?? '')} data-section-key={sectionKey} data-expanded={isExpanded ? 'true' : undefined}>
+      <tr
+        className="pr-row"
+        data-pr-number={String(pr.number ?? '')}
+        data-repo={repo}
+        data-section-key={sectionKey}
+        data-expanded={isExpanded ? 'true' : undefined}
+        aria-current={isSelected ? 'true' : undefined}
+        onClick={handleClick}
+      >
         <PrSelectionCell pr={pr} />
         <PrSignalsCell
           pr={pr}
@@ -145,18 +166,9 @@ export const PrRow = memo(function PrRow({
               isFlagged={isFlagged}
               isInReview={isInReview}
               actorsMap={actorsMap}
-              isDetailsOpen={isDetailsOpen}
-              detailsId={detailsId}
-              onToggleDetails={() => onToggleDetails?.(pr.number, sectionKey, repo)}
+              idPrefix={summaryId}
+              onShowDetails={() => onShowDetails?.(pr.number, repo)}
             />
-          )}
-        </td>
-      </tr>
-
-      <tr id={detailsId} className="insights-row" hidden={!showDetails} aria-label={`Insights for PR #${pr.number}`}>
-        <td className="insights-row-cell" colSpan={columnCount}>
-          {showDetails && (
-            <PrInsightsRow entry={entry} pr={pr} actorsMap={actorsMap} compositeKey={compositeKey} onDataRefresh={onDataRefresh} />
           )}
         </td>
       </tr>

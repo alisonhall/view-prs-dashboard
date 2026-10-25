@@ -1,9 +1,8 @@
 /** @jest-environment jsdom */
 
 // window.DOMPurify must exist *before* the component module is first
-// required, since the module registers its afterSanitizeAttributes hook (and
-// reads window.DOMPurify for the sanitize config) at module-load time, not
-// per-render - see InsightsHookSection.jsx's own top-of-file comment.
+// required, since the module registers its afterSanitizeAttributes hook at
+// module-load time, not per-render - see InsightsHook.tsx's own comment.
 const registeredHooks = {};
 const sanitizeMock = jest.fn((html) => html);
 window.DOMPurify = {
@@ -15,7 +14,14 @@ window.DOMPurify = {
 
 const { render, screen, waitFor } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { InsightsHookSection } = require('./InsightsHookSection');
+const { act } = require('@testing-library/react');
+const { useInsightsHookHtml, InsightsHookContent, clearInsightsHookCache, INSIGHTS_HOOK_DELAY_MS } = require('./InsightsHook');
+
+// The detail pane's use of it: the content when there is HTML, else nothing.
+function InsightsHookSection({ repo, prNumber, version }) {
+  const html = useInsightsHookHtml(repo, prNumber, version);
+  return html ? <InsightsHookContent html={html} /> : null;
+}
 
 function mockFetchOnce(payload, ok = true) {
   global.fetch = jest.fn().mockResolvedValue({
@@ -24,8 +30,9 @@ function mockFetchOnce(payload, ok = true) {
   });
 }
 
-describe('InsightsHookSection', () => {
+describe('useInsightsHookHtml and InsightsHookContent', () => {
   beforeEach(() => {
+    clearInsightsHookCache();
     sanitizeMock.mockClear();
     sanitizeMock.mockImplementation((html) => html);
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -126,6 +133,67 @@ describe('InsightsHookSection', () => {
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(document.querySelector('.pr-insights-hook-content')).not.toBeInTheDocument();
+  });
+
+  describe('asking the server (which runs the script each time) only when needed', () => {
+    const mockFetchAlways = (payload) => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    };
+
+    test('waits until the PR has been the same for a moment: stepping through PRs asks once, for the last', async () => {
+      jest.useFakeTimers();
+      try {
+        mockFetchAlways({ ok: true, html: '<div>hook output</div>', error: null });
+        const { rerender } = render(<InsightsHookSection repo="owner/repo" prNumber="1" />);
+        rerender(<InsightsHookSection repo="owner/repo" prNumber="2" />);
+        rerender(<InsightsHookSection repo="owner/repo" prNumber="3" />);
+        expect(global.fetch).not.toHaveBeenCalled();
+
+        // Not before the PR has been the same for the whole delay.
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(INSIGHTS_HOOK_DELAY_MS - 1);
+        });
+        expect(global.fetch).not.toHaveBeenCalled();
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(1);
+        });
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(global.fetch.mock.calls[0][0]).toContain('prNumber=3');
+        expect(screen.getByText('hook output')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('remembers each PR\'s answer: coming back to it shows it at once, without asking again', async () => {
+      mockFetchAlways({ ok: true, html: '<div>hook output</div>', error: null });
+      const { unmount } = render(<InsightsHookSection repo="owner/repo" prNumber="1" version="v1" />);
+      await waitFor(() => expect(screen.getByText('hook output')).toBeInTheDocument());
+      unmount();
+
+      render(<InsightsHookSection repo="owner/repo" prNumber="1" version="v1" />);
+      expect(screen.getByText('hook output')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('asks again once the PR\'s data changes (a new version)', async () => {
+      mockFetchAlways({ ok: true, html: '<div>hook output</div>', error: null });
+      const { rerender } = render(<InsightsHookSection repo="owner/repo" prNumber="1" version="v1" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+      rerender(<InsightsHookSection repo="owner/repo" prNumber="1" version="v2" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    });
+
+    test('does not remember a failed script, so the next look asks again', async () => {
+      mockFetchAlways({ ok: true, html: null, error: 'Command exited with code 1' });
+      const { unmount } = render(<InsightsHookSection repo="owner/repo" prNumber="1" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(console.warn).toHaveBeenCalled());
+      unmount();
+
+      render(<InsightsHookSection repo="owner/repo" prNumber="1" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    });
   });
 
   test('renders nothing when sanitization strips everything (e.g. DOMPurify unavailable)', async () => {

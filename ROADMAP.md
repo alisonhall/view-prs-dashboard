@@ -18,7 +18,7 @@
 - [x] Update the 'Status' and 'Scheduler Status' sections to make it more clear when a script is running
 - [ ] Extend the 'Your last activity' column data so that it shows the relative difference too
 - [ ] Add additional expandable sections under each PR to contain things like the user's PR description, an AI description of the PR changes, a large textarea where I can paste in AI review of the PR quality, etc.
-- [ ] Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
+- [x] ~~Have the content of the 'More insights' section be with tabs~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 4): the detail pane's tabs, as decided below. Original item: Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
 - [ ] Don't truncate comments/details under the 'Activity sequence' cards
 - [x] Add a toggle within the 'Review conversations' section for viewing all vs only unresolved conversations. The default value should be viewing only the unresolved conversations.
 - [x] Call out places where the wrong person resolved a conversation
@@ -57,7 +57,7 @@
 - [x] Add right padding for the 'In Review' column and 'CHK' column content to prevent it touching the border
 - [x] Update styling for target branch details within the 'Title' column cells
 - [x] Add styling for status and sentiment within the 'Author Insights' cards
-- [ ] Change the 'More insights' content to be in multiple columns for ease of reading - in progress (UI_REDESIGN_PLAN.md): each row's chevron now opens a three-column summary (2026-10-25, phase 3); the full content moves to the detail pane's grouped Overview tab in phase 4
+- [x] ~~Change the 'More insights' content to be in multiple columns for ease of reading~~ - done (2026-10-25, UI_REDESIGN_PLAN.md): each row's chevron opens a three-column summary (phase 3), and the full content is in the detail pane's tabs, its key/value rows grouped as Review / People / Changes (phase 4)
 - [x] Have the PR comments' 'Note...' textarea vertically expand to include all of the text content
 - [x] Align the PR comments' 'Note...' textarea properly with the other fields
 - [ ] Style the code examples differently from text

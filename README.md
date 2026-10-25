@@ -673,8 +673,13 @@ Scope mode behavior:
 Insights behavior notes:
 
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
-- The summary's `Show details` button opens the row's full insights (the details) under it. `View in table` and the `Auto update paused` chips open both.
-- Open summaries and details stay open across automatic data refresh rerenders.
+- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, close), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
+  - Select a PR by clicking anywhere on its row that isn't a control (click it again to deselect), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
+  - Leaving a PR with unsaved notes (another selection, previous/next, closing or hiding the pane) asks first.
+  - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked, the Size and Activity columns make room for it.
+  - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
+  - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
+- Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example `Activity sequence`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any PR-section field is unsaved (including Notes text/select changes and Notes comment add/remove changes).
 - Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
@@ -683,7 +688,7 @@ Insights behavior notes:
 - The polling warning snackbar is automatically cleared after a successful poll.
 - `Activity sequence` visually distinguishes event kinds (approval/review/thread/top-level/commit/system).
 - `Activity sequence` suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
-- `Review conversations` in a row's details shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
+- `Review conversations` (the detail pane's Conversations tab) shows both top-level PR comments (displayed in a gray card, sorted oldest-first) and inline review threads.
 - The `Review conversations` summary heading now includes resolved/total thread counts in the format `Review conversations (<resolved>/<total>)` (for example `Review conversations (12/43)`).
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
@@ -692,7 +697,7 @@ Insights behavior notes:
 
 ### Custom insights hook
 
-A row's details can render a `Custom insights` section populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
+The detail pane can show a `Custom insights` tab populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.
 
 To enable it:
 
@@ -1073,7 +1078,7 @@ When status is `CHANGED`, optional reason tags can be shown inline:
 
 Below the summary, assigned users and requested reviewers show as small initials badges:
 
-- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the reviewers list in the row's details.
+- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the Reviewers row of the detail pane's Overview.
 - The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
 - A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
 - A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
@@ -1158,7 +1163,7 @@ Additional notes:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
-  - Source rows in the statistics panel include a `View in table` button that switches to the PR Data tab, scrolls to the matching PR, and opens its summary and details.
+  - Source rows in the statistics panel include a `View in table` button that switches to the PR Data tab, scrolls to the matching PR, and shows it in the detail pane.
 - The page now includes an `Author Insights` tab that shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in Author Insights include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 

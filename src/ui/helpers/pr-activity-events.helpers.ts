@@ -150,11 +150,11 @@ const createPrActivityEventsHelpers = ({ asArray }: PrActivityEventsDeps = {}) =
     return fallback.filter((event) => String(event?.occurredAt || "").trim());
   };
 
-  // The activity feed, newest first (at most 60): the timeline's events
-  // (else the PR's activityEvents), each filled in from the matching
-  // fallback event where it lacks a body, link, state or commit message;
-  // the fallback list itself when there are none.
-  const buildActivityEvents = (row: PrData = {}): PrActivityEvent[] => {
+  // The activity feed, newest first (at most `limit`, 60 by default): the
+  // timeline's events (else the PR's activityEvents), each filled in from
+  // the matching fallback event where it lacks a body, link, state or
+  // commit message; the fallback list itself when there are none.
+  const buildActivityEvents = (row: PrData = {}, limit: number = 60): PrActivityEvent[] => {
     const timelineEvents = asArraySafe(row.activityTimeline).flatMap((bucket) => asArraySafe(bucket?.events));
     const sourceEvents = timelineEvents.length ? timelineEvents : asArraySafe(row.activityEvents);
     const fallbackEvents = buildFallbackActivityEvents(row);
@@ -207,7 +207,7 @@ const createPrActivityEventsHelpers = ({ asArray }: PrActivityEventsDeps = {}) =
         return true;
       })
       .sort((a, b) => String(b?.occurredAt || "").localeCompare(String(a?.occurredAt || "")))
-      .slice(0, 60);
+      .slice(0, limit);
   };
 
   return {

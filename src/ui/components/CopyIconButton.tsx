@@ -16,20 +16,28 @@
  * @module components/CopyIconButton
  */
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 
-export function CopyIconButton({ text, html, label = 'Copy', disabled = false, className = '' }) {
-  const [copyState, setCopyState] = useState('idle');
+export interface CopyIconButtonProps {
+  text: string | undefined;
+  html?: string;
+  label?: string;
+  disabled?: boolean;
+  className?: string;
+}
 
-  const writePlainText = async () => {
+export function CopyIconButton({ text, html, label = 'Copy', disabled = false, className = '' }: CopyIconButtonProps) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+
+  const writePlainText = async (value: string) => {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(value);
       return true;
     }
     return false;
   };
 
-  const handleCopy = async (event) => {
+  const handleCopy = async (event: MouseEvent) => {
     event.stopPropagation();
     if (!text) return;
 
@@ -49,7 +57,7 @@ export function CopyIconButton({ text, html, label = 'Copy', disabled = false, c
         }
       }
       if (!wrote) {
-        wrote = await writePlainText();
+        wrote = await writePlainText(text);
       }
     } catch (_error) {
       wrote = false;

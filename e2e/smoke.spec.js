@@ -79,35 +79,25 @@ const firstSummaryToggle = async (page) => {
     .getAttribute("aria-label");
   return summaryToggleFor(prTables(page), prNumberFromLabel(label)).first();
 };
-// Opens the first visible row's summary, then its details (the full
-// insights, Notes included), checking each opens. Returns the PR number.
-const openFirstRowDetails = async (page) => {
+// The detail pane, docked beside the tables (the e2e window is wide): named
+// "PR details" while empty, else by the PR's title.
+const detailPane = (page) => prTables(page).getByRole("complementary");
+// The pane's tab whose name starts with `name` (labels carry counts, e.g.
+// "Conversations 2 open").
+const paneTab = (page, name) => detailPane(page).getByRole("tab", { name: new RegExp(`^${name}`) });
+// Shows the first visible row in the detail pane (its summary's "Show
+// details"), on `tab` (Overview, Activity, Conversations, Notes), checking
+// it opens. Returns the PR number.
+const openFirstRowInPane = async (page, tab = "Overview") => {
   const summaryToggle = await firstSummaryToggle(page);
   const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
   await summaryToggle.click();
   await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
-  const detailsToggle = prTables(page)
-    .getByRole("button", { name: new RegExp(`^(Show|Hide) details for PR #${prNumber}$`) })
-    .first();
-  await detailsToggle.click();
-  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
+  await prTables(page).getByRole("button", { name: `Show details for PR #${prNumber}`, exact: true }).first().click();
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
+  await paneTab(page, tab).click();
+  await expect(paneTab(page, tab)).toHaveAttribute("aria-selected", "true");
   return prNumber;
-};
-// The insights (details) row under PR N's open "Hide details" button, in
-// the same table. Found by name ("Insights for PR #N"), hidden included:
-// its own `hidden` is what the tests check, and its section may be
-// collapsed.
-const insightsRowUnderOpenDetails = async (page) => {
-  const open = prTables(page)
-    .getByRole("button", { name: /^Hide details for PR #\d+$/, includeHidden: true })
-    .first();
-  await expect(open).toBeAttached();
-  const prNumber = prNumberFromLabel(await open.getAttribute("aria-label"));
-  const table = prTables(page)
-    .getByRole("table", { includeHidden: true })
-    .filter({ has: page.getByRole("button", { name: `Hide details for PR #${prNumber}`, exact: true, includeHidden: true }) })
-    .first();
-  return table.getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true, includeHidden: true });
 };
 
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): makes a
@@ -284,7 +274,7 @@ test("non-ASCII glyphs render correctly (charset regression guard)", async ({ pa
   expect(charset.toUpperCase()).toBe("UTF-8");
 });
 
-test("In review toggle, row summary and its details expand work", async ({ page }) => {
+test("In review toggle, row summary, and showing a PR in the detail pane work", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
 
   await page.goto("/");
@@ -298,14 +288,91 @@ test("In review toggle, row summary and its details expand work", async ({ page 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
 
-  const prNumber = await openFirstRowDetails(page);
+  const prNumber = await openFirstRowInPane(page);
   const summaryRow = prTables(page).getByRole("row", { name: `Summary for PR #${prNumber}`, exact: true }).first();
   await expect(summaryRow.getByRole("heading", { name: "Latest activity" })).toBeVisible();
   // Indented under the title (`.pr-table td:first-child` used to win).
   await expect(summaryRow.getByRole("cell")).toHaveCSS("padding-left", "48px");
-  await expect(prTables(page).getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true }).first()).toBeVisible();
+  await expect(detailPane(page).getByRole("group", { name: "Review", exact: true })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
+});
+
+test("the detail pane docks beside the table, follows ↑/↓ in the table, and Esc clears it", async ({ page }) => {
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const pane = detailPane(page);
+  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(pane).toContainText("No PR selected");
+  // Docked to the right of the tables, which drop Size and Activity for it.
+  const paneBox = await pane.boundingBox();
+  const firstTable = prTables(page).getByRole("table").first();
+  const tableBox = await firstTable.boundingBox();
+  expect(paneBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
+  await expect(firstTable.getByRole("columnheader", { name: "Activity", exact: true })).toHaveCount(0);
+
+  // ↓ from a row's link selects that row; ↓ again moves to the next one.
+  const table = prTables(page).getByRole("table").first();
+  const links = table.getByRole("link", { name: /^#\d+$/ });
+  const firstNumber = (await links.first().textContent()).slice(1);
+  await links.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(pane.getByRole("tablist", { name: `PR #${firstNumber} details`, exact: true })).toBeVisible();
+  if ((await links.count()) > 1) {
+    const secondNumber = (await links.nth(1).textContent()).slice(1);
+    await page.keyboard.press("ArrowDown");
+    await expect(pane.getByRole("tablist", { name: `PR #${secondNumber} details`, exact: true })).toBeVisible();
+    await expect(links.nth(1)).toBeFocused();
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(pane).toHaveAccessibleName("PR details");
+
+  // The pane's own close returns focus to the PR's row (its visible copy).
+  await links.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await pane.getByRole("button", { name: "Close details", exact: true }).click();
+  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(links.first()).toBeFocused();
+  expect(consoleErrors).toEqual([]);
+});
+
+test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 900 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(detailPane(page)).toHaveCount(0);
+
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.click();
+  const showDetails = prTables(page).getByRole("button", { name: `Show details for PR #${prNumber}`, exact: true }).first();
+  await showDetails.click();
+
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute("aria-modal", "true");
+  await expect(drawer).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  // Back on the button that opened it.
+  await expect(showDetails).toBeFocused();
+});
+
+test("hiding the detail pane is remembered after a reload", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const toggle = page.getByRole("button", { name: "Detail pane", exact: true });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await toggle.click();
+  await expect(detailPane(page)).toHaveCount(0);
+
+  await page.reload();
+  await waitForPrTable(page);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(detailPane(page)).toHaveCount(0);
 });
 
 test("lifecycle section expand/collapse and tab switching work", async ({ page }) => {
@@ -439,7 +506,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await waitForPrTable(page);
   const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
-  await openFirstRowDetails(page);
+  await openFirstRowInPane(page, "Notes");
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
   const prNumber = prNumberFromLabel(await notesSection.getAttribute("aria-label"));
@@ -481,7 +548,7 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await page.goto("/");
   await waitForPrTable(page);
 
-  await openFirstRowDetails(page);
+  await openFirstRowInPane(page, "Notes");
 
   // A new row, so this works whether or not the PR already has stories;
   // removing it afterwards leaves the notes unchanged.
@@ -513,7 +580,7 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await page.goto("/");
   await waitForPrTable(page);
 
-  await openFirstRowDetails(page);
+  await openFirstRowInPane(page, "Notes");
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
 
@@ -567,21 +634,15 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   if (!(await openSection.evaluate((el) => el.open))) {
     await openSection.getByText("Open PRs", { exact: true }).click();
   }
-  // The summary, then its details (where Notes are).
+  // PR #1 in the detail pane (its summary's "Show details"), on Notes.
   const summaryToggle = summaryToggleFor(prSection(page, "Open PRs"), 1);
   await summaryToggle.click();
   await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
-  // Either state, so the locator still matches after the click.
-  const detailsToggle = prSection(page, "Open PRs").getByRole("button", { name: /^(Show|Hide) details for PR #1$/ });
-  await detailsToggle.click();
-  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
+  await prSection(page, "Open PRs").getByRole("button", { name: "Show details for PR #1", exact: true }).click();
+  await paneTab(page, "Notes").click();
 
-  // Scoped to the "open" section specifically (not just [data-pr-number="1"])
-  // for the same non-exclusive-smart-group reason as summaryToggle above -
-  // PR #1's row (and its own Notes section) can render twice.
-  const notesTextarea = prSection(page, "Open PRs")
-    .getByRole("group", { name: "Notes for PR #1", exact: true })
-    .getByPlaceholder("Other notes...");
+  const notesGroup = detailPane(page).getByRole("group", { name: "Notes for PR #1", exact: true });
+  const notesTextarea = notesGroup.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
   await notesTextarea.fill(`${originalValue}a note left during this test`);
@@ -594,7 +655,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await changeServerData(page);
   await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeVisible();
 
-  // Switch away from the PR data tab - the row/Notes section stay mounted
+  // Switch away from the PR data tab - the pane and its Notes stay mounted
   // underneath (only the panel's `hidden` attribute changes), so the dirty
   // state survives. Proves the chip click actually switches back, not
   // that the tab was already active.
@@ -606,12 +667,8 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await chip.click();
 
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
-  await expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
-  const saveButton = prSection(page, "Open PRs")
-    .getByRole("group", { name: "Notes for PR #1", exact: true })
-    .getByRole("button", { name: "Save notes", exact: true });
-  await expect(saveButton).toBeFocused();
+  await expect(paneTab(page, "Notes")).toHaveAttribute("aria-selected", "true");
+  await expect(notesGroup.getByRole("button", { name: "Save notes", exact: true })).toBeFocused();
 
   // Undo the edit: with the field clean (and not focused - the save button
   // has focus), the held-back poll applies and the indicator goes away.
@@ -680,14 +737,12 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
 // Context level, including via a real multi-chunk begin/in-flight/done/
 // finish flow. Not reconstructed here.
 
-test("'View in table' from Author Insights actually expands the insights row content", async ({ page }) => {
-  // Regression test: vanilla's navigateToPrInTable finds the PR's row and
-  // directly flips `.hidden`/textContent on the insights <tr> and toggle
-  // button. Under React that left the toggle button claiming
-  // aria-expanded="true" while the insights row stayed hidden (React's own
-  // expandedInsights state never changed), so the click looked like it
-  // worked but revealed nothing. It now dispatches
-  // 'pr-navigate-to-insights' for PrTableApp to handle via its own state.
+test("'View in table' from Author Insights actually shows the PR in the detail pane", async ({ page }) => {
+  // Regression test: vanilla's navigateToPrInTable found the PR's row and
+  // flipped `.hidden`/textContent on its insights directly, which under
+  // React looked like it worked but revealed nothing. It dispatches
+  // 'pr-navigate-to-insights' for PrTableApp to handle via its own state,
+  // which now selects the PR for the pane.
   await page.goto("/");
   await waitForPrTable(page);
 
@@ -696,8 +751,7 @@ test("'View in table' from Author Insights actually expands the insights row con
   await tableLink.waitFor();
   await tableLink.click();
 
-  const insightsRow = await insightsRowUnderOpenDetails(page);
-  await expect(insightsRow).toHaveJSProperty("hidden", false);
+  await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
 });
 
 test("'View in table' for a flagged PR shows and focuses it in an open section, not the closed Flagged group", async ({ page }) => {
@@ -718,8 +772,7 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
 
   const visiblePrLinks = prTables(page).getByRole("link", { name: "#2", exact: true }).filter({ visible: true });
   await expect(visiblePrLinks.first()).toBeFocused();
-  await expect(prTables(page).getByRole("button", { name: "Hide summary for PR #2", exact: true })).toBeVisible();
-  await expect(prTables(page).getByRole("button", { name: "Hide details for PR #2", exact: true })).toBeVisible();
+  await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
 });
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {
@@ -2032,19 +2085,12 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await viewInTableButton.click();
 
   // Regression assertion: this used to silently do nothing under a
-  // React-owned PR table (the insights row never actually expanded, even
-  // though the vanilla code "succeeded" at finding the link and
-  // scrolling to it) - now it both switches tabs and expands the row.
-  // Checks the insights (details) row's `hidden` DOM property directly
-  // (not Playwright's toBeVisible/toBeHidden), the same
-  // pattern the sibling Author Insights "View in table" test above uses
-  // and for the same reason: PR #1 can legitimately end up inside a
-  // currently-collapsed lifecycle/smart-group section depending on what
-  // earlier tests in this shared-webServer suite did to its flagged/
-  // in-review state, without that being a regression in this feature.
+  // React-owned PR table (the insights never actually showed, even though
+  // the vanilla code "succeeded" at finding the link and scrolling to it) -
+  // now it both switches tabs and shows the PR in the detail pane, which
+  // sits outside the sections, so it shows whichever section the row is in.
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  const insightsRow = await insightsRowUnderOpenDetails(page);
-  await expect(insightsRow).toHaveJSProperty("hidden", false);
+  await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
 });
 
 test("React-owned Author Insights selector renders options, changes the selected author, and survives an unrelated re-render", async ({ page }) => {

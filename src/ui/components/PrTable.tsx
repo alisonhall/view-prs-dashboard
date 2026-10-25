@@ -5,12 +5,19 @@
  * be told apart.
  *
  * Columns: select, Signals, Pull request, Who, Review, CHK·MRG, Size,
- * Activity, Actions. Size and Activity hide while the detail pane is open
- * (`showSizeAndActivity`, phase 4).
+ * Activity, Actions. Size and Activity hide while the detail pane is
+ * docked (`showSizeAndActivity`).
+ *
+ * The detail pane's keyboard selection, while focus is in the table (on
+ * any row control, not while typing or when the key was already used):
+ * - ↑/↓ select the row with focus, or move from the selected row to the
+ *   one above/below, and move focus to that row's PR link.
+ * - Esc clears the selection.
  *
  * @module components/PrTable
  */
 
+import { useRef, type KeyboardEvent } from 'react';
 import type { PrEntry } from '../types/pr-data.ts';
 import { PrRow, type PrRowHandlers } from './PrRow';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
@@ -50,9 +57,14 @@ export interface PrTableProps extends PrRowHandlers {
   lifecycleSection?: string;
   actorsMap?: ActorsMap;
   // By composite key (buildExpandedInsightsKey): rows showing their
-  // summary, and rows whose summary has its details open.
+  // summary.
   expandedInsights: Record<string, boolean>;
-  openDetails?: Record<string, boolean>;
+  // The selected PR's buildActivePrKey key ("repo::number"), if any.
+  selectedPrKey?: string;
+  // Select a PR (no toggling); false when it didn't happen (the user kept
+  // unsaved notes on the current one).
+  onSelectPr?: (prNumber: string, repo: string) => boolean | undefined;
+  onClearSelection?: () => void;
   getPrFlags?: (prNumber: string | number | undefined, repo?: string) => PrFlags;
   getAttentionReasons?: (entry: PrEntry) => string[];
   activePrNumbers?: string[];
@@ -62,7 +74,9 @@ export interface PrTableProps extends PrRowHandlers {
 
 const NO_FLAGS: PrFlags = { isFlagged: false, isInReview: false, isAcknowledged: false };
 const NO_REASONS: string[] = [];
-const NO_OPEN_DETAILS: Record<string, boolean> = {};
+
+const isEditable = (target: EventTarget | null) =>
+  target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 
 export function PrTable({
   prs,
@@ -73,7 +87,9 @@ export function PrTable({
   lifecycleSection,
   actorsMap = {},
   expandedInsights,
-  openDetails = NO_OPEN_DETAILS,
+  selectedPrKey = '',
+  onSelectPr,
+  onClearSelection,
   getPrFlags,
   getAttentionReasons,
   activePrNumbers,
@@ -82,13 +98,37 @@ export function PrTable({
   ...handlers
 }: PrTableProps) {
   useTooltipController();
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || isEditable(event.target)) return;
+    if (event.key === 'Escape') {
+      if (!selectedPrKey) return;
+      event.preventDefault();
+      onClearSelection?.();
+      return;
+    }
+    const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+    const focusedRow = (event.target as Element).closest('tr.pr-row');
+    if (!delta || !focusedRow || !tableRef.current) return;
+    event.preventDefault();
+    const rows = Array.from(tableRef.current.querySelectorAll<HTMLTableRowElement>('tbody > tr.pr-row'));
+    const keyOf = (row: HTMLTableRowElement) => buildActivePrKey(row.dataset.prNumber ?? '', row.dataset.repo);
+    const focusedIndex = rows.indexOf(focusedRow as HTMLTableRowElement);
+    const fromSelected = keyOf(focusedRow as HTMLTableRowElement) === selectedPrKey;
+    const target = fromSelected ? rows[Math.min(Math.max(focusedIndex + delta, 0), rows.length - 1)] : focusedRow as HTMLTableRowElement;
+    if (!target || (fromSelected && target === focusedRow)) return;
+    if (onSelectPr?.(target.dataset.prNumber ?? '', target.dataset.repo ?? '')) {
+      target.querySelector<HTMLElement>('.pr-link')?.focus();
+    }
+  };
   const columns = COLUMNS.filter((column) => showSizeAndActivity || !column.optional);
   // Composite "repo::prNumber" keys: PR numbers are only unique within a repo.
   const activeKeys = new Set((activePrNumbers || []).map(String));
   const queuedKeys = new Set((queuedPrNumbers || []).map(String));
 
   return (
-    <table className="pr-table" aria-label={label || undefined}>
+    <table ref={tableRef} className="pr-table" aria-label={label || undefined} onKeyDown={handleKeyDown}>
       <colgroup>
         {columns.map((column) => (
           <col key={column.key} className={`pr-col-${column.key}`} />
@@ -140,7 +180,7 @@ export function PrTable({
               lifecycleSection={entry.section || lifecycleSection}
               actorsMap={actorsMap}
               isExpanded={expandedInsights[rowKey] ?? false}
-              isDetailsOpen={openDetails[rowKey] ?? false}
+              isSelected={Boolean(selectedPrKey) && buildActivePrKey(data.number ?? '', rowRepo) === selectedPrKey}
               isFlagged={flags.isFlagged}
               isInReview={flags.isInReview}
               isAcknowledged={flags.isAcknowledged}

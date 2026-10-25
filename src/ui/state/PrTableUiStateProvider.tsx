@@ -4,10 +4,31 @@ import {
   PrTableUiStateContext,
   type PrTableOpenSectionsValue,
   type PrTableUiStateValue,
+  type PaneTab,
   type RenderedSection,
   type SelectedPr,
 } from './PrTableUiStateContext';
 import { getPrNumbersInOpenSections } from '../helpers/pr-export.helpers.ts';
+
+export const PANE_VISIBLE_STORAGE_KEY = 'view-prs:detail-pane-visible';
+
+// Storage can be missing or throw (private windows, blocked site data):
+// the pane is then shown, and the choice lasts until the page reloads.
+const readPaneVisible = (): boolean => {
+  try {
+    return window.localStorage.getItem(PANE_VISIBLE_STORAGE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+};
+
+const writePaneVisible = (visible: boolean) => {
+  try {
+    window.localStorage.setItem(PANE_VISIBLE_STORAGE_KEY, String(visible));
+  } catch {
+    // Not saved; the choice still applies until the page reloads.
+  }
+};
 
 const sameStrings = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
@@ -33,8 +54,9 @@ const sameSections = (a: RenderedSection[], b: RenderedSection[]): boolean =>
 export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const [sectionOpenOverrides, setSectionOpenOverrides] = useState<Record<string, boolean>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [detailRows, setDetailRows] = useState<Record<string, boolean>>({});
-  const [selectedPr, setSelectedPr] = useState<SelectedPr | null>(null);
+  const [selectedPr, setSelectedPrState] = useState<SelectedPr | null>(null);
+  const [isPaneVisible, setPaneVisibleState] = useState(readPaneVisible);
+  const [paneTab, setPaneTab] = useState<PaneTab>('overview');
   const [renderedSections, setRenderedSections] = useState<RenderedSection[]>([]);
 
   const isSectionOpen = useCallback(
@@ -50,11 +72,15 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const toggleRowExpanded = useCallback((key: string) => {
     setExpandedRows((previous) => ({ ...previous, [key]: !previous[key] }));
   }, []);
-  const setRowDetailsOpen = useCallback((key: string, open: boolean) => {
-    setDetailRows((previous) => (Boolean(previous[key]) === open ? previous : { ...previous, [key]: open }));
+  // Selecting the PR already selected keeps the same object.
+  const setSelectedPr = useCallback((pr: SelectedPr | null) => {
+    setSelectedPrState((previous) =>
+      previous === pr || (previous && pr && previous.repo === pr.repo && previous.prNumber === pr.prNumber) ? previous : pr,
+    );
   }, []);
-  const toggleRowDetails = useCallback((key: string) => {
-    setDetailRows((previous) => ({ ...previous, [key]: !previous[key] }));
+  const setPaneVisible = useCallback((visible: boolean) => {
+    setPaneVisibleState(visible);
+    writePaneVisible(visible);
   }, []);
   // The table reports on every sections rebuild; an unchanged report keeps
   // the same state.
@@ -70,11 +96,12 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
       expandedRows,
       setRowExpanded,
       toggleRowExpanded,
-      detailRows,
-      setRowDetailsOpen,
-      toggleRowDetails,
       selectedPr,
       setSelectedPr,
+      isPaneVisible,
+      setPaneVisible,
+      paneTab,
+      setPaneTab,
       reportRenderedSections,
     }),
     [
@@ -84,10 +111,11 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
       expandedRows,
       setRowExpanded,
       toggleRowExpanded,
-      detailRows,
-      setRowDetailsOpen,
-      toggleRowDetails,
       selectedPr,
+      setSelectedPr,
+      isPaneVisible,
+      setPaneVisible,
+      paneTab,
       reportRenderedSections,
     ],
   );

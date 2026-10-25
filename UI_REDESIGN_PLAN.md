@@ -384,6 +384,63 @@ app working:
   `InsightsHookSection` and `CopyIconButton` become `.tsx` here.
 - Run `npm run stability:heap-check` after this phase, since selection
   changes remount the pane often.
+- **Done (2026-10-25)** on branch `ui-redesign/phase-4`:
+  - `components/pane/PrDetailPane.tsx`, docked in a new workspace layout
+    beside the sections (`styles/pane.css`), named "PR #N: title". Header,
+    actions (named without the PR number, since the pane is about one PR),
+    tabs with counts (every activity event; open conversations, "with you"
+    when that's what's counted) and an unsaved-notes marker, and the empty
+    state. Its content is keyed by the PR, so each PR gets fresh Notes and
+    Conversations state, as each row's insights did - kept across a switch,
+    one PR's unsaved notes would show, and save, under the next.
+  - Custom insights is a tab only when the hook returns HTML for the PR
+    (`components/insights/InsightsHook.tsx`, which replaced
+    `InsightsHookSection`). The server runs the script for every request,
+    so the pane asks only after its selection has been still for 300ms,
+    and remembers each PR's answer per data version (not failures).
+  - State in `PrTableUiStateProvider`: the selection (selecting the same PR
+    keeps the same object), pane visibility (localStorage, per browser:
+    the "restored filters" are saved on the server, but showing a side pane
+    depends on the screen), and the tab (in memory). The temporary details
+    row and its `detailRows` state are gone; the summary's "Show details"
+    now opens the PR in the pane, showing the pane if it was hidden.
+  - Selection: row click (anywhere but a control - the Signals and Review
+    cells' focusable groups count as the row - or after a text selection),
+    click again to deselect, ↑/↓ in a table (`PrTable`, focus follows to
+    the row's link), Esc in the table or the docked pane. Rows are marked
+    `aria-current`. Previous/next step through the open sections' PRs in
+    display order.
+  - Unsaved notes (decision 3): selecting another PR, ↑/↓, previous/next,
+    closing and hiding the pane ask first (`window.confirm`).
+  - Below 900px (`useMediaQuery`) the pane is a modal drawer
+    (`useFocusTrap`: focus moves to the dialog itself, so no button tooltip
+    takes the first Esc; Tab is kept inside; Esc and the backdrop close
+    it; focus goes back to what opened it). Closing the docked pane moves
+    focus to the PR's row, in a section that's open.
+  - Size and Activity hide while the pane is docked; the `Detail pane`
+    button above the table shows or hides it (the header arrives in
+    phase 9).
+  - "View in table" and the "Auto update paused" chips select the PR
+    (opening a section it's in if needed) and focus its row, or with a
+    chip the Notes tab's Save button.
+  - Overview tab: `pane/PrOverview.tsx` replaces `PrInsightsRow` (deleted)
+    with Review / People / Changes groups, then Approval risk details and
+    Data freshness collapsed. The activity timeline moved to the Activity
+    tab; the branch copy button is in the header only. The
+    STATUS/CHK/MRG badges went with `PrInsightsRow` (their values are the
+    Review group's first rows), and so did their helper and CSS.
+  - Converted to `.tsx`: `CopyIconButton`, `LinesChangedInsight`,
+    `ApprovalRiskSection`, `InsightSection` (with `defaultOpen`, so a
+    tab's section starts open) and the insights hook. `PrMetricsApproval`
+    and `PrData` gain the schema fields they read.
+  - Heap check (200 cycles, now also swapping the selected PR and tab each
+    cycle; its In review step looked for a checkbox that has been a
+    button since phase 2, and now uses the button): 1.18x, under the 1.5x
+    limit.
+  - The integration harness now mounts the same Providers as
+    `PrTablePortal` (`PrInsightsDisplayProvider`,
+    `ReviewConversationsUiStateProvider`); the Conversations tab's
+    remount showed it was missing them.
 
 ### Phase 5 - Activity tab
 

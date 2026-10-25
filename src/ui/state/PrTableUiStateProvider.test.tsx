@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import { act, render } from '@testing-library/react';
-import { PrTableUiStateProvider } from './PrTableUiStateProvider';
+import { PANE_VISIBLE_STORAGE_KEY, PrTableUiStateProvider } from './PrTableUiStateProvider';
 import {
   usePrTableOpenSections,
   usePrTableUiState,
@@ -67,20 +67,6 @@ describe('PrTableUiStateProvider', () => {
     expect(table().expandedRows['open:owner/repo:2']).toBe(true);
   });
 
-  test("rows' details open, close and toggle by composite key, apart from their summary", () => {
-    renderProvider();
-
-    act(() => table().setRowDetailsOpen('open:owner/repo:1', true));
-    expect(table().detailRows['open:owner/repo:1']).toBe(true);
-    expect(table().expandedRows['open:owner/repo:1']).toBeUndefined();
-
-    act(() => table().toggleRowDetails('open:owner/repo:1'));
-    expect(table().detailRows['open:owner/repo:1']).toBe(false);
-
-    act(() => table().toggleRowDetails('open:owner/repo:2'));
-    expect(table().detailRows['open:owner/repo:2']).toBe(true);
-  });
-
   test('holds the selected PR', () => {
     renderProvider();
     expect(table().selectedPr).toBeNull();
@@ -90,6 +76,56 @@ describe('PrTableUiStateProvider', () => {
 
     act(() => table().setSelectedPr(null));
     expect(table().selectedPr).toBeNull();
+  });
+
+  test('selecting the PR already selected re-renders nobody', () => {
+    renderProvider();
+    act(() => table().setSelectedPr({ repo: 'owner/repo', prNumber: '412' }));
+    const count = tableRenders.length;
+    act(() => table().setSelectedPr({ repo: 'owner/repo', prNumber: '412' }));
+    expect(tableRenders.length).toBe(count);
+  });
+
+  test('holds the pane tab, starting on Overview', () => {
+    renderProvider();
+    expect(table().paneTab).toBe('overview');
+    act(() => table().setPaneTab('notes'));
+    expect(table().paneTab).toBe('notes');
+  });
+
+  describe('pane visibility', () => {
+    afterEach(() => {
+      window.localStorage.clear();
+      jest.restoreAllMocks();
+    });
+
+    test('is shown by default, and saved in localStorage when changed', () => {
+      renderProvider();
+      expect(table().isPaneVisible).toBe(true);
+
+      act(() => table().setPaneVisible(false));
+      expect(table().isPaneVisible).toBe(false);
+      expect(window.localStorage.getItem(PANE_VISIBLE_STORAGE_KEY)).toBe('false');
+    });
+
+    test('starts from the saved choice', () => {
+      window.localStorage.setItem(PANE_VISIBLE_STORAGE_KEY, 'false');
+      renderProvider();
+      expect(table().isPaneVisible).toBe(false);
+    });
+
+    test('still works when storage throws (blocked site data): shown, and the choice applies until reload', () => {
+      jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('blocked');
+      });
+      jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('blocked');
+      });
+      renderProvider();
+      expect(table().isPaneVisible).toBe(true);
+      act(() => table().setPaneVisible(false));
+      expect(table().isPaneVisible).toBe(false);
+    });
   });
 
   test('derives the open sections and their PR numbers from the reported sections', () => {
@@ -139,14 +175,12 @@ describe('PrTableUiStateProvider', () => {
     act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
-    act(() => table().setRowDetailsOpen('open:owner/repo:3', true));
     const tableCount = tableRenders.length;
     const openSectionsCount = openSectionsRenders.length;
 
     act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
-    act(() => table().setRowDetailsOpen('open:owner/repo:3', true));
     expect(tableRenders.length).toBe(tableCount);
     expect(openSectionsRenders.length).toBe(openSectionsCount);
   });

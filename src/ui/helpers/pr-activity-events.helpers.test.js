@@ -210,6 +210,9 @@ describe("pr activity events helpers", () => {
 
       expect(events).toHaveLength(60);
       expect(events[0].sourceId).toBe("e64");
+      // A limit of its own, e.g. none to count them all.
+      expect(buildActivityEvents({ activityEvents }, Number.POSITIVE_INFINITY)).toHaveLength(65);
+      expect(buildActivityEvents({ activityEvents }, 3)).toHaveLength(3);
     });
   });
 });

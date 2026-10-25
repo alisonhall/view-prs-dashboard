@@ -33,7 +33,7 @@ function getEventKind(event) {
   return 'system';
 }
 
-export function ActivityEventsSection({ pr, actorsMap }) {
+export function ActivityEventsSection({ pr, actorsMap, defaultOpen = false }) {
   const { normalizePrRootUrl, buildActivityEvents } = usePrInsightsDisplay();
 
   // The same feed the row summary's "Latest activity" shows the top of
@@ -42,7 +42,7 @@ export function ActivityEventsSection({ pr, actorsMap }) {
   if (!activityEvents.length) return null;
 
   return (
-    <InsightSection summaryText="Activity sequence">
+    <InsightSection summaryText="Activity sequence" defaultOpen={defaultOpen}>
       <div className="insight-list">
         {activityEvents.map((event, index) => {
           const bodyText = String(event?.body || '').trim();

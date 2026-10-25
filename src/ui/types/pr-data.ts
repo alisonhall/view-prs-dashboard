@@ -122,7 +122,11 @@ export interface PrNotes {
 // One approval as the insights script assessed it ($defs.metricsApproval).
 export interface PrMetricsApproval extends PrActor {
   approvedAt?: string;
+  mergeLeadMinutes?: number | null;
+  commentCountAfterApproval?: number;
+  reviewCountAfterApproval?: number;
   changeRequestCountAfterApproval?: number;
+  commitCountAfterApproval?: number;
   riskyApproval?: boolean;
   highRiskApproval?: boolean;
 }
@@ -212,6 +216,8 @@ export interface PrData {
   commentEvents?: PrActivityEvent[];
   activityEvents?: PrActivityEvent[];
   activityTimeline?: PrActivityTimelineBucket[];
+  // A text summary of the timeline, shown when it has no buckets.
+  activityTimelineSummary?: string;
   // Digits-only string in the data file.
   openConversationCount?: string | number;
   viewedFilesSummary?: string;

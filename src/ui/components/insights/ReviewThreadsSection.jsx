@@ -419,7 +419,7 @@ function computeReviewThreadsData(pr, actorsMap, helpers) {
   return { reviewThreads, unresolvedReviewThreads, resolvedReviewThreads, incorrectlyResolvedByAuthorCount, reviewSummaries, topLevelComments, prAuthorLogin, policy };
 }
 
-export function ReviewThreadsSection({ pr, actorsMap }) {
+export function ReviewThreadsSection({ pr, actorsMap, defaultOpen = false }) {
   const helpers = useHelpers();
   // Phase H.19 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 1): `helpers` itself is a fresh object literal every render
@@ -481,6 +481,7 @@ export function ReviewThreadsSection({ pr, actorsMap }) {
       summaryText={countLabel}
       summaryContent={summaryContent}
       sectionKey="review-conversations"
+      defaultOpen={defaultOpen}
       className={incorrectlyResolvedByAuthorCount > 0 ? 'insight-section-review-conversations-warning insight-section-warning' : ''}
     >
       <div>

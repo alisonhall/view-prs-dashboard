@@ -18,8 +18,12 @@ import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
-import { usePrTableUiState } from '../state/PrTableUiStateContext';
+import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
 import { NowProvider } from '../state/NowContext';
+import { useNotesDirty } from '../state/NotesDirtyContext';
+import { useMediaQuery } from '../state/useMediaQuery';
+import { PrDetailPane } from './pane/PrDetailPane';
+import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '../helpers/pr-row-sorting.helpers.ts';
@@ -36,10 +40,9 @@ interface ActivePr {
   prNumber?: string | number;
 }
 
-// The row a 'pr-navigate-to-insights' request expanded, waiting for it to
+// The PR a 'pr-navigate-to-insights' request selected, waiting for it to
 // render so it can be scrolled to and focused.
 interface PendingNavigation {
-  compositeKey: string;
   sectionKey: string;
   prNumber: string;
   repo: string;
@@ -48,6 +51,23 @@ interface PendingNavigation {
 
 // Shared by every render without an actorsMap in the payload.
 const NO_ACTORS: Record<string, string | undefined> = {};
+
+export const NARROW_SCREEN_QUERY = '(max-width: 899px)';
+
+const samePr = (a: SelectedPr | null, b: SelectedPr | null) =>
+  a === b || Boolean(a && b && a.repo === b.repo && a.prNumber === b.prNumber);
+
+// A row's PR link: in the given section if it's there, else the first copy
+// not inside a collapsed section (the same PR's row can be in several, and
+// a closed one's can't take focus), else the first one.
+const findRowLink = (pr: SelectedPr, sectionKey = ''): HTMLElement | null => {
+  const selector = `tr.pr-row[data-pr-number="${pr.prNumber}"][data-repo="${pr.repo}"] .pr-link`;
+  const section = sectionKey ? document.querySelector(`[data-pr-section="${sectionKey}"]`) : null;
+  const inSection = section?.querySelector<HTMLElement>(selector);
+  if (inSection) return inSection;
+  const links = Array.from(document.querySelectorAll<HTMLElement>(selector));
+  return links.find((link) => !link.closest('details:not([open])')) || links[0] || null;
+};
 
 /**
  * Main PR Table Application Component
@@ -77,13 +97,18 @@ export function PrTableApp() {
     isSectionOpen,
     setSectionOpen,
     expandedRows: expandedInsights,
-    setRowExpanded,
     toggleRowExpanded,
-    detailRows,
-    setRowDetailsOpen,
-    toggleRowDetails,
+    selectedPr,
+    setSelectedPr,
+    isPaneVisible,
+    setPaneVisible,
+    paneTab,
+    setPaneTab,
     reportRenderedSections,
   } = usePrTableUiState();
+  const { dirtyPrNumbers } = useNotesDirty();
+  // Below 900px the detail pane is an overlay drawer instead of docked.
+  const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
 
   // PR numbers are only unique within a repo, and rows from repos other
   // than the currently-configured one now render alongside it (see
@@ -608,29 +633,77 @@ export function PrTableApp() {
     );
   }, [sections, reportRenderedSections]);
 
-  // Listen for "View in table" clicks from the Author Insights tab. Vanilla
-  // handles this by finding the PR's row and directly flipping
-  // `.hidden`/textContent on the insights <tr> and toggle button - which
-  // only works when vanilla itself owns that DOM. Under React, that direct
-  // mutation left the toggle button claiming "expanded" while the insights
-  // content never actually rendered, since React's own expandedInsights
-  // state never changed. state/useNavigateToPrInTable.tsx (used by Author
-  // Insights'/Review Stats' "View in table" buttons) dispatches this event
-  // instead of mutating the DOM directly (it replaced the vanilla
-  // navigateToPrInTable in pr-author-insights-pr-link.helpers.js, deleted).
-  //
-  // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // state/useNavigateToPrInTable.tsx (AutoRenderBlockedLinks.jsx's "jump to
-  // unsaved PR" chips) dispatches this same event too, now with an extra
-  // `focusUnsaved` detail flag - pendingNavigationRef tracks which
-  // composite key to scroll/focus once its insights row actually renders
-  // (setExpandedInsights is async), since the scroll/focus target doesn't
-  // exist in the DOM yet at the moment this listener runs.
+  // The selected PR's entry, looked up again in each payload; null when
+  // nothing is selected or the PR is no longer in the data.
+  const selectedEntry = useMemo(() => {
+    if (!selectedPr) return null;
+    return (
+      Object.values(payload?.byPrNumber || {}).find(
+        (entry) =>
+          (entry?.repo || effectiveRepo) === selectedPr.repo &&
+          String(entry?.data?.number ?? entry?.prNumber ?? '') === selectedPr.prNumber,
+      ) || null
+    );
+  }, [payload, selectedPr, effectiveRepo]);
+  const selectedPrKey = selectedPr ? buildActivePrKey(selectedPr.prNumber, selectedPr.repo) : '';
+
+  // The PRs in the open sections, in display order, each once: what the
+  // pane's previous/next step through.
+  const navigationOrder = useMemo(() => {
+    const seen = new Set<string>();
+    const order: SelectedPr[] = [];
+    sections.forEach((section) => {
+      if (!isSectionOpen(section.key, Boolean(section.defaultOpen))) return;
+      section.prs.forEach((entry) => {
+        const pr = { repo: entry.repo || effectiveRepo, prNumber: String(entry?.data?.number ?? entry?.prNumber ?? '') };
+        const key = buildActivePrKey(pr.prNumber, pr.repo);
+        if (!seen.has(key)) {
+          seen.add(key);
+          order.push(pr);
+        }
+      });
+    });
+    return order;
+  }, [sections, isSectionOpen, effectiveRepo]);
+  const selectedIndex = selectedPr ? navigationOrder.findIndex((pr) => samePr(pr, selectedPr)) : -1;
+  const previousPr = selectedIndex > 0 ? navigationOrder[selectedIndex - 1] : undefined;
+  const nextPr = selectedIndex >= 0 ? navigationOrder[selectedIndex + 1] : undefined;
+
+  // Leaving the selected PR (another selection, previous/next, closing or
+  // hiding the pane) unmounts its Notes: ask first when they're unsaved
+  // (UI_REDESIGN_PLAN.md, decision 3).
+  const confirmLeavingPr = (): boolean => {
+    if (!selectedPr || !dirtyPrNumbers.includes(selectedPr.prNumber)) return true;
+    return window.confirm(`PR #${selectedPr.prNumber} has unsaved notes. Discard them?`);
+  };
+  const selectPr = (next: SelectedPr | null): boolean => {
+    if (samePr(next, selectedPr)) return true;
+    if (!confirmLeavingPr()) return false;
+    setSelectedPr(next);
+    return true;
+  };
+
+  // Listen for "View in table" clicks (Author Insights, Review Stats) and
+  // the "Auto update paused" chips (with `focusUnsaved`), which dispatch
+  // this event (state/useNavigateToPrInTable.tsx) rather than reaching
+  // into the table's DOM. The PR is selected for the detail pane, its row
+  // scrolled to and focused - or, with `focusUnsaved`, the Notes tab
+  // opened and its Save button focused. pendingNavigationRef holds the
+  // target until it has rendered.
   const pendingNavigationRef = useRef<PendingNavigation | null>(null);
   // Bumped on every navigation request, so the scroll/focus effect below
-  // runs even when the row was already expanded (setRowExpanded then
-  // leaves the expanded rows unchanged, so they alone don't re-run it).
+  // runs even when nothing else changed (the PR was already selected).
   const [navigationRequestCount, setNavigationRequestCount] = useState(0);
+  // The listener is subscribed once; it calls the current render's code.
+  const navigateToPr = useStableCallback((request: PendingNavigation) => {
+    // Rows without a repo of their own belong to the table's repo.
+    const target = { ...request, repo: request.repo || effectiveRepo };
+    if (!selectPr({ repo: target.repo, prNumber: target.prNumber })) return;
+    pendingNavigationRef.current = target;
+    setSectionOpen(target.sectionKey, true);
+    if (target.focusUnsaved) setPaneTab('notes');
+    setNavigationRequestCount((count) => count + 1);
+  });
   // The listener below is subscribed once, so it reads open state through
   // this ref rather than a stale closure.
   const isSectionOpenRef = useRef(isSectionOpen);
@@ -675,69 +748,38 @@ export function PrTableApp() {
         return;
       }
       const { section: matchingSection, entry: matchingEntry } = target;
-      const compositeKey = buildExpandedInsightsKey(matchingSection.key, matchingEntry?.repo, prNumber);
-      pendingNavigationRef.current = {
-        compositeKey,
+      navigateToPr({
         sectionKey: matchingSection.key,
         prNumber,
         repo: matchingEntry?.repo || '',
         focusUnsaved,
-      };
-      setSectionOpen(matchingSection.key, true);
-      // The summary and its details: the full insights (Notes included,
-      // for focusUnsaved) are what "View in table" and "Jump to PR" show.
-      setRowExpanded(compositeKey, true);
-      setRowDetailsOpen(compositeKey, true);
-      setNavigationRequestCount((count) => count + 1);
+      });
     };
 
     window.addEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     return () => {
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
-  }, [setRowExpanded, setRowDetailsOpen, setSectionOpen]);
+  }, [navigateToPr]);
 
-  // Runs after the insights row for a pending navigation target has
-  // actually committed to the DOM (expandedInsights flips synchronously in
-  // React terms, but the row's own markup - including the Notes section's
-  // save button - only exists once this effect's render has happened).
-  // Mirrors vanilla's own scrollIntoView/focus behavior
-  // (navigateToPrInTable/navigateToAuthorInsights,
-  // pr-auto-render-navigation.helpers.js, now retired) - same selectors,
-  // just run from inside the component that owns this markup instead of a
-  // cross-cutting DOM scan.
+  // Runs once a navigation's PR is selected and rendered: scrolls to and
+  // focuses its row's link in the section it was found in (the same PR's
+  // row also appears in its other sections), or with focusUnsaved the
+  // pane's Notes Save button.
   useEffect(() => {
     const pending = pendingNavigationRef.current;
-    if (!pending || !expandedInsights[pending.compositeKey] || !detailRows[pending.compositeKey]) {
+    if (!pending) {
       return;
     }
     pendingNavigationRef.current = null;
 
-    const rowSelector = pending.repo
-      ? `[data-pr-number="${pending.prNumber}"][data-repo="${pending.repo}"]`
-      : `[data-pr-number="${pending.prNumber}"]`;
-    // The same PR's row also appears in its other sections; look in the
-    // section it was expanded in first, so focus lands on the visible copy.
-    const sectionHost = document.querySelector(`[data-pr-section="${pending.sectionKey}"]`);
-    const findTarget = (selector: string): HTMLElement | null => sectionHost?.querySelector(selector) || document.querySelector(selector);
-
-    let focusTarget = null;
-    if (pending.focusUnsaved) {
-      focusTarget = findTarget(`.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`);
-    }
-    if (!focusTarget) {
-      focusTarget = findTarget(`${rowSelector} .pr-link`);
-    }
-    if (!focusTarget) {
-      return;
-    }
-    if (typeof focusTarget.scrollIntoView === 'function') {
-      focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    if (typeof focusTarget.focus === 'function') {
-      focusTarget.focus();
-    }
-  }, [expandedInsights, detailRows, navigationRequestCount]);
+    const notesSave = pending.focusUnsaved
+      ? document.querySelector<HTMLElement>(`.pr-notes-section[data-pr-number="${pending.prNumber}"] .pr-notes-save:not([disabled])`)
+      : null;
+    const rowLink = findRowLink(pending, pending.sectionKey);
+    rowLink?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    (notesSave || rowLink)?.focus?.();
+  }, [navigationRequestCount]);
 
   // Handler: Open/close a section. PrSection passes the <details> element's
   // new state; without one, flip the section's current state. That has to
@@ -764,21 +806,43 @@ export function PrTableApp() {
   // Handler: Toggle a PR's summary row (the chevron). `repo` disambiguates
   // PR numbers that collide across repos in the same section (see
   // entriesForRepo - other repos' PRs render alongside the current one now)
-  // - see buildExpandedInsightsKey's own comment. Closing a summary closes
-  // its details too, so reopening it shows the summary, not the full
-  // insights it was left with (e.g. by "View in table").
+  // - see buildExpandedInsightsKey's own comment.
   const handleToggleInsights = useStableCallback((prNumber: PrNumber, sectionKey: string, repo: string) => {
-    const key = buildExpandedInsightsKey(sectionKey, repo, String(prNumber));
-    if (expandedInsights[key]) {
-      setRowDetailsOpen(key, false);
-    }
-    toggleRowExpanded(key);
+    toggleRowExpanded(buildExpandedInsightsKey(sectionKey, repo, String(prNumber)));
   });
 
-  // Handler: Toggle the full insights under a PR's summary ("Show details").
-  const handleToggleDetails = useStableCallback((prNumber: PrNumber, sectionKey: string, repo: string) => {
-    toggleRowDetails(buildExpandedInsightsKey(sectionKey, repo, String(prNumber)));
+  // Detail pane selection (UI_REDESIGN_PLAN.md, phase 4). A row click
+  // selects its PR, or deselects it when it's the selected one; ↑/↓ in a
+  // table select without toggling (PrTable); the summary's "Show details"
+  // selects and shows the pane if it was hidden.
+  const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string) => {
+    const pr = { repo, prNumber: String(prNumber ?? '') };
+    selectPr(samePr(pr, selectedPr) ? null : pr);
   });
+  const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
+  const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
+    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) setPaneVisible(true);
+  });
+  const handleClearSelection = useStableCallback(() => {
+    selectPr(null);
+  });
+
+  // The pane's own close, previous and next. Closing moves focus back to
+  // the PR's row, since the button that had it goes away.
+  const handleClosePane = useStableCallback(() => {
+    const closing = selectedPr;
+    if (!closing || !selectPr(null)) return;
+    findRowLink(closing)?.focus();
+  });
+  const handleStepPr = (target: SelectedPr | undefined) => {
+    if (target && selectPr(target)) findRowLink(target)?.scrollIntoView?.({ block: 'nearest' });
+  };
+
+  // Hiding the pane unmounts its Notes too.
+  const handleTogglePane = () => {
+    if (isPaneVisible && !confirmLeavingPr()) return;
+    setPaneVisible(!isPaneVisible);
+  };
 
   // The same object until the payload's own map changes (a fresh `{}` each
   // render defeated row memoization when the payload has none).
@@ -811,33 +875,73 @@ export function PrTableApp() {
     );
   }
 
+  // Docked beside the table on wide screens (Size and Activity then make
+  // room for it); below 900px an overlay drawer while a PR is selected.
+  const paneMode = isNarrow ? 'drawer' : 'docked';
+  const isPaneDocked = isPaneVisible && !isNarrow;
+  const paneFlags = selectedPr ? getPrFlags(selectedPr.prNumber, selectedPr.repo) : null;
+
   // NowProvider: one clock for the rows' relative times (Activity ages).
   return (
     <NowProvider>
-      {sections.map((section) => (
-        <PrSection
-          key={section.key}
-          section={section}
-          repo={effectiveRepo}
-          actorsMap={actorsMap}
-          isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-          expandedInsights={expandedInsights}
-          openDetails={detailRows}
-          onToggleSection={handleToggleSection}
-          onToggleInsights={handleToggleInsights}
-          onToggleDetails={handleToggleDetails}
-          onCheckboxChange={handleCheckboxChange}
-          onAckAction={handleAckActionBusy}
-          onApplyLabel={handleApplyLabelBusy}
-          onUpdatePr={handleUpdatePrBusy}
-          onDataRefresh={setPayload}
-          onViewJson={handleViewJson}
-          getPrFlags={getPrFlags}
-          getAttentionReasons={getAttentionReasons}
-          activePrNumbers={combinedActivePrNumbers}
-          queuedPrNumbers={combinedQueuedPrNumbers}
-        />
-      ))}
+      <div className="pr-workspace-toolbar">
+        <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
+          Detail pane
+        </Button>
+      </div>
+      <div className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+        <div className="pr-workspace-list">
+          {sections.map((section) => (
+            <PrSection
+              key={section.key}
+              section={section}
+              repo={effectiveRepo}
+              actorsMap={actorsMap}
+              isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+              expandedInsights={expandedInsights}
+              selectedPrKey={selectedPrKey}
+              showSizeAndActivity={!isPaneDocked}
+              onToggleSection={handleToggleSection}
+              onToggleInsights={handleToggleInsights}
+              onSelectRow={handleSelectRow}
+              onSelectPr={handleSelectPr}
+              onShowDetails={handleShowDetails}
+              onClearSelection={handleClearSelection}
+              onCheckboxChange={handleCheckboxChange}
+              onAckAction={handleAckActionBusy}
+              onApplyLabel={handleApplyLabelBusy}
+              onUpdatePr={handleUpdatePrBusy}
+              onViewJson={handleViewJson}
+              getPrFlags={getPrFlags}
+              getAttentionReasons={getAttentionReasons}
+              activePrNumbers={combinedActivePrNumbers}
+              queuedPrNumbers={combinedQueuedPrNumbers}
+            />
+          ))}
+        </div>
+        {isPaneVisible && (
+          <PrDetailPane
+            entry={selectedEntry}
+            repo={effectiveRepo}
+            mode={paneMode}
+            actorsMap={actorsMap}
+            isFlagged={Boolean(paneFlags?.isFlagged)}
+            isInReview={Boolean(paneFlags?.isInReview)}
+            isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+            tab={paneTab}
+            onTabChange={setPaneTab}
+            onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+            onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+            onClose={handleClosePane}
+            onCheckboxChange={handleCheckboxChange}
+            onAckAction={handleAckActionBusy}
+            onApplyLabel={handleApplyLabelBusy}
+            onUpdatePr={handleUpdatePrBusy}
+            onViewJson={handleViewJson}
+            onDataRefresh={setPayload}
+          />
+        )}
+      </div>
       <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
     </NowProvider>
   );

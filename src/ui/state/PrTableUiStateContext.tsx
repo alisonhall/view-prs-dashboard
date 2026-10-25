@@ -3,11 +3,11 @@ import { createContext, useContext } from 'react';
 /**
  * The PR table's own UI state, owned by PrTableUiStateProvider (which
  * wraps <AppRoot/> from mountAppRoot()): which sections are open, which
- * rows are expanded, and the selected PR (the detail pane, phase 4 of
- * UI_REDESIGN_PLAN.md). It lives above the table so the Export tab can
- * read it (and so "Jump to PR" can open a row's details): Export exports
- * the rows of the open sections, and used to work
- * that out by reading `<details open>` and class names from the DOM.
+ * rows show their summary, and the detail pane (UI_REDESIGN_PLAN.md,
+ * phase 4): the selected PR, whether the pane is shown, and its tab. It
+ * lives above the table so the Export tab can read it: Export exports the
+ * rows of the open sections, and used to work that out by reading
+ * `<details open>` and class names from the DOM.
  *
  * Two contexts, so the table doesn't re-render for what only Export uses:
  * - PrTableUiStateContext: the state and its setters, read by the table.
@@ -33,23 +33,29 @@ export interface SelectedPr {
   prNumber: string;
 }
 
+export type PaneTab = 'overview' | 'activity' | 'conversations' | 'notes' | 'custom';
+
 export interface PrTableUiStateValue {
   // Open-state the user chose, by section key; a section not in here uses
   // its default.
   sectionOpenOverrides: Record<string, boolean>;
   isSectionOpen: (key: string, defaultOpen: boolean) => boolean;
   setSectionOpen: (key: string, open: boolean) => void;
-  // By composite key (buildExpandedInsightsKey). An expanded row shows its
-  // summary; a row whose details are open also shows the full insights
-  // under it (until phase 4 moves them to the detail pane).
+  // By composite key (buildExpandedInsightsKey): rows showing their
+  // summary.
   expandedRows: Record<string, boolean>;
   setRowExpanded: (key: string, expanded: boolean) => void;
   toggleRowExpanded: (key: string) => void;
-  detailRows: Record<string, boolean>;
-  setRowDetailsOpen: (key: string, open: boolean) => void;
-  toggleRowDetails: (key: string) => void;
+  // The PR the detail pane shows; null shows its empty state.
   selectedPr: SelectedPr | null;
   setSelectedPr: (pr: SelectedPr | null) => void;
+  // Whether the detail pane is shown, saved in localStorage (per browser).
+  isPaneVisible: boolean;
+  setPaneVisible: (visible: boolean) => void;
+  // The pane's tab. The last one picked stays for every PR opened after
+  // it, in memory only.
+  paneTab: PaneTab;
+  setPaneTab: (tab: PaneTab) => void;
   reportRenderedSections: (sections: RenderedSection[]) => void;
 }
 
@@ -67,11 +73,12 @@ export const defaultPrTableUiState: PrTableUiStateValue = {
   expandedRows: {},
   setRowExpanded: () => {},
   toggleRowExpanded: () => {},
-  detailRows: {},
-  setRowDetailsOpen: () => {},
-  toggleRowDetails: () => {},
   selectedPr: null,
   setSelectedPr: () => {},
+  isPaneVisible: true,
+  setPaneVisible: () => {},
+  paneTab: 'overview',
+  setPaneTab: () => {},
   reportRenderedSections: () => {},
 };
 

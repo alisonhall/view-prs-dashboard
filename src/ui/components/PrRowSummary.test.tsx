@@ -9,20 +9,13 @@ import { PrRowSummary, type PrRowSummaryProps } from './PrRowSummary';
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 
 const renderSummary = (pr: PrData, props: Partial<PrRowSummaryProps> = {}) => {
-  const onToggleDetails = props.onToggleDetails ?? jest.fn();
+  const onShowDetails = props.onShowDetails ?? jest.fn();
   render(
     <NowContext.Provider value={NOW}>
-      <PrRowSummary
-        pr={pr}
-        attentionReasons={[]}
-        isDetailsOpen={false}
-        detailsId="details-101"
-        {...props}
-        onToggleDetails={onToggleDetails}
-      />
+      <PrRowSummary pr={pr} attentionReasons={[]} idPrefix="summary-101" {...props} onShowDetails={onShowDetails} />
     </NowContext.Provider>,
   );
-  return { onToggleDetails };
+  return { onShowDetails };
 };
 
 const column = (name: string) => screen.getByRole('group', { name });
@@ -145,19 +138,13 @@ describe('PrRowSummary', () => {
     expect(column('Open conversations')).toHaveTextContent('None open');
   });
 
-  test('the Details button controls the details row and reports its clicks', async () => {
+  test('"Show details" reports its clicks (it opens the PR in the detail pane)', async () => {
     const user = userEvent.setup();
-    const { onToggleDetails } = renderSummary({ number: '101' });
+    const { onShowDetails } = renderSummary({ number: '101' });
 
     const button = screen.getByRole('button', { name: 'Show details for PR #101' });
-    expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveAttribute('aria-controls', 'details-101');
+    expect(button).toHaveTextContent('Show details');
     await user.click(button);
-    expect(onToggleDetails).toHaveBeenCalledTimes(1);
-  });
-
-  test('with the details open, the button offers to hide them', () => {
-    renderSummary({ number: '101' }, { isDetailsOpen: true });
-    expect(screen.getByRole('button', { name: 'Hide details for PR #101' })).toHaveAttribute('aria-expanded', 'true');
+    expect(onShowDetails).toHaveBeenCalledTimes(1);
   });
 });

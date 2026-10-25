@@ -6,15 +6,16 @@
  * @module components/insights/LinesChangedInsight
  */
 
+import type { PrData } from '../../types/pr-data.ts';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 
-export function LinesChangedInsight({ pr }) {
+export function LinesChangedInsight({ pr }: { pr: PrData }) {
   const rawAdditions = String(pr?.additions ?? '').trim();
   const rawDeletions = String(pr?.deletions ?? '').trim();
   if (rawAdditions === '' || rawDeletions === '') {
-    return '-';
+    return <>-</>;
   }
 
   const additionsCount = toCount(rawAdditions);

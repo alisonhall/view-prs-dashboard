@@ -1422,13 +1422,6 @@
             font-weight: 600;
         }
 
-        .row-insights-content {
-            margin-top: 0;
-            font-size: 12px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
         .insight-section {
             margin-top: 10px;
             border-top: 1px solid #d8dee4;
@@ -1727,70 +1720,11 @@
             overflow-x: auto;
         }
 
-        /* Lifecycle badges for PRs in smart groups */
-
-        .insights-row-cell {
-            padding-top: 0;
-            background: #fff;
-        }
-
-        .row-insights summary {
-            cursor: pointer;
-            color: #0b57d0;
-        }
-
         .insight-grid {
             display: grid;
             grid-template-columns: auto 1fr;
             gap: 3px 10px;
             margin-top: 6px;
-        }
-
-        .insight-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 6px;
-        }
-
-        .insight-badge {
-            display: inline-block;
-            border: 1px solid #d0d7de;
-            border-radius: 999px;
-            padding: 2px 8px;
-            font-size: 11px;
-            line-height: 1.4;
-            background: #f6f8fa;
-            color: #1f2328;
-            white-space: nowrap;
-            font-weight: 600;
-        }
-
-        .insight-badge-status-changed,
-        .insight-badge-check-fail,
-        .insight-badge-merge-no {
-            border-color: #b42318;
-            color: #b42318;
-        }
-
-        .insight-badge-status-no-change,
-        .insight-badge-check-pass,
-        .insight-badge-merge-yes {
-            border-color: #1f7a1f;
-            color: #1f7a1f;
-        }
-
-        .insight-badge-status-no-activity,
-        .insight-badge-check-run {
-            border-color: #0b7285;
-            color: #0b7285;
-        }
-
-        .insight-badge-check-skip,
-        .insight-badge-check-na,
-        .insight-badge-merge-unk {
-            border-color: #b26b00;
-            color: #b26b00;
         }
 
         .insight-key {

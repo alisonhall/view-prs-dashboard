@@ -156,16 +156,32 @@ async function waitForServer(url, timeoutMs) {
 // closures over stale payload state), not to be exhaustive of every
 // interaction in the app. See the plan's own reasoning for this mix.
 async function runInteractionCycle(page, cycleIndex) {
-  // Toggle an in-review checkbox on the first visible row - the cheapest
-  // way to exercise a real render/update per cycle (real click -> real
-  // POST /view-prs/ack -> real renderPrData update), without waiting on
-  // the data poll's interval.
-  const checkbox = page
-    .locator('#pr-sections input[type="checkbox"][aria-label^="In Review for PR"]:visible')
-    .first();
-  if (await checkbox.count()) {
-    await checkbox.click();
+  const prTables = page.getByRole("region", { name: "Pull requests", exact: true });
+
+  // Toggle In review on the first visible row - the cheapest way to
+  // exercise a real render/update per cycle (real click -> real POST
+  // /view-prs/ack -> real payload update), without waiting on the data
+  // poll's interval. (A toggle button since the UI redesign's phase 2; the
+  // checkbox this used to look for no longer exists.)
+  const inReview = prTables.getByRole("button", { name: /^In Review for PR #/ }).first();
+  if (await inReview.count()) {
+    await inReview.click();
     await page.waitForTimeout(50);
+  }
+
+  // The detail pane (UI_REDESIGN_PLAN.md, phase 4): ↓ from the first PR
+  // link selects that row, or the next one when it's already selected, so
+  // each cycle swaps the PR the pane shows and remounts its content; the
+  // tab changes in turn too.
+  const firstLink = prTables.getByRole("table").first().getByRole("link", { name: /^#\d+$/ }).first();
+  if (await firstLink.count()) {
+    await firstLink.focus();
+    await page.keyboard.press("ArrowDown");
+    const tabName = ["Overview", "Activity", "Conversations", "Notes"][cycleIndex % 4];
+    const tab = prTables.getByRole("complementary").getByRole("tab", { name: new RegExp(`^${tabName}`) });
+    if (await tab.count()) {
+      await tab.click();
+    }
   }
 
   if (cycleIndex % 5 === 0) {

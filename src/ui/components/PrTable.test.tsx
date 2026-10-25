@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PrEntry } from '../types/pr-data.ts';
 import { PrTable, type PrTableProps } from './PrTable';
@@ -83,13 +83,75 @@ describe('PrTable', () => {
     expect(within(row1 as HTMLElement).getByRole('img', { name: 'Needs attention' })).toBeInTheDocument();
   });
 
-  test('gives each row its own summary and details state, by composite key', () => {
-    renderTable({
-      expandedInsights: { 'open:owner/repo:1': true, 'open:owner/repo:2': true },
-      openDetails: { 'open:owner/repo:2': true },
+  test('gives each row its own summary state, by composite key', () => {
+    renderTable({ expandedInsights: { 'open:owner/repo:1': true } });
+    expect(screen.getByRole('button', { name: 'Hide summary for PR #1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show summary for PR #2' })).toBeInTheDocument();
+  });
+
+  test('marks only the selected PR\'s row as current', () => {
+    renderTable({ selectedPrKey: 'owner/repo::1' });
+    const [row2, row1] = Array.from(document.querySelectorAll('tr.pr-row'));
+    expect(row1).toHaveAttribute('aria-current', 'true');
+    expect(row2).not.toHaveAttribute('aria-current');
+  });
+
+  describe('keyboard selection', () => {
+    const rows = () => Array.from(document.querySelectorAll<HTMLElement>('tr.pr-row'));
+    const prLink = (number: string) => screen.getAllByRole('link', { name: `#${number}` })[0] as HTMLElement;
+
+    test('↓ with nothing selected selects the row with focus', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ prs: [entry('3'), entry('2'), entry('1')], onSelectPr });
+      fireEvent.keyDown(within(rows()[1] as HTMLElement).getByRole('button', { name: 'Update PR #2' }), { key: 'ArrowDown' });
+      expect(onSelectPr).toHaveBeenCalledWith('2', 'owner/repo');
+      expect(prLink('2')).toHaveFocus();
     });
-    expect(screen.getByRole('button', { name: 'Hide details for PR #2' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show details for PR #1' })).toBeInTheDocument();
+
+    test('↑/↓ from the selected row select the row above/below and move focus there', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ prs: [entry('3'), entry('2'), entry('1')], selectedPrKey: 'owner/repo::2', onSelectPr });
+      fireEvent.keyDown(prLink('2'), { key: 'ArrowDown' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('1', 'owner/repo');
+      expect(prLink('1')).toHaveFocus();
+
+      fireEvent.keyDown(prLink('2'), { key: 'ArrowUp' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('3', 'owner/repo');
+    });
+
+    test('at the last row, ↓ does nothing', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ selectedPrKey: 'owner/repo::1', onSelectPr });
+      fireEvent.keyDown(prLink('1'), { key: 'ArrowDown' });
+      expect(onSelectPr).not.toHaveBeenCalled();
+    });
+
+    test('focus stays put when the selection was refused (unsaved notes kept)', () => {
+      renderTable({ selectedPrKey: 'owner/repo::2', onSelectPr: () => false });
+      const link = prLink('2');
+      link.focus();
+      fireEvent.keyDown(link, { key: 'ArrowDown' });
+      expect(link).toHaveFocus();
+    });
+
+    test('keys a control already used (the More button opens its menu on ↓) are left alone', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ onSelectPr });
+      fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for PR #2' }), { key: 'ArrowDown' });
+      expect(onSelectPr).not.toHaveBeenCalled();
+    });
+
+    test('Esc clears the selection, and does nothing without one', () => {
+      const onClearSelection = jest.fn();
+      const { unmount } = renderTable({ onClearSelection });
+      fireEvent.keyDown(prLink('2'), { key: 'Escape' });
+      expect(onClearSelection).not.toHaveBeenCalled();
+      unmount();
+
+      renderTable({ selectedPrKey: 'owner/repo::2', onClearSelection });
+      fireEvent.keyDown(prLink('2'), { key: 'Escape' });
+      expect(onClearSelection).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('marks only the busy row\'s repo-specific key as active', () => {

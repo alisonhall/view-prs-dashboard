@@ -26,8 +26,8 @@ const THREAD_LIMIT = 2;
  * Each column is a labelled group, not a region: a region is a landmark,
  * and every open row would add three.
  *
- * "Show details" opens the full insights under it, until phase 4 moves them
- * to the detail pane.
+ * "Show details" opens the PR in the detail pane (showing the pane if it
+ * was hidden) - a keyboard way to pick a PR, besides ↑/↓ in the table.
  */
 export interface PrRowSummaryProps {
   pr: PrData;
@@ -35,10 +35,9 @@ export interface PrRowSummaryProps {
   isFlagged?: boolean;
   isInReview?: boolean;
   actorsMap?: ActorsMap;
-  isDetailsOpen: boolean;
-  // The id of the details row, which the Details button controls.
-  detailsId: string;
-  onToggleDetails: () => void;
+  // Unique per row: the column headings' ids start with it.
+  idPrefix: string;
+  onShowDetails: () => void;
 }
 
 // A relative age ("3h"), with the full time on hover and for screen readers.
@@ -85,9 +84,8 @@ export function PrRowSummary({
   isFlagged = false,
   isInReview = false,
   actorsMap = {},
-  isDetailsOpen,
-  detailsId,
-  onToggleDetails,
+  idPrefix,
+  onShowDetails,
 }: PrRowSummaryProps) {
   const now = useNow();
   const { buildActivityEvents } = usePrInsightsDisplay();
@@ -99,7 +97,7 @@ export function PrRowSummary({
 
   return (
     <div className="pr-summary">
-      <Column id={`pr-summary-why-${detailsId}`} heading="Why it's here">
+      <Column id={`${idPrefix}-why`} heading="Why it's here">
         {attentionReasons.length > 0 && (
           <ul className="pr-summary-list pr-summary-reasons">
             {attentionReasons.map((reason, index) => (
@@ -120,7 +118,7 @@ export function PrRowSummary({
         <p className="pr-summary-status">{describeStatusLine(pr)}</p>
       </Column>
 
-      <Column id={`pr-summary-activity-${detailsId}`} heading="Latest activity">
+      <Column id={`${idPrefix}-activity`} heading="Latest activity">
         {events.length > 0 ? (
           <ul className="pr-summary-list">
             {events.map((event, index) => (
@@ -138,7 +136,7 @@ export function PrRowSummary({
         )}
       </Column>
 
-      <Column id={`pr-summary-threads-${detailsId}`} heading="Open conversations">
+      <Column id={`${idPrefix}-threads`} heading="Open conversations">
         {threads.length > 0 ? (
           <ul className="pr-summary-list">
             {threads.map((thread, index) => {
@@ -172,14 +170,8 @@ export function PrRowSummary({
       </Column>
 
       <div className="pr-summary-actions">
-        <Button
-          icon={isDetailsOpen ? 'chevronUp' : 'chevronDown'}
-          aria-expanded={isDetailsOpen}
-          aria-controls={detailsId}
-          aria-label={`${isDetailsOpen ? 'Hide details' : 'Show details'} for PR #${prNumber}`}
-          onClick={onToggleDetails}
-        >
-          {isDetailsOpen ? 'Hide details' : 'Show details'}
+        <Button icon="panel" aria-label={`Show details for PR #${prNumber}`} onClick={onShowDetails}>
+          Show details
         </Button>
       </div>
     </div>

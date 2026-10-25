@@ -23,6 +23,17 @@ jest.mock('./PrSection', () => {
   };
 });
 
+// The detail pane is mocked the same way (PrDetailPane.test.tsx covers it):
+// these tests check what PrTableApp hands it.
+const capturedPaneProps = [];
+jest.mock('./pane/PrDetailPane', () => ({
+  PrDetailPane: (props) => {
+    capturedPaneProps.push(props);
+    return null;
+  },
+}));
+const latestPane = () => capturedPaneProps[capturedPaneProps.length - 1];
+
 // ES module cleanup (see REACT_MIGRATION_PLAN.md): pr-section-config.helpers.ts/
 // pr-smart-groups.helpers.ts are real ES modules now, imported directly by
 // PrTableApp.tsx instead of read off window.ViewPrsSectionConfigHelpers/
@@ -78,6 +89,7 @@ const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
 const { PrTableUiStateProvider } = require('../state/PrTableUiStateProvider');
 const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableUiStateContext');
+const { NotesDirtyContext } = require('../state/NotesDirtyContext');
 
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
@@ -160,11 +172,13 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // - `filterStateValues` lets an individual test override the defaults
 // below (e.g. to exercise a specific scope/PR-number filter) without every
 // existing call site needing to pass a full values object.
+// `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
   needsAttention,
   filterStateValues,
+  dirtyPrNumbers,
   ...tableProps
 } = {}) =>
   render(
@@ -192,7 +206,9 @@ const renderPrTableApp = ({
               <ActivityQueueProbe />
               <UiStateProbe />
               <OpenSectionsProbe />
-              <PrTableApp {...tableProps} />
+              <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirtyPrNumbers || [], setNotesDirty: () => {} }}>
+                <PrTableApp {...tableProps} />
+              </NotesDirtyContext.Provider>
             </PrActivityQueueProvider>
           </NeedsAttentionContext.Provider>
         </FilterStateProvider>
@@ -275,6 +291,9 @@ function makeEntry({ prNumber, repo, section, rowOrder, mergedAt, closedAt }) {
 describe('PrTableApp', () => {
   beforeEach(() => {
     capturedSectionProps.length = 0;
+    capturedPaneProps.length = 0;
+    // The pane's shown/hidden choice is saved there.
+    window.localStorage.clear();
     postJson.mockReset();
     installSectionHelpers();
     // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.tsx's
@@ -461,10 +480,10 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.find((p) => p.section.key === 'open').section.prs).toHaveLength(1);
   });
 
-  test('given onDataRefresh is called by a descendant (e.g. after a Notes save), when invoked with a new payload, then state updates to it', () => {
+  test('given the pane\'s onDataRefresh is called (e.g. after a Notes save), when invoked with a new payload, then state updates to it', () => {
     const payloadA = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
     renderPrTableApp({ initialPayload: payloadA, selectedRepo: '', onCheckboxChange: () => {}, onAckAction: () => {} });
-    const { onDataRefresh } = capturedSectionProps[0];
+    const { onDataRefresh } = latestPane();
 
     const payloadB = {
       byPrNumber: {
@@ -827,7 +846,19 @@ describe('PrTableApp', () => {
     const second = capturedSectionProps.find((p) => p.section.key === 'open');
 
     expect(second).not.toBe(first);
-    ['onToggleInsights', 'onToggleDetails', 'onToggleSection', 'onViewJson', 'onCheckboxChange', 'onAckAction', 'onApplyLabel', 'onUpdatePr'].forEach(
+    [
+      'onToggleInsights',
+      'onSelectRow',
+      'onSelectPr',
+      'onShowDetails',
+      'onClearSelection',
+      'onToggleSection',
+      'onViewJson',
+      'onCheckboxChange',
+      'onAckAction',
+      'onApplyLabel',
+      'onUpdatePr',
+    ].forEach(
       (name) => expect([name, second[name]]).toEqual([name, first[name]]),
     );
     // No actorsMap in the payload: still the same (empty) object.
@@ -850,45 +881,139 @@ describe('PrTableApp', () => {
     expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
   });
 
-  test('given onToggleDetails is called for a PR, when toggled twice, then its details open and close without touching its summary', () => {
-    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
-    const { onToggleDetails } = capturedSectionProps[0];
+  describe('detail pane selection', () => {
+    const twoPrPayload = () => ({
+      byPrNumber: {
+        1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }),
+        2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }),
+      },
+    });
+    const openSectionProps = () => capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
 
-    React.act(() => {
-      onToggleDetails('1', 'open', 'owner/repo');
-    });
-    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(true);
-    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
+    test('given a row click, then its PR is selected, shown in the pane and marked in the sections; a second click deselects it', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      expect(latestPane().entry).toBeNull();
 
-    React.act(() => {
-      onToggleDetails('1', 'open', 'owner/repo');
-    });
-    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBeFalsy();
-  });
+      React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(latestPane().entry.prNumber).toBe('1');
+      expect(openSectionProps().selectedPrKey).toBe('owner/repo::1');
 
-  test('given a summary with its details open, when the summary is closed and reopened, then it opens without its details', () => {
-    const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
-    renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
-    const { onToggleInsights, onToggleDetails } = capturedSectionProps[0];
+      React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+      expect(capturedUiState.selectedPr).toBeNull();
+      expect(latestPane().entry).toBeNull();
+    });
 
-    React.act(() => {
-      onToggleInsights('1', 'open', 'owner/repo');
+    test('given ↑/↓ (onSelectPr), then it selects without toggling and reports success', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      let result;
+      React.act(() => {
+        result = openSectionProps().onSelectPr('2', 'owner/repo');
+      });
+      expect(result).toBe(true);
+      React.act(() => {
+        result = openSectionProps().onSelectPr('2', 'owner/repo');
+      });
+      expect(result).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
-    React.act(() => {
-      onToggleDetails('1', 'open', 'owner/repo');
-    });
-    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(true);
 
-    React.act(() => {
-      onToggleInsights('1', 'open', 'owner/repo');
+    test('given previous/next, then they step through the open sections\' PRs in display order', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      // Sections are closed by default (the mocked helper); open "open".
+      React.act(() => openSectionProps().onToggleSection('open', true));
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(latestPane().onPrevious).toBeUndefined();
+
+      React.act(() => latestPane().onNext());
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(latestPane().onNext).toBeUndefined();
+      React.act(() => latestPane().onPrevious());
+      expect(capturedUiState.selectedPr.prNumber).toBe('2');
     });
-    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(false);
-    React.act(() => {
-      onToggleInsights('1', 'open', 'owner/repo');
+
+    test('given the pane\'s close, then the selection clears', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => latestPane().onClose());
+      expect(capturedUiState.selectedPr).toBeNull();
     });
-    expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBe(true);
-    expect(capturedSectionProps.at(-1).openDetails['open:owner/repo:1']).toBe(false);
+
+    test('given unsaved notes on the selected PR, then switching asks first, and staying keeps the selection', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        expect(confirm).not.toHaveBeenCalled();
+
+        let result;
+        React.act(() => {
+          result = openSectionProps().onSelectPr('2', 'owner/repo');
+        });
+        expect(confirm).toHaveBeenCalledWith('PR #1 has unsaved notes. Discard them?');
+        expect(result).toBe(false);
+        expect(capturedUiState.selectedPr.prNumber).toBe('1');
+
+        React.act(() => latestPane().onClose());
+        expect(capturedUiState.selectedPr.prNumber).toBe('1');
+
+        confirm.mockReturnValue(true);
+        React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+        expect(capturedUiState.selectedPr.prNumber).toBe('2');
+      } finally {
+        confirm.mockRestore();
+      }
+    });
+
+    test('given "Show details" with the pane hidden, then the PR is selected and the pane shown', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.isPaneVisible).toBe(false);
+
+      React.act(() => openSectionProps().onShowDetails('2', 'owner/repo'));
+      expect(capturedUiState.isPaneVisible).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
+    });
+
+    test('given the pane toggle, then the pane hides and Size/Activity come back; hiding asks first with unsaved notes', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        const toggle = screen.getByRole('button', { name: 'Detail pane' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        expect(openSectionProps().showSizeAndActivity).toBe(false);
+
+        React.act(() => toggle.click());
+        expect(capturedUiState.isPaneVisible).toBe(false);
+        expect(openSectionProps().showSizeAndActivity).toBe(true);
+        expect(confirm).not.toHaveBeenCalled();
+
+        React.act(() => toggle.click());
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        React.act(() => toggle.click());
+        expect(confirm).toHaveBeenCalled();
+        expect(capturedUiState.isPaneVisible).toBe(true);
+      } finally {
+        confirm.mockRestore();
+      }
+    });
+
+    test('given a selected PR that leaves the data, then the pane shows its empty state', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      React.act(() => {
+        prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } });
+      });
+      expect(latestPane().entry).toBeNull();
+    });
+
+    test('the pane gets the selected PR\'s flags', () => {
+      const payload = { ...twoPrPayload(), flaggedByRepo: { 'owner/repo': { 2: true } } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(latestPane().isFlagged).toBe(true);
+      expect(latestPane().isInReview).toBe(false);
+    });
   });
 
   test('given two repos with the same PR number in the same section, when one is toggled, then the other repo\'s insights row is unaffected (PR numbers are only unique within a repo)', () => {
@@ -1386,10 +1511,20 @@ describe('PrTableApp', () => {
   // this still exercises PrTableApp's own effect logic for real (a global
   // document.querySelector, not scoped to its own container), just without
   // needing the full unmocked render tree.
-  describe('pr-navigate-to-insights (scroll/focus after insights-row expansion)', () => {
+  describe('pr-navigate-to-insights (select the PR, then scroll to and focus it)', () => {
     afterEach(() => {
       document.body.querySelectorAll('[data-test-standalone]').forEach((el) => el.remove());
     });
+
+    // A standalone stand-in for a PrRow (PrSection is mocked here): a row
+    // tagged with its PR number and repo, holding the PR link.
+    const appendRowWithLink = (container, prNumber) => {
+      const table = document.createElement('table');
+      table.setAttribute('data-test-standalone', 'true');
+      table.innerHTML = `<tbody><tr class="pr-row" data-pr-number="${prNumber}" data-repo="owner/repo"><td><a class="pr-link" href="https://github.com/owner/repo/pull/${prNumber}">#${prNumber}</a></td></tr></tbody>`;
+      container.appendChild(table);
+      return table.querySelector('.pr-link');
+    };
 
     test('given focusUnsaved and a real unsaved Notes save button in the DOM, when the event fires, then that button ends up focused', async () => {
       const notesSection = document.createElement('div');
@@ -1424,15 +1559,7 @@ describe('PrTableApp', () => {
     });
 
     test('given no focusUnsaved, when the event fires, then the row-link element ends up focused instead', async () => {
-      const cell = document.createElement('div');
-      cell.setAttribute('data-pr-number', '1');
-      cell.setAttribute('data-repo', 'owner/repo');
-      cell.setAttribute('data-test-standalone', 'true');
-      const link = document.createElement('a');
-      link.className = 'pr-link';
-      link.href = 'https://github.com/owner/repo/pull/1';
-      cell.appendChild(link);
-      document.body.appendChild(cell);
+      const link = appendRowWithLink(document.body, '1');
 
       const payload = {
         byPrNumber: {
@@ -1453,7 +1580,7 @@ describe('PrTableApp', () => {
       });
     });
 
-    test('given the row is already expanded, when the event fires, then it still focuses (expanding an expanded row changes nothing, so that alone can\'t trigger it)', async () => {
+    test('given the PR is already selected, when the event fires, then it still focuses (selecting it again changes nothing, so that alone can\'t trigger it)', async () => {
       const notesSection = document.createElement('div');
       notesSection.className = 'pr-notes-section';
       notesSection.setAttribute('data-pr-number', '1');
@@ -1470,9 +1597,9 @@ describe('PrTableApp', () => {
       };
       renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
       React.act(() => {
-        capturedSectionProps.find((p) => p.section.key === 'open').onToggleInsights('1', 'open', 'owner/repo');
+        capturedSectionProps.find((p) => p.section.key === 'open').onSelectRow('1', 'owner/repo');
       });
-      expect(capturedUiState.expandedRows['open:owner/repo:1']).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
       expect(document.activeElement).not.toBe(saveButton);
 
       fireEvent(
@@ -1487,7 +1614,7 @@ describe('PrTableApp', () => {
 
     // A flagged PR is in the Flagged group (listed first, closed by
     // default) and also in an open group. Taking the first section it's in
-    // used to expand its row inside the closed Flagged group.
+    // used to target its row inside the closed Flagged group.
     const installFlaggedAndNeedsAttention = () =>
       createPrSmartGroupsHelpers.mockImplementation(() => ({
         buildSmartGroupConfigs: () => ({}),
@@ -1497,19 +1624,18 @@ describe('PrTableApp', () => {
         }),
       }));
 
-    test('given the PR is in a closed section listed first and an open one, when the event fires, then its row is expanded in the open one', () => {
+    test('given the PR is in a closed section listed first and an open one, when the event fires, then it is selected without opening the closed one', () => {
       installFlaggedAndNeedsAttention();
       const payload = { byPrNumber: { 2: makeEntry({ prNumber: '2', repo: 'owner/repo', section: 'open' }) } };
       renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
 
       fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '2' } }));
 
-      expect(capturedUiState.expandedRows['needsAttention:owner/repo:2']).toBe(true);
-      expect(capturedUiState.expandedRows['flagged:owner/repo:2']).toBeFalsy();
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
       expect(capturedUiState.isSectionOpen('flagged', false)).toBe(false);
     });
 
-    test('given the PR is only in closed sections, when the event fires, then the first one is opened and its row expanded', () => {
+    test('given the PR is only in closed sections, when the event fires, then the first one is opened and the PR selected', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
       expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(false);
@@ -1518,38 +1644,30 @@ describe('PrTableApp', () => {
       fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
 
       expect(capturedSectionProps.find((p) => p.section.key === 'open').isOpen).toBe(true);
-      expect(capturedUiState.expandedRows['open:owner/repo:1']).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(latestPane().entry.prNumber).toBe('1');
     });
 
-    // The summary alone has no Notes section to focus, and "View in table"
-    // used to show the full insights: the event opens the details too.
-    test('given a navigation request, when the event fires, then the row\'s details open as well as its summary', () => {
+    // Unsaved notes are in the pane's Notes tab.
+    test('given focusUnsaved, when the event fires, then the pane opens on its Notes tab; without it the tab stays', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
       renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
 
       fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+      expect(latestPane().tab).toBe('overview');
 
-      expect(capturedUiState.detailRows['open:owner/repo:1']).toBe(true);
-      const latestOpenSection = capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
-      expect(latestOpenSection.openDetails['open:owner/repo:1']).toBe(true);
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1', focusUnsaved: true } }));
+      expect(latestPane().tab).toBe('notes');
     });
 
-    test('given the PR\'s row is in two sections, when the event fires, then focus goes to the copy in the section it was expanded in', async () => {
+    test('given the PR\'s row is in two sections, when the event fires, then focus goes to the copy in the section it was found in', async () => {
       installFlaggedAndNeedsAttention();
       const makeSectionWithLink = (sectionKey) => {
         const section = document.createElement('div');
         section.setAttribute('data-pr-section', sectionKey);
         section.setAttribute('data-test-standalone', 'true');
-        const cell = document.createElement('div');
-        cell.setAttribute('data-pr-number', '2');
-        cell.setAttribute('data-repo', 'owner/repo');
-        const link = document.createElement('a');
-        link.className = 'pr-link';
-        link.href = 'https://github.com/owner/repo/pull/2';
-        cell.appendChild(link);
-        section.appendChild(cell);
         document.body.appendChild(section);
-        return link;
+        return appendRowWithLink(section, '2');
       };
       makeSectionWithLink('flagged');
       const needsAttentionLink = makeSectionWithLink('needsAttention');
