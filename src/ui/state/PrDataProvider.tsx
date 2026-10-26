@@ -87,7 +87,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * Provider's functions: the data pipeline (renderPrData/
  * applyFreshPrPayload, used by loadStoredData and the polls),
  * `applyFreshTablePayload` (payload and repo together), or `setPayload`
- * (e.g. NotesSection.jsx applying its POST /view-prs/notes response).
+ * (e.g. PrNotesTab applying its POST /view-prs/notes response).
  *
  * `pollForDataChanges` (called by <PrDataPolling />'s interval, and by
  * JobEventsProvider when an SSE frame reports a data-writing job finishing

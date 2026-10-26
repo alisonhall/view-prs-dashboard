@@ -1121,6 +1121,9 @@ No static type checking leads to:
       replacing ReviewThreadsSection.jsx), on the new
       pr-review-threads.helpers.ts, with the thread-resolution policy hook
       moved to state/useAuthorThreadResolutionPolicy.ts.
+    - Phase 7 (2026-10-25): the Notes tab (PrNotesTab, replacing
+      NotesSection.jsx) and NotesStoriesField, on the new
+      pr-notes-fields.helpers.ts.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

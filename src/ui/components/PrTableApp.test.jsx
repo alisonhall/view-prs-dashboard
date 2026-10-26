@@ -1507,7 +1507,7 @@ describe('PrTableApp', () => {
   // markup these assertions target never actually renders through
   // PrTableApp itself, so each test inserts a standalone element matching
   // the same selectors the real row/Notes-section markup would produce
-  // (PrNumberCell.jsx/NotesSection.jsx), directly into document.body -
+  // (PrNumberCell/PrNotesTab), directly into document.body -
   // this still exercises PrTableApp's own effect logic for real (a global
   // document.querySelector, not scoped to its own container), just without
   // needing the full unmocked render tree.

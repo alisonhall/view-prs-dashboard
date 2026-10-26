@@ -16,7 +16,7 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 // Test selectors - how this file finds elements, so the tests keep passing
 // through UI redesigns that change markup and class names (they check
 // behaviour, not structure):
-//   1. By role and accessible name: getByRole("button", { name: "Save notes" }).
+//   1. By role and accessible name: getByRole("button", { name: "Save other notes" }).
 //      For form fields, getByLabel(...) - but for a <select> wrapped in its
 //      <label>, getByRole("combobox", { name }): getByLabel matches the
 //      label's raw text, which includes every option. Pass exact: true -
@@ -98,6 +98,11 @@ const openFirstRowInPane = async (page, tab = "Overview") => {
   await paneTab(page, tab).click();
   await expect(paneTab(page, tab)).toHaveAttribute("aria-selected", "true");
   return prNumber;
+};
+// Opens one of the Notes tab's fields for editing: its "Edit <name>"
+// button, or "Add <name>" while it's empty.
+const editNotesField = async (notesSection, name) => {
+  await notesSection.getByRole("button", { name: new RegExp(`^(Edit|Add) ${name}$`) }).click();
 };
 
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): makes a
@@ -582,6 +587,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
   const prNumber = prNumberFromLabel(await notesSection.getAttribute("aria-label"));
+  await editNotesField(notesSection, "other notes");
   const notesTextarea = notesSection.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
@@ -596,6 +602,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await notesTextarea.fill(originalValue);
   await notesTextarea.blur();
   await expect(indicator).toBeHidden();
+  await notesSection.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("typing character-by-character into the story name/URL inputs keeps every keystroke", async ({ page }) => {
@@ -623,8 +630,9 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await openFirstRowInPane(page, "Notes");
 
   // A new row, so this works whether or not the PR already has stories;
-  // removing it afterwards leaves the notes unchanged.
+  // Cancel afterwards leaves the notes unchanged.
   const stories = prTables(page).getByRole("group", { name: "Stories", exact: true }).first();
+  await editNotesField(stories, "stories");
   await stories.getByRole("button", { name: "Add story" }).click();
 
   const storyNameInput = stories.getByRole("textbox", { name: / name$/ }).last();
@@ -639,6 +647,7 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await expect(storyUrlInput).toHaveValue("https://stories.example/US12345");
 
   await stories.getByRole("button", { name: /^Remove story / }).last().click();
+  await stories.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("selecting an option in the Notes section's author/tone/difficulty dropdowns actually applies it", async ({ page }) => {
@@ -656,6 +665,7 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
 
+  await editNotesField(notesSection, "PR difficulty");
   const difficultySelect = notesSection.getByRole("combobox", { name: "PR difficulty", exact: true });
   await expect(difficultySelect).toBeVisible();
   const originalDifficulty = await difficultySelect.inputValue();
@@ -665,23 +675,29 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await difficultySelect.selectOption(originalDifficulty);
   await expect(difficultySelect).toHaveValue(originalDifficulty);
 
-  await notesSection.getByRole("button", { name: "+ Add comment" }).click();
-  const toneSelect = notesSection.getByRole("combobox", { name: "Comment 1 tone", exact: true });
+  await notesSection.getByRole("group", { name: "PR difficulty", exact: true }).getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A new comment (the last row), so this works whether or not the PR
+  // already has comments; Cancel afterwards leaves them unchanged.
+  const comments = notesSection.getByRole("group", { name: "Comments", exact: true });
+  await editNotesField(comments, "comments");
+  await comments.getByRole("button", { name: "Add comment", exact: true }).click();
+  const toneSelect = comments.getByRole("combobox", { name: / tone$/ }).last();
   await expect(toneSelect).toHaveValue("Neutral");
   await toneSelect.selectOption("Negative");
   await expect(toneSelect).toHaveValue("Negative");
 
-  const authorSelect = notesSection.getByRole("combobox", { name: "Comment 1 author", exact: true });
+  const authorSelect = comments.getByRole("combobox", { name: / author$/ }).last();
   const authorOptionCount = await authorSelect.getByRole("option", { includeHidden: true }).count();
   if (authorOptionCount > 1) {
     const secondOptionValue = await authorSelect.getByRole("option", { includeHidden: true }).nth(1).getAttribute("value");
     await authorSelect.selectOption(secondOptionValue);
     await expect(authorSelect).toHaveValue(secondOptionValue);
   }
-  await notesSection.getByRole("button", { name: /^Remove comment / }).first().click();
+  await comments.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
-test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
+test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes field's Save", async ({ page }) => {
   // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
   // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/
   // window.navigateToAuthorInsights directly - both are real hooks now
@@ -714,6 +730,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await paneTab(page, "Notes").click();
 
   const notesGroup = detailPane(page).getByRole("group", { name: "Notes for PR #1", exact: true });
+  await editNotesField(notesGroup, "other notes");
   const notesTextarea = notesGroup.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
@@ -740,13 +757,14 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 
   await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
   await expect(paneTab(page, "Notes")).toHaveAttribute("aria-selected", "true");
-  await expect(notesGroup.getByRole("button", { name: "Save notes", exact: true })).toBeFocused();
+  await expect(notesGroup.getByRole("button", { name: "Save other notes", exact: true })).toBeFocused();
 
   // Undo the edit: with the field clean (and not focused - the save button
   // has focus), the held-back poll applies and the indicator goes away.
   await notesTextarea.fill(originalValue);
   await notesTextarea.blur();
   await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeHidden();
+  await notesGroup.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {

@@ -681,7 +681,7 @@ Insights behavior notes:
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
-- Auto data-refresh rerenders are paused while any PR-section field is unsaved (including Notes text/select changes and Notes comment add/remove changes).
+- Auto data-refresh rerenders are paused while any Notes field has an unsaved edit (text, selects, and comments or stories added or removed).
 - Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
 - When auto-refresh is paused, a floating `Auto update paused` indicator appears with clickable blocker chips (PR numbers and author-draft chips) that jump directly to the matching unsaved UI, plus a `Discard unsaved` action (manual override to render the pending update and discard unsaved edits).
 - Polling failures now show a persistent warning snackbar that includes `Last successful check` and `Last error at` timestamps.
@@ -801,17 +801,17 @@ Export tab behavior:
   - `Download JSON` saves payload as a local `.json` file.
 - Export field selections are persisted in `data/user-defaults.json` when using `Preview JSON`, `Copy JSON`, or `Download JSON`, and re-applied when the Export section is rebuilt.
 
-Notes editor fields include:
+The detail pane's Notes tab holds your own notes on the PR:
 
-- comment rows (author, sentiment, note)
-- `Other Notes` (textarea)
+- `Comments`: rows of author, tone (positive, negative, neutral) and note
+- `Other notes`
 - `PR difficulty` (1-5)
-- `Stories` (one row per story: a name such as `US12345` and its URL; use `+` to add another story)
-- `Analysis of PR` (textarea)
+- `Stories`: one row per story, a name such as `US12345` and its URL
+- `Analysis of PR`
+
+Each field shows read-only, with an `Edit` button (`Add` while it's empty) that turns it into inputs with their own `Save` and `Cancel`. Saving a field saves it alone: the other fields keep what was saved, so an unsaved edit in another field stays unsaved. A field's `Save` is enabled only once it differs from what's saved; a comment row with neither an author nor a note doesn't count and isn't saved. Notes saved elsewhere (another window) while the PR is open show up after the next refresh, so saving one field never writes the others back as they were; a field you're editing keeps what you typed. Stories show their names (or URL, without one), each with a button opening its link - only for `http(s)` addresses. Unsaved edits survive switching to another pane tab.
 
 Stories are persisted in user state as `stories: [{ name, url }]`. Notes saved before stories existed kept names (`rallyStories`) and URLs (`rallyLinks`) in two separate lists; those are read as stories, paired by position, and saved in the new shape on the next write.
-
-`Save notes` is enabled only when one or more notes fields are dirty (including the additional fields above).
 
 Author Insights manual comments fields include:
 

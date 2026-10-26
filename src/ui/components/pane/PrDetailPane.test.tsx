@@ -106,6 +106,7 @@ describe('PrDetailPane', () => {
     test('Esc and the close button close it, but not Esc while typing', async () => {
       const user = userEvent.setup();
       const { onClose } = renderPane({ tab: 'notes' });
+      await user.click(screen.getByRole('button', { name: /^(Edit|Add) other notes$/ }));
       fireEvent.keyDown(screen.getByPlaceholderText('Other notes...'), { key: 'Escape' });
       expect(onClose).not.toHaveBeenCalled();
 
@@ -186,16 +187,35 @@ describe('PrDetailPane', () => {
           <PrDetailPane {...paneProps({ tab: 'notes', entry: entryWithNotes('7', 'Notes for 7') })} />
         </Providers>,
       );
-      const field = () => screen.getByPlaceholderText('Other notes...') as HTMLTextAreaElement;
-      fireEvent.change(field(), { target: { value: 'An unsaved edit on 7' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Edit other notes' }));
+      fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'An unsaved edit on 7' } });
 
       rerender(
         <Providers>
           <PrDetailPane {...paneProps({ tab: 'notes', entry: entryWithNotes('8', 'Notes for 8') })} />
         </Providers>,
       );
-      expect(screen.getByRole('group', { name: 'Notes for PR #8' })).toBeInTheDocument();
-      expect(field().value).toBe('Notes for 8');
+      const notes = screen.getByRole('group', { name: 'Notes for PR #8' });
+      expect(within(notes).getByRole('group', { name: 'Other notes' })).toHaveTextContent('Notes for 8');
+      expect(within(notes).queryByRole('textbox')).not.toBeInTheDocument();
+    });
+
+    test('an unsaved Notes edit survives switching to another tab and back', () => {
+      const { rerender } = render(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'notes', entry: entryWithNotes('7', 'Notes for 7') })} />
+        </Providers>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Edit other notes' }));
+      fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'An unsaved edit' } });
+      for (const tab of ['overview', 'notes'] as const) {
+        rerender(
+          <Providers>
+            <PrDetailPane {...paneProps({ tab, entry: entryWithNotes('7', 'Notes for 7') })} />
+          </Providers>,
+        );
+      }
+      expect(screen.getByRole('textbox', { name: 'Other notes' })).toHaveValue('An unsaved edit');
     });
 
     test('the Conversations tab starts from the new PR\'s own filter, not the previous PR\'s', async () => {

@@ -4280,20 +4280,12 @@ describe("index page rendering with Testing Library", () => {
     expect(pr999Row).toBeTruthy();
     expect(signalNames(pr999Row)).toContain("Status: NO_LOCAL_DATA");
 
-    const pr999InsightsRow = await openPrPane(user, pr999Row, "Notes");
-    const mergedCommentNote = pr999InsightsRow?.querySelector(
-      ".pr-notes-comment-note",
-    );
-    const mergedOtherNotes = Array.from(
-      pr999InsightsRow?.querySelectorAll(".pr-notes-textarea") || [],
-    ).find(
-      (node) =>
-        !String(node?.className || "").includes("pr-notes-comment-note"),
-    );
-    expect(String(mergedCommentNote?.value || "")).toBe(
+    // Its stored notes show read-only on the Notes tab.
+    const pr999Notes = await openPrPane(user, pr999Row, "Notes");
+    expect(within(pr999Notes).getByRole("group", { name: "Comments" })).toHaveTextContent(
       "This PR still needs follow-up context.",
     );
-    expect(String(mergedOtherNotes?.value || "")).toBe(
+    expect(within(pr999Notes).getByRole("group", { name: "Other notes" })).toHaveTextContent(
       "Saved without local PR data.",
     );
   });
@@ -6594,7 +6586,7 @@ describe("index page rendering with Testing Library", () => {
     expect(document.getElementById("status").textContent).toBe("Ack only completed");
   });
 
-  test("posts notes payload and renders saved comment after a user saves notes", async () => {
+  test("saves each notes field on its own, with the others as saved, and shows it read-only", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -6625,17 +6617,13 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const baseFetch = fetchMock;
-    const savedNote = {
-      id: "save-test-c1",
-      author: "octocat",
-      tone: "Positive",
-      note: "LGTM",
-    };
     fetchMock = jest.fn(async (url, init = {}) => {
       const normalizedUrl = String(url || "");
       const method = String(init?.method || "GET").toUpperCase();
 
       if (normalizedUrl === "/view-prs/notes" && method === "POST") {
+        // The server stores what was posted and returns it with the data.
+        const { comments, otherNotes, prDifficulty, stories, analysisOfPr } = JSON.parse(String(init?.body || "{}"));
         return createOkJsonResponse({
           ok: true,
           prData: {
@@ -6657,11 +6645,11 @@ describe("index page rendering with Testing Library", () => {
                   inReview: false,
                 },
                 notes: {
-                  comments: [savedNote],
-                  otherNotes: "",
-                  prDifficulty: "5",
-                  stories: [],
-                  analysisOfPr: "Deep analysis for save test",
+                  comments,
+                  otherNotes,
+                  prDifficulty,
+                  stories,
+                  analysisOfPr,
                 },
               },
             },
@@ -6685,69 +6673,51 @@ describe("index page rendering with Testing Library", () => {
     });
     await openPrPane(user, summaryButton.closest("tr"), "Notes");
 
-    const addCommentButton = await screen.findByRole("button", {
-      name: "+ Add comment",
-    });
-    await user.click(addCommentButton);
-
-    const notesSection = addCommentButton.closest(".pr-notes-section");
+    // Each field saves on its own, with the others as saved.
+    const notesPosts = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url || "") === "/view-prs/notes" && String(init?.method || "GET").toUpperCase() === "POST",
+      );
+    const lastNotesPayload = () => JSON.parse(String(notesPosts().at(-1)?.[1]?.body || "{}"));
+    const notesSection = document.querySelector('.pr-notes-section[data-pr-number="1"]');
     expect(notesSection).toBeInTheDocument();
+    const notesField = (name) => within(notesSection).getByRole("group", { name });
 
-    const noteTextarea = notesSection.querySelector(".pr-notes-comment-note");
-    expect(noteTextarea).toBeInTheDocument();
+    await user.click(within(notesSection).getByRole("button", { name: "Add comments" }));
     // fireEvent.change, not user.type - see renderCleanNotesSection()'s own
     // comment (further down this file) for why: by the time enough of this
     // suite's ~97 tests have run, user.type's multi-event-per-field
     // sequences stop reliably reaching a text field's onChange/React state
-    // at all (confirmed via the component's own internal state tracing),
-    // while a single fireEvent.change reliably still does.
-    fireEvent.change(noteTextarea, { target: { value: "LGTM" } });
+    // at all, while a single fireEvent.change reliably still does.
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 1 note" }), { target: { value: "LGTM" } });
+    await user.click(within(notesSection).getByRole("button", { name: "Save comments" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(1));
+    expect(lastNotesPayload().prNumber).toBe("1");
+    expect(lastNotesPayload().comments).toHaveLength(1);
+    expect(String(lastNotesPayload().comments[0]?.note || "")).toBe("LGTM");
+    // The saved comment shows read-only.
+    await waitFor(() => expect(notesField("Comments")).toHaveTextContent("LGTM"));
+    expect(within(notesField("Comments")).queryByRole("textbox")).not.toBeInTheDocument();
 
-    const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
-    await user.selectOptions(difficultySelect, "5");
+    await user.click(within(notesSection).getByRole("button", { name: "Add PR difficulty" }));
+    await user.selectOptions(within(notesSection).getByRole("combobox", { name: "PR difficulty" }), "5");
+    await user.click(within(notesSection).getByRole("button", { name: "Save PR difficulty" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(2));
+    expect(lastNotesPayload().prDifficulty).toBe("5");
+    expect(String(lastNotesPayload().comments[0]?.note || "")).toBe("LGTM");
 
-    const analysisTextarea = within(notesSection).getByLabelText("Analysis of PR");
-    fireEvent.change(analysisTextarea, { target: { value: "Deep analysis for save test" } });
-
-    const saveNotesButton = screen.getByRole("button", { name: "Save notes" });
-    expect(saveNotesButton).toBeEnabled();
-
-    await user.click(saveNotesButton);
-
-    await waitFor(() => {
-      const notesCalls = fetchMock.mock.calls.filter((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/notes" &&
-          String(init?.method || "GET").toUpperCase() === "POST"
-        );
-      });
-      expect(notesCalls.length).toBeGreaterThan(0);
+    await user.click(within(notesSection).getByRole("button", { name: "Add analysis of PR" }));
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Analysis of PR" }), {
+      target: { value: "Deep analysis for save test" },
     });
-
-    const notesCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/notes" &&
-        String(init?.method || "GET").toUpperCase() === "POST"
-      );
-    });
-    const notesPayload = JSON.parse(String(notesCall?.[1]?.body || "{}"));
-
-    expect(notesPayload.prNumber).toBe("1");
-    expect(notesPayload.prDifficulty).toBe("5");
-    expect(notesPayload.analysisOfPr).toBe("Deep analysis for save test");
-    expect(Array.isArray(notesPayload.comments)).toBe(true);
-    expect(notesPayload.comments.length).toBeGreaterThan(0);
-    expect(String(notesPayload.comments[0]?.note || "")).toContain("LGTM");
-
-    await waitFor(() => {
-      const savedRows = document.querySelectorAll(".pr-notes-comment-row");
-      expect(savedRows.length).toBe(1);
-    });
+    await user.click(within(notesSection).getByRole("button", { name: "Save analysis of PR" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(3));
+    expect(lastNotesPayload()).toMatchObject({ prDifficulty: "5", analysisOfPr: "Deep analysis for save test" });
+    expect(lastNotesPayload().comments).toHaveLength(1);
+    await waitFor(() => expect(notesField("Analysis of PR")).toHaveTextContent("Deep analysis for save test"));
   });
 
-  test("enables Save notes when only difficulty or story fields are edited", async () => {
+  test("enables a notes field's Save once it changes (difficulty, a story name or URL)", async () => {
     const renderCleanNotesSection = async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
@@ -6783,47 +6753,49 @@ describe("index page rendering with Testing Library", () => {
       });
       await openPrPane(localUser, summaryButton.closest("tr"), "Notes");
 
-      const saveNotesButton = await screen.findByRole("button", {
-        name: "Save notes",
+      const notesSection = await waitFor(() => {
+        const section = document.querySelector('.pr-notes-section[data-pr-number="1"]');
+        expect(section).toBeInTheDocument();
+        return section;
       });
-      expect(saveNotesButton).toBeDisabled();
-
-      const notesSection = saveNotesButton.closest(".pr-notes-section");
-      expect(notesSection).toBeInTheDocument();
-      return {
-        user: localUser,
-        notesSection,
-        saveNotesButton,
-      };
+      return { user: localUser, notesSection };
+    };
+    // Opens a field for editing; its Save starts disabled.
+    const openField = async (user, notesSection, name) => {
+      await user.click(within(notesSection).getByRole("button", { name: `Add ${name}` }));
+      const save = within(notesSection).getByRole("button", { name: `Save ${name}` });
+      expect(save).toBeDisabled();
+      return save;
     };
 
     {
-      const { user, notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
-      await user.selectOptions(difficultySelect, "4");
-      expect(saveNotesButton).toBeEnabled();
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "PR difficulty");
+      await user.selectOptions(within(notesSection).getByRole("combobox", { name: "PR difficulty" }), "4");
+      expect(save).toBeEnabled();
     }
 
     {
-      const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const storyNameInput = within(notesSection).getByRole("textbox", { name: "Story 1 name" });
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "stories");
       // fireEvent.change (one direct value-set + 'change' dispatch), not
-      // user.type (many sequential per-keystroke events) - see this
-      // test's own renderCleanNotesSection() comment for why: by the time
+      // user.type (many sequential per-keystroke events): by the time
       // this is the suite's 4th+ React session sharing one jsdom window,
       // user.type's multi-event sequence reliably stopped reaching this
-      // input's onChange/state at all (confirmed via the component's own
-      // internal state tracing - the DOM value updated, React's state
-      // never did), while a single fireEvent.change reliably still does.
-      fireEvent.change(storyNameInput, { target: { value: "US12345" } });
-      expect(saveNotesButton).toBeEnabled();
+      // input's onChange/state at all (the DOM value updated, React's
+      // state never did), while a single fireEvent.change reliably still
+      // does.
+      fireEvent.change(within(notesSection).getByRole("textbox", { name: "Story 1 name" }), { target: { value: "US12345" } });
+      expect(save).toBeEnabled();
     }
 
     {
-      const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const storyUrlInput = within(notesSection).getByRole("textbox", { name: "Story 1 URL" });
-      fireEvent.change(storyUrlInput, { target: { value: "https://stories.example/US12345" } });
-      expect(saveNotesButton).toBeEnabled();
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "stories");
+      fireEvent.change(within(notesSection).getByRole("textbox", { name: "Story 1 URL" }), {
+        target: { value: "https://stories.example/US12345" },
+      });
+      expect(save).toBeEnabled();
     }
   });
 
@@ -6908,21 +6880,18 @@ describe("index page rendering with Testing Library", () => {
 
     await openPrPane(user, (await screen.findByRole("button", { name: /^Show summary for PR #/ })).closest("tr"), "Notes");
 
-    const addCommentButton = await screen.findByRole("button", {
-      name: "+ Add comment",
-    });
-    await user.click(addCommentButton);
-    await user.click(addCommentButton);
-
-    const notesSection = addCommentButton.closest(".pr-notes-section");
+    // Add starts the comments with one row; add a second, remove the first.
+    await user.click(await screen.findByRole("button", { name: "Add comments" }));
+    const notesSection = document.querySelector('.pr-notes-section[data-pr-number="1"]');
     expect(notesSection).toBeInTheDocument();
+    await user.click(within(notesSection).getByRole("button", { name: "Add comment" }));
+    expect(within(notesSection).getAllByRole("button", { name: /^Remove comment / })).toHaveLength(2);
+    // Each with a note (blank rows aren't saved anyway).
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 1 note" }), { target: { value: "First" } });
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 2 note" }), { target: { value: "Second" } });
+    await user.click(within(notesSection).getByRole("button", { name: "Remove comment 1" }));
 
-    const removeButtons = notesSection.querySelectorAll(".pr-notes-comment-remove");
-    expect(removeButtons.length).toBe(2);
-    await user.click(removeButtons[0]);
-
-    const saveNotesButton = screen.getByRole("button", { name: "Save notes" });
-    await user.click(saveNotesButton);
+    await user.click(within(notesSection).getByRole("button", { name: "Save comments" }));
 
     await waitFor(() => {
       const notesCalls = fetchMock.mock.calls.filter((call) => {
@@ -6949,6 +6918,7 @@ describe("index page rendering with Testing Library", () => {
 
     expect(Array.isArray(latestNotesPayload.comments)).toBe(true);
     expect(latestNotesPayload.comments.length).toBe(1);
+    expect(latestNotesPayload.comments[0]?.note).toBe("Second");
   });
 
   test("supports manual author comment save and inline edit in author insights", async () => {
@@ -8102,7 +8072,7 @@ describe("index page rendering with Testing Library", () => {
       );
 
       // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
-      // NotesSection does on an edit.
+      // the Notes tab does on an edit.
       act(() => {
         notesDirtyTestHandle.setNotesDirty("101", true);
       });

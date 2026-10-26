@@ -524,6 +524,165 @@
   color: var(--color-text-muted);
 }
 
+/* Notes tab (PrNotesTab) */
+.pr-notes-field {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.pr-notes-field:first-child {
+  padding-top: 0;
+}
+
+.pr-notes-field:last-child {
+  border-bottom: 0;
+}
+
+.pr-notes-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+}
+
+.pr-notes-field-label {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.pr-notes-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pr-notes-none {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.pr-notes-comments,
+.pr-notes-stories-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-notes-comment {
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.pr-notes-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-2);
+  margin: 0 0 2px;
+  font-size: var(--font-size-sm);
+}
+
+.pr-notes-tone {
+  color: var(--color-text-muted);
+}
+
+.pr-notes-story {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.pr-notes-story-name {
+  overflow-wrap: anywhere;
+}
+
+/* Editing */
+.pr-notes-editor {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pr-notes-comments-editor,
+.pr-notes-stories {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: stretch;
+}
+
+.pr-notes-comment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.pr-notes-comment-note {
+  grid-column: 1 / -1;
+}
+
+.pr-notes-story-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.pr-notes-add {
+  justify-self: start;
+}
+
+.pr-notes-input,
+.pr-notes-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) / 1.45 var(--font-sans);
+  color: var(--color-text);
+}
+
+/* Grows with its text (AutoResizeTextarea). */
+.pr-notes-textarea {
+  overflow-y: hidden;
+}
+
+.pr-notes-input:focus-visible,
+.pr-notes-textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+.pr-notes-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.pr-notes-status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-notes-status[data-tone="success"] { color: var(--color-success); }
+.pr-notes-status[data-tone="error"] { color: var(--color-danger); }
+
 /* Empty state */
 .pr-pane-empty {
   display: flex;

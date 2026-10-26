@@ -10,7 +10,7 @@ import { MenuButton } from '../ui/MenuButton';
 import { Tabs, TabPanel, type TabItem } from '../ui/Tabs';
 import { useTooltipController } from '../ui/Tooltip';
 import { PrConversationsTab } from './PrConversationsTab';
-import { NotesSection } from '../insights/NotesSection';
+import { PrNotesTab } from './PrNotesTab';
 import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHook';
 import { PrOverview } from './PrOverview';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
@@ -294,7 +294,11 @@ function PaneContent({
           />
         )}
         {selectedTab === 'conversations' && <PrConversationsTab pr={pr} actorsMap={rowActorsMap} />}
-        {selectedTab === 'notes' && <NotesSection entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />}
+        {/* Kept mounted (hidden) on the other tabs: unmounting would drop
+            unsaved edits, which the "unsaved" badge still promises. */}
+        <div className="pr-pane-notes" hidden={selectedTab !== 'notes'}>
+          <PrNotesTab entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />
+        </div>
         {selectedTab === 'custom' && hookHtml && <InsightsHookContent html={hookHtml} />}
       </TabPanel>
     </>

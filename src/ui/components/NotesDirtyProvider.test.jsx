@@ -1,11 +1,10 @@
 /** @jest-environment jsdom */
 
-const { render: baseRender, cleanup, fireEvent, screen } = require('@testing-library/react');
+const { render: baseRender, cleanup, fireEvent, screen, within } = require('@testing-library/react');
 const { RequestActivityContext } = require('../state/RequestActivityContext');
 
-// NotesSection (rendered for real by this file's rows) reads
-// beginRequestActivity from usePrData() now, not window.beginRequestActivity
-// (see WINDOW_BRIDGE_ELIMINATION_PLAN.md).
+// PrNotesTab (rendered for real here) reads beginRequestActivity from
+// RequestActivityContext.
 const render = (ui, options) =>
   baseRender(
     <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} }}>{ui}</RequestActivityContext.Provider>,
@@ -15,78 +14,73 @@ require('@testing-library/jest-dom');
 const { NotesDirtyProvider } = require('./NotesDirtyProvider');
 const { useNotesDirty } = require('../state/NotesDirtyContext');
 
-// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads the
-// dirty set from Context (what AutoRenderBlockingSync reads) - it was
-// window.getDirtyNotesPrNumbers, deleted.
+// Reads the dirty set from Context (what AutoRenderBlockingSync reads) - it
+// was window.getDirtyNotesPrNumbers, deleted.
 let dirtyPrNumbers;
 function DirtyProbe() {
   dirtyPrNumbers = useNotesDirty().dirtyPrNumbers;
   return null;
 }
 const readDirty = () => dirtyPrNumbers;
-const { NotesSection } = require('./insights/NotesSection');
+const { PrNotesTab } = require('./pane/PrNotesTab');
 
-// Phase 7, sub-phase 7.5 (see REACT_MIGRATION_PLAN.md): closes a real
-// coverage gap - no existing test exercised the actual wiring between a
-// real NotesSection instance and the dirty set this Provider exposes (read by
-// AutoRenderBlockingSync - see AutoRenderBlockingSync.test.jsx; it was the
-// window.getDirtyNotesPrNumbers bridge). NotesSection.test.jsx tests
-// NotesSection in isolation with a mock setNotesDirty; this mounts the real
-// Provider too. This is exactly the
-// class of gap that let a prior auto-render-blocking bug (the
-// getBlockingAuthorInsightsLogins bare-shorthand-property bug, see
-// REACT_MIGRATION_PLAN.md's sub-phase 7.0 writeup) go unnoticed.
-describe('NotesDirtyProvider + NotesSection wiring', () => {
+// The wiring between a real Notes tab and the dirty set this Provider
+// exposes (read by AutoRenderBlockingSync - see
+// AutoRenderBlockingSync.test.jsx). PrNotesTab.test.tsx tests the tab with
+// a mock setNotesDirty; this mounts the real Provider too - the class of
+// gap that once let an auto-render-blocking bug go unnoticed.
+describe('NotesDirtyProvider + PrNotesTab wiring', () => {
   afterEach(() => {
-    delete window.postJson;
     dirtyPrNumbers = undefined;
     cleanup();
   });
 
-  test('given a real NotesSection edited inside a real NotesDirtyProvider, when it becomes dirty, then the Context dirty set reflects it', () => {
+  // Opens a PR's Other notes for editing and types into it.
+  const editOtherNotes = (prNumber, value) => {
+    const notes = screen.getByRole('group', { name: `Notes for PR #${prNumber}` });
+    const add = within(notes).queryByRole('button', { name: 'Add other notes' });
+    if (add) fireEvent.click(add);
+    fireEvent.change(within(notes).getByRole('textbox', { name: 'Other notes' }), { target: { value } });
+  };
+
+  test('given a real Notes tab edited inside a real NotesDirtyProvider, when it becomes dirty, then the Context dirty set reflects it', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />
+        <PrNotesTab entry={{}} pr={{ number: '42' }} />
       </NotesDirtyProvider>,
     );
 
     expect(readDirty()).toEqual([]);
-
-    fireEvent.change(screen.getByPlaceholderText('Other notes...'), { target: { value: 'a note' } });
-
+    editOtherNotes('42', 'a note');
     expect(readDirty()).toEqual(['42']);
   });
 
-  test('given two dirty NotesSection instances for different PRs, when read, then both PR numbers are reported', () => {
+  test('given two dirty Notes tabs for different PRs, when read, then both PR numbers are reported', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <NotesSection entry={{}} pr={{ number: '10' }} actorsMap={{}} />
-        <NotesSection entry={{}} pr={{ number: '2' }} actorsMap={{}} />
+        <PrNotesTab entry={{}} pr={{ number: '10' }} />
+        <PrNotesTab entry={{}} pr={{ number: '2' }} />
       </NotesDirtyProvider>,
     );
 
-    const textareas = screen.getAllByPlaceholderText('Other notes...');
-    fireEvent.change(textareas[0], { target: { value: 'first' } });
-    fireEvent.change(textareas[1], { target: { value: 'second' } });
-
+    editOtherNotes('10', 'first');
+    editOtherNotes('2', 'second');
     expect(readDirty()).toEqual(['2', '10']);
   });
 
-  test('given a dirty NotesSection that becomes clean again, when read, then the PR number is removed', () => {
+  test('given a dirty Notes tab whose edit is undone, when read, then the PR number is removed', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <NotesSection entry={{}} pr={{ number: '42' }} actorsMap={{}} />
+        <PrNotesTab entry={{}} pr={{ number: '42' }} />
       </NotesDirtyProvider>,
     );
 
-    const textarea = screen.getByPlaceholderText('Other notes...');
-    fireEvent.change(textarea, { target: { value: 'a note' } });
+    editOtherNotes('42', 'a note');
     expect(readDirty()).toEqual(['42']);
-
-    fireEvent.change(textarea, { target: { value: '' } });
+    editOtherNotes('42', '');
     expect(readDirty()).toEqual([]);
   });
 

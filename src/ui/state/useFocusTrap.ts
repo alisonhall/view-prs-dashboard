@@ -21,7 +21,10 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
     const container = containerRef.current;
     if (!active || !container) return undefined;
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusables = () => Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE));
+    // Not inside hidden content (the pane keeps its Notes tab mounted,
+    // hidden, on the other tabs): Tab skips it, so it can't be either end.
+    const focusables = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((element) => !element.closest('[hidden], [inert]'));
     container.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -1,8 +1,7 @@
 /** @jest-environment jsdom */
 
-const { render, screen, fireEvent } = require('@testing-library/react');
-require('@testing-library/jest-dom');
-const { NotesStoriesField } = require('./NotesStoriesField');
+import { fireEvent, render, screen } from '@testing-library/react';
+import { NotesStoriesField } from './NotesStoriesField';
 
 describe('NotesStoriesField', () => {
   test('given no stories, when rendering, then shows one empty name/URL row', () => {
@@ -18,29 +17,24 @@ describe('NotesStoriesField', () => {
     expect(onChange).toHaveBeenCalledWith([{ name: 'US1', url: 'https://x/US1' }]);
   });
 
-  test('given the "+" button, when clicked, then onChange receives an appended empty row', () => {
+  test('given "Add story", when clicked, then onChange receives an appended empty row', () => {
     const onChange = jest.fn();
     render(<NotesStoriesField stories={[{ name: 'US1', url: '' }]} onChange={onChange} />);
-    screen.getByRole('button', { name: 'Add story' }).click();
+    fireEvent.click(screen.getByRole('button', { name: 'Add story' }));
     expect(onChange).toHaveBeenCalledWith([{ name: 'US1', url: '' }, { name: '', url: '' }]);
   });
 
-  test('given the last remaining row, when its "-" is clicked, then onChange clears it instead of removing it', () => {
+  test('given the last remaining row, when it is removed, then onChange clears it instead of removing it', () => {
     const onChange = jest.fn();
     render(<NotesStoriesField stories={[{ name: 'US1', url: 'https://x/US1' }]} onChange={onChange} />);
-    screen.getByRole('button', { name: 'Remove story 1' }).click();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove story 1' }));
     expect(onChange).toHaveBeenCalledWith([{ name: '', url: '' }]);
   });
 
   test('given two rows, when the first is removed, then onChange receives only the second', () => {
     const onChange = jest.fn();
-    render(
-      <NotesStoriesField
-        stories={[{ name: 'US1', url: '' }, { name: '', url: 'https://x/US2' }]}
-        onChange={onChange}
-      />,
-    );
-    screen.getByRole('button', { name: 'Remove story 1' }).click();
+    render(<NotesStoriesField stories={[{ name: 'US1', url: '' }, { name: '', url: 'https://x/US2' }]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove story 1' }));
     expect(onChange).toHaveBeenCalledWith([{ name: '', url: 'https://x/US2' }]);
   });
 });

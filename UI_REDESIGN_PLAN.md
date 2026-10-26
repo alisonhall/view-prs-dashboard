@@ -537,6 +537,38 @@ app working:
   view, a per-field edit mode, and stories shown as their names with
   open-link icons. This covers the two Notes items in `ROADMAP.md`.
 - Keep the `NotesDirty` and auto-render-blocking integration working.
+- **Done (2026-10-25)** on branch `ui-redesign/phase-7`:
+  - `helpers/pr-notes-fields.helpers.ts` (tested): the fields in order
+    with their labels, tone and difficulty options, the stored notes as
+    the tab holds them, whether a draft differs from what's saved (stories
+    compared as they'd be stored), what saving one field sends, and a
+    story's link (only `http(s)`, so a typed `javascript:` URL is never
+    clickable).
+  - `pane/PrNotesTab.tsx` replaces `NotesSection` (deleted): each field
+    read-only with Edit (Add when empty), then inputs with their own Save
+    and Cancel (decision 6). Edit focuses the field's first input; Save and
+    Cancel return focus to Edit; a new comment focuses its author. Each
+    field has a status line ("Saved." for a few seconds, or why a save
+    failed, keeping the edit). Comments read as author, tone and note;
+    stories as names with an open-link button. Textareas fit the text they
+    open with, not only what's typed.
+  - `pane/NotesStoriesField.tsx` replaces the `.jsx`.
+  - The tab takes in stored notes that change under it (another window,
+    the backfill), keeping a field being edited as typed: it stays mounted
+    while the PR is selected, and saving one field sends the others from
+    what it holds. Comment rows with neither an author nor a note aren't
+    a change and aren't saved. A save in flight says "Saving…" in the
+    field's status line (the button's name stays "Save ...").
+  - Only a changed field's Save is enabled, so the "Auto update paused"
+    chip's `.pr-notes-save:not([disabled])` focuses the first one with an
+    unsaved edit. `NotesDirtyContext` is marked only while a draft differs
+    from what's saved.
+  - The pane keeps the Notes tab mounted (hidden) on its other tabs:
+    switching tabs used to unmount it and drop unsaved edits while the
+    PR stayed marked unsaved. The drawer's focus trap now skips hidden
+    content, which that exposed.
+  - The old Notes CSS in `index.css` is replaced by `pane.css` rules on
+    the design tokens.
 
 ### Phase 8 - Filter bar
 
@@ -591,6 +623,9 @@ becomes a small `react-app.tsx`. Done in steps:
    area by area as each phase rewrites that area, and is gone by phase 10.
 5. **Collapsed sections show a summary** in their header, such as "2 need
    attention · 1 failing" (phase 2).
+6. **Notes save per field (phase 7, decided 2026-10-25):** each field's
+   Edit gives it its own Save and Cancel. Saving sends that field with the
+   others as saved, so another field's unsaved edit stays a draft.
 
 ## Order and size
 
