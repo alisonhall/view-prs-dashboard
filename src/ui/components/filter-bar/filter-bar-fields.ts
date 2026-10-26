@@ -4,7 +4,7 @@ import { normalizeFilterToken } from '../../helpers/pr-filter-label-extraction.h
 
 // The filter bar's fields (UI_REDESIGN_PLAN.md, phase 8): the row filters,
 // which choose the rows the table shows. The attention, merge-commit and
-// change-detection rules stay in the Run & Filter tab until phase 9.
+// change-detection rules are the Settings drawer's (phase 9b).
 
 export interface RowFilterList {
   listId: RowFilterListId;

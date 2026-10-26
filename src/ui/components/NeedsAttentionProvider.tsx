@@ -37,7 +37,7 @@ const DEFAULT_ATTENTION_VALUES = {
 
 /**
  * Derives the "needs attention" config and classification helpers from the
- * Run & Filter form's attention fields and the actor identity.
+ * attention rules (Settings drawer) and the actor identity.
  *
  * It reads FilterStateContext directly, so a change to any attention rule
  * re-renders it (and updates attention icons and smart-group membership)

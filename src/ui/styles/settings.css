@@ -123,6 +123,12 @@
   color: var(--color-text);
 }
 
+/* display: grid above would otherwise win over the hidden attribute (the
+   thread-resolution list the policy doesn't use). */
+.settings-field[hidden] {
+  display: none;
+}
+
 .settings-check {
   display: flex;
   align-items: center;

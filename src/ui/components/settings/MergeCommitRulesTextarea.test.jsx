@@ -3,7 +3,7 @@
 const { render, screen, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { MergeCommitRulesTextarea } = require('./MergeCommitRulesTextarea');
-const { FilterStateContext } = require('../state/FilterStateContext');
+const { FilterStateContext } = require('../../state/FilterStateContext');
 
 const renderTextarea = (values, props = {}) => {
   const setValue = jest.fn();

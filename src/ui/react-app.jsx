@@ -11,27 +11,18 @@ import { Suspense, lazy, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
-import { ContextFilterCheckbox } from './components/settings/ContextFilterCheckbox';
-import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
-import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
-import { AuthorThreadResolutionRuleVisibility } from './components/AuthorThreadResolutionRuleVisibility';
-import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
-import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
-import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
-import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { BackfillControls } from './components/BackfillControls';
 import { BackfillLogControls } from './components/BackfillLogControls';
 import { DataViewHeaderPortals } from './components/filter-bar/DataViewHeaderPortals';
-import { NOTES_FILTER_FIELDS } from './components/filter-bar/filter-bar-fields';
-import { RowFilterListSeeding } from './state/useRowFilterListSeeding';
+import { ListSelectionSeeding } from './state/useListSelectionSeeding';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { useRequestMoreMerged } from './state/useRequestMoreMerged';
 import { Snackbar } from './components/Snackbar';
 import { SnackbarProvider } from './components/SnackbarProvider';
 import { SettingsDrawer } from './components/settings/SettingsDrawer';
-import { PR_NUMBERS_FIELD, SCRIPT_CHECKBOX_FIELDS, SCRIPT_TEXT_FIELDS } from './components/settings/settings-fields';
+import { buildFilterStateInitialValues } from './state/filterStateInitialValues';
 import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { useBackfillActions } from './state/useBackfillActions';
@@ -140,119 +131,11 @@ const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) =
  * it resolves - a plain `setValues` call from inside that effect (it runs
  * in the Provider's own lifecycle, so no flushSync is needed).
  */
-// Context-backed checkboxes with no field-specific behavior (see
-// ContextFilterCheckbox.jsx) - each entry's `key` must have a matching
-// entry in index.page.js's FILTER_STATE_FIELD_MAP for its value to reach
-// the render pipeline/persistence, and in FilterStateProvider's own
-// debounced-apply effect dependency list if it should auto-apply on
-// change. The five "Needs Attention rules" checkboxes do (mirroring their
-// membership in debouncedApplyOnChangeIds); the three "Run Script
-// options" checkboxes don't - they're only ever read via `new
-// FormData(form)` when the "Run script" button is clicked (see
-// getFormBody, index.page.js), same as the Run Script text inputs/select
-// below, so no debounced-apply behavior applies to them either way.
-const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
-  { id: 'attention-include-pending-comments', name: 'attentionIncludePendingComments', key: 'attentionIncludePendingComments', defaultValue: true },
-  { id: 'attention-ignore-merge-only-commits', name: 'attentionIgnoreMergeOnlyCommits', key: 'attentionIgnoreMergeOnlyCommits', defaultValue: false },
-  { id: 'attention-include-closed-merged', name: 'attentionIncludeClosedMerged', key: 'attentionIncludeClosedMerged', defaultValue: true },
-  { id: 'attention-include-draft-changed', name: 'attentionIncludeDraftChanged', key: 'attentionIncludeDraftChanged', defaultValue: true },
-  { id: 'attention-include-draft-no-activity', name: 'attentionIncludeDraftNoActivity', key: 'attentionIncludeDraftNoActivity', defaultValue: false },
-];
-
 // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 6): extracted out of buildFilterStateFieldPortals() below (still
-// its only other caller) so mountAppRoot() can compute FilterStateProvider's
-// initialValues once, at module load, with no DOM dependency - needed now
-// that FilterStateProvider itself moves from inside AppRoot's own returned
-// JSX to wrapping <AppRoot/> at mountAppRoot()'s own render() call (closing
-// window.getFormBody - see useFormBody.tsx). Pure defaults, same values as
-// getUiOptionDefaults() (helpers/pr-ui-option-persistence.helpers.ts) - no
-// vanilla fallback markup is left to read a "currently showing" value from.
-function buildFilterStateInitialValues() {
-  const initialValues = {
-    scopeMode: 'all',
-    alwaysShowInReview: false,
-    attentionNoActivityMode: 'all',
-    openMode: 'none',
-    filterPrNumbers: '',
-    attentionAuthorThreadResolutionMode: 'allow-all',
-    changeFilterIgnoreCommitPatterns: '',
-    mergeCommitHeadlinePatterns: formatRuleLines(DEFAULT_MERGE_COMMIT_RULES.headlinePatterns),
-    mergeCommitLogins: '',
-  };
-  FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  // The Settings drawer's fields (Run & check's PR numbers, Script options).
-  [PR_NUMBERS_FIELD, ...SCRIPT_TEXT_FIELDS, ...SCRIPT_CHECKBOX_FIELDS].forEach((field) => {
-    initialValues[field.key] = field.defaultValue;
-  });
-  NOTES_FILTER_FIELDS.forEach((field) => {
-    initialValues[field.key] = field.options[0]?.value ?? '';
-  });
-  return initialValues;
-}
-
-function buildFilterStateFieldPortals() {
-  const attentionNoActivityModeContainer = document.getElementById(
-    'attention-no-activity-mode-root',
-  );
-  const authorThreadResolutionModeContainer = document.getElementById(
-    'attention-author-thread-resolution-mode-root',
-  );
-  const ignoreCommitPatternsContainer = document.getElementById(
-    'change-filter-ignore-commit-patterns-root',
-  );
-  const mergeCommitHeadlinePatternsContainer = document.getElementById('merge-commit-headline-patterns-root');
-  const mergeCommitLoginsContainer = document.getElementById('merge-commit-logins-root');
-  const contextCheckboxContainers = FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.map((field) => ({
-    ...field,
-    container: document.getElementById(`${field.id}-root`),
-  }));
-  const portals = [
-    attentionNoActivityModeContainer &&
-      createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer, 'attention-no-activity-mode'),
-    authorThreadResolutionModeContainer &&
-      createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
-    // Headless (renders nothing, no container needed) - see its own header
-    // comment for why it stays a plain child here instead of a portal.
-    <AuthorThreadResolutionRuleVisibility key="author-thread-resolution-visibility" />,
-    ignoreCommitPatternsContainer &&
-      createPortal(<IgnoreCommitPatternsTextarea />, ignoreCommitPatternsContainer, 'ignore-commit-patterns'),
-    mergeCommitHeadlinePatternsContainer &&
-      createPortal(
-        <MergeCommitRulesTextarea
-          id="merge-commit-headline-patterns"
-          filterStateKey="mergeCommitHeadlinePatterns"
-          placeholder={'^Merge\\b\n^Revert "Merge'}
-          validatePatterns
-        />,
-        mergeCommitHeadlinePatternsContainer,
-        'merge-commit-headline-patterns',
-      ),
-    mergeCommitLoginsContainer &&
-      createPortal(
-        <MergeCommitRulesTextarea
-          id="merge-commit-logins"
-          filterStateKey="mergeCommitLogins"
-          placeholder={'dependabot[bot]\nrenovate[bot]'}
-        />,
-        mergeCommitLoginsContainer,
-        'merge-commit-logins',
-      ),
-    ...contextCheckboxContainers.map(
-      (field) =>
-        field.container &&
-        createPortal(
-          <ContextFilterCheckbox id={field.id} name={field.name} filterStateKey={field.key} />,
-          field.container,
-          field.id,
-        ),
-    ),
-  ].filter(Boolean);
-
-  return { portals };
-}
+// cluster 6): mountAppRoot() computes FilterStateProvider's initialValues
+// once, with no DOM dependency (state/filterStateInitialValues.ts) - needed
+// since FilterStateProvider wraps <AppRoot/> at mountAppRoot()'s own
+// render() call (closing window.getFormBody - see useFormBody.tsx).
 
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -264,26 +147,7 @@ function buildFilterStateFieldPortals() {
  * pure waste.
  */
 function computeStaticContainers() {
-  const multiSelect = {};
-  // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): each list's sibling <summary
-  // class="multi-select-summary"> - MultiSelectCheckboxList.jsx now owns
-  // rendering its own "(N selected)" count text into this element and
-  // toggling the list container's own "empty" class, replacing
-  // pr-filter-panel.helpers.js's updateMultiSelectSummary (deleted) and
-  // index.page.js's per-list classList.add/remove("empty") calls (also
-  // deleted, both covered every one of these same 9 lists).
-  const multiSelectSummary = {};
-  Object.keys(MULTI_SELECT_LIST_ID_PREFIXES).forEach((listId) => {
-    const listContainer = document.getElementById(listId);
-    multiSelect[listId] = listContainer;
-    multiSelectSummary[listId] = listContainer?.closest('details')?.querySelector('.multi-select-summary') || null;
-  });
-
   return {
-    filterFields: buildFilterStateFieldPortals(),
-    multiSelect,
-    multiSelectSummary,
     reviewStatsControls: document.getElementById('stats-controls-root'),
     reviewStatsContent: document.getElementById('stats-content-root'),
     authorInsightsSelector: document.getElementById('author-insights-selector-root'),
@@ -309,7 +173,6 @@ function computeStaticContainers() {
     appHeader: document.getElementById('app-header-root'),
     appBanner: document.getElementById('app-banner-root'),
     settingsDrawer: document.getElementById('settings-drawer-root'),
-    tabScript: document.getElementById('tab-script-root'),
     tabBackfill: document.getElementById('tab-backfill-root'),
     tabActionLog: document.getElementById('tab-action-log-root'),
     tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
@@ -321,7 +184,7 @@ function computeStaticContainers() {
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * the single React root for the whole app. Every piece that used to be its
- * own independent `ReactDOM.createRoot()` (PrTableApp, the Run & Filter
+ * own independent `ReactDOM.createRoot()` (PrTableApp, the form's
  * Context fields, every multi-select list, Review Stats, Author Insights,
  * Backfill badges, the applied-filter summary, PrDataPolling) is now a
  * child of this one tree, portaled into its existing DOM container via
@@ -525,7 +388,7 @@ function AppRoot() {
           cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
           ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
           from here (same reasoning as the comment that used to sit at this
-          spot: cross-portal sharing between MultiSelectListPortals and
+          spot: cross-portal sharing between the multi-select lists and
           PrTableApp/ReviewThreadsSection (now PrConversationsTab), sibling portals not an
           ancestor/descendant pair). They now wrap <AppRoot/> itself instead,
           from mountAppRoot() below - closing window.getFormBody required
@@ -602,14 +465,16 @@ function AppRoot() {
 
           <PrTablePortal container={containers.prSections} />
 
-        {containers.filterFields.portals}
-
         <FilterOptionsProvider>
-          <MultiSelectListPortals containers={containers} />
-          {/* The filter bar's lists' selections, kept in step with their options. */}
-          <RowFilterListSeeding />
+          {/* Every multi-select list's selection (the filter bar's and the
+              Settings drawer's), kept in step with its options. */}
+          <ListSelectionSeeding />
           {/* The filter bar and the PR data summary above the table. */}
           <DataViewHeaderPortals filterBarContainer={containers.filterBar} dataMetaContainer={containers.dataMeta} />
+          {/* UI redesign phase 9b: the Settings drawer (opened from the app
+              header). Inside FilterOptionsProvider (its actor lists) and
+              RepoLabelsProvider (Run & check reloads labels). */}
+          {containers.settingsDrawer && createPortal(<SettingsDrawer />, containers.settingsDrawer, 'settings-drawer')}
         </FilterOptionsProvider>
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
@@ -639,12 +504,6 @@ function AppRoot() {
             appearing after H.21's useIsTabPanelVisible rewrite), not
             jsdom (every jsdom test happens to wrap its own Probe in a
             real Provider directly, side-stepping this). */}
-          {containers.tabScript &&
-            createPortal(
-              <ManagementTabButton tabKey="script" label="Run & Filter" panelId="tab-panel-script" />,
-              containers.tabScript,
-              'tab-script',
-            )}
           {containers.tabBackfill &&
             createPortal(
               <ManagementTabButton tabKey="backfill" label="Backfill" panelId="tab-panel-backfill" />,
@@ -843,9 +702,6 @@ function AppRoot() {
             'app-banner',
           )}
 
-        {/* UI redesign phase 9b: the Settings drawer (opened from the app
-            header). Inside RepoLabelsProvider: Run & check reloads labels. */}
-        {containers.settingsDrawer && createPortal(<SettingsDrawer />, containers.settingsDrawer, 'settings-drawer')}
         {containers.mergedRequestMoreAction &&
           createPortal(
             <MergedRequestMoreActionLive />,

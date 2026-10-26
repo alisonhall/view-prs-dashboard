@@ -64,7 +64,7 @@ const filterBarList = (page, name) => filterBar(page).getByRole("group", { name,
 const filterChips = (page) => filterBar(page).getByRole("group", { name: "Applied table filters", exact: true });
 // The Settings drawer (a modal dialog, opened from the app header).
 const settingsDrawer = (page) => page.getByRole("dialog", { name: "Settings", exact: true });
-// Opens it (if it isn't) at a section ("Run & check", "Script options") and
+// Opens it (if it isn't) at a section (its nav tab's name, e.g. "Run & check") and
 // returns it. It covers the page: close it before using the table.
 const openSettings = async (page, section = "Run & check") => {
   if (!(await settingsDrawer(page).isVisible())) {
@@ -313,9 +313,12 @@ test("the Settings drawer opens from the header, switches sections, and closes w
   await expect(drawer.getByRole("button", { name: "Run script", exact: true })).toBeVisible();
   await expect(drawer.getByRole("region", { name: "Status message", exact: true })).toBeVisible();
 
-  // ↓ moves to Script options.
+  // ↓ moves to the next section; End to the last.
   await drawer.getByRole("tab", { name: "Run & check", exact: true }).focus();
   await page.keyboard.press("ArrowDown");
+  await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
+  await page.keyboard.press("End");
   await expect(drawer.getByRole("tab", { name: "Script options", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(drawer.getByLabel("Repo (owner/name)", { exact: true })).toBeVisible();
 
@@ -879,9 +882,9 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await notesGroup.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
-test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
+test("bulk Ack/Apply-label from Settings (Run & check) shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.ts's
-  // runAckAction (bulk operations submitted via the Run & Filter tab's
+  // runAckAction (bulk operations submitted via Settings' Run & check
   // "#pr-numbers" field, as opposed to a single row's own Ack button)
   // previously gave no visible per-row feedback at all while a multi-PR
   // request was in flight - only the single-row withPrBusy wrapper in
@@ -1081,7 +1084,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Attention rules");
 
   await page.selectOption("#attention-no-activity-mode", "none");
   await page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true }).uncheck();
@@ -1090,7 +1093,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Attention rules");
 
   await expect(page.getByLabel("NO_ACTIVITY handling", { exact: true })).toHaveValue("none");
   await expect(page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true })).not.toBeChecked();
@@ -1183,7 +1186,7 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   // row-filtering multi-selects (include/exclude label, author, assigned,
   // approver) used to only take effect once "Apply filters (local)" was
   // explicitly clicked - their checked-state lived purely in
-  // MultiSelectCheckboxList's own local component state, with no Context
+  // the list component's own local state, with no Context
   // mirror for a reactive derivation to read. Now mirrored into
   // RowFilterSelectionContext, feeding useVisiblePrNumbers() directly -
   // this test proves the table updates the instant a checkbox is checked,
@@ -1266,7 +1269,7 @@ test("the PR data summary's \"Applied filters\" text updates live too, with no \
 
 test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
   // Regression coverage for TableFilterChips.jsx/useTableFilterChips.tsx:
-  // unlike the "Applied filters" summary (Run & Filter tab, tested above),
+  // unlike the old "Applied filters" summary (removed in phase 8),
   // these chips live above the table itself (Data Views tab) and are each
   // individually removable - clicking a chip's "x" must clear just that
   // filter, both in the originating control and in the table's own live
@@ -1391,7 +1394,7 @@ test("the \"Merge commits\" rules auto-persist on change and survive a restore",
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Merge commits");
 
   const patterns = page.getByLabel("Headline patterns (regular expressions, one per line, not case-sensitive)");
   const logins = page.getByLabel("Logins whose commits always count as merges (one per line)");
@@ -1409,7 +1412,7 @@ test("the \"Merge commits\" rules auto-persist on change and survive a restore",
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Merge commits");
 
   await expect(patterns).toHaveValue("^Merge\\b\n(");
   await expect(logins).toHaveValue("dependabot[bot]");
@@ -1432,7 +1435,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Change detection");
 
   const textarea = page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true });
   await expect(textarea).toHaveValue("");
@@ -1446,7 +1449,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Change detection");
 
   await expect(page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true })).toHaveValue("^docs:\n^test:");
 
@@ -1794,8 +1797,7 @@ test("React-owned label multi-select renders options from payload data and filte
   // Regression test for the first (and so far only) converted multi-select
   // dropdown - a structurally different case from every other Phase 2
   // field: its *options* are rebuilt from the PR payload on every data
-  // (re)load (see MultiSelectCheckboxList.jsx and
-  // renderReactMultiSelectList in react-app.jsx), not just seeded once at
+  // (re)load (see FilterOptionsProvider.tsx), not just seeded once at
   // mount. React mounts directly into the existing #label-list container
   // (no wrapper span needed, unlike every static-option field converted so
   // far), so the pre-existing "change" listener delegated on that
@@ -1852,8 +1854,7 @@ test("React-owned label multi-select renders options from payload data and filte
 
 test("React-owned exclude-label/author/assigned/approver multi-selects render from payload data and survive a persisted restore together", async ({ page }) => {
   // One representative test for the remaining four multi-selects converted
-  // alongside label-list (same MultiSelectCheckboxList/flushSync bridge -
-  // see gotcha #4 in REACT_MIGRATION_PLAN.md), rather than one test per
+  // alongside label-list (see gotcha #4 in REACT_MIGRATION_PLAN.md), rather than one test per
   // field, following the same "batch" pattern as the Needs Attention rule
   // controls test above. Confirms both that options render from the PR
   // payload (author/assigned/approver derive display names differently
@@ -1958,22 +1959,16 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
 });
 
 test("React-owned thread-resolution allow/deny and change-filter ignore-author multi-selects render and survive a persisted restore", async ({ page }) => {
-  // Covers the last four multi-selects converted (see REACT_MIGRATION_PLAN.md):
-  // unlike every list in the batch test above, these are built directly in
-  // index.page.js's own renderActorOptionsList/renderChangeFilterActorList
-  // (not pr-filter-panel.helpers.js), which is a different call site
-  // feeding the same MultiSelectCheckboxList/flushSync bridge - this test
-  // confirms the conversion works from that call site too, not just that
-  // the bridge itself works (already proven above).
+  // The four actor lists in Settings (Attention rules' allow/deny lists,
+  // Change detection's ignore-author lists): options from the payload's
+  // actors, and a saved selection restored after a reload.
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Attention rules");
 
-  // The allow/deny lists are only visible while their <details> wrapper is
-  // shown, which updateAuthorThreadResolutionRuleVisibility ties to the
-  // mode select's value (see the dedicated test for that behavior below) -
-  // switch modes to reveal each list in turn.
+  // Only the list the policy uses shows (see the dedicated test for that
+  // below) - switch policies to reveal each list in turn.
   const allowList = page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
   const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
   const ignoreCommentAuthorsList = page.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
@@ -1990,6 +1985,7 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await expect(denyList).toContainText("Hubot");
 
+  await openSettings(page, "Change detection");
   await openDropdown(ignoreCommentAuthorsList);
   await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await openDropdown(ignoreReviewAuthorsList);
@@ -2001,7 +1997,10 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // restoreUiOptionOverrides in index.page.js), rather than driving all
   // four through checkbox clicks: the allow/deny lists are mutually
   // exclusive in the UI (only one mode's list is visible at a time), so
-  // there's no single mode that would let a real click reach both.
+  // there's no single mode that would let a real click reach both. The
+  // policy changes above save on a debounce first: let that land, or it
+  // overwrites this PUT.
+  await waitForFilterPersist(page);
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     await fetch("/view-prs/user-defaults", {
@@ -2022,12 +2021,13 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Attention rules");
 
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
   await expect(allowList.getByLabel("The Octocat", { exact: true })).toBeChecked();
   await page.selectOption("#attention-author-thread-resolution-mode", "deny-only");
   await expect(denyList.getByLabel("Hubot", { exact: true })).toBeChecked();
+  await openSettings(page, "Change detection");
   await openDropdown(ignoreCommentAuthorsList);
   await expect(ignoreCommentAuthorsList.getByLabel("The Octocat", { exact: true })).toBeChecked();
   await openDropdown(ignoreReviewAuthorsList);
@@ -2035,27 +2035,14 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 
   // Reset so this test's overrides don't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer. Order
-  // matters here: the mode select auto-persists on every "change" (see
-  // the special-case branch for its id in index.page.js's delegated
-  // listener) as a fire-and-forget PUT - and that auto-persist re-reads
-  // ALL fields' LIVE DOM state (persistViewFilterOptionOverrides ->
-  // getSelectedAuthorThreadResolutionAllowLogins, a real checkbox query),
-  // not just the mode itself. Found via a later regression test
-  // (e2e/smoke.spec.js's "no React-portaled status/log panel..." test)
-  // catching this exact leftover: the explicit delete-PUT used to run
-  // *before* selectOption(..., "allow-all") - but "octocat"'s checkbox was
-  // still checked live in the DOM (only the manual delete-PUT had cleared
-  // the *server* record), so that selectOption's own auto-persist
-  // immediately clobbered the deletion right back to
-  // `["octocat"]`/`["hubot"]`, leaking into whatever test loaded next.
-  // Fixed by making the explicit delete-PUT the truly last step, waiting
-  // for the mode-select's own auto-persist to land first.
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    page.selectOption("#attention-author-thread-resolution-mode", "allow-all"),
-  ]);
+  // matters here: the policy change saves on a debounce, with every
+  // field's live state (the restored picks still checked), so the
+  // explicit delete-PUT below goes last, once all saves have landed - a
+  // save landing between its GET and PUT would otherwise be overwritten
+  // (or overwrite it).
+  await openSettings(page, "Attention rules");
+  await page.selectOption("#attention-author-thread-resolution-mode", "allow-all");
+  await waitForFilterPersist(page);
   const [finalCleanupResponse] = await Promise.all([
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
@@ -2134,20 +2121,16 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
 });
 
 test("PR author thread resolution policy select shows/hides its dependent allow/deny lists live, without a page reload", async ({ page }) => {
-  // Regression coverage for updateAuthorThreadResolutionRuleVisibility()
-  // (index.page.js), which is wired to this select's own "change" event
-  // (via the same delegated-on-the-form mechanism as the test above) and
-  // toggles two sibling <details> elements' `hidden`/`open` state based on
-  // the selected mode. This select has genuinely different dependent UI
-  // from every other Phase 2 field converted so far, so it gets its own
-  // dedicated interaction test rather than folding into the batch test.
+  // AttentionRulesSection shows the allow list only for "allow-only" and
+  // the deny list only for "deny-only" (each list's dropdown summary is
+  // what shows).
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Attention rules");
 
-  const allowOptions = page.getByRole("group", { name: "Thread-resolution allow-list options", exact: true, includeHidden: true });
-  const denyOptions = page.getByRole("group", { name: "Thread-resolution deny-list options", exact: true, includeHidden: true });
+  const allowOptions = filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
+  const denyOptions = filterDropdownSummary(page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
   await expect(allowOptions).toBeHidden();
   await expect(denyOptions).toBeHidden();
 
@@ -2824,16 +2807,6 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   await page.getByRole("tab", { name: "Authors" }).click();
   await assertNoStalePrefix(page.getByRole("region", { name: "Author comments", exact: true, includeHidden: true }), "Loading...");
 
-  // Deferred-items follow-up item 7 (multi-select summary counts/empty
-  // class) hit the identical bug: the <summary class="multi-select-summary">
-  // elements' own static base-label text wasn't cleared before
-  // MultiSelectCheckboxList.jsx started portaling its own copy in. (The
-  // filter bar's lists render their summaries themselves.)
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await assertNoStalePrefix(
-    filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true })),
-    "Allow PR authors to resolve threads started by (Actor Names)",
-  );
 });
 
 test("Actor Names tab loads its mappings on its very first visit, not just on a second one", async ({ page }) => {

@@ -7,11 +7,9 @@
  * lists - all three were the same "compute a badges array, hand it to
  * React" vanilla shape, so this component has no Backfill-specific logic
  * to begin with. Each mounts directly into its own existing
- * `<div id="...-badges">` container (like Phase 2's MultiSelectCheckboxList
- * and Phase 1's #pr-sections) rather than a separate wrapper - no
- * container-split needed since nothing else shares those divs. Purely a
- * display list (no internal state, unlike MultiSelectCheckboxList's
- * checked-state), so a plain re-render on every `window.updateReactXxxBadges(badges)`
+ * `<div id="...-badges">` container (like Phase 1's #pr-sections) rather
+ * than a separate wrapper - no container-split needed since nothing else
+ * shares those divs. Purely a display list (no internal state), so a plain re-render on every `window.updateReactXxxBadges(badges)`
  * call is enough; no `key` is needed to force a remount.
  */
 export function BackfillBadges({ badges = [] }) {

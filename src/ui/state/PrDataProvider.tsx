@@ -190,7 +190,7 @@ export function PrDataProvider({
   const getLatestStoredPayload = useCallback(() => latestStoredPayloadRef.current, []);
 
   // The repo the render pipeline actually resolves: explicit repo, else the
-  // Run & Filter "repo" field, else payload.lastRun.repo (see
+  // Settings "repo" field, else payload.lastRun.repo (see
   // deriveRepoRunContext), read from FilterStateProvider's store.
   const resolveRepoFilter = useCallback(
     (selectedRepo: string, payload: PrDataPayload | null | undefined) =>

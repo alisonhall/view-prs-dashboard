@@ -9,6 +9,9 @@ import { SETTINGS_NAV_ROW_QUERY, SettingsDrawer } from './SettingsDrawer';
 // covers them in the real tree.
 jest.mock('./RunCheckSection', () => ({ RunCheckSection: () => <button type="button">Run script</button> }));
 jest.mock('./ScriptOptionsSection', () => ({ ScriptOptionsSection: () => <input aria-label="Repo (owner/name)" /> }));
+jest.mock('./AttentionRulesSection', () => ({ AttentionRulesSection: () => <p>Attention rules content</p> }));
+jest.mock('./MergeCommitsSection', () => ({ MergeCommitsSection: () => <p>Merge commits content</p> }));
+jest.mock('./ChangeDetectionSection', () => ({ ChangeDetectionSection: () => <p>Change detection content</p> }));
 
 let drawer: ReturnType<typeof useSettingsDrawer>;
 function Opener() {
@@ -59,8 +62,8 @@ describe('SettingsDrawer', () => {
     renderDrawer(true);
     await user.click(screen.getByRole('tab', { name: 'Run & check' }));
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('tab', { name: 'Script options' })).toHaveFocus();
-    expect(screen.getByRole('tab', { name: 'Script options' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('in a narrow window the sections are a row, moving with ←/→', async () => {
@@ -77,7 +80,7 @@ describe('SettingsDrawer', () => {
       expect(screen.getByRole('tablist', { name: 'Settings sections' })).toHaveAttribute('aria-orientation', 'horizontal');
       await user.click(screen.getByRole('tab', { name: 'Run & check' }));
       await user.keyboard('{ArrowRight}');
-      expect(screen.getByRole('tab', { name: 'Script options' })).toHaveFocus();
+      expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveFocus();
     } finally {
       window.matchMedia = original;
     }

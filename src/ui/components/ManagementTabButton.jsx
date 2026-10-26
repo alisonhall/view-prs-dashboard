@@ -3,8 +3,8 @@
  * Context-backed.
  *
  * Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
- * roadmap"): one generic component for all 6 management-tab buttons
- * (Activity/Run & Filter/Backfill/Action Log/Actor Names/Export),
+ * roadmap"): one generic component for the management-tab buttons
+ * (Backfill/Action Log/Actor Names/Export),
  * the same shape the view tabs' DataTabButton had (those are ui/Tabs in
  * the app header since UI redesign phase 9a).
  *

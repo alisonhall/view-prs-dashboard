@@ -10,7 +10,7 @@ import { TabStateContext, type DataTabKey, type ManagementTabKey } from '../stat
  */
 export function TabStateProvider({ children }: { children?: ReactNode }) {
   const [activeDataTab, setActiveDataTabState] = useState<DataTabKey>('pr-data');
-  const [activeManagementTab, setActiveManagementTabState] = useState<ManagementTabKey>('script');
+  const [activeManagementTab, setActiveManagementTabState] = useState<ManagementTabKey>('backfill');
 
   const setActiveDataTab = useCallback((key: DataTabKey) => {
     setActiveDataTabState(key);

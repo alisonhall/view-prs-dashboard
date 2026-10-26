@@ -11,7 +11,6 @@ const DATA_TAB_PANEL_IDS = {
   'tab-panel-author-insights': 'author-insights',
 };
 const MANAGEMENT_TAB_PANEL_IDS = {
-  'tab-panel-script': 'script',
   'tab-panel-backfill': 'backfill',
   'tab-panel-action-log': 'action-log',
   'tab-panel-actor-name-cache': 'actor-name-cache',
@@ -34,11 +33,9 @@ const MANAGEMENT_TAB_PANEL_IDS = {
  * call as a side effect.
  *
  * A DOM mutation via `getElementById` (same element lookup those vanilla
- * functions did) is the correct scope here, same shape
- * `AuthorThreadResolutionRuleVisibility.jsx` already established for a
- * single pair of elements - the 2 `<details>` panels there stay static
- * markup for the same "resolved once, synchronously, by react-app.jsx's
- * computeStaticContainers()" reason these 9 tab panels do too (several are
+ * functions did) is the correct scope here: these tab panels are static
+ * markup, "resolved once, synchronously, by react-app.jsx's
+ * computeStaticContainers()" (several are
  * portal targets for content mounted elsewhere in this same render pass).
  */
 export function TabPanelVisibilitySync() {

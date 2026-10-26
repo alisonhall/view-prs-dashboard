@@ -17,7 +17,7 @@
  * Updates are immutable (a new `values` object per change), so `getAll()` is a
  * valid snapshot and a stale reference is never mutated under a reader.
  */
-// The Run & Filter form's field values, keyed by FilterStateProvider's
+// The form's field values (filter bar and Settings drawer), keyed by FilterStateProvider's
 // Context keys (see pr-ui-option-persistence.helpers.ts's
 // FILTER_STATE_FIELD_MAP). Fields typed code reads are listed; the rest
 // are covered by the index signature until their readers are typed.
@@ -41,7 +41,7 @@ export interface FilterValues {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
-  // The Run & Filter tab's "Attention and change rules"
+  // Settings' attention, merge-commit and change-detection rules
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;
   attentionIgnoreMergeOnlyCommits?: boolean;

@@ -151,33 +151,3 @@
   gap: 6px;
   font-size: var(--font-size-md);
 }
-
-/* A list opens inline, pushing the next ones down: as a popover it would
-   cover their summaries, and a click meant for one would land on one of
-   its checkboxes. */
-.filter-bar-multi-select .multi-select-summary {
-  gap: var(--space-2);
-  padding: 5px 8px;
-  border-color: var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-md);
-}
-
-.filter-bar-picked {
-  margin-left: auto;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-accent-text);
-}
-
-.filter-bar-multi-select .multi-select-list {
-  border-color: var(--color-border-strong);
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-}
-
-.filter-bar-no-options {
-  margin: 0;
-  padding: 8px;
-  font-style: italic;
-  color: var(--color-text-muted);
-}

@@ -639,6 +639,34 @@ becomes a small `react-app.tsx`. Done in steps:
   rules (Attention, Merge commits, Change detection); 9b-3 Backfill, Action
   log, Actor names and Export, then the old tab strip goes. The old
   Activity tab's status message and "Trigger auto run" go into Run & check.
+- **9b-2 done (2026-10-26):**
+  - The drawer gains `Attention rules` (`settings/AttentionRulesSection.tsx`:
+    NO_ACTIVITY handling, the five toggles, the thread-resolution policy and
+    its allow/deny lists, the unused one hidden with its picks kept),
+    `Merge commits` (`MergeCommitsSection.tsx`) and `Change detection`
+    (`ChangeDetectionSection.tsx`: the two ignore-author lists and the commit
+    patterns). Their lists are `ui/MultiSelectDropdown.tsx` (the filter
+    bar's dropdown, now shared) via `settings/SettingsListDropdown.tsx`.
+  - The rule fields moved into `settings/` as `.tsx`:
+    `AttentionNoActivityModeSelect`, `AuthorThreadResolutionModeSelect`,
+    `IgnoreCommitPatternsTextarea`, `MergeCommitRulesTextarea`. Deleted:
+    `MultiSelectListPortals`, `MultiSelectCheckboxList`,
+    `AuthorThreadResolutionRuleVisibility` and the multi-select render cache.
+  - `state/useListSelectionSeeding.ts` (`ListSelectionSeeding`, was the
+    filter bar's row-list seeding) applies saved picks to all nine lists
+    once their options exist - except the drawer's four actor lists, which
+    are rules: their saved logins apply at once and are never dropped
+    (a bot is often not among the loaded actors; it's listed by its login,
+    so it can be unchecked). `state/filterStateInitialValues.ts` holds the
+    fields' starting values, shared by `react-app.jsx` and the integration
+    harness.
+  - The Run & Filter tab and its panel are gone; Backfill is the default
+    management tab until 9b-3.
+  - The integration harness drives every field with user-event now (its
+    stand-in markup and the sync calls that bridged it are gone). It sets
+    user-event up once before it starts tracking document listeners:
+    removing user-event's focus listeners after the first test had kept
+    typing from reaching React in later ones.
 - **9b-1 done (2026-10-26):**
   - `settings/SettingsDrawer.tsx`, portaled into `#settings-drawer-root`:
     a modal from the right (`useFocusTrap`; Esc, the close button or the

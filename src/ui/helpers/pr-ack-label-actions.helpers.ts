@@ -14,7 +14,7 @@ import type { PostJsonResult } from "./pr-http.helpers.ts";
 // A single-row action already gets this from PrTableApp's own withPrBusy
 // wrapper (marking/clearing the same key twice is harmless - see
 // markPrBusy/clearPrBusy's own prev.has() checks), but a bulk request from
-// the "Run & Filter" tab's PR-number-list field otherwise showed no
+// the Settings drawer's PR numbers field otherwise showed no
 // per-row indicator at all for any of the PRs it affected.
 //
 // Chunked/parallel execution: a batch larger than CHUNK_SIZE is split into

@@ -9,8 +9,8 @@ import type { CheckedByListIdValue } from './useCheckedByListIdState';
  * for the thread-resolution allow/deny lists, ChangeFilterActorSelection
  * for the 2 change-filter actor lists).
  *
- * List ids are MultiSelectListPortals.jsx's MULTI_SELECT_LIST_ID_PREFIXES
- * keys for these 5 lists.
+ * List ids are the filter bar's list ids (filter-bar-fields.ts's
+ * ROW_FILTER_LISTS).
  */
 export type RowFilterListId = 'label-list' | 'exclude-label-list' | 'author-list' | 'assigned-list' | 'approver-list';
 

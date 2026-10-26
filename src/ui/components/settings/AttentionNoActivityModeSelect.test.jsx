@@ -4,11 +4,11 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { AttentionNoActivityModeSelect } = require('./AttentionNoActivityModeSelect');
-const { FilterStateProvider } = require('../state/FilterStateProvider');
-const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
-const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
-const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
-const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+const { FilterStateProvider } = require('../../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../../state/ChangeFilterActorSelectionProvider');
 
 const filterStateProbe = createFilterStateProbe();
 

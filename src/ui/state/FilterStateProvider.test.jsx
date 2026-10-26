@@ -58,7 +58,7 @@ function RestoredRepoOverrideProbe() {
 }
 
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mimics
-// MultiSelectListPortals' own setChecked calls for the 3 Contexts
+// the lists' own setChecked calls for the 3 Contexts
 // buildOverrides() now reads directly, for the regression test below.
 function MultiSelectSelectionProbe() {
   const rowFilterSelection = useRowFilterSelection();
@@ -327,7 +327,7 @@ describe('FilterStateProvider', () => {
   // whether any Context existed); now it reads
   // RowFilterSelectionContext/AuthorThreadResolutionSelectionContext/
   // ChangeFilterActorSelectionContext directly, which only resolves
-  // correctly if MultiSelectListPortals (simulated here by
+  // correctly if the lists (simulated here by
   // MultiSelectSelectionProbe) and FilterStateProvider are real siblings
   // under the same Provider instances - exactly the tree
   // FilterStateProviderWithSelectionContexts (and react-app.jsx's real

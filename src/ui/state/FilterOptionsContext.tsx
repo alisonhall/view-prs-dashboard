@@ -30,8 +30,8 @@ const EMPTY_OPTIONS: FilterOptionsValue = {
 };
 
 /**
- * The option lists of the 9 multi-select filter lists (not the checked
- * selections, which MultiSelectCheckboxList keeps in its own state),
+ * The option lists of the 9 multi-select lists (not the checked
+ * selections, which their selection Contexts hold),
  * derived from PrDataContext's payload by FilterOptionsProvider.tsx.
  *
  * Default value (all empty arrays): a component rendered without a

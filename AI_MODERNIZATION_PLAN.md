@@ -1141,6 +1141,13 @@ No static type checking leads to:
       ContextFilterCheckbox, OpenModeSelect, ApplyLabelSelect,
       TriggerAutoRunButton and QuickCheckButton moved into
       components/settings/ as .tsx; RunScriptActionButton deleted.
+    - Phase 9b-2 (2026-10-26): the rules sections (AttentionRulesSection,
+      MergeCommitsSection, ChangeDetectionSection, SettingsListDropdown) and
+      ui/MultiSelectDropdown, with AttentionNoActivityModeSelect,
+      AuthorThreadResolutionModeSelect, IgnoreCommitPatternsTextarea and
+      MergeCommitRulesTextarea moved into components/settings/ as .tsx;
+      MultiSelectListPortals, MultiSelectCheckboxList and
+      AuthorThreadResolutionRuleVisibility deleted.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

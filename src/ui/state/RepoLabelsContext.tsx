@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 /**
  * The current repo's available GitHub labels (GET /view-prs/labels), shared
- * by the Run & Filter tab's "Apply existing GitHub label" dropdown
+ * by Settings' "Apply existing GitHub label" dropdown (Run & check)
  * (ApplyLabelSelect.jsx) and each PR row's apply-label <select>
  * (PrActionsCell.jsx). `refresh` refetches them - the "↻ Labels" button
  * calls it, and RepoLabelsProvider calls it when the repo changes.

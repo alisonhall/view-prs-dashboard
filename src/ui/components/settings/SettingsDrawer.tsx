@@ -4,14 +4,19 @@ import { Tabs } from '../ui/Tabs';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { useMediaQuery } from '../../state/useMediaQuery';
 import { useSettingsDrawer, type SettingsSectionId } from '../../state/SettingsDrawerContext';
+import { AttentionRulesSection } from './AttentionRulesSection';
+import { ChangeDetectionSection } from './ChangeDetectionSection';
+import { MergeCommitsSection } from './MergeCommitsSection';
 import { RunCheckSection } from './RunCheckSection';
 import { ScriptOptionsSection } from './ScriptOptionsSection';
 
-// The sections, in the nav's order. UI_REDESIGN_PLAN.md phase 9b moves the
-// rest in (Attention rules, Merge commits, Change detection, Backfill,
-// Action log, Actor names, Export).
+// The sections, in the nav's order. UI_REDESIGN_PLAN.md phase 9b-3 moves the
+// rest in (Backfill, Action log, Actor names, Export).
 const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; render: () => ReactNode }> = [
   { id: 'run', label: 'Run & check', render: () => <RunCheckSection /> },
+  { id: 'attention', label: 'Attention rules', render: () => <AttentionRulesSection /> },
+  { id: 'merge-commits', label: 'Merge commits', render: () => <MergeCommitsSection /> },
+  { id: 'change-detection', label: 'Change detection', render: () => <ChangeDetectionSection /> },
   { id: 'script-options', label: 'Script options', render: () => <ScriptOptionsSection /> },
 ];
 const sectionIds = (id: string) => ({ tab: `settings-tab-${id}`, panel: `settings-panel-${id}` });

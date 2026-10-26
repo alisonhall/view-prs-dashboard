@@ -34,7 +34,7 @@ const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([valu
  * ReviewStatsProvider, so it re-renders when the payload changes.
  *
  * Checked state (which options are ticked) is NOT computed here - it is
- * seeded by MultiSelectListPortals.jsx via
+ * seeded by ListSelectionSeeding (state/useListSelectionSeeding.ts) via
  * pr-multi-select-checked-state.helpers.ts's seedCheckedState.
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter

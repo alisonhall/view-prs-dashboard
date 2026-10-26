@@ -179,7 +179,7 @@ const createPrQuickCheckActionsHelpers = ({
     };
   };
 
-  // Scopes to the Run & Filter tab's entered PR numbers when present, so
+  // Scopes to the PR numbers entered in Settings when present, so
   // an older merged PR typed in there is still checked (bypassing the
   // day-window server-side); an empty field sends {}.
   const runQuickCheckWorkflow = async ({ fallbackLabel, buildSuccessLabel }: QuickCheckLabels): Promise<QuickCheckOutcome> => {

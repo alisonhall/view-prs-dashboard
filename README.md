@@ -577,7 +577,7 @@ The table also includes:
 
 Needs Attention configuration:
 
-- The Run & Filter tab's `Attention and change rules` panel includes a `Needs Attention rules` section.
+- The rules are in the Settings drawer's `Attention rules` section.
 - Non-default values in this section are saved to `view-prs/data/user-defaults.json` and restored on reload.
 - The server creates `view-prs/data/user-defaults.json` on startup if it does not exist.
 - Configurable rules include:
@@ -587,7 +587,7 @@ Needs Attention configuration:
   - whether closed/merged rows should be eligible for attention
   - draft-specific toggles for CHANGED and NO_ACTIVITY attention
   - PR-author thread-resolution policy (`allow-all`, `allow-only`, `deny-only`)
-  - actor-based allow/deny lists for thread starters (from `Actor Names`)
+  - actor-based allow/deny lists for thread starters (from `Actor Names`); a saved login stays picked even when the loaded data has no such actor, listed by its login
 
 Default values:
 
@@ -603,7 +603,7 @@ Default values:
 
 Merge commits:
 
-- The `Advanced visibility and attention rules` section has a `Merge commits` editor, saved to `user-defaults.json` as `mergeCommitRules` (only when it differs from the default).
+- The Settings drawer's `Merge commits` section edits them, saved to `user-defaults.json` as `mergeCommitRules` (only when it differs from the default).
 - A commit counts as a merge when its headline matches one of the **headline patterns** (regular expressions, one per line, not case-sensitive; default `^Merge\b`, i.e. any "Merge ..." headline), or when it has author logins and every one of them is in the **logins** list (e.g. `dependabot[bot]`).
 - The same definition is used everywhere: merge commits don't mark a PR CHANGED (check-open-pr-updates.sh), aren't listed in the `AUTHOR` column, and are what "Ignore merge-only commits for CHANGED" leaves out.
 - An invalid pattern is skipped (the editor names it). An emptied patterns list means no headline counts as a merge. In a hand-edited `user-defaults.json`, a list given as a single string is read as one entry, and a malformed one as its default.
@@ -621,7 +621,7 @@ Merge commits:
 
 Change Detection Filters:
 
-- The `Advanced visibility and attention rules` section includes `Change Detection Filters` to configure what activity should NOT trigger CHANGED status.
+- The Settings drawer's `Change detection` section configures what activity should NOT trigger CHANGED status.
 - These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`.
 - Supported filter types:
   - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
@@ -697,7 +697,7 @@ Insights behavior notes:
   - Chips filter to `Unresolved` (the default, which includes threads resolved by the wrong person), `Waiting on me` (unresolved threads you started or replied in whose latest comment is by someone else or mentions you; only shown when your login is known; without it, `Unresolved` applies) or `All`. Each shows its count, and the choice is kept per PR. A note says how many threads the filter hides, with a `Show all` link.
   - Each thread is one line: who started it, the start of its first comment, its line, its state, the number of replies, and `outdated`/`Pending` where they apply. It expands to show every comment as markdown, who resolved it, and a link to it on GitHub.
   - `Next unresolved` opens and focuses each thread `Unresolved` shows (so those resolved by the wrong person too) in turn, opening its file group and switching from `Waiting on me` to `Unresolved` if that filter would hide it.
-  - Threads the PR author resolved against the thread-resolution rule (Run & Filter) are flagged, with an explanation when opened.
+  - Threads the PR author resolved against the thread-resolution rule (Settings › Attention rules) are flagged, with an explanation when opened.
   - Top-level PR comments and review summaries are collapsed groups at the end.
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
@@ -748,7 +748,7 @@ In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:..
 
 The UI includes:
 
-- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output) and `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet). The other management tabs move into it next (UI_REDESIGN_PLAN.md phase 9b).
+- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore) and `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet). Backfill, Action log, Actor names and Export move into it next (UI_REDESIGN_PLAN.md phase 9b).
 - `Run script` (full run to refresh PR data)
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans

@@ -47,7 +47,7 @@ export interface FilterBarProps {
  * "Clear all". The button opens the panel of controls below it; the bar
  * remembers whether it was left open. Controls stay mounted while it's
  * closed (hidden). The lists' selections are kept in step with their
- * options by <RowFilterListSeeding />, mounted beside it.
+ * options by <ListSelectionSeeding />, mounted beside it.
  */
 export function FilterBar({ shownCount, totalCount, loaded }: FilterBarProps) {
   const { chips } = useTableFilterChips();

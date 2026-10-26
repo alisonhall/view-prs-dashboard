@@ -10,7 +10,7 @@ import { ChangeFilterActorSelectionProvider } from '../../state/ChangeFilterActo
 import { FilterOptionsContext, type FilterOptionsValue } from '../../state/FilterOptionsContext';
 import { useRowFilterSelection } from '../../state/RowFilterSelectionContext';
 import { setPendingMultiSelectSelection } from '../../helpers/pr-pending-multi-select-selections.helpers.ts';
-import { RowFilterListSeeding } from '../../state/useRowFilterListSeeding';
+import { ListSelectionSeeding } from '../../state/useListSelectionSeeding';
 import { FILTER_BAR_OPEN_STORAGE_KEY, FilterBar, type FilterBarProps } from './FilterBar';
 
 const NO_OPTIONS: FilterOptionsValue = {
@@ -52,7 +52,7 @@ const tree = (
         <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '', alwaysShowInReview: false, filterStories: '', ...initialValues }}>
           <FilterOptionsContext.Provider value={options}>
             <SelectionProbe />
-            {seeding && <RowFilterListSeeding />}
+            {seeding && <ListSelectionSeeding />}
             <FilterBar shownCount={3} totalCount={5} loaded {...props} />
           </FilterOptionsContext.Provider>
         </FilterStateProvider>
@@ -190,8 +190,8 @@ describe('FilterBar panel', () => {
   });
 });
 
-describe('FilterBar list selections (RowFilterListSeeding, mounted beside it)', () => {
-  test('the bar itself does no seeding: a saved selection waits for RowFilterListSeeding', () => {
+describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', () => {
+  test('the bar itself does no seeding: a saved selection waits for ListSelectionSeeding', () => {
     act(() => setPendingMultiSelectSelection('pendingLabelSelections', ['docs']));
     render(tree(LABELS, {}, {}, false));
     expect(checked('label-list')).toEqual([]);

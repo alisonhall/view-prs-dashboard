@@ -7,7 +7,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
  *
  * Unwrapped, it's closed and opening does nothing.
  */
-export type SettingsSectionId = 'run' | 'script-options';
+export type SettingsSectionId = 'run' | 'attention' | 'merge-commits' | 'change-detection' | 'script-options';
 
 export interface SettingsDrawerValue {
   isOpen: boolean;

@@ -1252,7 +1252,7 @@ describe('PrTableApp', () => {
     // clearPrBusy (usePrActivityQueue()), marking every PR number in a
     // multi-PR batch request busy, not just the row a user directly
     // clicked.
-    describe('markPrBusy/clearPrBusy (bulk Ack/Apply-Label from the Run & Filter tab)', () => {
+    describe('markPrBusy/clearPrBusy (bulk Ack/Apply-Label from Settings)', () => {
       test('given the component is mounted, when marking several PR numbers busy, then all of them show up in activePrNumbers', () => {
         const payload = {
           byPrNumber: {

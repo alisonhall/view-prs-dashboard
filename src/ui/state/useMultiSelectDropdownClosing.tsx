@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 
 /**
- * Closes every open `<details class="multi-select-dropdown">` (the Run &
- * Filter tab's checkbox-list filters) when a click lands outside it.
- * AppRoot calls this once.
+ * Closes every open `<details class="multi-select-dropdown">`
+ * (MultiSelectDropdown: the filter bar's and the Settings drawer's lists)
+ * when a click lands outside it. AppRoot calls this once.
  *
- * The dropdowns are looked up on each click rather than once at setup. All
- * 9 are static index.html markup, so the set never changes; looking them up
- * per click just doesn't depend on running after they exist.
+ * The dropdowns are looked up on each click rather than once at setup:
+ * React renders them (some only once the filter options load), so this
+ * doesn't depend on running after they exist.
  */
 export function useMultiSelectDropdownClosing(): void {
   useEffect(() => {

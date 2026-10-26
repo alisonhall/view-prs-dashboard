@@ -93,7 +93,8 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
   Array.from(checkedByListId[listId] || []);
 
 /**
- * Owns the Run & Filter form's field values (see FilterStateContext.tsx),
+ * Owns the form's field values - the filter bar's and the Settings
+ * drawer's (see FilterStateContext.tsx),
  * and saves/restores them as UI option overrides through
  * /view-prs/user-defaults. It publishes no window bridges.
  *
@@ -107,7 +108,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * Restore: a mount-only effect reads the saved overrides into `values`,
  * and hands the 9 multi-select lists' saved selections to
  * `setPendingMultiSelectSelection` (that store is deliberately
- * window-level, see its file's comment) for MultiSelectListPortals to
+ * window-level, see its file's comment) for ListSelectionSeeding to
  * apply once their options exist.
  *
  * Save: `persistRunScriptOptions` (on this Context; react-app.jsx's "Run
