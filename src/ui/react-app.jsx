@@ -12,9 +12,6 @@ import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
-import { BackfillBadges } from './components/BackfillBadges';
-import { BackfillControls } from './components/BackfillControls';
-import { BackfillLogControls } from './components/BackfillLogControls';
 import { DataViewHeaderPortals } from './components/filter-bar/DataViewHeaderPortals';
 import { ListSelectionSeeding } from './state/useListSelectionSeeding';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
@@ -25,8 +22,6 @@ import { SettingsDrawer } from './components/settings/SettingsDrawer';
 import { buildFilterStateInitialValues } from './state/filterStateInitialValues';
 import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
-import { useBackfillActions } from './state/useBackfillActions';
-import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
 import { useQuickCheckActions } from './state/useQuickCheckActions';
 import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
@@ -36,7 +31,6 @@ import { PrTableUiStateProvider } from './state/PrTableUiStateProvider';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
-import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
 import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
 import { useMultiSelectDropdownClosing } from './state/useMultiSelectDropdownClosing';
@@ -67,10 +61,9 @@ import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
  * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
- * code-splitting for the 3 tabs that are never visible on initial load
- * (Review Stats, Author Insights, and 3 of the management tabs - Action
- * Log, Actor Names, Export - all `hidden` by default in index.html, see
- * <AppRoot /> below). `React.lazy()` needs a default export; each of these
+ * code-splitting for the 2 views that are never visible on initial load
+ * (Review Stats, Author Insights - `hidden` by default in index.html, see
+ * <AppRoot /> below; the Settings drawer splits its own lazy sections). `React.lazy()` needs a default export; each of these
  * modules only has a named one, so the loader adapts it inline. Gated on
  * useHasTabPanelBeenVisible (sticky, not plain useIsTabPanelVisible) so
  * once a tab's chunk has loaded and mounted, switching away and back
@@ -99,11 +92,6 @@ const AuthorInsightsNotesSection = lazy(() =>
 const AuthorInsightsCommentsSection = lazy(() =>
   import('./components/AuthorInsightsCommentsSection').then((m) => ({ default: m.AuthorInsightsCommentsSection })),
 );
-const ActionLogSection = lazy(() =>
-  import('./components/ActionLogSection').then((m) => ({ default: m.ActionLogSection })),
-);
-const ExportTab = lazy(() => import('./components/ExportTab').then((m) => ({ default: m.ExportTab })));
-const ActorNamesTab = lazy(() => import('./components/ActorNamesTab').then((m) => ({ default: m.ActorNamesTab })));
 
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -155,28 +143,14 @@ function computeStaticContainers() {
     authorInsightsHeader: document.getElementById('author-insights-header-root'),
     authorInsightsNotes: document.getElementById('author-insights-notes-root'),
     authorInsightsComments: document.getElementById('author-insights-content-root'),
-    backfillBadges: document.getElementById('backfill-badges'),
-    // statusText (#status) moved to StatusTextProvider.tsx (Phase H.8) - it
-    // resolves that container itself, no longer via this containers object.
-    backfillDetails: document.getElementById('backfill-details'),
-    backfillLog: document.getElementById('backfill-log'),
-    backfillControls: document.getElementById('backfill-controls-root'),
-    backfillLogControls: document.getElementById('backfill-log-controls-root'),
     dataMeta: document.getElementById('data-meta'),
     filterBar: document.getElementById('filter-bar-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
-    actionLog: document.getElementById('action-log-container'),
-    actorNames: document.getElementById('actor-names-root'),
-    export: document.getElementById('export-container'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
     activityDrawer: document.getElementById('activity-drawer-root'),
     appHeader: document.getElementById('app-header-root'),
     appBanner: document.getElementById('app-banner-root'),
     settingsDrawer: document.getElementById('settings-drawer-root'),
-    tabBackfill: document.getElementById('tab-backfill-root'),
-    tabActionLog: document.getElementById('tab-action-log-root'),
-    tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
-    tabExport: document.getElementById('tab-export-root'),
     prSections: document.getElementById('pr-sections'),
   };
 }
@@ -273,18 +247,6 @@ function MergedRequestMoreActionLive() {
 function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
-  // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillControls/BackfillLogControls' instances below used to call
-  // window.handleBackfillAction/refreshBackfillStatus/refreshBackfillLogTail/
-  // autoScrollBackfillLogToBottom directly - they now call this hook's
-  // returned functions. (The run actions are the Settings drawer's Run &
-  // check's, which calls their hooks itself - UI redesign phase 9b.)
-  const backfillActions = useBackfillActions();
-  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // replaces backfill-tab.orchestrator.js's own initialize()/
-  // onTabActivated() (deleted outright) - see that hook's own header
-  // comment for why this exact shape reproduces both.
-  useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
   // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // QuickCheckAllButton (the app header's) and the dispatcher-bump and
   // reset-circuit-breaker drawer actions below used to call
@@ -297,57 +259,13 @@ function AppRoot() {
   // which lazy-loaded tab chunks below have been requested yet.
   const hasReviewStatsBeenVisible = useHasTabPanelBeenVisible('tab-panel-review-stats');
   const hasAuthorInsightsBeenVisible = useHasTabPanelBeenVisible('tab-panel-author-insights');
-  const hasActionLogBeenVisible = useHasTabPanelBeenVisible('tab-panel-action-log');
-  const hasExportBeenVisible = useHasTabPanelBeenVisible('tab-panel-export');
-  const hasActorNamesBeenVisible = useHasTabPanelBeenVisible('tab-panel-actor-name-cache');
 
-  // Window-bridge elimination Phase 3d (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the Backfill tab's button-disabled flags live in <BackfillStatusProvider />
-  // now (it computes them via getBackfillStatusViewModel anyway, and used to
-  // push them into this component's own state through
-  // window.updateReactBackfillButtonState - a bridge from an ancestor down
-  // into its own descendant). Read back here for the buttons' props.
-  //
-  // Window-bridge elimination Phase 7.3: the same goes for the activity
-  // drawer's request-activity badges and "Recent Activity" list - they were
-  // this component's own state, pushed in by PrDataProvider (an ancestor)
-  // through window.updateReactRequestActivityBadges/
-  // updateReactRecentRequestActivity. RequestActivityProvider owns them now;
-  // read back here only to pass to the drawer.
+  // The activity drawer's request-activity badges and "Recent Activity"
+  // list (RequestActivityProvider's), and its backfill badges and details
+  // (BackfillStatusProvider's - the Settings drawer's Backfill section
+  // shows them too, with its buttons and log).
   const { requestActivityBadges, recentRequestActivity } = useRequestActivityDisplay();
-
-  // Deferred-items follow-up (full vanilla-to-React sweep, see
-  // REACT_MIGRATION_PLAN.md): the 7 remaining vanilla `.textContent =`
-  // status/log panels, converted following the exact same shape as the
-  // badge rows above (a bridge registered via useEffect, a plain-string
-  // portal into the existing static `<pre>` - no dedicated component
-  // needed since none of these render anything but text). Initial values
-  // match each `<pre>`'s original static index.html text, so there's no
-  // flash of empty content before the first bridge call.
-  //
-  // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // statusText itself moved out of here into <StatusTextProvider />
-  // (wrapping this whole component, see mountAppRoot below) - it owns the
-  // window.updateReactStatusText bridge and writes #status's textContent
-  // directly now (see that Provider's own comment for why a plain DOM
-  // write, not a portal), so hooks called from this component's own body
-  // (useRunScript/useBackfillActions/useAckLabelActions below) can read it
-  // via useStatusText() instead of bouncing through that bridge.
-  // Window-bridge elimination Phase 3c: the output text itself lives in
-  // <OutputTextProvider /> (wrapping this component, see mountAppRoot), and
-  // the Settings drawer's Run & check shows it.
-  // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the Backfill tab's badges/details text/log text (and the log's update
-  // tick - BackfillLogControls' scroll-sync effect must fire on every log
-  // refresh, even identical text, which useState alone would bail out of)
-  // live in <BackfillStatusProvider /> now, read back here for the portals.
-  const {
-    backfillButtonState,
-    backfillBadges,
-    backfillDetailsText,
-    backfillLogText,
-    backfillLogUpdateTick,
-  } = useBackfillStatus();
+  const { backfillBadges, backfillDetailsText } = useBackfillStatus();
 
   // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // window.mountReactPrTable is gone. index.page.js's renderPrData called it on
@@ -479,55 +397,6 @@ function AppRoot() {
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 
-        {/* Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration
-            roadmap"): widened to also wrap the "jump to unsaved" links
-            (now in the app header's portal, further down) - its own
-            useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx
-            hooks call useTabState() directly now, which silently resolved
-            to this Context's no-op default (not the real Provider) when
-            that portal sat outside this boundary, same "a sibling portal
-            needs to be a real descendant, not just visually adjacent"
-            class of bug Phase G's own PrActivityQueueProvider move fixed.
-            Caught by a real end-to-end test, not jsdom - this Provider is
-            cheap/pure state, so widening its scope costs nothing.
-            Phase H.21 (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-            audit", cluster 3): <TabStateProvider> itself moved from here
-            to wrapping <AppRoot/> at mountAppRoot() below, for the same
-            reason - AppRoot's own body calls useHasTabPanelBeenVisible()
-            5 times (hasReviewStatsBeenVisible etc.), which silently
-            resolved to this Context's no-op default too, since AppRoot's
-            body isn't a descendant of a Provider nested inside its own
-            returned JSX (the exact "component can't be descendant of what
-            it renders" constraint Phase H.20 already ran into for
-            FilterStateProvider/the 3 selection Providers) - caught by a
-            real Playwright regression (Author Insights content never
-            appearing after H.21's useIsTabPanelVisible rewrite), not
-            jsdom (every jsdom test happens to wrap its own Probe in a
-            real Provider directly, side-stepping this). */}
-          {containers.tabBackfill &&
-            createPortal(
-              <ManagementTabButton tabKey="backfill" label="Backfill" panelId="tab-panel-backfill" />,
-              containers.tabBackfill,
-              'tab-backfill',
-            )}
-          {containers.tabActionLog &&
-            createPortal(
-              <ManagementTabButton tabKey="action-log" label="Action Log" panelId="tab-panel-action-log" />,
-              containers.tabActionLog,
-              'tab-action-log',
-            )}
-          {containers.tabActorNameCache &&
-            createPortal(
-              <ManagementTabButton tabKey="actor-name-cache" label="Actor Names" panelId="tab-panel-actor-name-cache" />,
-              containers.tabActorNameCache,
-              'tab-actor-name-cache',
-            )}
-          {containers.tabExport &&
-            createPortal(
-              <ManagementTabButton tabKey="export" label="Export" panelId="tab-panel-export" />,
-              containers.tabExport,
-              'tab-export',
-            )}
 
 
 
@@ -615,74 +484,6 @@ function AppRoot() {
             'author-insights-comments',
           )}
 
-        {containers.backfillBadges &&
-          createPortal(
-            <BackfillBadges badges={backfillBadges.badges} />,
-            containers.backfillBadges,
-            'backfill-badges',
-          )}
-
-        {containers.backfillControls &&
-          createPortal(
-            <BackfillControls
-              buttonState={backfillButtonState}
-              onStart={() => backfillActions.handleBackfillAction('start')}
-              onStop={() => backfillActions.handleBackfillAction('stop')}
-              onRefreshStatus={() => backfillActions.refreshBackfillStatus()}
-            />,
-            containers.backfillControls,
-            'backfill-controls',
-          )}
-
-
-        {containers.backfillDetails &&
-          createPortal(backfillDetailsText, containers.backfillDetails, 'backfill-details')}
-
-        {containers.backfillLogControls &&
-          createPortal(
-            // Phase G.4 (see REACT_MIGRATION_PLAN.md, "Full migration
-            // roadmap"): BackfillLogControls now also owns the #backfill-log
-            // content portal itself (logText/logContainer below), not just
-            // the checkbox/button - it needs both to sync scroll position
-            // via a ref instead of the old window.autoScrollBackfillLogToBottom
-            // DOM-query bridge.
-            <BackfillLogControls
-              refreshLogDisabled={backfillButtonState.refreshLogDisabled}
-              onRefreshLog={() => backfillActions.refreshBackfillLogTail()}
-              logText={backfillLogText}
-              logUpdateTick={backfillLogUpdateTick}
-              logContainer={containers.backfillLog}
-            />,
-            containers.backfillLogControls,
-            'backfill-log-controls',
-          )}
-
-        {hasActionLogBeenVisible && containers.actionLog &&
-          createPortal(
-            <Suspense fallback={null}>
-              <ActionLogSection />
-            </Suspense>,
-            containers.actionLog,
-            'action-log',
-          )}
-
-        {hasActorNamesBeenVisible && containers.actorNames &&
-          createPortal(
-            <Suspense fallback={null}>
-              <ActorNamesTab />
-            </Suspense>,
-            containers.actorNames,
-            'actor-names',
-          )}
-
-        {hasExportBeenVisible && containers.export &&
-          createPortal(
-            <Suspense fallback={null}>
-              <ExportTab />
-            </Suspense>,
-            containers.export,
-            'export',
-          )}
 
 
         {/* UI redesign phase 9a: the app header (view tabs, last update,
@@ -746,9 +547,9 @@ function mountAppRoot() {
   // Phase H.14 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 4): BackfillStatusProvider wraps from here too, inside
   // StatusTextProvider (it needs useStatusText() itself, for the
-  // announce-on-change path) and outside AppRoot (BackfillLogControls.jsx,
-  // a descendant of AppRoot's own returned JSX, reads it via
-  // useBackfillStatus() - see that component's own comment).
+  // announce-on-change path) and outside AppRoot (the Settings drawer's
+  // BackfillSection, a descendant of AppRoot's own returned JSX, reads it
+  // via useBackfillStatus()).
   //
   // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
@@ -768,13 +569,13 @@ function mountAppRoot() {
   // cluster 3): TabStateProvider wraps from here too now (innermost - it
   // needs none of the other 6 Contexts), same reason as every Provider
   // above it on this list - AppRoot's own body calls
-  // useHasTabPanelBeenVisible() 5 times (hasReviewStatsBeenVisible etc.),
+  // useHasTabPanelBeenVisible() (hasReviewStatsBeenVisible etc.),
   // which needs a genuine Provider ancestor to resolve useTabState() to
   // anything other than this Context's no-op default.
   //
   // Phase H.22 (same cluster): <TabPanelVisibilitySync/> mounted as
   // AppRoot's own sibling, inside <TabStateProvider> - a plain sibling,
-  // not a wrapper, since it owns the 9 tab panels' `hidden` attribute via
+  // not a wrapper, since it owns the view panels' `hidden` attribute via
   // a DOM write in its own effects, not by being read from Context by
   // anything inside AppRoot's tree. Replaces `window.activateDataTab`/
   // `window.activateManagementTab` (both deleted, along with

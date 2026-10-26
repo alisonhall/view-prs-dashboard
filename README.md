@@ -587,7 +587,7 @@ Needs Attention configuration:
   - whether closed/merged rows should be eligible for attention
   - draft-specific toggles for CHANGED and NO_ACTIVITY attention
   - PR-author thread-resolution policy (`allow-all`, `allow-only`, `deny-only`)
-  - actor-based allow/deny lists for thread starters (from `Actor Names`); a saved login stays picked even when the loaded data has no such actor, listed by its login
+  - actor-based allow/deny lists for thread starters (from Settings › `Actor names`); a saved login stays picked even when the loaded data has no such actor, listed by its login
 
 Default values:
 
@@ -748,7 +748,7 @@ In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:..
 
 The UI includes:
 
-- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore) and `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet). Backfill, Action log, Actor names and Export move into it next (UI_REDESIGN_PLAN.md phase 9b).
+- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore), `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet), `Backfill` (the background backfill's status, Start/Stop/Refresh status, and its log), `Action log` (the server's log of actions), `Actor names` and `Export`. Backfill loads its status at page load and again each time its section opens; Action log, Actor names and Export load the first time their section opens (Action log and Actor names reload each time it opens again).
 - `Run script` (full run to refresh PR data)
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
@@ -759,8 +759,8 @@ The UI includes:
   - `Reload labels` reloads the dropdown for the current repo
 - per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
-- `Export` management tab to build and export JSON from currently visible PR rows
-- `Actor Names` management tab to view and edit both display-name mappings and canonical login aliases
+- Settings › `Export` to build and export JSON from currently visible PR rows
+- Settings › `Actor names` to view and edit both display-name mappings and canonical login aliases
   - display-name mappings are stored in `view-prs/data/actor-name-cache.json`
   - login aliases are stored in `view-prs/data/actor-login-aliases.json`
   - when `/view-prs/data` encounters a previously unseen non-empty `authorLogin/login`, that login is automatically added to the actor-name cache (using the best available display name)
@@ -790,7 +790,7 @@ The UI includes:
   - keyboard and modal-accessibility behaviors: Escape closes the dialog, backdrop click closes the dialog, and Tab/Shift+Tab keep focus cycling within the dialog while open
 - each modal section (`Data File Entry`, `PR Detail File`, `User State Entry`, `PR Diff`) has its own internal scrollbar for large payloads
 
-Export tab behavior:
+Export behavior (Settings › `Export`):
 
 - Field picker supports mixed data-file and user-state fields in any combination.
 - Export scope uses what is currently visible in `PR data`:

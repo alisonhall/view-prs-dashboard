@@ -64,7 +64,7 @@ export function ActivityDrawerDispatcherSection({ onBump }) {
   // close, so a bump request still in flight when the drawer is closed
   // would otherwise resolve into a "state update on an unmounted
   // component" warning. Same `cancelled`-style guard already used for
-  // async effects elsewhere in this codebase (ExportTab.jsx, PrJsonModal.jsx).
+  // async effects elsewhere in this codebase (ExportSection.tsx, PrJsonModal.jsx).
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;

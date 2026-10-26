@@ -47,7 +47,7 @@ const sameSections = (a: RenderedSection[], b: RenderedSection[]): boolean =>
 
 /**
  * Owns the PR table's UI state (see PrTableUiStateContext.tsx), wrapping
- * <AppRoot/> so both the table (PrTableApp) and the Export tab, which are
+ * <AppRoot/> so both the table (PrTableApp) and Settings › Export, which are
  * sibling portals, read the same state. Provides both contexts; a report
  * of rendered sections only changes PrTableOpenSectionsContext.
  */

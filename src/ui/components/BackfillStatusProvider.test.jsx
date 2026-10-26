@@ -49,7 +49,7 @@ const DELETED_BRIDGES = [
 ];
 
 // Window-bridge elimination Phases 3d and 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// the Backfill tab's button state, badges, details text and log text are
+// the Backfill section's button state, badges, details text and log text are
 // owned by this Provider, instead of being pushed into AppRoot's local state
 // through window.updateReactBackfill* bridges.
 describe('BackfillStatusProvider', () => {
@@ -108,7 +108,7 @@ describe('BackfillStatusProvider', () => {
       expect(read().backfillLogText).toBe('log line');
       expect(read().backfillLogUpdateTick).toBe(1);
 
-      // BackfillLogControls' scroll-sync effect keys on the tick, so identical
+      // BackfillLog's scroll-sync effect keys on the tick, so identical
       // text (polling an unchanged log) must still change it.
       act(() => {
         read().actions.setBackfillLogMessage('log line');

@@ -1,8 +1,8 @@
 /**
  * MappingRowsEditor - a generic editable key/value-pair list ("mapping")
- * with add-row/remove-row/save/refresh, reused by ActorNamesTab.jsx for
- * both of the Actor Names tab's two mapping editors (display-name
- * mappings and login-alias mappings) - the two were near-identical
+ * with add-row/remove-row/save/refresh, used twice by the Settings
+ * drawer's Actor names section (ActorNamesSection.tsx): the display-name
+ * mappings and the login-alias mappings - the two were near-identical
  * hand-duplicated builders in pr-actor-name-cache.helpers.js
  * (createActorNameCacheRow/createActorLoginAliasRow,
  * getActorNameCachePayloadFromRows/getActorLoginAliasesPayloadFromRows),
@@ -10,17 +10,28 @@
  * version's own createMappingRow/getMappingPayloadFromRows already
  * factored out the shared shape.
  *
- * @module components/MappingRowsEditor
+ * @module components/settings/MappingRowsEditor
  */
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
+
+export interface MappingRow {
+  id: string;
+  key: string;
+  value: string;
+}
+
+export interface MappingStatus {
+  text: string;
+  tone: 'info' | 'success' | 'error';
+}
 
 let rowIdCounter = 0;
 const nextRowId = () => `mapping-row-${++rowIdCounter}`;
 
-export const entriesToRows = (entries) => {
+export const entriesToRows = (entries: Record<string, unknown> | null | undefined): MappingRow[] => {
   const sorted = Object.entries(entries || {})
-    .map(([key, value]) => [String(key || '').trim(), String(value || '').trim()])
+    .map(([key, value]): [string, string] => [String(key || '').trim(), String(value || '').trim()])
     .filter(([key, value]) => key && value)
     .sort(([a], [b]) => a.localeCompare(b));
 
@@ -29,6 +40,35 @@ export const entriesToRows = (entries) => {
   }
   return sorted.map(([key, value]) => ({ id: nextRowId(), key, value }));
 };
+
+export interface MappingRowsEditorProps {
+  heading?: string;
+  description?: string;
+  rows: MappingRow[];
+  setRows: Dispatch<SetStateAction<MappingRow[]>>;
+  status: MappingStatus;
+  setStatus: Dispatch<SetStateAction<MappingStatus>>;
+  onRefresh?: () => void;
+  addRowLabel: string;
+  saveLabel: string;
+  keyPlaceholder: string;
+  valuePlaceholder: string;
+  keyAriaLabel: string;
+  valueAriaLabel: string;
+  removeAriaLabel: string;
+  saveUrl: string;
+  emptyError: string;
+  duplicatePrefix: string;
+  incompleteError: string;
+  disallowSameValue?: boolean;
+  sameValueError?: string;
+  savingText: string;
+  savedNoun: string;
+  saveFailurePrefix: string;
+  rowClassName: string;
+}
+
+type BuiltPayload = { ok: true; entries: Record<string, string> } | { ok: false; error: string };
 
 export function MappingRowsEditor({
   heading,
@@ -55,16 +95,16 @@ export function MappingRowsEditor({
   savedNoun,
   saveFailurePrefix,
   rowClassName,
-}) {
+}: MappingRowsEditorProps) {
   const [saving, setSaving] = useState(false);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
-  const updateRow = (id, patch) => {
+  const updateRow = (id: string, patch: Partial<MappingRow>) => {
     setRows((previous) => previous.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
-  const removeRow = (id) => {
+  const removeRow = (id: string) => {
     setRows((previous) => previous.filter((row) => row.id !== id));
   };
 
@@ -72,8 +112,8 @@ export function MappingRowsEditor({
     setRows((previous) => [...previous, { id: nextRowId(), key: '', value: '' }]);
   };
 
-  const buildPayload = () => {
-    const entries = {};
+  const buildPayload = (): BuiltPayload => {
+    const entries: Record<string, string> = {};
     for (const row of rowsRef.current) {
       const id = String(row.key || '').trim();
       const value = String(row.value || '').trim();
@@ -117,20 +157,20 @@ export function MappingRowsEditor({
         throw new Error(result?.error || `Failed to save ${savedNoun}`);
       }
 
-      const savedEntries = result.entries || payload.entries;
+      const savedEntries: Record<string, unknown> = result.entries || payload.entries;
       setRows(entriesToRows(savedEntries));
       const count = Object.keys(savedEntries).length;
       setStatus({ text: `Saved ${count} ${savedNoun}${count === 1 ? '' : 's'}.`, tone: 'success' });
     } catch (error) {
-      setStatus({ text: `${saveFailurePrefix}: ${error.message || String(error)}`, tone: 'error' });
+      setStatus({ text: `${saveFailurePrefix}: ${(error as Error).message || String(error)}`, tone: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <>
-      {heading && <h4>{heading}</h4>}
+    <div className="settings-group">
+      {heading && <h3 className="settings-heading">{heading}</h3>}
       {description && <p className="subtle-copy">{description}</p>}
       <div className="actor-name-cache-controls form-actions">
         <button type="button" onClick={() => onRefresh?.()}>
@@ -161,17 +201,12 @@ export function MappingRowsEditor({
               value={row.value}
               onChange={(event) => updateRow(row.id, { value: event.target.value })}
             />
-            <button
-              type="button"
-              className="actor-name-cache-remove"
-              aria-label={removeAriaLabel}
-              onClick={() => removeRow(row.id)}
-            >
+            <button type="button" className="actor-name-cache-remove" aria-label={removeAriaLabel} onClick={() => removeRow(row.id)}>
               Remove
             </button>
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }

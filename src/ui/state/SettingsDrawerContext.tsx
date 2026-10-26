@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 /**
  * The Settings drawer (UI_REDESIGN_PLAN.md, phase 9b): whether it's open,
@@ -7,7 +7,16 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
  *
  * Unwrapped, it's closed and opening does nothing.
  */
-export type SettingsSectionId = 'run' | 'attention' | 'merge-commits' | 'change-detection' | 'script-options';
+export type SettingsSectionId =
+  | 'run'
+  | 'attention'
+  | 'merge-commits'
+  | 'change-detection'
+  | 'script-options'
+  | 'backfill'
+  | 'action-log'
+  | 'actor-names'
+  | 'export';
 
 export interface SettingsDrawerValue {
   isOpen: boolean;
@@ -49,4 +58,25 @@ export function SettingsDrawerProvider({
   const close = useCallback(() => setIsOpen(false), []);
   const value = useMemo(() => ({ isOpen, section, open, close, setSection }), [isOpen, section, open, close]);
   return <SettingsDrawerContext.Provider value={value}>{children}</SettingsDrawerContext.Provider>;
+}
+
+/** Whether this section is on screen: the drawer is open at it. */
+export function useIsSettingsSectionVisible(section: SettingsSectionId): boolean {
+  const { isOpen, section: shown } = useSettingsDrawer();
+  return isOpen && shown === section;
+}
+
+/**
+ * Whether this section has ever been on screen - true from its first
+ * showing on, so a section whose content loads only when first opened
+ * (Action log, Actor names, Export: lazy chunks) then stays mounted and
+ * keeps its state.
+ */
+export function useHasSettingsSectionBeenVisible(section: SettingsSectionId): boolean {
+  const isVisible = useIsSettingsSectionVisible(section);
+  const [hasBeenVisible, setHasBeenVisible] = useState(isVisible);
+  useEffect(() => {
+    if (isVisible) setHasBeenVisible(true);
+  }, [isVisible]);
+  return hasBeenVisible || isVisible;
 }

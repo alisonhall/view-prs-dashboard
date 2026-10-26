@@ -417,7 +417,7 @@ describe('PrDataProvider', () => {
 
     // Lessons 1-2 of the plan: hooks in AppRoot's body read these actions, so
     // an identity change on every payload update would re-render AppRoot and
-    // (via useBackfillTabAutoRefresh-style effects) can start request loops.
+    // (via useBackfillAutoRefresh-style effects) can start request loops.
     test('given repeated payload updates, when the actions are read, then their identity never changes and a memoized consumer of them does not re-render', () => {
       let renders = 0;
       let firstActions;

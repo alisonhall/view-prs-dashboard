@@ -42,7 +42,7 @@ export function ActivityDrawerRecentActivitySection({ recentRequestActivity = []
     <section className="activity-drawer-section">
       <h3 className="activity-drawer-section-title">Recent activity</h3>
       <p className="activity-drawer-section-caption">
-        What just finished - see the Action Log tab for full history.
+        What just finished - see Settings › Action log for full history.
       </p>
 
       {recentFinished.length > 0 && (

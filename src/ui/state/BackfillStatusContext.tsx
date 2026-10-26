@@ -3,7 +3,7 @@ import type { BackfillBadge, BackfillButtonState, BackfillStatus } from '../help
 
 /**
  * The backfill tracking flags (`isBackfillRunning`/`isBackfillActionPending`/
- * `supportsBackfillLogPolling`) and the Backfill tab's display state, owned
+ * `supportsBackfillLogPolling`) and the Backfill section's display state, owned
  * by BackfillStatusProvider.tsx. Everything reaches it through this file's
  * two Contexts: state via useBackfillStatus(), stable functions via
  * useBackfillStatusActions().
@@ -15,7 +15,7 @@ import type { BackfillBadge, BackfillButtonState, BackfillStatus } from '../help
 // own loadBackfillStatus and useBackfillActions.tsx's factory instance.
 export const BACKFILL_LOG_TAIL_LINES = 120;
 
-// The Backfill tab's 4 button-disabled flags; AppRoot reads them. Matches
+// The Backfill section's 4 button-disabled flags. Matches
 // the static markup's initial state (no button starts out disabled).
 export const DEFAULT_BACKFILL_BUTTON_STATE: BackfillButtonState = {
   startDisabled: false,
@@ -27,7 +27,7 @@ export const DEFAULT_BACKFILL_BUTTON_STATE: BackfillButtonState = {
 // The status badges, details text and log text, written only by the
 // Provider's status render and log loads; AppRoot reads them.
 // `backfillLogUpdateTick` bumps on *every* log write, even identical text:
-// BackfillLogControls' scroll-sync effect has to fire on every refresh, and
+// BackfillLog's scroll-sync effect has to fire on every refresh, and
 // useState bails out of a same-value update.
 export const DEFAULT_BACKFILL_BADGES: { badges: BackfillBadge[] } = { badges: [] };
 export const DEFAULT_BACKFILL_DETAILS_TEXT = 'Loading backfill status...';

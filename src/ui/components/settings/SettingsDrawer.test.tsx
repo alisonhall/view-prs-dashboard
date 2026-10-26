@@ -12,6 +12,10 @@ jest.mock('./ScriptOptionsSection', () => ({ ScriptOptionsSection: () => <input 
 jest.mock('./AttentionRulesSection', () => ({ AttentionRulesSection: () => <p>Attention rules content</p> }));
 jest.mock('./MergeCommitsSection', () => ({ MergeCommitsSection: () => <p>Merge commits content</p> }));
 jest.mock('./ChangeDetectionSection', () => ({ ChangeDetectionSection: () => <p>Change detection content</p> }));
+jest.mock('./BackfillSection', () => ({ BackfillSection: () => <p>Backfill content</p> }));
+jest.mock('./ActionLogSection', () => ({ ActionLogSection: () => <p>Action log content</p> }));
+jest.mock('./ActorNamesSection', () => ({ ActorNamesSection: () => <p>Actor names content</p> }));
+jest.mock('./ExportSection', () => ({ ExportSection: () => <p>Export content</p> }));
 
 let drawer: ReturnType<typeof useSettingsDrawer>;
 function Opener() {
@@ -109,6 +113,42 @@ describe('SettingsDrawer', () => {
     await user.click(opener);
     await user.click(container.querySelector('.settings-backdrop') as HTMLElement);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  test('the sections, in order', () => {
+    renderDrawer(true);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Run & check',
+      'Attention rules',
+      'Merge commits',
+      'Change detection',
+      'Script options',
+      'Backfill',
+      'Action log',
+      'Actor names',
+      'Export',
+    ]);
+  });
+
+  test('Backfill is mounted from the start; Action log, Actor names and Export once first opened, then they stay', async () => {
+    renderDrawer(false);
+    expect(screen.getByText('Backfill content')).toBeInTheDocument();
+    expect(screen.queryByText('Action log content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Export content')).not.toBeInTheDocument();
+
+    // Chosen while closed isn't opened.
+    act(() => drawer.setSection('action-log'));
+    expect(screen.queryByText('Action log content')).not.toBeInTheDocument();
+
+    act(() => drawer.open('action-log'));
+    expect(await screen.findByText('Action log content')).toBeVisible();
+    act(() => drawer.open('export'));
+    expect(await screen.findByText('Export content')).toBeVisible();
+    act(() => drawer.close());
+    expect(screen.getByText('Action log content')).toBeInTheDocument();
+    expect(screen.getByText('Export content')).toBeInTheDocument();
+    expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
   });
 
   test('can be opened at a section', () => {

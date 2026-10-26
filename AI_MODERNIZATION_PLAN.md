@@ -1148,6 +1148,11 @@ No static type checking leads to:
       MergeCommitRulesTextarea moved into components/settings/ as .tsx;
       MultiSelectListPortals, MultiSelectCheckboxList and
       AuthorThreadResolutionRuleVisibility deleted.
+    - Phase 9b-3 (2026-10-26): the Backfill section (BackfillSection,
+      BackfillLog), with ActionLogSection, ActorNamesSection (was
+      ActorNamesTab), MappingRowsEditor and ExportSection (was ExportTab)
+      moved into components/settings/ and BackfillBadges converted in place,
+      all .tsx; BackfillControls and ManagementTabButton deleted.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

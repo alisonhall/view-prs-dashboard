@@ -209,9 +209,9 @@ describe('useBackfillActions', () => {
     expect(snackbarCalls[0][0]).toBe('Failed to load backfill status');
   });
 
-  // Regression guard. useBackfillTabAutoRefresh lists `triggerBackfillTabLoad`
+  // Regression guard. useBackfillAutoRefresh lists `triggerBackfillTabLoad`
   // as an effect dependency and fires a status+log fetch whenever it changes
-  // while the Backfill tab is visible, and each fetch updates state that
+  // while the Backfill section is showing, and each fetch updates state that
   // re-renders the caller - so if this hook's return value ever gets a new
   // identity on re-render (one unstable dependency anywhere in the provider
   // chain is enough), that becomes a fetch loop. It's stable today only

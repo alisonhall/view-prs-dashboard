@@ -4,10 +4,13 @@ const { render, screen, waitFor, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
-const { ActorNamesTab } = require('./ActorNamesTab');
-const { TabStateContext } = require('../state/TabStateContext');
+const { ActorNamesSection } = require('./ActorNamesSection');
+const { SettingsDrawerContext } = require('../../state/SettingsDrawerContext');
 
-describe('ActorNamesTab', () => {
+// The drawer, open at a section.
+const drawerAt = (section) => ({ isOpen: true, section, open: () => {}, close: () => {}, setSection: () => {} });
+
+describe('ActorNamesSection', () => {
   afterEach(() => {
     delete global.fetch;
     jest.restoreAllMocks();
@@ -22,7 +25,7 @@ describe('ActorNamesTab', () => {
     });
 
     await act(async () => {
-      render(<ActorNamesTab />);
+      render(<ActorNamesSection />);
     });
 
     expect(global.fetch).toHaveBeenCalledWith('/view-prs/actor-name-cache');
@@ -47,7 +50,7 @@ describe('ActorNamesTab', () => {
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    render(<ActorNamesTab />);
+    render(<ActorNamesSection />);
 
     expect(await screen.findByText('Loaded 1 mapping.')).toBeInTheDocument();
     expect(await screen.findByText('Loaded 1 alias mapping.')).toBeInTheDocument();
@@ -68,7 +71,7 @@ describe('ActorNamesTab', () => {
       return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) });
     });
 
-    render(<ActorNamesTab />);
+    render(<ActorNamesSection />);
 
     expect(await screen.findByText('Failed to load cache: boom')).toBeInTheDocument();
     expect(await screen.findByText('Loaded 0 alias mappings.')).toBeInTheDocument();
@@ -82,7 +85,7 @@ describe('ActorNamesTab', () => {
       return Promise.reject(new Error('network down'));
     });
 
-    render(<ActorNamesTab />);
+    render(<ActorNamesSection />);
 
     expect(await screen.findByText('Failed to load aliases: network down')).toBeInTheDocument();
   });
@@ -100,7 +103,7 @@ describe('ActorNamesTab', () => {
     });
 
     const user = userEvent.setup();
-    render(<ActorNamesTab />);
+    render(<ActorNamesSection />);
 
     await screen.findByText('Loaded 0 mappings.'); // mount's own auto-load
     expect(nameCacheCalls).toBe(1);
@@ -126,7 +129,7 @@ describe('ActorNamesTab', () => {
       return Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) });
     });
 
-    render(<ActorNamesTab />);
+    render(<ActorNamesSection />);
     await screen.findByText('Loaded 0 mappings.'); // mount's own auto-load
     expect(nameCacheCalls).toBe(1);
 
@@ -135,67 +138,53 @@ describe('ActorNamesTab', () => {
     expect(nameCacheCalls).toBe(2);
   });
 
-  // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 3): re-triggering on every later re-activation (switch away,
-  // then back) used to be pr-management-tabs.helpers.js's own
-  // activateTab("actor-name-cache") calling loadActorNameCache() directly,
-  // outside React - now owned by this component's own effect watching
-  // useIsTabPanelVisible(), guarded against double-firing alongside the
-  // mount effect's own unconditional load (see this file's own
-  // hasSkippedFirstRunRef comment).
-  describe('re-triggering on tab re-activation', () => {
+  // It reloads each time its Settings section comes back into view,
+  // without a second load at mount when it's already showing.
+  describe('reloading when its section comes into view', () => {
     const emptyFetch = () =>
       jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ ok: true, entries: {} }) }));
 
-    const renderWithActiveManagementTab = (activeManagementTab) =>
-      render(
-        <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab }}>
-          <ActorNamesTab />
-        </TabStateContext.Provider>,
-      );
+    const tree = (section) => (
+      <SettingsDrawerContext.Provider value={drawerAt(section)}>
+        <ActorNamesSection />
+      </SettingsDrawerContext.Provider>
+    );
+    const renderAt = (section) => render(tree(section));
 
-    test('given the tab is not active at mount, when it becomes active later, then it reloads both endpoints', async () => {
+    test('given the section is not showing at mount, when it comes into view later, then it reloads both endpoints', async () => {
       global.fetch = emptyFetch();
       let rerender;
       await act(async () => {
-        ({ rerender } = renderWithActiveManagementTab('status'));
+        ({ rerender } = renderAt('run'));
       });
       expect(global.fetch).toHaveBeenCalledTimes(2); // the mount-triggered load (2 endpoints)
 
       await act(async () => {
-        rerender(
-          <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab: 'actor-name-cache' }}>
-            <ActorNamesTab />
-          </TabStateContext.Provider>,
-        );
+        rerender(tree('actor-names'));
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(4);
     });
 
-    test('given the tab is already active at mount, when mounted, then it loads exactly once (not twice)', async () => {
+    test('given the section is already showing at mount, when mounted, then it loads exactly once (not twice)', async () => {
       global.fetch = emptyFetch();
       await act(async () => {
-        renderWithActiveManagementTab('actor-name-cache');
+        renderAt('actor-names');
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(2); // 1 mount-triggered load, 2 endpoints
     });
 
-    test('given the tab becomes inactive after mount, when it does, then nothing reloads', async () => {
+    test('given the section leaves view after mount, when it does, then nothing reloads', async () => {
       global.fetch = emptyFetch();
       let rerender;
       await act(async () => {
-        ({ rerender } = renderWithActiveManagementTab('actor-name-cache'));
+        ({ rerender } = renderAt('actor-names'));
       });
       expect(global.fetch).toHaveBeenCalledTimes(2);
 
       await act(async () => {
-        rerender(
-          <TabStateContext.Provider value={{ activeDataTab: 'pr-data', activeManagementTab: 'status' }}>
-            <ActorNamesTab />
-          </TabStateContext.Provider>,
-        );
+        rerender(tree('run'));
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(2);

@@ -27,7 +27,7 @@ const baseProps = {
 };
 
 // Wraps the component so tests can drive real state, matching how
-// ActorNamesTab actually uses it (rows/status live in the parent).
+// ActorNamesSection actually uses it (rows/status live in the parent).
 function Harness(props) {
   const [rows, setRows] = React.useState(props.initialRows || entriesToRows({}));
   const [status, setStatus] = React.useState(props.initialStatus || { text: '', tone: 'info' });

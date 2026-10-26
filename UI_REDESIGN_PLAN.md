@@ -639,6 +639,31 @@ becomes a small `react-app.tsx`. Done in steps:
   rules (Attention, Merge commits, Change detection); 9b-3 Backfill, Action
   log, Actor names and Export, then the old tab strip goes. The old
   Activity tab's status message and "Trigger auto run" go into Run & check.
+- **9b-3 done (2026-10-26):**
+  - The drawer gains `Backfill` (`settings/BackfillSection.tsx`, with
+    `BackfillLog.tsx`: the badges, Start / Stop / Refresh status, the
+    details and the log), `Action log` (`ActionLogSection.tsx`), `Actor
+    names` (`ActorNamesSection.tsx`, with `MappingRowsEditor.tsx`) and
+    `Export` (`ExportSection.tsx`), all moved into `settings/` as `.tsx`
+    (`BackfillBadges` too, in place: the activity drawer shares it).
+    `BackfillControls` and `ManagementTabButton` are deleted.
+  - Backfill is mounted from the start: it owns its actions and loads the
+    status at page load (the activity drawer shows it too), then each time
+    the section opens (`state/useBackfillAutoRefresh.ts`, was
+    `useBackfillTabAutoRefresh`). Action log, Actor names and Export are
+    lazy chunks mounted the first time their section opens, then kept.
+    `SettingsDrawerContext` gains `useIsSettingsSectionVisible` /
+    `useHasSettingsSectionBeenVisible` (open at that section).
+  - The management tab strip is gone: its markup and CSS, and the
+    management half of `TabStateContext`, `useIsTabPanelVisible` and
+    `TabPanelVisibilitySync` - they cover the views only now.
+  - Export's "follows the open sections" summary updates while the drawer
+    is closed; the drawer covers the table, so checking it means closing
+    the drawer to toggle a section.
+  - Narrow windows: the sections are one row that scrolls sideways inside
+    the drawer, each tab sized to its label. They had kept the wide
+    layout's full width, stacking one per line - with nine sections,
+    nearly half the drawer at phone width.
 - **9b-2 done (2026-10-26):**
   - The drawer gains `Attention rules` (`settings/AttentionRulesSection.tsx`:
     NO_ACTIVITY handling, the five toggles, the thread-resolution policy and

@@ -76,7 +76,6 @@ const { PrDataProvider } = require("../state/PrDataProvider");
 // it was window.getReactPrTablePayload, deleted.
 const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
 const prDataProbe = createPrDataProbe();
-const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { useFilterState } = require("../state/FilterStateContext");
@@ -87,22 +86,9 @@ const { useNotesDirty } = require("../state/NotesDirtyContext");
 const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
 const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
-const { BackfillControls } = require("../components/BackfillControls");
-const { BackfillLogControls } = require("../components/BackfillLogControls");
 const { SettingsDrawer } = require("../components/settings/SettingsDrawer");
-const { SettingsDrawerProvider } = require("../state/SettingsDrawerContext");
+const { SettingsDrawerProvider, useSettingsDrawer } = require("../state/SettingsDrawerContext");
 const { useStatusText } = require("../state/StatusTextContext");
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
-// suite's own BackfillControlsTestHarness/RunScriptActionButtonsTestHarness
-// below used to wire these components' onClick/onStart/etc. props straight
-// to window.handleBackfillAction/handleRunScript/handleAckOnly/etc. - a
-// hand-rolled duplicate of react-app.jsx's own wiring, needed only because
-// this suite never mounts react-app.jsx itself. Now that react-app.jsx
-// calls real hooks instead of those bridges, this harness calls the same
-// hooks too, so the bridges (and the window.*-poking that only existed for
-// this file) can be deleted outright instead of kept alive for a test.
-const { useBackfillActions } = require("../state/useBackfillActions");
-const { useBackfillTabAutoRefresh } = require("../state/useBackfillTabAutoRefresh");
 const { useQuickCheckActions } = require("../state/useQuickCheckActions");
 const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
@@ -153,6 +139,7 @@ let fetchMock;
 // until the harness tree mounts (and after it unmounts), like the bridges
 // were.
 let filterStateTestHandle = null;
+let settingsDrawerTestHandle = null;
 // Window-bridge elimination Phase 7.3: the real RequestActivityProvider's
 // functions, captured by RequestActivityTestHandle below - the scheduler test
 // drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
@@ -266,7 +253,7 @@ const createFetchMock = ({
       // Like the real server (view-prs-data-routes.js's buildDataPayload), the
       // data response embeds the same backfill state /view-prs/backfill
       // returns; a fixture's own `backfill` wins. Window-bridge elimination
-      // Phase 7.2 made this matter: the data load and the Backfill tab's own
+      // Phase 7.2 made this matter: the data load and the Backfill section's own
       // status load now both start on mount, so whichever finishes last
       // renders the backfill status, and a payload without `backfill` makes
       // updateBackfillStatusFromPayload render the payload itself as one.
@@ -357,23 +344,6 @@ const createFetchMock = ({
 // PrDataProvider outside the Provider sees the inert default, so the whole
 // auto-render-blocking path would silently do nothing.
 
-// Phase C (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
-// the REAL BackfillControls/BackfillLogControls (not a hand-rolled
-// simulation) into a detached container, same reasoning as
-// installAutoRenderBlockingProviderBridge above - this suite never mounts
-// react-app.jsx, so nothing else would publish
-// window.updateReactBackfillButtonState otherwise. A small local wrapper
-// component owns the buttonState useState - the same "push bridge feeds
-// local state, portal the real component" shape react-app.jsx's own
-// AppRoot uses for backfillButtonState.
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
-// button/checkbox callbacks used to call window.handleBackfillAction/
-// refreshBackfillStatus/refreshBackfillLogTail directly - this harness now
-// calls useBackfillActions() itself, same as react-app.jsx does, so those
-// 3 bridges have no remaining caller and were deleted from index.page.js.
-// (window.autoScrollBackfillLogToBottom itself is now deleted outright too
-// - cluster-4 cleanup, see REACT_MIGRATION_PLAN.md, "Remaining-effort
-// audit" - confirmed to have no remaining readers anywhere.)
 // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // WindowBackedPrActivityProvider (a RequestActivityContext stand-in that
 // forwarded to window.beginRequestActivity) is gone. Its harness roots
@@ -381,71 +351,6 @@ const createFetchMock = ({
 // mount lazily with the PR table; the Provider now mounts once at the root
 // of FilterStateTestRootHarness (it loads the data itself, as in
 // production), so every hook below is a genuine descendant of it.
-
-// Reads the container ids at render time, like react-app.jsx's AppRoot.
-function BackfillControlsTestHarness() {
-  const controlsRoot = document.getElementById("backfill-controls-root");
-  const logControlsRoot = document.getElementById("backfill-log-controls-root");
-  const logContainer = document.getElementById("backfill-log");
-  // Window-bridge elimination Phase 3d: the button state is owned by the real
-  // BackfillStatusProvider this harness is mounted under (same as react-app.jsx's
-  // AppRoot reads it), not a local state fed by window.updateReactBackfillButtonState.
-  const { backfillButtonState: buttonState } = useBackfillStatus();
-  // Window-bridge elimination Phase 4: the log text (+ its update tick, which
-  // BackfillLogControls' scroll-sync effect needs so it fires on every
-  // refresh even for identical text) and the details text are owned by the
-  // real BackfillStatusProvider too, read here exactly as react-app.jsx's
-  // AppRoot reads them - not local states fed by window.updateReactBackfillLogText
-  // / updateReactBackfillDetailsText.
-  const {
-    backfillLogText: logText,
-    backfillLogUpdateTick: logUpdateTick,
-    backfillDetailsText,
-  } = useBackfillStatus();
-  const { handleBackfillAction, refreshBackfillStatus, refreshBackfillLogTail, triggerBackfillTabLoad } =
-    useBackfillActions();
-  // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // backfill-tab.orchestrator.js (deleted outright that phase) used to
-  // drive the initial/on-activation status+log load here, triggered via
-  // index.page.js's own vanilla activateTab/initPage - since this suite
-  // never mounts the real <AppRoot/> (which now owns this via
-  // useBackfillTabAutoRefresh), this harness needs the same hook itself to
-  // keep the many tests that click into the Backfill management tab and
-  // assert on the resulting status/log passing.
-  useBackfillTabAutoRefresh(triggerBackfillTabLoad);
-
-  const backfillDetailsContainer = document.getElementById("backfill-details");
-
-  return React.createElement(
-    React.Fragment,
-    null,
-    controlsRoot &&
-      createPortal(
-        React.createElement(BackfillControls, {
-          buttonState,
-          onStart: () => handleBackfillAction("start"),
-          onStop: () => handleBackfillAction("stop"),
-          onRefreshStatus: () => refreshBackfillStatus(),
-        }),
-        controlsRoot,
-        "backfill-controls",
-      ),
-    backfillDetailsContainer &&
-      createPortal(backfillDetailsText, backfillDetailsContainer, "backfill-details"),
-    logControlsRoot &&
-      createPortal(
-        React.createElement(BackfillLogControls, {
-          refreshLogDisabled: buttonState.refreshLogDisabled,
-          onRefreshLog: () => refreshBackfillLogTail(),
-          logText,
-          logUpdateTick,
-          logContainer,
-        }),
-        logControlsRoot,
-        "backfill-log-controls",
-      ),
-  );
-}
 
 // The suite mounts the REAL FilterStateProvider, seeded with every field's
 // default as production is (buildFilterStateInitialValues). Its fields are
@@ -539,7 +444,7 @@ function FilterStateTestHandle() {
 // must mount after initTestPage() points fetch at the test's fetchMock (see
 // installFilterStateProviderBridge's callers). BackfillStatusProvider wraps
 // from here too now, inside StatusTextProvider like production: it used to
-// be a separate root (installBackfillControlsBridge, deleted), which can't
+// be a separate root (a Backfill bridge, deleted), which can't
 // work once PrDataProvider pushes each payload's backfill status to it
 // through Context.
 function FilterStateTestRootHarness({ initialValues }) {
@@ -604,7 +509,6 @@ function FilterStateTestRootHarness({ initialValues }) {
                       null,
                       React.createElement(ActionButtonsTestHarness),
                     ),
-                    React.createElement(BackfillControlsTestHarness),
                     // Window-bridge elimination Phase 7.4: production's
                     // NotesDirtyProvider > (AppRoot's)
                     // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
@@ -678,15 +582,32 @@ const installFilterStateProviderBridge = () => {
   );
 };
 
-// UI redesign phase 9b: the run buttons, the PR numbers and the Script
-// options are the real Settings drawer's (Run & check, Script options),
-// mounted open at Run & check, as react-app.jsx mounts it (closed there).
-// Inside the main tree, so its hooks reach the same Providers.
+// UI redesign phase 9b: the run buttons, the PR numbers, the rules, the
+// Script options and Backfill are the real Settings drawer's, mounted open
+// at Run & check, as react-app.jsx mounts it (closed there).
+// showSettingsSectionForTest switches its section. Inside the main tree,
+// so its hooks reach the same Providers.
+function SettingsDrawerTestHandle() {
+  settingsDrawerTestHandle = useSettingsDrawer();
+  React.useEffect(
+    () => () => {
+      settingsDrawerTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
 function SettingsDrawerTestHarness() {
   const container = document.getElementById("settings-drawer-root");
   if (!container) return null;
   return createPortal(
-    React.createElement(SettingsDrawerProvider, { initialOpen: true }, React.createElement(SettingsDrawer)),
+    React.createElement(
+      SettingsDrawerProvider,
+      { initialOpen: true },
+      React.createElement(SettingsDrawerTestHandle),
+      React.createElement(SettingsDrawer),
+    ),
     container,
     "settings-drawer",
   );
@@ -879,36 +800,10 @@ const waitForPersistedViewFilterOverrides = async (assertBody) => {
   });
 };
 
-// Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 3): window.activateManagementTab (pr-management-tabs.helpers.js's
-// activateTab) is deleted outright - the real app's own panel-hiding
-// mechanism is now components/TabPanelVisibilitySync.jsx, reading
-// TabStateContext reactively, which this suite never mounts (it never
-// mounts react-app.jsx/TabStateProvider at all - see this file's own
-// comments elsewhere about the React tab buttons being empty portal roots
-// here). Every one of this suite's own ~60 call sites only ever used
-// "script"/"backfill" (confirmed via grep), purely to unhide that panel so
-// Testing-Library's role/label queries - which exclude elements under a
-// `hidden` ancestor - can find fields inside it; none exercise the
-// deleted function's other side effects (button styling, which the real
-// buttons don't even exist in this suite to assert on; loadActionLog/
-// loadActorNameCache/onBackfillTabActivated, never used with those 2
-// keys here). This local helper replaces the deleted bridge with exactly
-// that one remaining real behavior - same panel-id/key map as
-// TabPanelVisibilitySync.jsx's own.
-const MANAGEMENT_TAB_PANEL_IDS_FOR_TEST = {
-  "tab-panel-backfill": "backfill",
-  "tab-panel-action-log": "action-log",
-  "tab-panel-actor-name-cache": "actor-name-cache",
-  "tab-panel-export": "export",
-};
-const activateManagementTabForTest = (key) => {
-  Object.entries(MANAGEMENT_TAB_PANEL_IDS_FOR_TEST).forEach(([panelId, panelKey]) => {
-    const panel = document.getElementById(panelId);
-    if (panel) {
-      panel.hidden = panelKey !== key;
-    }
-  });
+// Shows a Settings drawer section, as clicking its tab would (the drawer
+// is mounted open): Testing Library's queries skip the hidden ones.
+const showSettingsSectionForTest = (section) => {
+  act(() => settingsDrawerTestHandle.setSection(section));
 };
 
 describe("index page rendering with Testing Library", () => {
@@ -1054,16 +949,8 @@ describe("index page rendering with Testing Library", () => {
     window.setTimeout = realSetTimeout;
   });
 
-  // Phase A, slices 1 and 2 (see REACT_MIGRATION_PLAN.md, "Full migration
-  // roadmap"): both the 3 data-tab buttons (PR data/Review statistics/
-  // Author Insights) and all 6 management-tab buttons (Activity/Run &
-  // Filter/Backfill/Action Log/Actor Names/Export) are React-owned now
-  // (DataTabButton.jsx/ManagementTabButton.jsx/TabStateProvider.tsx) with
-  // no vanilla-DOM fallback left for this jsdom-only suite (which never
-  // loads react-app.jsx) to render into - dropped every tab assertion
-  // from this test, same reasoning as the removed "author insights View
-  // in table..." test below. Only the page heading is still genuinely
-  // static HTML.
+  // The view tabs are the app header's (AppHeader.test.tsx covers them);
+  // the old management tabs are the Settings drawer's sections.
   test("shows the page heading in the app header", () => {
     initTestPage();
     expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "View PR Updates" })).toBeInTheDocument();
@@ -2050,16 +1937,6 @@ describe("index page rendering with Testing Library", () => {
     expect(String(reviewersValue?.textContent || "")).toContain("Reviewer Two");
   });
 
-  // "switches management tab panels when a user opens Run & Filter" was
-  // removed here: it clicked the real vanilla <button id="tab-script">,
-  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
-  // roadmap") replaced with an empty React portal root
-  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
-  // fallback left for this jsdom-only suite (which never loads
-  // react-app.jsx) to click. e2e/smoke.spec.js clicks this exact tab in a
-  // real browser 49+ times already (every test that reaches the Run &
-  // Filter panel).
-
   test("filters, backfill, and visibility toggles update rendered output", async () => {
     initTestPage({
       backfillStatusResponse: {
@@ -2114,9 +1991,8 @@ describe("index page rendering with Testing Library", () => {
     // lastQuickCheckSkipReason) is kept only because the rest of this test's
     // payload shape mirrors a real response; nothing here reads it anymore.
 
-    activateManagementTabForTest("backfill");
-    expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-export").hidden).toBe(true);
+    showSettingsSectionForTest("backfill");
+    expect(screen.getByRole("tabpanel", { name: "Backfill" })).toBeVisible();
 
     // The backfill badges themselves are React-owned (#backfill-badges,
     // mounted by react-app.jsx) and no longer have a vanilla-DOM fallback
@@ -5215,23 +5091,11 @@ describe("index page rendering with Testing Library", () => {
     expect(document.activeElement).toBe(firstElement);
   });
 
-  // "given a user opens the Action Log tab..." and "given a user opens
-  // the Actor Names tab..." were removed here: they clicked the real
-  // vanilla <button id="tab-action-log">/<button id="tab-actor-name-cache">,
-  // which Phase A, slice 2 (see REACT_MIGRATION_PLAN.md, "Full migration
-  // roadmap") replaced with empty React portal roots
-  // (ManagementTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM
-  // fallback left for this jsdom-only suite (which never loads
-  // react-app.jsx) to click. e2e/smoke.spec.js's "Action Log tab loads
-  // its entries on its very first visit..."/"Actor Names tab loads its
-  // mappings on its very first visit..." tests click these exact tabs in
-  // a real browser already.
-
-  test("posts to backfill start endpoint when a user starts backfill from the Backfill tab", async () => {
+  test("posts to backfill start endpoint when a user starts backfill from the Backfill section", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5305,7 +5169,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -6561,11 +6425,11 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = fetchMock;
   });
 
-  test("loads backfill log tail when a user clicks Refresh log in the Backfill tab", async () => {
+  test("loads backfill log tail when a user clicks Refresh log in the Backfill section", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Refresh log" }));
 
     await waitFor(() => {
@@ -6583,17 +6447,9 @@ describe("index page rendering with Testing Library", () => {
     expect(logTailCall).toBeDefined();
   });
 
-  // "given a user opens the Export tab..." was removed here: it clicked
-  // the real vanilla <button id="tab-export">, which Phase A, slice 2
-  // (see REACT_MIGRATION_PLAN.md, "Full migration roadmap") replaced with
-  // an empty React portal root (ManagementTabButton.jsx/TabStateProvider.tsx)
-  // - no vanilla-DOM fallback left for this jsdom-only suite (which never
-  // loads react-app.jsx) to click. e2e/smoke.spec.js clicks this exact
-  // tab in a real browser already.
-
   // Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // index.page.js's initPage made its own status+log load on top of the one
-  // useBackfillTabAutoRefresh fires on mount, so every page load fetched both
+  // useBackfillAutoRefresh fires on mount, so every page load fetched both
   // twice. Only the React one is left.
   test("given a fresh page load, when everything settles, then backfill status and log are each fetched exactly once", async () => {
     initTestPage();
@@ -6616,7 +6472,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
 
     // Force a running status refresh in-test to avoid startup timing races.
     const defaultImpl = fetchMock.getMockImplementation();
@@ -6672,7 +6528,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6697,7 +6553,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    activateManagementTabForTest("backfill");
+    showSettingsSectionForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();

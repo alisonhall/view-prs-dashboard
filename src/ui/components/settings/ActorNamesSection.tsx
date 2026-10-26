@@ -1,56 +1,23 @@
-/**
- * ActorNamesTab - React-owned content for the Management "Actor Names"
- * tab, mounted into `#actor-names-root`.
- *
- * Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): real JSX now,
- * replacing pr-actor-name-cache.helpers.js in full (deleted) - unlike
- * Action Log's conversion, this tab's own buttons/status/rows are ALL now
- * React-owned (not a container-split leaving vanilla buttons calling a
- * bridge), matching how ReviewStatsControls/AuthorInsightsSelector fully
- * own their own controls.
- *
- * Behavior preserved exactly from the vanilla version, including one
- * quirk: both mapping editors' "Refresh" buttons trigger the SAME combined
- * reload (both endpoints), not just their own - the vanilla loadActorNameCache
- * always loaded both in sequence, and both editors' refresh buttons called
- * that same function.
- *
- * @module components/ActorNamesTab
- *
- * Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): this
- * component is now lazy-loaded (react-app.jsx), mounting only once the
- * Actor Names tab is first activated.
- *
- * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
- * cluster 3): re-triggering the combined reload on every later
- * re-activation (switch away, then back) used to be
- * `pr-management-tabs.helpers.js`'s `activateTab("actor-name-cache")`
- * calling `loadActorNameCache()` directly, outside React entirely - that
- * function is deleted outright this phase. Now owned by this component's
- * own second effect below, watching
- * `useIsTabPanelVisible('tab-panel-actor-name-cache')` - same shape
- * `useBackfillTabAutoRefresh.tsx`/`ActionLogSection.jsx` already
- * established.
- *
- * Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
- * audit"): `window.triggerActorNameCacheLoad` had zero real external
- * callers (unlike ActionLogSection.jsx's bridge, this tab's own "Refresh"
- * buttons were already wired through `onRefresh`/`refreshBoth` below, a
- * plain React prop, not the bridge) - a grep confirmed only this
- * component's own 2 internal call sites and its own tests ever referenced
- * it. Deleted outright: `load` is now a local `useCallback`, called
- * directly by both the re-activation effect and `refreshBoth`.
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MappingRowsEditor, entriesToRows } from './MappingRowsEditor';
-import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
+import { MappingRowsEditor, entriesToRows, type MappingRow, type MappingStatus } from './MappingRowsEditor';
+import { useIsSettingsSectionVisible } from '../../state/SettingsDrawerContext';
 
-export function ActorNamesTab() {
-  const [nameCacheRows, setNameCacheRows] = useState([]);
-  const [nameCacheStatus, setNameCacheStatus] = useState({ text: 'Loading cache...', tone: 'info' });
-  const [aliasRows, setAliasRows] = useState([]);
-  const [aliasStatus, setAliasStatus] = useState({ text: 'Loading aliases...', tone: 'info' });
+/**
+ * The Settings drawer's "Actor names" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * display-name mappings (actor-name-cache) and login aliases
+ * (actor-login-aliases), each a MappingRowsEditor.
+ *
+ * Both editors' "Refresh" buttons reload both lists (one combined load, as
+ * the vanilla version did). Lazy-loaded, mounting the first time the
+ * section is opened; it loads on mount, then again each time the section
+ * comes back into view (the first run of that effect is skipped: the mount
+ * load covers it).
+ */
+export function ActorNamesSection() {
+  const [nameCacheRows, setNameCacheRows] = useState<MappingRow[]>([]);
+  const [nameCacheStatus, setNameCacheStatus] = useState<MappingStatus>({ text: 'Loading cache...', tone: 'info' });
+  const [aliasRows, setAliasRows] = useState<MappingRow[]>([]);
+  const [aliasStatus, setAliasStatus] = useState<MappingStatus>({ text: 'Loading aliases...', tone: 'info' });
 
   const load = useCallback(async () => {
     setNameCacheStatus({ text: 'Loading cache...', tone: 'info' });
@@ -65,7 +32,7 @@ export function ActorNamesTab() {
       const count = Object.keys(entries).length;
       setNameCacheStatus({ text: `Loaded ${count} mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
     } catch (error) {
-      setNameCacheStatus({ text: `Failed to load cache: ${error.message || String(error)}`, tone: 'error' });
+      setNameCacheStatus({ text: `Failed to load cache: ${(error as Error).message || String(error)}`, tone: 'error' });
     }
 
     setAliasStatus({ text: 'Loading aliases...', tone: 'info' });
@@ -80,7 +47,7 @@ export function ActorNamesTab() {
       const count = Object.keys(entries).length;
       setAliasStatus({ text: `Loaded ${count} alias mapping${count === 1 ? '' : 's'}.`, tone: 'success' });
     } catch (error) {
-      setAliasStatus({ text: `Failed to load aliases: ${error.message || String(error)}`, tone: 'error' });
+      setAliasStatus({ text: `Failed to load aliases: ${(error as Error).message || String(error)}`, tone: 'error' });
     }
   }, []);
 
@@ -88,14 +55,7 @@ export function ActorNamesTab() {
     load();
   }, [load]);
 
-  // Phase H.22 (see this module's own header comment): re-trigger on
-  // every later re-activation, matching activateTab("actor-name-cache")'s
-  // old behavior exactly - skips this effect's own first run via a ref,
-  // not the `isVisible` value itself, since on a first mount where the
-  // tab is already active this effect's first run would otherwise
-  // double-fire right alongside the mount effect's own load() call above
-  // (same reasoning as ActionLogSection.jsx's own identical guard).
-  const isVisible = useIsTabPanelVisible('tab-panel-actor-name-cache');
+  const isVisible = useIsSettingsSectionVisible('actor-names');
   const hasSkippedFirstRunRef = useRef(false);
   useEffect(() => {
     if (!hasSkippedFirstRunRef.current) {
@@ -110,7 +70,8 @@ export function ActorNamesTab() {
   const refreshBoth = load;
 
   return (
-    <>
+    <div className="settings-section">
+      <p className="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering, insights, and stats.</p>
       <MappingRowsEditor
         heading="Display Name Mappings"
         rows={nameCacheRows}
@@ -161,6 +122,6 @@ export function ActorNamesTab() {
         saveFailurePrefix="Failed to save aliases"
         rowClassName="actor-login-alias-row"
       />
-    </>
+    </div>
   );
 }

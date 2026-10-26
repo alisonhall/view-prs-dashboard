@@ -300,6 +300,39 @@ test("the app header names the repo, switches views, says when the data was upda
   expect(consoleErrors).toEqual([]);
 });
 
+test("at phone width the Settings sections are one row that scrolls sideways, leaving the drawer to the section", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  await openSettings(page);
+  const nav = settingsDrawer(page).getByRole("tablist", { name: "Settings sections", exact: true });
+  const firstTab = nav.getByRole("tab", { name: "Run & check", exact: true });
+  const lastTab = nav.getByRole("tab", { name: "Export", exact: true });
+
+  // One row: the nav is about one tab high (stacked, the nine were ~310px).
+  const navBox = await nav.boundingBox();
+  const tabBox = await firstTab.boundingBox();
+  expect(navBox.height).toBeLessThan(tabBox.height * 1.5);
+  // Each tab keeps its label on one line (squeezed, they'd wrap), so the
+  // row is wider than the drawer and scrolls inside it, not the page.
+  const labelLines = await nav.getByRole("tab").evaluateAll((elements) =>
+    elements.map((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    }),
+  );
+  expect(labelLines).toEqual(Array(9).fill(1));
+  expect(await nav.evaluate((element) => element.closest(".settings-nav").scrollWidth > element.closest(".settings-nav").clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+
+  // End moves to the last section, which scrolls into view.
+  await firstTab.focus();
+  await page.keyboard.press("End");
+  await expect(lastTab).toHaveAttribute("aria-selected", "true");
+  await expect(lastTab).toBeInViewport();
+  await expect(settingsDrawer(page).getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+});
+
 test("the Settings drawer opens from the header, switches sections, and closes with Esc back to its button", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
   await page.goto("/");
@@ -319,8 +352,8 @@ test("the Settings drawer opens from the header, switches sections, and closes w
   await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
   await page.keyboard.press("End");
-  await expect(drawer.getByRole("tab", { name: "Script options", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(drawer.getByLabel("Repo (owner/name)", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Export", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
@@ -2625,15 +2658,12 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
 });
 
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
-  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Backfill tab's status badges
-  // converted to React (<BackfillBadges />, mounted directly into the
-  // existing #backfill-badges container - no container-split needed since
-  // that div isn't shared with anything else, unlike every Author Insights
-  // conversion). Only exercises the read-only status GET (tab activation
-  // and "Refresh status" both just reload status - this test never starts
-  // or stops the actual backfill process).
+  // Settings › Backfill's status badges (BackfillBadges). Only exercises
+  // the read-only status GET (opening the section and "Refresh status"
+  // both just reload status - this test never starts or stops the actual
+  // backfill process).
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
 
   const badgeHost = page.getByRole("group", { name: "Backfill status badges", exact: true, includeHidden: true });
   const badges = badgeHost.getByText(/^Backfill: /);
@@ -2649,16 +2679,16 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
 
-test("the Backfill tab's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
+test("Settings › Backfill's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
   // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the badges, details text and log text moved out of AppRoot's local state
-  // into <BackfillStatusProvider />, which AppRoot reads back via Context for
-  // the #backfill-details / #backfill-log portals. jsdom covers the Provider
+  // the badges, details text and log text live in <BackfillStatusProvider />,
+  // which the Settings drawer's Backfill section reads via Context. jsdom
+  // covers the Provider
   // and each consumer separately; this proves the real wired path, from a
   // real status GET through the Provider's state into the real DOM. Only the
   // read-only status/log GETs run - the backfill process is never started.
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
 
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("Loading backfill status...");
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("");
@@ -2669,12 +2699,12 @@ test("the Backfill tab's details and log text replace their loading placeholders
   await expect(page.getByRole("button", { name: "Refresh log", exact: true, includeHidden: true })).toBeEnabled();
 });
 
-test("opening the Backfill tab and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
-  // useBackfillTabAutoRefresh lists useBackfillActions()'s
+test("opening Settings › Backfill and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
+  // useBackfillAutoRefresh lists useBackfillActions()'s
   // triggerBackfillTabLoad as an effect dependency and re-fetches whenever
-  // that function's identity changes while the tab is visible - and each
+  // that function's identity changes while the section is showing - and each
   // fetch updates state that re-renders its caller. So a single unstable
-  // dependency anywhere in the provider chain would turn this tab into a
+  // dependency anywhere in the provider chain would turn this section into a
   // request loop. jsdom pins the identity (useBackfillActions.test.jsx); this
   // proves it from the network side in a real browser. Read-only GETs only.
   const counts = { status: 0, log: 0 };
@@ -2686,22 +2716,22 @@ test("opening the Backfill tab and leaving it idle does not trigger a status/log
   });
 
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("Loading backfill status...");
 
   // Sit idle long enough that a loop would pile up dozens of requests.
   await page.waitForTimeout(3000);
 
-  // A page load plus one tab activation: a handful at most, never a stream.
+  // A page load plus one opening: a handful at most, never a stream.
   expect(counts.status).toBeGreaterThan(0);
   expect(counts.status).toBeLessThanOrEqual(5);
   expect(counts.log).toBeLessThanOrEqual(5);
 });
 
-test("Action Log tab loads its entries on its very first visit, not just on a second one", async ({ page }) => {
+test("Settings › Action log loads its entries on its very first opening, not just on a second one", async ({ page }) => {
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
-  // ActionLogSection is now lazy-loaded, mounting only once this tab is
-  // first activated - pr-management-tabs.helpers.js's tab-click handler
+  // ActionLogSection is lazy-loaded, mounting only once its section is
+  // first opened - pr-management-tabs.helpers.js's tab-click handler
   // calls window.triggerActionLogLoad?.() synchronously on click, which
   // used to work because the component (and its bridge) was always
   // eagerly mounted well before any click. Lazily mounting it broke that:
@@ -2721,7 +2751,7 @@ test("Action Log tab loads its entries on its very first visit, not just on a se
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/action-log") && res.request().method() === "GET",
     ),
-    page.getByRole("tab", { name: "Action Log" }).click(),
+    openSettings(page, "Action log"),
   ]);
   expect(response.ok()).toBe(true);
 });
@@ -2797,9 +2827,10 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   await assertNoStalePrefix(page.getByRole("region", { name: "Status message", exact: true, includeHidden: true }), "Not run");
   await assertNoStalePrefix(page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true }), "Run the script to see output");
 
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
   await assertNoStalePrefix(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true }), "Loading backfill status...");
   await assertNoStalePrefix(page.getByRole("region", { name: "Backfill log", exact: true, includeHidden: true }), "Loading backfill log...");
+  await closeSettings(page);
 
   await page.getByRole("tab", { name: "Review stats" }).click();
   await assertNoStalePrefix(page.getByRole("region", { name: "Review statistics", exact: true, includeHidden: true }), "Loading...");
@@ -2809,10 +2840,10 @@ test("no React-portaled status/log panel shows its old static placeholder text s
 
 });
 
-test("Actor Names tab loads its mappings on its very first visit, not just on a second one", async ({ page }) => {
+test("Settings › Actor names loads its mappings on its very first opening, not just on a second one", async ({ page }) => {
   // Same class of bug, and same reasoning for asserting on the network
   // request rather than rendered text, as the Action Log test above - for
-  // ActorNamesTab's window.triggerActorNameCacheLoad bridge.
+  // ActorNamesSection's old window.triggerActorNameCacheLoad bridge.
   await page.goto("/");
 
   const [cacheResponse, aliasResponse] = await Promise.all([
@@ -2822,16 +2853,16 @@ test("Actor Names tab loads its mappings on its very first visit, not just on a 
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/actor-login-aliases") && res.request().method() === "GET",
     ),
-    page.getByRole("tab", { name: "Actor Names" }).click(),
+    openSettings(page, "Actor names"),
   ]);
   expect(cacheResponse.ok()).toBe(true);
   expect(aliasResponse.ok()).toBe(true);
 });
 
-test("Export tab's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
+test("Settings › Export's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
   // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
   // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
-  // exposed on window by index.page.js - ExportTab.jsx now builds and
+  // exposed on window by index.page.js - ExportSection.tsx now builds and
   // calls all 3 directly (pr-export.helpers.ts). This tab had zero prior
   // e2e coverage of any kind (confirmed by grep) - this is the only real-
   // browser check that the catalog/preview actually work end-to-end
@@ -2839,7 +2870,7 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Export" }).click();
+  await openSettings(page, "Export");
   const fieldList = page.getByRole("group", { name: "Export fields", exact: true, includeHidden: true });
   await expect(fieldList.getByRole("checkbox", { includeHidden: true })).not.toHaveCount(0);
 
@@ -2868,16 +2899,21 @@ test("Export follows the table's open sections: closing the sections that are op
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Export" }).click();
+  await openSettings(page, "Export");
   const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
   await expect(exportPanel.getByText(/Expanded PR sections: 2$/m)).toBeVisible();
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: [1-9]\d*\//)).toBeVisible();
 
+  // The drawer covers the table: close it to toggle sections. Export stays
+  // mounted, so its summary follows while it's closed.
+  await closeSettings(page);
   await prSectionSummary(prSection(page, "In Review")).click();
-  // The summary follows without a click on the Export tab.
+  await openSettings(page, "Export");
   await expect(exportPanel.getByText(/Expanded PR sections: 1$/m)).toBeVisible();
 
+  await closeSettings(page);
   await prSectionSummary(prSection(page, "Needs Attention")).click();
+  await openSettings(page, "Export");
   await expect(exportPanel.getByText(/Expanded PR sections: 0$/m)).toBeVisible();
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: 0\//)).toBeVisible();
 

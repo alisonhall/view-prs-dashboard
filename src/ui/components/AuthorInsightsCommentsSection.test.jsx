@@ -43,7 +43,7 @@ const authorInsightsOverrides = {
 // Phase 7 (see REACT_MIGRATION_PLAN.md): mounts the real
 // AuthorInsightsDraftsProvider now instead of hand-rolled window.*
 // stubs - the component reads/writes that Context directly, so exercising
-// it through the real Provider (same as this session's ExportTab.test.jsx
+// it through the real Provider (same as this session's ExportSection.test.jsx
 // rewrite) proves the actual wiring works, not a mocked stand-in.
 const renderSection = (selectedAuthorLogin) =>
   render(

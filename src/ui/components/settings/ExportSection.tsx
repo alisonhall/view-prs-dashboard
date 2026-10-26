@@ -1,7 +1,8 @@
 /**
- * ExportTab - React-owned content for the Management "Export" tab, mounted
- * into `#export-container`: the field catalog, field selection (saved to
- * user-defaults), and Preview / Copy / Download of the export JSON.
+ * The Settings drawer's "Export" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * field catalog, field selection (saved to user-defaults), and Preview /
+ * Copy / Download of the export JSON. Lazy-loaded, mounting the first time
+ * the section is opened; it then stays mounted, keeping the selection.
  *
  * It exports "only sections currently expanded": the PR numbers in the
  * table's open sections, from PrTableOpenSectionsContext. Until UI redesign
@@ -17,15 +18,15 @@
  * (or the saved-selection restore below) adds them - no previous-selection
  * reconciliation dance needed.
  *
- * @module components/ExportTab
+ * @module components/settings/ExportSection
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePrData } from '../state/PrDataContext';
-import { usePrTableOpenSections } from '../state/PrTableUiStateContext';
-import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
-import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../helpers/pr-export.helpers.ts';
-import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
+import { usePrData } from '../../state/PrDataContext';
+import { usePrTableOpenSections } from '../../state/PrTableUiStateContext';
+import { safeJsonStringify } from '../../helpers/pr-ui-render-utils.helpers.ts';
+import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../../helpers/pr-export.helpers.ts';
+import { getPerPrUserStateFromPayload } from '../../helpers/pr-per-pr-user-state.helpers.ts';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
 
@@ -77,7 +78,7 @@ const toErrorMessage = (error: unknown, fallback: string) =>
 const describeCount = (verb: string, exportPayload: ExportPayload) =>
   `${verb} export JSON for ${exportPayload.prCount} visible PR${exportPayload.prCount === 1 ? '' : 's'}.`;
 
-export function ExportTab() {
+export function ExportSection() {
   const { payload, selectedRepo } = usePrData();
   const { prNumbersInOpenSections, openSectionCount } = usePrTableOpenSections();
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string> | null>(null); // null until initialized
@@ -279,7 +280,10 @@ export function ExportTab() {
   );
 
   return (
-    <>
+    <div className="settings-section">
+      <p className="subtle-copy">
+        Choose PR fields from data and user state, then export only rows currently visible in the table and only sections currently expanded.
+      </p>
       <pre className="management-filter-summary">{summaryText}</pre>
 
       <div className="export-field-controls form-actions">
@@ -324,6 +328,6 @@ export function ExportTab() {
         <summary>Export preview</summary>
         <pre id="export-preview" role="region" aria-label="Export preview">{preview}</pre>
       </details>
-    </>
+    </div>
   );
 }

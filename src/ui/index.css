@@ -257,13 +257,6 @@
             background: #fff;
         }
 
-        .scheduler-card {
-            border: 1px solid #d0d7de;
-            border-radius: 10px;
-            padding: 12px;
-            background: #f6f8fa;
-            margin-bottom: 12px;
-        }
 
         .scheduler-badges {
             display: flex;
@@ -315,59 +308,12 @@
             background: #fff1f2;
         }
 
-        #backfill-card .form-actions {
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
 
-        .backfill-log-options {
-            margin-bottom: 10px;
-        }
 
-        .backfill-log-options label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #1f2328;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
 
-        #backfill-card button {
-            border: 1px solid #1f6feb;
-            background: #1f6feb;
-            color: #fff;
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-        }
 
-        #backfill-card button:hover {
-            background: #1a61d1;
-        }
 
-        #backfill-card button:disabled {
-            background: #8c959f;
-            border-color: #8c959f;
-            cursor: not-allowed;
-        }
 
-        .backfill-log {
-            margin-top: 10px;
-            margin-bottom: 0;
-            white-space: pre-wrap;
-            font-family: monospace;
-            font-size: 12px;
-            color: #1f2328;
-            border: 1px solid #d0d7de;
-            border-radius: 8px;
-            background: #fff;
-            padding: 10px;
-            max-height: 280px;
-            overflow: auto;
-        }
 
         .scheduler-details {
             margin: 0;
@@ -390,49 +336,11 @@
             background: #fff;
         }
 
-        .management-tabs {
-            border: 1px solid #d0d7de;
-            border-radius: 10px;
-            background: #fff;
-            overflow: hidden;
-            margin-bottom: 12px;
-        }
 
-        .management-tab-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0;
-            border-bottom: 1px solid #d0d7de;
-            background: #f6f8fa;
-        }
 
-        .management-tab-button {
-            border: 0;
-            border-right: 1px solid #d0d7de;
-            border-bottom: 2px solid transparent;
-            background: transparent;
-            color: #57606a;
-            padding: 10px 14px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-        }
 
-        .management-tab-button:hover {
-            background: #eef2f6;
-            color: #1f2328;
-        }
 
-        .management-tab-button.is-active {
-            background: #fff;
-            color: #0b57d0;
-            border-bottom-color: #0b57d0;
-        }
 
-        .management-tab-panel {
-            padding: 10px 12px;
-            background: #fff;
-        }
 
         .export-field-controls {
             margin-top: 8px;
@@ -552,18 +460,7 @@
             font-size: 12px;
         }
 
-        #backfill-card .backfill-log-options {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            margin-top: 8px;
-        }
 
-        #backfill-card .backfill-log-options button {
-            padding: 6px 10px;
-            font-size: 12px;
-        }
 
         .stats-panel {
             border: 1px solid #d0d7de;
@@ -1169,9 +1066,6 @@
             color: #165c2f;
         }
 
-        .action-log-controls {
-            margin-bottom: 12px;
-        }
 
         .action-log-container {
             overflow-x: auto;

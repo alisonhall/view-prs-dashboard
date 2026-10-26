@@ -4,9 +4,9 @@ const { render, screen, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
-const { ExportTab } = require('./ExportTab');
-const { PrDataProvider } = require('../state/PrDataProvider');
-const { PrTableOpenSectionsContext } = require('../state/PrTableUiStateContext');
+const { ExportSection } = require('./ExportSection');
+const { PrDataProvider } = require('../../state/PrDataProvider');
+const { PrTableOpenSectionsContext } = require('../../state/PrTableUiStateContext');
 
 // The PRs Export treats as visible (those in the table's open sections)
 // come from PrTableOpenSectionsContext; `uiState` overrides it per test.
@@ -14,11 +14,11 @@ const { PrTableOpenSectionsContext } = require('../state/PrTableUiStateContext')
 const buildTree = ({ initialPayload, selectedRepo, uiState } = {}) => (
   <PrDataProvider initialPayload={initialPayload} initialSelectedRepo={selectedRepo}>
     <PrTableOpenSectionsContext.Provider value={{ prNumbersInOpenSections: ['11'], openSectionCount: 1, ...uiState }}>
-      <ExportTab />
+      <ExportSection />
     </PrTableOpenSectionsContext.Provider>
   </PrDataProvider>
 );
-const renderExportTab = (options) => render(buildTree(options));
+const renderExportSection = (options) => render(buildTree(options));
 
 // No `repo` field on the entry itself (deliberately) - getPerPrUserStateFromPayload
 // always contributes 4 fixed userStatePaths (ackByRepo/inReviewByRepo/
@@ -43,7 +43,7 @@ const twoPrPayload = {
   lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
 };
 
-describe('ExportTab', () => {
+describe('ExportSection', () => {
   beforeEach(() => {
     global.fetch = jest.fn((url, init = {}) => {
       const method = String(init.method || 'GET').toUpperCase();
@@ -69,7 +69,7 @@ describe('ExportTab', () => {
 
   test('given PRs in open and closed sections, when exporting, then only the open sections\' PRs are included', async () => {
     const user = userEvent.setup();
-    renderExportTab({
+    renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
       uiState: { prNumbersInOpenSections: ['12'], openSectionCount: 1 },
@@ -86,7 +86,7 @@ describe('ExportTab', () => {
 
   test('given no open sections, when exporting, then no PRs are included', async () => {
     const user = userEvent.setup();
-    renderExportTab({
+    renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
       uiState: { prNumbersInOpenSections: [], openSectionCount: 0 },
@@ -99,7 +99,7 @@ describe('ExportTab', () => {
   });
 
   test('given the table\'s open sections change, when the tab re-renders, then its summary updates without a click', () => {
-    const { rerender } = renderExportTab({
+    const { rerender } = renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
       uiState: { prNumbersInOpenSections: ['11'], openSectionCount: 1 },
@@ -121,7 +121,7 @@ describe('ExportTab', () => {
   // Accessibility naming: the field list, status and preview are findable by
   // role and name (e2e uses these instead of ids/classes).
   test('given the tab, when rendered, then the field list, status and preview are named', async () => {
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => expect(screen.getByRole('group', { name: 'Export fields' })).toBeInTheDocument());
     expect(screen.getByRole('region', { name: 'Export status' })).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('ExportTab', () => {
   });
 
   test('given a populated field catalog, when rendered, then it lists data and user-state checkboxes, all selected by default', async () => {
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);
@@ -138,7 +138,7 @@ describe('ExportTab', () => {
   });
 
   test('given no exportable fields, when rendered, then it shows the empty-state message', () => {
-    renderExportTab({ initialPayload: {}, selectedRepo: '' });
+    renderExportSection({ initialPayload: {}, selectedRepo: '' });
 
     expect(screen.getByText('No exportable fields found in current payload.')).toBeInTheDocument();
   });
@@ -160,7 +160,7 @@ describe('ExportTab', () => {
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
 
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getByRole('checkbox', { name: /prNumber/ })).toBeChecked();
@@ -170,7 +170,7 @@ describe('ExportTab', () => {
 
   test('given the user clicks "Select none" then "Data only", when selecting, then only data checkboxes end up checked', async () => {
     const user = userEvent.setup();
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);
@@ -187,7 +187,7 @@ describe('ExportTab', () => {
 
   test('given fields are selected, when Preview JSON is clicked, then the selection is persisted and the preview is rendered', async () => {
     const user = userEvent.setup();
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);
@@ -218,7 +218,7 @@ describe('ExportTab', () => {
 
   test('given no fields are selected, when Preview JSON is clicked, then a validation error is shown instead of building JSON', async () => {
     const user = userEvent.setup();
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);
@@ -236,7 +236,7 @@ describe('ExportTab', () => {
     const user = userEvent.setup();
     const writeText = jest.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);
@@ -262,7 +262,7 @@ describe('ExportTab', () => {
     };
 
     const user = userEvent.setup();
-    renderExportTab({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
 
     await waitFor(() => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(6);

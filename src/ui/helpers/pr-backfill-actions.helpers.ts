@@ -2,7 +2,7 @@ import type { BackfillButtonState, BackfillStatus } from "./pr-backfill.helpers.
 import type { CommandOutputOptions, CommandResult } from "./pr-command-output.helpers.ts";
 import type { PostJsonResult } from "./pr-http.helpers.ts";
 
-// The Backfill tab's server calls: loading the status and log tail
+// Settings › Backfill's server calls: loading the status and log tail
 // (BackfillStatusProvider uses loadBackfillStatus), and starting/stopping
 // the backfill with status text, output, button state and the failure
 // snackbar kept in step (useBackfillActions).

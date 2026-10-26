@@ -2,7 +2,7 @@ import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { PerPrUserState, UserStatePayload } from "./pr-per-pr-user-state.helpers.ts";
 import { asArray } from "./pr-as-array.helpers.ts";
 
-// The Export tab's "Export Visible PR JSON": the field catalog (every
+// Settings › Export's "Export Visible PR JSON": the field catalog (every
 // dotted leaf path in the PR data and user state), which PRs are visible,
 // and the export payload holding only the selected fields of each.
 
@@ -215,7 +215,7 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
   };
 };
 
-// One rendered table section, as the Export tab needs it: whether it's
+// One rendered table section, as Export needs it: whether it's
 // open and the PR numbers of its rows, in display order.
 export interface ExportSection {
   open: boolean;
@@ -223,7 +223,7 @@ export interface ExportSection {
 }
 
 // PR numbers in the open (expanded) sections of the table, in display
-// order, each once - the "visible" PRs the Export tab exports. A PR shown
+// order, each once - the "visible" PRs Export exports. A PR shown
 // in a smart group and again in its lifecycle section counts once.
 const getPrNumbersInOpenSections = (sections: ExportSection[]): string[] => {
   const result: string[] = [];

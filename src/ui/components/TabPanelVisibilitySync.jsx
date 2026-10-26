@@ -10,16 +10,10 @@ const DATA_TAB_PANEL_IDS = {
   'tab-panel-review-stats': 'review-stats',
   'tab-panel-author-insights': 'author-insights',
 };
-const MANAGEMENT_TAB_PANEL_IDS = {
-  'tab-panel-backfill': 'backfill',
-  'tab-panel-action-log': 'action-log',
-  'tab-panel-actor-name-cache': 'actor-name-cache',
-  'tab-panel-export': 'export',
-};
 
 /**
  * TabPanelVisibilitySync - headless component (renders nothing) that owns
- * all 9 tab panels' `hidden` attribute, reactively, from TabStateContext.
+ * the view panels' `hidden` attribute, reactively, from TabStateContext.
  *
  * Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 3): replaces `pr-data-tabs.helpers.js`'s `activateDataTab` /
@@ -28,7 +22,7 @@ const MANAGEMENT_TAB_PANEL_IDS = {
  * (and the now fully-dead `initDataTabs`/`initManagementTabs`, and the
  * button `className`/`aria-selected` writes, already fully redundant with
  * the tab buttons' own Context-derived styling - now the app header's
- * view tabs and ManagementTabButton.jsx) are deleted outright, along with the `window.activateDataTab`/
+ * view tabs) are deleted outright, along with the `window.activateDataTab`/
  * `window.activateManagementTab` bridges `TabStateProvider.tsx` used to
  * call as a side effect.
  *
@@ -39,7 +33,7 @@ const MANAGEMENT_TAB_PANEL_IDS = {
  * portal targets for content mounted elsewhere in this same render pass).
  */
 export function TabPanelVisibilitySync() {
-  const { activeDataTab, activeManagementTab } = useTabState();
+  const { activeDataTab } = useTabState();
 
   useEffect(() => {
     Object.entries(DATA_TAB_PANEL_IDS).forEach(([panelId, key]) => {
@@ -49,15 +43,6 @@ export function TabPanelVisibilitySync() {
       }
     });
   }, [activeDataTab]);
-
-  useEffect(() => {
-    Object.entries(MANAGEMENT_TAB_PANEL_IDS).forEach(([panelId, key]) => {
-      const panel = document.getElementById(panelId);
-      if (panel) {
-        panel.hidden = key !== activeManagementTab;
-      }
-    });
-  }, [activeManagementTab]);
 
   return null;
 }

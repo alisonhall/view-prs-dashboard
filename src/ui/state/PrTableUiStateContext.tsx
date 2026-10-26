@@ -5,7 +5,7 @@ import { createContext, useContext } from 'react';
  * wraps <AppRoot/> from mountAppRoot()): which sections are open, which
  * rows show their summary, and the detail pane (UI_REDESIGN_PLAN.md,
  * phase 4): the selected PR, whether the pane is shown, and its tab. It
- * lives above the table so the Export tab can read it: Export exports the
+ * lives above the table so Settings › Export can read it: Export exports the
  * rows of the open sections, and used to work that out by reading
  * `<details open>` and class names from the DOM.
  *

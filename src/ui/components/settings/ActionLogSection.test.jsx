@@ -3,26 +3,20 @@
 const React = require('react');
 const { render, screen, waitFor, act, fireEvent } = require('@testing-library/react');
 const { ActionLogSection } = require('./ActionLogSection');
-const { TabStateContext } = require('../state/TabStateContext');
-const { createPrFormattingHelpers } = require('../helpers/pr-formatting.helpers.ts');
+const { SettingsDrawerContext } = require('../../state/SettingsDrawerContext');
+const { createPrFormattingHelpers } = require('../../helpers/pr-formatting.helpers.ts');
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+
+// The drawer, open at a section.
+const drawerAt = (section) => ({ isOpen: true, section, open: () => {}, close: () => {}, setSection: () => {} });
 
 const mockEmptyFetchOnce = () =>
   global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entries: [] }) });
 
 describe('ActionLogSection', () => {
-  let refreshBtnRoot;
-
   beforeEach(() => {
     global.fetch = jest.fn();
-    refreshBtnRoot = document.createElement('div');
-    refreshBtnRoot.id = 'action-log-refresh-btn-root';
-    document.body.appendChild(refreshBtnRoot);
-  });
-
-  afterEach(() => {
-    refreshBtnRoot.remove();
   });
 
   test('given it mounts, when mounted, then it automatically loads without needing an external trigger', async () => {
@@ -36,11 +30,7 @@ describe('ActionLogSection', () => {
     expect(screen.getByText('No actions logged yet.')).toBeInTheDocument();
   });
 
-  // Seventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-  // audit"): window.triggerActionLogLoad is gone - the "Refresh" button is
-  // now portaled into #action-log-refresh-btn-root by this component
-  // itself, calling its own local load() directly.
-  test('given it mounts, when mounted, then it portals a real Refresh button into #action-log-refresh-btn-root', async () => {
+  test('given it mounts, when mounted, then it shows its Refresh button', async () => {
     mockEmptyFetchOnce();
 
     await act(async () => {
@@ -139,71 +129,48 @@ describe('ActionLogSection', () => {
     });
   });
 
-  // Phase H.22 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 3): re-triggering on every later re-activation (switch away,
-  // then back) used to be pr-management-tabs.helpers.js's own
-  // activateTab("action-log") calling loadActionLog() directly, outside
-  // React - now owned by this component's own effect watching
-  // useIsTabPanelVisible(), guarded against double-firing alongside the
-  // mount effect's own unconditional load (see this file's own
-  // hasSkippedFirstRunRef comment).
-  describe('re-triggering on tab re-activation', () => {
-    const renderWithActiveManagementTab = (activeManagementTab) =>
-      render(
-        React.createElement(
-          TabStateContext.Provider,
-          { value: { activeDataTab: 'pr-data', activeManagementTab } },
-          React.createElement(ActionLogSection),
-        ),
-      );
+  // It reloads each time its Settings section comes back into view,
+  // without a second load at mount when it's already showing.
+  describe('reloading when its section comes into view', () => {
+    const tree = (section) =>
+      React.createElement(SettingsDrawerContext.Provider, { value: drawerAt(section) }, React.createElement(ActionLogSection));
+    const renderAt = (section) => render(tree(section));
 
-    test('given the tab is not active at mount, when it becomes active later, then it reloads', async () => {
+    test('given the section is not showing at mount, when it comes into view later, then it reloads', async () => {
       mockEmptyFetchOnce(); // the mount-triggered load
       let rerender;
       await act(async () => {
-        ({ rerender } = renderWithActiveManagementTab('status'));
+        ({ rerender } = renderAt('run'));
       });
       expect(global.fetch).toHaveBeenCalledTimes(1);
 
       mockEmptyFetchOnce();
       await act(async () => {
-        rerender(
-          React.createElement(
-            TabStateContext.Provider,
-            { value: { activeDataTab: 'pr-data', activeManagementTab: 'action-log' } },
-            React.createElement(ActionLogSection),
-          ),
-        );
+        rerender(tree('action-log'));
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
-    test('given the tab is already active at mount, when mounted, then it loads exactly once (not twice)', async () => {
+    test('given the section is already showing at mount, when mounted, then it loads exactly once (not twice)', async () => {
       mockEmptyFetchOnce();
       await act(async () => {
-        renderWithActiveManagementTab('action-log');
+        renderAt('action-log');
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    test('given the tab becomes inactive after mount, when it does, then nothing reloads', async () => {
+    test('given the section leaves view after mount, when it does, then nothing reloads', async () => {
       mockEmptyFetchOnce();
       let rerender;
       await act(async () => {
-        ({ rerender } = renderWithActiveManagementTab('action-log'));
+        ({ rerender } = renderAt('action-log'));
       });
       expect(global.fetch).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        rerender(
-          React.createElement(
-            TabStateContext.Provider,
-            { value: { activeDataTab: 'pr-data', activeManagementTab: 'status' } },
-            React.createElement(ActionLogSection),
-          ),
-        );
+        rerender(tree('run'));
       });
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
