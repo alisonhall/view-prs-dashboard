@@ -432,7 +432,7 @@ Optional tuning via env vars:
 - `VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET` (default `8`): the dispatcher's single ceiling on total concurrent `gh` processes across every repo/job-type it runs at once.
 - `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS` (default `5000`): how often the dispatcher re-checks what's due. An urgency bump (a quick check finding a real change) isn't affected by this - it triggers an immediate tick regardless.
 
-Use the form to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
+Use the Settings drawer's Run & check and Script options to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
 UI filter behavior:
 
@@ -672,7 +672,7 @@ Scope mode behavior:
 
 Insights behavior notes:
 
-- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all` and a link to this README.
+- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all` and a link to this README.
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
 - The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, close), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
   - Select a PR by clicking anywhere on its row that isn't a control (click it again to deselect), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
@@ -748,6 +748,7 @@ In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:..
 
 The UI includes:
 
+- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output) and `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet). The other management tabs move into it next (UI_REDESIGN_PLAN.md phase 9b).
 - `Run script` (full run to refresh PR data)
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
@@ -755,7 +756,7 @@ The UI includes:
 - `Apply clear only` (clear updates only)
 - `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
-  - `↻ Labels` reloads the dropdown for the current repo
+  - `Reload labels` reloads the dropdown for the current repo
 - per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
 - `Export` management tab to build and export JSON from currently visible PR rows
@@ -1135,7 +1136,7 @@ Applies an existing GitHub label (never a newly typed one) to one or more PRs di
   - Deliberately does NOT reuse `/view-prs/ack`'s targeted-refresh pattern (re-running `check-open-pr-updates.sh --pr <n>`), since a full refresh also re-fetches comments, reviews, file diffs, and review threads - for a PR with a lot of history (especially merged PRs) that can take minutes, leaving the just-applied label invisible until it finishes or the next scheduled auto-refresh catches up. The direct label-only patch stays fast regardless of a PR's size.
   - The patch acquires the same lock directory (`check-open-pr-updates.data.lock`) the shell script's `acquire_pr_state_lock`/`release_pr_state_lock` use for `check-open-pr-updates.data.json`, so it can't interleave its read-modify-write with a concurrent script run.
 - Per-PR failures (invalid PR number, `gh` error, no matching stored entry) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
-- Both the per-row `+ Label` dropdown and the "Run & Filter" tab's `Apply label` control call this same endpoint.
+- Both the per-row `+ Label` dropdown and the Settings drawer's `Apply label` control (Run & check) call this same endpoint.
 
 ## Local PR state file
 

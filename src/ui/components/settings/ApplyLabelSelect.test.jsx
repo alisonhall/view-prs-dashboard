@@ -4,7 +4,7 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 
 const { ApplyLabelSelect } = require('./ApplyLabelSelect');
-const { RepoLabelsContext } = require('../state/RepoLabelsContext');
+const { RepoLabelsContext } = require('../../state/RepoLabelsContext');
 
 // labels comes from useRepoLabels() now (Phase 7, see
 // REACT_MIGRATION_PLAN.md) instead of a `labels` prop - these tests wrap

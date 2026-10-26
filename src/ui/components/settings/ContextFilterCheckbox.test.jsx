@@ -4,11 +4,11 @@ const { render, screen } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ContextFilterCheckbox } = require('./ContextFilterCheckbox');
-const { FilterStateProvider: RealFilterStateProvider } = require('../state/FilterStateProvider');
-const { createFilterStateProbe } = require('../test-fixtures/filter-state-probe');
-const { RowFilterSelectionProvider } = require('../state/RowFilterSelectionProvider');
-const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThreadResolutionSelectionProvider');
-const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
+const { FilterStateProvider: RealFilterStateProvider } = require('../../state/FilterStateProvider');
+const { createFilterStateProbe } = require('../../test-fixtures/filter-state-probe');
+const { RowFilterSelectionProvider } = require('../../state/RowFilterSelectionProvider');
+const { AuthorThreadResolutionSelectionProvider } = require('../../state/AuthorThreadResolutionSelectionProvider');
+const { ChangeFilterActorSelectionProvider } = require('../../state/ChangeFilterActorSelectionProvider');
 
 // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // FilterStateProvider's own buildOverrides() now calls

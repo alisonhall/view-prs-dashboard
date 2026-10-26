@@ -35,7 +35,7 @@ export interface AckLabelActions {
 }
 
 /**
- * The Ack, Clear and Apply-label actions: RunScriptActionButton.jsx's bulk
+ * The Ack, Clear and Apply-label actions: the Settings drawer Run & check's bulk
  * buttons (handleAckOnly/handleClearOnly/handleApplyLabelClick) and
  * PrTableApp.tsx's per-row actions (the run*Workflow functions, from a
  * second instance of this hook). Builds createPrAckLabelActionsHelpers

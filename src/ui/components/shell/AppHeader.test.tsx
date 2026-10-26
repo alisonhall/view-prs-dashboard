@@ -1,12 +1,21 @@
 /** @jest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataProvider } from '../../state/PrDataProvider';
 import { TabStateProvider } from '../TabStateProvider';
 import { TabPanelVisibilitySync } from '../TabPanelVisibilitySync';
+import { StatusTextProvider } from '../StatusTextProvider';
+import { useStatusText } from '../../state/StatusTextContext';
 import type { PrDataPayload } from '../../types/pr-data.ts';
 import { AppHeader, type AppHeaderProps } from './AppHeader';
+import { SettingsDrawerProvider, useSettingsDrawer } from '../../state/SettingsDrawerContext';
+
+let settingsOpen = false;
+function SettingsProbe() {
+  settingsOpen = useSettingsDrawer().isOpen;
+  return null;
+}
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const loaded = (lastRun: PrDataPayload['lastRun']): PrDataPayload => ({ ok: true, byPrNumber: {}, lastRun });
@@ -97,6 +106,47 @@ describe('AppHeader', () => {
       renderHeader(loaded(null));
       expect(screen.getByText('Not updated yet')).toBeInTheDocument();
     });
+  });
+
+  test('shows the latest action status once something reports: its first line, all of it on hover', () => {
+    let setStatusText: (text: string) => void = () => {};
+    function StatusSetter() {
+      setStatusText = useStatusText().setStatusText;
+      return null;
+    }
+    render(
+      <PrDataProvider initialPayload={loaded(null)}>
+        <StatusTextProvider>
+          <StatusSetter />
+          <AppHeader onQuickCheckAll={async () => undefined} />
+        </StatusTextProvider>
+      </PrDataProvider>,
+    );
+    const status = within(screen.getByRole('banner')).getByRole('status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toBeEmptyDOMElement();
+
+    act(() => setStatusText('Ack only completed\nPR #1: acked'));
+    expect(status).toHaveTextContent(/^Ack only completed$/);
+    expect(status).toHaveAttribute('title', 'Ack only completed\nPR #1: acked');
+  });
+
+  test('Settings opens the Settings drawer', async () => {
+    const user = userEvent.setup();
+    render(
+      <PrDataProvider initialPayload={loaded(null)}>
+        <SettingsDrawerProvider>
+          <AppHeader onQuickCheckAll={async () => undefined} />
+          <SettingsProbe />
+        </SettingsDrawerProvider>
+      </PrDataProvider>,
+    );
+    const settings = screen.getByRole('button', { name: 'Settings' });
+    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
+    await user.click(settings);
+    expect(settingsOpen).toBe(true);
+    expect(settings).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('Quick check all runs the check and shows what it found', async () => {

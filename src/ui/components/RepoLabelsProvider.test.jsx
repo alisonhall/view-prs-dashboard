@@ -4,7 +4,7 @@ const { render, screen, act, waitFor, within } = require('@testing-library/react
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { RepoLabelsProvider } = require('./RepoLabelsProvider');
-const { ApplyLabelSelect } = require('./ApplyLabelSelect');
+const { ApplyLabelSelect } = require('./settings/ApplyLabelSelect');
 const { PrActionsCell } = require('./cells/PrActionsCell');
 const { PrDataProvider } = require('../state/PrDataProvider');
 const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');

@@ -1136,6 +1136,11 @@ No static type checking leads to:
       AutoRenderBlockedLinks moved into components/shell/ as .tsx;
       DataTabButton, AutoRenderBlockedStatusText and
       AutoRenderBlockedApplyButton deleted.
+    - Phase 9b-1 (2026-10-26): the Settings drawer (SettingsDrawer,
+      RunCheckSection, ScriptOptionsSection), with ContextRunScriptTextInput,
+      ContextFilterCheckbox, OpenModeSelect, ApplyLabelSelect,
+      TriggerAutoRunButton and QuickCheckButton moved into
+      components/settings/ as .tsx; RunScriptActionButton deleted.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

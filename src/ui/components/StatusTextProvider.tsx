@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { StatusTextContext } from '../state/StatusTextContext';
+import { useMemo, useState, type ReactNode } from 'react';
+import { INITIAL_STATUS_TEXT, StatusTextContext } from '../state/StatusTextContext';
 
 /**
- * Owns the `#status` panel's text.
+ * Owns the status message's text: the latest action's result or progress.
+ * The app header shows its first line once something has reported (so it's
+ * seen), and the Settings drawer's Run & check shows it whole (`#status`,
+ * RunCheckSection).
  *
  * Mounted wrapping `<AppRoot />` from `mountAppRoot()`, outside AppRoot's
  * own returned JSX - same reasoning as `PrActivityQueueProvider`:
@@ -14,34 +17,12 @@ import { StatusTextContext } from '../state/StatusTextContext';
  * the root-mount call instead makes every one of those a genuine Context
  * descendant.
  *
- * Writes `#status`'s `textContent` directly in an effect rather than
- * `createPortal`-ing `statusText` into it - deliberately, not an oversight.
- * In production there's only ever one of these mounted, so either approach
- * would work, but `index.html.test.js`'s own test harness (which never
- * mounts the real `<AppRoot/>`) mounts *several* independent instances of
- * this Provider, one per hand-rolled tree that needs it
- * (`BackfillControlsTestHarness`/`RunScriptActionButtonsTestHarness`/the
- * main persistent tree) - a `createPortal` from each would each insert its
- * own text node into the same shared `#status` element without
- * reconciling against the others' (unrelated React trees/portals don't
- * know about each other's children), concatenating every instance's text
- * instead of the last writer winning. A plain DOM write has no such
- * problem - whichever instance's `statusText` changes most recently
- * simply overwrites the shared node, matching the "later install wins"
- * precedent `index.html.test.js`'s own `wireTextBridge` helper already
- * documents for this same container.
+ * It used to write `#status`'s `textContent` itself, while the integration
+ * harness mounted several of these; there's one now, and the drawer
+ * renders the text (UI redesign phase 9b).
  */
 export function StatusTextProvider({ children }: { children?: ReactNode }) {
-  const [statusText, setStatusText] = useState('Not run');
-
-  useEffect(() => {
-    const container = document.getElementById('status');
-    if (container) {
-      container.textContent = statusText;
-    }
-  }, [statusText]);
-
+  const [statusText, setStatusText] = useState(INITIAL_STATUS_TEXT);
   const value = useMemo(() => ({ statusText, setStatusText }), [statusText]);
-
   return <StatusTextContext.Provider value={value}>{children}</StatusTextContext.Provider>;
 }

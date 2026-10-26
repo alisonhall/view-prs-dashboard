@@ -62,6 +62,21 @@ const openFilterBar = async (page) => {
 const filterBarList = (page, name) => filterBar(page).getByRole("group", { name, exact: true, includeHidden: true });
 // The filter bar's chips, one per applied filter (a group only while any is).
 const filterChips = (page) => filterBar(page).getByRole("group", { name: "Applied table filters", exact: true });
+// The Settings drawer (a modal dialog, opened from the app header).
+const settingsDrawer = (page) => page.getByRole("dialog", { name: "Settings", exact: true });
+// Opens it (if it isn't) at a section ("Run & check", "Script options") and
+// returns it. It covers the page: close it before using the table.
+const openSettings = async (page, section = "Run & check") => {
+  if (!(await settingsDrawer(page).isVisible())) {
+    await page.getByRole("banner").getByRole("button", { name: "Settings", exact: true }).click();
+  }
+  await settingsDrawer(page).getByRole("tab", { name: section, exact: true }).click();
+  return settingsDrawer(page);
+};
+const closeSettings = async (page) => {
+  await settingsDrawer(page).getByRole("button", { name: "Close settings", exact: true }).click();
+  await expect(settingsDrawer(page)).toHaveCount(0);
+};
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
   prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
@@ -282,6 +297,36 @@ test("the app header names the repo, switches views, says when the data was upda
   await expect(prTables(page)).toBeVisible();
   // Nothing unsaved: no auto-update-paused banner.
   await expect(page.getByRole("status", { name: "Auto update paused", exact: true })).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("the Settings drawer opens from the header, switches sections, and closes with Esc back to its button", async ({ page }) => {
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const settingsButton = page.getByRole("banner").getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const drawer = settingsDrawer(page);
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Run & check", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("button", { name: "Run script", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("region", { name: "Status message", exact: true })).toBeVisible();
+
+  // ↓ moves to Script options.
+  await drawer.getByRole("tab", { name: "Run & check", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(drawer.getByRole("tab", { name: "Script options", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByLabel("Repo (owner/name)", { exact: true })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(settingsButton).toBeFocused();
+
+  // Its close button is on top of the page's fixed controls (the activity
+  // drawer's toggle sits in the same corner).
+  await settingsButton.click();
+  await closeSettings(page);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -858,15 +903,13 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  // #repo lives inside the collapsed "Run Script options (rarely changed)"
-  // <details> - open it before filling, same as the other tests in this
-  // file that touch fields in that group. Filled explicitly (not relying
-  // on its usual persisted-default value) so this test doesn't depend on
-  // an earlier test in this shared-webServer suite having already
-  // persisted it.
-  await page.getByText("Run Script options (rarely changed)").click();
+  // The repo is in the Settings drawer's Script options; filled explicitly
+  // (not relying on its usual persisted-default value) so this test doesn't
+  // depend on an earlier test in this shared-webServer suite having already
+  // persisted it. The PR numbers and Apply ack only are in Run & check.
+  await openSettings(page, "Script options");
   await page.getByLabel("Repo (owner/name)", { exact: true }).fill("octocat/hello-world");
+  await openSettings(page, "Run & check");
   await page.getByLabel("PR number(s) (comma-separated)", { exact: true }).fill("1,2");
   await page.getByRole("button", { name: "Apply ack only" }).click();
 
@@ -875,6 +918,9 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
 
   await expect(prBusyIcon(page, 1)).toHaveCount(0);
   await expect(prBusyIcon(page, 2)).toHaveCount(0);
+  // The result shows in the app header too, with the Settings drawer closed.
+  await closeSettings(page);
+  await expect(page.getByRole("banner").getByRole("status")).toContainText("completed");
 });
 
 // A dedicated real-browser reproduction of the "queued, not yet started"
@@ -1457,8 +1503,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Script options");
 
   await expect(page.getByLabel("Repo (owner/name)", { exact: true })).toHaveValue("octocat/hello-world");
   await expect(page.getByLabel("Open PR limit", { exact: true })).toHaveValue("50");
@@ -1515,8 +1560,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Script options");
 
   for (const fieldLabel of [
     "Repo (owner/name)",
@@ -1529,6 +1573,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
     await expect(field).toHaveAttribute("autocomplete", "off");
     await expect(field).toHaveAttribute("data-lpignore", "true");
   }
+  await closeSettings(page);
   await openFilterBar(page);
   const prNumbersFilter = filterBar(page).getByLabel("PR numbers", { exact: true });
   await expect(prNumbersFilter).toHaveAttribute("autocomplete", "off");
@@ -1570,12 +1615,12 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
 
   await selectCheckbox.check();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Run & check");
   await expect(page.getByLabel("PR number(s) (comma-separated)", { exact: true })).toHaveValue("1");
+  await closeSettings(page);
 });
 
-test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
+test("typing PR numbers into Run & check's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the reverse direction of the test above. PrSelectionCell used to read the
   // field once (defaultChecked) through window.getFilterStateValues(), so
@@ -1596,8 +1641,7 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
   const selectCheckbox = prTables(page).getByRole("checkbox", { name: "Select PR #1", exact: true }).first();
   await expect(selectCheckbox).not.toBeChecked();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Run & check");
   const prNumbers = page.getByLabel("PR number(s) (comma-separated)", { exact: true });
 
   await prNumbers.fill("1");
@@ -1610,8 +1654,10 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
   await prNumbers.fill("999");
   await expect(selectCheckbox).not.toBeChecked();
 
-  // And the original direction still works from this state.
+  // And the original direction still works from this state (the drawer
+  // closed, so the table can be used).
   await prNumbers.fill("");
+  await closeSettings(page);
   await selectCheckbox.check();
   await expect(prNumbers).toHaveValue("1");
 });
@@ -1656,7 +1702,7 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
   await expect(dataFileJson).not.toBeVisible();
 });
 
-test("the Run tab's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
+test("Run & check's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
   // Regression test for Phase 7's RepoLabelsProvider migration (see
   // REACT_MIGRATION_PLAN.md) - window.updateReactApplyLabelOptions (a push
   // into AppRoot's own local state, feeding only the Run tab's dropdown)
@@ -1678,12 +1724,13 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
     }),
   );
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByRole("button", { name: "↻ Labels", exact: true }).click();
+  await openSettings(page, "Run & check");
+  await page.getByRole("button", { name: "Reload labels", exact: true }).click();
 
   const runFilterSelect = page.getByLabel("Apply existing GitHub label to selected PR(s)", { exact: true });
   await expect(runFilterSelect.getByRole("option", { includeHidden: true })).toHaveCount(3);
   await expect(runFilterSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
+  await closeSettings(page);
 
   // PR #1's own fixture already carries the "enhancement" label (see
   // e2e/fixtures/data.json) - its row's More menu correctly excludes that
@@ -2720,7 +2767,7 @@ test("the Run tab's output panel shows a real run's output from OutputTextProvid
   const output = page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true });
   await expect(output).toHaveText("Run the script to see output");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Run & check");
   await page.getByRole("button", { name: "Run script" }).click();
 
   await expect(output).toContainText("hello from an intercepted run");
@@ -2889,7 +2936,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
       body: JSON.stringify({ ok: false, error: "simulated run failure" }),
     }),
   );
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Run & check");
   await page.getByRole("button", { name: "Run script" }).click();
   await expect(snackbar).toBeVisible();
   await expect(snackbar).not.toHaveClass(/error-snackbar-warning/);
@@ -2897,6 +2944,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
 
   await page.getByRole("button", { name: "Close notification", exact: true }).click();
   await expect(snackbar).toBeHidden();
+  await closeSettings(page);
 
   // Warning: a failing background poll (PrDataProvider's showPollFailureWarning),
   // cleared by the next successful poll (markPollSuccess).
@@ -2990,7 +3038,10 @@ test("clicking Quick check pushes a real 'running' state into the drawer over SS
     .getByRole("group", { name: "Quick check", exact: true });
   await expect(quickCheckRow.getByRole("status")).toHaveText("Idle");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  // The open activity panel covers the header's Settings button (until
+  // phase 9c moves it into the header): open Settings from the keyboard. It
+  // opens at Run & check.
+  await page.getByRole("banner").getByRole("button", { name: "Settings", exact: true }).press("Enter");
   await page.getByTestId("quick-check-button").click();
 
   await expect(quickCheckRow.getByRole("status")).toHaveText("Running", {
@@ -3007,13 +3058,13 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
   await page.goto("/");
   await waitForPrTable(page);
 
+  await openSettings(page, "Run & check");
   const triggerBtn = page.getByTestId("trigger-auto-run-button");
   await expect(triggerBtn).toHaveText("Trigger auto run");
   await triggerBtn.click();
   await expect(triggerBtn).toHaveText("Trigger auto run", { timeout: 5000 });
   await expect(triggerBtn).toBeEnabled();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
   const quickCheckBtn = page.getByTestId("quick-check-button");
   await expect(quickCheckBtn).toHaveText("Quick check");
   await quickCheckBtn.click();

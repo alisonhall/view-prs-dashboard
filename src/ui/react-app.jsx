@@ -11,17 +11,14 @@ import { Suspense, lazy, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
-import { ContextFilterCheckbox } from './components/ContextFilterCheckbox';
+import { ContextFilterCheckbox } from './components/settings/ContextFilterCheckbox';
 import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
 import { AuthorThreadResolutionRuleVisibility } from './components/AuthorThreadResolutionRuleVisibility';
-import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
-import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
 import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
 import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
-import { ApplyLabelSelect } from './components/ApplyLabelSelect';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { BackfillControls } from './components/BackfillControls';
@@ -33,22 +30,18 @@ import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreA
 import { useRequestMoreMerged } from './state/useRequestMoreMerged';
 import { Snackbar } from './components/Snackbar';
 import { SnackbarProvider } from './components/SnackbarProvider';
-import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
-import { RunScriptActionButton } from './components/RunScriptActionButton';
-import { QuickCheckButton } from './components/QuickCheckButton';
+import { SettingsDrawer } from './components/settings/SettingsDrawer';
+import { PR_NUMBERS_FIELD, SCRIPT_CHECKBOX_FIELDS, SCRIPT_TEXT_FIELDS } from './components/settings/settings-fields';
+import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { useBackfillActions } from './state/useBackfillActions';
 import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
-import { useRunScript } from './state/useRunScript';
-import { useAckLabelActions } from './state/useAckLabelActions';
-import { useTriggerAutoRun } from './state/useTriggerAutoRun';
 import { useQuickCheckActions } from './state/useQuickCheckActions';
 import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { PrTableUiStateProvider } from './state/PrTableUiStateProvider';
-import { useFilterState } from './state/FilterStateContext';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
@@ -71,11 +64,9 @@ import { StatusTextProvider } from './components/StatusTextProvider';
 import { OutputTextProvider } from './components/OutputTextProvider';
 import { RequestActivityProvider } from './components/RequestActivityProvider';
 import { useRequestActivityDisplay } from './state/RequestActivityContext';
-import { useOutputText } from './state/OutputTextContext';
 import { useBackfillStatus } from './state/BackfillStatusContext';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
-import { useRepoLabels } from './state/RepoLabelsContext';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
@@ -166,32 +157,6 @@ const FILTER_STATE_CONTEXT_CHECKBOX_FIELDS = [
   { id: 'attention-include-closed-merged', name: 'attentionIncludeClosedMerged', key: 'attentionIncludeClosedMerged', defaultValue: true },
   { id: 'attention-include-draft-changed', name: 'attentionIncludeDraftChanged', key: 'attentionIncludeDraftChanged', defaultValue: true },
   { id: 'attention-include-draft-no-activity', name: 'attentionIncludeDraftNoActivity', key: 'attentionIncludeDraftNoActivity', defaultValue: false },
-  { id: 'ack-changed', name: 'ackChanged', key: 'ackChanged', defaultValue: false },
-  { id: 'show-reason', name: 'showReason', key: 'showReason', defaultValue: true },
-  { id: 'quiet', name: 'quiet', key: 'quiet', defaultValue: false },
-];
-
-// Context-backed text/number inputs (see ContextRunScriptTextInput.jsx) -
-// the four "Run Script options" fields. Same "only read via FormData on
-// button click" reasoning as the checkboxes above.
-const FILTER_STATE_TEXT_FIELDS = [
-  { id: 'repo', name: 'repo', key: 'repo', type: 'text', placeholder: 'owner/repo', defaultValue: '' },
-  { id: 'limit', name: 'limit', key: 'limit', type: 'number', placeholder: '200', defaultValue: '' },
-  { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', type: 'number', placeholder: '15', defaultValue: '' },
-  { id: 'jobs', name: 'jobs', key: 'jobs', type: 'number', placeholder: '6', defaultValue: '' },
-  // Phase 7 (see REACT_MIGRATION_PLAN.md): the one remaining field in this
-  // group - previously left as plain vanilla markup specifically because
-  // PrSelectionCell.jsx's bulk-select checkboxes read/write its value too
-  // (off their own one-off window.getSelectedPrNumbers/updateSelectedPrNumbers
-  // bridge). Now Context-backed like its 4 siblings; PrSelectionCell.jsx
-  // reads/writes the same prNumbersInput Context key through a per-key
-  // store (useFilterFieldValue, Phase 5 of the window-bridge elimination -
-  // it used to use window.getFilterStateValues()/setFilterStateValue())
-  // rather than subscribing via useFilterState(), since it's mounted once
-  // per visible table row - a whole-object subscription there would re-render
-  // every row's checkbox on every keystroke in ANY of the 30+ filter
-  // fields, not just this one.
-  { id: 'pr-numbers', name: 'prNumbers', key: 'prNumbersInput', type: 'text', placeholder: '912,921', defaultValue: '' },
 ];
 
 // Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -218,7 +183,8 @@ function buildFilterStateInitialValues() {
   FILTER_STATE_CONTEXT_CHECKBOX_FIELDS.forEach((field) => {
     initialValues[field.key] = field.defaultValue;
   });
-  FILTER_STATE_TEXT_FIELDS.forEach((field) => {
+  // The Settings drawer's fields (Run & check's PR numbers, Script options).
+  [PR_NUMBERS_FIELD, ...SCRIPT_TEXT_FIELDS, ...SCRIPT_CHECKBOX_FIELDS].forEach((field) => {
     initialValues[field.key] = field.defaultValue;
   });
   NOTES_FILTER_FIELDS.forEach((field) => {
@@ -231,7 +197,6 @@ function buildFilterStateFieldPortals() {
   const attentionNoActivityModeContainer = document.getElementById(
     'attention-no-activity-mode-root',
   );
-  const openModeContainer = document.getElementById('open-mode-root');
   const authorThreadResolutionModeContainer = document.getElementById(
     'attention-author-thread-resolution-mode-root',
   );
@@ -244,15 +209,9 @@ function buildFilterStateFieldPortals() {
     ...field,
     container: document.getElementById(`${field.id}-root`),
   }));
-  const contextTextContainers = FILTER_STATE_TEXT_FIELDS.map((field) => ({
-    ...field,
-    container: document.getElementById(`${field.id}-root`),
-  }));
-
   const portals = [
     attentionNoActivityModeContainer &&
       createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer, 'attention-no-activity-mode'),
-    openModeContainer && createPortal(<OpenModeSelect />, openModeContainer, 'open-mode'),
     authorThreadResolutionModeContainer &&
       createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
     // Headless (renders nothing, no container needed) - see its own header
@@ -286,21 +245,6 @@ function buildFilterStateFieldPortals() {
         field.container &&
         createPortal(
           <ContextFilterCheckbox id={field.id} name={field.name} filterStateKey={field.key} />,
-          field.container,
-          field.id,
-        ),
-    ),
-    ...contextTextContainers.map(
-      (field) =>
-        field.container &&
-        createPortal(
-          <ContextRunScriptTextInput
-            id={field.id}
-            name={field.name}
-            type={field.type}
-            placeholder={field.placeholder}
-            filterStateKey={field.key}
-          />,
           field.container,
           field.id,
         ),
@@ -350,7 +294,6 @@ function computeStaticContainers() {
     backfillBadges: document.getElementById('backfill-badges'),
     // statusText (#status) moved to StatusTextProvider.tsx (Phase H.8) - it
     // resolves that container itself, no longer via this containers object.
-    outputText: document.getElementById('output'),
     backfillDetails: document.getElementById('backfill-details'),
     backfillLog: document.getElementById('backfill-log'),
     backfillControls: document.getElementById('backfill-controls-root'),
@@ -358,22 +301,14 @@ function computeStaticContainers() {
     dataMeta: document.getElementById('data-meta'),
     filterBar: document.getElementById('filter-bar-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
-    triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
-    quickCheckBtn: document.getElementById('quick-check-btn-root'),
-    runScriptBtn: document.getElementById('run-script-btn-root'),
-    ackOnlyBtn: document.getElementById('ack-only-btn-root'),
-    clearOnlyBtn: document.getElementById('clear-only-btn-root'),
-    applyLabelBtn: document.getElementById('apply-label-btn-root'),
-    refreshLabelsBtn: document.getElementById('refresh-labels-btn-root'),
     actionLog: document.getElementById('action-log-container'),
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
-    applyLabelSelect: document.getElementById('apply-label-select-root'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
     activityDrawer: document.getElementById('activity-drawer-root'),
     appHeader: document.getElementById('app-header-root'),
     appBanner: document.getElementById('app-banner-root'),
-    tabStatus: document.getElementById('tab-status-root'),
+    settingsDrawer: document.getElementById('settings-drawer-root'),
     tabScript: document.getElementById('tab-script-root'),
     tabBackfill: document.getElementById('tab-backfill-root'),
     tabActionLog: document.getElementById('tab-action-log-root'),
@@ -427,29 +362,6 @@ const DEFAULT_STATS_VIEW_STATE = {
   endDate: '',
 };
 
-// The "↻ Labels" button - a thin wrapper so useRepoLabels() (a hook) can
-// be called from inside <RepoLabelsProvider>'s own subtree, a thin
-// wrapper like the others here. Must be mounted inside
-// <RepoLabelsProvider> specifically (see where it's actually rendered in
-// AppRoot's own JSX) - AppRoot itself can't call useRepoLabels() directly
-// in its own body, since that Provider is a descendant AppRoot renders
-// further down its own JSX, not an ancestor (see RepoLabelsProvider.tsx's
-// own comment).
-function RefreshLabelsButtonLive({ container }) {
-  const { refresh } = useRepoLabels();
-  if (!container) return null;
-  return createPortal(
-    <RunScriptActionButton
-      id="refresh-labels-btn"
-      title="Reload labels for the current repo"
-      label={'↻ Labels'}
-      onClick={() => refresh()}
-    />,
-    container,
-    'refresh-labels-btn',
-  );
-}
-
 // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a thin
 // wrapper so useMergedRequestMoreActionOptions() (a hook) can be called from
 // AppRoot's JSX. key={repo}: same stale-state-on-repo-change reasoning the
@@ -499,38 +411,22 @@ function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
   // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // BackfillControls/BackfillLogControls/RunScriptActionButton's instances
-  // below used to call window.handleBackfillAction/refreshBackfillStatus/
-  // refreshBackfillLogTail/autoScrollBackfillLogToBottom/handleRunScript/
-  // handleAckOnly/handleClearOnly/handleApplyLabelClick directly - they now
-  // call these hooks' returned functions instead. refreshAvailableRepoLabels
-  // (the "↻ Labels" button's own handler) isn't one of these - it can't be
-  // called from here at all, since useRepoLabels() needs a real
-  // <RepoLabelsProvider> ancestor and that Provider is a descendant AppRoot
-  // itself renders further down (see RepoLabelsProvider.tsx's own comment)
-  // - RefreshLabelsButtonLive, below, calls it from inside that Provider's
-  // own subtree instead.
+  // BackfillControls/BackfillLogControls' instances below used to call
+  // window.handleBackfillAction/refreshBackfillStatus/refreshBackfillLogTail/
+  // autoScrollBackfillLogToBottom directly - they now call this hook's
+  // returned functions. (The run actions are the Settings drawer's Run &
+  // check's, which calls their hooks itself - UI redesign phase 9b.)
   const backfillActions = useBackfillActions();
   // Phase H.11 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // replaces backfill-tab.orchestrator.js's own initialize()/
   // onTabActivated() (deleted outright) - see that hook's own header
   // comment for why this exact shape reproduces both.
   useBackfillTabAutoRefresh(backfillActions.triggerBackfillTabLoad);
-  const runScript = useRunScript();
-  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-  // audit"): persistRunScriptOptions comes from useFilterState() directly
-  // now, not window.persistRunScriptOptionOverrides - AppRoot is a
-  // genuine descendant of FilterStateProvider (mountAppRoot wraps it from
-  // outside AppRoot).
-  const { persistRunScriptOptions } = useFilterState();
-  const ackLabelActions = useAckLabelActions();
   // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton/the
-  // dispatcher-bump and reset-circuit-breaker drawer actions below used to
-  // call window.handleTriggerAutoRun/handleQuickCheck/handleQuickCheckAll/
-  // handleDispatcherBump/handleResetCircuitBreaker directly - they now call
-  // these hooks' returned functions instead.
-  const triggerAutoRun = useTriggerAutoRun();
+  // QuickCheckAllButton (the app header's) and the dispatcher-bump and
+  // reset-circuit-breaker drawer actions below used to call
+  // window.handleQuickCheckAll/handleDispatcherBump/handleResetCircuitBreaker
+  // directly - they now call these hooks' returned functions instead.
   const quickCheckActions = useQuickCheckActions();
   const activityDrawerActions = useActivityDrawerActions();
 
@@ -575,10 +471,8 @@ function AppRoot() {
   // (useRunScript/useBackfillActions/useAckLabelActions below) can read it
   // via useStatusText() instead of bouncing through that bridge.
   // Window-bridge elimination Phase 3c: the output text itself lives in
-  // <OutputTextProvider /> (wrapping this component, see mountAppRoot) so the
-  // hooks that write it - including useSinglePrUpdate, which runs inside
-  // PrTableApp rather than this body - can reach it via useOutputText().
-  const { outputText } = useOutputText();
+  // <OutputTextProvider /> (wrapping this component, see mountAppRoot), and
+  // the Settings drawer's Run & check shows it.
   // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the Backfill tab's badges/details text/log text (and the log's update
   // tick - BackfillLogControls' scroll-sync effect must fire on every log
@@ -626,7 +520,7 @@ function AppRoot() {
   useMultiSelectDropdownClosing();
 
   return (
-    <>
+    <SettingsDrawerProvider>
       {/* Phase H.20 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
           cluster 6): RowFilterSelectionProvider/AuthorThreadResolutionSelectionProvider/
           ChangeFilterActorSelectionProvider/FilterStateProvider used to wrap
@@ -652,9 +546,9 @@ function AppRoot() {
           every move before this one only ever added a new ancestor above
           an existing one. */}
         {/* RepoLabelsProvider wraps everything below for the same reason
-            PrActivityQueueProvider does: ApplyLabelSelect's own portal
-            (inside the filter-field portals further down) and PrTableApp's
-            PrActionsCell (inside the prTable portal) are siblings, not an
+            PrActivityQueueProvider does: the Settings drawer's label to
+            apply (its portal further down) and PrTableApp's PrActionsCell
+            (inside the prTable portal) are siblings, not an
             ancestor/descendant pair, that both need the same available-
             labels list - see RepoLabelsContext.tsx's own comment. */}
         <RepoLabelsProvider>
@@ -745,12 +639,6 @@ function AppRoot() {
             appearing after H.21's useIsTabPanelVisible rewrite), not
             jsdom (every jsdom test happens to wrap its own Probe in a
             real Provider directly, side-stepping this). */}
-          {containers.tabStatus &&
-            createPortal(
-              <ManagementTabButton tabKey="status" label="Activity" panelId="tab-panel-status" />,
-              containers.tabStatus,
-              'tab-status',
-            )}
           {containers.tabScript &&
             createPortal(
               <ManagementTabButton tabKey="script" label="Run & Filter" panelId="tab-panel-script" />,
@@ -783,69 +671,12 @@ function AppRoot() {
             )}
 
 
-        {containers.triggerAutoRunBtn &&
-          createPortal(
-            <TriggerAutoRunButton onTrigger={() => triggerAutoRun()} />,
-            containers.triggerAutoRunBtn,
-            'trigger-auto-run-btn',
-          )}
 
-        {containers.runScriptBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="run-script-btn"
-              className="primary-run-btn"
-              label="Run script"
-              onClick={() => {
-                persistRunScriptOptions();
-                runScript();
-              }}
-            />,
-            containers.runScriptBtn,
-            'run-script-btn',
-          )}
 
-        {containers.ackOnlyBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="ack-only-btn"
-              label="Apply ack only"
-              onClick={() => ackLabelActions.handleAckOnly()}
-            />,
-            containers.ackOnlyBtn,
-            'ack-only-btn',
-          )}
 
-        {containers.clearOnlyBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="clear-only-btn"
-              label="Apply clear only"
-              onClick={() => ackLabelActions.handleClearOnly()}
-            />,
-            containers.clearOnlyBtn,
-            'clear-only-btn',
-          )}
 
-        {containers.applyLabelBtn &&
-          createPortal(
-            <RunScriptActionButton
-              id="apply-label-btn"
-              label="Apply label"
-              onClick={() => ackLabelActions.handleApplyLabelClick()}
-            />,
-            containers.applyLabelBtn,
-            'apply-label-btn',
-          )}
 
-        <RefreshLabelsButtonLive container={containers.refreshLabelsBtn} />
 
-        {containers.quickCheckBtn &&
-          createPortal(
-            <QuickCheckButton onCheck={() => quickCheckActions.handleQuickCheck()} />,
-            containers.quickCheckBtn,
-            'quick-check-btn',
-          )}
 
 
         {hasReviewStatsBeenVisible && containers.reviewStatsControls &&
@@ -944,7 +775,6 @@ function AppRoot() {
             'backfill-controls',
           )}
 
-        {containers.outputText && createPortal(outputText, containers.outputText, 'output-text')}
 
         {containers.backfillDetails &&
           createPortal(backfillDetailsText, containers.backfillDetails, 'backfill-details')}
@@ -995,12 +825,6 @@ function AppRoot() {
             'export',
           )}
 
-        {containers.applyLabelSelect &&
-          createPortal(
-            <ApplyLabelSelect />,
-            containers.applyLabelSelect,
-            'apply-label-select',
-          )}
 
         {/* UI redesign phase 9a: the app header (view tabs, last update,
             Quick check all) and, under it, the auto-update-paused banner. */}
@@ -1019,6 +843,9 @@ function AppRoot() {
             'app-banner',
           )}
 
+        {/* UI redesign phase 9b: the Settings drawer (opened from the app
+            header). Inside RepoLabelsProvider: Run & check reloads labels. */}
+        {containers.settingsDrawer && createPortal(<SettingsDrawer />, containers.settingsDrawer, 'settings-drawer')}
         {containers.mergedRequestMoreAction &&
           createPortal(
             <MergedRequestMoreActionLive />,
@@ -1028,7 +855,7 @@ function AppRoot() {
         </JobEventsProvider>
         </AuthorInsightsDraftsProvider>
       </RepoLabelsProvider>
-    </>
+    </SettingsDrawerProvider>
   );
 }
 

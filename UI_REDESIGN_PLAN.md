@@ -634,6 +634,43 @@ becomes a small `react-app.tsx`. Done in steps:
   header button.
 - **9d - Clean-up:** delete the empty mount points and the CSS nothing uses
   any more.
+- **9b is done in three slices** (decided 2026-10-26), each reviewed and
+  committed: 9b-1 the drawer with Run & check and Script options; 9b-2 the
+  rules (Attention, Merge commits, Change detection); 9b-3 Backfill, Action
+  log, Actor names and Export, then the old tab strip goes. The old
+  Activity tab's status message and "Trigger auto run" go into Run & check.
+- **9b-1 done (2026-10-26):**
+  - `settings/SettingsDrawer.tsx`, portaled into `#settings-drawer-root`:
+    a modal from the right (`useFocusTrap`; Esc, the close button or the
+    backdrop closes it, focus returns to the header's Settings button),
+    its sections a vertical `ui/Tabs` (which gains `orientation`, ↑/↓)
+    down the left. Always mounted, hidden while closed, so its fields keep
+    their ids (`useAckLabelActions` reads the label to apply; the
+    viewer-login fallback reads `#status`/`#output`). Open state and
+    section in `state/SettingsDrawerContext.tsx` (`open(section)`).
+  - `settings/RunCheckSection.tsx`: the status message (rendered from
+    `StatusTextContext` - `StatusTextProvider` no longer writes the DOM),
+    Trigger auto run, the PR numbers, Run script / Quick check / Apply ack
+    only / Apply clear only, the label to apply with Reload labels, and the
+    latest request output. It calls the actions' hooks itself.
+    `settings/ScriptOptionsSection.tsx`: repo, limits, jobs, open mode and
+    the three toggles (definitions in `settings-fields.ts`).
+  - Moved into `settings/` as `.tsx`: `ContextRunScriptTextInput`,
+    `ContextFilterCheckbox`, `OpenModeSelect`, `ApplyLabelSelect`,
+    `TriggerAutoRunButton`, `QuickCheckButton`. `RunScriptActionButton`
+    is deleted (the drawer uses `ui/Button`). The Activity management tab
+    is gone; Run & Filter is the default tab until 9b-2 moves its rules.
+  - The status message was the default Activity tab's, always in view; in
+    the drawer it would be out of sight, so the app header shows its first
+    line (all of it on hover) once something has reported - a polite live
+    region, as row actions, runs and backfills report there.
+  - The Run & Filter tab's two-column layout (run panel + rules) is gone;
+    the rules use its width until 9b-2. Narrow windows lay the drawer's
+    sections in a row, and its tab list turns horizontal (←/→) to match.
+  - Stacking: the drawer (1200) sits above the activity drawer's fixed
+    toggle and panel (1100/1150), the snackbar (now 1300) above it. While
+    the activity panel is open it covers the header's Settings button
+    (until 9c makes it a header popover).
 - **9a done (2026-10-26)** on branch `ui-redesign/phase-9`:
   - `shell/AppHeader.tsx`, portaled into `#app-header-root` (it replaces
     the static heading, the Home/README nav and the data-tab list): the

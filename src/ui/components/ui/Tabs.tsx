@@ -25,12 +25,14 @@ export interface TabsProps {
   // The ids each tab and its panel get, when not idPrefix's (the app
   // header's view tabs keep the page's existing panel ids).
   idsFor?: (id: string) => { tab: string; panel: string };
+  // Vertical lists (the Settings drawer's nav) move with ↑/↓.
+  orientation?: 'horizontal' | 'vertical';
 }
 
 export const getTabId = (idPrefix: string, id: string) => `${idPrefix}-tab-${id}`;
 export const getTabPanelId = (idPrefix: string, id: string) => `${idPrefix}-panel-${id}`;
 
-export function Tabs({ label, idPrefix, tabs, selectedId, onSelect, idsFor }: TabsProps) {
+export function Tabs({ label, idPrefix, tabs, selectedId, onSelect, idsFor, orientation = 'horizontal' }: TabsProps) {
   const ids = (id: string) => idsFor?.(id) ?? { tab: getTabId(idPrefix, id), panel: getTabPanelId(idPrefix, id) };
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -42,20 +44,21 @@ export function Tabs({ label, idPrefix, tabs, selectedId, onSelect, idsFor }: Ta
   };
 
   const handleKeyDown = (event: KeyboardEvent, index: number) => {
+    const [next, previous] = orientation === 'vertical' ? ['ArrowDown', 'ArrowUp'] : ['ArrowRight', 'ArrowLeft'];
     const moves: Record<string, number> = {
-      ArrowRight: index + 1,
-      ArrowLeft: index - 1,
+      [next]: index + 1,
+      [previous]: index - 1,
       Home: 0,
       End: tabs.length - 1,
     };
-    const next = moves[event.key];
-    if (next === undefined) return;
+    const target = moves[event.key];
+    if (target === undefined) return;
     event.preventDefault();
-    moveTo(next);
+    moveTo(target);
   };
 
   return (
-    <div role="tablist" aria-label={label} className="ui-tab-list">
+    <div role="tablist" aria-label={label} aria-orientation={orientation} className="ui-tab-list" data-orientation={orientation}>
       {tabs.map((tab, index) => {
         const selected = tab.id === selectedId;
         return (

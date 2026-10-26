@@ -89,7 +89,9 @@ const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
 const { BackfillControls } = require("../components/BackfillControls");
 const { BackfillLogControls } = require("../components/BackfillLogControls");
-const { RunScriptActionButton } = require("../components/RunScriptActionButton");
+const { SettingsDrawer } = require("../components/settings/SettingsDrawer");
+const { SettingsDrawerProvider } = require("../state/SettingsDrawerContext");
+const { useStatusText } = require("../state/StatusTextContext");
 // Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): this
 // suite's own BackfillControlsTestHarness/RunScriptActionButtonsTestHarness
 // below used to wire these components' onClick/onStart/etc. props straight
@@ -101,12 +103,8 @@ const { RunScriptActionButton } = require("../components/RunScriptActionButton")
 // this file) can be deleted outright instead of kept alive for a test.
 const { useBackfillActions } = require("../state/useBackfillActions");
 const { useBackfillTabAutoRefresh } = require("../state/useBackfillTabAutoRefresh");
-const { useRunScript } = require("../state/useRunScript");
-const { useAckLabelActions } = require("../state/useAckLabelActions");
-const { useTriggerAutoRun } = require("../state/useTriggerAutoRun");
 const { useQuickCheckActions } = require("../state/useQuickCheckActions");
 const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
-const { useRepoLabels } = require("../state/RepoLabelsContext");
 const { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } = require("../components/MultiSelectListPortals");
 const { AuthorThreadResolutionRuleVisibility } = require("../components/AuthorThreadResolutionRuleVisibility");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
@@ -121,8 +119,6 @@ const { DataViewHeaderPortals } = require("../components/filter-bar/DataViewHead
 const { RowFilterListSeeding } = require("../state/useRowFilterListSeeding");
 const { Snackbar } = require("../components/Snackbar");
 const { SnackbarProvider } = require("../components/SnackbarProvider");
-const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
-const { QuickCheckButton } = require("../components/QuickCheckButton");
 const { AppHeader } = require("../components/shell/AppHeader");
 const { AuthorInsightsProvider } = require("../components/AuthorInsightsProvider");
 const { AutoUpdatePausedBanner } = require("../components/shell/AutoUpdatePausedBanner");
@@ -163,6 +159,7 @@ let filterStateTestHandle = null;
 // drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
 // does in production (it used to call window.renderSchedulerStatus).
 let requestActivityTestHandle = null;
+let statusTextTestHandle = null;
 // Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
 // captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
 // notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
@@ -365,33 +362,6 @@ const injectRunFilterFieldElements = () => {
     "change-filter-ignore-commit-patterns-root",
     '<textarea id="change-filter-ignore-commit-patterns" name="changeFilterIgnoreCommitPatterns" rows="4" aria-describedby="commit-patterns-help"></textarea>',
   );
-  setRootContent(
-    "repo-root",
-    '<input type="text" id="repo" name="repo" placeholder="owner/repo" />',
-  );
-  setRootContent(
-    "limit-root",
-    '<input type="number" id="limit" name="limit" min="1" placeholder="200" />',
-  );
-  setRootContent(
-    "merged-limit-root",
-    '<input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />',
-  );
-  setRootContent("jobs-root", '<input type="number" id="jobs" name="jobs" min="1" placeholder="6" />');
-  setRootContent(
-    "pr-numbers-root",
-    '<input type="text" id="pr-numbers" name="prNumbers" placeholder="912,921" />',
-  );
-  setRootContent(
-    "open-mode-root",
-    '<select id="open-mode" name="openMode"><option value="none" selected>none</option><option value="changed">changed</option><option value="all">all</option></select>',
-  );
-  setRootContent("ack-changed-root", '<input type="checkbox" id="ack-changed" name="ackChanged" />');
-  setRootContent(
-    "show-reason-root",
-    '<input type="checkbox" id="show-reason" name="showReason" checked />',
-  );
-  setRootContent("quiet-root", '<input type="checkbox" id="quiet" name="quiet" />');
 };
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite never loads the real
@@ -728,7 +698,8 @@ function FilterStateTestRootHarness({ initialValues }) {
                     // ActionButtonsTestHarness keeps its own isolated
                     // PrActivityQueueProvider instance (no test asserts
                     // row-busy state through these 2 buttons specifically).
-                    React.createElement(RunScriptActionButtonsTestHarness),
+                    React.createElement(SettingsDrawerTestHarness),
+                    React.createElement(StatusTextTestHandle),
                     React.createElement(
                       PrActivityQueueProvider,
                       null,
@@ -798,96 +769,45 @@ const installFilterStateProviderBridge = () => {
   const container = document.createElement("div");
   rtlRender(
     React.createElement(FilterStateTestRootHarness, {
-      initialValues: {},
+      // The Script options' defaults, as production starts with
+      // (react-app.jsx's buildFilterStateInitialValues): the drawer's
+      // real checkboxes show them.
+      initialValues: { ackChanged: false, showReason: true, quiet: false },
     }),
     { container },
   );
 };
 
-// Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): mounts
-// the 5 REAL RunScriptActionButton instances into a detached container,
-// same reasoning as BackfillControlsTestHarness above - this suite
-// never mounts react-app.jsx, so without this, "Run script" (43/8
-// existing role-based click tests) and the other 3 buttons would all
-// become empty, unclickable portal roots.
-// Phase D.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): 4 of
-// these 5 onClick callbacks used to call window.handleRunScript/
-// handleAckOnly/handleClearOnly/handleApplyLabelClick directly - this is
-// now a real component calling the matching hooks itself, same as
-// react-app.jsx does, so those 4 bridges have no remaining caller and
-// were deleted from index.page.js. The 5th, "↻ Labels", now calls
-// useRepoLabels().refresh() directly too (see RepoLabelsProvider.tsx's own
-// comment) - this harness isn't wrapped in a real <RepoLabelsProvider>
-// (nothing here clicks this button, only mounts it so the other 4 don't
-// become empty portal roots), so it gets RepoLabelsContext's safe no-op
-// default instead; real coverage for an actual click is the Playwright
-// smoke suite, which boots the full Provider tree.
-// Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-// cluster 1): the "apply-filters-btn" entry this list used to also have
-// is deleted outright, along with the real button/window.applyFiltersFromCache
-// bridge it mirrored - see that phase's own plan entry.
-function RunScriptActionButtonsTestHarness() {
-  const runScript = useRunScript();
-  const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
-  const { refresh: refreshAvailableRepoLabels } = useRepoLabels();
-  // Twelfth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-  // audit"): persistRunScriptOptions comes from useFilterState() directly
-  // now, not window.persistRunScriptOptionOverrides - same change as
-  // react-app.jsx's real "Run script" button.
-  const { persistRunScriptOptions } = useFilterState();
-
-  const buttons = [
-    {
-      id: "run-script-btn",
-      rootId: "run-script-btn-root",
-      className: "primary-run-btn",
-      label: "Run script",
-      onClick: () => {
-        persistRunScriptOptions();
-        runScript();
-      },
-    },
-    {
-      id: "ack-only-btn",
-      rootId: "ack-only-btn-root",
-      label: "Apply ack only",
-      onClick: () => handleAckOnly(),
-    },
-    {
-      id: "clear-only-btn",
-      rootId: "clear-only-btn-root",
-      label: "Apply clear only",
-      onClick: () => handleClearOnly(),
-    },
-    {
-      id: "apply-label-btn",
-      rootId: "apply-label-btn-root",
-      label: "Apply label",
-      onClick: () => handleApplyLabelClick(),
-    },
-    {
-      id: "refresh-labels-btn",
-      rootId: "refresh-labels-btn-root",
-      title: "Reload labels for the current repo",
-      label: "↻ Labels",
-      onClick: () => refreshAvailableRepoLabels(),
-    },
-  ];
-  const portals = buttons
-    .map(({ id, rootId, className, title, label, onClick }) => {
-      const root = document.getElementById(rootId);
-      if (!root) {
-        return null;
-      }
-      return createPortal(
-        React.createElement(RunScriptActionButton, { id, className, title, label, onClick }),
-        root,
-        id,
-      );
-    })
-    .filter(Boolean);
-  return React.createElement(React.Fragment, null, ...portals);
+// UI redesign phase 9b: the run buttons, the PR numbers and the Script
+// options are the real Settings drawer's (Run & check, Script options),
+// mounted open at Run & check, as react-app.jsx mounts it (closed there).
+// Inside the main tree, so its hooks reach the same Providers.
+function SettingsDrawerTestHarness() {
+  const container = document.getElementById("settings-drawer-root");
+  if (!container) return null;
+  return createPortal(
+    React.createElement(SettingsDrawerProvider, { initialOpen: true }, React.createElement(SettingsDrawer)),
+    container,
+    "settings-drawer",
+  );
 }
+
+// The status message's setter, for tests that fake the script's
+// "Viewer: <login>" line (PrDataProvider's last-resort viewer login reads
+// #status, which the drawer renders from this).
+function StatusTextTestHandle() {
+  statusTextTestHandle = useStatusText();
+  React.useEffect(
+    () => () => {
+      statusTextTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+const setStatusTextForTest = (text) => {
+  act(() => statusTextTestHandle?.setStatusText(text));
+};
 
 // Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // installReactStatusTextMountBridges is gone. It stubbed window.updateReactStatusText/
@@ -909,28 +829,13 @@ function RunScriptActionButtonsTestHarness() {
 // asserts row-busy-indicator state through these 2 buttons specifically,
 // so a separate instance from the main persistent tree's is harmless.
 function ActionButtonsTestHarness() {
-  const triggerAutoRun = useTriggerAutoRun();
-  const { handleQuickCheck, handleQuickCheckAll } = useQuickCheckActions();
-  const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
-  const quickCheckContainer = document.getElementById("quick-check-btn-root");
+  const { handleQuickCheckAll } = useQuickCheckActions();
   const appHeaderContainer = document.getElementById("app-header-root");
   const appBannerContainer = document.getElementById("app-banner-root");
 
   return React.createElement(
     React.Fragment,
     null,
-    triggerAutoRunContainer &&
-      createPortal(
-        React.createElement(TriggerAutoRunButton, { onTrigger: () => triggerAutoRun() }),
-        triggerAutoRunContainer,
-        "trigger-auto-run",
-      ),
-    quickCheckContainer &&
-      createPortal(
-        React.createElement(QuickCheckButton, { onCheck: () => handleQuickCheck() }),
-        quickCheckContainer,
-        "quick-check",
-      ),
     // UI redesign phase 9a: the real app header (Quick check all) and
     // auto-update-paused banner.
     appHeaderContainer &&
@@ -1111,7 +1016,6 @@ const waitForPersistedViewFilterOverrides = async (assertBody) => {
 // that one remaining real behavior - same panel-id/key map as
 // TabPanelVisibilitySync.jsx's own.
 const MANAGEMENT_TAB_PANEL_IDS_FOR_TEST = {
-  "tab-panel-status": "status",
   "tab-panel-script": "script",
   "tab-panel-backfill": "backfill",
   "tab-panel-action-log": "action-log",
@@ -2073,7 +1977,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    document.getElementById("status").textContent = "Viewer : ahall236_uhg";
+    setStatusTextForTest("Viewer : ahall236_uhg");
 
     const user = userEvent.setup();
     await waitFor(() => {
@@ -2343,7 +2247,7 @@ describe("index page rendering with Testing Library", () => {
 
     activateManagementTabForTest("backfill");
     expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-status").hidden).toBe(true);
+    expect(document.getElementById("tab-panel-script").hidden).toBe(true);
 
     // The backfill badges themselves are React-owned (#backfill-badges,
     // mounted by react-app.jsx) and no longer have a vanilla-DOM fallback
@@ -3776,7 +3680,7 @@ describe("index page rendering with Testing Library", () => {
       return Boolean(row?.querySelector('.pr-cell-signals [aria-label="Needs attention"]'));
     };
 
-    document.getElementById("status").textContent = "Viewer : ahall236_uhg";
+    setStatusTextForTest("Viewer : ahall236_uhg");
 
     activateManagementTabForTest("script");
 
@@ -6434,8 +6338,8 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const sharedPrInput = document.getElementById("pr-numbers");
-    sharedPrInput.value = "88,89";
+    // The Settings drawer's PR numbers (a controlled field: set its state).
+    act(() => filterStateTestHandle.setValue("prNumbersInput", "88,89"));
 
     const inReviewToggle = await screen.findByLabelText("In Review for PR #1");
     await user.click(inReviewToggle);

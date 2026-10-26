@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="./styles/pane.css" />
     <link rel="stylesheet" href="./styles/filter-bar.css" />
     <link rel="stylesheet" href="./styles/shell.css" />
+    <link rel="stylesheet" href="./styles/settings.css" />
 </head>
 
 <body>
@@ -41,7 +42,6 @@
     <h2>Management Tabs</h2>
     <div class="management-tabs" id="management-tabs">
         <div class="management-tab-list" role="tablist" aria-label="Management tabs">
-            <span id="tab-status-root"></span>
             <span id="tab-script-root"></span>
             <span id="tab-backfill-root"></span>
             <span id="tab-action-log-root"></span>
@@ -49,77 +49,8 @@
             <span id="tab-export-root"></span>
         </div>
 
-        <section id="tab-panel-status" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-status">
-            <!-- Activity drawer feature (see REACT_MIGRATION_PLAN.md): the
-                 "Request Activity" card and "Auto Refresh Scheduler"
-                 badges/details that used to live on this tab were removed -
-                 both were redundant with the drawer's own live "Scheduled
-                 background jobs"/"In-flight user actions" sections
-                 (ActivityDrawer.jsx, top-right of the page). The one piece
-                 of unique information the old scheduler badges had (pending
-                 open/merged-closed counts) moved into the drawer's
-                 Merged/closed drain row instead of being dropped. -->
-            <div class="management-overview-grid">
-                <section class="section-card">
-                    <h3>Latest Status</h3>
-                    <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                         starts empty; React's own initial state supplies the
-                         placeholder text, since createPortal doesn't clear
-                         pre-existing static content in its target. -->
-                    <pre id="status" style="white-space: break-spaces;" role="region" aria-label="Status message"></pre>
-                </section>
-            </div>
-
-            <h3>Auto Refresh Scheduler</h3>
-            <div id="scheduler-card" class="scheduler-card">
-                <div class="form-actions">
-                    <!-- Rendered by React (TriggerAutoRunButton.jsx, mounted in
-                         react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
-                         vanilla-to-React sweep. -->
-                    <span id="trigger-auto-run-btn-root"></span>
-                </div>
-            </div>
-        </section>
-
         <section id="tab-panel-script" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-script" hidden>
             <form id="run-script-form">
-                <div class="management-script-layout">
-                    <section class="section-card management-priority-card run-command-panel">
-                        <h3>Run check-open-pr-updates.sh</h3>
-                        <div class="form-grid single-field-grid">
-                            <label for="pr-numbers">PR number(s) (comma-separated)</label>
-                            <!-- Rendered by React (ContextRunScriptTextInput.jsx, mounted
-                                 in react-app.jsx, Context-backed by FilterStateProvider) -
-                                 see REACT_MIGRATION_PLAN.md's full vanilla-to-React sweep. -->
-                            <span id="pr-numbers-root"></span>
-                        </div>
-                        <div class="form-actions primary-actions">
-                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
-                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
-                            <span id="run-script-btn-root"></span>
-                            <!-- Rendered by React (QuickCheckButton.jsx, mounted in
-                                 react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
-                                 vanilla-to-React sweep. -->
-                            <span id="quick-check-btn-root"></span>
-                            <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
-                                 react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
-                            <span id="ack-only-btn-root"></span>
-                            <span id="clear-only-btn-root"></span>
-                        </div>
-                        <div class="form-grid single-field-grid">
-                            <label for="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
-                            <div class="form-actions primary-actions">
-                                <!-- Rendered by React (ApplyLabelSelect, mounted in react-app.jsx) as
-                                     a <select id="apply-label-select">, same id/options shape as before. -->
-                                <span id="apply-label-select-root"></span>
-                                <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
-                                     react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
-                                <span id="apply-label-btn-root"></span>
-                                <span id="refresh-labels-btn-root"></span>
-                            </div>
-                        </div>
-                    </section>
-
                     <section class="section-card visibility-panel">
                         <h3>Attention and change rules</h3>
                         <p class="subtle-copy">What marks a PR as needing attention, and what counts as a change. The
@@ -244,58 +175,8 @@
                             </fieldset>
                         </div>
                     </section>
-                </div>
-
-                <details class="advanced-options section-card low-emphasis-card">
-                    <summary>Run Script options (rarely changed)</summary>
-                    <div class="form-grid">
-                        <label for="repo">Repo (owner/name)</label>
-                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                        <span id="repo-root"></span>
-
-                        <label for="limit">Open PR limit</label>
-                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                        <span id="limit-root"></span>
-
-                        <label for="merged-limit">Merged PR limit</label>
-                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                        <span id="merged-limit-root"></span>
-
-                        <label for="jobs">Parallel jobs</label>
-                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                        <span id="jobs-root"></span>
-
-                        <label for="open-mode">Open mode</label>
-                        <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                        <span id="open-mode-root"></span>
-
-                        <label class="checkbox-row">
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="ack-changed-root"></span>
-                            Ack all CHANGED non-draft PRs from this run
-                        </label>
-
-                        <label class="checkbox-row">
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="show-reason-root"></span>
-                            Show CHANGED reason in status
-                        </label>
-
-                        <label class="checkbox-row">
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="quiet-root"></span>
-                            Quiet mode (hide run metadata header)
-                        </label>
-                    </div>
-                </details>
             </form>
 
-            <details class="advanced-options section-card low-emphasis-card">
-                <summary>Latest request output</summary>
-                <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                     starts empty, see #request-activity-details above. -->
-                <pre id="output" role="region" aria-label="Latest request output"></pre>
-            </details>
         </section>
 
         <section id="tab-panel-backfill" class="management-tab-panel" role="tabpanel" aria-labelledby="tab-backfill"
@@ -428,6 +309,10 @@
             </div>
         </section>
     </div>
+
+    <!-- Rendered by React (components/settings/SettingsDrawer.tsx): the
+         Settings drawer, opened from the app header. -->
+    <div id="settings-drawer-root"></div>
 
     <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
          dev server and the standalone Express server serve static files

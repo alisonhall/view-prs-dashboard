@@ -61,7 +61,7 @@ const getPrTableApp = () => document.querySelector('#pr-sections [data-testid="p
 describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has data', () => {
   beforeAll(async () => {
     // AppRoot resolves its portal containers once, on its first render.
-    document.body.innerHTML = '<div id="pr-sections"></div><span id="repo-root"></span>';
+    document.body.innerHTML = '<div id="pr-sections"></div><div id="settings-drawer-root"></div>';
     React.act(() => {
       require('./react-app');
     });
@@ -71,7 +71,7 @@ describe('react-app.jsx: AppRoot mounts the PR table once PrDataProvider has dat
   // Phase 7.5: moved from index.page.js. The Run Script inputs render the
   // password-manager hints themselves, and the bootstrap installs the
   // credential-field error filters before mounting.
-  test('given the app has mounted, when the portaled Run Script repo input is read, then it carries the non-credential-field hints and keeps its name', () => {
+  test('given the app has mounted, when the Settings drawer repo input is read, then it carries the non-credential-field hints and keeps its name', () => {
     const repo = document.getElementById('repo');
     expect(repo).not.toBeNull();
     expect(repo.getAttribute('name')).toBe('repo');

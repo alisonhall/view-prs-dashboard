@@ -156,3 +156,16 @@
 .app-banner-action {
   margin-left: auto;
 }
+
+/* The latest action's status: one line, the rest on hover. Empty until
+   something reports - but not display: none, or the live region wouldn't
+   announce its first message. */
+.app-header-message {
+  max-width: 32ch;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -14,8 +14,11 @@ export interface StatusTextValue {
   setStatusText: Dispatch<SetStateAction<string>>;
 }
 
+// The text before anything has reported (the app header shows nothing then).
+export const INITIAL_STATUS_TEXT = 'Not run';
+
 export const StatusTextContext = createContext<StatusTextValue>({
-  statusText: 'Not run',
+  statusText: INITIAL_STATUS_TEXT,
   setStatusText: () => {},
 });
 

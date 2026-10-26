@@ -11,7 +11,6 @@ const DATA_TAB_PANEL_IDS = {
   'tab-panel-author-insights': 'author-insights',
 };
 const MANAGEMENT_TAB_PANEL_IDS = {
-  'tab-panel-status': 'status',
   'tab-panel-script': 'script',
   'tab-panel-backfill': 'backfill',
   'tab-panel-action-log': 'action-log',
