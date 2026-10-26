@@ -143,7 +143,7 @@ export function PrTableApp() {
   }, []);
 
   // busyPrNumbers/queuedPrNumbers (and their mark/clear functions and
-  // window bridges) moved to PrActivityQueueProvider.tsx (activity drawer
+  // window bridges) moved to PrActivityQueueProvider.tsx (activity popover
   // feature, see REACT_MIGRATION_PLAN.md) - the drawer's bulk-action queue
   // section is a sibling portal, not a descendant of this component, so it
   // needs this same state lifted to a shared Provider rather than kept

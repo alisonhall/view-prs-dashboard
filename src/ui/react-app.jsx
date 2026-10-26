@@ -23,7 +23,6 @@ import { buildFilterStateInitialValues } from './state/filterStateInitialValues'
 import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { useQuickCheckActions } from './state/useQuickCheckActions';
-import { useActivityDrawerActions } from './state/useActivityDrawerActions';
 import { PrDataProvider } from './state/PrDataProvider';
 import { usePrData } from './state/PrDataContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
@@ -48,15 +47,12 @@ import { PrActivityQueueProvider } from './components/PrActivityQueueProvider';
 import { StatusTextProvider } from './components/StatusTextProvider';
 import { OutputTextProvider } from './components/OutputTextProvider';
 import { RequestActivityProvider } from './components/RequestActivityProvider';
-import { useRequestActivityDisplay } from './state/RequestActivityContext';
-import { useBackfillStatus } from './state/BackfillStatusContext';
 import { BackfillStatusProvider } from './components/BackfillStatusProvider';
 import { RepoLabelsProvider } from './components/RepoLabelsProvider';
 import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsProvider';
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
 import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
-import { ActivityDrawer } from './components/ActivityDrawer';
 import { useHasTabPanelBeenVisible } from './state/useIsTabPanelVisible';
 
 /**
@@ -147,7 +143,6 @@ function computeStaticContainers() {
     filterBar: document.getElementById('filter-bar-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
-    activityDrawer: document.getElementById('activity-drawer-root'),
     appHeader: document.getElementById('app-header-root'),
     appBanner: document.getElementById('app-banner-root'),
     settingsDrawer: document.getElementById('settings-drawer-root'),
@@ -248,24 +243,16 @@ function AppRoot() {
   const [containers] = useState(computeStaticContainers);
 
   // Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // QuickCheckAllButton (the app header's) and the dispatcher-bump and
-  // reset-circuit-breaker drawer actions below used to call
-  // window.handleQuickCheckAll/handleDispatcherBump/handleResetCircuitBreaker
-  // directly - they now call these hooks' returned functions instead.
+  // QuickCheckAllButton (the app header's) used to call
+  // window.handleQuickCheckAll directly - it now calls this hook's
+  // returned function instead. (The activity popover, in the header, calls
+  // its own actions hook.)
   const quickCheckActions = useQuickCheckActions();
-  const activityDrawerActions = useActivityDrawerActions();
 
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md): drives
   // which lazy-loaded tab chunks below have been requested yet.
   const hasReviewStatsBeenVisible = useHasTabPanelBeenVisible('tab-panel-review-stats');
   const hasAuthorInsightsBeenVisible = useHasTabPanelBeenVisible('tab-panel-author-insights');
-
-  // The activity drawer's request-activity badges and "Recent Activity"
-  // list (RequestActivityProvider's), and its backfill badges and details
-  // (BackfillStatusProvider's - the Settings drawer's Backfill section
-  // shows them too, with its buttons and log).
-  const { requestActivityBadges, recentRequestActivity } = useRequestActivityDisplay();
-  const { backfillBadges, backfillDetailsText } = useBackfillStatus();
 
   // Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // window.mountReactPrTable is gone. index.page.js's renderPrData called it on
@@ -347,13 +334,14 @@ function AppRoot() {
             recomputeDirtyPrSectionsFields. */}
         <AutoRenderBlockingSync />
         {/* Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
-            JobEventsProvider widened from "just the drawer portal" (its own
-            prior comment here predicted this) to wrap everything
+            JobEventsProvider widened from "just the activity drawer's
+            portal" (the header's activity popover since UI redesign phase
+            9c) to wrap everything
             RowFilterSelectionProvider does - useAppliedFilterSummary.tsx
             (consumed by DataViewHeaderPortals further down, for the
             filter bar and the PR data summary) needs useJobEvents()'s
             schedulerSummary too, and those are sibling portals relative to
-            the drawer, not an ancestor/descendant pair - same
+            the header, not an ancestor/descendant pair - same
             cross-portal-sharing reason every other Provider at this level
             is already this wide. */}
         <JobEventsProvider>
@@ -362,25 +350,9 @@ function AppRoot() {
             bulk-queue section and PrTableApp below - it now wraps <AppRoot />
             itself instead (mountAppRoot, above), so useAckLabelActions()
             (called from this component's own body) can reach it via
-            usePrActivityQueue() directly. The drawer/PrTableApp portals
-            below still resolve to that same (now outer) Provider - no
-            change for them. */}
-            {containers.activityDrawer &&
-              createPortal(
-                <ActivityDrawer
-                  backfillBadges={backfillBadges.badges}
-                  backfillDetailsText={backfillDetailsText}
-                  requestActivityBadges={requestActivityBadges}
-                  recentRequestActivity={recentRequestActivity}
-                  onBumpDispatcherEntry={(repo, taskType) =>
-                    activityDrawerActions.handleDispatcherBump(repo, taskType)
-                  }
-                  onResetCircuitBreaker={() => activityDrawerActions.handleResetCircuitBreaker()}
-                />,
-                containers.activityDrawer,
-                'activity-drawer',
-              )}
-
+            usePrActivityQueue() directly. The activity popover (in the
+            header's portal) and PrTableApp resolve to that same (now
+            outer) Provider. */}
           <PrTablePortal container={containers.prSections} />
 
         <FilterOptionsProvider>

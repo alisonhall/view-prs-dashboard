@@ -1,4 +1,4 @@
-// Pure reducer for the activity drawer's SSE-fed job state. No React/DOM -
+// Pure reducer for the activity popover's SSE-fed job state. No React/DOM -
 // all the "honest, not a fake queue" semantics live here so they're unit
 // testable without a real EventSource. JobEventsProvider.tsx owns the live
 // connection and EventSource lifecycle and applies frames through this

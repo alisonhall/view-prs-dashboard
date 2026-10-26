@@ -3,7 +3,7 @@
 const { render, screen, waitFor, fireEvent, within } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { PrJsonModal } = require('./PrJsonModal');
-const { ActivityDrawer } = require('./ActivityDrawer');
+const { ActivityPopover } = require('./shell/ActivityPopover');
 const { JobEventsContext } = require('../state/JobEventsContext');
 
 function mockFetchOk(diffText = 'diff --git a/foo.js b/foo.js\n@@ -1 +1 @@\n-old\n+new') {
@@ -300,7 +300,7 @@ describe('PrJsonModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('given the modal is open on top of the activity drawer, when Escape is pressed, then only the modal closes (stopPropagation prevents the drawer from also closing)', async () => {
+  test('given the modal is open on top of the activity popover, when Escape is pressed, then only the modal closes (stopPropagation prevents the popover from also closing)', async () => {
     mockFetchOk();
     const onClose = jest.fn();
     const jobEventsValue = {
@@ -315,7 +315,7 @@ describe('PrJsonModal', () => {
 
     render(
       <JobEventsContext.Provider value={jobEventsValue}>
-        <ActivityDrawer />
+        <ActivityPopover />
         <PrJsonModal
           target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
           payload={{ byPrNumber: {} }}
@@ -325,14 +325,14 @@ describe('PrJsonModal', () => {
     );
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
 
-    // Open the drawer too, so both overlays are up at once.
+    // Open the popover too, so both overlays are up at once.
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
     expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(onClose).toHaveBeenCalledTimes(1);
-    // The drawer's own window-level Escape listener never got the event -
+    // The popover's own window-level Escape listener never got the event -
     // it's still open.
     expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
   });

@@ -24,7 +24,7 @@ function OnceOpened({ section, children }: { section: SettingsSectionId; childre
 }
 
 // The sections, in the nav's order. Backfill is mounted from the start: it
-// loads the backfill status at page load (the activity drawer shows it too).
+// loads the backfill status at page load (the activity popover shows it too).
 const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; render: () => ReactNode }> = [
   { id: 'run', label: 'Run & check', render: () => <RunCheckSection /> },
   { id: 'attention', label: 'Attention rules', render: () => <AttentionRulesSection /> },

@@ -1,9 +1,10 @@
 import { useJobEvents } from '../state/JobEventsContext';
+import type { RecentRequestActivity } from '../state/RequestActivityContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-const JOB_LABELS = {
+const JOB_LABELS: Record<string, string> = {
   autoRefresh: 'Auto refresh',
   quickCheck: 'Quick check',
   mergedQueueDrain: 'Merged/closed drain',
@@ -12,7 +13,7 @@ const JOB_LABELS = {
 const DISPLAY_LIMIT = 5;
 
 /**
- * Activity drawer feature (see REACT_MIGRATION_PLAN.md): a short history of
+ * The activity popover's (shell/ActivityPopover.tsx) short history of
  * what *just* happened, closing the gap "not all actions are shown" left
  * even after the live sections above cover in-progress work - a request
  * that finished a few seconds ago has already disappeared from "In-flight
@@ -30,7 +31,7 @@ const DISPLAY_LIMIT = 5;
  *   those actions already has its own failure notification/snackbar at the
  *   time it happens).
  */
-export function ActivityDrawerRecentActivitySection({ recentRequestActivity = [] }) {
+export function ActivityDrawerRecentActivitySection({ recentRequestActivity = [] }: { recentRequestActivity?: RecentRequestActivity[] }) {
   const { recentFinished: recentFinishedRaw } = useJobEvents();
   const recentFinished = Array.isArray(recentFinishedRaw) ? recentFinishedRaw : [];
 

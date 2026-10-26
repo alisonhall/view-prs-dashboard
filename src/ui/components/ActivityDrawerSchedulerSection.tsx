@@ -1,22 +1,30 @@
 import { useJobEvents } from '../state/JobEventsContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import type { JobKey, JobState } from '../helpers/pr-job-events.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-const JOB_LABELS = {
+const JOB_LABELS: Record<JobKey, string> = {
   autoRefresh: 'Auto refresh',
   quickCheck: 'Quick check',
   mergedQueueDrain: 'Merged/closed drain',
 };
 
-const CONNECTION_MESSAGES = {
+const CONNECTION_MESSAGES: Record<string, string | undefined> = {
   connecting: 'Connecting to live updates…',
   reconnecting: 'Live updates reconnecting…',
   offline: 'Live updates disconnected — retrying…',
   unsupported: 'Live updates unavailable in this browser.',
 };
 
-function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
+interface JobRowProps {
+  jobKey: JobKey;
+  job: JobState;
+  pendingOpenCount?: number;
+  pendingMergedClosedCount?: number;
+}
+
+function JobRow({ jobKey, job, pendingOpenCount = 0, pendingMergedClosedCount = 0 }: JobRowProps) {
   const label = JOB_LABELS[jobKey] || jobKey;
   const isRunning = job.status === 'running';
   const hasPendingWork = pendingOpenCount > 0 || pendingMergedClosedCount > 0;
@@ -48,7 +56,7 @@ function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
 
       <div className="activity-drawer-job-detail">
         Last finished: {formatIsoDatetime(job.lastFinishedAt)}
-        {job.lastOk === false && job.lastError ? ` — error: ${job.lastError}` : ''}
+        {job.lastOk === false && job.lastError ? ` — error: ${String(job.lastError)}` : ''}
       </div>
 
       {job.lastSkip && (
@@ -61,14 +69,12 @@ function JobRow({ jobKey, job, pendingOpenCount, pendingMergedClosedCount }) {
 }
 
 /**
- * Activity drawer feature (see REACT_MIGRATION_PLAN.md): section 1 of the
- * drawer, the three genuinely in-process background jobs, driven live by
+ * The activity popover's (shell/ActivityPopover.tsx) section 1: the three genuinely in-process background jobs, driven live by
  * JobEventsContext (SSE). Deliberately stays a per-job-type status display
  * (running/idle, last result, last skip) rather than growing a queue
  * position for quickCheck's "waitingOn" state - that's no longer because
  * no real ordering exists (a per-repo-aware dispatcher now DOES order
- * work - see ActivityDrawerDispatcherSection, right below this one in the
- * drawer), but because this section's own job is answering "what's each
+ * work - see ActivityDrawerDispatcherSection, right below this one), but because this section's own job is answering "what's each
  * job type doing right now", not "what's next" - the dispatcher section
  * is where the real order actually lives.
  *

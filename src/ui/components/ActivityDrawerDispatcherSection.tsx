@@ -4,7 +4,17 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-const TASK_TYPE_LABELS = {
+// One dispatcher queue entry (getDispatcherQueueSnapshot,
+// view-prs-dispatcher-helpers.js), per (repo, task type).
+interface DispatcherEntry {
+  repo: string;
+  taskType: string;
+  status: string;
+  priority?: number;
+  nextDueAt?: string | null;
+}
+
+const TASK_TYPE_LABELS: Record<string, string> = {
   autoRefresh: 'Auto refresh',
   quickCheck: 'Quick check',
   mergedDrain: 'Merged/closed drain',
@@ -14,7 +24,7 @@ const TASK_TYPE_LABELS = {
 // codebase's only tooltip mechanism, see QuickCheckButton.jsx) - spells out
 // what the one-word status actually means, since "due" in particular reads
 // ambiguously (it means "waiting its turn", not "overdue/late").
-const STATUS_EXPLANATIONS = {
+const STATUS_EXPLANATIONS: Record<string, string> = {
   running: 'Currently executing.',
   'circuit-open':
     "This repo's auto-refresh circuit breaker is open after repeated failures - this task won't run until it's reset or the cooldown expires. See the Circuit breaker section below.",
@@ -31,8 +41,8 @@ const BUMP_TOOLTIP =
   "Does not change its priority, so a higher-priority task that's also due will still go first.";
 
 /**
- * Activity drawer feature (see REACT_MIGRATION_PLAN.md's dispatcher plan):
- * the per-repo-aware priority dispatcher's own real, ordered task queue -
+ * The activity popover's (shell/ActivityPopover.tsx; see
+ * REACT_MIGRATION_PLAN.md's dispatcher plan) per-repo-aware priority dispatcher's own real, ordered task queue -
  * a genuine sibling to ActivityDrawerQueueSection's bulk-chunk queue, not a
  * rewrite of ActivityDrawerSchedulerSection (that section intentionally
  * still shows only status flags per job *type*, since before this
@@ -49,19 +59,18 @@ const BUMP_TOOLTIP =
  * are already part of every entry, so no extra plumbing is needed.
  *
  * `onBump(repo, taskType)` (optional - the manual reprioritize action,
- * wired from index.page.js's handleDispatcherBump via ActivityDrawer.jsx)
+ * useActivityDrawerActions' handleDispatcherBump, via the popover)
  * lets a person pull one scheduled entry forward instead of waiting for its
  * due time. Only offered for `scheduled` entries - a `due`/`running` entry
  * is already about to run (or running), so bumping it would have no effect.
  */
-export function ActivityDrawerDispatcherSection({ onBump }) {
+export function ActivityDrawerDispatcherSection({ onBump }: { onBump?: (repo: string, taskType: string) => unknown }) {
   const { dispatcherQueue } = useJobEvents();
-  const entries = Array.isArray(dispatcherQueue) ? dispatcherQueue : [];
-  const [bumpingKey, setBumpingKey] = useState(null);
+  const entries = (Array.isArray(dispatcherQueue) ? dispatcherQueue : []) as DispatcherEntry[];
+  const [bumpingKey, setBumpingKey] = useState<string | null>(null);
   // Guards the setBumpingKey call below against firing after unmount - this
-  // section lives inside the drawer's collapsible panel (see
-  // ActivityDrawer.jsx's `{isOpen && (...)}` block), which unmounts on
-  // close, so a bump request still in flight when the drawer is closed
+  // section lives inside the activity popover, which unmounts its content
+  // on close, so a bump request still in flight when it's closed
   // would otherwise resolve into a "state update on an unmounted
   // component" warning. Same `cancelled`-style guard already used for
   // async effects elsewhere in this codebase (ExportSection.tsx, PrJsonModal.jsx).
@@ -77,7 +86,7 @@ export function ActivityDrawerDispatcherSection({ onBump }) {
     return null;
   }
 
-  const handleBumpClick = async (entry) => {
+  const handleBumpClick = async (entry: DispatcherEntry) => {
     const key = `${entry.repo}::${entry.taskType}`;
     setBumpingKey(key);
     try {
@@ -119,7 +128,7 @@ export function ActivityDrawerDispatcherSection({ onBump }) {
               </span>
               {entry.status === 'scheduled' && (
                 <span className="activity-drawer-dispatcher-entry-due">
-                  due {formatIsoDatetime(entry.nextDueAt)}
+                  due {formatIsoDatetime(entry.nextDueAt ?? null)}
                 </span>
               )}
               {entry.status === 'scheduled' && typeof onBump === 'function' && (

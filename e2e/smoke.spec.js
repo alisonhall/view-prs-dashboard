@@ -333,6 +333,61 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
   await expect(settingsDrawer(page).getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
 });
 
+test("at phone width the activity popover stays in the window, under its button", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  const activityButton = page.getByRole("banner").getByRole("button", { name: /^Activity/ });
+  await activityButton.click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeInViewport({ ratio: 1 });
+  const buttonBox = await activityButton.boundingBox();
+  expect((await activityPanel.boundingBox()).y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+});
+
+test("the activity popover closes when the page scrolls, but not when its own content does", async ({ page }) => {
+  // The header isn't sticky: following its button, the popover would be
+  // carried off the top of the window.
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  const content = activityPanel.locator(".activity-popover-content");
+
+  const contentBox = await content.boundingBox();
+  await page.mouse.move(contentBox.x + contentBox.width / 2, contentBox.y + contentBox.height / 2);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(activityPanel).toBeVisible();
+
+  await page.mouse.move(100, 450);
+  await page.mouse.wheel(0, 300);
+  await expect(activityPanel).toBeHidden();
+});
+
+test("tabbing out of the activity popover closes it, so Settings opens alone and Esc goes back to Settings", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeFocused();
+
+  // Its close button, then out to the header's next control.
+  const settingsButton = page.getByRole("banner").getByRole("button", { name: "Settings", exact: true });
+  for (let i = 0; i < 30 && !(await settingsButton.evaluate((element) => element === document.activeElement)); i += 1) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(settingsButton).toBeFocused();
+  await expect(activityPanel).toBeHidden();
+
+  await page.keyboard.press("Enter");
+  await expect(settingsDrawer(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(settingsDrawer(page)).toHaveCount(0);
+  await expect(settingsButton).toBeFocused();
+});
+
 test("the Settings drawer opens from the header, switches sections, and closes with Esc back to its button", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
   await page.goto("/");
@@ -2973,10 +3028,10 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
   await expect(snackbar).toBeHidden();
 });
 
-test("the activity drawer opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
+test("the activity popover opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md) - a real gap this
   // closes: every other test for this feature (JobEventsProvider.test.jsx,
-  // ActivityDrawer.test.jsx, etc.) runs under jsdom with a hand-rolled fake
+  // ActivityPopover.test.tsx, etc.) runs under jsdom with a hand-rolled fake
   // EventSource - none of them prove a real browser's actual EventSource
   // can open GET /view-prs/events through the real server, let alone
   // through Vite's dev proxy (vite.config.js forwards /view-prs to
@@ -2996,8 +3051,15 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("button", { name: /Activity/ }).click();
-  const activityPanel = page.getByRole("region", { name: "Activity panel", exact: true });
+  const activityButton = page.getByRole("banner").getByRole("button", { name: /^Activity/ });
+  await activityButton.click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeFocused();
+  // Under its button, wholly in the window.
+  await expect(activityPanel).toBeInViewport({ ratio: 1 });
+  const buttonBox = await activityButton.boundingBox();
+  const panelBox = await activityPanel.boundingBox();
+  expect(panelBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
   await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
   await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
   await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
@@ -3016,15 +3078,20 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
     ).toBeVisible();
   }
 
-  // Closing via Escape (not just the close button) - see ActivityDrawer.jsx.
+  // Escape closes it, focus back on its button; a click outside closes it.
   await page.keyboard.press("Escape");
   await expect(page.getByText("Scheduled background jobs")).toBeHidden();
+  await expect(activityButton).toBeFocused();
+  await activityButton.click();
+  await expect(activityPanel).toBeVisible();
+  await page.getByRole("heading", { name: "View PR Updates", exact: true }).click();
+  await expect(activityPanel).toBeHidden();
 
   expect(failedRequests.filter((entry) => entry.includes("/view-prs/events"))).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
 
-test("clicking Quick check pushes a real 'running' state into the drawer over SSE, not a poll", async ({ page }) => {
+test("a Quick check pushes a real 'running' state into the open activity popover over SSE, not a poll", async ({ page }) => {
   // Also placed before "Trigger auto run and Quick check..." below, for
   // the same shared-server reason as the test above - this one would
   // otherwise see quickCheck immediately skipped (isAutoRunInProgress
@@ -3041,17 +3108,20 @@ test("clicking Quick check pushes a real 'running' state into the drawer over SS
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("button", { name: /Activity/ }).click();
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
   const quickCheckRow = page
-    .getByRole("region", { name: "Activity panel", exact: true })
+    .getByRole("dialog", { name: "Activity", exact: true })
     .getByRole("group", { name: "Quick check", exact: true });
   await expect(quickCheckRow.getByRole("status")).toHaveText("Idle");
 
-  // The open activity panel covers the header's Settings button (until
-  // phase 9c moves it into the header): open Settings from the keyboard. It
-  // opens at Run & check.
-  await page.getByRole("banner").getByRole("button", { name: "Settings", exact: true }).press("Enter");
-  await page.getByTestId("quick-check-button").click();
+  // Starts it as Run & check's Quick check button does (the same POST, an
+  // empty PR-numbers field sending {}), with the popover kept open: a click
+  // on the button would close it. "Trigger auto run and Quick check
+  // buttons..." below covers the button itself.
+  // Not awaited: the check can run a long time here (see above).
+  await page.evaluate(() => {
+    void fetch("/view-prs/quick-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  });
 
   await expect(quickCheckRow.getByRole("status")).toHaveText("Running", {
     timeout: 10000,

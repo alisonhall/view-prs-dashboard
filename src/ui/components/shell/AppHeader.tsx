@@ -8,6 +8,7 @@ import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
 import { INITIAL_STATUS_TEXT, useStatusText } from '../../state/StatusTextContext';
 import { useTabState, type DataTabKey } from '../../state/TabStateContext';
 import { describeLastUpdate, describeRepos } from '../../helpers/pr-app-header.helpers.ts';
+import { ActivityPopover } from './ActivityPopover';
 import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
 // The views, as tabs over the page's existing panels (#tab-panel-*, which
@@ -52,9 +53,10 @@ function LastUpdatePill({ updatedAt, loaded }: { updatedAt: unknown; loaded: boo
  * repos the table shows rows from (one by name, else how many - the list on
  * hover), the view tabs (Pull requests / Review stats / Authors,
  * TabStateContext's data tab), the latest action's status, when the data
- * was last updated, and the
- * refresh (Quick check all), and the Settings drawer's button. The auto-update-paused banner has its own
- * root under it (AutoUpdatePausedBanner).
+ * was last updated, the refresh (Quick check all), the background activity
+ * (ActivityPopover) and the Settings drawer's button. The
+ * auto-update-paused banner has its own root under it
+ * (AutoUpdatePausedBanner).
  */
 export interface AppHeaderProps {
   onQuickCheckAll: QuickCheckAllButtonProps['onCheck'];
@@ -94,6 +96,7 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
             <LastUpdatePill updatedAt={payload?.lastRun?.updatedAt} loaded={Boolean(payload?.ok)} />
           </NowProvider>
           <QuickCheckAllButton onCheck={onQuickCheckAll} />
+          <ActivityPopover />
           <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>
             Settings
           </Button>

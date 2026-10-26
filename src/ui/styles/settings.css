@@ -1,8 +1,8 @@
 /* The Settings drawer (components/settings/). */
 
-/* A modal: above the page's fixed controls (the activity drawer's toggle
-   and panel, 1100/1150), below the snackbar (1300) - a failed "Run script"
-   here reports there - and the PR JSON modal (2000). */
+/* A modal: above the page and the activity popover (1100), below the
+   snackbar (1300) - a failed "Run script" here reports there - and the PR
+   JSON modal (2000). */
 .settings-overlay {
   position: fixed;
   inset: 0;

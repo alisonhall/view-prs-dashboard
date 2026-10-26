@@ -1,5 +1,5 @@
-// The activity drawer's request-activity badges (RequestActivityProvider
-// builds them; ActivityDrawer shows them through BackfillBadges): "No
+// The activity popover's request-activity badges (RequestActivityProvider
+// builds them; ActivityPopover shows them through BackfillBadges): "No
 // request in progress", or a running count plus one badge per active
 // request with its elapsed time and severity class.
 export interface ActivityBadge {

@@ -1986,7 +1986,7 @@ describe("index page rendering with Testing Library", () => {
 
     // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
     // Refresh Scheduler" display) were removed as redundant with the
-    // activity drawer's own live "Scheduled background jobs" section (see
+    // activity popover's own live "Scheduled background jobs" section (see
     // REACT_MIGRATION_PLAN.md) - this fixture's scheduler object (lastAutoError/
     // lastQuickCheckSkipReason) is kept only because the rest of this test's
     // payload shape mirrors a real response; nothing here reads it anymore.

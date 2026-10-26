@@ -1153,6 +1153,9 @@ No static type checking leads to:
       ActorNamesTab), MappingRowsEditor and ExportSection (was ExportTab)
       moved into components/settings/ and BackfillBadges converted in place,
       all .tsx; BackfillControls and ManagementTabButton deleted.
+    - Phase 9c (2026-10-26): the activity popover (shell/ActivityPopover.tsx)
+      replaces ActivityDrawer.jsx (deleted); the five ActivityDrawer*Section
+      components converted to .tsx in place.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

@@ -54,7 +54,7 @@ export function useRequestActivity(): RequestActivityValue {
 }
 
 /**
- * What the activity drawer displays - the current request-activity badges
+ * What the activity popover displays - the current request-activity badges
  * and the recent finished requests. Separate from the functions above
  * because this changes on every activity tick: only its readers re-render,
  * never the many callers of the stable functions.

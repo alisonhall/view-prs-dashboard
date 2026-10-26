@@ -43,7 +43,7 @@ export interface PrRowCheckboxActionsDeps {
   getLatestSelectedRepo?: () => string;
   applyLatestPrData?: (update: { payload: PrDataPayload | null | undefined; selectedRepo: string }) => void;
   loadStoredData?: (repo: string) => Promise<unknown>;
-  // Tracks the toggle in the activity drawer, so a request that takes
+  // Tracks the toggle in the activity popover, so a request that takes
   // unusually long becomes visible under "In-flight user actions".
   beginRequestActivity?: (kind: string) => () => void;
 }

@@ -113,7 +113,7 @@ const buildBadges = (activityState: ActivityState) => {
 
 /**
  * Owns request activity (the in-flight request counters/elapsed times behind
- * the activity drawer's badges, and its "recent activity" list) and the
+ * the activity popover's badges, and its "recent activity" list) and the
  * latest scheduler state.
  *
  * Mounted above BackfillStatusProvider, AutoRenderBlockingProvider and

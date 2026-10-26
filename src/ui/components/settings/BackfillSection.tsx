@@ -11,7 +11,7 @@ import { BackfillLog } from './BackfillLog';
  * Stop / Refresh status, the status details, and the log (collapsed).
  * The display state is BackfillStatusProvider's; this section owns the
  * actions (useBackfillActions) and the loads: once at page load, as the
- * drawer is always mounted (the activity drawer shows the same badges),
+ * drawer is always mounted (the activity popover shows the same badges),
  * then each time this section is opened (useBackfillAutoRefresh).
  */
 export function BackfillSection() {

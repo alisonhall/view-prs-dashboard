@@ -2450,7 +2450,7 @@ describe("route behavior", () => {
     }
   });
 
-  describe("emitDataChanged (activity drawer - other tabs learn about data changes over SSE)", () => {
+  describe("emitDataChanged (activity popover - other tabs learn about data changes over SSE)", () => {
     // These 4 routes are the ones that write to the stored PR data file
     // outside the 3 already-SSE-instrumented scheduler jobs (see
     // REACT_MIGRATION_PLAN.md) - audited directly against the route bodies

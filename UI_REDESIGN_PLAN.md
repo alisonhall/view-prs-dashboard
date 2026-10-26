@@ -639,6 +639,30 @@ becomes a small `react-app.tsx`. Done in steps:
   rules (Attention, Merge commits, Change detection); 9b-3 Backfill, Action
   log, Actor names and Export, then the old tab strip goes. The old
   Activity tab's status message and "Trigger auto run" go into Run & check.
+- **9c done (2026-10-26):**
+  - `shell/ActivityPopover.tsx` in the app header, between Quick check all
+    and Settings: an Activity button (the count of running jobs and queued
+    bulk chunks, in its name too) opening a non-modal dialog under it -
+    fixed, kept in the window (MenuButton's `computeMenuPosition`),
+    following the button on resize. Esc, its close button, a click or focus
+    moving outside it, or the page scrolling closes it; Esc returns focus
+    to the button. (The header isn't sticky: following the button on
+    scroll carried the popover off the top. Without the focus rule, Tab
+    out to Settings left it open under the drawer.) Scrolling its own
+    content doesn't close it (scrolling on past its end scrolls the page,
+    which does: `overscroll-behavior` isn't a baseline feature yet). It focuses
+    itself on opening, once placed (not its close button, whose tooltip
+    would take the first Esc).
+  - It reads its data from the Providers itself (backfill status, request
+    activity, job events, the bulk queue, `useActivityDrawerActions`), so
+    `AppRoot` no longer threads it through. `ActivityDrawer.jsx` and
+    `#activity-drawer-root` are gone; the five sections are `.tsx` in
+    place.
+  - Esc is heard on `window`, as the drawer's was, so the PR JSON modal
+    above it (listening on `document`) takes it first.
+  - The floating toggle and side panel CSS go; `styles/shell.css` styles
+    the button's count and the popover. Opening Settings (a click outside)
+    closes it, so nothing covers the Settings button any more.
 - **9b-3 done (2026-10-26):**
   - The drawer gains `Backfill` (`settings/BackfillSection.tsx`, with
     `BackfillLog.tsx`: the badges, Start / Stop / Refresh status, the
@@ -723,7 +747,7 @@ becomes a small `react-app.tsx`. Done in steps:
   - Stacking: the drawer (1200) sits above the activity drawer's fixed
     toggle and panel (1100/1150), the snackbar (now 1300) above it. While
     the activity panel is open it covers the header's Settings button
-    (until 9c makes it a header popover).
+    (until 9c made it a header popover).
 - **9a done (2026-10-26)** on branch `ui-redesign/phase-9`:
   - `shell/AppHeader.tsx`, portaled into `#app-header-root` (it replaces
     the static heading, the Home/README nav and the data-tab list): the
