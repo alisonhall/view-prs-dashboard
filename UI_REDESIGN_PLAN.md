@@ -639,6 +639,27 @@ becomes a small `react-app.tsx`. Done in steps:
   rules (Attention, Merge commits, Change detection); 9b-3 Backfill, Action
   log, Actor names and Export, then the old tab strip goes. The old
   Activity tab's status message and "Trigger auto run" go into Run & check.
+- **9d is done in two slices** (decided 2026-10-26), each reviewed and
+  committed: 9d-1 deletes the CSS nothing uses and the stale `index.html`
+  comments (every remaining mount point is live); 9d-2 is the
+  `AppShell.tsx` from this phase's introduction - the layout rendered by
+  React in place of the mount points, `react-app.jsx` becoming a small
+  `react-app.tsx`.
+- **9d-1 done (2026-10-26):**
+  - `index.css` loses 32 rules no element can match (found by listing
+    every class/id selector and checking the code, comments stripped, for
+    each; names built at runtime - `is-${state}`, `pr-col-${key}`... -
+    checked by hand): the old Run & Filter form (`#run-script-form`,
+    `.form-grid`, the `#*-root` field wrappers, `.primary-run-btn`...),
+    `#request-activity-details`, and unused stats/insight/title/JSON-modal
+    rules. Also the bare `h2` margins (every `h2` sets its own) and the
+    multi-select's `grid-column` (it spanned the old form grid).
+  - Checked by comparing every element's computed style before and after
+    in a real browser: only the multi-selects' `grid-column` differs, and
+    their positions are identical.
+  - `index.html`'s comments describe what each mount point holds now
+    (they still named window bridges, vanilla fallbacks, `createRoot` per
+    container and the deleted `#request-activity-details`).
 - **9c done (2026-10-26):**
   - `shell/ActivityPopover.tsx` in the app header, between Quick check all
     and Settings: an Activity button (the count of running jobs and queued

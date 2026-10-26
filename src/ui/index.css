@@ -1,8 +1,3 @@
-        h2 {
-            margin-top: 24px;
-            margin-bottom: 10px;
-        }
-
         /* Shared table defaults: keep long tokens inside cells across all table views. */
         .data-tab-panel table {
             width: 100%;
@@ -16,67 +11,9 @@
             word-break: normal;
         }
 
-        #run-script-form {
-            background: #f6f8fa;
-            border: 1px solid #d0d7de;
-            border-radius: 10px;
-            padding: 14px;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(240px, 1fr));
-            gap: 10px 14px;
-            align-items: center;
-        }
-
-        #run-script-form label {
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        #run-script-form input[type="text"],
-        #run-script-form input[type="number"],
-        #run-script-form select {
-            width: 100%;
-            height: 34px;
-            border: 1px solid #c9d1d9;
-            border-radius: 8px;
-            padding: 0 10px;
-            font-size: 14px;
-            box-sizing: border-box;
-            background: #fff;
-        }
-
-        /* React-mounted form field wrappers (see react-app.jsx's
-           mountPrNumberFilterInput/mountScopeFilterSelect) - transparent to
-           .form-grid layout so the wrapped <input>/<select> is the
-           effective grid item, exactly as when it was a direct child. */
-        #filter-pr-numbers-root,
-        #scope-mode-root,
-        #attention-no-activity-mode-root,
-        #attention-include-pending-comments-root,
-        #attention-ignore-merge-only-commits-root,
-        #attention-include-closed-merged-root,
-        #attention-include-draft-changed-root,
-        #attention-include-draft-no-activity-root,
-        #attention-author-thread-resolution-mode-root,
-        #repo-root,
-        #limit-root,
-        #merged-limit-root,
-        #jobs-root,
-        #open-mode-root,
-        #filter-custom-comments-root,
-        #filter-other-notes-root,
-        #filter-pr-difficulty-root,
-        #filter-stories-root,
-        #filter-analysis-of-pr-root {
-            display: contents;
-        }
-
-        /* Multi-select dropdown (author, assigned, approver filters) */
+        /* MultiSelectDropdown (the filter bar's and the Settings drawer's
+           lists; styles/ui.css adjusts it). */
         .multi-select-dropdown {
-            grid-column: 1 / -1;
             margin: 0;
             padding: 0;
         }
@@ -170,30 +107,6 @@
             font-style: italic;
         }
 
-        #run-script-form select[multiple] {
-            height: auto;
-            min-height: 88px;
-            padding: 6px 8px;
-        }
-
-        #run-script-form input[type="text"]::placeholder,
-        #run-script-form input[type="number"]::placeholder {
-            color: #1f2328;
-            opacity: 0.6;
-            font-style: italic;
-        }
-
-        #run-script-form input[type="checkbox"] {
-            margin-right: 6px;
-            transform: translateY(1px);
-        }
-
-        .checkbox-row {
-            display: block;
-            grid-column: 1 / -1;
-            font-weight: 500;
-        }
-
         .form-actions {
             display: flex;
             gap: 10px;
@@ -225,21 +138,6 @@
             margin-bottom: 10px;
         }
 
-        #run-script-form button {
-            border: 1px solid #1f6feb;
-            background: #1f6feb;
-            color: #fff;
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        #run-script-form button:hover {
-            background: #1a61d1;
-        }
-
         #scope-mode {
             height: 32px;
             border: 1px solid #c9d1d9;
@@ -256,7 +154,6 @@
             padding: 10px;
             background: #fff;
         }
-
 
         .scheduler-badges {
             display: flex;
@@ -308,13 +205,6 @@
             background: #fff1f2;
         }
 
-
-
-
-
-
-
-
         .scheduler-details {
             margin: 0;
             white-space: pre-wrap;
@@ -335,12 +225,6 @@
             padding: 10px 12px;
             background: #fff;
         }
-
-
-
-
-
-
 
         .export-field-controls {
             margin-top: 8px;
@@ -399,39 +283,6 @@
             overflow: auto;
         }
 
-        .management-overview-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .management-priority-card {
-            border-color: #0b57d0;
-            background: linear-gradient(180deg, #f7fbff 0%, #f6f8fa 100%);
-            box-shadow: 0 3px 10px rgba(11, 87, 208, 0.08);
-        }
-
-        .single-field-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .primary-actions {
-            align-items: center;
-        }
-
-        .primary-run-btn {
-            font-size: 14px;
-            padding: 10px 18px;
-            background: #0b57d0;
-            border-color: #0b57d0;
-            box-shadow: 0 4px 12px rgba(11, 87, 208, 0.24);
-        }
-
-        .primary-run-btn:disabled {
-            box-shadow: none;
-        }
-
         .subtle-copy {
             margin: 0 0 10px;
             color: #57606a;
@@ -442,10 +293,6 @@
             opacity: 0.86;
             background: #fafbfc;
             border-style: dashed;
-        }
-
-        #request-activity-details {
-            min-height: 40px;
         }
 
         #status {
@@ -459,8 +306,6 @@
             font-family: SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 12px;
         }
-
-
 
         .stats-panel {
             border: 1px solid #d0d7de;
@@ -892,13 +737,6 @@
             margin-top: 6px;
         }
 
-        .stats-sources-item {
-            padding: 6px 8px;
-            border: 1px solid #d0d7de;
-            border-radius: 6px;
-            background: #fff;
-        }
-
         .stats-source-detail {
             color: #57606a;
         }
@@ -959,73 +797,9 @@
             font-size: 12px;
         }
 
-        .stats-timeline-list {
-            display: grid;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .stats-timeline-row {
-            display: grid;
-            grid-template-columns: 90px 1fr 40px;
-            gap: 8px;
-            align-items: center;
-            font-size: 12px;
-        }
-
-        .stats-timeline-date {
-            font-weight: 600;
-            color: #57606a;
-            text-align: right;
-        }
-
-        .stats-timeline-value {
-            color: #57606a;
-            text-align: right;
-            white-space: nowrap;
-        }
-
         .stats-note {
             margin: 10px 0 0;
             font-size: 12px;
-            color: #57606a;
-        }
-
-        .stats-activity-chart {
-            display: flex;
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .stats-activity-graph {
-            flex: 1;
-            position: relative;
-            border-left: 2px solid #d0d7de;
-            border-bottom: 2px solid #d0d7de;
-            padding: 12px 12px 24px 8px;
-            min-height: 160px;
-        }
-
-        .stats-activity-graph svg {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-
-        .stats-activity-legend {
-            min-width: 120px;
-            display: grid;
-            gap: 6px;
-            font-size: 11px;
-        }
-
-        .stats-activity-legend div {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
             color: #57606a;
         }
 
@@ -1065,7 +839,6 @@
         .actor-identity-viewer.actor-identity-pr-author {
             color: #165c2f;
         }
-
 
         .action-log-container {
             overflow-x: auto;
@@ -1206,10 +979,6 @@
             font-weight: 600;
         }
 
-        .title-text {
-            font-weight: 600;
-        }
-
         .insight-section {
             margin-top: 10px;
             border-top: 1px solid #d8dee4;
@@ -1220,15 +989,6 @@
             cursor: pointer;
             color: #0b57d0;
             font-weight: 600;
-        }
-
-        .insight-section-warning-text {
-            color: #8a4600;
-            background: #fff4e5;
-            border: 1px solid #ffcc80;
-            border-radius: 999px;
-            padding: 1px 8px;
-            font-weight: 700;
         }
 
         /* Contains the custom insights hook script's returned HTML
@@ -1266,13 +1026,6 @@
 
         .insight-subtle {
             color: #57606a;
-        }
-
-        .insight-event-header {
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
-            flex-wrap: wrap;
         }
 
         /* Review comment HTML (pr-markdown-render.helpers.ts). Sanitizing
@@ -1491,13 +1244,6 @@
             padding: 8px 10px;
         }
 
-        .pr-json-section-title {
-            margin: 0;
-            font-size: 12px;
-            color: #344054;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
 
         .pr-json-block {
             margin: 0;
@@ -1734,14 +1480,6 @@
         .error-snackbar-close:hover {
             opacity: 0.8;
         }
-
-
-
-
-
-
-
-
 
         .activity-drawer-section {
             margin-bottom: 20px;

@@ -19,53 +19,42 @@
 </head>
 
 <body>
-    <!-- Rendered by React (Snackbar.jsx, mounted in react-app.jsx) - a full
-         subtree, not just children: the outer #error-snackbar element's own
-         `hidden`/variant class need toggling, which only works if React owns
-         that element itself, not just what's inside it (a portal only owns
-         its target's children) - see REACT_MIGRATION_PLAN.md's full
-         vanilla-to-React sweep. -->
+    <!-- The elements below whose ids end in -root, plus #data-meta,
+         #pr-sections and #merged-request-more-action, are mount points
+         react-app.jsx renders into (AppRoot's portals); each starts
+         empty. -->
+    <!-- Snackbar.jsx: the whole #error-snackbar element (its `hidden` and
+         variant class change), not just its content. -->
     <div id="error-snackbar-root"></div>
-    <!-- Rendered by React (components/shell/AppHeader.tsx): the app's name
-         and repo, the view tabs, when the data was last updated and Quick
-         check all. -->
+    <!-- components/shell/AppHeader.tsx: the app's name and repo, the view
+         tabs, the latest status, when the data was last updated, Quick check
+         all, Activity and Settings. -->
     <div id="app-header-root"></div>
-    <!-- Rendered by React (components/shell/AutoUpdatePausedBanner.tsx).
-         Its own element directly in <body>, so it can stay stuck to the top
-         of the window while you scroll (styles/shell.css). -->
+    <!-- components/shell/AutoUpdatePausedBanner.tsx. Its own element
+         directly in <body>, so it can stay stuck to the top of the window
+         while you scroll (styles/shell.css). -->
     <div id="app-banner-root" class="app-banner-root"></div>
 
     <!-- The views; their tabs are in the app header. -->
     <div class="data-tabs" id="data-tabs">
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
-            <!-- Rendered by React (react-app.jsx, plain-string portal) -
-                 starts empty, see #request-activity-details above. -->
+            <!-- The PR data summary (DataViewHeaderPortals). -->
             <pre id="data-meta" style="white-space: break-spaces;" role="region" aria-label="PR data summary"></pre>
-            <!-- Rendered by React (components/filter-bar/FilterBar.tsx): the
-                 row filters, a "Showing N of M" count and the applied
-                 filters' chips. -->
+            <!-- components/filter-bar/FilterBar.tsx: the row filters, a
+                 "Showing N of M" count and the applied filters' chips. -->
             <div id="filter-bar-root"></div>
+            <!-- The PR table (PrTableApp). -->
             <div id="pr-sections" role="region" aria-label="Pull requests"></div>
-            <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
-                 renders nothing at all (not even this div's own children)
-                 when not visible, so no `hidden` attribute is needed here. -->
+            <!-- MergedRequestMoreAction.jsx: renders nothing while there's
+                 nothing more to request. -->
             <div id="merged-request-more-action" class="merged-request-more-action"></div>
         </section>
 
         <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
             hidden>
             <div id="pr-stats" class="stats-panel">
-                <!-- Rendered by React (react-app.jsx) - Phase 3, then Track C
-                     (see REACT_MIGRATION_PLAN.md): ReviewStatsContent now computes
-                     its own stats from PrDataContext's payload instead of being
-                     pushed a pre-built result, so nothing outside React rebuilds
-                     either #stats-controls-root or #stats-content-root anymore.
-                     Starts empty (found and fixed alongside the full
-                     vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the old
-                     static "Loading..." text was never cleared before React
-                     mounted here - createPortal doesn't clear a target's
-                     pre-existing content, so the real stats content used to
-                     render stuck directly onto the end of "Loading...". -->
+                <!-- ReviewStatsControls and ReviewStatsContent (lazy, mounted
+                     the first time the view shows). -->
                 <div id="stats-controls-root" role="group" aria-label="Review statistics controls"></div>
                 <div id="stats-content-root" role="region" aria-label="Review statistics"></div>
             </div>
@@ -74,35 +63,13 @@
         <section id="tab-panel-author-insights" class="data-tab-panel" role="tabpanel"
             aria-labelledby="tab-author-insights" hidden>
             <div id="author-insights" class="author-insights-panel">
-                <!-- Every container below is rendered by React (see the
-                     matching mount*() function in react-app.jsx) and mounted
-                     into once by createRoot() - Phase 3, see
-                     REACT_MIGRATION_PLAN.md. renderAuthorInsights
-                     (pr-author-insights.component.js) never rebuilds any of
-                     these containers directly (no more `host.innerHTML = ""`
-                     covering them all at once, the original vanilla
-                     behavior); each is updated only via its own
-                     window.updateAuthorInsights*() bridge call, or falls back
-                     to appending a vanilla-built replacement into itself (or
-                     the shared outer #author-insights host, for containers
-                     without a persisted override) if React fails to
-                     load/mount. -->
+                <!-- The Authors view's parts, each lazy and inside its own
+                     AuthorInsightsProvider (react-app.jsx): the author
+                     picker, the selected author, the manual comments
+                     (AuthorInsightsCommentsSection.jsx), the author's PR
+                     notes and their created PRs. -->
                 <div id="author-insights-selector-root"></div>
                 <div id="author-insights-header-root" role="region" aria-label="Selected author"></div>
-                <!-- Manual comments composer/list - real JSX
-                     (AuthorInsightsCommentsSection.jsx). Its mutable draft
-                     state and save/edit POST side effects go through the
-                     vanilla authorInsightsState bridges
-                     (getAuthorInsightsComposerDraft/etc.) so the
-                     auto-render-blocking feature can still see unsaved
-                     edits, but rendering itself is fully React-owned. Starts
-                     empty (found and fixed alongside the full
-                     vanilla-to-React sweep, REACT_MIGRATION_PLAN.md): the
-                     old static "Loading..." text was never cleared before
-                     React mounted here - createPortal doesn't clear a
-                     target's pre-existing content, so the real composer/list
-                     content used to render stuck directly onto the end of
-                     "Loading...". -->
                 <div id="author-insights-content-root" role="region" aria-label="Author comments"></div>
                 <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes"></div>
                 <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs"></div>
@@ -110,8 +77,8 @@
         </section>
     </div>
 
-    <!-- Rendered by React (components/settings/SettingsDrawer.tsx): the
-         Settings drawer, opened from the app header. -->
+    <!-- components/settings/SettingsDrawer.tsx: the Settings drawer,
+         opened from the app header. -->
     <div id="settings-drawer-root"></div>
 
     <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
@@ -134,13 +101,7 @@
          is treated as untrusted. Re-copy purify.min.js and purify.min.js.map
          together when bumping the "dompurify" dependency version. -->
     <script src="./vendor/purify.min.js"></script>
-    <!-- Window-bridge elimination Phase 7.5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-         index.page.js, the last vanilla script, is deleted. Its
-         credential-field hints are props on the React inputs, its dropdown
-         closing is AppRoot's useMultiSelectDropdownClosing, and its error
-         filters are installed by react-app.jsx before mounting. -->
-
-    <!-- React App Entry Point (Phase 1: Hybrid Migration) -->
+    <!-- The app (it installs its error filters before mounting). -->
     <script type="module" src="./react-app.jsx"></script>
 </body>
 
