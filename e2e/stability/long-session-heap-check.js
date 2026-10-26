@@ -185,9 +185,9 @@ async function runInteractionCycle(page, cycleIndex) {
   }
 
   if (cycleIndex % 5 === 0) {
-    await page.getByRole("tab", { name: "Review statistics" }).click();
-    await page.getByRole("tab", { name: "Author Insights" }).click();
-    await page.getByRole("tab", { name: "PR data" }).click();
+    await page.getByRole("tab", { name: "Review stats" }).click();
+    await page.getByRole("tab", { name: "Authors" }).click();
+    await page.getByRole("tab", { name: "Pull requests" }).click();
   }
 
   if (cycleIndex % 10 === 0) {

@@ -22,12 +22,16 @@ export interface TabsProps {
   tabs: TabItem[];
   selectedId: string;
   onSelect: (id: string) => void;
+  // The ids each tab and its panel get, when not idPrefix's (the app
+  // header's view tabs keep the page's existing panel ids).
+  idsFor?: (id: string) => { tab: string; panel: string };
 }
 
 export const getTabId = (idPrefix: string, id: string) => `${idPrefix}-tab-${id}`;
 export const getTabPanelId = (idPrefix: string, id: string) => `${idPrefix}-panel-${id}`;
 
-export function Tabs({ label, idPrefix, tabs, selectedId, onSelect }: TabsProps) {
+export function Tabs({ label, idPrefix, tabs, selectedId, onSelect, idsFor }: TabsProps) {
+  const ids = (id: string) => idsFor?.(id) ?? { tab: getTabId(idPrefix, id), panel: getTabPanelId(idPrefix, id) };
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const moveTo = (index: number) => {
@@ -63,9 +67,9 @@ export function Tabs({ label, idPrefix, tabs, selectedId, onSelect }: TabsProps)
             }}
             type="button"
             role="tab"
-            id={getTabId(idPrefix, tab.id)}
+            id={ids(tab.id).tab}
             aria-selected={selected}
-            aria-controls={selected ? getTabPanelId(idPrefix, tab.id) : undefined}
+            aria-controls={selected ? ids(tab.id).panel : undefined}
             tabIndex={selected ? 0 : -1}
             className="ui-tab"
             onClick={() => onSelect(tab.id)}

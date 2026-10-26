@@ -29,8 +29,8 @@ const MANAGEMENT_TAB_PANEL_IDS = {
  * `hidden`-attribute writer - both those functions' panel-hiding code
  * (and the now fully-dead `initDataTabs`/`initManagementTabs`, and the
  * button `className`/`aria-selected` writes, already fully redundant with
- * `DataTabButton.jsx`/`ManagementTabButton.jsx`'s own Context-derived
- * styling) are deleted outright, along with the `window.activateDataTab`/
+ * the tab buttons' own Context-derived styling - now the app header's
+ * view tabs and ManagementTabButton.jsx) are deleted outright, along with the `window.activateDataTab`/
  * `window.activateManagementTab` bridges `TabStateProvider.tsx` used to
  * call as a side effect.
  *

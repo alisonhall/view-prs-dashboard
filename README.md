@@ -672,6 +672,7 @@ Scope mode behavior:
 
 Insights behavior notes:
 
+- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all` and a link to this README.
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
 - The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, close), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
   - Select a PR by clicking anywhere on its row that isn't a control (click it again to deselect), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
@@ -683,7 +684,7 @@ Insights behavior notes:
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any Notes field has an unsaved edit (text, selects, and comments or stories added or removed).
 - Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
-- When auto-refresh is paused, a floating `Auto update paused` indicator appears with clickable blocker chips (PR numbers and author-draft chips) that jump directly to the matching unsaved UI, plus a `Discard unsaved` action (manual override to render the pending update and discard unsaved edits).
+- When auto-refresh is paused, an `Auto update paused` banner appears under the app header - and stays at the top of the window while you scroll - with clickable blocker chips (PR numbers and author-draft chips) that jump directly to the matching unsaved UI, plus a `Discard unsaved` action (manual override to render the pending update and discard unsaved edits).
 - Polling failures now show a persistent warning snackbar that includes `Last successful check` and `Last error at` timestamps.
 - The polling warning snackbar is automatically cleared after a successful poll.
 - The detail pane's Activity tab lists the PR's events grouped by day, newest first: who did what (approved, requested changes, commented, pushed a commit, merged the PR...), when (the full time on hover), a link to GitHub, and the comment or review text in full - long ones fold behind `Show more`. One person's run of commits on a day is one line that expands to list them. The PR author's name and yours are styled.
@@ -1171,7 +1172,7 @@ Additional notes:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
-  - Source rows in the statistics panel include a `View in table` button that switches to the PR Data tab, scrolls to the matching PR, and shows it in the detail pane.
+  - Source rows in the statistics panel include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
 - The page now includes an `Author Insights` tab that shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in Author Insights include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 

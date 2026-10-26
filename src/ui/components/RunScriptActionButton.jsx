@@ -4,7 +4,7 @@
  * Phase D (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): one
  * component for all 6 trigger buttons this phase converts (Run script,
  * Apply ack only, Apply clear only, Apply label, Refresh labels, Apply
- * filters (local)) - matching `DataTabButton.jsx`'s "no field-specific
+ * filters (local)) - matching the then DataTabButton's "no field-specific
  * behavior" shape. None of these 6 have ever had disabled/pending visual
  * state in the vanilla version (confirmed via grep - no `.disabled =`
  * writes for any of their ids anywhere), so this is deliberately NOT the

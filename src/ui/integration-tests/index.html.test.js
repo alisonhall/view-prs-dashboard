@@ -87,8 +87,6 @@ const { useNotesDirty } = require("../state/NotesDirtyContext");
 const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
 const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
-const { AutoRenderBlockedStatusText } = require("../components/AutoRenderBlockedStatusText");
-const { AutoRenderBlockedApplyButton } = require("../components/AutoRenderBlockedApplyButton");
 const { BackfillControls } = require("../components/BackfillControls");
 const { BackfillLogControls } = require("../components/BackfillLogControls");
 const { RunScriptActionButton } = require("../components/RunScriptActionButton");
@@ -125,7 +123,9 @@ const { Snackbar } = require("../components/Snackbar");
 const { SnackbarProvider } = require("../components/SnackbarProvider");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
 const { QuickCheckButton } = require("../components/QuickCheckButton");
-const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
+const { AppHeader } = require("../components/shell/AppHeader");
+const { AuthorInsightsProvider } = require("../components/AuthorInsightsProvider");
+const { AutoUpdatePausedBanner } = require("../components/shell/AutoUpdatePausedBanner");
 const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
 const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
 
@@ -668,8 +668,6 @@ function FilterStateTestHandle() {
 // through Context.
 function FilterStateTestRootHarness({ initialValues }) {
   const errorSnackbarRoot = document.getElementById("error-snackbar-root");
-  const autoRenderBlockedStatusRoot = document.getElementById("auto-render-blocked-status-root");
-  const autoRenderBlockedApplyBtnRoot = document.getElementById("auto-render-blocked-apply-btn-root");
 
   return React.createElement(
     // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
@@ -737,18 +735,6 @@ function FilterStateTestRootHarness({ initialValues }) {
                       React.createElement(ActionButtonsTestHarness),
                     ),
                     React.createElement(BackfillControlsTestHarness),
-                    autoRenderBlockedStatusRoot &&
-                      createPortal(
-                        React.createElement(AutoRenderBlockedStatusText),
-                        autoRenderBlockedStatusRoot,
-                        "auto-render-blocked-status",
-                      ),
-                    autoRenderBlockedApplyBtnRoot &&
-                      createPortal(
-                        React.createElement(AutoRenderBlockedApplyButton),
-                        autoRenderBlockedApplyBtnRoot,
-                        "auto-render-blocked-apply-btn",
-                      ),
                     // Window-bridge elimination Phase 7.4: production's
                     // NotesDirtyProvider > (AppRoot's)
                     // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
@@ -927,7 +913,8 @@ function ActionButtonsTestHarness() {
   const { handleQuickCheck, handleQuickCheckAll } = useQuickCheckActions();
   const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
   const quickCheckContainer = document.getElementById("quick-check-btn-root");
-  const quickCheckAllContainer = document.getElementById("quick-check-all-btn-root");
+  const appHeaderContainer = document.getElementById("app-header-root");
+  const appBannerContainer = document.getElementById("app-banner-root");
 
   return React.createElement(
     React.Fragment,
@@ -944,11 +931,19 @@ function ActionButtonsTestHarness() {
         quickCheckContainer,
         "quick-check",
       ),
-    quickCheckAllContainer &&
+    // UI redesign phase 9a: the real app header (Quick check all) and
+    // auto-update-paused banner.
+    appHeaderContainer &&
       createPortal(
-        React.createElement(QuickCheckAllButton, { onCheck: () => handleQuickCheckAll() }),
-        quickCheckAllContainer,
-        "quick-check-all",
+        React.createElement(AppHeader, { onQuickCheckAll: () => handleQuickCheckAll() }),
+        appHeaderContainer,
+        "app-header",
+      ),
+    appBannerContainer &&
+      createPortal(
+        React.createElement(AuthorInsightsProvider, null, React.createElement(AutoUpdatePausedBanner)),
+        appBannerContainer,
+        "app-banner",
       ),
   );
 }
@@ -1280,15 +1275,16 @@ describe("index page rendering with Testing Library", () => {
   // from this test, same reasoning as the removed "author insights View
   // in table..." test below. Only the page heading is still genuinely
   // static HTML.
-  test("shows the page heading from static HTML", () => {
-    expect(screen.getByRole("heading", { name: "View PR Updates" })).toBeInTheDocument();
+  test("shows the page heading in the app header", () => {
+    initTestPage();
+    expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "View PR Updates" })).toBeInTheDocument();
   });
 
-  test("blocked auto-update indicator is hidden by default and exposes apply action", () => {
+  test("blocked auto-update banner is hidden by default and exposes apply action", () => {
+    initTestPage();
     const indicator = document.getElementById("auto-render-blocked-indicator");
     expect(indicator).toBeInTheDocument();
     expect(indicator).toHaveAttribute("hidden");
-    expect(document.getElementById("auto-render-blocked-pr-links")).toBeInTheDocument();
     expect(document.getElementById("auto-render-blocked-apply-btn")).toBeInTheDocument();
   });
 

@@ -19,6 +19,11 @@ describe('AuthorInsightsPrLink', () => {
     expect(screen.getByRole('link', { name: '#7 Another PR' })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
   });
 
+  test('"View in table" says where it goes, by the view tab\'s name', () => {
+    render(<AuthorInsightsPrLink entry={{ prNumber: '8', repo: 'owner/repo', data: { number: '8', title: 'PR eight' } }} />);
+    expect(screen.getByRole('button', { name: 'View in table' })).toHaveAttribute('title', 'Show this PR in the Pull requests view');
+  });
+
   // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
   // the button now calls useNavigateToPrInTable() directly, which

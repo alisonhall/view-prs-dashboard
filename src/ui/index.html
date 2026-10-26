@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="./styles/pr-table.css" />
     <link rel="stylesheet" href="./styles/pane.css" />
     <link rel="stylesheet" href="./styles/filter-bar.css" />
+    <link rel="stylesheet" href="./styles/shell.css" />
 </head>
 
 <body>
@@ -28,22 +29,14 @@
          the collapsible background-activity panel. Always mounted so its
          toggle's live count stays accurate while the panel is closed. -->
     <div id="activity-drawer-root"></div>
-    <div id="auto-render-blocked-indicator" class="auto-render-blocked-indicator" role="status" aria-label="Auto update paused" aria-live="polite"
-        aria-atomic="true" hidden>
-        <div class="auto-render-blocked-title">Auto update paused</div>
-        <span id="auto-render-blocked-status-root"></span>
-        <div id="auto-render-blocked-pr-links" class="auto-render-blocked-pr-links"></div>
-        <div class="auto-render-blocked-actions">
-            <span id="auto-render-blocked-apply-btn-root"></span>
-        </div>
-    </div>
-    <h1>View PR Updates</h1>
-    <nav>
-        <ul>
-            <li><a href="/">Home</a></li>
-            <li><a href="./README.md">README</a></li>
-        </ul>
-    </nav>
+    <!-- Rendered by React (components/shell/AppHeader.tsx): the app's name
+         and repo, the view tabs, when the data was last updated and Quick
+         check all. -->
+    <div id="app-header-root"></div>
+    <!-- Rendered by React (components/shell/AutoUpdatePausedBanner.tsx).
+         Its own element directly in <body>, so it can stay stuck to the top
+         of the window while you scroll (styles/shell.css). -->
+    <div id="app-banner-root" class="app-banner-root"></div>
 
     <h2>Management Tabs</h2>
     <div class="management-tabs" id="management-tabs">
@@ -108,10 +101,6 @@
                                  react-app.jsx) - see REACT_MIGRATION_PLAN.md's full
                                  vanilla-to-React sweep. -->
                             <span id="quick-check-btn-root"></span>
-                            <!-- Rendered by React (QuickCheckAllButton.jsx, mounted in
-                                 react-app.jsx) - checks every PR row already loaded,
-                                 across every repo, instead of typed-in numbers. -->
-                            <span id="quick-check-all-btn-root"></span>
                             <!-- Rendered by React (RunScriptActionButton.jsx, mounted in
                                  react-app.jsx) - Phase D, see REACT_MIGRATION_PLAN.md. -->
                             <span id="ack-only-btn-root"></span>
@@ -365,14 +354,8 @@
         </section>
     </div>
 
-    <h2>Data Views</h2>
+    <!-- The views; their tabs are in the app header. -->
     <div class="data-tabs" id="data-tabs">
-        <div class="data-tab-list" role="tablist" aria-label="PR data views">
-            <span id="tab-pr-data-root"></span>
-            <span id="tab-review-stats-root"></span>
-            <span id="tab-author-insights-root"></span>
-        </div>
-
         <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
             <!-- Rendered by React (react-app.jsx, plain-string portal) -
                  starts empty, see #request-activity-details above. -->

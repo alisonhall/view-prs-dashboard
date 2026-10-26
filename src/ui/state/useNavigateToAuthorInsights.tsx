@@ -10,7 +10,8 @@ import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.h
  * author option when that login isn't one - resolveValidAuthorLogin),
  * then focuses the author dropdown, or with `focusUnsaved` that author's
  * comment textarea. Used by
- * AutoRenderBlockedLinks.jsx's "jump to unsaved author draft" links.
+ * AutoRenderBlockedLinks' "jump to unsaved author draft" links (the app
+ * header's auto-update-paused banner).
  * Returns false for an empty login.
  *
  * The textarea is found with querySelector against the data attributes

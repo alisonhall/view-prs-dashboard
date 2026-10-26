@@ -1131,6 +1131,11 @@ No static type checking leads to:
       AlwaysShowInReviewCheckbox moved into components/filter-bar/ as
       .tsx. MultiSelectCheckboxList stays .jsx for the Run & Filter tab's
       rule lists until phase 9.
+    - Phase 9a (2026-10-26): the app header (AppHeader,
+      AutoUpdatePausedBanner), with QuickCheckAllButton and
+      AutoRenderBlockedLinks moved into components/shell/ as .tsx;
+      DataTabButton, AutoRenderBlockedStatusText and
+      AutoRenderBlockedApplyButton deleted.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

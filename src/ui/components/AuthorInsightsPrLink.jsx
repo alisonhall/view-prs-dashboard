@@ -11,7 +11,7 @@
  * useNavigateToPrInTable() (state/) instead of the
  * window.navigateToPrInTableFromAuthorInsights bridge (deleted outright,
  * along with its sibling window.navigateToPrInTableFromStats) -
- * AutoRenderBlockedLinks.jsx already used that exact hook for the same
+ * AutoRenderBlockedLinks (components/shell/) already used that exact hook for the same
  * tab-switch+dispatch behavior; it only needed a `repo` option added (see
  * the hook's own comment) to match what this caller needs.
  *
@@ -36,7 +36,7 @@ export function AuthorInsightsPrLink({ entry }) {
       <button
         type="button"
         className="author-insights-table-link"
-        title="Navigate to PR data tab and scroll to this PR"
+        title="Show this PR in the Pull requests view"
         onClick={() => navigateToPrInTable(prNumber, { repo: entry?.repo })}
       >
         View in table

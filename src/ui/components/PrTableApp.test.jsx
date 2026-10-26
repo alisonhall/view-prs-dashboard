@@ -1501,7 +1501,7 @@ describe('PrTableApp', () => {
   });
 
   // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // state/useNavigateToPrInTable.tsx (AutoRenderBlockedLinks.jsx) dispatches
+  // state/useNavigateToPrInTable.tsx (AutoRenderBlockedLinks) dispatches
   // this same event with a focusUnsaved detail flag now - this suite's own
   // PrSection mock (top of file) means the real .pr-link/.pr-notes-save
   // markup these assertions target never actually renders through

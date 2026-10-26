@@ -1,0 +1,158 @@
+/* The app header and its banner (components/shell/). */
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.app-header-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.app-header-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The view tabs: no rule under them here, the header's border frames them. */
+.app-header .ui-tab-list {
+  border-bottom: 0;
+}
+
+.app-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-left: auto;
+}
+
+.app-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.app-header-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.app-header-status[data-tone="attention"] {
+  border-color: var(--color-attention);
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-text);
+}
+
+.app-header-status[data-tone="attention"] .app-header-status-dot {
+  background: var(--color-attention);
+}
+
+.app-header-link {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-text);
+}
+
+/* Auto update paused: new data held back while something is unsaved.
+   Stuck to the top of the window while you scroll (it's what you'd be
+   editing far down the table), above the docked pane, below the drawer
+   overlay. Takes no space while hidden. */
+.app-banner-root {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.app-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-attention);
+  border-radius: var(--radius-lg);
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-text);
+  box-shadow: 0 2px 8px rgb(31 35 40 / 12%);
+}
+
+/* display: flex above would otherwise win over the hidden attribute. */
+.app-banner[hidden] {
+  display: none;
+}
+
+.app-banner-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+
+.app-banner-title {
+  font-size: var(--font-size-md);
+}
+
+.auto-render-blocked-pr-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.auto-render-blocked-pr-link,
+.app-banner-action {
+  padding: 2px 10px;
+  border: 1px solid var(--color-attention);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  font: 600 var(--font-size-sm) var(--font-sans);
+  color: var(--color-attention-text);
+  cursor: pointer;
+}
+
+.auto-render-blocked-pr-link:hover,
+.app-banner-action:hover {
+  background: var(--color-attention-subtle);
+}
+
+.auto-render-blocked-pr-link:focus-visible,
+.app-banner-action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app-banner-action {
+  margin-left: auto;
+}

@@ -3,17 +3,15 @@
 const React = require('react');
 const { render, screen, fireEvent, act } = require('@testing-library/react');
 require('@testing-library/jest-dom');
-const { AutoRenderBlockedLinks, AutoRenderBlockedLinksLive } = require('./AutoRenderBlockedLinks');
-const { AutoRenderBlockingProvider } = require('./AutoRenderBlockingProvider');
-const { useAutoRenderBlockingActions } = require('../state/AutoRenderBlockingContext');
-const { AuthorInsightsContext, defaultAuthorInsights } = require('../state/AuthorInsightsContext');
-const { TabStateProvider } = require('./TabStateProvider');
-const { useTabState } = require('../state/TabStateContext');
-const { PrDataProvider } = require('../state/PrDataProvider');
-const { usePrData } = require('../state/PrDataContext');
+const { AutoRenderBlockedLinks } = require('./AutoRenderBlockedLinks');
+const { AuthorInsightsContext, defaultAuthorInsights } = require('../../state/AuthorInsightsContext');
+const { TabStateProvider } = require('../TabStateProvider');
+const { useTabState } = require('../../state/TabStateContext');
+const { PrDataProvider } = require('../../state/PrDataProvider');
+const { usePrData } = require('../../state/PrDataContext');
 
 // Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// AutoRenderBlockedLinks.jsx now calls real hooks (useNavigateToPrInTable/
+// AutoRenderBlockedLinks now calls real hooks (useNavigateToPrInTable/
 // useNavigateToAuthorInsights) instead of window.navigateToPrInTable/
 // navigateToAuthorInsights - this harness wraps real TabStateProvider/
 // PrDataProvider (the hooks' own real dependencies) and exposes their
@@ -134,100 +132,5 @@ describe('AutoRenderBlockedLinks', () => {
     });
 
     expect(latestPrData.selectedAuthorLogin).toBe('alice');
-  });
-});
-
-// Window-bridge elimination Phase 7.4: AutoRenderBlockedLinksLive reads the
-// blocking lists from a real AutoRenderBlockingProvider and sets its
-// container's hidden/aria-label - what index.page.js's
-// renderAutoRenderBlockedLinks (and its deleted helper tests) used to do.
-describe('AutoRenderBlockedLinksLive', () => {
-  let blockingActions;
-  function CaptureBlockingActions() {
-    blockingActions = useAutoRenderBlockingActions();
-    return null;
-  }
-  const EMPTY = {
-    dirtyFieldCount: 0,
-    unsavedNotesCount: 0,
-    blockingPrNumbers: [],
-    blockingAuthorInsightsLogins: [],
-    blockingPrLabel: '',
-  };
-
-  const renderLive = (authorInsightsOverrides = {}) => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    renderWithOverrides(
-      React.createElement(
-        AutoRenderBlockingProvider,
-        null,
-        React.createElement(CaptureBlockingActions),
-        React.createElement(AutoRenderBlockedLinksLive, { container }),
-      ),
-      authorInsightsOverrides,
-    );
-    return container;
-  };
-
-  afterEach(() => {
-    blockingActions = undefined;
-    document.body.innerHTML = '';
-  });
-
-  test('given nothing blocks, when mounted, then the container is hidden with an empty label and no chips', () => {
-    const container = renderLive();
-
-    expect(container.hidden).toBe(true);
-    expect(container.getAttribute('aria-label')).toBe('');
-    expect(screen.queryByRole('button')).toBeNull();
-  });
-
-  test('given blocking PRs, when the state is pushed, then the container unhides, is labelled with the PR label, and shows a chip per PR', () => {
-    const container = renderLive();
-
-    act(() => {
-      blockingActions.setBlockingState({
-        ...EMPTY,
-        unsavedNotesCount: 2,
-        blockingPrNumbers: ['7', '42'],
-        blockingPrLabel: 'Blocking PRs: #7, #42',
-      });
-    });
-
-    expect(container.hidden).toBe(false);
-    expect(container.getAttribute('aria-label')).toBe('Blocking PRs: #7, #42');
-    expect(screen.getByRole('button', { name: '#7' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '#42' })).toBeInTheDocument();
-  });
-
-  test('given only blocking authors, when the state is pushed, then the label lists their display names', () => {
-    const container = renderLive({
-      getAuthorInsightsDisplayName: (login) => ({ alice: 'Alice A', bob: 'Bob B' }[login] || login),
-    });
-
-    act(() => {
-      blockingActions.setBlockingState({ ...EMPTY, blockingAuthorInsightsLogins: ['alice', 'bob'] });
-    });
-
-    expect(container.hidden).toBe(false);
-    expect(container.getAttribute('aria-label')).toBe('Blocking author drafts: Alice A, Bob B');
-    expect(screen.getByRole('button', { name: 'Author: Alice A' })).toBeInTheDocument();
-  });
-
-  test('given the blocking edits are saved, when the empty state is pushed, then the container hides again', () => {
-    const container = renderLive();
-    act(() => {
-      blockingActions.setBlockingState({ ...EMPTY, blockingPrNumbers: ['7'], blockingPrLabel: 'Blocking PRs: #7' });
-    });
-    expect(container.hidden).toBe(false);
-
-    act(() => {
-      blockingActions.setBlockingState(EMPTY);
-    });
-
-    expect(container.hidden).toBe(true);
-    expect(container.getAttribute('aria-label')).toBe('');
-    expect(screen.queryByRole('button')).toBeNull();
   });
 });

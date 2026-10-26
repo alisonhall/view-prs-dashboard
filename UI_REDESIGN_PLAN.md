@@ -634,6 +634,29 @@ becomes a small `react-app.tsx`. Done in steps:
   header button.
 - **9d - Clean-up:** delete the empty mount points and the CSS nothing uses
   any more.
+- **9a done (2026-10-26)** on branch `ui-redesign/phase-9`:
+  - `shell/AppHeader.tsx`, portaled into `#app-header-root` (it replaces
+    the static heading, the Home/README nav and the data-tab list): the
+    app's name and repo, the view tabs (Pull requests / Review stats /
+    Authors - `ui/Tabs`, which gains `idsFor` so they keep the panels'
+    existing ids, with arrow-key moves), an "Updated N ago" pill
+    (`pr-app-header.helpers.ts`, ticking each minute, marked from a day
+    old), Quick check all (`shell/QuickCheckAllButton.tsx`, moved from the
+    Run & Filter tab) and a README link.
+  - `shell/AutoUpdatePausedBanner.tsx` replaces the floating static panel:
+    React-owned and always in the page (hidden when nothing is held
+    back), it reads `isBlocked` instead of `AutoRenderBlockingProvider`
+    toggling the panel's `hidden`. `AutoRenderBlockedLinks` moves to
+    `shell/` as `.tsx`; `AutoRenderBlockedStatusText`,
+    `AutoRenderBlockedApplyButton` and `DataTabButton` are deleted.
+  - The header names the repos the table shows rows from (one by name,
+    else "3 repos" with the list on hover), not just the last run's: stored
+    rows can span repos. The banner has its own root (`#app-banner-root`),
+    sticky at the top of the window so it stays in view while you edit far
+    down the table (the old floating panel did), above the docked pane.
+  - New `styles/shell.css`; the old heading, data-tab and indicator CSS
+    leave `index.css`. The management tabs stay under the header until
+    9b.
 
 ### Phase 10 - Wrap-up
 

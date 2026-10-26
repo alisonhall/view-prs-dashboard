@@ -78,7 +78,7 @@ function SourceItemRow({ item, detailText }) {
           <button
             type="button"
             className="author-insights-table-link"
-            title="Navigate to PR data tab and scroll to this PR"
+            title="Show this PR in the Pull requests view"
             style={{ fontSize: '12px', padding: '3px 6px' }}
             onClick={(e) => {
               e.preventDefault();

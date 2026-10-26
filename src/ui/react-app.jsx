@@ -22,7 +22,6 @@ import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsT
 import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
 import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
 import { ApplyLabelSelect } from './components/ApplyLabelSelect';
-import { AutoRenderBlockedLinksLive } from './components/AutoRenderBlockedLinks';
 import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { BackfillControls } from './components/BackfillControls';
@@ -37,7 +36,6 @@ import { SnackbarProvider } from './components/SnackbarProvider';
 import { TriggerAutoRunButton } from './components/TriggerAutoRunButton';
 import { RunScriptActionButton } from './components/RunScriptActionButton';
 import { QuickCheckButton } from './components/QuickCheckButton';
-import { QuickCheckAllButton } from './components/QuickCheckAllButton';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { useBackfillActions } from './state/useBackfillActions';
 import { useBackfillTabAutoRefresh } from './state/useBackfillTabAutoRefresh';
@@ -54,14 +52,13 @@ import { useFilterState } from './state/FilterStateContext';
 import { NeedsAttentionProvider } from './components/NeedsAttentionProvider';
 import { TabStateProvider } from './components/TabStateProvider';
 import { TabPanelVisibilitySync } from './components/TabPanelVisibilitySync';
-import { DataTabButton } from './components/DataTabButton';
 import { ManagementTabButton } from './components/ManagementTabButton';
 import { AutoRenderBlockingProvider } from './components/AutoRenderBlockingProvider';
 import { AutoRenderBlockingSync } from './components/AutoRenderBlockingSync';
 import { useMultiSelectDropdownClosing } from './state/useMultiSelectDropdownClosing';
 import { installCredentialFieldErrorFilters } from './helpers/credential-field-error-filter.helpers.ts';
-import { AutoRenderBlockedStatusText } from './components/AutoRenderBlockedStatusText';
-import { AutoRenderBlockedApplyButton } from './components/AutoRenderBlockedApplyButton';
+import { AppHeader } from './components/shell/AppHeader';
+import { AutoUpdatePausedBanner } from './components/shell/AutoUpdatePausedBanner';
 import { NotesDirtyProvider } from './components/NotesDirtyProvider';
 import { PrInsightsDisplayProvider } from './components/PrInsightsDisplayProvider';
 import { ReviewConversationsUiStateProvider } from './components/ReviewConversationsUiStateProvider';
@@ -363,7 +360,6 @@ function computeStaticContainers() {
     errorSnackbar: document.getElementById('error-snackbar-root'),
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
     quickCheckBtn: document.getElementById('quick-check-btn-root'),
-    quickCheckAllBtn: document.getElementById('quick-check-all-btn-root'),
     runScriptBtn: document.getElementById('run-script-btn-root'),
     ackOnlyBtn: document.getElementById('ack-only-btn-root'),
     clearOnlyBtn: document.getElementById('clear-only-btn-root'),
@@ -373,20 +369,16 @@ function computeStaticContainers() {
     actorNames: document.getElementById('actor-names-root'),
     export: document.getElementById('export-container'),
     applyLabelSelect: document.getElementById('apply-label-select-root'),
-    autoRenderBlockedLinks: document.getElementById('auto-render-blocked-pr-links'),
     mergedRequestMoreAction: document.getElementById('merged-request-more-action'),
     activityDrawer: document.getElementById('activity-drawer-root'),
-    tabPrData: document.getElementById('tab-pr-data-root'),
-    tabReviewStats: document.getElementById('tab-review-stats-root'),
-    tabAuthorInsights: document.getElementById('tab-author-insights-root'),
+    appHeader: document.getElementById('app-header-root'),
+    appBanner: document.getElementById('app-banner-root'),
     tabStatus: document.getElementById('tab-status-root'),
     tabScript: document.getElementById('tab-script-root'),
     tabBackfill: document.getElementById('tab-backfill-root'),
     tabActionLog: document.getElementById('tab-action-log-root'),
     tabActorNameCache: document.getElementById('tab-actor-name-cache-root'),
     tabExport: document.getElementById('tab-export-root'),
-    autoRenderBlockedStatus: document.getElementById('auto-render-blocked-status-root'),
-    autoRenderBlockedApplyBtn: document.getElementById('auto-render-blocked-apply-btn-root'),
     prSections: document.getElementById('pr-sections'),
   };
 }
@@ -489,10 +481,6 @@ function PrTablePortal({ container }) {
     'pr-table',
   );
 }
-
-// Window-bridge elimination Phase 7.4: AutoRenderBlockedLinksLive (in
-// AutoRenderBlockedLinks.jsx) renders the "jump to unsaved" chips from
-// AutoRenderBlockingProvider and sets the chip list's `hidden`/`aria-label`.
 
 function MergedRequestMoreActionLive() {
   const { isVisible, repo } = useMergedRequestMoreActionOptions();
@@ -623,8 +611,9 @@ function AppRoot() {
   // own comment there).
 
   // Window-bridge elimination Phase 7.4: window.updateReactAutoRenderBlockedLinks
-  // (and the state it set here) is gone - <AutoRenderBlockedLinksLive /> reads
-  // the blocking lists from AutoRenderBlockingProvider.
+  // (and the state it set here) is gone - the app header's
+  // AutoUpdatePausedBanner reads the blocking lists from
+  // AutoRenderBlockingProvider.
 
   // Window-bridge elimination Phase 7.5: the 'viewprs:react-ready' event this
   // component used to dispatch from its last effect is gone. It told
@@ -732,8 +721,8 @@ function AppRoot() {
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 
         {/* Phase G.1 (see REACT_MIGRATION_PLAN.md, "Full migration
-            roadmap"): widened to also wrap AutoRenderBlockedLinks.jsx's
-            portal (further down, inside JobEventsProvider) - its own
+            roadmap"): widened to also wrap the "jump to unsaved" links
+            (now in the app header's portal, further down) - its own
             useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx
             hooks call useTabState() directly now, which silently resolved
             to this Context's no-op default (not the real Provider) when
@@ -756,24 +745,6 @@ function AppRoot() {
             appearing after H.21's useIsTabPanelVisible rewrite), not
             jsdom (every jsdom test happens to wrap its own Probe in a
             real Provider directly, side-stepping this). */}
-          {containers.tabPrData &&
-            createPortal(
-              <DataTabButton tabKey="pr-data" label="PR data" panelId="tab-panel-pr-data" />,
-              containers.tabPrData,
-              'tab-pr-data',
-            )}
-          {containers.tabReviewStats &&
-            createPortal(
-              <DataTabButton tabKey="review-stats" label="Review statistics" panelId="tab-panel-review-stats" />,
-              containers.tabReviewStats,
-              'tab-review-stats',
-            )}
-          {containers.tabAuthorInsights &&
-            createPortal(
-              <DataTabButton tabKey="author-insights" label="Author Insights" panelId="tab-panel-author-insights" />,
-              containers.tabAuthorInsights,
-              'tab-author-insights',
-            )}
           {containers.tabStatus &&
             createPortal(
               <ManagementTabButton tabKey="status" label="Activity" panelId="tab-panel-status" />,
@@ -811,18 +782,6 @@ function AppRoot() {
               'tab-export',
             )}
 
-        {containers.autoRenderBlockedStatus &&
-            createPortal(
-              <AutoRenderBlockedStatusText />,
-              containers.autoRenderBlockedStatus,
-              'auto-render-blocked-status',
-            )}
-          {containers.autoRenderBlockedApplyBtn &&
-            createPortal(
-              <AutoRenderBlockedApplyButton />,
-              containers.autoRenderBlockedApplyBtn,
-              'auto-render-blocked-apply-btn',
-            )}
 
         {containers.triggerAutoRunBtn &&
           createPortal(
@@ -888,12 +847,6 @@ function AppRoot() {
             'quick-check-btn',
           )}
 
-        {containers.quickCheckAllBtn &&
-          createPortal(
-            <QuickCheckAllButton onCheck={() => quickCheckActions.handleQuickCheckAll()} />,
-            containers.quickCheckAllBtn,
-            'quick-check-all-btn',
-          )}
 
         {hasReviewStatsBeenVisible && containers.reviewStatsControls &&
           createPortal(
@@ -1049,13 +1002,21 @@ function AppRoot() {
             'apply-label-select',
           )}
 
-        {containers.autoRenderBlockedLinks &&
+        {/* UI redesign phase 9a: the app header (view tabs, last update,
+            Quick check all) and, under it, the auto-update-paused banner. */}
+        {containers.appHeader &&
+          createPortal(
+            <AppHeader onQuickCheckAll={() => quickCheckActions.handleQuickCheckAll()} />,
+            containers.appHeader,
+            'app-header',
+          )}
+        {containers.appBanner &&
           createPortal(
             <AuthorInsightsProvider>
-              <AutoRenderBlockedLinksLive container={containers.autoRenderBlockedLinks} />
+              <AutoUpdatePausedBanner />
             </AuthorInsightsProvider>,
-            containers.autoRenderBlockedLinks,
-            'auto-render-blocked-links',
+            containers.appBanner,
+            'app-banner',
           )}
 
         {containers.mergedRequestMoreAction &&
