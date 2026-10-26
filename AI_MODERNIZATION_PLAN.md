@@ -1124,6 +1124,13 @@ No static type checking leads to:
     - Phase 7 (2026-10-25): the Notes tab (PrNotesTab, replacing
       NotesSection.jsx) and NotesStoriesField, on the new
       pr-notes-fields.helpers.ts.
+    - Phase 8 (2026-10-25): the filter bar (FilterBar, FilterMultiSelect,
+      DataViewHeaderPortals, replacing TableFilterChips.jsx and
+      AppliedFilterSummary.jsx), with ScopeFilterSelect,
+      PrNumberFilterInput, FilterOptionSelect and
+      AlwaysShowInReviewCheckbox moved into components/filter-bar/ as
+      .tsx. MultiSelectCheckboxList stays .jsx for the Run & Filter tab's
+      rule lists until phase 9.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

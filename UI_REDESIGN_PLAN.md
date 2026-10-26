@@ -578,6 +578,43 @@ app working:
   `ScopeFilterSelect`, `PrNumberFilterInput` and their siblings become
   `.tsx` as they move.
 - The Run Script options stay with the settings in phase 9.
+- **Done (2026-10-25)** on branch `ui-redesign/phase-8` (decision 7):
+  - `filter-bar/FilterBar.tsx` above the table: a header that always
+    shows - the Filters button (named with how many filters apply), "Showing
+    N of M PRs", a removable chip per applied filter and "Clear all" - and a
+    panel of controls in three groups: Rows (View scope, PR numbers, Always
+    show PRs in review), Labels and people (the five lists, as dropdowns of
+    checkboxes that open inline) and Your notes (the five notes filters).
+    It opens as it was left (`localStorage`, closed the first time); the
+    controls stay mounted, hidden, while it's closed.
+  - `filter-bar/DataViewHeaderPortals.tsx` portals the bar and the PR data
+    summary (#data-meta) from one `useAppliedFilterSummary()` call, which
+    now also returns the shown and total counts (`totalCount` comes from
+    `computeVisiblePrNumbers`).
+  - `state/useRowFilterListSeeding.ts` keeps the five lists' selections in
+    step with their options (a saved restore applies once its options
+    load; a value no longer among them is dropped), reading the selection
+    from `RowFilterSelectionContext` instead of the DOM. `MultiSelectListPortals` keeps only the
+    Run & Filter tab's four rule lists.
+  - `ScopeFilterSelect`, `PrNumberFilterInput`, `FilterOptionSelect` and
+    `AlwaysShowInReviewCheckbox` move into `filter-bar/` as `.tsx`; the
+    notes filters' definitions move from `react-app.jsx` to
+    `filter-bar-fields.ts`. `TableFilterChips` and the tab's
+    `AppliedFilterSummary` are deleted (the PR data summary keeps the same
+    text). `MultiSelectCheckboxList` stays `.jsx`: only the rule lists use
+    it now, and they move in phase 9.
+  - The Run & Filter tab's section is now "Attention and change rules",
+    its rules shown directly (no longer behind an "Advanced visibility and
+    attention rules" disclosure).
+  - Unchanged list selections no longer count as a change
+    (`useCheckedByListIdState`): the seeding writes every list each data
+    poll, which re-filtered the table and re-saved user-defaults every
+    time. The seeding runs from its own `<RowFilterListSeeding />`,
+    mounted beside the data Providers, not from the bar.
+  - New `styles/filter-bar.css`; the old chip and summary CSS leave
+    `index.css`.
+  - The integration harness mounts the real bar in place of the fields'
+    stand-in markup.
 
 ### Phase 9 - App shell
 
@@ -626,6 +663,12 @@ becomes a small `react-app.tsx`. Done in steps:
 6. **Notes save per field (phase 7, decided 2026-10-25):** each field's
    Edit gives it its own Save and Cancel. Saving sends that field with the
    others as saved, so another field's unsaved edit stays a draft.
+7. **The filter bar (phase 8, decided 2026-10-25)** holds the row filters
+   only - scope, PR numbers, the five lists, the notes filters and "Always
+   show PRs in review"; the attention, merge-commit and change-detection
+   rules wait for the Settings drawer in phase 9. The Run & Filter tab's
+   applied-filters summary goes (the chips and "Showing N of M" replace
+   it). The bar opens as it was left, closed the first time.
 
 ## Order and size
 

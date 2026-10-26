@@ -436,24 +436,24 @@ Use the form to run `src/script/check-open-pr-updates.sh` with common update mod
 
 UI filter behavior:
 
-- `Filter by PR number(s)`, label/author filters, and `View scope` affect only what is shown in local views.
+- The filter bar above the PR table holds the filters that choose which PRs show. Its header always shows: a `Filters` button (with how many filters are applied) that opens the controls, `Showing N of M PRs`, and a chip per applied filter - its `×` clears that one - with `Clear all`. It opens as you left it (remembered per browser); closed the first time.
+- The controls are in three groups: `Rows` (`View scope`, `PR numbers`, `Always show PRs in review`), `Labels and people` (`Labels`, `Excluded labels`, `Authors`, `Assigned to`, `Approved by`) and `Your notes` (the custom metadata filters below).
+- Filters affect only what is shown in local views; changing one updates the table at once from existing JSON, without new GitHub CLI requests. They're saved to `view-prs/data/user-defaults.json` and restored on reload.
 - `View scope` includes `All stored rows`, `Last run rows`, `Needs attention rows`, and `Needs attention or interacted rows`.
-- `Filter by label name(s)` and `Exclude by label name(s)` are checkbox dropdowns populated from labels found on currently loaded stored PR rows for the active repo view.
-- The `Filter by PR author(s)` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins.
+- `Labels` and `Excluded labels` are checkbox dropdowns populated from labels found on currently loaded stored PR rows for the active repo view.
+- The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins.
 - `data/actor-login-aliases.json` can map a current or replacement login to a canonical login when the same person appears under multiple GitHub identities. Example: `{"7c7240971101674017d4597caddf24_uhg": "mthom486_uhg"}`.
 - When an actor login alias exists, author filters, assigned-user filters, approver filters, author insights, reviewer statistics, and manual author comments treat the aliased login and canonical login as the same person.
-- The `Filter by Assigned user(s)` dropdown filters rows to PRs assigned to any selected user.
-- The `Filter by PR approver(s)` dropdown filters rows to PRs that have at least one approval from any selected user. Options are populated from `metrics.approvals` data on stored PR rows.
-- Multi-select filter dropdowns are collapsible: expand by clicking the label to see checkbox options, collapse by clicking the label again or clicking outside the dropdown. When selections are active, the dropdown summary shows "(N selected)" to indicate how many options are chosen.
+- The `Assigned to` dropdown filters rows to PRs assigned to any selected user.
+- The `Approved by` dropdown filters rows to PRs that have at least one approval from any selected user. Options are populated from `metrics.approvals` data on stored PR rows.
+- Each list opens by clicking it and closes by clicking it again or anywhere outside; it says how many of its options are selected.
 - Retrieved/stored JSON data remains complete so filters can be adjusted later without refetching.
 - `Run script` is the primary update operation for refreshing PR data.
-- `Filter by PR number(s)` in View Filters affects only what is shown in local views, not what is refreshed or stored.
-- When `Filter by PR number(s)` is set, it matches against all stored rows and ignores the selected `View scope` value and `Exclude by label name(s)` values.
-- Changing filter fields updates the HTML tables and local terminal preview from existing JSON without making new GitHub CLI requests.
+- When `PR numbers` is set, it matches against all stored rows and ignores the selected `View scope` value and `Excluded labels` values.
 
 Custom Metadata Filters:
 
-The `Visibility Filters` panel includes filters for custom metadata fields (manual notes data):
+The filter bar's `Your notes` group filters on your own notes:
 
 - **Custom comments**: Filter by presence/absence of custom review comments
   - `Any (with or without)`: Show all PRs regardless of custom comments
@@ -577,7 +577,7 @@ The table also includes:
 
 Needs Attention configuration:
 
-- The `View Filters` panel includes a `Needs Attention rules` section.
+- The Run & Filter tab's `Attention and change rules` panel includes a `Needs Attention rules` section.
 - Non-default values in this section are saved to `view-prs/data/user-defaults.json` and restored on reload.
 - The server creates `view-prs/data/user-defaults.json` on startup if it does not exist.
 - Configurable rules include:

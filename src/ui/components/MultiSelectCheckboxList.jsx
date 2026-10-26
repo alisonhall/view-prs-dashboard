@@ -59,7 +59,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-const getCheckboxId = (idPrefix, value, index) => {
+// Shared with the filter bar's lists (FilterMultiSelect), so checkbox ids match.
+export const getCheckboxId = (idPrefix, value, index) => {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()

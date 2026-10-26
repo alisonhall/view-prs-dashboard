@@ -474,7 +474,7 @@ export function FilterStateProvider({
 
   // Saves the view/filter options 150ms after `values` or any list
   // selection changes, whatever caused the change (a field edit, or a
-  // Context-only change such as TableFilterChips' "x" button). This is
+  // Context-only change such as a filter bar chip's "x" button). This is
   // the only automatic save path for these fields.
   useDebouncedEffect(
     () => {

@@ -50,6 +50,8 @@ export interface VisiblePrNumbersInput {
 export interface VisiblePrNumbersResult {
   visiblePrNumbers: string[];
   scopeLabel: string;
+  // Every stored row, before scope and filters (the filter bar's "of M").
+  totalCount: number;
 }
 
 const createPrVisiblePrNumbersHelpers = ({
@@ -131,7 +133,7 @@ const createPrVisiblePrNumbersHelpers = ({
       .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
       .filter(Boolean);
 
-    return { visiblePrNumbers, scopeLabel };
+    return { visiblePrNumbers, scopeLabel, totalCount: allEntries.length };
   };
 
   return {

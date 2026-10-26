@@ -41,7 +41,7 @@ export interface FilterValues {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
-  // "Advanced visibility and attention rules"
+  // The Run & Filter tab's "Attention and change rules"
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;
   attentionIgnoreMergeOnlyCommits?: boolean;

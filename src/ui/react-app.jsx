@@ -11,9 +11,6 @@ import { Suspense, lazy, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import { PrTableApp } from './components/PrTableApp';
-import { PrNumberFilterInput } from './components/PrNumberFilterInput';
-import { ScopeFilterSelect } from './components/ScopeFilterSelect';
-import { AlwaysShowInReviewCheckbox } from './components/AlwaysShowInReviewCheckbox';
 import { ContextFilterCheckbox } from './components/ContextFilterCheckbox';
 import { AttentionNoActivityModeSelect } from './components/AttentionNoActivityModeSelect';
 import { AuthorThreadResolutionModeSelect } from './components/AuthorThreadResolutionModeSelect';
@@ -21,7 +18,6 @@ import { AuthorThreadResolutionRuleVisibility } from './components/AuthorThreadR
 import { ContextRunScriptTextInput } from './components/ContextRunScriptTextInput';
 import { OpenModeSelect } from './components/OpenModeSelect';
 import { MultiSelectListPortals, MULTI_SELECT_LIST_ID_PREFIXES } from './components/MultiSelectListPortals';
-import { FilterOptionSelect } from './components/FilterOptionSelect';
 import { IgnoreCommitPatternsTextarea } from './components/IgnoreCommitPatternsTextarea';
 import { MergeCommitRulesTextarea } from './components/MergeCommitRulesTextarea';
 import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from './helpers/pr-merge-commit-rules.helpers.ts';
@@ -31,10 +27,9 @@ import { MergedRequestMoreAction } from './components/MergedRequestMoreAction';
 import { BackfillBadges } from './components/BackfillBadges';
 import { BackfillControls } from './components/BackfillControls';
 import { BackfillLogControls } from './components/BackfillLogControls';
-import { AppliedFilterSummary } from './components/AppliedFilterSummary';
-import { useAppliedFilterSummary } from './state/useAppliedFilterSummary';
-import { TableFilterChips } from './components/TableFilterChips';
-import { useTableFilterChips } from './state/useTableFilterChips';
+import { DataViewHeaderPortals } from './components/filter-bar/DataViewHeaderPortals';
+import { NOTES_FILTER_FIELDS } from './components/filter-bar/filter-bar-fields';
+import { RowFilterListSeeding } from './state/useRowFilterListSeeding';
 import { useMergedRequestMoreActionOptions } from './state/useMergedRequestMoreActionOptions';
 import { useRequestMoreMerged } from './state/useRequestMoreMerged';
 import { Snackbar } from './components/Snackbar';
@@ -229,20 +224,17 @@ function buildFilterStateInitialValues() {
   FILTER_STATE_TEXT_FIELDS.forEach((field) => {
     initialValues[field.key] = field.defaultValue;
   });
-  FILTER_OPTION_SELECT_FIELDS.forEach((field) => {
+  NOTES_FILTER_FIELDS.forEach((field) => {
     initialValues[field.key] = field.options[0]?.value ?? '';
   });
   return initialValues;
 }
 
 function buildFilterStateFieldPortals() {
-  const scopeModeContainer = document.getElementById('scope-mode-root');
-  const alwaysShowInReviewContainer = document.getElementById('always-show-in-review-root');
   const attentionNoActivityModeContainer = document.getElementById(
     'attention-no-activity-mode-root',
   );
   const openModeContainer = document.getElementById('open-mode-root');
-  const filterPrNumbersContainer = document.getElementById('filter-pr-numbers-root');
   const authorThreadResolutionModeContainer = document.getElementById(
     'attention-author-thread-resolution-mode-root',
   );
@@ -259,20 +251,11 @@ function buildFilterStateFieldPortals() {
     ...field,
     container: document.getElementById(`${field.id}-root`),
   }));
-  const contextOptionSelectContainers = FILTER_OPTION_SELECT_FIELDS.map((field) => ({
-    ...field,
-    container: document.getElementById(`${field.id}-root`),
-  }));
 
   const portals = [
-    scopeModeContainer && createPortal(<ScopeFilterSelect />, scopeModeContainer, 'scope-mode'),
-    alwaysShowInReviewContainer &&
-      createPortal(<AlwaysShowInReviewCheckbox />, alwaysShowInReviewContainer, 'always-show-in-review'),
     attentionNoActivityModeContainer &&
       createPortal(<AttentionNoActivityModeSelect />, attentionNoActivityModeContainer, 'attention-no-activity-mode'),
     openModeContainer && createPortal(<OpenModeSelect />, openModeContainer, 'open-mode'),
-    filterPrNumbersContainer &&
-      createPortal(<PrNumberFilterInput />, filterPrNumbersContainer, 'filter-pr-numbers'),
     authorThreadResolutionModeContainer &&
       createPortal(<AuthorThreadResolutionModeSelect />, authorThreadResolutionModeContainer, 'author-thread-resolution-mode'),
     // Headless (renders nothing, no container needed) - see its own header
@@ -325,92 +308,10 @@ function buildFilterStateFieldPortals() {
           field.id,
         ),
     ),
-    ...contextOptionSelectContainers.map(
-      (field) =>
-        field.container &&
-        createPortal(
-          <FilterOptionSelect
-            id={field.id}
-            name={field.name}
-            options={field.options}
-            filterStateKey={field.key}
-          />,
-          field.container,
-          field.id,
-        ),
-    ),
   ].filter(Boolean);
 
   return { portals };
 }
-
-// Context-backed "Any (with/without)" plain-metadata filter selects (see
-// FilterOptionSelect.jsx) - each `key` matches the field's `name`
-// attribute and has a corresponding entry in index.page.js's
-// FILTER_STATE_FIELD_MAP, and each is part of FilterStateContext's own
-// `values` object, so FilterStateProvider.tsx's debounced persistence
-// watcher already covers every one of these keys with no extra wiring
-// needed here.
-const FILTER_OPTION_SELECT_FIELDS = [
-  {
-    id: 'filter-custom-comments',
-    name: 'filterCustomComments',
-    key: 'filterCustomComments',
-    options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With custom comments' },
-      { value: 'without', label: 'Without custom comments' },
-    ],
-  },
-  {
-    id: 'filter-other-notes',
-    name: 'filterOtherNotes',
-    key: 'filterOtherNotes',
-    options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With other notes' },
-      { value: 'without', label: 'Without other notes' },
-    ],
-  },
-  {
-    id: 'filter-pr-difficulty',
-    name: 'filterPrDifficulty',
-    key: 'filterPrDifficulty',
-    options: [
-      { value: '', label: 'Any (set or not set)' },
-      { value: '1', label: '1' },
-      { value: '2', label: '2' },
-      { value: '3', label: '3' },
-      { value: '4', label: '4' },
-      { value: '5', label: '5' },
-      { value: 'not-set', label: 'Not set' },
-    ],
-  },
-  {
-    // A PR matches name-only/url-only/name-and-url when at least one of
-    // its stories does (pr-row-match-filters.helpers.ts).
-    id: 'filter-stories',
-    name: 'filterStories',
-    key: 'filterStories',
-    options: [
-      { value: '', label: 'Any' },
-      { value: 'none', label: 'Without any story details' },
-      { value: 'name-only', label: 'With only story name' },
-      { value: 'url-only', label: 'With only story URL' },
-      { value: 'name-and-url', label: 'With story and URL' },
-    ],
-  },
-  {
-    id: 'filter-analysis-of-pr',
-    name: 'filterAnalysisOfPr',
-    key: 'filterAnalysisOfPr',
-    options: [
-      { value: '', label: 'Any (with or without)' },
-      { value: 'with', label: 'With analysis' },
-      { value: 'without', label: 'Without analysis' },
-    ],
-  },
-];
 
 /**
  * Track C, slice C2d (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
@@ -458,8 +359,7 @@ function computeStaticContainers() {
     backfillControls: document.getElementById('backfill-controls-root'),
     backfillLogControls: document.getElementById('backfill-log-controls-root'),
     dataMeta: document.getElementById('data-meta'),
-    tableFilterChips: document.getElementById('table-filter-chips-root'),
-    appliedFilterSummary: document.getElementById('management-filter-summary-root'),
+    filterBar: document.getElementById('filter-bar-root'),
     errorSnackbar: document.getElementById('error-snackbar-root'),
     triggerAutoRunBtn: document.getElementById('trigger-auto-run-btn-root'),
     quickCheckBtn: document.getElementById('quick-check-btn-root'),
@@ -535,65 +435,9 @@ const DEFAULT_STATS_VIEW_STATE = {
   endDate: '',
 };
 
-// Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): a
-// thin wrapper so useAppliedFilterSummary() (a hook) can be called from
-// AppRoot's JSX, which otherwise can't call hooks mid-render. Must be
-// mounted inside both <RowFilterSelectionProvider> and <JobEventsProvider>
-// - see where it's actually portaled in AppRoot's own JSX.
-//
-// Also portals #data-meta's text from the same single hook call, rather
-// than a separate <DataMetaTextLive> component each independently calling
-// useAppliedFilterSummary() - found via code review that two separate
-// component instances don't share one useMemo/cache, so the whole
-// row-filtering derivation inside useFilteredPrRows() (which this hook
-// composes) was running twice per render for the exact same string. #data-
-// meta showed exactly this same string even before this round (both were
-// fed the same appliedSummaryText by the vanilla pipeline's
-// applyRenderResults, pr-render-apply.helpers.js), so sharing one call is
-// correct, not just cheaper.
-//
-// dataMetaText specifically falls back to "Loading..." until payload.ok
-// confirms a real /view-prs/data response has loaded - without this,
-// PrDataProvider's initial empty-seed payload ({}) would make
-// useAppliedFilterSummary() compute a premature, real-looking summary
-// ("Applied filters: repo=all repos | ... | Rows: 0") in the window before
-// the first fetch resolves, where the old window.updateReactDataMetaText-fed
-// version showed an explicit "Loading..." placeholder. The chip text itself
-// (summaryText, passed to AppliedFilterSummary below) is left as-is - this
-// guard is specifically about restoring #data-meta's own prior placeholder
-// behavior, not a new requirement for the chip.
-function AppliedFilterSummaryLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
-  const { payload } = usePrData();
-  const { summaryText, filterChips } = useAppliedFilterSummary();
-  const dataMetaText = payload?.ok ? summaryText : 'Loading...';
-  return (
-    <>
-      {appliedFilterSummaryContainer &&
-        createPortal(
-          <AppliedFilterSummary summaryText={summaryText} filterChips={filterChips} />,
-          appliedFilterSummaryContainer,
-          'applied-filter-summary',
-        )}
-      {dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, 'data-meta')}
-    </>
-  );
-}
-
-// Removable filter chips shown above the table (Data Views tab) - a thin
-// wrapper so useTableFilterChips() (a hook) can be called from AppRoot's
-// JSX, same pattern as AppliedFilterSummaryLive above. Must be mounted
-// inside both <RowFilterSelectionProvider> and <FilterStateProvider> - see
-// where it's actually portaled in AppRoot's own JSX, right alongside
-// AppliedFilterSummaryLive which has the same requirement.
-function TableFilterChipsLive({ container }) {
-  const { chips } = useTableFilterChips();
-  if (!container) return null;
-  return createPortal(<TableFilterChips chips={chips} />, container, 'table-filter-chips');
-}
-
 // The "↻ Labels" button - a thin wrapper so useRepoLabels() (a hook) can
-// be called from inside <RepoLabelsProvider>'s own subtree, same pattern
-// as TableFilterChipsLive above. Must be mounted inside
+// be called from inside <RepoLabelsProvider>'s own subtree, a thin
+// wrapper like the others here. Must be mounted inside
 // <RepoLabelsProvider> specifically (see where it's actually rendered in
 // AppRoot's own JSX) - AppRoot itself can't call useRepoLabels() directly
 // in its own body, since that Provider is a descendant AppRoot renders
@@ -767,8 +611,8 @@ function AppRoot() {
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up):
   // window.renderReactFilterSummary (the push bridge this useEffect used
-  // to register) is gone - <AppliedFilterSummaryLive> now derives the
-  // chip/summary text itself, reactively, via useAppliedFilterSummary().
+  // to register) is gone - <DataViewHeaderPortals> now derives the
+  // summary text itself, reactively, via useAppliedFilterSummary().
   // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // the vanilla call site that used to try calling this now-nonexistent
   // bridge (pr-render-apply.helpers.js's applyRenderResults, and its
@@ -842,8 +686,8 @@ function AppRoot() {
             JobEventsProvider widened from "just the drawer portal" (its own
             prior comment here predicted this) to wrap everything
             RowFilterSelectionProvider does - useAppliedFilterSummary.tsx
-            (consumed inside the prTable portal below AND by the
-            appliedFilterSummary portal further down) needs useJobEvents()'s
+            (consumed by DataViewHeaderPortals further down, for the
+            filter bar and the PR data summary) needs useJobEvents()'s
             schedulerSummary too, and those are sibling portals relative to
             the drawer, not an ancestor/descendant pair - same
             cross-portal-sharing reason every other Provider at this level
@@ -879,14 +723,11 @@ function AppRoot() {
 
         <FilterOptionsProvider>
           <MultiSelectListPortals containers={containers} />
+          {/* The filter bar's lists' selections, kept in step with their options. */}
+          <RowFilterListSeeding />
+          {/* The filter bar and the PR data summary above the table. */}
+          <DataViewHeaderPortals filterBarContainer={containers.filterBar} dataMetaContainer={containers.dataMeta} />
         </FilterOptionsProvider>
-
-        <AppliedFilterSummaryLive
-          appliedFilterSummaryContainer={containers.appliedFilterSummary}
-          dataMetaContainer={containers.dataMeta}
-        />
-
-        <TableFilterChipsLive container={containers.tableFilterChips} />
 
         {containers.errorSnackbar && createPortal(<Snackbar />, containers.errorSnackbar, 'error-snackbar')}
 

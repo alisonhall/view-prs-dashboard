@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 /**
  * The checked-state shared by the three multi-select selection Contexts
@@ -18,12 +18,19 @@ export interface CheckedByListIdValue<L extends string> {
 export function useCheckedByListIdState<L extends string>(): CheckedByListIdValue<L> {
   const [checkedByListId, setCheckedByListId] = useState<Partial<Record<L, Set<string>>>>({});
 
-  // Anything other than an array clears the list.
+  // Anything other than an array clears the list. The same values keep
+  // the same state, so nothing re-renders (or re-saves): the lists'
+  // seeding writes every list each time their options are rebuilt, which
+  // is every data poll.
   const setChecked = useCallback((listId: L, values: unknown) => {
-    setCheckedByListId((previous) => ({
-      ...previous,
-      [listId]: new Set(Array.isArray(values) ? values : []),
-    }));
+    setCheckedByListId((previous) => {
+      const next = new Set(Array.isArray(values) ? values : []);
+      const current = previous[listId];
+      if (current && current.size === next.size && Array.from(next).every((value) => current.has(value))) {
+        return previous;
+      }
+      return { ...previous, [listId]: next };
+    });
   }, []);
 
   const toggle = useCallback((listId: L, value: string) => {
@@ -38,6 +45,7 @@ export function useCheckedByListIdState<L extends string>(): CheckedByListIdValu
     });
   }, []);
 
-  // A new object each render, as the three Providers always returned.
-  return { checkedByListId, toggle, setChecked };
+  // The same object until the state changes: consumers depend on it (the
+  // filters' save watcher, for one).
+  return useMemo(() => ({ checkedByListId, toggle, setChecked }), [checkedByListId, toggle, setChecked]);
 }

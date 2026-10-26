@@ -572,64 +572,6 @@
             font-size: 13px;
         }
 
-        .management-filter-summary {
-            margin: 0 0 8px;
-            white-space: pre-wrap;
-            font-family: SFMono-Regular, Menlo, Consolas, monospace;
-            font-size: 12px;
-            line-height: 1.4;
-            padding: 8px;
-            border-radius: 8px;
-            border: 1px solid #d0d7de;
-            background: #fff;
-            color: #1f2328;
-        }
-
-        .applied-filter-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin: 0 0 10px;
-        }
-
-        .applied-filter-chip {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            border: 1px solid #bfcbda;
-            background: #edf4ff;
-            color: #0b57d0;
-            font-size: 12px;
-            font-weight: 600;
-            padding: 3px 8px;
-        }
-
-        .applied-filter-chip-removable {
-            padding-right: 4px;
-            gap: 4px;
-        }
-
-        .applied-filter-chip-remove {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            border: none;
-            border-radius: 999px;
-            background: transparent;
-            color: inherit;
-            font-size: 13px;
-            line-height: 1;
-            cursor: pointer;
-            padding: 0;
-        }
-
-        .applied-filter-chip-remove:hover,
-        .applied-filter-chip-remove:focus-visible {
-            background: #bfcbda;
-        }
-
         .low-emphasis-card {
             opacity: 0.86;
             background: #fafbfc;

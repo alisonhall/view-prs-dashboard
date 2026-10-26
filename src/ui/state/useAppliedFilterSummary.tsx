@@ -46,9 +46,17 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * widened to sit inside those Providers for exactly this reason - see
  * react-app.jsx's own comment at JobEventsProvider).
  */
-export function useAppliedFilterSummary(): { summaryText: string; filterChips: string[] } {
+export interface AppliedFilterSummary {
+  summaryText: string;
+  filterChips: string[];
+  // The rows shown, and every stored row (the filter bar's "Showing N of M").
+  shownCount: number;
+  totalCount: number;
+}
+
+export function useAppliedFilterSummary(): AppliedFilterSummary {
   const { payload, selectedRepo } = usePrData();
-  const { visiblePrNumbers, scopeLabel } = useFilteredPrRows();
+  const { visiblePrNumbers, scopeLabel, totalCount } = useFilteredPrRows();
   const { checkedByListId } = useRowFilterSelection();
   const { schedulerSummary } = useJobEvents();
   const filterState = useContext(FilterStateContext);
@@ -82,11 +90,12 @@ export function useAppliedFilterSummary(): { summaryText: string; filterChips: s
       scheduler: schedulerSummary,
     });
 
-    return { summaryText: appliedSummaryText, filterChips };
+    return { summaryText: appliedSummaryText, filterChips, shownCount: visiblePrNumbers.length, totalCount };
   }, [
     selectedRepo,
     scopeLabel,
     visiblePrNumbers,
+    totalCount,
     payload,
     checkedByListId,
     values,

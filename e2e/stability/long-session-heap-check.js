@@ -191,11 +191,12 @@ async function runInteractionCycle(page, cycleIndex) {
   }
 
   if (cycleIndex % 10 === 0) {
-    // "Run & Filter" is a separate (management) tab group from the
-    // PR data/Review stats/Author Insights "Data Views" tabs switched
-    // above - #filter-pr-numbers/#label-list are only visible once it's
-    // selected.
-    await page.getByRole("tab", { name: "Run & Filter" }).click();
+    // The filter bar above the PR table (UI redesign phase 8): open it if
+    // it's closed - it opens as it was left, so only the first time.
+    const filterToggle = page.getByRole("region", { name: "Filters", exact: true }).getByRole("button", { name: /^Filters/ });
+    if ((await filterToggle.getAttribute("aria-expanded")) !== "true") {
+      await filterToggle.click();
+    }
 
     const filterInput = page.locator("#filter-pr-numbers");
     await filterInput.fill("1");

@@ -122,7 +122,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
-    // The scheduler fields AppliedFilterSummary's "Applied filters" text
+    // The scheduler fields the PR data summary's "Applied filters" text
     // shows (interval, cooldown, last manual/auto run, last skip reason
     // and error) - same whole-scheduler-snapshot category, read off every
     // envelope's bundled scheduler object.

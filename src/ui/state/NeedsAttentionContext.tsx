@@ -3,7 +3,7 @@ import { createPrNeedsAttentionHelpers, type AttentionConfig } from '../helpers/
 
 /**
  * "Needs attention" classification (shouldShowNeedsAttention/
- * entryNeedsAttention) plus the "Advanced visibility and attention rules"
+ * entryNeedsAttention) plus the "Attention and change rules"
  * config they apply. NeedsAttentionProvider derives both from the Run &
  * Filter form's values (FilterStateContext), and PrTableApp reads them here
  * - `attentionConfig` is a real object, used directly as a useMemo

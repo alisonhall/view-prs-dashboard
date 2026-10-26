@@ -78,7 +78,6 @@ const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
 const prDataProbe = createPrDataProbe();
 const { useBackfillStatus } = require("../state/BackfillStatusContext");
 const { usePrData } = require("../state/PrDataContext");
-const { useAppliedFilterSummary } = require("../state/useAppliedFilterSummary");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { useFilterState } = require("../state/FilterStateContext");
 const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
@@ -120,7 +119,8 @@ const { FilterOptionsProvider } = require("../components/FilterOptionsProvider")
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
 const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
-const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
+const { DataViewHeaderPortals } = require("../components/filter-bar/DataViewHeaderPortals");
+const { RowFilterListSeeding } = require("../state/useRowFilterListSeeding");
 const { Snackbar } = require("../components/Snackbar");
 const { SnackbarProvider } = require("../components/SnackbarProvider");
 const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
@@ -334,38 +334,6 @@ const injectRunFilterFieldElements = () => {
   };
 
   setRootContent(
-    "scope-mode-root",
-    '<select id="scope-mode" name="scopeMode"><option value="all" selected>All stored rows</option><option value="last-run">Last run rows</option><option value="needs-attention">Needs attention rows</option><option value="needs-attention-or-interacted">Needs attention or interacted rows</option></select>',
-  );
-  setRootContent(
-    "filter-pr-numbers-root",
-    '<input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />',
-  );
-  setRootContent(
-    "filter-custom-comments-root",
-    '<select id="filter-custom-comments" name="filterCustomComments"><option value="" selected>Any (with or without)</option><option value="with">With custom comments</option><option value="without">Without custom comments</option></select>',
-  );
-  setRootContent(
-    "filter-other-notes-root",
-    '<select id="filter-other-notes" name="filterOtherNotes"><option value="" selected>Any (with or without)</option><option value="with">With other notes</option><option value="without">Without other notes</option></select>',
-  );
-  setRootContent(
-    "filter-pr-difficulty-root",
-    '<select id="filter-pr-difficulty" name="filterPrDifficulty"><option value="" selected>Any (set or not set)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="not-set">Not set</option></select>',
-  );
-  setRootContent(
-    "filter-stories-root",
-    '<select id="filter-stories" name="filterStories"><option value="" selected>Any</option><option value="none">Without any story details</option><option value="name-only">With only story name</option><option value="url-only">With only story URL</option><option value="name-and-url">With story and URL</option></select>',
-  );
-  setRootContent(
-    "filter-analysis-of-pr-root",
-    '<select id="filter-analysis-of-pr" name="filterAnalysisOfPr"><option value="" selected>Any (with or without)</option><option value="with">With analysis</option><option value="without">Without analysis</option></select>',
-  );
-  setRootContent(
-    "always-show-in-review-root",
-    '<input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" />',
-  );
-  setRootContent(
     "attention-no-activity-mode-root",
     '<select id="attention-no-activity-mode" name="attentionNoActivityMode"><option value="all" selected>Mark all NO_ACTIVITY PRs</option><option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a reviewer</option><option value="assigned-only">Only NO_ACTIVITY PRs assigned to me</option><option value="reviewer-only">Only PRs where I am a reviewer</option><option value="none">Never mark NO_ACTIVITY PRs</option></select>',
   );
@@ -489,23 +457,6 @@ const buildMultiSelectContainers = () => {
 // to be mounted *inside* the harness's PrDataProvider (not as its own independent
 // root the way this used to be) since it needs a real <PrDataProvider/>
 // ancestor, which only exists there.
-function AppliedFilterSummaryTestLive({ appliedFilterSummaryContainer, dataMetaContainer }) {
-  const { payload } = usePrData();
-  const { summaryText, filterChips } = useAppliedFilterSummary();
-  const dataMetaText = payload?.ok ? summaryText : "Loading...";
-  return React.createElement(
-    React.Fragment,
-    null,
-    appliedFilterSummaryContainer &&
-      createPortal(
-        React.createElement(AppliedFilterSummary, { summaryText, filterChips }),
-        appliedFilterSummaryContainer,
-        "applied-filter-summary",
-      ),
-    dataMetaContainer && createPortal(dataMetaText, dataMetaContainer, "data-meta"),
-  );
-}
-
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
 // below, as the ancestor of the harness's PrDataProvider - the same
@@ -831,18 +782,19 @@ function FilterStateTestRootHarness({ initialValues }) {
                     // inside the SAME PrDataProvider as PrTableApp, so
                     // FilterOptionsProvider derives its 9 option lists from
                     // the exact payload/selectedRepo the table is showing.
+                    // UI redesign phase 8: the real filter bar and PR data
+                    // summary, as react-app.jsx mounts them (inside
+                    // FilterOptionsProvider, which the bar's lists read).
                     React.createElement(
                       FilterOptionsProvider,
                       null,
                       React.createElement(MultiSelectListPortals, { containers: buildMultiSelectContainers() }),
+                      React.createElement(RowFilterListSeeding),
+                      React.createElement(DataViewHeaderPortals, {
+                        filterBarContainer: document.getElementById("filter-bar-root"),
+                        dataMetaContainer: document.getElementById("data-meta"),
+                      }),
                     ),
-                    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration
-                    // roadmap"): needs a real PrDataProvider ancestor for
-                    // usePrData().
-                    React.createElement(AppliedFilterSummaryTestLive, {
-                      appliedFilterSummaryContainer: document.getElementById("management-filter-summary-root"),
-                      dataMetaContainer: document.getElementById("data-meta"),
-                    }),
                   ),
                 ),
               ),
@@ -1091,7 +1043,7 @@ const getSelectedMultiSelectValues = (listId) => {
 
 const isMultiSelectEmpty = (listId) => {
   const list = getMultiSelectList(listId);
-  return !list || list.classList.contains("empty");
+  return !list || list.classList.contains("empty") || !list.querySelector("input[type='checkbox']");
 };
 
 const clickMultiSelectCheckbox = async (listId, value, user) => {
@@ -3386,20 +3338,12 @@ describe("index page rendering with Testing Library", () => {
       expect(excludeValues).toEqual(["bug", "frontend"]);
     });
 
-    await user.selectOptions(scopeField, "needs-attention-or-interacted");
-    await user.clear(prFilterField);
-    await user.type(prFilterField, "1");
-    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // #data-meta's text now comes from the real, Context-only
-    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive), which
-    // has its own identical PR-number-filter-takes-precedence-over-scope
-    // behavior (same production logic, not vanilla-only) - scope-mode/
-    // filter-pr-numbers have no real Context-backed component mounted in
-    // this reduced harness, so both need the same sync call every other
-    // DOM-only field already uses (syncFilterStateFromElement's own
-    // header comment) for the live summary to see them.
-    syncFilterStateFromElement(scopeField, "scopeMode");
-    syncFilterStateFromElement(prFilterField, "filterPrNumbers");
+    // The filter bar's real fields (UI redesign phase 8). fireEvent.change,
+    // not user.type: by the time enough of this suite has run, user.type's
+    // per-keystroke events stop reliably reaching a field's onChange (see
+    // renderCleanNotesSection()'s comment), while one change event does.
+    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.change(prFilterField, { target: { value: "1" } });
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
     await clickMultiSelectCheckbox("author-list", "author-other", user);
@@ -3500,22 +3444,14 @@ describe("index page rendering with Testing Library", () => {
         lastRun: { repo: "owner/repo", updatedAt: "2026-03-10T10:00:00Z" },
       }),
     });
-    const user = userEvent.setup();
 
     activateManagementTabForTest("script");
     const scopeField = document.getElementById("scope-mode");
     expect(scopeField).toBeInTheDocument();
 
-    await user.selectOptions(scopeField, "needs-attention");
-    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // #data-meta's text now comes from the real, Context-only
-    // useAppliedFilterSummary() (AppliedFilterSummaryTestLive) instead of
-    // the old vanilla pipeline's own DOM-fallback-aware computation -
-    // scope-mode has no real Context-backed component mounted in this
-    // suite (see this file's own comment on that), so a raw DOM change
-    // needs this same sync call every other DOM-only field already uses
-    // (syncFilterStateFromElement's own header comment).
-    syncFilterStateFromElement(scopeField, "scopeMode");
+    // The filter bar's real scope select (one change event - see the
+    // PR-number precedence test above).
+    fireEvent.change(scopeField, { target: { value: "needs-attention" } });
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
@@ -3527,8 +3463,7 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=needs attention rows");
     });
 
-    await user.selectOptions(scopeField, "needs-attention-or-interacted");
-    syncFilterStateFromElement(scopeField, "scopeMode");
+    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
 
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
     // flag alone no longer qualifies it for either scope.
@@ -8749,20 +8684,22 @@ describe("index page rendering with Testing Library", () => {
       "Selected author",
       "Author's PR notes",
       "Author's created PRs",
+      // The filter bar above the table (its applied-filter chips are a
+      // group only while a filter is applied).
+      "Filters",
     ];
     regions.forEach((name) => {
       expect(screen.getByRole("region", { name, hidden: true })).toBeInTheDocument();
     });
 
     const groups = [
-      "Applied table filters",
       "Backfill status badges",
       "Review statistics controls",
-      "Filter by label name(s)",
-      "Exclude by label name(s)",
-      "Filter by PR author(s)",
-      "Filter by Assigned user(s)",
-      "Filter by PR approver(s)",
+      "Labels",
+      "Excluded labels",
+      "Authors",
+      "Assigned to",
+      "Approved by",
       "Allow PR authors to resolve threads started by (Actor Names)",
       "Do not allow PR authors to resolve threads started by (Actor Names)",
       "Ignore comments from these authors (GitHub logins)",
@@ -8911,13 +8848,11 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
       activateManagementTabForTest("script");
 
       const prDifficultySelect = document.getElementById("filter-pr-difficulty");
       fetchMock.mockClear();
-      await user.selectOptions(prDifficultySelect, "3");
-      syncFilterStateFromElement(prDifficultySelect, "filterPrDifficulty");
+      fireEvent.change(prDifficultySelect, { target: { value: "3" } });
 
       await waitForPersistedViewFilterOverrides((savedOverrides) => {
         expect(savedOverrides["filter-pr-difficulty"]).toBe("3");

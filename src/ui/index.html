@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="./styles/ui.css" />
     <link rel="stylesheet" href="./styles/pr-table.css" />
     <link rel="stylesheet" href="./styles/pane.css" />
+    <link rel="stylesheet" href="./styles/filter-bar.css" />
 </head>
 
 <body>
@@ -131,215 +132,128 @@
                     </section>
 
                     <section class="section-card visibility-panel">
-                        <h3>Visibility Filters</h3>
-                        <p class="subtle-copy">Control which PR rows are visible in Data Views without making new GitHub
-                            requests.</p>
-                        <!-- Rendered by React (see react-app.jsx's mountAppliedFilterSummary) as
-                             the <pre id="management-filter-summary">/<div id="management-filter-chips">
-                             pair, same ids/classes as before. -->
-                        <span id="management-filter-summary-root"></span>
-
+                        <h3>Attention and change rules</h3>
+                        <p class="subtle-copy">What marks a PR as needing attention, and what counts as a change. The
+                            filters that choose which PRs show are in the filter bar above the PR table.</p>
                         <div class="form-grid">
-                            <label for="scope-mode">View scope</label>
-                            <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider) as
-                                 a <select id="scope-mode">, same id/name/options as before. -->
-                            <span id="scope-mode-root"></span>
+                            <fieldset>
+                                <legend>Needs Attention rules</legend>
 
-                            <label for="filter-pr-numbers">Filter by PR number(s)</label>
-                            <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider) as
-                                 an <input id="filter-pr-numbers">, same id/name/placeholder as before. -->
-                            <span id="filter-pr-numbers-root"></span>
+                                <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
+                                <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                <span id="attention-no-activity-mode-root"></span>
 
-                            <!-- data-base-label (deferred-items follow-up, full
-                                 vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md):
-                                 MultiSelectCheckboxList.jsx now owns both the "(N
-                                 selected)" summary count text and the empty-state
-                                 class on the list container - it reads this
-                                 attribute once instead of the old vanilla
-                                 summary.textContent.split("(")[0] runtime parsing.
-                                 The <summary> itself starts empty (found and fixed
-                                 alongside the rest of this sweep): createPortal
-                                 doesn't clear a target's pre-existing content, so
-                                 leaving the old static text here would render it
-                                 duplicated, stuck onto React's own text - same class
-                                 of bug as the 7 status/log panels and
-                                 #stats-content-root/#author-insights-content-root
-                                 found earlier in this same sweep. -->
-                            <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary" data-base-label="Filter by label name(s)"></summary>
-                                <div id="label-list" class="multi-select-list" role="group" aria-label="Filter by label name(s)"></div>
-                            </details>
-
-                            <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary" data-base-label="Exclude by label name(s)"></summary>
-                                <div id="exclude-label-list" class="multi-select-list" role="group" aria-label="Exclude by label name(s)"></div>
-                            </details>
-
-                            <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary" data-base-label="Filter by PR author(s)"></summary>
-                                <div id="author-list" class="multi-select-list" role="group" aria-label="Filter by PR author(s)"></div>
-                            </details>
-
-                            <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary" data-base-label="Filter by Assigned user(s)"></summary>
-                                <div id="assigned-list" class="multi-select-list" role="group" aria-label="Filter by Assigned user(s)"></div>
-                            </details>
-
-                            <details class="multi-select-dropdown">
-                                <summary class="multi-select-summary" data-base-label="Filter by PR approver(s)"></summary>
-                                <div id="approver-list" class="multi-select-list" role="group" aria-label="Filter by PR approver(s)"></div>
-                            </details>
-
-                            <label for="filter-custom-comments">Custom comments</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-custom-comments-root"></span>
-
-                            <label for="filter-other-notes">Other notes</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-other-notes-root"></span>
-
-                            <label for="filter-pr-difficulty">PR difficulty</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-pr-difficulty-root"></span>
-
-                            <label for="filter-stories">Stories</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-stories-root"></span>
-
-                            <label for="filter-analysis-of-pr">Analysis of PR</label>
-                            <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                            <span id="filter-analysis-of-pr-root"></span>
-                        </div>
-
-                        <details class="advanced-options section-card low-emphasis-card">
-                            <summary>Advanced visibility and attention rules</summary>
-                            <div class="form-grid">
+                                <!-- The five checkboxes below are rendered by React
+                                     (mountFilterStateProvider in react-app.jsx, one ContextFilterCheckbox
+                                     instance per id/name pair). -->
                                 <label class="checkbox-row">
-                                    <!-- Rendered by React (see react-app.jsx's mountFilterStateProvider)
-                                         as an <input id="always-show-in-review">, same id/name as before. -->
-                                    <span id="always-show-in-review-root"></span>
-                                    Always show PRs In Review
+                                    <span id="attention-include-pending-comments-root"></span>
+                                    Mark PRs with my pending (unsubmitted) comments
                                 </label>
 
-                                <fieldset>
-                                    <legend>Needs Attention rules</legend>
+                                <label class="checkbox-row">
+                                    <span id="attention-ignore-merge-only-commits-root"></span>
+                                    Exclude merge-only commit activity from CHANGED attention
+                                </label>
 
-                                    <label for="attention-no-activity-mode">NO_ACTIVITY handling</label>
-                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                    <span id="attention-no-activity-mode-root"></span>
+                                <label class="checkbox-row">
+                                    <span id="attention-include-closed-merged-root"></span>
+                                    Include closed/merged sections in attention logic
+                                </label>
 
-                                    <!-- The five checkboxes below are rendered by React
-                                         (mountFilterStateProvider in react-app.jsx, one ContextFilterCheckbox
-                                         instance per id/name pair). -->
-                                    <label class="checkbox-row">
-                                        <span id="attention-include-pending-comments-root"></span>
-                                        Mark PRs with my pending (unsubmitted) comments
-                                    </label>
+                                <label class="checkbox-row">
+                                    <span id="attention-include-draft-changed-root"></span>
+                                    Mark CHANGED draft PRs as attention
+                                </label>
 
-                                    <label class="checkbox-row">
-                                        <span id="attention-ignore-merge-only-commits-root"></span>
-                                        Exclude merge-only commit activity from CHANGED attention
-                                    </label>
+                                <label class="checkbox-row">
+                                    <span id="attention-include-draft-no-activity-root"></span>
+                                    Apply NO_ACTIVITY attention rules to draft PRs
+                                </label>
 
-                                    <label class="checkbox-row">
-                                        <span id="attention-include-closed-merged-root"></span>
-                                        Include closed/merged sections in attention logic
-                                    </label>
+                                <label for="attention-author-thread-resolution-mode">PR author thread resolution
+                                    policy</label>
+                                <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                <span id="attention-author-thread-resolution-mode-root"></span>
 
-                                    <label class="checkbox-row">
-                                        <span id="attention-include-draft-changed-root"></span>
-                                        Mark CHANGED draft PRs as attention
-                                    </label>
+                                <details id="attention-author-thread-resolution-allow-options" aria-label="Thread-resolution allow-list options"
+                                    class="multi-select-dropdown" hidden>
+                                    <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
+                                    <div id="attention-author-thread-resolution-allow-list"
+                                        class="multi-select-list" role="group" aria-label="Allow PR authors to resolve threads started by (Actor Names)"></div>
+                                </details>
 
-                                    <label class="checkbox-row">
-                                        <span id="attention-include-draft-no-activity-root"></span>
-                                        Apply NO_ACTIVITY attention rules to draft PRs
-                                    </label>
+                                <details id="attention-author-thread-resolution-deny-options" aria-label="Thread-resolution deny-list options"
+                                    class="multi-select-dropdown" hidden>
+                                    <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
+                                    <div id="attention-author-thread-resolution-deny-list"
+                                        class="multi-select-list" role="group" aria-label="Do not allow PR authors to resolve threads started by (Actor Names)"></div>
+                                </details>
+                            </fieldset>
 
-                                    <label for="attention-author-thread-resolution-mode">PR author thread resolution
-                                        policy</label>
-                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                    <span id="attention-author-thread-resolution-mode-root"></span>
+                            <fieldset>
+                                <legend>Merge commits</legend>
+                                <p class="subtle-copy" id="merge-commit-rules-help">🔀 A commit counts as a merge
+                                    when its headline matches one of the patterns, or when every one of its authors
+                                    is in the logins list (e.g. bots). Merge commits don't mark a PR CHANGED, aren't
+                                    listed in the Author column, and are what "Exclude merge-only commit activity"
+                                    leaves out. Default pattern: <code>^Merge\b</code>.</p>
 
-                                    <details id="attention-author-thread-resolution-allow-options" aria-label="Thread-resolution allow-list options"
-                                        class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary" data-base-label="Allow PR authors to resolve threads started by (Actor Names)"></summary>
-                                        <div id="attention-author-thread-resolution-allow-list"
-                                            class="multi-select-list" role="group" aria-label="Allow PR authors to resolve threads started by (Actor Names)"></div>
-                                    </details>
+                                <label for="merge-commit-headline-patterns">Headline patterns (regular expressions,
+                                    one per line, not case-sensitive)</label>
+                                <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                <span id="merge-commit-headline-patterns-root"></span>
 
-                                    <details id="attention-author-thread-resolution-deny-options" aria-label="Thread-resolution deny-list options"
-                                        class="multi-select-dropdown" hidden>
-                                        <summary class="multi-select-summary" data-base-label="Do not allow PR authors to resolve threads started by (Actor Names)"></summary>
-                                        <div id="attention-author-thread-resolution-deny-list"
-                                            class="multi-select-list" role="group" aria-label="Do not allow PR authors to resolve threads started by (Actor Names)"></div>
-                                    </details>
-                                </fieldset>
+                                <label for="merge-commit-logins">Logins whose commits always count as merges (one
+                                    per line)</label>
+                                <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                <span id="merge-commit-logins-root"></span>
+                            </fieldset>
 
-                                <fieldset>
-                                    <legend>Merge commits</legend>
-                                    <p class="subtle-copy" id="merge-commit-rules-help">🔀 A commit counts as a merge
-                                        when its headline matches one of the patterns, or when every one of its authors
-                                        is in the logins list (e.g. bots). Merge commits don't mark a PR CHANGED, aren't
-                                        listed in the Author column, and are what "Exclude merge-only commit activity"
-                                        leaves out. Default pattern: <code>^Merge\b</code>.</p>
+                            <fieldset>
+                                <legend>Change Detection Filters</legend>
+                                <p class="subtle-copy">Configure what activity should NOT trigger CHANGED status.
+                                    Use this to filter out automated notifications or non-blocking feedback.</p>
 
-                                    <label for="merge-commit-headline-patterns">Headline patterns (regular expressions,
-                                        one per line, not case-sensitive)</label>
-                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                    <span id="merge-commit-headline-patterns-root"></span>
+                                <details class="multi-select-dropdown">
+                                    <summary class="multi-select-summary" data-base-label="Ignore comments from these authors (GitHub logins)"></summary>
+                                    <div id="change-filter-ignore-comment-authors-list" class="multi-select-list" role="group" aria-label="Ignore comments from these authors (GitHub logins)">
+                                    </div>
+                                </details>
+                                <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
+                                    💬 <strong>Comments</strong> are general discussion messages in the PR
+                                    conversation
+                                    (e.g., bot notifications, questions, updates). Use this to filter informational
+                                    messages that don't require action.
+                                </p>
 
-                                    <label for="merge-commit-logins">Logins whose commits always count as merges (one
-                                        per line)</label>
-                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                    <span id="merge-commit-logins-root"></span>
-                                </fieldset>
+                                <details class="multi-select-dropdown">
+                                    <summary class="multi-select-summary" data-base-label="Ignore reviews from these authors (GitHub logins)"></summary>
+                                    <div id="change-filter-ignore-review-authors-list" class="multi-select-list" role="group" aria-label="Ignore reviews from these authors (GitHub logins)">
+                                    </div>
+                                </details>
+                                <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
+                                    ✅ <strong>Reviews</strong> are formal code review submissions with
+                                    approval/change
+                                    request states (created via "Review changes" button). Use this to ignore
+                                    optional
+                                    reviewers whose approval isn't required.
+                                </p>
 
-                                <fieldset>
-                                    <legend>Change Detection Filters</legend>
-                                    <p class="subtle-copy">Configure what activity should NOT trigger CHANGED status.
-                                        Use this to filter out automated notifications or non-blocking feedback.</p>
+                                <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
+                                    (regex, one per line)</label>
+                                <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
+                                <span id="change-filter-ignore-commit-patterns-root"></span>
+                                <p class="subtle-copy" id="commit-patterns-help" style="margin-top: 4px;">
+                                    📝 Filter commits by message patterns (e.g., <code>^docs:</code> ignores
+                                    documentation commits, <code>^test:</code> ignores test-only commits).
+                                </p>
 
-                                    <details class="multi-select-dropdown">
-                                        <summary class="multi-select-summary" data-base-label="Ignore comments from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-comment-authors-list" class="multi-select-list" role="group" aria-label="Ignore comments from these authors (GitHub logins)">
-                                        </div>
-                                    </details>
-                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
-                                        💬 <strong>Comments</strong> are general discussion messages in the PR
-                                        conversation
-                                        (e.g., bot notifications, questions, updates). Use this to filter informational
-                                        messages that don't require action.
-                                    </p>
-
-                                    <details class="multi-select-dropdown">
-                                        <summary class="multi-select-summary" data-base-label="Ignore reviews from these authors (GitHub logins)"></summary>
-                                        <div id="change-filter-ignore-review-authors-list" class="multi-select-list" role="group" aria-label="Ignore reviews from these authors (GitHub logins)">
-                                        </div>
-                                    </details>
-                                    <p class="subtle-copy" style="margin-top: 4px; margin-bottom: 12px;">
-                                        ✅ <strong>Reviews</strong> are formal code review submissions with
-                                        approval/change
-                                        request states (created via "Review changes" button). Use this to ignore
-                                        optional
-                                        reviewers whose approval isn't required.
-                                    </p>
-
-                                    <label for="change-filter-ignore-commit-patterns">Ignore commits matching patterns
-                                        (regex, one per line)</label>
-                                    <!-- Rendered by React (mountFilterStateProvider in react-app.jsx). -->
-                                    <span id="change-filter-ignore-commit-patterns-root"></span>
-                                    <p class="subtle-copy" id="commit-patterns-help" style="margin-top: 4px;">
-                                        📝 Filter commits by message patterns (e.g., <code>^docs:</code> ignores
-                                        documentation commits, <code>^test:</code> ignores test-only commits).
-                                    </p>
-
-                                    <p class="subtle-copy" style="margin-top: 16px;">
-                                        <strong>Note:</strong> Approved reviews are always ignored (built-in behavior).
-                                    </p>
-                                </fieldset>
-                            </div>
-                        </details>
+                                <p class="subtle-copy" style="margin-top: 16px;">
+                                    <strong>Note:</strong> Approved reviews are always ignored (built-in behavior).
+                                </p>
+                            </fieldset>
+                        </div>
                     </section>
                 </div>
 
@@ -463,11 +377,10 @@
             <!-- Rendered by React (react-app.jsx, plain-string portal) -
                  starts empty, see #request-activity-details above. -->
             <pre id="data-meta" style="white-space: break-spaces;" role="region" aria-label="PR data summary"></pre>
-            <!-- Rendered by React (components/TableFilterChips.jsx) -
-                 renders nothing at all when no non-default filter is
-                 applied, same precedent as #merged-request-more-action
-                 below. -->
-            <div id="table-filter-chips-root" role="group" aria-label="Applied table filters"></div>
+            <!-- Rendered by React (components/filter-bar/FilterBar.tsx): the
+                 row filters, a "Showing N of M" count and the applied
+                 filters' chips. -->
+            <div id="filter-bar-root"></div>
             <div id="pr-sections" role="region" aria-label="Pull requests"></div>
             <!-- Rendered by React (components/MergedRequestMoreAction.jsx) -
                  renders nothing at all (not even this div's own children)
