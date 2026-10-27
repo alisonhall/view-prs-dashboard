@@ -1,5 +1,5 @@
 // Which options of a multi-select filter list start checked
-// (MultiSelectListPortals, and index.html.test.js's harness): the options
+// (ListSelectionSeeding, state/useListSelectionSeeding.ts): the options
 // already checked if any, else the selections restored from user defaults.
 // shouldClearPending says the restored selections have now been applied.
 //

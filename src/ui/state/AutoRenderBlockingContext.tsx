@@ -18,7 +18,7 @@ export interface AutoRenderBlockingValue {
   isBlocked: boolean;
   statusText: string;
   discardAndApply: () => void;
-  // Feed the "jump to unsaved" links (AutoRenderBlockedLinks.jsx).
+  // Feed the "jump to unsaved" links (the app header's AutoUpdatePausedBanner).
   blockingPrNumbers: string[];
   blockingAuthorInsightsLogins: string[];
   blockingPrLabel: string;

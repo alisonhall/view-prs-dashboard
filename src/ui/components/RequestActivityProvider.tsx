@@ -113,11 +113,11 @@ const buildBadges = (activityState: ActivityState) => {
 
 /**
  * Owns request activity (the in-flight request counters/elapsed times behind
- * the activity drawer's badges, and its "recent activity" list) and the
+ * the activity popover's badges, and its "recent activity" list) and the
  * latest scheduler state.
  *
  * Mounted above BackfillStatusProvider, AutoRenderBlockingProvider and
- * PrDataProvider in mountAppRoot() and needing no other Context, so all of
+ * PrDataProvider in react-app.tsx and needing no other Context, so all of
  * them - and the action hooks - can read it directly.
  *
  * renderSchedulerStatus (called from JobEventsProvider's SSE frames and
@@ -126,14 +126,14 @@ const buildBadges = (activityState: ActivityState) => {
  * 'pr-active-progress-update' window event PrTableApp listens for.
  *
  * The badges and recent list are this Provider's own state, published on
- * RequestActivityDisplayContext (AppRoot passes them to the drawer); the
+ * RequestActivityDisplayContext (the activity popover reads them); the
  * first state is the idle badge set. The bookkeeping itself stays a ref
  * (it's mutated in place by every begin/finish, read synchronously); only
  * the derived badges/list are state. RequestActivityContext's value is
  * stable for this Provider's lifetime, so the many hooks that call these
  * functions never re-render because of them.
  *
- * `loadOnMount` (set by mountAppRoot, like PrDataProvider's) runs the startup
+ * `loadOnMount` (set by react-app.tsx, like PrDataProvider's) runs the startup
  * GET /view-prs/scheduler; failures are ignored.
  */
 export function RequestActivityProvider({

@@ -118,7 +118,7 @@ describe('PrDataProvider', () => {
   });
 
   // Phase H.5 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-  // PrTableApp.jsx's own per-row Ack/Apply-Label handlers call this
+  // PrTableApp.tsx's own per-row Ack/Apply-Label handlers call this
   // directly via Context. (It had the same merge semantics as the deleted
   // window.updateReactPrTable.)
   describe('applyFreshTablePayload', () => {
@@ -415,9 +415,10 @@ describe('PrDataProvider', () => {
       expect(setFreshPayloadApplier).toHaveBeenLastCalledWith(null);
     });
 
-    // Lessons 1-2 of the plan: hooks in AppRoot's body read these actions, so
-    // an identity change on every payload update would re-render AppRoot and
-    // (via useBackfillTabAutoRefresh-style effects) can start request loops.
+    // Lessons 1-2 of the plan: hooks high in the tree (AppShell's parts) read
+    // these actions, so an identity change on every payload update would
+    // re-render them and
+    // (via useBackfillAutoRefresh-style effects) can start request loops.
     test('given repeated payload updates, when the actions are read, then their identity never changes and a memoized consumer of them does not re-render', () => {
       let renders = 0;
       let firstActions;

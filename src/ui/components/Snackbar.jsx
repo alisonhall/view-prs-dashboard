@@ -1,15 +1,12 @@
 /**
- * Snackbar - the error/warning notification bar's own markup. Mounted into
- * an empty `#error-snackbar-root` (index.html), not a portal into a
- * pre-existing `#error-snackbar` element - this component owns the *entire*
- * subtree, including the outer element's own `id="error-snackbar"`/
- * `hidden`/variant class, none of which a portal into an existing element's
- * children could toggle.
+ * Snackbar - the error/warning notification bar's own markup, the whole
+ * `#error-snackbar` element (its `hidden` and variant class change).
+ * AppShell renders it in `#error-snackbar-root`.
  *
  * Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
  * the state and the window.* bridge this used to own directly both moved
- * into SnackbarProvider.tsx (a genuine ancestor, wrapping <AppRoot/> from
- * mountAppRoot()) - this component is now just a reader of that Context,
+ * into SnackbarProvider.tsx (a genuine ancestor, wrapping <AppShell /> from
+ * react-app.tsx) - this component is now just a reader of that Context,
  * via useSnackbar().
  *
  * @module components/Snackbar

@@ -50,11 +50,8 @@ interface BlockingRefState {
  * AutoRenderBlockingSync's `useEffect`, and React disallows `flushSync`
  * there (caught by the Playwright suite as a console-warning-as-error).
  *
- * The outer `#auto-render-blocked-indicator` panel's `hidden` attribute is
- * toggled here as a DOM side effect, not left to React: the panel also
- * hosts `AutoRenderBlockedLinks.jsx`'s separate portal (into its sibling
- * `#auto-render-blocked-pr-links`), and making the whole panel React-owned
- * here would destroy that portal's target on every render.
+ * The app header's AutoUpdatePausedBanner shows `isBlocked` (UI redesign
+ * phase 9a; this Provider used to toggle a static panel's `hidden`).
  */
 export function AutoRenderBlockingProvider({ children }: { children?: ReactNode }) {
   const { setStatusText } = useStatusText();
@@ -110,14 +107,6 @@ export function AutoRenderBlockingProvider({ children }: { children?: ReactNode 
   const isBlocked =
     Boolean(stateRef.current.pendingAutoRenderPayload) &&
     computeHasDirtyPrSectionsFields(stateRef.current.blockingState);
-
-  // See the header comment for why the panel's `hidden` isn't React-owned.
-  useEffect(() => {
-    const indicator = document.getElementById('auto-render-blocked-indicator');
-    if (indicator) {
-      indicator.hidden = !isBlocked;
-    }
-  }, [isBlocked]);
 
   const discardAndApply = useCallback(() => {
     const payload = stateRef.current.pendingAutoRenderPayload;

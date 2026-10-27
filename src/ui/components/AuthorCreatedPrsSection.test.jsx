@@ -56,7 +56,7 @@ describe('AuthorCreatedPrsSection', () => {
   // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
   // AuthorInsightsPrLink.jsx's button now calls useNavigateToPrInTable()
-  // directly, which dispatches 'pr-navigate-to-insights' (PrTableApp.jsx's
+  // directly, which dispatches 'pr-navigate-to-insights' (PrTableApp.tsx's
   // own listener) instead of a window.* bridge.
   test('given "View in table", when clicked, then pr-navigate-to-insights fires with the PR number and repo', () => {
     const events = [];

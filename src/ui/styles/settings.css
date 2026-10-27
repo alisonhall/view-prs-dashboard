@@ -1,0 +1,196 @@
+/* The Settings drawer (components/settings/). */
+
+/* A modal: above the page and the activity popover (1100), below the
+   snackbar (1300) - a failed "Run script" here reports there - and the PR
+   JSON modal (2000). */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(31, 35, 40, 0.4);
+}
+
+.settings-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-drawer);
+  outline: none;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.settings-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+/* The sections, down the left. */
+.settings-nav {
+  padding: var(--space-3) var(--space-2);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
+  overflow-y: auto;
+}
+
+.settings-nav .ui-tab-list {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 2px;
+  border-bottom: 0;
+}
+
+.settings-nav .ui-tab {
+  justify-content: flex-start;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.settings-nav .ui-tab:hover {
+  background: var(--color-surface-hover);
+}
+
+.settings-nav .ui-tab[aria-selected="true"] {
+  background: var(--color-surface-selected);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.settings-panel {
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.settings-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.settings-field {
+  display: grid;
+  gap: 4px;
+  max-width: 480px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.settings-field input,
+.settings-field select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}
+
+/* display: grid above would otherwise win over the hidden attribute (the
+   thread-resolution list the policy doesn't use). */
+.settings-field[hidden] {
+  display: none;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-md);
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-output {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font: var(--font-size-sm) / 1.45 var(--font-mono);
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.settings-details > summary {
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* Narrow windows: the sections go across the top, in one row that scrolls
+   sideways inside the drawer (a focused tab scrolls into view). Each tab
+   sizes to its label: full width, they'd stack one per line. */
+@media (max-width: 640px) {
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-nav .ui-tab-list {
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  .settings-nav .ui-tab {
+    flex: none;
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .settings-nav .ui-tab[aria-selected="true"] {
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+}

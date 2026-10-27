@@ -353,7 +353,7 @@ const registerViewPrsMutationRoutes = ({
   app.post(["/quick-check", "/view-prs/quick-check"], async (req, res) => {
     const timingContext = createTimingContext();
 
-    // Populated only when the Run & Filter tab's PR-number field had numbers
+    // Populated only when the Settings drawer's PR numbers field had numbers
     // entered - scopes this check to exactly those PRs in one repo, bypassing
     // check-open-pr-updates.sh's day-window entirely (see --quick-check-numbers).
     // undefined here preserves today's default: every configured repo, listed
@@ -375,7 +375,7 @@ const registerViewPrsMutationRoutes = ({
 
   // "Quick check all existing PRs" - checks every PR number already loaded
   // in the app, grouped by its own repo (the loaded table isn't scoped to
-  // one repo - see PrTableApp.jsx), one gh pr view call per PR number rather
+  // one repo - see PrTableApp.tsx), one gh pr view call per PR number rather
   // than the default's single cheap listing call per repo. Reuses the same
   // runViewPrsQuickCheck/isQuickCheckInProgress lock as /quick-check (one
   // lock acquisition for the whole sweep) rather than firing one request per

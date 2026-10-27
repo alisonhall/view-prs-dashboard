@@ -59,7 +59,7 @@ const renderProbe = ({
     // FilterStateProvider, not the other way around - FilterStateProvider's
     // own buildOverrides() calls all 3 Contexts' hooks directly now
     // (they throw without a real Provider ancestor), matching
-    // react-app.jsx's real AppRoot order after this phase's reorder.
+    // react-app.tsx's real Provider order after this phase's reorder.
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
         <ChangeFilterActorSelectionProvider>

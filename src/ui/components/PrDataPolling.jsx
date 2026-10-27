@@ -31,7 +31,7 @@
  * renderSchedulerStatus, via Context since window-bridge elimination Phase
  * 7.3), so a separate 30s fetch for it is no longer needed.
  *
- * Mounted once by react-app.jsx's mountAppRoot(), as AppRoot's sibling
+ * Mounted once by react-app.tsx, as AppShell's sibling
  * inside PrDataProvider - it renders null, so it doesn't need a DOM
  * container.
  *
@@ -65,7 +65,7 @@ export const MIN_DATA_POLL_MS = 100;
 // to get that by pinning window.AUTO_DATA_POLL_MS, a global window-bridge
 // elimination Phase 7.3 deleted.
 // Returns undefined (use the default) unless it's a whole number of ms >=
-// MIN_DATA_POLL_MS. mountAppRoot() reads it once and passes it as a prop.
+// MIN_DATA_POLL_MS. react-app.tsx reads it once and passes it as a prop.
 export function readDataPollMsOverride(search) {
   const raw = new URLSearchParams(search || '').get('dataPollMs');
   if (raw === null || !/^\d+$/.test(raw)) {
@@ -79,7 +79,7 @@ export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }) {
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see
-  // react-app.jsx) and reached directly via Context now, not window.*.
+  // react-app.tsx) and reached directly via Context now, not window.*.
   // Window-bridge elimination Phase 7.3: renderRequestActivity is
   // RequestActivityProvider's now (an ancestor of PrDataProvider).
   const { pollForDataChanges, pollBackfillStatus } = usePrData();

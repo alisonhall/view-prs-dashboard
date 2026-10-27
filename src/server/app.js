@@ -83,6 +83,8 @@ const {
   defaultViewPrsRepo,
   viewPrsUiDir,
   viewPrsUiIndexFile,
+  viewPrsUiBuildDir,
+  viewPrsUiBuildIndexFile,
   viewPrsDataFile,
   viewPrsUserStateFile,
   viewPrsAuthorCommentsFile,
@@ -2922,7 +2924,7 @@ const resetAutoCircuitBreakerAndRetry = (opts = {}) => {
 
 // Vite dev middleware (React/JSX transform)
 //
-// index.html loads react-app.jsx as an ES module. Express can't transpile
+// index.html loads react-app.tsx as an ES module. Express can't transpile
 // JSX or resolve bare module specifiers on its own, so outside of a
 // production build we embed Vite's dev server in middleware mode and let it
 // handle those requests before falling back to static files / API routes.
@@ -2930,7 +2932,7 @@ const isProductionEnv = process.env.NODE_ENV === "production";
 // This app is mounted at /view-prs by the root server (index.js), but Vite
 // needs to know that prefix too: it uses `base` to emit browser-facing URLs
 // for its client script, HMR, and resolved imports (/@vite/client, /@fs/...,
-// /components/PrTableApp.jsx, etc). Without it those come back rooted at
+// /components/PrTableApp.tsx, etc). Without it those come back rooted at
 // "/" and 404 once the browser requests them.
 const VIEW_PRS_MOUNT_PATH = "/view-prs";
 let viteDevServerPromise = null;
@@ -2967,14 +2969,17 @@ const getViteDevServer = () => {
   return viteDevServerPromise;
 };
 
-// Create and configure the Express app
-const createViewPrsApp = () => {
+// Create and configure the Express app. `production` (NODE_ENV=production by
+// default) serves the built UI from dist/ui instead of transforming src/ui
+// through Vite: index.html loads react-app.tsx, which a browser can't run
+// untransformed.
+const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
   const app = express();
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  if (!isProductionEnv) {
+  if (!production) {
     app.use((req, res, next) => {
       getViteDevServer()
         .then((vite) => {
@@ -3001,6 +3006,12 @@ const createViewPrsApp = () => {
     });
   }
 
+  if (production) {
+    // The build first; src/ui after it for what the build doesn't copy (the
+    // vendored marked and DOMPurify scripts index.html loads as plain
+    // <script>s).
+    app.use(express.static(viewPrsUiBuildDir, { index: false }));
+  }
   app.use(express.static(viewPrsUiDir, { index: false }));
 
   // Initialize user-defaults file on startup if it doesn't exist
@@ -3053,8 +3064,17 @@ const createViewPrsApp = () => {
 
   // Legacy compatibility route for UI files
   app.get(["/", "/index.html"], async (req, res) => {
-    if (isProductionEnv) {
-      res.sendFile(viewPrsUiIndexFile);
+    if (production) {
+      if (fs.existsSync(viewPrsUiBuildIndexFile)) {
+        res.sendFile(viewPrsUiBuildIndexFile);
+      } else {
+        res
+          .status(503)
+          .type("text/plain")
+          .send(
+            "The UI hasn't been built. Run `npm run build:ui`, then restart; or start without NODE_ENV=production to serve it through Vite.",
+          );
+      }
       return;
     }
 

@@ -1,4 +1,4 @@
-// react-app.jsx installs these two window listeners before mounting.
+// react-app.tsx installs these two window listeners before mounting.
 //
 // Some browsers' password managers throw errors like
 // "ControlLooksLikePasswordCredentialField" while inspecting the page's plain

@@ -1048,7 +1048,7 @@ No static type checking leads to:
 
 **Phase 12D: Component Migration**
 - [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
-  (plus `src/ui/react-app.jsx`; `pr-row-keys` was converted with the helpers)
+  (plus `src/ui/react-app.jsx`, now `.tsx`; `pr-row-keys` was converted with the helpers)
   - State layer first (decided 2026-10-23): the contexts, hooks and
     Providers survive the planned UI rework, the presentational components
     largely won't, so those are converted (or rewritten in `.tsx`) as part
@@ -1097,6 +1097,81 @@ No static type checking leads to:
     inReview, the scope/visible-rows helpers take a typed AttentionConfig,
     and parseCsvTokens is one shared form-parsing helper (it was copied in
     three places).
+  - UI redesign (`UI_REDESIGN_PLAN.md`), where the presentational
+    components convert as each phase rewrites them:
+    - Phase 0 (2026-10-24): new shared components in `components/ui/`
+      (Icon, Tooltip, Button/IconButton, Chip, Tabs), all `.tsx`.
+    - Phase 1 (2026-10-24): ExportTab, plus the new PrTableUiState context
+      and Provider.
+    - Phase 2 (2026-10-24): PrSection, PrTable, PrRow and its cells
+      (rewritten), the Signal, Avatar and MenuButton components, the
+      NowContext clock, and PrTableApp. PrDataPayload gains the user
+      state's ackByRepo, flaggedByRepo and inReviewByRepo maps.
+    - Phase 3 (2026-10-25): the new PrRowSummary, with its tested helpers;
+      the activity feed builder moves out of ActivityEventsSection.jsx
+      into the typed pr-activity-events.helpers.ts.
+    - Phase 4 (2026-10-25): the detail pane (PrDetailPane, PrOverview,
+      replacing PrInsightsRow.jsx), CopyIconButton, LinesChangedInsight,
+      ApprovalRiskSection, InsightSection and the insights hook
+      (InsightsHook.tsx), plus the useMediaQuery and useFocusTrap hooks.
+    - Phase 5 (2026-10-25): the Activity tab (PrActivityTab, replacing
+      ActivityEventsSection.jsx), ActivityEventDescription and
+      ActivityTimelineSummary, on the new pr-activity-feed.helpers.ts.
+    - Phase 6 (2026-10-25): the Conversations tab (PrConversationsTab,
+      replacing ReviewThreadsSection.jsx), on the new
+      pr-review-threads.helpers.ts, with the thread-resolution policy hook
+      moved to state/useAuthorThreadResolutionPolicy.ts.
+    - Phase 7 (2026-10-25): the Notes tab (PrNotesTab, replacing
+      NotesSection.jsx) and NotesStoriesField, on the new
+      pr-notes-fields.helpers.ts.
+    - Phase 8 (2026-10-25): the filter bar (FilterBar, FilterMultiSelect,
+      DataViewHeaderPortals, replacing TableFilterChips.jsx and
+      AppliedFilterSummary.jsx), with ScopeFilterSelect,
+      PrNumberFilterInput, FilterOptionSelect and
+      AlwaysShowInReviewCheckbox moved into components/filter-bar/ as
+      .tsx. MultiSelectCheckboxList stays .jsx for the Run & Filter tab's
+      rule lists until phase 9.
+    - Phase 9a (2026-10-26): the app header (AppHeader,
+      AutoUpdatePausedBanner), with QuickCheckAllButton and
+      AutoRenderBlockedLinks moved into components/shell/ as .tsx;
+      DataTabButton, AutoRenderBlockedStatusText and
+      AutoRenderBlockedApplyButton deleted.
+    - Phase 9b-1 (2026-10-26): the Settings drawer (SettingsDrawer,
+      RunCheckSection, ScriptOptionsSection), with ContextRunScriptTextInput,
+      ContextFilterCheckbox, OpenModeSelect, ApplyLabelSelect,
+      TriggerAutoRunButton and QuickCheckButton moved into
+      components/settings/ as .tsx; RunScriptActionButton deleted.
+    - Phase 9b-2 (2026-10-26): the rules sections (AttentionRulesSection,
+      MergeCommitsSection, ChangeDetectionSection, SettingsListDropdown) and
+      ui/MultiSelectDropdown, with AttentionNoActivityModeSelect,
+      AuthorThreadResolutionModeSelect, IgnoreCommitPatternsTextarea and
+      MergeCommitRulesTextarea moved into components/settings/ as .tsx;
+      MultiSelectListPortals, MultiSelectCheckboxList and
+      AuthorThreadResolutionRuleVisibility deleted.
+    - Phase 9b-3 (2026-10-26): the Backfill section (BackfillSection,
+      BackfillLog), with ActionLogSection, ActorNamesSection (was
+      ActorNamesTab), MappingRowsEditor and ExportSection (was ExportTab)
+      moved into components/settings/ and BackfillBadges converted in place,
+      all .tsx; BackfillControls and ManagementTabButton deleted.
+    - Phase 9c (2026-10-26): the activity popover (shell/ActivityPopover.tsx)
+      replaces ActivityDrawer.jsx (deleted); the five ActivityDrawer*Section
+      components converted to .tsx in place.
+    - Phase 9d-2 (2026-10-26): `react-app.jsx` becomes `react-app.tsx` (the
+      Providers around the new shell/AppShell.tsx, which renders the whole
+      page), with its test; DataViewHeader replaces DataViewHeaderPortals;
+      TabPanelVisibilitySync deleted.
+    - Still `.jsx` after the UI redesign (2026-10-26, UI_REDESIGN_PLAN.md
+      phase 10), 18 components, none in `src/ui/state/`:
+      - Review stats: ReviewStatsContent, ReviewStatsControls,
+        StatsVisuals, GraphCard, ReviewerActivityChart.
+      - Authors: AuthorInsightsSelector, AuthorInsightsHeader,
+        AuthorInsightsCommentsSection, AuthorInsightsNotesSection,
+        AuthorCreatedPrsSection, AuthorInsightsPrDataMeta,
+        AuthorInsightsPrLink.
+      - Shared: ActorIdentity, AutoRenderBlockingSync,
+        MergedRequestMoreAction, PrDataPolling, PrJsonModal, Snackbar.
+      - The test fixtures filter-state-probe.jsx and pr-data-probe.jsx
+        belong to 12G.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

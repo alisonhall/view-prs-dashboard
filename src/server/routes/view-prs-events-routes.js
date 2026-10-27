@@ -2,7 +2,7 @@ const {
   createViewPrsEventsRouteHelpers,
 } = require("../helpers/view-prs-events-route-helpers");
 
-// Registers the SSE endpoint the activity drawer's JobEventsProvider
+// Registers the SSE endpoint the activity popover's JobEventsProvider
 // connects to. Deliberately NOT wrapped in createSyncHandler/
 // createAsyncHandler - those wrappers call res.status(500).json(...) on
 // error, which throws ERR_HTTP_HEADERS_SENT once writeHead has already

@@ -49,8 +49,8 @@ const DELETED_BRIDGES = [
 ];
 
 // Window-bridge elimination Phases 3d and 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// the Backfill tab's button state, badges, details text and log text are
-// owned by this Provider, instead of being pushed into AppRoot's local state
+// the Backfill section's button state, badges, details text and log text are
+// owned by this Provider, instead of being pushed into the old AppRoot's state
 // through window.updateReactBackfill* bridges.
 describe('BackfillStatusProvider', () => {
   afterEach(() => {
@@ -108,7 +108,7 @@ describe('BackfillStatusProvider', () => {
       expect(read().backfillLogText).toBe('log line');
       expect(read().backfillLogUpdateTick).toBe(1);
 
-      // BackfillLogControls' scroll-sync effect keys on the tick, so identical
+      // BackfillLog's scroll-sync effect keys on the tick, so identical
       // text (polling an unchanged log) must still change it.
       act(() => {
         read().actions.setBackfillLogMessage('log line');
@@ -255,7 +255,7 @@ describe('BackfillStatusProvider', () => {
     });
   });
 
-  // The two real Providers wired together in mountAppRoot()'s order, with a
+  // The two real Providers wired together in react-app.tsx's order, with a
   // real fetch mock (no window.loadBackfillStatus any more - window-bridge
   // elimination Phase 7.2 moved the load into this Provider). The other tests
   // here (and PrDataProvider.test.jsx) feed pollBackfillStatus a mocked

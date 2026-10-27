@@ -1,4 +1,4 @@
-import type { PrData, PrDataPayload, PrEntry } from "../types/pr-data.ts";
+import type { PrData, PrDataPayload, PrEntry, PrFlagsByRepo } from "../types/pr-data.ts";
 
 // The In Review and Flagged checkboxes' server calls
 // (useRowCheckboxActions, used by PrTableApp): POST /view-prs/ack, then
@@ -30,8 +30,8 @@ type ToggleEntry = Pick<PrEntry, "prNumber" | "repo">;
 
 interface AckToggleResult {
   ok?: boolean;
-  flaggedByRepo?: unknown;
-  inReviewByRepo?: unknown;
+  flaggedByRepo?: PrFlagsByRepo;
+  inReviewByRepo?: PrFlagsByRepo;
   prData?: PrDataPayload;
 }
 
@@ -43,7 +43,7 @@ export interface PrRowCheckboxActionsDeps {
   getLatestSelectedRepo?: () => string;
   applyLatestPrData?: (update: { payload: PrDataPayload | null | undefined; selectedRepo: string }) => void;
   loadStoredData?: (repo: string) => Promise<unknown>;
-  // Tracks the toggle in the activity drawer, so a request that takes
+  // Tracks the toggle in the activity popover, so a request that takes
   // unusually long becomes visible under "In-flight user actions".
   beginRequestActivity?: (kind: string) => () => void;
 }

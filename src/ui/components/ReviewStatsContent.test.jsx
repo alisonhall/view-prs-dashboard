@@ -100,9 +100,7 @@ const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
     <TabStateContext.Provider
       value={{
         activeDataTab: 'review-stats',
-        activeManagementTab: 'status',
         setActiveDataTab: () => {},
-        setActiveManagementTab: () => {},
       }}
     >
       <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
@@ -215,7 +213,7 @@ describe('ReviewStatsContent', () => {
     // and flipping its `hidden` property.
     const renderWithActiveDataTab = (activeDataTab, children) =>
       render(
-        <TabStateContext.Provider value={{ activeManagementTab: 'status', activeDataTab }}>
+        <TabStateContext.Provider value={{ activeDataTab }}>
           {children}
         </TabStateContext.Provider>,
       );
@@ -282,7 +280,7 @@ describe('ReviewStatsContent', () => {
       // it, instead of flipping the panel's own `hidden` attribute directly.
       await React.act(async () => {
         rerender(
-          <TabStateContext.Provider value={{ activeManagementTab: 'status', activeDataTab: 'review-stats' }}>
+          <TabStateContext.Provider value={{ activeDataTab: 'review-stats' }}>
             {tree}
           </TabStateContext.Provider>,
         );

@@ -2,7 +2,6 @@ import { createContext, useContext } from 'react';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
-import { createPrInsightBadgeClassHelpers } from '../helpers/pr-insight-badge-class.helpers.ts';
 import { createPrInsightMetricsSummaryHelpers } from '../helpers/pr-insight-metrics-summary.helpers.ts';
 import { createPrUiRenderUtilsHelpers } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
@@ -14,12 +13,10 @@ import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-su
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.ts';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.ts';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
-import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { defaultActorIdentity } from './ActorIdentityContext';
 
-const { isChangedStatus } = createPrStatusDisplayHelpers();
 const { toCount } = createPrFormattingHelpers();
 const {
   normalizeActorLogin,
@@ -29,8 +26,8 @@ const {
 } = defaultActorIdentity;
 
 /**
- * The "More insights" row panel's formatting/badge-class functions
- * (PrInsightsRow.jsx and components/insights/*). Most are pure formatters;
+ * The PR insights' formatting functions (the detail pane, PrRowSummary.tsx
+ * and components/insights/*). Most are pure formatters;
  * formatApproversDisplay, formatRequestedReviewersDisplay,
  * formatAssignedUsersDisplay, buildPrPeopleOptions and
  * getOpenConversationCountWithMe need actor/viewer identity, which
@@ -40,8 +37,8 @@ const {
  * is a safe fallback when unwrapped, like ActorIdentityContext's.
  *
  * The PR author thread-resolution allow/deny policy is deliberately not
- * here: ReviewThreadsSection.jsx's useAuthorThreadResolutionPolicy hook
- * builds it from AuthorThreadResolutionSelectionContext's selections.
+ * here: the useAuthorThreadResolutionPolicy hook (state/) builds it from
+ * AuthorThreadResolutionSelectionContext's selections.
  */
 const buildDefaultPrInsightsDisplay = () => {
   const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
@@ -60,8 +57,6 @@ const buildDefaultPrInsightsDisplay = () => {
     resolveActorDisplayName,
     formatIsoDatetime: createPrFormattingHelpers().formatIsoDatetime,
   });
-  const { getBadgeClassForStatus, getBadgeClassForCheck, getBadgeClassForMerge } =
-    createPrInsightBadgeClassHelpers({ isChangedStatus });
   const {
     formatReviewFootprint,
     formatConversationStatus,
@@ -72,7 +67,7 @@ const buildDefaultPrInsightsDisplay = () => {
   const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
   const { normalizeStoriesForUi } = createPrNotesHelpers();
   const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
-  const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
+  const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEvents } =
     createPrActivityEventsHelpers({ asArray });
   const { formatDurationMinutes } = createPrApprovalDurationHelpers({ toCount });
   const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
@@ -95,9 +90,6 @@ const buildDefaultPrInsightsDisplay = () => {
     getOpenConversationCount,
     getOpenConversationCountWithMe,
     getViewedFilesSummary,
-    getBadgeClassForStatus,
-    getBadgeClassForCheck,
-    getBadgeClassForMerge,
     formatReviewFootprint,
     formatConversationStatus,
     formatApprovalRisk,
@@ -105,6 +97,7 @@ const buildDefaultPrInsightsDisplay = () => {
     formatDurationMinutes,
     buildFallbackActivityEvents,
     buildActivityEventKey,
+    buildActivityEvents,
     normalizePrRootUrl,
     buildPrPeopleOptions,
     normalizeStoriesForUi,

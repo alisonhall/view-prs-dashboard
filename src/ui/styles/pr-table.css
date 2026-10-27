@@ -1,0 +1,417 @@
+/*
+ * The PR table: sections, column headers, rows and cells (PrSection.tsx,
+ * PrTable.tsx, PrRow.tsx, PrRowSummary.tsx, components/cells/). Uses
+ * tokens.css. The insights content is styled by insights.css (insight-*).
+ */
+
+/* Sections */
+.pr-section {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.pr-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) 10px;
+  padding: 10px 14px;
+  list-style: none;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+}
+
+.pr-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.pr-section-header:hover {
+  background: var(--color-surface-subtle);
+}
+
+.pr-section-header:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.pr-section[open] > .pr-section-header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pr-section-chevron {
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.pr-section[open] .pr-section-chevron {
+  transform: rotate(90deg);
+}
+
+.pr-section-icon,
+.pr-section-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-text-muted);
+}
+
+.pr-section-icon[data-tone="success"],
+.pr-section-summary-item[data-tone="success"] { color: var(--color-success); }
+.pr-section-icon[data-tone="danger"],
+.pr-section-summary-item[data-tone="danger"] { color: var(--color-danger); }
+.pr-section-icon[data-tone="attention"],
+.pr-section-summary-item[data-tone="attention"] { color: var(--color-attention); }
+.pr-section-icon[data-tone="accent"],
+.pr-section-summary-item[data-tone="accent"] { color: var(--color-accent); }
+.pr-section-icon[data-tone="done"] { color: var(--color-done); }
+
+.pr-section-title {
+  font-weight: 600;
+}
+
+.pr-section-count {
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.pr-section-count[data-tone="attention"] {
+  background: var(--color-attention);
+  color: var(--color-text-on-strong);
+}
+
+.pr-section-summary {
+  display: inline-flex;
+  gap: var(--space-3);
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.pr-section-content {
+  overflow-x: auto;
+}
+
+.pr-section-empty {
+  margin: 0;
+  padding: var(--space-3) 14px;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+/* Table */
+.pr-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--font-size-md);
+}
+
+.pr-col-select { width: 34px; }
+.pr-col-signals { width: 88px; }
+.pr-col-who { width: 56px; }
+.pr-col-review { width: 210px; }
+.pr-col-checks { width: 64px; }
+.pr-col-size { width: 96px; }
+.pr-col-activity { width: 64px; }
+.pr-col-actions { width: 172px; }
+
+/* thead in the selector so this beats common.css's
+   `.data-tab-panel table th { white-space: normal }`. */
+.pr-table thead th {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pr-table th:first-child,
+.pr-table td:first-child {
+  padding-left: 14px;
+}
+
+.pr-head-actions {
+  text-align: right;
+}
+
+.pr-row > td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: middle;
+}
+
+.pr-row:hover > td {
+  background: var(--color-surface-subtle);
+}
+
+.pr-row[data-expanded="true"] > td {
+  background: var(--color-surface-selected);
+}
+
+/* Fixed signal slots (Signals, Review, CHK·MRG) */
+.pr-signal-slots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pr-review-slots {
+  gap: 10px;
+}
+
+/* Pull request */
+.pr-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+}
+
+.pr-expand-toggle {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.pr-title-text {
+  min-width: 0;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pr-title-text .pr-link {
+  margin-left: 2px;
+  font-weight: 400;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.pr-copy-title {
+  opacity: 0;
+}
+
+.pr-row:hover .pr-copy-title,
+.pr-copy-title:focus-visible,
+.pr-copy-title.is-copied {
+  opacity: 1;
+}
+
+.pr-busy[data-busy="active"] .ui-icon {
+  animation: pr-busy-spin 1s linear infinite;
+}
+
+@keyframes pr-busy-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-busy[data-busy="active"] .ui-icon {
+    animation: none;
+  }
+}
+
+/* Label chips: a stable colour per name (PrTitleCell's labelHue) */
+.pr-label {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pr-label[data-hue="0"] { background: #fbeae5; color: #a0281b; }
+.pr-label[data-hue="1"] { background: #e8f0fb; color: #0b4a9e; }
+.pr-label[data-hue="2"] { background: #e6f4ea; color: #1a6b33; }
+.pr-label[data-hue="3"] { background: #f3eefe; color: #5b2fb0; }
+.pr-label[data-hue="4"] { background: #eef0f3; color: #424a53; }
+
+.pr-title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin: 4px 0 0 30px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-title-meta code {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.pr-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-meta-chip[data-tone="attention"] {
+  color: var(--color-attention-text);
+}
+
+/* Who */
+.pr-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pr-who-more,
+.pr-muted,
+.pr-who-unknown {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Review: assigned users after the slots */
+.pr-assignees {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+/* Size, Activity */
+.pr-size {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.pr-size-added { color: var(--color-success); }
+.pr-size-deleted { color: var(--color-danger); margin-left: 2px; }
+
+.pr-activity {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-activity[data-stale="true"] {
+  text-decoration: underline dotted;
+}
+
+/* Actions */
+.pr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* Row summary (PrRowSummary): three columns under the row. Each event and
+   thread is one line, cut off with an ellipsis, so the summary keeps the
+   same height; the full text is in the details. The table in the selector
+   so the indent beats `.pr-table td:first-child`. */
+.pr-table .pr-summary-row > td {
+  padding: var(--space-3) 14px 14px 48px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-subtle);
+}
+
+.pr-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
+}
+
+.pr-summary-heading {
+  margin: 0 0 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.pr-summary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+}
+
+.pr-summary-reasons {
+  font-weight: 600;
+  color: var(--color-attention-text);
+}
+
+.pr-summary-item,
+.pr-summary-thread {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pr-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-summary-snippet {
+  color: var(--color-text-muted);
+}
+
+/* A thread's comment is the line's main text, not an aside. */
+.pr-summary-thread .pr-summary-snippet {
+  color: var(--color-text);
+}
+
+.pr-summary-reasons + .pr-summary-markers {
+  margin-top: 2px;
+}
+
+.pr-summary-age {
+  flex: none;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-summary-file {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+a.pr-summary-file {
+  color: var(--color-accent-text);
+}
+
+.pr-summary-status,
+.pr-summary-empty,
+.pr-summary-more {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pr-summary-empty {
+  margin-top: 0;
+}
+
+.pr-summary-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}

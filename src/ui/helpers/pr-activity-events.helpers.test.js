@@ -142,4 +142,77 @@ describe("pr activity events helpers", () => {
       expect(buildFallbackActivityEvents()).toEqual([]);
     });
   });
+
+  describe("buildActivityEvents", () => {
+    const { buildActivityEvents } = createPrActivityEventsHelpers();
+
+    test("given timeline events, when building the feed, then they come newest first", () => {
+      const events = buildActivityEvents({
+        activityTimeline: [
+          { events: [{ sourceId: "a", occurredAt: "2026-01-01T10:00:00Z", actor: "alice", type: "commit", channel: "commit" }] },
+          { events: [{ sourceId: "b", occurredAt: "2026-01-03T10:00:00Z", actor: "bob", type: "comment", channel: "top-level" }] },
+        ],
+        activityEvents: [{ sourceId: "ignored", occurredAt: "2026-02-01T00:00:00Z" }],
+      });
+
+      expect(events.map((event) => event.sourceId)).toEqual(["b", "a"]);
+    });
+
+    test("given no timeline, when building the feed, then activityEvents are used, filled in from the matching fallback event", () => {
+      const [event] = buildActivityEvents({
+        activityEvents: [{ sourceId: "c1", occurredAt: "2026-01-01T10:00:00Z", actor: "alice", type: "comment", channel: "top-level" }],
+        comments: [{ id: "c1", createdAt: "2026-01-01T10:00:00Z", authorLogin: "alice", body: "Looks good", url: "https://x/1" }],
+      });
+
+      expect(event).toMatchObject({ sourceId: "c1", body: "Looks good", url: "https://x/1" });
+    });
+
+    test("given no activity lists at all, when building the feed, then it is the fallback list", () => {
+      const events = buildActivityEvents({
+        reviews: [{ id: "r1", submittedAt: "2026-01-02T00:00:00Z", authorLogin: "bob", state: "APPROVED" }],
+      });
+
+      expect(events).toEqual([expect.objectContaining({ sourceId: "r1", type: "approval" })]);
+    });
+
+    test("given a COMMENTED review repeating a thread comment (same actor, minute and body), when building the feed, then the review is dropped", () => {
+      const events = buildActivityEvents({
+        activityEvents: [
+          { sourceId: "t1", occurredAt: "2026-01-01T10:00:05Z", actor: "alice", type: "comment", channel: "thread", body: "Nit" },
+          { sourceId: "r1", occurredAt: "2026-01-01T10:00:40Z", actor: "alice", type: "review", channel: "review", body: "Nit" },
+        ],
+      });
+
+      expect(events.map((event) => event.sourceId)).toEqual(["t1"]);
+    });
+
+    test("given the same comment twice in one minute, when building the feed, then it appears once", () => {
+      const events = buildActivityEvents({
+        activityEvents: [
+          { sourceId: "x1", occurredAt: "2026-01-01T10:00:05Z", actor: "alice", type: "comment", channel: "top-level", body: "Hi" },
+          { sourceId: "x2", occurredAt: "2026-01-01T10:00:30Z", actor: "alice", type: "comment", channel: "top-level", body: "Hi" },
+        ],
+      });
+
+      expect(events).toHaveLength(1);
+    });
+
+    test("given more than 60 events, when building the feed, then the newest 60 are kept", () => {
+      const activityEvents = Array.from({ length: 65 }, (_, index) => ({
+        sourceId: `e${index}`,
+        occurredAt: new Date(Date.UTC(2026, 0, 1, 10, index)).toISOString(),
+        actor: "alice",
+        type: "commit",
+        channel: "commit",
+      }));
+
+      const events = buildActivityEvents({ activityEvents });
+
+      expect(events).toHaveLength(60);
+      expect(events[0].sourceId).toBe("e64");
+      // A limit of its own, e.g. none to count them all.
+      expect(buildActivityEvents({ activityEvents }, Number.POSITIVE_INFINITY)).toHaveLength(65);
+      expect(buildActivityEvents({ activityEvents }, 3)).toHaveLength(3);
+    });
+  });
 });

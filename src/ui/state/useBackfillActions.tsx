@@ -24,13 +24,13 @@ export interface BackfillActions {
   // The "Refresh status"/"Refresh log" buttons.
   refreshBackfillStatus: () => Promise<void>;
   refreshBackfillLogTail: () => Promise<void>;
-  // The Backfill tab's load on mount and on each activation.
+  // The Backfill section's load at mount and each time it's opened.
   triggerBackfillTabLoad: () => Promise<void>;
 }
 
 /**
- * The Backfill tab's actions (BackfillControls.jsx/BackfillLogControls.jsx,
- * via AppRoot): builds createPrBackfillActionHelpers with status/output
+ * Settings › Backfill's actions (BackfillSection and its BackfillLog):
+ * builds createPrBackfillActionHelpers with status/output
  * text, request activity and failure snackbars.
  *
  * The backfill state it reads and writes (getBackfillTrackingState/
@@ -42,7 +42,7 @@ export interface BackfillActions {
  * disabled it).
  *
  * Every status message also calls renderRequestActivity (see
- * useRunScript.tsx). useBackfillTabAutoRefresh.tsx calls
+ * useRunScript.tsx). useBackfillAutoRefresh.ts calls
  * triggerBackfillTabLoad.
  */
 export function useBackfillActions(): BackfillActions {
@@ -79,7 +79,7 @@ export function useBackfillActions(): BackfillActions {
         stripAnsi,
         updateBackfillStatusFromPayload,
         setBackfillLogMessage,
-        // A no-op: BackfillLogControls.jsx keeps the log scrolled to the
+        // A no-op: BackfillLog.tsx keeps the log scrolled to the
         // bottom itself whenever its log text updates.
         autoScrollBackfillLogToBottom: () => {},
         formatBackfillLogMessage,

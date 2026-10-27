@@ -93,7 +93,8 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
   Array.from(checkedByListId[listId] || []);
 
 /**
- * Owns the Run & Filter form's field values (see FilterStateContext.tsx),
+ * Owns the form's field values - the filter bar's and the Settings
+ * drawer's (see FilterStateContext.tsx),
  * and saves/restores them as UI option overrides through
  * /view-prs/user-defaults. It publishes no window bridges.
  *
@@ -107,10 +108,10 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * Restore: a mount-only effect reads the saved overrides into `values`,
  * and hands the 9 multi-select lists' saved selections to
  * `setPendingMultiSelectSelection` (that store is deliberately
- * window-level, see its file's comment) for MultiSelectListPortals to
+ * window-level, see its file's comment) for ListSelectionSeeding to
  * apply once their options exist.
  *
- * Save: `persistRunScriptOptions` (on this Context; react-app.jsx's "Run
+ * Save: `persistRunScriptOptions` (on this Context; Run & check's "Run
  * script" button calls it) saves the run options, and a debounced effect
  * saves the view/filter options whenever `values` or a list selection
  * changes. Which fields each save covers is a product decision (not every
@@ -118,7 +119,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  *
  * The lists' checked state comes from the RowFilter/AuthorThreadResolution/
  * ChangeFilterActor selection Contexts, so this Provider must be mounted
- * inside all 3 (see react-app.jsx's Provider tree).
+ * inside all 3 (see react-app.tsx's Provider tree).
  */
 export function FilterStateProvider({
   initialValues,
@@ -474,7 +475,7 @@ export function FilterStateProvider({
 
   // Saves the view/filter options 150ms after `values` or any list
   // selection changes, whatever caused the change (a field edit, or a
-  // Context-only change such as TableFilterChips' "x" button). This is
+  // Context-only change such as a filter bar chip's "x" button). This is
   // the only automatic save path for these fields.
   useDebouncedEffect(
     () => {

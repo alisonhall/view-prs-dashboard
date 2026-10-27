@@ -18,11 +18,11 @@ export interface ActivityDrawerActions {
 }
 
 /**
- * The activity drawer's dispatcher "Reprioritize" and circuit-breaker
- * "Reset" actions (ActivityDrawerDispatcherSection.jsx/
- * ActivityDrawerCircuitBreakerSection.jsx, via react-app.jsx). Each POSTs
- * and shows a failure snackbar on error; neither applies a result itself -
- * the drawer's sections re-render from the next SSE frame.
+ * The activity popover's dispatcher "Reprioritize" and circuit-breaker
+ * "Reset" actions (ActivityDrawerDispatcherSection/
+ * ActivityDrawerCircuitBreakerSection, via shell/ActivityPopover.tsx). Each
+ * POSTs and shows a failure snackbar on error; neither applies a result
+ * itself - the sections re-render from the next SSE frame.
  */
 export function useActivityDrawerActions(): ActivityDrawerActions {
   const notifyFailureSnackbar = useNotifyFailureSnackbar();

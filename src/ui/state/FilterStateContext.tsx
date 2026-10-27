@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useRef, useSyncExternalStore } 
 import type { FilterValues, FilterValuesStore } from './filterValuesStore';
 
 /**
- * The Run & Filter form's field values (scope, PR numbers, the "Any"
+ * The form's field values (scope, PR numbers, the "Any"
  * filters, run options, attention rules...), owned by FilterStateProvider,
  * which also restores and saves them as user defaults.
  *

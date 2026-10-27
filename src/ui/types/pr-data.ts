@@ -18,13 +18,20 @@ export interface PrComment {
 // A comment in a review thread ($defs.reviewThreadComment).
 export interface ReviewThreadComment extends PrComment {
   state?: string;
+  // Where the comment is in the diff ($defs.reviewThreadComment).
+  path?: string;
+  line?: number | null;
+  originalLine?: number | null;
 }
 
 export interface ReviewThread {
   id?: string;
   isResolved?: boolean;
+  isOutdated?: boolean;
   comments?: ReviewThreadComment[];
   participants?: string[];
+  latestCommentAt?: string;
+  resolvedByLogin?: string;
 }
 
 // One entry of a PR's activity lists ($defs.activityEvent; commentEvents
@@ -115,7 +122,11 @@ export interface PrNotes {
 // One approval as the insights script assessed it ($defs.metricsApproval).
 export interface PrMetricsApproval extends PrActor {
   approvedAt?: string;
+  mergeLeadMinutes?: number | null;
+  commentCountAfterApproval?: number;
+  reviewCountAfterApproval?: number;
   changeRequestCountAfterApproval?: number;
+  commitCountAfterApproval?: number;
   riskyApproval?: boolean;
   highRiskApproval?: boolean;
 }
@@ -157,6 +168,22 @@ export interface PrData {
   title?: string;
   // The title with "[CHK:...]"/"[MRG:...]" markers appended.
   titleDisplay?: string;
+  // The same two states as fields: checks PASS / FAIL / RUN / SKIP / NA,
+  // and GitHub's `mergeable` as YES / NO / UNK (or its own value). Older
+  // data only has the markers.
+  checkState?: string;
+  mergeState?: string;
+  // Lines added / deleted: digits-only strings in the data file.
+  additions?: string | number;
+  deletions?: string | number;
+  // Set by the server (app.js) on a PR whose change was detected but whose
+  // full details are still queued to refresh; not in the data file.
+  updatePending?: boolean;
+  sourceBranch?: string;
+  targetBranch?: string;
+  // "YES" / "NO", and the approvals count as a digits-only string.
+  approved?: string;
+  approvalCount?: string | number;
   // The script's change status: "CHANGED", "NO_CHANGE" or "NO_ACTIVITY"
   // (older data wrote "CHANGED(<reasons>)"), and the change reasons as
   // "|"-separated tokens such as "commit|review" ("-" when none).
@@ -189,6 +216,8 @@ export interface PrData {
   commentEvents?: PrActivityEvent[];
   activityEvents?: PrActivityEvent[];
   activityTimeline?: PrActivityTimelineBucket[];
+  // A text summary of the timeline, shown when it has no buckets.
+  activityTimelineSummary?: string;
   // Digits-only string in the data file.
   openConversationCount?: string | number;
   viewedFilesSummary?: string;
@@ -218,6 +247,10 @@ export interface LastRun {
   updatedAt?: string;
 }
 
+// repo -> PR number -> value (PrDataPayload's ackByRepo/flaggedByRepo/
+// inReviewByRepo).
+export type PrFlagsByRepo = Record<string, Record<string, string | boolean | undefined> | undefined>;
+
 // The /view-prs/data response: the data file plus the server's additions.
 // Only the fields converted code reads are listed.
 export interface PrDataPayload {
@@ -234,6 +267,11 @@ export interface PrDataPayload {
   actorLoginAliases?: unknown;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
+  // The user state's per-repo maps, repo -> PR number -> value: ack
+  // values are strings, flagged/in review are booleans.
+  ackByRepo?: PrFlagsByRepo;
+  flaggedByRepo?: PrFlagsByRepo;
+  inReviewByRepo?: PrFlagsByRepo;
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

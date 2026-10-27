@@ -1,4 +1,4 @@
-// Pure reducer for the activity drawer's SSE-fed job state. No React/DOM -
+// Pure reducer for the activity popover's SSE-fed job state. No React/DOM -
 // all the "honest, not a fake queue" semantics live here so they're unit
 // testable without a real EventSource. JobEventsProvider.tsx owns the live
 // connection and EventSource lifecycle and applies frames through this
@@ -122,7 +122,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
-    // The scheduler fields AppliedFilterSummary's "Applied filters" text
+    // The scheduler fields the PR data summary's "Applied filters" text
     // shows (interval, cooldown, last manual/auto run, last skip reason
     // and error) - same whole-scheduler-snapshot category, read off every
     // envelope's bundled scheduler object.

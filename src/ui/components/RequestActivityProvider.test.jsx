@@ -9,7 +9,7 @@ const { useRequestActivity, useRequestActivityDisplay } = require('../state/Requ
 // request activity moved here from PrDataProvider (its first two tests below
 // moved with it, from PrDataProvider.test.jsx), and the scheduler state from
 // index.page.js. The badges/recent list are this Provider's own state now,
-// instead of being pushed into AppRoot through
+// instead of being pushed into the old AppRoot through
 // window.updateReactRequestActivityBadges/updateReactRecentRequestActivity.
 function Probe({ onValue }) {
   onValue({ actions: useRequestActivity(), display: useRequestActivityDisplay() });

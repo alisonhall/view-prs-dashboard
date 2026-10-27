@@ -16,7 +16,7 @@ const PR_TABLE_READY_TIMEOUT_MS = process.env.CI ? 45_000 : 15_000;
 // Test selectors - how this file finds elements, so the tests keep passing
 // through UI redesigns that change markup and class names (they check
 // behaviour, not structure):
-//   1. By role and accessible name: getByRole("button", { name: "Save notes" }).
+//   1. By role and accessible name: getByRole("button", { name: "Save other notes" }).
 //      For form fields, getByLabel(...) - but for a <select> wrapped in its
 //      <label>, getByRole("combobox", { name }): getByLabel matches the
 //      label's raw text, which includes every option. Pass exact: true -
@@ -49,36 +49,88 @@ const waitForPrTable = (page) =>
 // (a named group). <summary> has no standard role, so this one helper holds
 // the structural lookup - the place to change if the dropdown markup does.
 const filterDropdownSummary = (list) => list.locator("xpath=ancestor::details[1]/summary");
+// The filter bar above the PR table (a region named "Filters").
+const filterBar = (page) => page.getByRole("region", { name: "Filters", exact: true });
+// Opens the filter bar's controls: closed in a fresh browser, and then as
+// it was left (so still open after a reload).
+const openFilterBar = async (page) => {
+  const toggle = filterBar(page).getByRole("button", { name: /^Filters/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+};
+// One of the filter bar's lists ("Labels", "Authors"...), by name.
+const filterBarList = (page, name) => filterBar(page).getByRole("group", { name, exact: true, includeHidden: true });
+// The filter bar's chips, one per applied filter (a group only while any is).
+const filterChips = (page) => filterBar(page).getByRole("group", { name: "Applied table filters", exact: true });
+// The Settings drawer (a modal dialog, opened from the app header).
+const settingsDrawer = (page) => page.getByRole("dialog", { name: "Settings", exact: true });
+// Opens it (if it isn't) at a section (its nav tab's name, e.g. "Run & check") and
+// returns it. It covers the page: close it before using the table.
+const openSettings = async (page, section = "Run & check") => {
+  if (!(await settingsDrawer(page).isVisible())) {
+    await page.getByRole("banner").getByRole("button", { name: "Settings", exact: true }).click();
+  }
+  await settingsDrawer(page).getByRole("tab", { name: section, exact: true }).click();
+  return settingsDrawer(page);
+};
+const closeSettings = async (page) => {
+  await settingsDrawer(page).getByRole("button", { name: "Close settings", exact: true }).click();
+  await expect(settingsDrawer(page)).toHaveCount(0);
+};
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
   prTables(page).getByRole("group", { name: title, exact: true, includeHidden: true });
-// PR N's insights toggle in either state ("More insights for PR #N" /
-// "Hide insights for PR #N"), so a locator still matches after a click.
-const insightsToggleFor = (scope, prNumber) =>
-  scope.getByRole("button", { name: new RegExp(`^(More|Hide) insights for PR #${prNumber}$`) });
+// A PR row's busy icon, shown only while that PR is refreshing (it's named
+// for screen readers; each rendered copy of the row has one).
+const prBusyIcon = (page, prNumber) =>
+  prTables(page).getByRole("img", { name: `PR #${prNumber} update in progress`, exact: true, includeHidden: true });
+// Opens the first rendered copy of a row's More menu and returns the menu.
+const openRowMenu = async (page, prNumber) => {
+  await prTables(page).getByRole("button", { name: `More actions for PR #${prNumber}`, exact: true }).first().click();
+  return page.getByRole("menu", { name: `More actions for PR #${prNumber}`, exact: true });
+};
+// A section's own <summary> (its header), which opens and closes it.
+// <summary> has no standard role, so like filterDropdownSummary this
+// helper holds the structural lookup.
+const prSectionSummary = (section) => section.locator("xpath=./summary");
+// PR N's summary toggle (the row chevron) in either state ("Show summary
+// for PR #N" / "Hide summary for PR #N"), so a locator still matches after
+// a click.
+const summaryToggleFor = (scope, prNumber) =>
+  scope.getByRole("button", { name: new RegExp(`^(Show|Hide) summary for PR #${prNumber}$`) });
 const prNumberFromLabel = (label) => String(label || "").match(/#(\d+)$/)[1];
-// The first visible "More insights" toggle, pinned to its PR.
-const firstInsightsToggle = async (page) => {
+// The first visible "Show summary" toggle, pinned to its PR.
+const firstSummaryToggle = async (page) => {
   const label = await prTables(page)
-    .getByRole("button", { name: /^More insights for PR #\d+$/ })
+    .getByRole("button", { name: /^Show summary for PR #\d+$/ })
     .first()
     .getAttribute("aria-label");
-  return insightsToggleFor(prTables(page), prNumberFromLabel(label)).first();
+  return summaryToggleFor(prTables(page), prNumberFromLabel(label)).first();
 };
-// The insights row under PR N's expanded toggle, in the same table. Found by
-// name ("Insights for PR #N"), hidden included: its own `hidden` is what
-// the tests check, and its section may be collapsed.
-const insightsRowUnderExpandedToggle = async (page) => {
-  const expanded = prTables(page)
-    .getByRole("button", { name: /^Hide insights for PR #\d+$/, includeHidden: true })
-    .first();
-  await expect(expanded).toBeAttached();
-  const prNumber = prNumberFromLabel(await expanded.getAttribute("aria-label"));
-  const table = prTables(page)
-    .getByRole("table", { includeHidden: true })
-    .filter({ has: page.getByRole("button", { name: `Hide insights for PR #${prNumber}`, exact: true, includeHidden: true }) })
-    .first();
-  return table.getByRole("row", { name: `Insights for PR #${prNumber}`, exact: true, includeHidden: true });
+// The detail pane, docked beside the tables (the e2e window is wide): named
+// "PR details" while empty, else by the PR's title.
+const detailPane = (page) => prTables(page).getByRole("complementary");
+// The pane's tab whose name starts with `name` (labels carry counts, e.g.
+// "Conversations 2 open").
+const paneTab = (page, name) => detailPane(page).getByRole("tab", { name: new RegExp(`^${name}`) });
+// Shows the first visible row in the detail pane (its summary's "Show
+// details"), on `tab` (Overview, Activity, Conversations, Notes), checking
+// it opens. Returns the PR number.
+const openFirstRowInPane = async (page, tab = "Overview") => {
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.click();
+  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
+  await prTables(page).getByRole("button", { name: `Show details for PR #${prNumber}`, exact: true }).first().click();
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
+  await paneTab(page, tab).click();
+  await expect(paneTab(page, tab)).toHaveAttribute("aria-selected", "true");
+  return prNumber;
+};
+// Opens one of the Notes tab's fields for editing: its "Edit <name>"
+// button, or "Add <name>" while it's empty.
+const editNotesField = async (notesSection, name) => {
+  await notesSection.getByRole("button", { name: new RegExp(`^(Edit|Add) ${name}$`) }).click();
 };
 
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): makes a
@@ -224,6 +276,151 @@ test.beforeEach(async ({ page }) => {
   await mockRepoLabelsRoute(page);
 });
 
+test("the app header names the repo, switches views, says when the data was updated and offers Quick check all", async ({ page }) => {
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("heading", { level: 1, name: "View PR Updates" })).toBeVisible();
+  await expect(header).toContainText("octocat/hello-world");
+  // The fixture's last run is long past.
+  await expect(header.getByText(/^Updated \d+d ago$/)).toBeVisible();
+  await expect(header.getByRole("button", { name: "Quick check all", exact: true })).toBeEnabled();
+
+  const views = header.getByRole("tablist", { name: "Views" });
+  await expect(views.getByRole("tab", { name: "Pull requests" })).toHaveAttribute("aria-selected", "true");
+  await views.getByRole("tab", { name: "Review stats" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Review stats" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Pull requests", includeHidden: true })).toBeHidden();
+  await views.getByRole("tab", { name: "Pull requests" }).click();
+  await expect(prTables(page)).toBeVisible();
+  // Nothing unsaved: no auto-update-paused banner.
+  await expect(page.getByRole("status", { name: "Auto update paused", exact: true })).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("at phone width the Settings sections are one row that scrolls sideways, leaving the drawer to the section", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  await openSettings(page);
+  const nav = settingsDrawer(page).getByRole("tablist", { name: "Settings sections", exact: true });
+  const firstTab = nav.getByRole("tab", { name: "Run & check", exact: true });
+  const lastTab = nav.getByRole("tab", { name: "Export", exact: true });
+
+  // One row: the nav is about one tab high (stacked, the nine were ~310px).
+  const navBox = await nav.boundingBox();
+  const tabBox = await firstTab.boundingBox();
+  expect(navBox.height).toBeLessThan(tabBox.height * 1.5);
+  // Each tab keeps its label on one line (squeezed, they'd wrap), so the
+  // row is wider than the drawer and scrolls inside it, not the page.
+  const labelLines = await nav.getByRole("tab").evaluateAll((elements) =>
+    elements.map((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    }),
+  );
+  expect(labelLines).toEqual(Array(9).fill(1));
+  expect(await nav.evaluate((element) => element.closest(".settings-nav").scrollWidth > element.closest(".settings-nav").clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+
+  // End moves to the last section, which scrolls into view.
+  await firstTab.focus();
+  await page.keyboard.press("End");
+  await expect(lastTab).toHaveAttribute("aria-selected", "true");
+  await expect(lastTab).toBeInViewport();
+  await expect(settingsDrawer(page).getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+});
+
+test("at phone width the activity popover stays in the window, under its button", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  const activityButton = page.getByRole("banner").getByRole("button", { name: /^Activity/ });
+  await activityButton.click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeInViewport({ ratio: 1 });
+  const buttonBox = await activityButton.boundingBox();
+  expect((await activityPanel.boundingBox()).y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+});
+
+test("the activity popover closes when the page scrolls, but not when its own content does", async ({ page }) => {
+  // The header isn't sticky: following its button, the popover would be
+  // carried off the top of the window.
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  const content = activityPanel.locator(".activity-popover-content");
+
+  const contentBox = await content.boundingBox();
+  await page.mouse.move(contentBox.x + contentBox.width / 2, contentBox.y + contentBox.height / 2);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(activityPanel).toBeVisible();
+
+  await page.mouse.move(100, 450);
+  await page.mouse.wheel(0, 300);
+  await expect(activityPanel).toBeHidden();
+});
+
+test("tabbing out of the activity popover closes it, so Settings opens alone and Esc goes back to Settings", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeFocused();
+
+  // Its close button, then out to the header's next control.
+  const settingsButton = page.getByRole("banner").getByRole("button", { name: "Settings", exact: true });
+  for (let i = 0; i < 30 && !(await settingsButton.evaluate((element) => element === document.activeElement)); i += 1) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(settingsButton).toBeFocused();
+  await expect(activityPanel).toBeHidden();
+
+  await page.keyboard.press("Enter");
+  await expect(settingsDrawer(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(settingsDrawer(page)).toHaveCount(0);
+  await expect(settingsButton).toBeFocused();
+});
+
+test("the Settings drawer opens from the header, switches sections, and closes with Esc back to its button", async ({ page }) => {
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const settingsButton = page.getByRole("banner").getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const drawer = settingsDrawer(page);
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Run & check", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("button", { name: "Run script", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("region", { name: "Status message", exact: true })).toBeVisible();
+
+  // ↓ moves to the next section; End to the last.
+  await drawer.getByRole("tab", { name: "Run & check", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
+  await page.keyboard.press("End");
+  await expect(drawer.getByRole("tab", { name: "Export", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(settingsButton).toBeFocused();
+
+  // Its close button is on top of the page's fixed controls (the activity
+  // drawer's toggle sits in the same corner).
+  await settingsButton.click();
+  await closeSettings(page);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("page loads, PR table renders, and no requests or console calls fail", async ({ page }) => {
   const { consoleErrors, failedRequests } = collectPageErrors(page);
 
@@ -255,24 +452,177 @@ test("non-ASCII glyphs render correctly (charset regression guard)", async ({ pa
   expect(charset.toUpperCase()).toBe("UTF-8");
 });
 
-test("checkbox toggle and More insights expand work", async ({ page }) => {
+test("In review toggle, row summary, and showing a PR in the detail pane work", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
 
   await page.goto("/");
   await waitForPrTable(page);
 
-  // Flagged/in-review checkboxes live in the smart groups, open by default.
-  const checkbox = prTables(page).getByRole("checkbox", { name: /^In Review for PR #/ }).first();
-  await expect(checkbox).toHaveCount(1);
-  const before = await checkbox.isChecked();
-  await checkbox.click();
-  await expect(checkbox).toHaveJSProperty("checked", !before);
+  // In review is a toggle button (aria-pressed); the smart groups holding
+  // it are open by default.
+  const toggle = prTables(page).getByRole("button", { name: /^In Review for PR #/ }).first();
+  await expect(toggle).toHaveCount(1);
+  const before = await toggle.getAttribute("aria-pressed");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  const prNumber = await openFirstRowInPane(page);
+  const summaryRow = prTables(page).getByRole("row", { name: `Summary for PR #${prNumber}`, exact: true }).first();
+  await expect(summaryRow.getByRole("heading", { name: "Latest activity" })).toBeVisible();
+  // Indented under the title (`.pr-table td:first-child` used to win).
+  await expect(summaryRow.getByRole("cell")).toHaveCSS("padding-left", "48px");
+  await expect(detailPane(page).getByRole("group", { name: "Review", exact: true })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
+});
+
+test("the detail pane docks beside the table, follows ↑/↓ in the table, and Esc clears it", async ({ page }) => {
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const pane = detailPane(page);
+  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(pane).toContainText("No PR selected");
+  // Docked to the right of the tables, which drop Size and Activity for it.
+  const paneBox = await pane.boundingBox();
+  const firstTable = prTables(page).getByRole("table").first();
+  const tableBox = await firstTable.boundingBox();
+  expect(paneBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
+  await expect(firstTable.getByRole("columnheader", { name: "Activity", exact: true })).toHaveCount(0);
+
+  // ↓ from a row's link selects that row; ↓ again moves to the next one.
+  const table = prTables(page).getByRole("table").first();
+  const links = table.getByRole("link", { name: /^#\d+$/ });
+  const firstNumber = (await links.first().textContent()).slice(1);
+  await links.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(pane.getByRole("tablist", { name: `PR #${firstNumber} details`, exact: true })).toBeVisible();
+  if ((await links.count()) > 1) {
+    const secondNumber = (await links.nth(1).textContent()).slice(1);
+    await page.keyboard.press("ArrowDown");
+    await expect(pane.getByRole("tablist", { name: `PR #${secondNumber} details`, exact: true })).toBeVisible();
+    await expect(links.nth(1)).toBeFocused();
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(pane).toHaveAccessibleName("PR details");
+
+  // The pane's own close returns focus to the PR's row (its visible copy).
+  await links.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await pane.getByRole("button", { name: "Close details", exact: true }).click();
+  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(links.first()).toBeFocused();
+  expect(consoleErrors).toEqual([]);
+});
+
+test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 900 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(detailPane(page)).toHaveCount(0);
+
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.click();
+  const showDetails = prTables(page).getByRole("button", { name: `Show details for PR #${prNumber}`, exact: true }).first();
+  await showDetails.click();
+
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute("aria-modal", "true");
+  await expect(drawer).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  // Back on the button that opened it.
+  await expect(showDetails).toBeFocused();
+});
+
+test("the detail pane's Activity tab groups events by day, filters by type and collapses commit runs", async ({ page }) => {
+  // The fixture's PR #2 has two comments on Jan 5 and Hubot's two commits
+  // on Jan 2 (and no last-looked time, so the scope is All).
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  await paneTab(page, "Activity").click();
+
+  const pane = detailPane(page);
+  const dayHeadings = pane.getByRole("heading", { level: 3 });
+  await expect(dayHeadings).toHaveCount(2);
+  await expect(dayHeadings.nth(0)).toHaveText(/Jan 5/);
+  await expect(dayHeadings.nth(1)).toHaveText(/Jan 2/);
+  await expect(pane.getByText("Second comment on the fix")).toBeVisible();
+
+  const types = pane.getByRole("group", { name: "Event types", exact: true });
+  const comments = types.getByRole("button", { name: /^Comments/ });
+  await expect(comments).toContainText("2");
+  await comments.click();
+  await expect(comments).toHaveAttribute("aria-pressed", "false");
+  await expect(dayHeadings).toHaveCount(1);
+  await expect(pane.getByText("Second comment on the fix")).toHaveCount(0);
+
+  const run = pane.getByRole("button", { name: /pushed 2 commits/ });
+  await expect(run).toHaveAttribute("aria-expanded", "false");
+  await run.click();
+  await expect(pane.getByText("Fix the parser", { exact: false })).toBeVisible();
+
+  await comments.click();
+  await expect(dayHeadings).toHaveCount(2);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("the detail pane's Conversations tab lists unresolved threads by file and opens them with Next unresolved", async ({ page }) => {
+  // The fixture's PR #2 has a thread the viewer started that hubot answered
+  // (waiting on the viewer) and one octocat resolved.
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  await paneTab(page, "Conversations").click();
+
+  const pane = detailPane(page);
+  await expect(pane.getByText("1 waiting on you")).toBeVisible();
+  const show = pane.getByRole("group", { name: "Show", exact: true });
+  await expect(show.getByRole("button", { name: /^Unresolved/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(pane.getByRole("button", { name: /src\/parser\.js/ })).toBeVisible();
+  await expect(pane.getByText("Typo in the test name")).toHaveCount(0);
+
+  await pane.getByRole("button", { name: "Next unresolved", exact: true }).click();
+  const thread = pane.getByRole("button", { name: /Can this retry forever\?/ });
+  await expect(thread).toHaveAttribute("aria-expanded", "true");
+  await expect(thread).toBeFocused();
+  await expect(pane.getByText("No, it stops after three tries.")).toBeVisible();
+  await expect(pane.getByRole("strong").filter({ hasText: "forever" })).toBeVisible();
+
+  await show.getByRole("button", { name: /^All/ }).click();
+  await expect(pane.getByText("Typo in the test name")).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});
+
+test("hiding the detail pane is remembered after a reload", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const toggle = page.getByRole("button", { name: "Detail pane", exact: true });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await toggle.click();
+  await expect(detailPane(page)).toHaveCount(0);
+
+  await page.reload();
+  await waitForPrTable(page);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(detailPane(page)).toHaveCount(0);
 });
 
 test("lifecycle section expand/collapse and tab switching work", async ({ page }) => {
@@ -286,22 +636,47 @@ test("lifecycle section expand/collapse and tab switching work", async ({ page }
   await openSection.getByText("Open PRs", { exact: true }).click();
   await expect(openSection).toHaveJSProperty("open", true);
 
-  await page.getByRole("tab", { name: "Review statistics" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Review statistics", exact: true, includeHidden: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Review stats" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Review stats", exact: true, includeHidden: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Author Insights" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Author Insights", exact: true, includeHidden: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Authors", exact: true, includeHidden: true })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
 });
 
-test("Run & Filter dropdowns populate from loaded PR data", async ({ page }) => {
+test("the filter bar starts closed with the row count, opens as it was left after a reload, and Clear all clears its chips", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  const toggle = filterBar(page).getByRole("button", { name: /^Filters/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(filterBar(page).getByLabel("View scope", { exact: true })).toBeHidden();
+  await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
 
-  const authorOptionCount = await page.getByRole("group", { name: "Filter by PR author(s)", exact: true, includeHidden: true }).getByRole("checkbox", { includeHidden: true }).count();
+  await openFilterBar(page);
+  await page.reload();
+  await waitForPrTable(page);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await expect(filterChips(page)).toContainText("PR #: 1");
+  await expect(toggle).toHaveAccessibleName("Filters, 1 applied");
+  await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+
+  await filterBar(page).getByRole("button", { name: "Clear all", exact: true }).click();
+  await expect(filterChips(page)).toHaveCount(0);
+  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("");
+  await waitForFilterPersist(page);
+});
+
+test("the filter bar's lists populate from loaded PR data", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  await openFilterBar(page);
+
+  const authorOptionCount = await filterBarList(page, "Authors").getByRole("checkbox", { includeHidden: true }).count();
   expect(authorOptionCount).toBeGreaterThan(0);
 });
 
@@ -324,10 +699,10 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).toContainText("Fix flaky test");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
 
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("Rows: 1");
   await expect(prTables(page)).toContainText("Add welcome banner");
@@ -338,8 +713,8 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   // shared webServer - restored filters now actually re-apply on load
   // (see setNativeValueAndDispatch in index.page.js), so a leftover
   // persisted filter here isn't just cosmetic for the next test anymore.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -368,16 +743,14 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
   await page.goto("/");
   await waitForPrTable(page);
 
-  // Checks the `hidden` DOM property directly (not Playwright's
-  // toBeVisible/toBeHidden) because this test verifies the React prop
-  // wiring, not whether a human could currently see the row - PR #1 can
-  // legitimately be sitting inside a collapsed lifecycle section
-  // (collapsed by default, and its exact section/smart-group membership
-  // can shift as other tests in this suite toggle its flagged/in-review
-  // state against the same shared dev server) without that being a
-  // regression in this feature.
-  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
+  // Checks whether the busy icon exists (hidden included), not whether it's
+  // visible: this verifies the React prop wiring, not whether a human could
+  // currently see the row - PR #1 can legitimately be sitting inside a
+  // collapsed lifecycle section (collapsed by default, and its exact
+  // section/smart-group membership can shift as other tests in this suite
+  // toggle its flagged/in-review state against the same shared dev server)
+  // without that being a regression in this feature.
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
 
   await page.evaluate(() => {
     // activePrNumbers entries are { repo, prNumber } pairs, not bare
@@ -391,7 +764,7 @@ test("scheduler-driven active-PR progress indicator reaches the React-rendered r
     );
   });
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
+  await expect(prBusyIcon(page, 1)).not.toHaveCount(0);
 });
 
 test("editing a PR Notes field in the real React-owned row holds back a real data poll until the edit is undone", async ({ page }) => {
@@ -408,12 +781,11 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await waitForPrTable(page);
   const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowInPane(page, "Notes");
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
   const prNumber = prNumberFromLabel(await notesSection.getAttribute("aria-label"));
+  await editNotesField(notesSection, "other notes");
   const notesTextarea = notesSection.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
@@ -428,6 +800,7 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await notesTextarea.fill(originalValue);
   await notesTextarea.blur();
   await expect(indicator).toBeHidden();
+  await notesSection.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("typing character-by-character into the story name/URL inputs keeps every keystroke", async ({ page }) => {
@@ -452,13 +825,12 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowInPane(page, "Notes");
 
   // A new row, so this works whether or not the PR already has stories;
-  // removing it afterwards leaves the notes unchanged.
+  // Cancel afterwards leaves the notes unchanged.
   const stories = prTables(page).getByRole("group", { name: "Stories", exact: true }).first();
+  await editNotesField(stories, "stories");
   await stories.getByRole("button", { name: "Add story" }).click();
 
   const storyNameInput = stories.getByRole("textbox", { name: / name$/ }).last();
@@ -473,6 +845,7 @@ test("typing character-by-character into the story name/URL inputs keeps every k
   await expect(storyUrlInput).toHaveValue("https://stories.example/US12345");
 
   await stories.getByRole("button", { name: /^Remove story / }).last().click();
+  await stories.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 test("selecting an option in the Notes section's author/tone/difficulty dropdowns actually applies it", async ({ page }) => {
@@ -486,12 +859,11 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await page.goto("/");
   await waitForPrTable(page);
 
-  const insightsToggle = await firstInsightsToggle(page);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  await openFirstRowInPane(page, "Notes");
 
   const notesSection = prTables(page).getByRole("group", { name: /^Notes for PR #\d+$/ }).first();
 
+  await editNotesField(notesSection, "PR difficulty");
   const difficultySelect = notesSection.getByRole("combobox", { name: "PR difficulty", exact: true });
   await expect(difficultySelect).toBeVisible();
   const originalDifficulty = await difficultySelect.inputValue();
@@ -501,23 +873,29 @@ test("selecting an option in the Notes section's author/tone/difficulty dropdown
   await difficultySelect.selectOption(originalDifficulty);
   await expect(difficultySelect).toHaveValue(originalDifficulty);
 
-  await notesSection.getByRole("button", { name: "+ Add comment" }).click();
-  const toneSelect = notesSection.getByRole("combobox", { name: "Comment 1 tone", exact: true });
+  await notesSection.getByRole("group", { name: "PR difficulty", exact: true }).getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A new comment (the last row), so this works whether or not the PR
+  // already has comments; Cancel afterwards leaves them unchanged.
+  const comments = notesSection.getByRole("group", { name: "Comments", exact: true });
+  await editNotesField(comments, "comments");
+  await comments.getByRole("button", { name: "Add comment", exact: true }).click();
+  const toneSelect = comments.getByRole("combobox", { name: / tone$/ }).last();
   await expect(toneSelect).toHaveValue("Neutral");
   await toneSelect.selectOption("Negative");
   await expect(toneSelect).toHaveValue("Negative");
 
-  const authorSelect = notesSection.getByRole("combobox", { name: "Comment 1 author", exact: true });
+  const authorSelect = comments.getByRole("combobox", { name: / author$/ }).last();
   const authorOptionCount = await authorSelect.getByRole("option", { includeHidden: true }).count();
   if (authorOptionCount > 1) {
     const secondOptionValue = await authorSelect.getByRole("option", { includeHidden: true }).nth(1).getAttribute("value");
     await authorSelect.selectOption(secondOptionValue);
     await expect(authorSelect).toHaveValue(secondOptionValue);
   }
-  await notesSection.getByRole("button", { name: /^Remove comment / }).first().click();
+  await comments.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
-test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes save button", async ({ page }) => {
+test("clicking an 'Auto update paused' chip for a PR switches back to the PR data tab and focuses that PR's unsaved Notes field's Save", async ({ page }) => {
   // Regression/coverage test for Phase G.1 (see REACT_MIGRATION_PLAN.md):
   // AutoRenderBlockedLinks.jsx's chips used to call window.navigateToPrInTable/
   // window.navigateToAuthorInsights directly - both are real hooks now
@@ -542,16 +920,16 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   if (!(await openSection.evaluate((el) => el.open))) {
     await openSection.getByText("Open PRs", { exact: true }).click();
   }
-  const insightsToggle = insightsToggleFor(prSection(page, "Open PRs"), 1);
-  await insightsToggle.click();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
+  // PR #1 in the detail pane (its summary's "Show details"), on Notes.
+  const summaryToggle = summaryToggleFor(prSection(page, "Open PRs"), 1);
+  await summaryToggle.click();
+  await expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
+  await prSection(page, "Open PRs").getByRole("button", { name: "Show details for PR #1", exact: true }).click();
+  await paneTab(page, "Notes").click();
 
-  // Scoped to the "open" section specifically (not just [data-pr-number="1"])
-  // for the same non-exclusive-smart-group reason as insightsToggle above -
-  // PR #1's row (and its own Notes section) can render twice.
-  const notesTextarea = prSection(page, "Open PRs")
-    .getByRole("group", { name: "Notes for PR #1", exact: true })
-    .getByPlaceholder("Other notes...");
+  const notesGroup = detailPane(page).getByRole("group", { name: "Notes for PR #1", exact: true });
+  await editNotesField(notesGroup, "other notes");
+  const notesTextarea = notesGroup.getByPlaceholder("Other notes...");
   await expect(notesTextarea).toBeVisible();
   const originalValue = await notesTextarea.inputValue();
   await notesTextarea.fill(`${originalValue}a note left during this test`);
@@ -559,39 +937,42 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // The "Auto update paused" indicator (and its chips) only shows once a
   // real poll's fresh data has actually been held back, not merely because
   // a field is dirty (AutoRenderBlockingProvider.tsx's `isBlocked` needs
-  // both). Clicking the "Author Insights" tab below blurs the dirty textarea,
+  // both). Clicking the "Authors" view tab below blurs the dirty textarea,
   // but the field is still dirty, so the poll stays held back.
   await changeServerData(page);
-  await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeVisible();
+  const pausedBanner = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
+  await expect(pausedBanner).toBeVisible();
+  // It stays stuck to the top of the window however far down you are.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(pausedBanner).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
 
-  // Switch away from the PR data tab - the row/Notes section stay mounted
+  // Switch away from the Pull requests view - the pane and its Notes stay mounted
   // underneath (only the panel's `hidden` attribute changes), so the dirty
   // state survives. Proves the chip click actually switches back, not
   // that the tab was already active.
-  await page.getByRole("tab", { name: "Author Insights" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Author Insights", exact: true, includeHidden: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Authors", exact: true, includeHidden: true })).toBeVisible();
 
   const chip = page.getByRole("button", { name: "#1", exact: true });
   await expect(chip).toBeVisible();
   await chip.click();
 
-  await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  await expect(insightsToggle).toHaveAttribute("aria-expanded", "true");
-  const saveButton = prSection(page, "Open PRs")
-    .getByRole("group", { name: "Notes for PR #1", exact: true })
-    .getByRole("button", { name: "Save notes", exact: true });
-  await expect(saveButton).toBeFocused();
+  await expect(page.getByRole("tabpanel", { name: "Pull requests", exact: true, includeHidden: true })).toBeVisible();
+  await expect(paneTab(page, "Notes")).toHaveAttribute("aria-selected", "true");
+  await expect(notesGroup.getByRole("button", { name: "Save other notes", exact: true })).toBeFocused();
 
   // Undo the edit: with the field clean (and not focused - the save button
   // has focus), the held-back poll applies and the indicator goes away.
   await notesTextarea.fill(originalValue);
   await notesTextarea.blur();
   await expect(page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true })).toBeHidden();
+  await notesGroup.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
-test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on every affected row", async ({ page }) => {
+test("bulk Ack/Apply-label from Settings (Run & check) shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.ts's
-  // runAckAction (bulk operations submitted via the Run & Filter tab's
+  // runAckAction (bulk operations submitted via Settings' Run & check
   // "#pr-numbers" field, as opposed to a single row's own Ack button)
   // previously gave no visible per-row feedback at all while a multi-PR
   // request was in flight - only the single-row withPrBusy wrapper in
@@ -605,33 +986,32 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
   await page.goto("/");
   await waitForPrTable(page);
 
-  const pr1Indicator = prTables(page).getByTitle("PR #1 update in progress", { exact: true }).first();
-  const pr2Indicator = prTables(page).getByTitle("PR #2 update in progress", { exact: true }).first();
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).toHaveCount(0);
 
   await page.route("**/view-prs/ack", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  // #repo lives inside the collapsed "Run Script options (rarely changed)"
-  // <details> - open it before filling, same as the other tests in this
-  // file that touch fields in that group. Filled explicitly (not relying
-  // on its usual persisted-default value) so this test doesn't depend on
-  // an earlier test in this shared-webServer suite having already
-  // persisted it.
-  await page.getByText("Run Script options (rarely changed)").click();
+  // The repo is in the Settings drawer's Script options; filled explicitly
+  // (not relying on its usual persisted-default value) so this test doesn't
+  // depend on an earlier test in this shared-webServer suite having already
+  // persisted it. The PR numbers and Apply ack only are in Run & check.
+  await openSettings(page, "Script options");
   await page.getByLabel("Repo (owner/name)", { exact: true }).fill("octocat/hello-world");
+  await openSettings(page, "Run & check");
   await page.getByLabel("PR number(s) (comma-separated)", { exact: true }).fill("1,2");
   await page.getByRole("button", { name: "Apply ack only" }).click();
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", false);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", false);
+  await expect(prBusyIcon(page, 1)).not.toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).not.toHaveCount(0);
 
-  await expect(pr1Indicator).toHaveJSProperty("hidden", true);
-  await expect(pr2Indicator).toHaveJSProperty("hidden", true);
+  await expect(prBusyIcon(page, 1)).toHaveCount(0);
+  await expect(prBusyIcon(page, 2)).toHaveCount(0);
+  // The result shows in the app header too, with the Settings drawer closed.
+  await closeSettings(page);
+  await expect(page.getByRole("banner").getByRole("status")).toContainText("completed");
 });
 
 // A dedicated real-browser reproduction of the "queued, not yet started"
@@ -651,29 +1031,47 @@ test("bulk Ack/Apply-label from the Run & Filter tab shows a busy indicator on e
 // Context level, including via a real multi-chunk begin/in-flight/done/
 // finish flow. Not reconstructed here.
 
-test("'View in table' from Author Insights actually expands the insights row content", async ({ page }) => {
-  // Regression test: vanilla's navigateToPrInTable finds the PR's row and
-  // directly flips `.hidden`/textContent on the insights <tr> and toggle
-  // button. Under React that left the toggle button claiming
-  // aria-expanded="true" while the insights row stayed hidden (React's own
-  // expandedInsights state never changed), so the click looked like it
-  // worked but revealed nothing. It now dispatches
-  // 'pr-navigate-to-insights' for PrTableApp to handle via its own state.
+test("'View in table' from Author Insights actually shows the PR in the detail pane", async ({ page }) => {
+  // Regression test: vanilla's navigateToPrInTable found the PR's row and
+  // flipped `.hidden`/textContent on its insights directly, which under
+  // React looked like it worked but revealed nothing. It dispatches
+  // 'pr-navigate-to-insights' for PrTableApp to handle via its own state,
+  // which now selects the PR for the pane.
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
   const tableLink = page.getByRole("button", { name: "View in table", exact: true }).first();
   await tableLink.waitFor();
   await tableLink.click();
 
-  const insightsRow = await insightsRowUnderExpandedToggle(page);
-  await expect(insightsRow).toHaveJSProperty("hidden", false);
+  await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
+});
+
+test("'View in table' for a flagged PR shows and focuses it in an open section, not the closed Flagged group", async ({ page }) => {
+  // A flagged PR is in the Flagged group (listed first, closed by default)
+  // and in other sections. Navigation used to expand its row in the first
+  // section it was in - the closed Flagged group - so nothing showed and
+  // focus went nowhere. The fixture flags Hubot's PR 2, which also needs
+  // attention.
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(
+    prSection(page, "Flagged").getByRole("button", { name: "Show summary for PR #2", exact: true, includeHidden: true }),
+  ).toBeAttached();
+
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await page.getByRole("combobox", { name: /^Author/ }).selectOption("hubot");
+  await page.getByRole("button", { name: "View in table", exact: true }).first().click();
+
+  const visiblePrLinks = prTables(page).getByRole("link", { name: "#2", exact: true }).filter({ visible: true });
+  await expect(visiblePrLinks.first()).toBeFocused();
+  await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
 });
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {
   // Regression test: index.page.js's restoreUiOptionOverrides() fetches a
-  // persisted filter value and can resolve *before* react-app.jsx (a
+  // persisted filter value and can resolve *before* react-app.tsx (a
   // Vite-bundled ES module, slower to load than a small same-origin JSON
   // fetch) finishes mounting - if it wins that race, it sets the value on
   // the static fallback <input>, which mounting then wiped out by
@@ -686,21 +1084,21 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const input = page.getByLabel("Filter by PR number(s)", { exact: true });
+  await openFilterBar(page);
+  const input = filterBar(page).getByLabel("PR numbers", { exact: true });
   await input.fill("1");
   await waitForFilterPersist(page);
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
 
-  await expect(page.getByLabel("Filter by PR number(s)", { exact: true })).toHaveValue("1");
+  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("1");
 
   // Clear it and leave that persisted too, so this test's filter doesn't
   // hide PR #2/#3 from whatever unrelated test happens to load next
   // against this suite's one shared webServer.
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -713,21 +1111,21 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.selectOption("#scope-mode", "last-run");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
   await waitForFilterPersist(page);
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
 
-  await expect(page.getByLabel("View scope", { exact: true })).toHaveValue("last-run");
+  await expect(filterBar(page).getByLabel("View scope", { exact: true })).toHaveValue("last-run");
 
   // Confirm the restored control still works, not just its displayed value,
   // and leave scope back at the "all" default so this test's persisted
   // state doesn't affect whatever unrelated test happens to load next
   // against this suite's one shared webServer.
-  await page.selectOption("#scope-mode", "all");
+  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
   await waitForFilterPersist(page);
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
 });
@@ -743,27 +1141,25 @@ test("React-owned checkbox survives a persisted-value restore, and toggling stil
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
-  const checkbox = page.getByLabel("Always show PRs In Review", { exact: true });
+  await openFilterBar(page);
+  const checkbox = filterBar(page).getByLabel("Always show PRs in review", { exact: true });
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
   await waitForFilterPersist(page);
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openFilterBar(page);
 
-  await expect(page.getByLabel("Always show PRs In Review", { exact: true })).toBeChecked();
+  await expect(filterBar(page).getByLabel("Always show PRs in review", { exact: true })).toBeChecked();
 
   // Confirm the restored control still works, and leave it back at the
   // unchecked default so this test's persisted state doesn't affect
   // whatever unrelated test happens to load next against this suite's one
   // shared webServer.
-  await page.getByLabel("Always show PRs In Review", { exact: true }).uncheck();
+  await filterBar(page).getByLabel("Always show PRs in review", { exact: true }).uncheck();
   await waitForFilterPersist(page);
-  await expect(page.getByLabel("Always show PRs In Review", { exact: true })).not.toBeChecked();
+  await expect(filterBar(page).getByLabel("Always show PRs in review", { exact: true })).not.toBeChecked();
 });
 
 test("React-owned Needs Attention rule controls (select + checkbox batch) survive a persisted restore together", async ({ page }) => {
@@ -776,8 +1172,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Attention rules");
 
   await page.selectOption("#attention-no-activity-mode", "none");
   await page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true }).uncheck();
@@ -786,8 +1181,7 @@ test("React-owned Needs Attention rule controls (select + checkbox batch) surviv
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Attention rules");
 
   await expect(page.getByLabel("NO_ACTIVITY handling", { exact: true })).toHaveValue("none");
   await expect(page.getByLabel("Mark PRs with my pending (unsubmitted) comments", { exact: true })).not.toBeChecked();
@@ -808,7 +1202,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // Phase 2 slice at once, not just one: index.page.js attaches its
   // "change" -> debouncedApplyFilters (and persist) listeners directly to
   // each field via addEventListener, early during page load - before
-  // react-app.jsx's deferred module has mounted. ReactDOM.createRoot().render()
+  // react-app.tsx's deferred module has mounted. ReactDOM.createRoot().render()
   // then creates a *fresh* DOM node for that field, silently orphaning the
   // listener that was attached to the old static/fallback node. Every
   // other test in this file that checks filtering clicks the "Apply
@@ -822,10 +1216,10 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
 
-  await page.selectOption("#scope-mode", "last-run");
+  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=last run rows");
 
   // Reset so this test's change doesn't affect whatever loads next. This
@@ -839,7 +1233,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
     ),
-    page.selectOption("#scope-mode", "all"),
+    filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all"),
   ]);
   expect(persistResponse.ok()).toBe(true);
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
@@ -859,19 +1253,19 @@ test("typing a PR-number filter updates the rendered React table live, with no \
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).toContainText("Fix flaky test");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
 
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer -
   // clearing is ALSO live, same as filling above.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Fix flaky test");
 });
 
@@ -880,7 +1274,7 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   // row-filtering multi-selects (include/exclude label, author, assigned,
   // approver) used to only take effect once "Apply filters (local)" was
   // explicitly clicked - their checked-state lived purely in
-  // MultiSelectCheckboxList's own local component state, with no Context
+  // the list component's own local state, with no Context
   // mirror for a reactive derivation to read. Now mirrored into
   // RowFilterSelectionContext, feeding useVisiblePrNumbers() directly -
   // this test proves the table updates the instant a checkbox is checked,
@@ -893,14 +1287,14 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).toContainText("Fix flaky test");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
+  await openFilterBar(page);
+  const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
 
-  const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
+  const labelList = filterBarList(page, "Labels");
   await labelList.getByLabel("enhancement", { exact: true }).check();
 
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
@@ -913,40 +1307,40 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   // "Apply filters (local)" was its only persist trigger) - wait for the
   // clear to actually land, or a slow-to-complete fire-and-forget PUT
   // from this uncheck can race the next test's own page load.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
   await labelDropdownSummary.click();
   await labelList.getByLabel("enhancement", { exact: true }).uncheck();
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Fix flaky test");
 });
 
-test("the \"Applied filters\" chip/summary text updates live too, with no \"Apply filters (local)\" click at all", async ({ page }) => {
+test("the PR data summary's \"Applied filters\" text updates live too, with no \"Apply filters (local)\" click at all", async ({ page }) => {
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
   // chip/summary text used to only update via index.page.js's vanilla
   // pipeline, pushed into React through a window.renderReactFilterSummary
-  // bridge - <AppliedFilterSummaryLive> (react-app.jsx) now derives this
+  // bridge - <DataViewHeader> now derives this
   // text itself, reactively, via useAppliedFilterSummary(). This test
   // proves both the PR-number filter and a multi-select update the chip
   // text immediately, matching the table itself (see the two tests above).
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
 
-  const summary = page.getByRole("region", { name: "Applied filters summary", exact: true, includeHidden: true });
+  const summary = page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true });
   await expect(summary).toContainText("repo=");
   await expect(summary).toContainText("scope=all stored rows");
 
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await expect(summary).toContainText("pr-numbers=1");
   await expect(summary).toContainText("Rows: 1");
 
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
 
-  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
+  const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
-  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
+  await filterBarList(page, "Labels").getByLabel("enhancement", { exact: true }).check();
   await expect(summary).toContainText("label=enhancement");
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
@@ -957,13 +1351,13 @@ test("the \"Applied filters\" chip/summary text updates live too, with no \"Appl
   // for the clear to actually land, or a slow-to-complete fire-and-forget
   // PUT from this uncheck can race the next test's own page load and
   // leave "enhancement" checked there instead.
-  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).uncheck();
+  await filterBarList(page, "Labels").getByLabel("enhancement", { exact: true }).uncheck();
   await waitForFilterPersist(page);
 });
 
 test("a removable filter chip appears above the table for each non-default filter, and its \"x\" clears that one filter", async ({ page }) => {
   // Regression coverage for TableFilterChips.jsx/useTableFilterChips.tsx:
-  // unlike the "Applied filters" summary (Run & Filter tab, tested above),
+  // unlike the old "Applied filters" summary (removed in phase 8),
   // these chips live above the table itself (Data Views tab) and are each
   // individually removable - clicking a chip's "x" must clear just that
   // filter, both in the originating control and in the table's own live
@@ -971,20 +1365,20 @@ test("a removable filter chip appears above the table for each non-default filte
   await page.goto("/");
   await waitForPrTable(page);
 
-  const chips = page.getByRole("group", { name: "Applied table filters", exact: true, includeHidden: true });
-  await expect(chips).toBeEmpty();
+  const chips = filterChips(page);
+  await expect(chips).toHaveCount(0);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
 
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(chips).toContainText("PR #: 1");
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
   await chips.getByRole("button", { name: "Remove filter: PR #: 1" }).click();
 
-  await expect(chips).toBeEmpty();
+  await expect(chips).toHaveCount(0);
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
@@ -999,23 +1393,23 @@ test("a removable filter chip appears above the table for each non-default filte
   // proof the debounced watcher alone is sufficient, unaided.
   await waitForFilterPersist(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await expect(page.getByLabel("Filter by PR number(s)", { exact: true })).toHaveValue("");
+  await openFilterBar(page);
+  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("");
 
   // A checked label filter gets its own chip too, removable the same way.
-  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
+  const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
-  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
+  await filterBarList(page, "Labels").getByLabel("enhancement", { exact: true }).check();
 
-  await page.getByRole("tab", { name: "PR data" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(chips).toContainText("Label: enhancement");
 
   await chips.getByRole("button", { name: "Remove filter: Label: enhancement" }).click();
-  await expect(chips).toBeEmpty();
+  await expect(chips).toHaveCount(0);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
   await labelDropdownSummary.click();
-  await expect(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true })).not.toBeChecked();
+  await expect(filterBarList(page, "Labels").getByLabel("enhancement", { exact: true })).not.toBeChecked();
 
   // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
   // audit", cluster 1): a chip's "x" clears the filter via a direct
@@ -1048,14 +1442,14 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
+  await openFilterBar(page);
+  const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
-  await page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true }).check();
+  await filterBarList(page, "Labels").getByLabel("enhancement", { exact: true }).check();
   await waitForFilterPersist(page);
 
-  await page.getByRole("tab", { name: "PR data" }).click();
-  const chips = page.getByRole("group", { name: "Applied table filters", exact: true, includeHidden: true });
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  const chips = filterChips(page);
   await expect(chips).toContainText("Label: enhancement");
 
   // Set up the response listener BEFORE the click, not after - the
@@ -1066,7 +1460,7 @@ test("removing a filter chip persists the clear on its own, with no explicit per
     (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
   );
   await chips.getByRole("button", { name: "Remove filter: Label: enhancement" }).click();
-  await expect(chips).toBeEmpty();
+  await expect(chips).toHaveCount(0);
 
   // No explicit persist call here at all - this is
   // FilterStateProvider.tsx's own debounced Context-level watcher firing
@@ -1076,9 +1470,9 @@ test("removing a filter chip persists the clear on its own, with no explicit per
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
   await labelDropdownSummary.click();
-  await expect(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }).getByLabel("enhancement", { exact: true })).not.toBeChecked();
+  await expect(filterBarList(page, "Labels").getByLabel("enhancement", { exact: true })).not.toBeChecked();
 });
 
 test("the \"Merge commits\" rules auto-persist on change and survive a restore", async ({ page }) => {
@@ -1088,8 +1482,7 @@ test("the \"Merge commits\" rules auto-persist on change and survive a restore",
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Merge commits");
 
   const patterns = page.getByLabel("Headline patterns (regular expressions, one per line, not case-sensitive)");
   const logins = page.getByLabel("Logins whose commits always count as merges (one per line)");
@@ -1107,8 +1500,7 @@ test("the \"Merge commits\" rules auto-persist on change and survive a restore",
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Merge commits");
 
   await expect(patterns).toHaveValue("^Merge\\b\n(");
   await expect(logins).toHaveValue("dependabot[bot]");
@@ -1131,8 +1523,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Change detection");
 
   const textarea = page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true });
   await expect(textarea).toHaveValue("");
@@ -1146,8 +1537,7 @@ test("React-owned \"ignore commit patterns\" textarea auto-persists on change an
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Change detection");
 
   await expect(page.getByLabel("Ignore commits matching patterns (regex, one per line)", { exact: true })).toHaveValue("^docs:\n^test:");
 
@@ -1204,8 +1594,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Script options");
 
   await expect(page.getByLabel("Repo (owner/name)", { exact: true })).toHaveValue("octocat/hello-world");
   await expect(page.getByLabel("Open PR limit", { exact: true })).toHaveValue("50");
@@ -1245,7 +1634,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
   // can't happen any more; this keeps checking the attributes in a real
   // browser. History - originally a regression test for a real race: applyNonCredentialFieldHints()
   // (index.page.js) is called once, synchronously, from initPage() -
-  // which runs to completion before react-app.jsx's own module graph has
+  // which runs to completion before react-app.tsx's own module graph has
   // necessarily finished loading, so these fields (all React-portaled -
   // repo/limit/merged-limit/jobs/pr-numbers via
   // ContextRunScriptTextInput.jsx, filter-pr-numbers via
@@ -1262,8 +1651,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Script options");
 
   for (const fieldLabel of [
     "Repo (owner/name)",
@@ -1271,12 +1659,16 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
     "Merged PR limit",
     "Parallel jobs",
     "PR number(s) (comma-separated)",
-    "Filter by PR number(s)",
   ]) {
     const field = page.getByLabel(fieldLabel, { exact: true });
     await expect(field).toHaveAttribute("autocomplete", "off");
     await expect(field).toHaveAttribute("data-lpignore", "true");
   }
+  await closeSettings(page);
+  await openFilterBar(page);
+  const prNumbersFilter = filterBar(page).getByLabel("PR numbers", { exact: true });
+  await expect(prNumbersFilter).toHaveAttribute("autocomplete", "off");
+  await expect(prNumbersFilter).toHaveAttribute("data-lpignore", "true");
 });
 
 test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers input", async ({ page }) => {
@@ -1314,12 +1706,12 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
 
   await selectCheckbox.check();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Run & check");
   await expect(page.getByLabel("PR number(s) (comma-separated)", { exact: true })).toHaveValue("1");
+  await closeSettings(page);
 });
 
-test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
+test("typing PR numbers into Run & check's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the reverse direction of the test above. PrSelectionCell used to read the
   // field once (defaultChecked) through window.getFilterStateValues(), so
@@ -1340,8 +1732,7 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
   const selectCheckbox = prTables(page).getByRole("checkbox", { name: "Select PR #1", exact: true }).first();
   await expect(selectCheckbox).not.toBeChecked();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Run Script options (rarely changed)").click();
+  await openSettings(page, "Run & check");
   const prNumbers = page.getByLabel("PR number(s) (comma-separated)", { exact: true });
 
   await prNumbers.fill("1");
@@ -1354,8 +1745,10 @@ test("typing PR numbers into the Run tab's PR-numbers field checks and unchecks 
   await prNumbers.fill("999");
   await expect(selectCheckbox).not.toBeChecked();
 
-  // And the original direction still works from this state.
+  // And the original direction still works from this state (the drawer
+  // closed, so the table can be used).
   await prNumbers.fill("");
+  await closeSettings(page);
   await selectCheckbox.check();
   await expect(prNumbers).toHaveValue("1");
 });
@@ -1378,7 +1771,8 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
       });
     });
 
-  await prTables(page).getByRole("button", { name: "View PR JSON details for #1", exact: true }).first().click();
+  const menu = await openRowMenu(page, 1);
+  await menu.getByRole("menuitem", { name: "View PR JSON details", exact: true }).click();
 
   const dataFileJson = page.getByRole("dialog").getByRole("region", { name: "Data File Entry", exact: true });
   await expect(dataFileJson).toBeVisible();
@@ -1399,10 +1793,10 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
   await expect(dataFileJson).not.toBeVisible();
 });
 
-test("the Run tab's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
+test("Run & check's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
   // Regression test for Phase 7's RepoLabelsProvider migration (see
   // REACT_MIGRATION_PLAN.md) - window.updateReactApplyLabelOptions (a push
-  // into AppRoot's own local state, feeding only the Run tab's dropdown)
+  // into the old AppRoot's local state, feeding only the Run tab's dropdown)
   // and window.getAvailableRepoLabels (a pull PrActionsCell.jsx read on
   // every render) used to be two entirely separate bridges for the same
   // underlying list; this proves one real fetch now reaches both real,
@@ -1421,18 +1815,19 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
     }),
   );
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByRole("button", { name: "↻ Labels", exact: true }).click();
+  await openSettings(page, "Run & check");
+  await page.getByRole("button", { name: "Reload labels", exact: true }).click();
 
   const runFilterSelect = page.getByLabel("Apply existing GitHub label to selected PR(s)", { exact: true });
   await expect(runFilterSelect.getByRole("option", { includeHidden: true })).toHaveCount(3);
   await expect(runFilterSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
+  await closeSettings(page);
 
   // PR #1's own fixture already carries the "enhancement" label (see
-  // e2e/fixtures/data.json) - its row select correctly excludes that one
-  // (PrActionsCell.jsx's own existing-label filter), leaving just "bug" +
-  // the placeholder, proving both the shared-Context wiring and the
-  // per-row exclusion logic together.
+  // e2e/fixtures/data.json) - its row's More menu correctly excludes that
+  // one (PrActionsCell's existing-label filter), leaving just "bug",
+  // proving both the shared-Context wiring and the per-row exclusion
+  // logic together.
   await prTables(page)
     .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
     .evaluateAll((checkboxes) => {
@@ -1440,10 +1835,11 @@ test("the Run tab's apply-label dropdown and a row's own apply-label dropdown sh
         checkbox.closest("details").open = true;
       });
     });
-  const rowSelect = prTables(page).getByRole("combobox", { name: "Add label to PR #1", exact: true }).first();
-  await expect(rowSelect.getByRole("option", { includeHidden: true })).toHaveCount(2);
-  await expect(rowSelect.getByRole("option", { name: "bug", exact: true, includeHidden: true })).toHaveCount(1);
-  await expect(rowSelect.getByRole("option", { name: "enhancement", exact: true, includeHidden: true })).toHaveCount(0);
+  const menu = await openRowMenu(page, 1);
+  const addLabel = menu.getByRole("group", { name: "Add label", exact: true });
+  await expect(addLabel.getByRole("menuitem")).toHaveCount(1);
+  await expect(addLabel.getByRole("menuitem", { name: "bug", exact: true })).toHaveCount(1);
+  await expect(addLabel.getByRole("menuitem", { name: "enhancement", exact: true })).toHaveCount(0);
 });
 
 test("a failed In Review toggle reverts the checkbox back to its real state, instead of leaving it stuck on the click", async ({ page }) => {
@@ -1466,8 +1862,10 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
       });
     });
 
-  const checkbox = prTables(page).getByRole("checkbox", { name: "In Review for PR #1", exact: true }).first();
-  const before = await checkbox.isChecked();
+  // In review is a toggle button now (aria-pressed); still controlled, with
+  // no local optimistic state.
+  const toggle = prTables(page).getByRole("button", { name: "In Review for PR #1", exact: true }).first();
+  const before = await toggle.getAttribute("aria-pressed");
 
   await page.route("**/view-prs/ack", (route) =>
     route.fulfill({
@@ -1477,20 +1875,17 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
     }),
   );
 
-  await checkbox.click();
-  // The click's own native DOM toggle happens immediately; the app's async
-  // round-trip (even against a mocked route) still takes a tick - wait for
-  // it to settle back to the pre-click value rather than asserting
-  // immediately, which would just catch the transient optimistic state.
-  await expect(checkbox).toHaveJSProperty("checked", before);
+  await toggle.click();
+  // The app's async round-trip (even against a mocked route) takes a tick -
+  // wait for it to settle on the pre-click value.
+  await expect(toggle).toHaveAttribute("aria-pressed", before);
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {
   // Regression test for the first (and so far only) converted multi-select
   // dropdown - a structurally different case from every other Phase 2
   // field: its *options* are rebuilt from the PR payload on every data
-  // (re)load (see MultiSelectCheckboxList.jsx and
-  // renderReactMultiSelectList in react-app.jsx), not just seeded once at
+  // (re)load (see FilterOptionsProvider.tsx), not just seeded once at
   // mount. React mounts directly into the existing #label-list container
   // (no wrapper span needed, unlike every static-option field converted so
   // far), so the pre-existing "change" listener delegated on that
@@ -1503,17 +1898,11 @@ test("React-owned label multi-select renders options from payload data and filte
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).toContainText("Fix flaky test");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  // updateMultiSelectSummary (pr-filter-panel.helpers.js) always
-  // re-derives the summary's base text as everything before the first "(",
-  // which strips the "(s)" from the original "Filter by label name(s)"
-  // markup the very first time it runs (pre-existing behavior, unrelated
-  // to this conversion) - the on-screen text is "Filter by label name"
-  // from then on, not the initial HTML's "(s)".
-  const labelDropdownSummary = filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true }));
+  await openFilterBar(page);
+  const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
 
-  const labelList = page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true });
+  const labelList = filterBarList(page, "Labels");
   await expect(labelList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   await expect(labelList).toContainText("enhancement");
   await expect(labelList).toContainText("bug");
@@ -1534,14 +1923,14 @@ test("React-owned label multi-select renders options from payload data and filte
   // checked" checkboxes from the DOM to seed the next render's selections.
   // Plain `root.render()` doesn't commit synchronously (React 18 batches
   // it) - without wrapping it in flushSync (see renderReactMultiSelectList
-  // in react-app.jsx), the second call's DOM read saw the first call's
+  // in the old react-app.jsx), the second call's DOM read saw the first call's
   // pre-commit (stale/unchecked) state and clobbered the just-restored
   // "enhancement" selection back to unchecked before this reload's first
   // paint. Confirmed by temporarily removing flushSync and seeing this
   // exact assertion fail.
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
   await labelDropdownSummary.click();
   await expect(labelList.getByLabel("enhancement", { exact: true })).toBeChecked();
 
@@ -1553,8 +1942,7 @@ test("React-owned label multi-select renders options from payload data and filte
 
 test("React-owned exclude-label/author/assigned/approver multi-selects render from payload data and survive a persisted restore together", async ({ page }) => {
   // One representative test for the remaining four multi-selects converted
-  // alongside label-list (same MultiSelectCheckboxList/flushSync bridge -
-  // see gotcha #4 in REACT_MIGRATION_PLAN.md), rather than one test per
+  // alongside label-list (see gotcha #4 in REACT_MIGRATION_PLAN.md), rather than one test per
   // field, following the same "batch" pattern as the Needs Attention rule
   // controls test above. Confirms both that options render from the PR
   // payload (author/assigned/approver derive display names differently
@@ -1564,13 +1952,13 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
 
-  const excludeLabelList = page.getByRole("group", { name: "Exclude by label name(s)", exact: true, includeHidden: true });
-  const authorList = page.getByRole("group", { name: "Filter by PR author(s)", exact: true, includeHidden: true });
-  const assignedList = page.getByRole("group", { name: "Filter by Assigned user(s)", exact: true, includeHidden: true });
-  const approverList = page.getByRole("group", { name: "Filter by PR approver(s)", exact: true, includeHidden: true });
-  // useMultiSelectDropdownClosing (AppRoot; was index.page.js's
+  const excludeLabelList = filterBarList(page, "Excluded labels");
+  const authorList = filterBarList(page, "Authors");
+  const assignedList = filterBarList(page, "Assigned to");
+  const approverList = filterBarList(page, "Approved by");
+  // useMultiSelectDropdownClosing (AppShell; was index.page.js's
   // setupMultiSelectDropdownClosing until window-bridge elimination Phase 7.5) closes
   // every OTHER open <details class="multi-select-dropdown"> on any click
   // outside it - opening one dropdown, leaving it open, and then opening
@@ -1627,7 +2015,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openFilterBar(page);
 
   await openDropdown(excludeLabelList);
   await expect(excludeLabelList.getByLabel("bug", { exact: true })).toBeChecked();
@@ -1659,41 +2047,37 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
 });
 
 test("React-owned thread-resolution allow/deny and change-filter ignore-author multi-selects render and survive a persisted restore", async ({ page }) => {
-  // Covers the last four multi-selects converted (see REACT_MIGRATION_PLAN.md):
-  // unlike every list in the batch test above, these are built directly in
-  // index.page.js's own renderActorOptionsList/renderChangeFilterActorList
-  // (not pr-filter-panel.helpers.js), which is a different call site
-  // feeding the same MultiSelectCheckboxList/flushSync bridge - this test
-  // confirms the conversion works from that call site too, not just that
-  // the bridge itself works (already proven above).
+  // The four actor lists in Settings (Attention rules' allow/deny lists,
+  // Change detection's ignore-author lists): options from the payload's
+  // actors, and a saved selection restored after a reload.
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Attention rules");
 
-  // The allow/deny lists are only visible while their <details> wrapper is
-  // shown, which updateAuthorThreadResolutionRuleVisibility ties to the
-  // mode select's value (see the dedicated test for that behavior below) -
-  // switch modes to reveal each list in turn.
+  // Only the list the policy uses shows (see the dedicated test for that
+  // below) - switch policies to reveal each list in turn.
   const allowList = page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
   const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
   const ignoreCommentAuthorsList = page.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
   const ignoreReviewAuthorsList = page.getByRole("group", { name: "Ignore reviews from these authors (GitHub logins)", exact: true, includeHidden: true });
   const openDropdown = (list) => filterDropdownSummary(list).click();
 
+  // The fixture's three PR authors, plus e2e-viewer from PR #2's review
+  // threads.
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
-  await expect(allowList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(allowList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await expect(allowList).toContainText("The Octocat");
 
   await page.selectOption("#attention-author-thread-resolution-mode", "deny-only");
-  await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(denyList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await expect(denyList).toContainText("Hubot");
 
+  await openSettings(page, "Change detection");
   await openDropdown(ignoreCommentAuthorsList);
-  await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(ignoreCommentAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
   await openDropdown(ignoreReviewAuthorsList);
-  await expect(ignoreReviewAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
+  await expect(ignoreReviewAuthorsList.getByRole("checkbox", { includeHidden: true })).toHaveCount(4);
 
   // Persist directly via the same /view-prs/user-defaults shape
   // restoreUiOptionOverrides expects (allow/deny are top-level array keys;
@@ -1701,7 +2085,10 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
   // restoreUiOptionOverrides in index.page.js), rather than driving all
   // four through checkbox clicks: the allow/deny lists are mutually
   // exclusive in the UI (only one mode's list is visible at a time), so
-  // there's no single mode that would let a real click reach both.
+  // there's no single mode that would let a real click reach both. The
+  // policy changes above save on a debounce first: let that land, or it
+  // overwrites this PUT.
+  await waitForFilterPersist(page);
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();
     await fetch("/view-prs/user-defaults", {
@@ -1722,13 +2109,13 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 
   await page.reload();
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Attention rules");
 
   await page.selectOption("#attention-author-thread-resolution-mode", "allow-only");
   await expect(allowList.getByLabel("The Octocat", { exact: true })).toBeChecked();
   await page.selectOption("#attention-author-thread-resolution-mode", "deny-only");
   await expect(denyList.getByLabel("Hubot", { exact: true })).toBeChecked();
+  await openSettings(page, "Change detection");
   await openDropdown(ignoreCommentAuthorsList);
   await expect(ignoreCommentAuthorsList.getByLabel("The Octocat", { exact: true })).toBeChecked();
   await openDropdown(ignoreReviewAuthorsList);
@@ -1736,27 +2123,14 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 
   // Reset so this test's overrides don't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer. Order
-  // matters here: the mode select auto-persists on every "change" (see
-  // the special-case branch for its id in index.page.js's delegated
-  // listener) as a fire-and-forget PUT - and that auto-persist re-reads
-  // ALL fields' LIVE DOM state (persistViewFilterOptionOverrides ->
-  // getSelectedAuthorThreadResolutionAllowLogins, a real checkbox query),
-  // not just the mode itself. Found via a later regression test
-  // (e2e/smoke.spec.js's "no React-portaled status/log panel..." test)
-  // catching this exact leftover: the explicit delete-PUT used to run
-  // *before* selectOption(..., "allow-all") - but "octocat"'s checkbox was
-  // still checked live in the DOM (only the manual delete-PUT had cleared
-  // the *server* record), so that selectOption's own auto-persist
-  // immediately clobbered the deletion right back to
-  // `["octocat"]`/`["hubot"]`, leaking into whatever test loaded next.
-  // Fixed by making the explicit delete-PUT the truly last step, waiting
-  // for the mode-select's own auto-persist to land first.
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    page.selectOption("#attention-author-thread-resolution-mode", "allow-all"),
-  ]);
+  // matters here: the policy change saves on a debounce, with every
+  // field's live state (the restored picks still checked), so the
+  // explicit delete-PUT below goes last, once all saves have landed - a
+  // save landing between its GET and PUT would otherwise be overwritten
+  // (or overwrite it).
+  await openSettings(page, "Attention rules");
+  await page.selectOption("#attention-author-thread-resolution-mode", "allow-all");
+  await waitForFilterPersist(page);
   const [finalCleanupResponse] = await Promise.all([
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
@@ -1807,8 +2181,8 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).toContainText("Fix flaky test");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.selectOption("#filter-pr-difficulty", "3");
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR difficulty", { exact: true }).selectOption("3");
   await waitForFilterPersist(page);
 
   await expect(prTables(page)).toContainText("Add welcome banner");
@@ -1816,40 +2190,35 @@ test("React-owned plain-metadata filter selects (PR difficulty, etc.) actually f
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
-  await page.selectOption("#filter-pr-difficulty", "");
+  await filterBar(page).getByLabel("PR difficulty", { exact: true }).selectOption("");
   await waitForFilterPersist(page);
 
   // Stories: PR #1's fixture notes use the pre-stories rallyStories list,
   // which the server converts to one name-only story.
-  await page.selectOption("#filter-stories", "name-only");
+  await filterBar(page).getByLabel("Stories", { exact: true }).selectOption("name-only");
   await waitForFilterPersist(page);
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
-  await page.selectOption("#filter-stories", "name-and-url");
+  await filterBar(page).getByLabel("Stories", { exact: true }).selectOption("name-and-url");
   await waitForFilterPersist(page);
   await expect(prTables(page)).not.toContainText("Add welcome banner");
 
-  await page.selectOption("#filter-stories", "");
+  await filterBar(page).getByLabel("Stories", { exact: true }).selectOption("");
   await waitForFilterPersist(page);
 });
 
 test("PR author thread resolution policy select shows/hides its dependent allow/deny lists live, without a page reload", async ({ page }) => {
-  // Regression coverage for updateAuthorThreadResolutionRuleVisibility()
-  // (index.page.js), which is wired to this select's own "change" event
-  // (via the same delegated-on-the-form mechanism as the test above) and
-  // toggles two sibling <details> elements' `hidden`/`open` state based on
-  // the selected mode. This select has genuinely different dependent UI
-  // from every other Phase 2 field converted so far, so it gets its own
-  // dedicated interaction test rather than folding into the batch test.
+  // AttentionRulesSection shows the allow list only for "allow-only" and
+  // the deny list only for "deny-only" (each list's dropdown summary is
+  // what shows).
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByText("Advanced visibility and attention rules").click();
+  await openSettings(page, "Attention rules");
 
-  const allowOptions = page.getByRole("group", { name: "Thread-resolution allow-list options", exact: true, includeHidden: true });
-  const denyOptions = page.getByRole("group", { name: "Thread-resolution deny-list options", exact: true, includeHidden: true });
+  const allowOptions = filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
+  const denyOptions = filterDropdownSummary(page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
   await expect(allowOptions).toBeHidden();
   await expect(denyOptions).toBeHidden();
 
@@ -1882,7 +2251,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // reset the control back to its own default.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Review statistics" }).click();
+  await page.getByRole("tab", { name: "Review stats" }).click();
 
   const controlsRoot = page.getByRole("group", { name: "Review statistics controls", exact: true, includeHidden: true });
   for (const name of ["Sort by", "Filter"]) {
@@ -1911,14 +2280,15 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
     node.dataset.e2eIdentityMarker = "still-the-same-node";
   });
 
-  // Force an unrelated stats re-render: switch to Run & Filter, apply a
-  // local filter (which re-renders the whole PR data view, including
+  // Force an unrelated stats re-render: switch to PR data, apply a
+  // local filter in the filter bar (which re-renders the whole PR data view, including
   // review stats), then come back.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Review statistics" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Review stats" }).click();
 
   await expect(page.getByRole("combobox", { name: "Sort by", exact: true, includeHidden: true })).toHaveValue("reviews");
   await expect(page.getByLabel("Min comments", { exact: true })).toHaveValue("4");
@@ -1930,8 +2300,9 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // Reset so this test's filter/stats state doesn't affect whatever
   // unrelated test happens to load next against this suite's one shared
   // webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -1954,7 +2325,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // broken version a third time.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Review statistics" }).click();
+  await page.getByRole("tab", { name: "Review stats" }).click();
 
   // "Filtered rows" only counts every row unconditionally when there's no
   // active date-range filter (see buildReviewerStats in
@@ -1979,19 +2350,12 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await viewInTableButton.click();
 
   // Regression assertion: this used to silently do nothing under a
-  // React-owned PR table (the insights row never actually expanded, even
-  // though the vanilla code "succeeded" at finding the link and
-  // scrolling to it) - now it both switches tabs and expands the row.
-  // Checks the toggle's aria-expanded and the insights row's `hidden` DOM
-  // property directly (not Playwright's toBeVisible/toBeHidden), the same
-  // pattern the sibling Author Insights "View in table" test above uses
-  // and for the same reason: PR #1 can legitimately end up inside a
-  // currently-collapsed lifecycle/smart-group section depending on what
-  // earlier tests in this shared-webServer suite did to its flagged/
-  // in-review state, without that being a regression in this feature.
-  await expect(page.getByRole("tabpanel", { name: "PR data", exact: true, includeHidden: true })).toBeVisible();
-  const insightsRow = await insightsRowUnderExpandedToggle(page);
-  await expect(insightsRow).toHaveJSProperty("hidden", false);
+  // React-owned PR table (the insights never actually showed, even though
+  // the vanilla code "succeeded" at finding the link and scrolling to it) -
+  // now it both switches tabs and shows the PR in the detail pane, which
+  // sits outside the sections, so it shows whichever section the row is in.
+  await expect(page.getByRole("tabpanel", { name: "Pull requests", exact: true, includeHidden: true })).toBeVisible();
+  await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
 });
 
 test("React-owned Author Insights selector renders options, changes the selected author, and survives an unrelated re-render", async ({ page }) => {
@@ -2009,13 +2373,13 @@ test("React-owned Author Insights selector renders options, changes the selected
   // the selector via the *same* `host.innerHTML = ""` that rebuilt every
   // other section - if that still covered #author-insights-selector-root,
   // the static container React mounted into would be destroyed and
-  // recreated on the next render, leaving react-app.jsx's mount holding a
+  // recreated on the next render, leaving the old react-app.jsx's mount holding a
   // reference to a detached node - the selector would silently vanish from
   // the page after any unrelated re-render, not just fail to preserve a
   // value.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
   await expect(select).toBeVisible();
@@ -2026,23 +2390,25 @@ test("React-owned Author Insights selector renders options, changes the selected
   const selectedValue = await select.inputValue();
   await expect(page.getByText(/^Showing insights for /)).toBeVisible();
 
-  // Force an unrelated author-insights re-render: switch to Run & Filter,
-  // apply an unrelated local filter (which re-renders the whole PR data
+  // Force an unrelated author-insights re-render: switch to PR data,
+  // apply an unrelated local filter in the filter bar (which re-renders the whole PR data
   // view, including author insights via the same pipeline as review
   // stats), then come back.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(selectedValue);
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2064,7 +2430,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // AuthorInsightsSelector.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   const createdRoot = page.getByRole("region", { name: "Author's created PRs", exact: true, includeHidden: true });
   await expect(createdRoot.getByRole("heading", { name: "PRs created by this author", exact: true })).toBeVisible();
@@ -2095,25 +2461,27 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   await select.selectOption({ label: "The Octocat" });
   const pr1AuthorText = await createdRoot.textContent();
 
-  // Force an unrelated author-insights re-render: switch to Run & Filter,
-  // apply an unrelated local filter, then come back - the created-PRs
+  // Force an unrelated author-insights re-render: switch to PR data,
+  // apply an unrelated local filter in the filter bar, then come back - the created-PRs
   // container must still be present and showing the same author's PRs
   // (not vanished, per the container-split fix's own regression class -
   // see the sibling Author Insights selector test above for the same
   // class of bug caught the same way).
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   await expect(createdRoot.getByRole("heading", { name: "PRs created by this author", exact: true })).toBeVisible();
   await expect(createdRoot).toHaveText(pr1AuthorText);
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2130,7 +2498,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // render and the header would vanish after any unrelated re-render.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   const headerRoot = page.getByRole("region", { name: "Selected author", exact: true, includeHidden: true });
   const header = headerRoot.getByText(/^Showing insights for /);
@@ -2152,21 +2520,23 @@ test("React-owned Author Insights header updates on author switch and survives a
   await select.selectOption({ label: "The Octocat" });
   const headerText = await header.textContent();
 
-  // Force an unrelated author-insights re-render: switch to Run & Filter,
-  // apply an unrelated local filter, then come back.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  // Force an unrelated author-insights re-render: switch to PR data,
+  // apply an unrelated local filter in the filter bar, then come back.
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   await expect(header).toBeVisible();
   await expect(header).toHaveText(headerText);
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2185,27 +2555,29 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // the section must not vanish after an unrelated re-render.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   const notesRoot = page.getByRole("region", { name: "Author's PR notes", exact: true, includeHidden: true });
   await expect(notesRoot.getByRole("heading", { name: "PR-linked custom comments and sentiment", exact: true })).toBeVisible();
   await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
 
-  // Force an unrelated author-insights re-render: switch to Run & Filter,
-  // apply an unrelated local filter, then come back.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  // Force an unrelated author-insights re-render: switch to PR data,
+  // apply an unrelated local filter in the filter bar, then come back.
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   await expect(notesRoot.getByRole("heading", { name: "PR-linked custom comments and sentiment", exact: true })).toBeVisible();
   await expect(notesRoot).toContainText("PR-linked custom comments and sentiment");
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2223,7 +2595,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // header/notes/created-PRs tests guard against.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
   await select.selectOption({ label: "The Octocat" });
@@ -2254,22 +2626,24 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   const editedItem = commentsRoot.getByRole("listitem").filter({ hasText: editedText });
   await expect(editedItem).toBeVisible();
 
-  // Force an unrelated author-insights re-render: switch to Run & Filter,
-  // apply an unrelated local filter, then come back - the comments
+  // Force an unrelated author-insights re-render: switch to PR data,
+  // apply an unrelated local filter in the filter bar, then come back - the comments
   // container must not vanish, and the saved comment must still be there.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("1");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
   await waitForFilterPersist(page);
-  await page.getByRole("tab", { name: "PR data" }).click();
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
 
   await expect(commentsRoot.getByRole("heading", { name: "Manual author comments", exact: true })).toBeVisible();
   await expect(commentsRoot.getByRole("listitem").filter({ hasText: editedText })).toBeVisible();
 
   // Reset so this test's filter doesn't affect whatever unrelated test
   // happens to load next against this suite's one shared webServer.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByLabel("Filter by PR number(s)", { exact: true }).fill("");
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await openFilterBar(page);
+  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2286,8 +2660,8 @@ test("typing in the Author Insights manual comment composer isn't blocked by a s
   // correctly), so the recompute runs after React has already painted.
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Author Insights", exact: true, includeHidden: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Authors", exact: true, includeHidden: true })).toBeVisible();
 
   const composer = page.getByPlaceholder("Add a manual comment about this author...");
   await expect(composer).toBeVisible();
@@ -2319,7 +2693,7 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
   // held back, with an "Author:" chip, until the draft is cleared.
   await page.goto("/?dataPollMs=300");
   await waitForPrTable(page);
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
   const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
   const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
@@ -2339,15 +2713,12 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
 });
 
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
-  // Phase 3 (see REACT_MIGRATION_PLAN.md): the Backfill tab's status badges
-  // converted to React (<BackfillBadges />, mounted directly into the
-  // existing #backfill-badges container - no container-split needed since
-  // that div isn't shared with anything else, unlike every Author Insights
-  // conversion). Only exercises the read-only status GET (tab activation
-  // and "Refresh status" both just reload status - this test never starts
-  // or stops the actual backfill process).
+  // Settings › Backfill's status badges (BackfillBadges). Only exercises
+  // the read-only status GET (opening the section and "Refresh status"
+  // both just reload status - this test never starts or stops the actual
+  // backfill process).
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
 
   const badgeHost = page.getByRole("group", { name: "Backfill status badges", exact: true, includeHidden: true });
   const badges = badgeHost.getByText(/^Backfill: /);
@@ -2363,16 +2734,16 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
 
-test("the Backfill tab's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
+test("Settings › Backfill's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
   // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the badges, details text and log text moved out of AppRoot's local state
-  // into <BackfillStatusProvider />, which AppRoot reads back via Context for
-  // the #backfill-details / #backfill-log portals. jsdom covers the Provider
+  // the badges, details text and log text live in <BackfillStatusProvider />,
+  // which the Settings drawer's Backfill section reads via Context. jsdom
+  // covers the Provider
   // and each consumer separately; this proves the real wired path, from a
   // real status GET through the Provider's state into the real DOM. Only the
   // read-only status/log GETs run - the backfill process is never started.
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
 
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("Loading backfill status...");
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("");
@@ -2383,12 +2754,12 @@ test("the Backfill tab's details and log text replace their loading placeholders
   await expect(page.getByRole("button", { name: "Refresh log", exact: true, includeHidden: true })).toBeEnabled();
 });
 
-test("opening the Backfill tab and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
-  // useBackfillTabAutoRefresh lists useBackfillActions()'s
+test("opening Settings › Backfill and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
+  // useBackfillAutoRefresh lists useBackfillActions()'s
   // triggerBackfillTabLoad as an effect dependency and re-fetches whenever
-  // that function's identity changes while the tab is visible - and each
+  // that function's identity changes while the section is showing - and each
   // fetch updates state that re-renders its caller. So a single unstable
-  // dependency anywhere in the provider chain would turn this tab into a
+  // dependency anywhere in the provider chain would turn this section into a
   // request loop. jsdom pins the identity (useBackfillActions.test.jsx); this
   // proves it from the network side in a real browser. Read-only GETs only.
   const counts = { status: 0, log: 0 };
@@ -2400,22 +2771,22 @@ test("opening the Backfill tab and leaving it idle does not trigger a status/log
   });
 
   await page.goto("/");
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
   await expect(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true })).not.toHaveText("Loading backfill status...");
 
   // Sit idle long enough that a loop would pile up dozens of requests.
   await page.waitForTimeout(3000);
 
-  // A page load plus one tab activation: a handful at most, never a stream.
+  // A page load plus one opening: a handful at most, never a stream.
   expect(counts.status).toBeGreaterThan(0);
   expect(counts.status).toBeLessThanOrEqual(5);
   expect(counts.log).toBeLessThanOrEqual(5);
 });
 
-test("Action Log tab loads its entries on its very first visit, not just on a second one", async ({ page }) => {
+test("Settings › Action log loads its entries on its very first opening, not just on a second one", async ({ page }) => {
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
-  // ActionLogSection is now lazy-loaded, mounting only once this tab is
-  // first activated - pr-management-tabs.helpers.js's tab-click handler
+  // ActionLogSection is lazy-loaded, mounting only once its section is
+  // first opened - pr-management-tabs.helpers.js's tab-click handler
   // calls window.triggerActionLogLoad?.() synchronously on click, which
   // used to work because the component (and its bridge) was always
   // eagerly mounted well before any click. Lazily mounting it broke that:
@@ -2435,15 +2806,15 @@ test("Action Log tab loads its entries on its very first visit, not just on a se
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/action-log") && res.request().method() === "GET",
     ),
-    page.getByRole("tab", { name: "Action Log" }).click(),
+    openSettings(page, "Action log"),
   ]);
   expect(response.ok()).toBe(true);
 });
 
 test("the Run tab's output panel shows a real run's output from OutputTextProvider, replacing the placeholder", async ({ page }) => {
   // Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the output text lives in <OutputTextProvider />, which AppRoot reads back
-  // via Context to render #output's portal. jsdom covers the Provider and each
+  // the output text lives in <OutputTextProvider />, which RunCheckSection reads
+  // back via Context to render #output. jsdom covers the Provider and each
   // hook separately; this proves the real wired path lands in the real
   // #output element in a real browser, in place of the static placeholder
   // rather than appended to it. Test-only bridge removal: this used to write
@@ -2464,7 +2835,7 @@ test("the Run tab's output panel shows a real run's output from OutputTextProvid
   const output = page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true });
   await expect(output).toHaveText("Run the script to see output");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Run & check");
   await page.getByRole("button", { name: "Run script" }).click();
 
   await expect(output).toContainText("hello from an intercepted run");
@@ -2511,35 +2882,23 @@ test("no React-portaled status/log panel shows its old static placeholder text s
   await assertNoStalePrefix(page.getByRole("region", { name: "Status message", exact: true, includeHidden: true }), "Not run");
   await assertNoStalePrefix(page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true }), "Run the script to see output");
 
-  await page.getByRole("tab", { name: "Backfill" }).click();
+  await openSettings(page, "Backfill");
   await assertNoStalePrefix(page.getByRole("region", { name: "Backfill status details", exact: true, includeHidden: true }), "Loading backfill status...");
   await assertNoStalePrefix(page.getByRole("region", { name: "Backfill log", exact: true, includeHidden: true }), "Loading backfill log...");
+  await closeSettings(page);
 
-  await page.getByRole("tab", { name: "Review statistics" }).click();
+  await page.getByRole("tab", { name: "Review stats" }).click();
   await assertNoStalePrefix(page.getByRole("region", { name: "Review statistics", exact: true, includeHidden: true }), "Loading...");
 
-  await page.getByRole("tab", { name: "Author Insights" }).click();
+  await page.getByRole("tab", { name: "Authors" }).click();
   await assertNoStalePrefix(page.getByRole("region", { name: "Author comments", exact: true, includeHidden: true }), "Loading...");
 
-  // Deferred-items follow-up item 7 (multi-select summary counts/empty
-  // class) hit the identical bug: the <summary class="multi-select-summary">
-  // elements' own static base-label text wasn't cleared before
-  // MultiSelectCheckboxList.jsx started portaling its own copy in.
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await assertNoStalePrefix(
-    filterDropdownSummary(page.getByRole("group", { name: "Filter by label name(s)", exact: true, includeHidden: true })),
-    "Filter by label name(s)",
-  );
-  await assertNoStalePrefix(
-    filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true })),
-    "Allow PR authors to resolve threads started by (Actor Names)",
-  );
 });
 
-test("Actor Names tab loads its mappings on its very first visit, not just on a second one", async ({ page }) => {
+test("Settings › Actor names loads its mappings on its very first opening, not just on a second one", async ({ page }) => {
   // Same class of bug, and same reasoning for asserting on the network
   // request rather than rendered text, as the Action Log test above - for
-  // ActorNamesTab's window.triggerActorNameCacheLoad bridge.
+  // ActorNamesSection's old window.triggerActorNameCacheLoad bridge.
   await page.goto("/");
 
   const [cacheResponse, aliasResponse] = await Promise.all([
@@ -2549,16 +2908,16 @@ test("Actor Names tab loads its mappings on its very first visit, not just on a 
     page.waitForResponse(
       (res) => res.url().includes("/view-prs/actor-login-aliases") && res.request().method() === "GET",
     ),
-    page.getByRole("tab", { name: "Actor Names" }).click(),
+    openSettings(page, "Actor names"),
   ]);
   expect(cacheResponse.ok()).toBe(true);
   expect(aliasResponse.ok()).toBe(true);
 });
 
-test("Export tab's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
+test("Settings › Export's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
   // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
   // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
-  // exposed on window by index.page.js - ExportTab.jsx now builds and
+  // exposed on window by index.page.js - ExportSection.tsx now builds and
   // calls all 3 directly (pr-export.helpers.ts). This tab had zero prior
   // e2e coverage of any kind (confirmed by grep) - this is the only real-
   // browser check that the catalog/preview actually work end-to-end
@@ -2566,7 +2925,7 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("tab", { name: "Export" }).click();
+  await openSettings(page, "Export");
   const fieldList = page.getByRole("group", { name: "Export fields", exact: true, includeHidden: true });
   await expect(fieldList.getByRole("checkbox", { includeHidden: true })).not.toHaveCount(0);
 
@@ -2581,6 +2940,42 @@ test("Export tab's field catalog and Preview JSON produce a real export payload 
   expect(Array.isArray(exportPayload.prs)).toBe(true);
   expect(exportPayload.prs).toHaveLength(exportPayload.prCount);
   expect(exportPayload.prs[0]).toHaveProperty("prNumber");
+});
+
+test("Export follows the table's open sections: closing the sections that are open by default drops their PRs", async ({ page }) => {
+  // UI redesign phase 1: Export reads the open sections from React state
+  // (PrTableUiStateProvider) instead of `<details open>` in the DOM.
+  // Closing a section that's open by default used to be recorded as "open"
+  // in that state (flipping "no choice yet" gave true), which Export would
+  // now trust - this checks the real toggle end to end. On a fresh page
+  // only "In Review" and "Needs Attention" are open (their defaults); which
+  // PRs they hold can change as earlier tests edit the shared server's
+  // data, so this checks the counts reach zero rather than exact numbers.
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  await openSettings(page, "Export");
+  const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
+  await expect(exportPanel.getByText(/Expanded PR sections: 2$/m)).toBeVisible();
+  await expect(exportPanel.getByText(/Visible PR rows eligible for export: [1-9]\d*\//)).toBeVisible();
+
+  // The drawer covers the table: close it to toggle sections. Export stays
+  // mounted, so its summary follows while it's closed.
+  await closeSettings(page);
+  await prSectionSummary(prSection(page, "In Review")).click();
+  await openSettings(page, "Export");
+  await expect(exportPanel.getByText(/Expanded PR sections: 1$/m)).toBeVisible();
+
+  await closeSettings(page);
+  await prSectionSummary(prSection(page, "Needs Attention")).click();
+  await openSettings(page, "Export");
+  await expect(exportPanel.getByText(/Expanded PR sections: 0$/m)).toBeVisible();
+  await expect(exportPanel.getByText(/Visible PR rows eligible for export: 0\//)).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview JSON" }).click();
+  await expect(exportPanel.getByRole("region", { name: "Export status", exact: true })).toHaveText(
+    "Prepared export JSON for 0 visible PRs.",
+  );
 });
 
 test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {
@@ -2605,7 +3000,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
       body: JSON.stringify({ ok: false, error: "simulated run failure" }),
     }),
   );
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
+  await openSettings(page, "Run & check");
   await page.getByRole("button", { name: "Run script" }).click();
   await expect(snackbar).toBeVisible();
   await expect(snackbar).not.toHaveClass(/error-snackbar-warning/);
@@ -2613,6 +3008,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
 
   await page.getByRole("button", { name: "Close notification", exact: true }).click();
   await expect(snackbar).toBeHidden();
+  await closeSettings(page);
 
   // Warning: a failing background poll (PrDataProvider's showPollFailureWarning),
   // cleared by the next successful poll (markPollSuccess).
@@ -2632,10 +3028,10 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
   await expect(snackbar).toBeHidden();
 });
 
-test("the activity drawer opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
+test("the activity popover opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md) - a real gap this
   // closes: every other test for this feature (JobEventsProvider.test.jsx,
-  // ActivityDrawer.test.jsx, etc.) runs under jsdom with a hand-rolled fake
+  // ActivityPopover.test.tsx, etc.) runs under jsdom with a hand-rolled fake
   // EventSource - none of them prove a real browser's actual EventSource
   // can open GET /view-prs/events through the real server, let alone
   // through Vite's dev proxy (vite.config.js forwards /view-prs to
@@ -2655,8 +3051,15 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("button", { name: /Activity/ }).click();
-  const activityPanel = page.getByRole("region", { name: "Activity panel", exact: true });
+  const activityButton = page.getByRole("banner").getByRole("button", { name: /^Activity/ });
+  await activityButton.click();
+  const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activityPanel).toBeFocused();
+  // Under its button, wholly in the window.
+  await expect(activityPanel).toBeInViewport({ ratio: 1 });
+  const buttonBox = await activityButton.boundingBox();
+  const panelBox = await activityPanel.boundingBox();
+  expect(panelBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
   await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
   await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
   await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
@@ -2675,15 +3078,20 @@ test("the activity drawer opens, connects over real SSE (not the jsdom-faked Eve
     ).toBeVisible();
   }
 
-  // Closing via Escape (not just the close button) - see ActivityDrawer.jsx.
+  // Escape closes it, focus back on its button; a click outside closes it.
   await page.keyboard.press("Escape");
   await expect(page.getByText("Scheduled background jobs")).toBeHidden();
+  await expect(activityButton).toBeFocused();
+  await activityButton.click();
+  await expect(activityPanel).toBeVisible();
+  await page.getByRole("heading", { name: "View PR Updates", exact: true }).click();
+  await expect(activityPanel).toBeHidden();
 
   expect(failedRequests.filter((entry) => entry.includes("/view-prs/events"))).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
 
-test("clicking Quick check pushes a real 'running' state into the drawer over SSE, not a poll", async ({ page }) => {
+test("a Quick check pushes a real 'running' state into the open activity popover over SSE, not a poll", async ({ page }) => {
   // Also placed before "Trigger auto run and Quick check..." below, for
   // the same shared-server reason as the test above - this one would
   // otherwise see quickCheck immediately skipped (isAutoRunInProgress
@@ -2700,14 +3108,20 @@ test("clicking Quick check pushes a real 'running' state into the drawer over SS
   await page.goto("/");
   await waitForPrTable(page);
 
-  await page.getByRole("button", { name: /Activity/ }).click();
+  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
   const quickCheckRow = page
-    .getByRole("region", { name: "Activity panel", exact: true })
+    .getByRole("dialog", { name: "Activity", exact: true })
     .getByRole("group", { name: "Quick check", exact: true });
   await expect(quickCheckRow.getByRole("status")).toHaveText("Idle");
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
-  await page.getByTestId("quick-check-button").click();
+  // Starts it as Run & check's Quick check button does (the same POST, an
+  // empty PR-numbers field sending {}), with the popover kept open: a click
+  // on the button would close it. "Trigger auto run and Quick check
+  // buttons..." below covers the button itself.
+  // Not awaited: the check can run a long time here (see above).
+  await page.evaluate(() => {
+    void fetch("/view-prs/quick-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  });
 
   await expect(quickCheckRow.getByRole("status")).toHaveText("Running", {
     timeout: 10000,
@@ -2723,15 +3137,43 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
   await page.goto("/");
   await waitForPrTable(page);
 
+  await openSettings(page, "Run & check");
   const triggerBtn = page.getByTestId("trigger-auto-run-button");
   await expect(triggerBtn).toHaveText("Trigger auto run");
   await triggerBtn.click();
   await expect(triggerBtn).toHaveText("Trigger auto run", { timeout: 5000 });
   await expect(triggerBtn).toBeEnabled();
 
-  await page.getByRole("tab", { name: "Run & Filter" }).click();
   const quickCheckBtn = page.getByTestId("quick-check-button");
   await expect(quickCheckBtn).toHaveText("Quick check");
   await quickCheckBtn.click();
   await expect(quickCheckBtn).toBeEnabled({ timeout: 5000 });
+});
+
+test("a row's More menu opens from the keyboard with its first item focused, and the arrow keys move through it", async ({ page }) => {
+  // The menu is visibility: hidden until it's placed, and a real browser
+  // won't focus a hidden element - jsdom does, so only a browser catches
+  // the item being focused too early (focus stayed on the button).
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
+    });
+
+  const button = prTables(page).getByRole("button", { name: "More actions for PR #1", exact: true }).first();
+  await button.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "More actions for PR #1", exact: true });
+  const items = menu.getByRole("menuitem");
+  await expect(items.first()).toBeFocused();
+
+  await page.keyboard.press("End");
+  await expect(items.last()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(button).toBeFocused();
 });

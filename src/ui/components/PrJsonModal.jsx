@@ -276,9 +276,9 @@ export function PrJsonModal({ target, payload, onClose }) {
       if (key === 'Escape') {
         event.preventDefault?.();
         // This is a true modal (focus trap, body scroll lock) that can sit
-        // on top of other dismissable overlays (e.g. the activity drawer,
-        // ActivityDrawer.jsx - also closes on Escape via its own window
-        // listener). Stopping propagation here means Escape closes only
+        // on top of other dismissable overlays (e.g. the activity popover,
+        // shell/ActivityPopover.tsx - also closes on Escape via its own
+        // window listener). Stopping propagation here means Escape closes only
         // the topmost/true modal, not everything listening for it at once.
         event.stopPropagation?.();
         onClose?.();

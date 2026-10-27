@@ -1,12 +1,12 @@
 import { createContext, useContext, type Dispatch, type SetStateAction } from 'react';
 
 /**
- * The Run tab's "output" text (the `<pre id="output">` the Run script / Ack
- * / Backfill actions write their command output into). Owned by
- * OutputTextProvider, which wraps `<AppRoot />` from `mountAppRoot()` so
- * every writer - including useSinglePrUpdate, which runs inside PrTableApp
- * rather than in AppRoot's body - and AppRoot itself, which renders the
- * text, are descendants.
+ * The run output text (the `<pre id="output">` in Settings › Run & check
+ * that the Run script / Ack / Backfill actions write their command output
+ * into). Owned by OutputTextProvider, which wraps `<AppShell />` in
+ * react-app.tsx so every writer - including useSinglePrUpdate, which runs
+ * inside PrTableApp - and RunCheckSection, which renders the text, are
+ * descendants.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context in
  * this app.

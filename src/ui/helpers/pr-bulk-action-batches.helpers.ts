@@ -1,4 +1,4 @@
-// Pure chunk-manifest builder for the activity drawer's bulk ack/apply-label
+// Pure chunk-manifest builder for the activity popover's bulk ack/apply-label
 // queue section - the one place a REAL ordered queue already exists
 // (pr-ack-label-actions.helpers.ts's own `chunks` array, run with
 // CONCURRENCY_LIMIT in flight at a time via pr-concurrency.helpers.ts).

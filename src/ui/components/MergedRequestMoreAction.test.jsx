@@ -62,11 +62,11 @@ describe('MergedRequestMoreAction', () => {
     await expect(user.click(screen.getByRole('button', { name: 'Request more' }))).resolves.not.toThrow();
   });
 
-  // react-app.jsx mounts this component with key={repo} specifically so a
+  // AppShell mounts this component with key={repo} specifically so a
   // repo change resets stale pending/status state (see this component's own
   // doc comment for the bug that fixed) - remounting with a different React
   // key is exactly what a key change causes, so that's simulated directly
-  // here rather than only asserting on react-app.jsx's own JSX (which would
+  // here rather than only asserting on AppShell's own JSX (which would
   // just check a string prop was written, not that it actually has the
   // intended effect).
   test('given a completed request left status text showing, when remounted for a different repo (simulating a key={repo} change), then pending/status reset to defaults', async () => {

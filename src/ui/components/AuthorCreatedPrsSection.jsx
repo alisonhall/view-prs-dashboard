@@ -17,8 +17,7 @@
  * from useAuthorInsights() (Phase 7, sub-phase 7.0 - see
  * REACT_MIGRATION_PLAN.md).
  *
- * Mounted once into the static #author-insights-created-prs-root
- * container.
+ * Mounted once, in AppShell's #author-insights-created-prs-root.
  *
  * @module components/AuthorCreatedPrsSection
  */

@@ -29,12 +29,12 @@ const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([valu
  * PrDataContext's payload (via usePrData()) and ActorIdentityContext.
  *
  * Must be mounted inside both <PrDataProvider> and the
- * <ActorIdentityContext.Provider> it sets up (see react-app.jsx's AppRoot
- * for the actual nesting). It genuinely consumes usePrData(), like
+ * <ActorIdentityContext.Provider> it sets up (see react-app.tsx for the
+ * actual nesting). It genuinely consumes usePrData(), like
  * ReviewStatsProvider, so it re-renders when the payload changes.
  *
  * Checked state (which options are ticked) is NOT computed here - it is
- * seeded by MultiSelectListPortals.jsx via
+ * seeded by ListSelectionSeeding (state/useListSelectionSeeding.ts) via
  * pr-multi-select-checked-state.helpers.ts's seedCheckedState.
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter

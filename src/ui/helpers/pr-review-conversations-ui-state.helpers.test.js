@@ -27,39 +27,23 @@ describe("pr review conversations ui state helpers", () => {
   });
 
   describe("normalizeReviewConversationsUiState", () => {
-    test("given a valid saved mode and boolean, when normalizing, then both pass through", () => {
+    test.each(["unresolved", "waiting", "all"])("given the saved mode %s, when normalizing, then it passes through", (mode) => {
       const { normalizeReviewConversationsUiState } = createPrReviewConversationsUiStateHelpers();
 
-      expect(normalizeReviewConversationsUiState({ conversationFilterMode: "resolved", showSummaryCards: false })).toEqual({
-        conversationFilterMode: "resolved",
-        showSummaryCards: false,
-      });
+      expect(normalizeReviewConversationsUiState({ conversationFilterMode: mode })).toEqual({ conversationFilterMode: mode });
     });
 
-    test("given an invalid or missing mode, when normalizing, then it defaults to unresolved", () => {
+    test("given an invalid or missing mode (including the old 'resolved'), when normalizing, then it defaults to unresolved", () => {
       const { normalizeReviewConversationsUiState } = createPrReviewConversationsUiStateHelpers();
 
       expect(normalizeReviewConversationsUiState({ conversationFilterMode: "bogus" }).conversationFilterMode).toBe(
         "unresolved",
       );
+      expect(normalizeReviewConversationsUiState({ conversationFilterMode: "resolved" }).conversationFilterMode).toBe(
+        "unresolved",
+      );
       expect(normalizeReviewConversationsUiState({}).conversationFilterMode).toBe("unresolved");
-      expect(normalizeReviewConversationsUiState(null).conversationFilterMode).toBe("unresolved");
-    });
-
-    test("given a non-boolean showSummaryCards, when normalizing, then it defaults to true", () => {
-      const { normalizeReviewConversationsUiState } = createPrReviewConversationsUiStateHelpers();
-
-      expect(normalizeReviewConversationsUiState({ showSummaryCards: "nope" }).showSummaryCards).toBe(true);
-      expect(normalizeReviewConversationsUiState({}).showSummaryCards).toBe(true);
-    });
-
-    test("given no saved state at all, when normalizing, then the full default shape is returned", () => {
-      const { normalizeReviewConversationsUiState } = createPrReviewConversationsUiStateHelpers();
-
-      expect(normalizeReviewConversationsUiState(null)).toEqual({
-        conversationFilterMode: "unresolved",
-        showSummaryCards: true,
-      });
+      expect(normalizeReviewConversationsUiState(null)).toEqual({ conversationFilterMode: "unresolved" });
     });
   });
 });

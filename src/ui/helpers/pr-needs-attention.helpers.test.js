@@ -243,4 +243,136 @@ describe("pr needs attention helpers", () => {
       false,
     );
   });
+
+  describe("getNeedsAttentionReasons", () => {
+    const helpers = createPrNeedsAttentionHelpers({
+      getEffectiveViewerLogin: () => "me",
+      collectAssignedUsers: (row) => row.assignees || [],
+      collectRequestedReviewers: (row) => row.requestedReviewers || [],
+    });
+
+    test("given a changed PR, then each change-reason token is described in words, in order", () => {
+      expect(
+        helpers.getNeedsAttentionReasons({
+          row: { status: "CHANGED", reason: "unanswered-thread|thread-reply|comment|review|commit" },
+          sectionKey: "open",
+        }),
+      ).toEqual([
+        "Unanswered review threads",
+        "New replies in review threads",
+        "New comments",
+        "New reviews",
+        "New commits",
+      ]);
+    });
+
+    test("given a cleared ack, an unknown token, or no tokens at all, then each still has a reason", () => {
+      expect(helpers.getNeedsAttentionReasons({ row: { status: "CHANGED", reason: "ack-cleared" }, sectionKey: "open" })).toEqual([
+        "Ack was cleared",
+      ]);
+      expect(helpers.getNeedsAttentionReasons({ row: { status: "CHANGED", reason: "label" }, sectionKey: "open" })).toEqual([
+        "Changed: label",
+      ]);
+      expect(helpers.getNeedsAttentionReasons({ row: { status: "CHANGED", reason: "-" }, sectionKey: "open" })).toEqual([
+        "Changed since your last ack",
+      ]);
+    });
+
+    test("given no recent activity, then the reason names the no-activity mode that matched", () => {
+      const row = { status: "NO_ACTIVITY", assignees: [{ login: "me" }], requestedReviewers: [{ login: "me" }] };
+      const reasonFor = (noActivityMode) =>
+        helpers.getNeedsAttentionReasons({ row, sectionKey: "open", config: { noActivityMode } });
+
+      expect(reasonFor("all")).toEqual(["No recent activity"]);
+      expect(reasonFor("assigned-only")).toEqual(["No recent activity on a PR assigned to you"]);
+      expect(reasonFor("reviewer-only")).toEqual(["No recent activity on a PR you're reviewing"]);
+      expect(reasonFor("mine-only")).toEqual(["No recent activity on a PR assigned to you or that you're reviewing"]);
+      expect(reasonFor("none")).toEqual([]);
+    });
+
+    test("given pending comments counted as attention, then the count is in the reason, first", () => {
+      expect(
+        helpers.getNeedsAttentionReasons({
+          row: { status: "CHANGED", reason: "commit" },
+          sectionKey: "open",
+          hasPendingComments: true,
+          pendingCommentCount: 2,
+          config: { includePendingComments: true },
+        }),
+      ).toEqual(["2 unsubmitted pending comments", "New commits"]);
+      expect(
+        helpers.getNeedsAttentionReasons({
+          row: {},
+          sectionKey: "merged",
+          hasPendingComments: true,
+          pendingCommentCount: 1,
+          config: { includePendingComments: true },
+        }),
+      ).toEqual(["1 unsubmitted pending comment"]);
+    });
+
+    test("given a section that doesn't count changes, then a change gives no reason", () => {
+      expect(helpers.getNeedsAttentionReasons({ row: { status: "CHANGED", reason: "commit" }, sectionKey: "merged" })).toEqual([]);
+      expect(helpers.getNeedsAttentionReasons({ row: { status: "CHANGED", reason: "commit" }, sectionKey: "flagged" })).toEqual([]);
+      expect(
+        helpers.getNeedsAttentionReasons({
+          row: { status: "CHANGED", reason: "commit" },
+          sectionKey: "draft",
+          config: { includeDraftNoActivity: true },
+        }),
+      ).toEqual([]);
+    });
+
+    // shouldShowNeedsAttention is now "has any reason". This keeps its
+    // previous body and checks the two agree on every combination.
+    test("given every combination of section, status, pending comments and setting, then shouldShowNeedsAttention matches its previous rules", () => {
+      const previousShouldShow = ({ row, sectionKey, hasPendingComments, config }) => {
+        const changedAttention = helpers.shouldTreatChangedAsAttention(row, config);
+        const noActivityAttention = helpers.shouldTreatNoActivityAsAttention(row, config);
+        if (hasPendingComments && config.includePendingComments) return true;
+        if (sectionKey === "open") return changedAttention || noActivityAttention;
+        if (sectionKey === "merged" || sectionKey === "closed") {
+          return Boolean(config.includeClosedMerged && (changedAttention || noActivityAttention));
+        }
+        if (sectionKey === "draft") {
+          return Boolean(
+            (config.includeDraftChanged && changedAttention) || (config.includeDraftNoActivity && noActivityAttention),
+          );
+        }
+        return false;
+      };
+
+      const rows = [
+        {},
+        { status: "NO_CHANGE" },
+        { status: "CHANGED", reason: "commit", commits: [{ messageHeadline: "Merge branch 'main'" }] },
+        { status: "CHANGED", reason: "comment" },
+        { status: "NO_ACTIVITY", assignees: [{ login: "me" }] },
+        { status: "NO_ACTIVITY", requestedReviewers: [{ login: "someone" }] },
+      ];
+      const sections = ["open", "draft", "merged", "closed", "flagged", ""];
+      const flags = ["includePendingComments", "includeClosedMerged", "includeDraftChanged", "includeDraftNoActivity", "ignoreMergeOnlyCommits"];
+      const modes = ["all", "none", "assigned-only", "reviewer-only", "mine-only"];
+      let checked = 0;
+
+      rows.forEach((row) =>
+        sections.forEach((sectionKey) =>
+          [false, true].forEach((hasPendingComments) =>
+            modes.forEach((noActivityMode) =>
+              Array.from({ length: 2 ** flags.length }, (_, mask) => mask).forEach((mask) => {
+                const config = { noActivityMode };
+                flags.forEach((flag, index) => {
+                  config[flag] = Boolean(mask & (1 << index));
+                });
+                const input = { row, sectionKey, hasPendingComments, config };
+                expect([input, helpers.shouldShowNeedsAttention(input)]).toEqual([input, previousShouldShow(input)]);
+                checked += 1;
+              }),
+            ),
+          ),
+        ),
+      );
+      expect(checked).toBe(rows.length * sections.length * 2 * modes.length * 2 ** flags.length);
+    });
+  });
 });

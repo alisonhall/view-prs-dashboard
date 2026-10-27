@@ -1,0 +1,76 @@
+/*
+ * Design tokens for the UI redesign (UI_REDESIGN_PLAN.md). New styles use
+ * these instead of literal values; the files moved from index.css
+ * (common.css through snackbar.css) still have their own literals. Text colours meet 4.5:1 on --color-surface
+ * and --color-canvas.
+ */
+:root {
+  /* Surfaces */
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #fbfcfe;
+  --color-surface-muted: #f3f4f6;
+  --color-surface-selected: #eef4fd;
+  --color-surface-hover: #eef0f3;
+
+  /* Borders */
+  --color-border: #e1e4e8;
+  --color-border-subtle: #eef0f3;
+  --color-border-strong: #d0d7de;
+  --color-border-selected: #9cc0ee;
+
+  /* Text */
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-text-on-strong: #ffffff;
+
+  /* Accents - each pairs with a distinct icon shape, never colour alone */
+  --color-accent: #0969da;
+  --color-accent-text: #0757ba;
+  --color-accent-subtle: #e7eef8;
+  --color-success: #1a7f37;
+  --color-success-subtle: #e6f4ea;
+  --color-danger: #cf222e;
+  --color-danger-subtle: #ffebe9;
+  --color-attention: #bc4c00;
+  --color-attention-text: #8a3b00;
+  --color-attention-subtle: #fff4e5;
+  --color-pending: #9a6700;
+  --color-done: #8250df;
+  --color-unknown: #6e7781;
+
+  /* Tooltip */
+  --color-tooltip-bg: #1f2328;
+  --color-tooltip-text: #ffffff;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px var(--color-accent);
+
+  /* Type */
+  /* The page's existing system stacks; no web fonts are loaded. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 17px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-tooltip: 0 6px 16px rgba(31, 35, 40, 0.2);
+  --shadow-drawer: -8px 0 24px rgba(31, 35, 40, 0.06);
+}

@@ -1,4 +1,4 @@
-// safeJsonStringify is also a bare export so PrJsonModal/ExportTab can
+// safeJsonStringify is also a bare export so PrJsonModal/ExportSection can
 // import it directly; the factory returns this same function.
 export const safeJsonStringify = (value: unknown): string => {
   try {

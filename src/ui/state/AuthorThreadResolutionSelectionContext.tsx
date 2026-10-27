@@ -3,8 +3,9 @@ import type { CheckedByListIdValue } from './useCheckedByListIdState';
 
 /**
  * Checked state for the 2 "PR author thread resolution" multi-selects (the
- * allow/deny thread-starter lists), which ReviewThreadsSection reads to
- * decide whether a PR author resolving someone's thread is allowed. Kept
+ * allow/deny thread-starter lists), which the Conversations tab reads (via
+ * useAuthorThreadResolutionPolicy) to decide whether a PR author resolving
+ * someone's thread is allowed. Kept
  * separate from RowFilterSelectionContext because these lists don't feed
  * row filtering.
  */

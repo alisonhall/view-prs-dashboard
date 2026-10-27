@@ -2,10 +2,10 @@
 
 ## Possible improvements
 
-- [ ] Remove the "thread open" and "thread resolved" details from the 'Activity sequence' cards
+- [x] ~~Remove the "thread open" and "thread resolved" details from the 'Activity sequence' cards~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 5): the Activity tab's events don't show a thread's open/resolved state (the data only has it as a flag on each comment, with no time it changed, so it isn't an event of its own)
 - [x] ~~Determine what determines the 'MRG' values~~ - answered (2026-10-22): MRG is GitHub's `mergeable` field, not anything to do with merge commits. YES = no conflicts, NO = conflicts, UNK = GitHub hasn't computed it yet. Still to do: add a tooltip explaining this on the badge.
 - [ ] Add explanations for how things like some of the 'Review statistics' table column data is calculated
-- [ ] Move the 'View Filters' section out of the tabs section - decided (2026-10-22): a collapsible filter bar directly above the PR table; the applied-filter chips stay visible when it's collapsed. Run Script options stay in the Script tab.
+- [x] ~~Move the 'View Filters' section out of the tabs section~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 8): the row filters are a filter bar above the PR table, whose chips and "Showing N of M PRs" stay visible when it's closed; it opens as it was left. The attention, merge-commit and change-detection rules stay in the Run & Filter tab until the Settings drawer (phase 9). Decided (2026-10-22): a collapsible filter bar directly above the PR table; the applied-filter chips stay visible when it's collapsed. Run Script options stay in the Script tab.
 - [x] Change the 'Filter by label name(s)' and 'Exclude by label name(s)' fields to be multiselect dropdowns with all the possible GitHub labels as options
 - [ ] Add more details and explanations for the various fields and data
 - [x] Move the 'In Review' checkbox into the 'Actions' column cell
@@ -18,9 +18,9 @@
 - [x] Update the 'Status' and 'Scheduler Status' sections to make it more clear when a script is running
 - [ ] Extend the 'Your last activity' column data so that it shows the relative difference too
 - [ ] Add additional expandable sections under each PR to contain things like the user's PR description, an AI description of the PR changes, a large textarea where I can paste in AI review of the PR quality, etc.
-- [ ] Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
-- [ ] Don't truncate comments/details under the 'Activity sequence' cards
-- [x] Add a toggle within the 'Review conversations' section for viewing all vs only unresolved conversations. The default value should be viewing only the unresolved conversations.
+- [x] ~~Have the content of the 'More insights' section be with tabs~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 4): the detail pane's tabs, as decided below. Original item: Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
+- [x] ~~Don't truncate comments/details under the 'Activity sequence' cards~~ - done (2026-10-25, phase 5): the Activity tab shows comment and review text in full, rendered as markdown; long ones fold behind "Show more"
+- [x] Add a toggle within the 'Review conversations' section for viewing all vs only unresolved conversations. The default value should be viewing only the unresolved conversations. - now the Conversations tab's Unresolved / Waiting on me / All chips, Unresolved still the default (2026-10-25, UI_REDESIGN_PLAN.md phase 6)
 - [x] Call out places where the wrong person resolved a conversation
 - [x] Exclude weekends from Activity Timeline empty dates
 - [x] Save changes to the applied filters and run settings within local storage, and then restore from local storage
@@ -41,8 +41,8 @@
 - [ ] For possible long dropdown lists (ie. all authors), add a UI enhancement so that it has the search/filter functionality in the dropdown. Also consider "recently active" sorting (actors from recent PRs at the top)
 - [ ] Deduplicate author name dropdown fields
 - [x] ~~Add a small copy button beside the source branch name~~ - already done: the "Source branch" row in More insights has a copy button
-- [ ] Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields
-- [ ] Update Notes' Story and Link fields to have the read view of the story name have a small open link icon button beside it to open the link URL (part of the Stories change above)
+- [x] ~~Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 7): each field has its own Edit (Add when empty), Save and Cancel; saving one field leaves another's unsaved edit as it is
+- [x] ~~Update Notes' Story and Link fields to have the read view of the story name have a small open link icon button beside it to open the link URL (part of the Stories change above)~~ - done (2026-10-25, phase 7): only for http(s) URLs
 - [x] ~~Make the per-row busy indicator reference-counted~~ - fixed (2026-10-10): `PrActivityQueueProvider.tsx`'s `markPrBusy`/`clearPrBusy` now track a `useRef`-held `Map<key, count>` alongside the existing `busyPrNumbers` Set - a key only leaves the Set once its count returns to 0, so two concurrent "busy" claims on the same PR (e.g. "Quick check all" and an unrelated Ack click) both have to clear before the spinner does. `busyPrNumbers`' own external shape (a Set of keys) is unchanged, so no consumer needed updating. New regression tests in `PrActivityQueueProvider.test.jsx` (confirmed one fails without the fix).
 - [x] ~~Give `FilterOptionsProvider.tsx` a per-entry derived-value cache~~ - fixed (2026-10-10): a `useRef`-held `createEntryDerivedCache()` (`pr-entry-derived-cache.helpers.ts`, the same module `useVisiblePrNumbers.tsx` already uses) now wraps `extractRowLabelNames`/`getPreferredActorKey`/`collectAssignedUsers`/`collectApproversFromRow`'s per-entry output, keyed by entry object reference - an unchanged entry across a poll tick reuses its cached result instead of re-deriving it. See `REACT_MIGRATION_PLAN.md` for the full writeup, including the one accepted tradeoff (no invalidation on an actor-login-alias-map change alone, matching `pr-row-filtering.helpers.ts`'s own identical-shape cache).
 - [x] ~~Fix the In Review/Flagged checkbox's on-failure revert~~ - re-investigated (2026-10-10) and found stale, not an actual bug: the `mockCheckbox`-mutation path described below is indeed dead code, but `handleCheckboxChange`'s failure branch still calls `setStatusTextOnly` (inside `toggleInReviewForRow`/`toggleFlaggedForRow`), which pushes to `AppRoot`'s own local `useState` and forces a re-render of `PrTableApp` (rendered as its non-memoized child) on every attempt, success or failure - so the controlled checkbox already re-derives from the unchanged `payload` and snaps back immediately, with no extra wiring needed. Confirmed empirically: implemented a re-push fix (re-adding a `getLatestStoredPayload` getter for the failure path only), wrote a Playwright regression test for it, then disabled the fix and reran the test - it still passed against the original, unmodified code, proving the existing status-text cascade already covers this. Fix reverted as redundant; the Playwright test (`e2e/smoke.spec.js`, "a failed In Review toggle reverts the checkbox...") is kept as a real behavioral regression test. Original finding (Phase 7 sub-phase 7.3 follow-up review, 2026-10-03): `react-callbacks.helpers.js`'s `handleCheckboxChange` passes a throwaway `mockCheckbox = { checked }` object (not the real DOM node) into `toggleInReviewForRow`/`toggleFlaggedForRow`, so their `checkbox.checked = !nextValue` revert-on-failure never reaches the actual checkbox - true, but harmless given the above.
@@ -52,18 +52,18 @@
 ### Styling
 
 - [ ] Add different styling for when my name appears
-- [ ] Add styling for when the PR author's name appears in the 'Activity timeline' or 'Activity sequence' or 'Review conversations'
+- [x] ~~Add styling for when the PR author's name appears in the 'Activity timeline' or 'Activity sequence' or 'Review conversations'~~ - done: names there go through ActorIdentity, which styles the PR author and the viewer (`.actor-identity-pr-author` / `-viewer`); the Activity tab's feed and daily summary use it too (2026-10-25, phase 5)
 - [x] Add markdown styling to content of comments and threads
 - [x] Add right padding for the 'In Review' column and 'CHK' column content to prevent it touching the border
 - [x] Update styling for target branch details within the 'Title' column cells
 - [x] Add styling for status and sentiment within the 'Author Insights' cards
-- [ ] Change the 'More insights' content to be in multiple columns for ease of reading
+- [x] ~~Change the 'More insights' content to be in multiple columns for ease of reading~~ - done (2026-10-25, UI_REDESIGN_PLAN.md): each row's chevron opens a three-column summary (phase 3), and the full content is in the detail pane's tabs, its key/value rows grouped as Review / People / Changes (phase 4)
 - [x] Have the PR comments' 'Note...' textarea vertically expand to include all of the text content
 - [x] Align the PR comments' 'Note...' textarea properly with the other fields
 - [ ] Style the code examples differently from text
 - [ ] Remove all the unneeded extra padding around markdown paragraphs/bulleted lists/etc
-- [ ] Set max-height on 'Activity timeline' and add scroll when it overflows
-- [ ] Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows
+- [x] ~~Set max-height on 'Activity timeline' and add scroll when it overflows~~ - superseded (2026-10-25, UI_REDESIGN_PLAN.md phases 4-5): the timeline is a collapsed "Daily summary" in the detail pane, which scrolls as a whole
+- [x] ~~Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows~~ - superseded (2026-10-25, phases 4-5): each is its own tab in the detail pane, which scrolls
 - [ ] Add sticky table row
 
 ### Accessibility fixes
@@ -83,6 +83,8 @@ For progress and steps, see [`AI_MODERNIZATION_PLAN.md`](AI_MODERNIZATION_PLAN.m
 Improve UI and style it more similarly to GitKraken's LaunchPad.
 
 For planned steps, see [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md)
+
+The redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer) is planned in [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md)
 
 ### Future Performance Opportunities
 

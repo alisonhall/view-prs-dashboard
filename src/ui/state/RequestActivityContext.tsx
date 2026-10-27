@@ -12,10 +12,10 @@ import type { SchedulerSnapshot } from '../helpers/pr-job-events.helpers.ts';
  *
  * Its own Context rather than another field of `usePrData()`, on purpose:
  * the writers that call these (useRunScript/useAckLabelActions/
- * useBackfillActions/useRequestMoreMerged, all called from AppRoot's body)
- * would otherwise subscribe to the whole PR-data value, which changes on
- * every payload/repo/stats update - re-rendering AppRoot and every portal it
- * builds each time. These functions never change, so this Context's value
+ * useBackfillActions/useRequestMoreMerged, called high in the tree: AppShell
+ * and the Settings drawer's sections) would otherwise subscribe to the whole
+ * PR-data value, which changes on every payload/repo/stats update -
+ * re-rendering them and everything under them each time. These functions never change, so this Context's value
  * never does either.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context in
@@ -54,7 +54,7 @@ export function useRequestActivity(): RequestActivityValue {
 }
 
 /**
- * What the activity drawer displays - the current request-activity badges
+ * What the activity popover displays - the current request-activity badges
  * and the recent finished requests. Separate from the functions above
  * because this changes on every activity tick: only its readers re-render,
  * never the many callers of the stable functions.

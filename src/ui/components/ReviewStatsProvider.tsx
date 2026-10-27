@@ -22,8 +22,8 @@ const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
  * ActorIdentityContext.
  *
  * Must be mounted inside both <PrDataProvider> and the
- * <ActorIdentityContext.Provider> it sets up - see react-app.jsx's AppRoot
- * for the actual nesting. Reads statsViewState directly via usePrData(),
+ * <ActorIdentityContext.Provider> it sets up - see react-app.tsx and
+ * AppShell for the actual nesting. Reads statsViewState directly via usePrData(),
  * so (unlike NeedsAttentionProvider) no separate "punch through the
  * reconciliation bailout" trick is needed here - this component already
  * genuinely depends on PrDataContext's value.

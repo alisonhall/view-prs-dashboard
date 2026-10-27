@@ -22,7 +22,7 @@ interface RunRouteResult extends CommandResult {
 }
 
 /**
- * The "Run script" button's action (RunScriptActionButton.jsx): runs the
+ * The "Run script" button's action (the Settings drawer's Run & check): runs the
  * script once per PR number in the form (or once for all PRs), collecting
  * each run's output, applying each returned payload, and reporting
  * failures (with a GitHub auth/SSO hint when the output has one).

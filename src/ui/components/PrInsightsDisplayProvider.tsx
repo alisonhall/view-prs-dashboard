@@ -4,7 +4,6 @@ import { useActorIdentity } from '../state/ActorIdentityContext';
 import { createPrRequestedReviewersHelpers } from '../helpers/pr-requested-reviewers.helpers.ts';
 import { createPrAssignedUsersHelpers } from '../helpers/pr-assigned-users.helpers.ts';
 import { createPrApproversHelpers } from '../helpers/pr-approvers.helpers.ts';
-import { createPrInsightBadgeClassHelpers } from '../helpers/pr-insight-badge-class.helpers.ts';
 import { createPrInsightMetricsSummaryHelpers } from '../helpers/pr-insight-metrics-summary.helpers.ts';
 import { createPrUiRenderUtilsHelpers } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrReviewStatsAggregationHelpers } from '../helpers/pr-review-stats-aggregation.helpers.ts';
@@ -16,11 +15,9 @@ import { createPrViewedFilesSummaryHelpers } from '../helpers/pr-viewed-files-su
 import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.ts';
 import { createPrNotesPeopleOptionsHelpers } from '../helpers/pr-notes-people-options.helpers.ts';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
-import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
 
-const { isChangedStatus } = createPrStatusDisplayHelpers();
 const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
 
 // These only close over the module-level constants above - never actor/
@@ -30,8 +27,6 @@ const { toCount, formatIsoDatetime } = createPrFormattingHelpers();
 // (e.g. on every poll tick, since ActorIdentityContext's value is itself
 // payload-derived), the same stale-dependency-array risk
 // AuthorInsightsProvider.tsx's own comment documents and was fixed for.
-const { getBadgeClassForStatus, getBadgeClassForCheck, getBadgeClassForMerge } =
-  createPrInsightBadgeClassHelpers({ isChangedStatus });
 const {
   formatReviewFootprint,
   formatConversationStatus,
@@ -42,7 +37,7 @@ const { parseMarkerState } = createPrUiRenderUtilsHelpers();
 const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 const { normalizeStoriesForUi } = createPrNotesHelpers();
 const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
-const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents } =
+const { buildActivityEventKey, normalizePrRootUrl, buildFallbackActivityEvents, buildActivityEvents } =
   createPrActivityEventsHelpers({ asArray });
 const { formatDurationMinutes } = createPrApprovalDurationHelpers({ toCount });
 const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
@@ -55,9 +50,6 @@ const stableValue = {
   getOpenConversationCount,
   getUserInitials,
   getViewedFilesSummary,
-  getBadgeClassForStatus,
-  getBadgeClassForCheck,
-  getBadgeClassForMerge,
   formatReviewFootprint,
   formatConversationStatus,
   formatApprovalRisk,
@@ -65,13 +57,14 @@ const stableValue = {
   formatDurationMinutes,
   buildFallbackActivityEvents,
   buildActivityEventKey,
+  buildActivityEvents,
   normalizePrRootUrl,
   normalizeStoriesForUi,
   renderMarkdownAsHtml,
 };
 
 /**
- * Derives the "More insights" panel's formatting/badge-class functions
+ * Derives the row insights' formatting/badge-class functions
  * (see state/PrInsightsDisplayContext.tsx).
  *
  * Only formatApproversDisplay/formatRequestedReviewersDisplay/
@@ -81,7 +74,7 @@ const stableValue = {
  * own comment for why that split matters).
  *
  * Must be mounted inside the <ActorIdentityContext.Provider> PrDataProvider
- * sets up - see react-app.jsx for the actual nesting. Doesn't need
+ * sets up - see AppShell's PrTable for the actual nesting. Doesn't need
  * usePrData() itself - every consumer already receives `row`/`actorsMap`
  * as props and passes them as plain arguments into these functions.
  */

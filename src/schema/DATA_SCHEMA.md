@@ -115,7 +115,7 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 
 Notes:
 
-- When present, `additions` and `deletions` are used by the UI `More insights` panel to render a GitHub-style `Lines changed` summary (`<files> changed, +<additions>, -<deletions>, <total> lines changed`).
+- When present, `additions` and `deletions` are used by the detail pane's Overview tab to render a GitHub-style `Lines changed` summary (`<files> changed, +<additions>, -<deletions>, <total> lines changed`).
 
 ## Nested object shapes
 

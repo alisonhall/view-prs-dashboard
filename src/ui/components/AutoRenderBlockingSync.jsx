@@ -30,7 +30,7 @@ const { isAuthorInsightsComposerDraftDirty, isAuthorInsightsEditDraftDirty } =
  *
  * Must sit inside NotesDirtyProvider, AuthorInsightsDraftsProvider and
  * PrDataProvider (for actor identity and the payload's actorsMap, which
- * orders the blocking authors by display name) - react-app.jsx's AppRoot
+ * orders the blocking authors by display name) - react-app.tsx
  * mounts it just inside AuthorInsightsDraftsProvider. It is the only
  * subscriber to AuthorInsightsDraftsVersionContext, so a keystroke in a
  * draft re-renders this (and nothing else that reads the drafts Context).

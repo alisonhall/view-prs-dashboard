@@ -22,7 +22,7 @@ import { useRequestActivity } from '../state/RequestActivityContext';
 const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessage } = createPrBackfillHelpers();
 
 /**
- * Owns the backfill tracking flags and the Backfill tab's display state
+ * Owns the backfill tracking flags and the Backfill section's display state
  * (see BackfillStatusContext.tsx): `isBackfillRunning`/
  * `isBackfillActionPending`/`supportsBackfillLogPolling`, the status
  * badges, details text, button state and log text, and the
@@ -36,11 +36,12 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
  * `getIsBackfillRunning` back-to-back inside one async function, with no
  * guarantee a React render happens between those calls, so each call must
  * see the previous one's write immediately. `useState` is only for
- * `useBackfillStatus()`'s reactive value (e.g. BackfillLogControls.jsx's
+ * `useBackfillStatus()`'s reactive value (e.g. BackfillLog.tsx's
  * render-time read of `isBackfillRunning`).
  *
  * It doesn't need the `#backfill-badges`/`#backfill-details` nodes to
- * exist to hold its state; AppRoot renders the state into them.
+ * exist to hold its state; the Settings drawer's BackfillSection renders
+ * the state into them.
  */
 export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
   const { setStatusText } = useStatusText();
@@ -132,7 +133,7 @@ export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
   // functions are used, so only their DI is passed; the action functions
   // (handleBackfillAction) live in useBackfillActions.tsx's own instance.
   // autoScrollBackfillLogToBottom is a no-op for the same reason as there:
-  // BackfillLogControls syncs its scroll position itself on each log update.
+  // BackfillLog syncs its scroll position itself on each log update.
   const loadBackfillStatus = useMemo(
     () =>
       createPrBackfillActionHelpers({

@@ -83,11 +83,11 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * (test-fixtures/pr-data-probe.jsx).
  *
  * `initialPayload`/`initialSelectedRepo`/... seed the state once at mount
- * (mountAppRoot, react-app.jsx). After that, updates go through this
+ * (react-app.tsx). After that, updates go through this
  * Provider's functions: the data pipeline (renderPrData/
  * applyFreshPrPayload, used by loadStoredData and the polls),
  * `applyFreshTablePayload` (payload and repo together), or `setPayload`
- * (e.g. NotesSection.jsx applying its POST /view-prs/notes response).
+ * (e.g. PrNotesTab applying its POST /view-prs/notes response).
  *
  * `pollForDataChanges` (called by <PrDataPolling />'s interval, and by
  * JobEventsProvider when an SSE frame reports a data-writing job finishing
@@ -96,7 +96,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * nothing renders from it. Request activity and the backfill load come
  * from RequestActivityProvider and BackfillStatusProvider (ancestors).
  *
- * `loadOnMount` (set by mountAppRoot) runs the initial page-load fetch.
+ * `loadOnMount` (set by react-app.tsx) runs the initial page-load fetch.
  */
 export function PrDataProvider({
   initialPayload,
@@ -114,7 +114,7 @@ export function PrDataProvider({
   children?: ReactNode;
 }) {
   // hasRenderedPrData: false until the first payload is rendered (the initial
-  // loadStoredData, or an earlier applyFreshPrPayload). AppRoot only mounts
+  // loadStoredData, or an earlier applyFreshPrPayload). AppShell only mounts
   // the PR table after that, so the table never flashes an empty "no PRs"
   // state before the data arrives.
   const [state, setState] = useState<PrDataState>({
@@ -190,7 +190,7 @@ export function PrDataProvider({
   const getLatestStoredPayload = useCallback(() => latestStoredPayloadRef.current, []);
 
   // The repo the render pipeline actually resolves: explicit repo, else the
-  // Run & Filter "repo" field, else payload.lastRun.repo (see
+  // Settings "repo" field, else payload.lastRun.repo (see
   // deriveRepoRunContext), read from FilterStateProvider's store.
   const resolveRepoFilter = useCallback(
     (selectedRepo: string, payload: PrDataPayload | null | undefined) =>
@@ -416,7 +416,7 @@ export function PrDataProvider({
     return () => setFreshPayloadApplier(null);
   }, [setFreshPayloadApplier, applyFreshPrPayload]);
 
-  // The initial page-load fetch. Opt-in (`loadOnMount`, set by mountAppRoot): the many component tests that
+  // The initial page-load fetch. Opt-in (`loadOnMount`, set by react-app.tsx): the many component tests that
   // mount this Provider with their own initialPayload must not have it
   // replaced by whatever their fetch mock returns. Once per mount (the ref),
   // even though the error path's dependencies are listed for the linter.
@@ -444,7 +444,7 @@ export function PrDataProvider({
   }, []);
 
   // newPayload falls back to the previous payload if undefined,
-  // newSelectedRepo to the previous selectedRepo if falsy. PrTableApp.jsx's
+  // newSelectedRepo to the previous selectedRepo if falsy. PrTableApp.tsx's
   // per-row Ack/Apply-Label handlers need both fields updated together;
   // bare setPayload would drop a selectedRepo change.
   const applyFreshTablePayload = useCallback<PrDataValue['applyFreshTablePayload']>((newPayload, newSelectedRepo) => {

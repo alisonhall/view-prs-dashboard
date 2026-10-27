@@ -28,16 +28,16 @@ export interface AckLabelActions {
   handleAckOnly: () => Promise<void>;
   handleClearOnly: () => Promise<void>;
   handleApplyLabelClick: () => Promise<void>;
-  // The per-PR forms, used by PrTableApp.jsx's row actions.
+  // The per-PR forms, used by PrTableApp.tsx's row actions.
   runAckOnlyWorkflow: AckLabelHelpers['runAckOnlyWorkflow'];
   runClearOnlyWorkflow: AckLabelHelpers['runClearOnlyWorkflow'];
   runApplyLabelWorkflow: AckLabelHelpers['runApplyLabelWorkflow'];
 }
 
 /**
- * The Ack, Clear and Apply-label actions: RunScriptActionButton.jsx's bulk
+ * The Ack, Clear and Apply-label actions: the Settings drawer Run & check's bulk
  * buttons (handleAckOnly/handleClearOnly/handleApplyLabelClick) and
- * PrTableApp.jsx's per-row actions (the run*Workflow functions, from a
+ * PrTableApp.tsx's per-row actions (the run*Workflow functions, from a
  * second instance of this hook). Builds createPrAckLabelActionsHelpers
  * with PrDataProvider's data pipeline, the form body, status/output text,
  * snackbars and request activity.

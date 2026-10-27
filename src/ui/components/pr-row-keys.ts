@@ -5,8 +5,8 @@
  * in the payload alongside the currently-configured one, so a
  * number-only key can collide across repos with the same PR number.
  *
- * Imported directly by PrTableApp.jsx, PrTable.jsx, PrRow.jsx and
- * PrActivityQueueProvider.tsx - pulling it out of PrTableApp.jsx itself
+ * Imported directly by PrTableApp.tsx, PrTable.tsx, PrRow.tsx and
+ * PrActivityQueueProvider.tsx - pulling it out of PrTableApp.tsx itself
  * avoids a PrTableApp -> PrSection -> PrTable -> PrTableApp import cycle.
  *
  * @module components/pr-row-keys

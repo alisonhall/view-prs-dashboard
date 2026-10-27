@@ -7,10 +7,10 @@ import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.ts'
 /**
  * Owns the current repo's available GitHub labels and their fetch
  * (`refresh`, GET /view-prs/labels). The repo comes from usePrData()'s
- * selectedRepo, else the Run & Filter tab's repo field.
+ * selectedRepo, else the Settings drawer's repo field (Script options).
  *
  * Three things trigger a fetch, all through Context: the "↻ Labels" button
- * (RefreshLabelsButtonLive in react-app.jsx) calling `refresh`; selectedRepo
+ * (in Settings › Run & check, RunCheckSection) calling `refresh`; selectedRepo
  * changing; and FilterStateProvider restoring a saved repo override, which
  * it publishes as `restoredRepoOverride` (null until a restore sets it,
  * once). The last one is needed because selectedRepo doesn't necessarily

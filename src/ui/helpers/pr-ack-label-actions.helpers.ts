@@ -14,7 +14,7 @@ import type { PostJsonResult } from "./pr-http.helpers.ts";
 // A single-row action already gets this from PrTableApp's own withPrBusy
 // wrapper (marking/clearing the same key twice is harmless - see
 // markPrBusy/clearPrBusy's own prev.has() checks), but a bulk request from
-// the "Run & Filter" tab's PR-number-list field otherwise showed no
+// the Settings drawer's PR numbers field otherwise showed no
 // per-row indicator at all for any of the PRs it affected.
 //
 // Chunked/parallel execution: a batch larger than CHUNK_SIZE is split into
@@ -42,7 +42,7 @@ import type { PostJsonResult } from "./pr-http.helpers.ts";
 // a multi-chunk batch specifically.
 //
 // Queued state: a multi-chunk batch marks every PR number queued
-// (markPrsQueued) up front - distinct from busy, see PrTableApp.jsx/
+// (markPrsQueued) up front - distinct from busy, see PrTableApp.tsx/
 // PrNumberCell.jsx's own comments - then each chunk moves its own PR
 // numbers queued -> busy right before that chunk's request actually fires
 // (only once a concurrency slot frees up via runWithConcurrencyLimit), not

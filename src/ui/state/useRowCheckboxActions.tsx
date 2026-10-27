@@ -7,7 +7,7 @@ import { useRequestActivity } from './RequestActivityContext';
 import { useNotifyFailureSnackbar } from './useNotifyFailureSnackbar';
 
 /**
- * PrTableApp.jsx's per-row in-review/flagged checkbox toggles: builds
+ * PrTableApp.tsx's per-row in-review/flagged checkbox toggles: builds
  * createPrRowCheckboxActionsHelpers with PrDataContext's payload/
  * selectedRepo, PrDataProvider's applyLatestPrData/loadStoredData, request
  * activity, status text and failure snackbars. applyLatestPrData only

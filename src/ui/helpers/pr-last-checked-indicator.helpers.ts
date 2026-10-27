@@ -76,11 +76,13 @@ export const formatRelativeLastCheckedLabel = (updatedAt: unknown, nowMs: number
 export const buildPrLastCheckedIndicator = ({
   updatedAt,
   sectionKey,
+  nowMs = Date.now(),
 }: {
   updatedAt: unknown;
   sectionKey?: string;
+  nowMs?: number;
 }): LastCheckedIndicator => {
-  const relative = formatRelativeLastCheckedLabel(updatedAt);
+  const relative = formatRelativeLastCheckedLabel(updatedAt, nowMs);
   const isOpenSection = sectionKey === "open";
   const isStale =
     isOpenSection &&

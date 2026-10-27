@@ -12,7 +12,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * RowFilterSelectionContext for the label/exclude-label/author lists.
  * Used by useRunScript/useAckLabelActions/useQuickCheckActions, which need
  * a <FilterStateProvider>/<RowFilterSelectionProvider> ancestor (both wrap
- * <AppRoot/> in mountAppRoot(), react-app.jsx).
+ * <AppShell /> in react-app.tsx).
  */
 export interface FormBody {
   repo: string;

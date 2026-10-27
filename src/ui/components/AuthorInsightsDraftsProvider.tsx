@@ -28,7 +28,7 @@ type DraftsProviderState = Required<AuthorInsightsState>;
  * createPrAuthorInsightsDraftsHelpers/createPrAuthorInsightsDataHelpers
  * unchanged (both take the state object as a parameter and mutate it), with
  * a version tick to re-render - the same pattern as
- * MultiSelectListPortals.jsx's pendingTick, and cheaper than reimplementing
+ * ListSelectionSeeding's pendingTick, and cheaper than reimplementing
  * this CRUD surface as a reducer. The tick is published through
  * AuthorInsightsDraftsVersionContext, so AutoRenderBlockingSync recomputes
  * in its own effect, after React has committed the keystroke.

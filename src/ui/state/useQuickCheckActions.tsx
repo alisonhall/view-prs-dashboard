@@ -26,7 +26,8 @@ export interface QuickCheckActions {
 
 /**
  * The "Quick check" and "Quick check all" buttons' actions
- * (QuickCheckButton.jsx/QuickCheckAllButton.jsx, via react-app.jsx):
+ * (QuickCheckButton.jsx, and the app header's QuickCheckAllButton, via
+ * AppShell):
  * builds createPrQuickCheckActionsHelpers with the form body, the newest
  * stored payload (PrDataProvider's), the per-PR busy markers
  * (usePrActivityQueue, which marks one PR at a time, so they're wrapped in

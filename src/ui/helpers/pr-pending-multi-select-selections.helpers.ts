@@ -1,11 +1,11 @@
 // The 9 multi-select filter lists' "pending selections": values restored
 // from user defaults before the lists' checkboxes exist.
-// FilterStateProvider writes them on restore; MultiSelectListPortals reads
+// FilterStateProvider writes them on restore; ListSelectionSeeding reads
 // them to seed each list's checked state, then clears them.
 //
 // A write isn't React state, so it doesn't re-render anything by itself,
-// and the restore can land after MultiSelectListPortals has mounted.
-// subscribeToPendingMultiSelectSelections lets MultiSelectListPortals
+// and the restore can land after ListSelectionSeeding has mounted.
+// subscribeToPendingMultiSelectSelections lets ListSelectionSeeding
 // re-seed on every write instead of guessing when one happened.
 //
 // The store and listeners live on `window`, not module scope, so a writer

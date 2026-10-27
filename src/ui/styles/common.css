@@ -1,0 +1,95 @@
+/*
+ * Small styles several views share: the views' panels and tables, PR
+ * links, actor names, the status colours, the row checkbox and the filter
+ * bar's scope select. Moved from index.css (phase 10-1); not yet on
+ * tokens.css.
+ */
+
+/* Shared table defaults: keep long tokens inside cells across all table views. */
+.data-tab-panel table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.data-tab-panel table th,
+.data-tab-panel table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+#scope-mode {
+  height: 32px;
+  border: 1px solid #c9d1d9;
+  border-radius: 8px;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+
+.data-tabs {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.data-tab-panel {
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.row-select-checkbox {
+  margin: 0;
+  transform: translateY(1px);
+}
+
+.actor-identity {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.actor-identity-viewer {
+  color: #0b57d0;
+}
+
+.actor-identity-pr-author {
+  color: #8a4600;
+}
+
+.actor-identity-viewer.actor-identity-pr-author {
+  color: #165c2f;
+}
+
+.pr-link {
+  color: #0b57d0;
+  text-decoration: underline;
+}
+
+.status-changed {
+  color: #b26b00;
+  font-weight: 600;
+}
+
+.status-no-change {
+  color: #1f7a1f;
+  font-weight: 600;
+}
+
+.status-no-activity {
+  color: #0b7285;
+  font-weight: 600;
+}
+
+.approved-yes {
+  color: #1f7a1f;
+  font-weight: 600;
+}
+
+.approved-no {
+  color: #b42318;
+  font-weight: 600;
+}

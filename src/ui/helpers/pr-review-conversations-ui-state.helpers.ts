@@ -1,15 +1,15 @@
 import type { PrData } from "../types/pr-data.ts";
+import type { ConversationFilter } from "./pr-review-threads.helpers.ts";
 
-// ReviewThreadsSection's per-PR view settings: the key they're remembered
-// under (the PR URL, else "repo#number") and their defaults.
-export type ConversationFilterMode = "all" | "unresolved" | "resolved";
+// The Conversations tab's per-PR view setting: the key it's remembered
+// under (the PR URL, else "repo#number") and its default.
+export type ConversationFilterMode = ConversationFilter;
 
 export interface ReviewConversationsUiState {
   conversationFilterMode: ConversationFilterMode;
-  showSummaryCards: boolean;
 }
 
-const CONVERSATION_FILTER_MODES: readonly string[] = ["all", "unresolved", "resolved"];
+const CONVERSATION_FILTER_MODES: readonly string[] = ["unresolved", "waiting", "all"];
 
 const createPrReviewConversationsUiStateHelpers = () => {
   const getReviewConversationsStateKey = (row: (PrData & { repo?: string }) | null | undefined): string => {
@@ -27,8 +27,9 @@ const createPrReviewConversationsUiStateHelpers = () => {
     return `${repoKey}#${prNumberKey}`;
   };
 
+  // Unresolved unless a known mode was saved.
   const normalizeReviewConversationsUiState = (
-    saved: { conversationFilterMode?: unknown; showSummaryCards?: unknown } | null | undefined,
+    saved: { conversationFilterMode?: unknown } | null | undefined,
   ): ReviewConversationsUiState => {
     const mode = String(saved?.conversationFilterMode || "")
       .trim()
@@ -38,8 +39,6 @@ const createPrReviewConversationsUiStateHelpers = () => {
       conversationFilterMode: CONVERSATION_FILTER_MODES.includes(mode)
         ? (mode as ConversationFilterMode)
         : "unresolved",
-      showSummaryCards:
-        typeof saved?.showSummaryCards === "boolean" ? saved.showSummaryCards : true,
     };
   };
 

@@ -22,16 +22,4 @@ describe('TabStateProvider', () => {
     expect(() => act(() => latest.setActiveDataTab('review-stats'))).not.toThrow();
     expect(latest.activeDataTab).toBe('review-stats');
   });
-
-  test('given setActiveManagementTab is called, when switching, then Context state updates', () => {
-    let latest;
-    render(
-      <TabStateProvider>
-        <Probe onValue={(value) => (latest = value)} />
-      </TabStateProvider>,
-    );
-
-    expect(() => act(() => latest.setActiveManagementTab('backfill'))).not.toThrow();
-    expect(latest.activeManagementTab).toBe('backfill');
-  });
 });

@@ -59,7 +59,7 @@ const CLEAN_STATE = {
 // otherwise treat document.body (jsdom's default activeElement) as a
 // non-text element already, but being explicit keeps intent clear.
 beforeEach(() => {
-  document.body.innerHTML = '<div id="auto-render-blocked-indicator" hidden></div>';
+  document.body.innerHTML = '';
 });
 
 describe('AutoRenderBlockingProvider', () => {
@@ -195,7 +195,7 @@ describe('AutoRenderBlockingProvider', () => {
     });
   });
 
-  test('given a payload is pushed while dirty, when read, then isBlocked becomes true and the outer indicator panel unhides', () => {
+  test('given a payload is pushed while dirty, when read, then isBlocked becomes true (the app header banner shows it)', () => {
     let latest;
     render(
       <AutoRenderBlockingProvider>
@@ -210,7 +210,6 @@ describe('AutoRenderBlockingProvider', () => {
     });
 
     expect(latest.isBlocked).toBe(true);
-    expect(document.getElementById('auto-render-blocked-indicator')).not.toHaveAttribute('hidden');
     expect(latest.statusText).toContain('note section');
   });
 

@@ -1,9 +1,10 @@
 import type { PrActivityEvent, PrData } from "../types/pr-data.ts";
 
-// Event-list helpers for ActivityEventsSection: a dedupe key per event, a
-// PR URL without hash/query, and a fallback event list built from a PR's
-// comments, threads, reviews, commits and merge/close time when it has no
-// activity events of its own.
+// Event-list helpers for the detail pane's Activity tab and the row summary: a
+// dedupe key per event, a PR URL without hash/query, a fallback event list
+// built from a PR's comments, threads, reviews, commits and merge/close
+// time when it has no activity events of its own, and the deduplicated
+// feed built from those.
 export interface PrActivityEventsDeps {
   asArray?: (value: unknown) => unknown[];
 }
@@ -149,10 +150,71 @@ const createPrActivityEventsHelpers = ({ asArray }: PrActivityEventsDeps = {}) =
     return fallback.filter((event) => String(event?.occurredAt || "").trim());
   };
 
+  // The activity feed, newest first (at most `limit`, 60 by default): the
+  // timeline's events (else the PR's activityEvents), each filled in from
+  // the matching fallback event where it lacks a body, link, state or
+  // commit message; the fallback list itself when there are none.
+  const buildActivityEvents = (row: PrData = {}, limit: number = 60): PrActivityEvent[] => {
+    const timelineEvents = asArraySafe(row.activityTimeline).flatMap((bucket) => asArraySafe(bucket?.events));
+    const sourceEvents = timelineEvents.length ? timelineEvents : asArraySafe(row.activityEvents);
+    const fallbackEvents = buildFallbackActivityEvents(row);
+    const fallbackByKey = new Map(fallbackEvents.map((event) => [buildActivityEventKey(event), event]));
+    const fallbackBySourceId = new Map(
+      fallbackEvents.filter((event) => String(event?.sourceId || "").trim()).map((event) => [String(event.sourceId), event]),
+    );
+    const enrichedSourceEvents = sourceEvents.map((event) => {
+      const sourceId = String(event?.sourceId || "").trim();
+      const fallback = (sourceId ? fallbackBySourceId.get(sourceId) : null) || fallbackByKey.get(buildActivityEventKey(event));
+      if (!fallback) return event;
+      return {
+        ...event,
+        body: String(event?.body || "").trim() || String(fallback?.body || ""),
+        url: String(event?.url || "").trim() || String(fallback?.url || ""),
+        state: String(event?.state || "").trim() || String(fallback?.state || ""),
+        messageHeadline: String(event?.messageHeadline || "").trim() || String(fallback?.messageHeadline || ""),
+        messageBody: String(event?.messageBody || "").trim() || String(fallback?.messageBody || ""),
+        conversationResolved:
+          event?.conversationResolved !== undefined ? event.conversationResolved : fallback?.conversationResolved,
+      };
+    });
+    const preDedupeEvents: PrActivityEvent[] = (enrichedSourceEvents.length ? enrichedSourceEvents : fallbackEvents).slice();
+
+    // A COMMENTED review event whose body was backfilled from its first
+    // thread comment duplicates the thread comment event. Suppress
+    // review(COMMENTED) events that match a thread/top-level comment by
+    // actor + minute + body.
+    const signatureOf = (event: PrActivityEvent) =>
+      `${String(event?.actor || "")}|${String(event?.occurredAt || "").slice(0, 16)}|${String(event?.body || "").trim()}`;
+    const isCommentChannel = (event: PrActivityEvent) =>
+      String(event?.channel || "") === "thread" || String(event?.channel || "") === "top-level";
+    const threadCommentSignatures = new Set(
+      preDedupeEvents.filter((event) => isCommentChannel(event) && String(event?.body || "").trim()).map(signatureOf),
+    );
+
+    const seen = new Set<string>();
+    return preDedupeEvents
+      .filter((event) => {
+        if (String(event?.channel || "") !== "review" || !String(event?.body || "").trim()) return true;
+        return !threadCommentSignatures.has(signatureOf(event));
+      })
+      .filter((event) => {
+        if (!isCommentChannel(event)) return true;
+        const body = String(event?.body || "").trim();
+        if (!body) return true;
+        const signature = `${String(event?.channel || "")}|${String(event?.occurredAt || "").slice(0, 16)}|${body}`;
+        if (seen.has(signature)) return false;
+        seen.add(signature);
+        return true;
+      })
+      .sort((a, b) => String(b?.occurredAt || "").localeCompare(String(a?.occurredAt || "")))
+      .slice(0, limit);
+  };
+
   return {
     buildActivityEventKey,
     normalizePrRootUrl,
     buildFallbackActivityEvents,
+    buildActivityEvents,
   };
 };
 

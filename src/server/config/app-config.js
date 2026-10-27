@@ -91,6 +91,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   // source/scripts, not mutable state, so there's no need to override them)
   const viewPrsUiDir = path.join(viewPrsDir, "src/ui");
   const viewPrsUiIndexFile = path.join(viewPrsDir, "src/ui/index.html");
+  // The production build (npm run build:ui), served with NODE_ENV=production.
+  // VIEW_PRS_UI_BUILD_DIR points tests at a stand-in build.
+  const viewPrsUiBuildDir = env.VIEW_PRS_UI_BUILD_DIR || path.join(viewPrsDir, "dist/ui");
+  const viewPrsUiBuildIndexFile = path.join(viewPrsUiBuildDir, "index.html");
   const viewPrsRunScriptRelativePath = "src/script/check-open-pr-updates.sh";
   const viewPrsBackfillManagerRelativePath = "src/backfill/backfill-missing-bg.sh";
   const viewPrsLegacySchedulerFile = path.join(
@@ -336,6 +340,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
     // File paths
     viewPrsUiIndexFile,
+    viewPrsUiBuildDir,
+    viewPrsUiBuildIndexFile,
     viewPrsDataFile,
     viewPrsUserStateFile,
     viewPrsAuthorCommentsFile,
