@@ -30,7 +30,7 @@
  * table's own expandable sources) now go through useNavigateToPrInTable()
  * (state/) instead of window.navigateToPrInTableFromStats (deleted
  * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
- * same hook AuthorInsightsPrLink.jsx now uses, same "dispatch
+ * same hook AuthorInsightsPrLink.tsx now uses, same "dispatch
  * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
  * behavior the old bridge's navigateToPrInTable already had. No `repo` is
  * passed here (unchanged from before) - this component's source items

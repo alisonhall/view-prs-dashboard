@@ -32,7 +32,7 @@
  *
  * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * `selectedAuthor` is now derived from PrDataContext's `selectedAuthorLogin`
- * (kept in sync by AuthorInsightsSelector.jsx, Phase H.17 - see
+ * (kept in sync by AuthorInsightsSelector.tsx, Phase H.17 - see
  * REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 2; previously
  * pr-author-insights.component.js's renderAuthorInsights, deleted outright
  * that phase) instead of being pushed as a prop via
@@ -46,10 +46,21 @@ import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
 import { useAuthorInsightsDrafts } from '../state/AuthorInsightsDraftsContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import type {
+  AuthorManualComment,
+  ManualCommentComposerDraft,
+  ManualCommentEditDraft,
+} from '../helpers/pr-author-insights-data.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-function SentimentSelect({ value, onChange, disabled }) {
+interface SentimentSelectProps {
+  value: string | undefined;
+  onChange: (sentiment: string) => void;
+  disabled?: boolean;
+}
+
+function SentimentSelect({ value, onChange, disabled }: SentimentSelectProps) {
   const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = useAuthorInsights();
   return (
     <select className="author-insights-comment-sentiment" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
@@ -62,17 +73,24 @@ function SentimentSelect({ value, onChange, disabled }) {
   );
 }
 
-function EditForm({ login, comment, onDone }) {
+interface EditFormProps {
+  login: string;
+  comment: AuthorManualComment;
+  // The author's comments after a save, or null when cancelled.
+  onDone: (updatedComments: AuthorManualComment[] | null) => void;
+}
+
+function EditForm({ login, comment, onDone }: EditFormProps) {
   const { DEFAULT_AUTHOR_INSIGHTS_SENTIMENT } = useAuthorInsights();
   const drafts = useAuthorInsightsDrafts();
   const initialDraft = drafts.getEditDraft(login, comment) || { note: comment?.note || '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT };
-  const [draft, setDraft] = useState(initialDraft);
+  const [draft, setDraft] = useState<ManualCommentEditDraft>(initialDraft);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
 
   const commentId = String(comment?.id || '');
 
-  const updateDraft = (patch) => {
+  const updateDraft = (patch: ManualCommentEditDraft) => {
     const next = { ...draft, ...patch, isEditing: true };
     setDraft(next);
     drafts.updateEditDraft(login, commentId, next);
@@ -90,8 +108,8 @@ function EditForm({ login, comment, onDone }) {
       const { response, result } = await drafts.updateManualComment({
         authorLogin: login,
         id: commentId,
-        note: draft.note,
-        sentiment: draft.sentiment,
+        note: draft.note ?? '',
+        sentiment: draft.sentiment ?? DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
       });
       if (!response.ok || result.ok === false) {
         setStatus(result.error || 'Failed to save comment edits');
@@ -131,7 +149,15 @@ function EditForm({ login, comment, onDone }) {
   );
 }
 
-function ManualCommentItem({ login, comment, editingCommentId, setEditingCommentId, onEditSaved }) {
+interface ManualCommentItemProps {
+  login: string;
+  comment: AuthorManualComment;
+  editingCommentId: string | null;
+  setEditingCommentId: (commentId: string | null) => void;
+  onEditSaved: (updatedComments: AuthorManualComment[]) => void;
+}
+
+function ManualCommentItem({ login, comment, editingCommentId, setEditingCommentId, onEditSaved }: ManualCommentItemProps) {
   const { getAuthorInsightsSentimentLabel, getAuthorInsightsSentimentBadgeClassName } = useAuthorInsights();
   const commentId = String(comment?.id || '');
   const isEditing = editingCommentId === commentId;
@@ -181,13 +207,16 @@ export function AuthorInsightsCommentsSection() {
     : null;
   const login = selectedAuthor?.login || '';
 
-  const [composerDraft, setComposerDraft] = useState({ note: '', sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT });
+  const [composerDraft, setComposerDraft] = useState<ManualCommentComposerDraft>({
+    note: '',
+    sentiment: DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
+  });
   const [composerSaving, setComposerSaving] = useState(false);
   const [composerStatus, setComposerStatus] = useState('');
-  const [comments, setComments] = useState([]);
+  const [comments, setComments] = useState<AuthorManualComment[]>([]);
   const [loadState, setLoadState] = useState({ loading: false, error: '' });
-  const [editingCommentId, setEditingCommentId] = useState(null);
-  const savedStatusTimeoutRef = useRef(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const savedStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!login) {
@@ -217,7 +246,7 @@ export function AuthorInsightsCommentsSection() {
     return null;
   }
 
-  const updateComposerDraft = (patch) => {
+  const updateComposerDraft = (patch: ManualCommentComposerDraft) => {
     const next = { ...composerDraft, ...patch };
     setComposerDraft(next);
     drafts.updateComposerDraft(login, next);
@@ -236,7 +265,7 @@ export function AuthorInsightsCommentsSection() {
       const { response, result } = await drafts.saveManualComment({
         authorLogin: login,
         note,
-        sentiment: composerDraft.sentiment,
+        sentiment: composerDraft.sentiment ?? DEFAULT_AUTHOR_INSIGHTS_SENTIMENT,
       });
       if (!response.ok || result.ok === false) {
         setComposerStatus(result.error || 'Save failed');
@@ -292,7 +321,7 @@ export function AuthorInsightsCommentsSection() {
         ) : (
           comments.map((comment) => (
             <ManualCommentItem
-              key={comment?.id || comment?.createdAt}
+              key={comment?.id || String(comment?.createdAt ?? '')}
               login={login}
               comment={comment}
               editingCommentId={editingCommentId}

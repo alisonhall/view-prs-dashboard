@@ -219,7 +219,7 @@ describe("pr author insights display helpers", () => {
 
   describe("resolveValidAuthorLogin", () => {
     // Shared by useNavigateToAuthorInsights.tsx (state/) and
-    // AuthorInsightsSelector.jsx (components/, Phase H.17 - see
+    // AuthorInsightsSelector.tsx (components/, Phase H.17 - see
     // REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 2).
     const authorOptions = [
       { login: "alice", name: "Alice" },

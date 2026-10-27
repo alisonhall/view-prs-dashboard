@@ -62,7 +62,7 @@ describe('useNavigateToPrInTable', () => {
   });
 
   // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
-  // cluster 2): repo passthrough, added for AuthorInsightsPrLink.jsx's own
+  // cluster 2): repo passthrough, added for AuthorInsightsPrLink.tsx's own
   // caller (PR numbers are only unique within a repo).
   test('given a repo option, when calling the hook function, then the dispatched event includes it', () => {
     const events = [];
