@@ -1179,6 +1179,12 @@ No static type checking leads to:
     - 12D-1 (2026-10-27): the Review stats components (ReviewStatsContent,
       ReviewStatsControls, StatsVisuals, GraphCard, ReviewerActivityChart)
       are `.tsx`, typed against the stats helpers' own types.
+    - 12D-2 (2026-10-27): the Authors components (AuthorInsightsSelector,
+      AuthorInsightsHeader, AuthorInsightsCommentsSection,
+      AuthorInsightsNotesSection, AuthorCreatedPrsSection,
+      AuthorInsightsPrDataMeta, AuthorInsightsPrLink) are `.tsx`.
+      `PrNotesComment` gains the optional `createdAt`/`updatedAt` the data
+      schema already has (the note-match sort reads them).
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

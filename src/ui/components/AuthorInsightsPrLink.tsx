@@ -3,8 +3,8 @@
  * createAuthorInsightsPrLink() built in
  * helpers/pr-author-insights-pr-link.helpers.js (since deleted): an external GitHub link
  * plus a "View in table" button that navigates the PR data tab to this
- * row. Shared by AuthorCreatedPrsSection.jsx and
- * AuthorInsightsNotesSection.jsx (Track B, REACT_MIGRATION_PLAN.md).
+ * row. Shared by AuthorCreatedPrsSection.tsx and
+ * AuthorInsightsNotesSection.tsx (Track B, REACT_MIGRATION_PLAN.md).
  *
  * Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 2): the navigation itself now goes through
@@ -20,8 +20,9 @@
 
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import type { PrEntry } from '../types/pr-data.ts';
 
-export function AuthorInsightsPrLink({ entry }) {
+export function AuthorInsightsPrLink({ entry }: { entry: PrEntry | null | undefined }) {
   const navigateToPrInTable = useNavigateToPrInTable();
   const row = entry?.data || {};
   const prNumber = String(row.number || entry?.prNumber || '').trim();

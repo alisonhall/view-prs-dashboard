@@ -11,7 +11,7 @@ import type { PostJsonResult } from '../helpers/pr-http.helpers.ts';
 /**
  * The Author Insights tab's manual-comment composer/edit drafts and
  * comments cache, owned by AuthorInsightsDraftsProvider.tsx.
- * AuthorInsightsCommentsSection.jsx uses all of it;
+ * AuthorInsightsCommentsSection.tsx uses all of it;
  * AutoRenderBlockingSync.jsx reads getDraftsSnapshot/getManualComments to
  * compute the auto-render-blocking state.
  *
