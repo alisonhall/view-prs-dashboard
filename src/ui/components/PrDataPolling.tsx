@@ -92,12 +92,6 @@ export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }: { dataPollMs?:
     let backfillInterval: ReturnType<typeof setInterval> | null = null;
     let activityInterval: ReturnType<typeof setInterval> | null = null;
 
-    const startIntervals = () => {
-      dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
-      backfillInterval = setInterval(() => pollBackfillStatus?.(), backfillPollMs);
-      activityInterval = setInterval(() => renderRequestActivity?.(), ACTIVITY_RENDER_MS);
-    };
-
     const stopIntervals = () => {
       if (dataInterval) {
         clearInterval(dataInterval);
@@ -111,6 +105,16 @@ export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }: { dataPollMs?:
         clearInterval(activityInterval);
         activityInterval = null;
       }
+    };
+
+    // Stops any running set first: a "visible" event while they're already
+    // running (without a "hidden" before it) would otherwise leave the old
+    // ones polling alongside the new.
+    const startIntervals = () => {
+      stopIntervals();
+      dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
+      backfillInterval = setInterval(() => pollBackfillStatus?.(), backfillPollMs);
+      activityInterval = setInterval(() => renderRequestActivity?.(), ACTIVITY_RENDER_MS);
     };
 
     startIntervals();
