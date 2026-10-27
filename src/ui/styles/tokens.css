@@ -77,4 +77,10 @@
   /* How far below the window's top sticky things sit: the Auto update
      paused banner's height while it shows. AppShell sets it on <html>. */
   --sticky-top: 0px;
+  /* A PR section's header height, which its table's column headers stick
+     below. PrSection sets it on the section. */
+  --pr-section-header-height: 0px;
+  /* Its table's column header row height, which rows scrolled into view
+     stop below while that row sticks. PrSection sets it too. */
+  --pr-table-head-height: 0px;
 }

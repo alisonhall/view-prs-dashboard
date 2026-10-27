@@ -109,8 +109,20 @@
   font-weight: 500;
 }
 
-.pr-section-content {
-  overflow-x: auto;
+/* A section scrolls sideways only when its table is wider than the list
+   (narrow windows; the widths are .pr-table's min-widths plus the section's
+   two 1px borders - pr-table-widths.test.ts checks they match). Otherwise it's no scroll container, so the column headers can stick to
+   the window below the section's header. */
+@container (max-width: 902px) {
+  .pr-workspace:not([data-pane="docked"]) .pr-section-content {
+    overflow-x: auto;
+  }
+}
+
+@container (max-width: 742px) {
+  .pr-section-content {
+    overflow-x: auto;
+  }
 }
 
 .pr-section-empty {
@@ -123,6 +135,7 @@
 /* Table */
 .pr-table {
   width: 100%;
+  /* The container queries below and above use this + 2. */
   min-width: 900px;
   border-collapse: collapse;
   table-layout: fixed;
@@ -142,6 +155,7 @@
    cells that can wrap take two lines (Signals and Review's signals, Size's
    added over deleted) - so the Pull request column keeps room for the
    title. */
+/* The container queries use this + 2 too. */
 .pr-workspace[data-pane="docked"] .pr-table { min-width: 740px; }
 .pr-workspace[data-pane="docked"] .pr-col-signals { width: 60px; }
 .pr-workspace[data-pane="docked"] .pr-col-who { width: 110px; }
@@ -161,14 +175,52 @@
 
 /* thead in the selector so this beats common.css's
    `.data-tab-panel table th { white-space: normal }`. */
+/* The bottom line is a shadow: a collapsed table border doesn't move with
+   a sticky cell (below). */
 .pr-table thead th {
   padding: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-border);
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-text-muted);
   text-align: left;
   white-space: nowrap;
+}
+
+/* A row scrolled into view (the pane's Previous / Next, or Tab) stops
+   below what's stuck at the top: the banner and the section's header, and
+   the column headers too while they stick (below). */
+.pr-table tbody * {
+  scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--space-2));
+}
+
+/* Stuck below the section's header (its height from PrSection) while the
+   rows scroll by - only while the table fits, the same widths as the
+   sideways scrolling above: inside that scroll box the offset would push
+   the column headers down over the first row instead. */
+@container (min-width: 903px) {
+  .pr-table thead th {
+    position: sticky;
+    top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px));
+    z-index: 9;
+  }
+
+  .pr-table tbody * {
+    scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--pr-table-head-height, 0px) + var(--space-2));
+  }
+}
+
+@container (min-width: 743px) {
+  .pr-workspace[data-pane="docked"] .pr-table thead th {
+    position: sticky;
+    top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px));
+    z-index: 9;
+  }
+
+  .pr-workspace[data-pane="docked"] .pr-table tbody * {
+    scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--pr-table-head-height, 0px) + var(--space-2));
+  }
 }
 
 .pr-table th:first-child,

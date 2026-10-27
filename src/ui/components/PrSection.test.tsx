@@ -90,4 +90,52 @@ describe('PrSection', () => {
     expect(screen.getByText('No PRs in this section.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
+
+  describe('header heights for the sticky column headers', () => {
+    const heights: Record<string, number> = { SUMMARY: 37.5, THEAD: 29.25 };
+    let resize: (() => void) | undefined;
+
+    beforeEach(() => {
+      jest
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          return { height: heights[this.tagName] ?? 0 } as DOMRect;
+        });
+      // jsdom has no ResizeObserver; this one lets a test resize the headers.
+      (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      };
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      delete (window as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+      resize = undefined;
+      heights.SUMMARY = 37.5;
+    });
+
+    const sectionStyle = () => (screen.getByRole('group', { name: 'Open PRs' }) as HTMLElement).style;
+
+    test('sets the exact header and column header heights, not rounded', () => {
+      renderSection();
+      expect(sectionStyle().getPropertyValue('--pr-section-header-height')).toBe('37.5px');
+      expect(sectionStyle().getPropertyValue('--pr-table-head-height')).toBe('29.25px');
+    });
+
+    test('updates them when the header resizes', () => {
+      renderSection();
+      heights.SUMMARY = 52;
+      resize?.();
+      expect(sectionStyle().getPropertyValue('--pr-section-header-height')).toBe('52px');
+    });
+
+    test('with no table, the column header height is 0', () => {
+      renderSection({ prs: [] });
+      expect(sectionStyle().getPropertyValue('--pr-table-head-height')).toBe('0px');
+    });
+  });
 });

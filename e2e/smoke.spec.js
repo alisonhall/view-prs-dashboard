@@ -577,10 +577,54 @@ test("an open section's header stays at the top while its rows scroll by", async
   const sectionBox = await section.boundingBox();
   expect(sectionBox.y).toBeLessThan(0);
   expect(sectionBox.y + sectionBox.height).toBeGreaterThan(100);
-  // Its header is pinned at the top of the window.
+  // Its header is pinned at the top of the window, and the table's column
+  // headers just below it.
   const headerBox = await header.boundingBox();
   expect(Math.round(headerBox.y)).toBe(0);
   await expect(header).toBeInViewport();
+  const columnHeader = section.getByRole("columnheader", { name: "Pull request", exact: true });
+  const columnBox = await columnHeader.boundingBox();
+  expect(Math.abs(columnBox.y - (headerBox.y + headerBox.height))).toBeLessThanOrEqual(1);
+});
+
+test("the pane's Previous PR scrolls the row into view below the stuck headers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 400 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  const prNumber = await openFirstRowInPane(page);
+  await detailPane(page).getByRole("button", { name: "Next PR", exact: true }).click();
+
+  // Scroll so the first PR's row sits under its section's stuck headers.
+  const row = prTables(page).locator(`tr.pr-row[data-pr-number="${prNumber}"]`).first();
+  await row.evaluate((element) => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 10));
+  await detailPane(page).getByRole("button", { name: "Previous PR", exact: true }).click();
+
+  const section = row.locator("xpath=ancestor::details[1]");
+  const columnHeader = section.getByRole("columnheader", { name: "Pull request", exact: true });
+  await expect
+    .poll(async () => (await row.boundingBox()).y - ((await columnHeader.boundingBox()).y + (await columnHeader.boundingBox()).height))
+    .toBeGreaterThanOrEqual(0);
+});
+
+test("in a window too narrow for the table, a section still scrolls sideways", async ({ page }) => {
+  // Below 900px the pane is a drawer, so the table has the window's width.
+  await page.setViewportSize({ width: 820, height: 700 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  const content = prSection(page, "Needs Attention").locator(".pr-section-content");
+  await expect
+    .poll(() => content.evaluate((element) => getComputedStyle(element).overflowX))
+    .toBe("auto");
+  expect(await content.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  // The column headers don't stick then (inside the scroll box their offset
+  // would push them over the first row), so the row's chevron is clickable.
+  const columnHeader = prSection(page, "Needs Attention").getByRole("columnheader", { name: "Pull request", exact: true });
+  expect(await columnHeader.evaluate((element) => getComputedStyle(element).position)).toBe("static");
+  const summaryToggle = prSection(page, "Needs Attention").getByRole("button", { name: /^Show summary for PR #\d+$/ }).first();
+  await summaryToggle.click({ trial: true });
 });
 
 test("with the detail pane hidden, clicking a row shows it again for that PR", async ({ page }) => {

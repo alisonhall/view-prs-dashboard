@@ -890,6 +890,11 @@ becomes a small `react-app.tsx`. Done in steps:
     the Auto update paused banner's height in `--sticky-top` on <html>,
     so the headers - and the docked pane, which the banner used to cover -
     stick just below it.
+  - The table's column headers stick too, below the section's header
+    (each section puts its header height in `--pr-section-header-height`).
+    That needs the section not to be a scroll container, so it scrolls
+    sideways only when its table can't fit (a container query on the
+    list); then the column headers scroll away as before.
   - Next: dark mode (the older stylesheets' colours onto tokens, then
     Settings › Appearance: Light / Dark / System, starting on Light, saved in
     user-defaults.json with a copy in the browser for the first paint).

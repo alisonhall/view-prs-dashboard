@@ -19,6 +19,9 @@
 .pr-workspace-list {
   flex: 1;
   min-width: 0;
+  /* pr-table.css lets a section scroll sideways only when its table can't
+     fit this width. */
+  container-type: inline-size;
 }
 
 /* With the pane docked the table keeps every column; pr-table.css narrows

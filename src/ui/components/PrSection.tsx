@@ -10,6 +10,7 @@
  * @module components/PrSection
  */
 
+import { useEffect, useRef } from 'react';
 import type { PrEntry } from '../types/pr-data.ts';
 import { describeChecks, describeMergeable } from '../helpers/pr-row-signals.helpers.ts';
 import { Icon, type IconName } from './ui/Icon';
@@ -75,9 +76,34 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
   const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
   const sectionIcon = SECTION_ICONS[key];
   const summary = isOpen ? [] : summarise(prs, attentionCount);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const hasTable = prs.length > 0;
+  // The table's column headers stick just below this section's own header,
+  // and rows scrolled into view stop below both (pr-table.css), so their
+  // heights go in --pr-section-header-height and --pr-table-head-height.
+  // Exact, not rounded: a rounded height leaves a sliver for rows to show
+  // through. Set directly, without a re-render.
+  useEffect(() => {
+    const details = detailsRef.current;
+    const header = headerRef.current;
+    if (!details || !header) return undefined;
+    const tableHead = details.querySelector<HTMLElement>('.pr-table thead');
+    const apply = () => {
+      details.style.setProperty('--pr-section-header-height', `${header.getBoundingClientRect().height}px`);
+      details.style.setProperty('--pr-table-head-height', `${tableHead ? tableHead.getBoundingClientRect().height : 0}px`);
+    };
+    apply();
+    if (typeof ResizeObserver !== 'function') return undefined;
+    const observer = new ResizeObserver(apply);
+    observer.observe(header);
+    if (tableHead) observer.observe(tableHead);
+    return () => observer.disconnect();
+  }, [hasTable]);
 
   return (
     <details
+      ref={detailsRef}
       className="pr-section"
       aria-label={title}
       data-pr-section={key}
@@ -87,7 +113,7 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
         if (nextOpen !== isOpen) onToggleSection(key, nextOpen);
       }}
     >
-      <summary className="pr-section-header">
+      <summary ref={headerRef} className="pr-section-header">
         <Icon name="chevronRight" size={14} className="pr-section-chevron" />
         {sectionIcon && (
           <span className="pr-section-icon" data-tone={sectionIcon.tone}>
@@ -116,7 +142,7 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
       </summary>
 
       <div className="pr-section-content">
-        {prs.length > 0 ? (
+        {hasTable ? (
           <PrTable
             {...tableProps}
             prs={prs}

@@ -873,8 +873,9 @@ export function PrTableApp() {
     setPaneVisible(false);
     if (closing) findRowLink(closing)?.focus();
   });
+  // The whole row comes into view, below the stuck headers (pr-table.css).
   const handleStepPr = (target: SelectedPr | undefined) => {
-    if (target && selectPr(target)) findRowLink(target)?.scrollIntoView?.({ block: 'nearest' });
+    if (target && selectPr(target)) findRowLink(target)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
   };
 
   // Hiding the pane unmounts its Notes too.
