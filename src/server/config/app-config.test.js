@@ -307,6 +307,11 @@ describe("App Configuration", () => {
 
       // Assert
       expect(config.viewPrsUiDir).toBe(path.join(viewPrsDir, "src/ui"));
+      expect(config.viewPrsUiBuildDir).toBe(path.join(viewPrsDir, "dist/ui"));
+      expect(config.viewPrsUiBuildIndexFile).toBe(path.join(viewPrsDir, "dist/ui/index.html"));
+      expect(createAppConfig({ viewPrsDir, env: { VIEW_PRS_UI_BUILD_DIR: "/elsewhere/ui" } }).viewPrsUiBuildIndexFile).toBe(
+        path.join("/elsewhere/ui", "index.html"),
+      );
       expect(config.viewPrsBackfillManagerScript).toContain(
         path.join("src", "backfill"),
       );

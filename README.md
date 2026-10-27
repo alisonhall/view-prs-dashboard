@@ -199,6 +199,7 @@ Script guide:
   - Compiles React app to optimized static files
   - Output: `dist/ui/` directory
   - Run before deploying or testing production builds
+  - The Node server serves this build when started with `NODE_ENV=production` (`NODE_ENV=production node src/server/server.js`; in PowerShell, `$env:NODE_ENV = 'production'; node src/server/server.js`). Without a build it answers with how to make one; rebuild after UI changes, since it doesn't watch `src/ui/`
 
 - **`npm run preview`**: Test production build locally
   - Serves built files from `dist/ui/`

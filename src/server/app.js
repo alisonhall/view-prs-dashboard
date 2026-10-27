@@ -83,6 +83,8 @@ const {
   defaultViewPrsRepo,
   viewPrsUiDir,
   viewPrsUiIndexFile,
+  viewPrsUiBuildDir,
+  viewPrsUiBuildIndexFile,
   viewPrsDataFile,
   viewPrsUserStateFile,
   viewPrsAuthorCommentsFile,
@@ -2967,14 +2969,17 @@ const getViteDevServer = () => {
   return viteDevServerPromise;
 };
 
-// Create and configure the Express app
-const createViewPrsApp = () => {
+// Create and configure the Express app. `production` (NODE_ENV=production by
+// default) serves the built UI from dist/ui instead of transforming src/ui
+// through Vite: index.html loads react-app.tsx, which a browser can't run
+// untransformed.
+const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
   const app = express();
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  if (!isProductionEnv) {
+  if (!production) {
     app.use((req, res, next) => {
       getViteDevServer()
         .then((vite) => {
@@ -3001,6 +3006,12 @@ const createViewPrsApp = () => {
     });
   }
 
+  if (production) {
+    // The build first; src/ui after it for what the build doesn't copy (the
+    // vendored marked and DOMPurify scripts index.html loads as plain
+    // <script>s).
+    app.use(express.static(viewPrsUiBuildDir, { index: false }));
+  }
   app.use(express.static(viewPrsUiDir, { index: false }));
 
   // Initialize user-defaults file on startup if it doesn't exist
@@ -3053,8 +3064,17 @@ const createViewPrsApp = () => {
 
   // Legacy compatibility route for UI files
   app.get(["/", "/index.html"], async (req, res) => {
-    if (isProductionEnv) {
-      res.sendFile(viewPrsUiIndexFile);
+    if (production) {
+      if (fs.existsSync(viewPrsUiBuildIndexFile)) {
+        res.sendFile(viewPrsUiBuildIndexFile);
+      } else {
+        res
+          .status(503)
+          .type("text/plain")
+          .send(
+            "The UI hasn't been built. Run `npm run build:ui`, then restart; or start without NODE_ENV=production to serve it through Vite.",
+          );
+      }
       return;
     }
 
