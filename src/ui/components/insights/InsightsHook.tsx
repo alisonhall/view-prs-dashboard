@@ -32,7 +32,7 @@ const getDomPurify = (): DomPurify | undefined =>
   typeof window !== 'undefined' ? (window as unknown as { DOMPurify?: DomPurify }).DOMPurify : undefined;
 
 // Registered once, at module load (before the first render - purify.min.js
-// is a plain <script> loaded ahead of the react-app.jsx module script in
+// is a plain <script> loaded ahead of the react-app.tsx module script in
 // index.html, so window.DOMPurify already exists by the time this runs).
 // DOMPurify strips script execution/event handlers on its own, but plain
 // links it leaves untouched still default to no `rel`, so a hook returning

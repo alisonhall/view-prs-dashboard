@@ -415,8 +415,9 @@ describe('PrDataProvider', () => {
       expect(setFreshPayloadApplier).toHaveBeenLastCalledWith(null);
     });
 
-    // Lessons 1-2 of the plan: hooks in AppRoot's body read these actions, so
-    // an identity change on every payload update would re-render AppRoot and
+    // Lessons 1-2 of the plan: hooks high in the tree (AppShell's parts) read
+    // these actions, so an identity change on every payload update would
+    // re-render them and
     // (via useBackfillAutoRefresh-style effects) can start request loops.
     test('given repeated payload updates, when the actions are read, then their identity never changes and a memoized consumer of them does not re-render', () => {
       let renders = 0;

@@ -89,7 +89,7 @@ export function PrTableApp() {
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
 
   // Section open/closed and expanded insights rows live in
-  // PrTableUiStateProvider (above AppRoot), not here, so Settings › Export can
+  // PrTableUiStateProvider (above AppShell), not here, so Settings › Export can
   // read which sections are open from state instead of the DOM
   // (UI_REDESIGN_PLAN.md, phase 1). Sections are keyed by section key
   // ('flagged', 'open', etc.), rows by buildExpandedInsightsKey.
@@ -145,7 +145,7 @@ export function PrTableApp() {
   // busyPrNumbers/queuedPrNumbers (and their mark/clear functions and
   // window bridges) moved to PrActivityQueueProvider.tsx (activity popover
   // feature, see REACT_MIGRATION_PLAN.md) - the drawer's bulk-action queue
-  // section is a sibling portal, not a descendant of this component, so it
+  // section is a sibling, not a descendant of this component, so it
   // needs this same state lifted to a shared Provider rather than kept
   // local here. Semantics are unchanged; this is just where it lives now.
   const { busyPrNumbers, markPrBusy, clearPrBusy, queuedPrNumbers } = usePrActivityQueue();
@@ -156,10 +156,8 @@ export function PrTableApp() {
   // factory couldn't reach useAckLabelActions()'s own Context-backed
   // instance (it's vanilla code, not a hook), so it built a second,
   // window-bridge-fed instance of the same factory instead. This
-  // component already calls usePrData()/usePrActivityQueue() directly
-  // (unlike <AppRoot />, which is PrDataProvider's ancestor, not its
-  // descendant) - so it builds its own real handlers here, a second
-  // useAckLabelActions() instance alongside AppRoot's own (for the bulk
+  // component builds its own real handlers here, a second
+  // useAckLabelActions() instance alongside RunCheckSection's (for the bulk
   // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
   // state in the hook, so two independent instances is harmless.
   const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();

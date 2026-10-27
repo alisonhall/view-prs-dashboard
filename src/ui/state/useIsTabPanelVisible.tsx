@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTabState, type DataTabKey } from './TabStateContext';
 
 // Maps each tab panel's DOM id to the TabStateContext key that controls it -
-// every tab panel in index.html.
+// every tab panel AppShell renders.
 const DATA_TAB_PANEL_IDS = {
   'tab-panel-pr-data': 'pr-data',
   'tab-panel-review-stats': 'review-stats',

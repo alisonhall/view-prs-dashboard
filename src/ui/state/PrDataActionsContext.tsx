@@ -13,10 +13,10 @@ import type { PrDataPayload } from '../types/pr-data.ts';
  *   ahead of the displayed one while auto-render is deferred.
  *
  * Its own Context rather than fields of `usePrData()`, for the same reason
- * as RequestActivityContext: the callers are mostly hooks in AppRoot's body,
- * and subscribing them to the whole PR-data value (which changes on every
- * payload/repo/stats update) would re-render AppRoot and every portal it
- * builds each time. The functions read the Provider's refs, so this value's
+ * as RequestActivityContext: the callers are mostly action hooks high in
+ * the tree (AppShell, the Settings drawer's sections), and subscribing them
+ * to the whole PR-data value (which changes on every payload/repo/stats
+ * update) would re-render them and everything under them each time. The functions read the Provider's refs, so this value's
  * identity never changes.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context in

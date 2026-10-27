@@ -1071,7 +1071,7 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {
   // Regression test: index.page.js's restoreUiOptionOverrides() fetches a
-  // persisted filter value and can resolve *before* react-app.jsx (a
+  // persisted filter value and can resolve *before* react-app.tsx (a
   // Vite-bundled ES module, slower to load than a small same-origin JSON
   // fetch) finishes mounting - if it wins that race, it sets the value on
   // the static fallback <input>, which mounting then wiped out by
@@ -1202,7 +1202,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // Phase 2 slice at once, not just one: index.page.js attaches its
   // "change" -> debouncedApplyFilters (and persist) listeners directly to
   // each field via addEventListener, early during page load - before
-  // react-app.jsx's deferred module has mounted. ReactDOM.createRoot().render()
+  // react-app.tsx's deferred module has mounted. ReactDOM.createRoot().render()
   // then creates a *fresh* DOM node for that field, silently orphaning the
   // listener that was attached to the old static/fallback node. Every
   // other test in this file that checks filtering clicks the "Apply
@@ -1319,7 +1319,7 @@ test("the PR data summary's \"Applied filters\" text updates live too, with no \
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
   // chip/summary text used to only update via index.page.js's vanilla
   // pipeline, pushed into React through a window.renderReactFilterSummary
-  // bridge - <AppliedFilterSummaryLive> (react-app.jsx) now derives this
+  // bridge - <DataViewHeader> now derives this
   // text itself, reactively, via useAppliedFilterSummary(). This test
   // proves both the PR-number filter and a multi-select update the chip
   // text immediately, matching the table itself (see the two tests above).
@@ -1634,7 +1634,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
   // can't happen any more; this keeps checking the attributes in a real
   // browser. History - originally a regression test for a real race: applyNonCredentialFieldHints()
   // (index.page.js) is called once, synchronously, from initPage() -
-  // which runs to completion before react-app.jsx's own module graph has
+  // which runs to completion before react-app.tsx's own module graph has
   // necessarily finished loading, so these fields (all React-portaled -
   // repo/limit/merged-limit/jobs/pr-numbers via
   // ContextRunScriptTextInput.jsx, filter-pr-numbers via
@@ -1796,7 +1796,7 @@ test("the PR JSON modal opens and renders real JSON for a real row", async ({ pa
 test("Run & check's apply-label dropdown and a row's own apply-label dropdown share the same real labels list", async ({ page }) => {
   // Regression test for Phase 7's RepoLabelsProvider migration (see
   // REACT_MIGRATION_PLAN.md) - window.updateReactApplyLabelOptions (a push
-  // into AppRoot's own local state, feeding only the Run tab's dropdown)
+  // into the old AppRoot's local state, feeding only the Run tab's dropdown)
   // and window.getAvailableRepoLabels (a pull PrActionsCell.jsx read on
   // every render) used to be two entirely separate bridges for the same
   // underlying list; this proves one real fetch now reaches both real,
@@ -1923,7 +1923,7 @@ test("React-owned label multi-select renders options from payload data and filte
   // checked" checkboxes from the DOM to seed the next render's selections.
   // Plain `root.render()` doesn't commit synchronously (React 18 batches
   // it) - without wrapping it in flushSync (see renderReactMultiSelectList
-  // in react-app.jsx), the second call's DOM read saw the first call's
+  // in the old react-app.jsx), the second call's DOM read saw the first call's
   // pre-commit (stale/unchecked) state and clobbered the just-restored
   // "enhancement" selection back to unchecked before this reload's first
   // paint. Confirmed by temporarily removing flushSync and seeing this
@@ -1958,7 +1958,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   const authorList = filterBarList(page, "Authors");
   const assignedList = filterBarList(page, "Assigned to");
   const approverList = filterBarList(page, "Approved by");
-  // useMultiSelectDropdownClosing (AppRoot; was index.page.js's
+  // useMultiSelectDropdownClosing (AppShell; was index.page.js's
   // setupMultiSelectDropdownClosing until window-bridge elimination Phase 7.5) closes
   // every OTHER open <details class="multi-select-dropdown"> on any click
   // outside it - opening one dropdown, leaving it open, and then opening
@@ -2373,7 +2373,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // the selector via the *same* `host.innerHTML = ""` that rebuilt every
   // other section - if that still covered #author-insights-selector-root,
   // the static container React mounted into would be destroyed and
-  // recreated on the next render, leaving react-app.jsx's mount holding a
+  // recreated on the next render, leaving the old react-app.jsx's mount holding a
   // reference to a detached node - the selector would silently vanish from
   // the page after any unrelated re-render, not just fail to preserve a
   // value.
@@ -2813,8 +2813,8 @@ test("Settings › Action log loads its entries on its very first opening, not j
 
 test("the Run tab's output panel shows a real run's output from OutputTextProvider, replacing the placeholder", async ({ page }) => {
   // Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-  // the output text lives in <OutputTextProvider />, which AppRoot reads back
-  // via Context to render #output's portal. jsdom covers the Provider and each
+  // the output text lives in <OutputTextProvider />, which RunCheckSection reads
+  // back via Context to render #output. jsdom covers the Provider and each
   // hook separately; this proves the real wired path lands in the real
   // #output element in a real browser, in place of the static placeholder
   // rather than appended to it. Test-only bridge removal: this used to write

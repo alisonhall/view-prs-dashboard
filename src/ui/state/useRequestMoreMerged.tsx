@@ -15,7 +15,7 @@ export type RequestMoreMerged = (repoOverride?: string, callbacks?: RequestMoreC
 
 /**
  * The "Request more" merged-PRs action (MergedRequestMoreAction.jsx, via
- * MergedRequestMoreActionLive in react-app.jsx): builds
+ * MergedRequestMoreActionLive in AppShell): builds
  * createPrMergedRequestMoreActionHelpers with PrDataProvider's
  * applyFreshPrPayload/loadStoredData, request activity, status text and
  * failure snackbars.

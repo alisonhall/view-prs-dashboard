@@ -25,7 +25,7 @@ export const DEFAULT_BACKFILL_BUTTON_STATE: BackfillButtonState = {
 };
 
 // The status badges, details text and log text, written only by the
-// Provider's status render and log loads; AppRoot reads them.
+// Provider's status render and log loads; BackfillSection reads them.
 // `backfillLogUpdateTick` bumps on *every* log write, even identical text:
 // BackfillLog's scroll-sync effect has to fire on every refresh, and
 // useState bails out of a same-value update.

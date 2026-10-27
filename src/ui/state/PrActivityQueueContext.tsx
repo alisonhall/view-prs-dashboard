@@ -5,7 +5,7 @@ import type { BulkQueueItem, ChunkState } from '../helpers/pr-bulk-action-batche
  * Which PRs are busy (a request in flight) or queued (waiting in a bulk
  * batch), keyed by pr-row-keys.ts's buildActivePrKey ("repo::prNumber"),
  * plus the bulk ack/apply-label batch manifest. PrTableApp shows the
- * per-row spinners; the activity popover's queue section (a sibling portal,
+ * per-row spinners; the activity popover's queue section (a sibling,
  * not a descendant of PrTableApp) shows the batches.
  *
  * Default value (unwrapped) is a safe empty/no-op shape, matching every

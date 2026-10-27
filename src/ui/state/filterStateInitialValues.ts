@@ -5,7 +5,7 @@ import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from '../helpers/pr-merge
 
 /**
  * FilterStateProvider's starting values: every field's default, before a
- * saved restore applies (react-app.jsx's mountAppRoot, and the integration
+ * saved restore applies (react-app.tsx, and the integration
  * harness, so both start the same). Same values as getUiOptionDefaults()
  * (helpers/pr-ui-option-persistence.helpers.ts); no DOM dependency.
  */

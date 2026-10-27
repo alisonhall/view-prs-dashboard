@@ -15,9 +15,9 @@ const {
 
 /**
  * Owns which PRs are busy/queued and the bulk ack/apply-label batch
- * manifest (see PrActivityQueueContext). Wraps <AppRoot /> from
- * react-app.jsx's mountAppRoot(), not nested inside AppRoot's JSX, because
- * AppRoot's own body calls useAckLabelActions(), which needs this
+ * manifest (see PrActivityQueueContext). Wraps <AppShell /> in
+ * react-app.tsx, not nested inside AppShell's JSX, because AppShell's own
+ * body calls useQuickCheckActions(), which marks PRs busy and needs this
  * Provider as an ancestor to reach its live state.
  */
 export function PrActivityQueueProvider({ children }: { children?: ReactNode }) {

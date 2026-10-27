@@ -88,7 +88,7 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
   });
 
   // Phase 7 (see REACT_MIGRATION_PLAN.md): closes a real coverage gap -
-  // neither window.updateReactApplyLabelOptions (the old push into AppRoot's
+  // neither window.updateReactApplyLabelOptions (a push into the old AppRoot's
   // own local state) nor window.getAvailableRepoLabels (the old
   // PrActionsCell.jsx pull) had any test proving a single update actually
   // reached both real consumers at once, since they were two entirely
@@ -276,8 +276,8 @@ describe('RepoLabelsProvider repo-change trigger', () => {
 // header comment): FilterStateProvider.tsx's restore-on-mount effect used
 // to reach window.refreshAvailableRepoLabels directly once a *saved* repo
 // override was known. It's a genuine ANCESTOR of this Provider
-// (FilterStateProvider wraps <AppRoot/>; this Provider is a descendant
-// AppRoot renders further down its own JSX), so instead of calling down
+// (FilterStateProvider wraps the whole app in react-app.tsx; this Provider
+// is a descendant further down), so instead of calling down
 // into a child, it now just publishes `restoredRepoOverride` as a plain
 // piece of its own Context value - this Provider reacts to it with its
 // own effect, the same already-valid "ancestor state flows down" Context

@@ -13,7 +13,6 @@ const React = require("react");
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
 const { render: rtlRender, cleanup, act } = require("@testing-library/react");
-const { createPortal } = require("react-dom");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
@@ -66,9 +65,6 @@ const { formatIsoDatetime } = require("../helpers/pr-formatting.helpers.ts").cre
 const signalNames = (row) =>
   Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
 const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
-const { PrTableApp } = require("../components/PrTableApp");
-const { PrInsightsDisplayProvider } = require("../components/PrInsightsDisplayProvider");
-const { ReviewConversationsUiStateProvider } = require("../components/ReviewConversationsUiStateProvider");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
@@ -76,20 +72,16 @@ const { PrDataProvider } = require("../state/PrDataProvider");
 // it was window.getReactPrTablePayload, deleted.
 const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
 const prDataProbe = createPrDataProbe();
-const { usePrData } = require("../state/PrDataContext");
 const { FilterStateProvider } = require("../state/FilterStateProvider");
 const { useFilterState } = require("../state/FilterStateContext");
-const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
 const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
 const { PrTableUiStateProvider } = require("../state/PrTableUiStateProvider");
 const { useNotesDirty } = require("../state/NotesDirtyContext");
 const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
 const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
 const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
-const { SettingsDrawer } = require("../components/settings/SettingsDrawer");
 const { SettingsDrawerProvider, useSettingsDrawer } = require("../state/SettingsDrawerContext");
 const { useStatusText } = require("../state/StatusTextContext");
-const { useQuickCheckActions } = require("../state/useQuickCheckActions");
 const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
 const { StatusTextProvider } = require("../components/StatusTextProvider");
 const { BackfillStatusProvider } = require("../components/BackfillStatusProvider");
@@ -99,16 +91,10 @@ const { FilterOptionsProvider } = require("../components/FilterOptionsProvider")
 const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
 const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
 const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
-const { DataViewHeaderPortals } = require("../components/filter-bar/DataViewHeaderPortals");
+const { AppShell } = require("../components/shell/AppShell");
 const { ListSelectionSeeding } = require("../state/useListSelectionSeeding");
 const { buildFilterStateInitialValues } = require("../state/filterStateInitialValues");
-const { Snackbar } = require("../components/Snackbar");
 const { SnackbarProvider } = require("../components/SnackbarProvider");
-const { AppHeader } = require("../components/shell/AppHeader");
-const { AuthorInsightsProvider } = require("../components/AuthorInsightsProvider");
-const { AutoUpdatePausedBanner } = require("../components/shell/AutoUpdatePausedBanner");
-const { MergedRequestMoreAction } = require("../components/MergedRequestMoreAction");
-const { useRequestMoreMerged } = require("../state/useRequestMoreMerged");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
@@ -296,16 +282,16 @@ const createFetchMock = ({
 };
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite never loads the real
-// react-app.jsx bundle (an ES module, and heavy with its own import-time
-// side effects mounting ~10 unrelated React roots), so index.page.js's
+// react-app.tsx bundle (an ES module that mounts the app as an import-time
+// side effect), so index.page.js's
 // renderPrData always used to see hasReactApp as false and take its
 // "React not available" branch, which used to build a full vanilla table.
 // That branch (and the vanilla table-build code it called) is gone now, so
 // this suite needs a real React-rendered table to keep exercising real
 // row/checkbox/Ack DOM the same way a real browser does. Rather than
-// importing the whole react-app.jsx module, FilterStateTestRootHarness
-// (below) mounts the same Providers and PrTableApp component real
-// production mounts, nested the same way. Installed both from
+// importing the whole react-app.tsx module, FilterStateTestRootHarness
+// (below) mounts the real AppShell inside the same Providers production
+// uses, nested the same way. Installed both from
 // initTestPage() and from the one test below that builds its own page setup
 // from scratch instead of using it.
 //
@@ -328,17 +314,15 @@ const createFetchMock = ({
 // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
 // window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
 // push bridges this used to install a standalone rtlRender tree for) are
-// both confirmed dead in production - react-app.jsx's real
-// AppliedFilterSummaryLive derives the same summary/chips/#data-meta text
-// live, reactively, from Context instead. This suite's own equivalent,
-// AppliedFilterSummaryTestLive (below), replaces this function - it has
-// to be mounted *inside* the harness's PrDataProvider (not as its own independent
-// root the way this used to be) since it needs a real <PrDataProvider/>
-// ancestor, which only exists there.
+// both confirmed dead in production - DataViewHeader derives the same
+// summary/chips/#data-meta text live, reactively, from Context instead.
+// The harness's real AppShell renders it inside the harness's
+// PrDataProvider (not as its own independent root the way this used to
+// be), since it needs a real <PrDataProvider/> ancestor.
 // Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
 // below, as the ancestor of the harness's PrDataProvider - the same
-// order react-app.jsx's mountAppRoot() uses. It used to be its own separate,
+// order react-app.tsx uses. It used to be its own separate,
 // sibling root (installAutoRenderBlockingProviderBridge), which stopped
 // working once PrDataProvider started reading it through Context: a
 // PrDataProvider outside the Provider sees the inert default, so the whole
@@ -356,44 +340,6 @@ const createFetchMock = ({
 // default as production is (buildFilterStateInitialValues). Its fields are
 // the real filter bar's and Settings drawer's, so tests drive them with
 // user-event like a user would.
-//
-// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// the PR table subtree, portaled into #pr-sections once the real
-// PrDataProvider has rendered its first payload - the same gate as
-// react-app.jsx's PrTablePortal. Replaces MountedPrTableTree, which this
-// suite's window.mountReactPrTable stub used to portal in (with its own
-// PrDataProvider) when index.page.js's renderPrData asked for a mount.
-function PrTablePortalTestLive() {
-  const { hasRenderedPrData } = usePrData();
-  const container = document.getElementById("pr-sections");
-  if (!container || !hasRenderedPrData) return null;
-  // Window-bridge elimination Phase 7.4: NotesDirtyProvider moved up (it
-  // wraps the harness's data-level children, like mountAppRoot wraps AppRoot).
-  // The same Providers as react-app.jsx's PrTablePortal: the detail pane's
-  // tabs remount their sections, and ReviewConversationsUiStateProvider is
-  // what keeps a Conversations tab's filters across that.
-  return createPortal(
-    React.createElement(
-      NeedsAttentionProvider,
-      null,
-      React.createElement(
-        PrInsightsDisplayProvider,
-        null,
-        React.createElement(
-          ReviewConversationsUiStateProvider,
-          null,
-          // Phase H.5/H.6 (see REACT_MIGRATION_PLAN.md, "Full migration
-          // roadmap"): PrTableApp no longer accepts onAckAction/onApplyLabel/
-          // onCheckboxChange as props - it builds its own real handlers via
-          // useAckLabelActions()/useRowCheckboxActions().
-          React.createElement(PrTableApp),
-        ),
-      ),
-    ),
-    container,
-    "pr-table",
-  );
-}
 
 function NotesDirtyTestHandle() {
   notesDirtyTestHandle = useNotesDirty();
@@ -430,132 +376,80 @@ function FilterStateTestHandle() {
   return null;
 }
 
-// The suite's single persistent root, nested like react-app.jsx's
-// mountAppRoot(): the 3 selection Providers > FilterStateProvider (so
-// FilterStateProvider's buildOverrides() resolves the same Context instances
-// the lists write into) > AutoRenderBlockingProvider >
-// PrDataProvider, with every harness that calls a data/activity hook below
-// it.
+// The suite's single persistent root: the real Providers, nested as
+// react-app.tsx nests them, around the real <AppShell /> (the whole page),
+// rendered into index.html's #app-root. The differences from production:
+// the Settings drawer starts open (most tests drive its fields), the test
+// handles below capture Context values for the helpers above, and
+// TabStateProvider, OutputTextProvider, RepoLabelsProvider and
+// JobEventsProvider are left out (their inert defaults are enough here; the
+// view tabs don't switch).
 //
-// Window-bridge elimination Phase 7: PrDataProvider mounts here, once, with
-// loadOnMount - it fetches /view-prs/data itself, as in production, instead
-// of index.page.js fetching and then asking this suite's
-// window.mountReactPrTable stub to mount a per-table Provider. So this root
+// PrDataProvider loads /view-prs/data itself (loadOnMount), so this root
 // must mount after initTestPage() points fetch at the test's fetchMock (see
-// installFilterStateProviderBridge's callers). BackfillStatusProvider wraps
-// from here too now, inside StatusTextProvider like production: it used to
-// be a separate root (a Backfill bridge, deleted), which can't
-// work once PrDataProvider pushes each payload's backfill status to it
-// through Context.
+// installFilterStateProviderBridge's callers). PrDataPolling is mounted as
+// in production, so the "data polling" tests drive it with fake timers.
 function FilterStateTestRootHarness({ initialValues }) {
-  const errorSnackbarRoot = document.getElementById("error-snackbar-root");
-
-  return React.createElement(
-    // Sixth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-    // audit"): wraps the whole tree, outside StatusTextProvider (order
-    // between the two is arbitrary - neither depends on the other). The
-    // real <Snackbar/> UI (portaled into #error-snackbar-root just below)
-    // must be the SAME instance every useSnackbar() caller writes to, so
-    // this suite's #error-snackbar-message assertions see their text.
+  const h = React.createElement;
+  return h(
     SnackbarProvider,
     null,
-    React.createElement(
-      // Phase H.8 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-      // the hooks below read/write statusText via useStatusText() directly -
-      // wraps the whole tree, same as react-app.jsx's mountAppRoot.
+    h(
       StatusTextProvider,
       null,
-      // Window-bridge elimination Phase 7.3: RequestActivityProvider wraps
-      // BackfillStatusProvider/AutoRenderBlockingProvider/PrDataProvider, as in
-      // mountAppRoot(); loadOnMount makes the startup scheduler load.
-      React.createElement(
+      h(
         RequestActivityProvider,
         { loadOnMount: true },
-        React.createElement(RequestActivityTestHandle),
-        React.createElement(
-        BackfillStatusProvider,
-        null,
-        React.createElement(
-          RowFilterSelectionProvider,
+        h(RequestActivityTestHandle),
+        h(
+          BackfillStatusProvider,
           null,
-          React.createElement(
-            AuthorThreadResolutionSelectionProvider,
+          h(
+            RowFilterSelectionProvider,
             null,
-            React.createElement(
-              ChangeFilterActorSelectionProvider,
+            h(
+              AuthorThreadResolutionSelectionProvider,
               null,
-              React.createElement(
-                FilterStateProvider,
-                { initialValues },
-                React.createElement(FilterStateTestHandle),
-                React.createElement(
-                  AutoRenderBlockingProvider,
-                  null,
-                  React.createElement(
-                    PrDataProvider,
-                    { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
-                    React.createElement(prDataProbe.PrDataProbe),
-                    // Phase H.20 (see REACT_MIGRATION_PLAN.md,
-                    // "Remaining-effort audit", cluster 6): these call
-                    // useFormBody() (FilterStateContext/
-                    // RowFilterSelectionContext), so they must be genuine
-                    // descendants of this tree's Providers.
-                    // ActionButtonsTestHarness keeps its own isolated
-                    // PrActivityQueueProvider instance (no test asserts
-                    // row-busy state through these 2 buttons specifically).
-                    React.createElement(StatusTextTestHandle),
-                    React.createElement(
-                      PrActivityQueueProvider,
+              h(
+                ChangeFilterActorSelectionProvider,
+                null,
+                h(
+                  FilterStateProvider,
+                  { initialValues },
+                  h(FilterStateTestHandle),
+                  h(
+                    PrActivityQueueProvider,
+                    null,
+                    h(
+                      AutoRenderBlockingProvider,
                       null,
-                      React.createElement(ActionButtonsTestHarness),
-                    ),
-                    // Window-bridge elimination Phase 7.4: production's
-                    // NotesDirtyProvider > (AppRoot's)
-                    // AuthorInsightsDraftsProvider > AutoRenderBlockingSync,
-                    // which computes the blocking state the deferred-poll
-                    // tests below depend on. index.page.js used to compute it.
-                    // UI redesign phase 1: PrTableUiStateProvider (section
-                    // open state, expanded rows) wraps AppRoot inside
-                    // NotesDirtyProvider in production; same here.
-                    React.createElement(
-                      NotesDirtyProvider,
-                      null,
-                      React.createElement(
-                        PrTableUiStateProvider,
-                        null,
-                        React.createElement(
-                          AuthorInsightsDraftsProvider,
+                      h(
+                        PrDataProvider,
+                        { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
+                        h(prDataProbe.PrDataProbe),
+                        h(StatusTextTestHandle),
+                        h(
+                          NotesDirtyProvider,
                           null,
-                          React.createElement(AutoRenderBlockingSync),
-                          React.createElement(NotesDirtyTestHandle),
-                          React.createElement(PrTablePortalTestLive),
+                          h(
+                            PrTableUiStateProvider,
+                            null,
+                            h(
+                              SettingsDrawerProvider,
+                              { initialOpen: true },
+                              h(SettingsDrawerTestHandle),
+                              h(
+                                AuthorInsightsDraftsProvider,
+                                null,
+                                h(AutoRenderBlockingSync),
+                                h(NotesDirtyTestHandle),
+                                h(FilterOptionsProvider, null, h(ListSelectionSeeding), h(AppShell)),
+                              ),
+                            ),
+                          ),
                         ),
+                        h(PrDataPolling, null),
                       ),
-                    ),
-                    // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration
-                    // roadmap"): mounted like react-app.jsx's real AppRoot
-                    // does, so the "data polling (via real PrDataPolling
-                    // interval)" tests below drive pollForDataChanges via a
-                    // real setInterval + fake timers.
-                    React.createElement(PrDataPolling, null),
-                    // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md):
-                    // inside the SAME PrDataProvider as PrTableApp, so
-                    // FilterOptionsProvider derives its 9 option lists from
-                    // the exact payload/selectedRepo the table is showing.
-                    // UI redesign phase 8: the real filter bar and PR data
-                    // summary, as react-app.jsx mounts them (inside
-                    // FilterOptionsProvider, which the bar's lists read).
-                    React.createElement(
-                      FilterOptionsProvider,
-                      null,
-                      React.createElement(ListSelectionSeeding),
-                      // The Settings drawer: inside FilterOptionsProvider, as in
-                      // react-app.jsx (its actor lists read the options).
-                      React.createElement(SettingsDrawerTestHarness),
-                      React.createElement(DataViewHeaderPortals, {
-                        filterBarContainer: document.getElementById("filter-bar-root"),
-                        dataMetaContainer: document.getElementById("data-meta"),
-                      }),
                     ),
                   ),
                 ),
@@ -564,29 +458,25 @@ function FilterStateTestRootHarness({ initialValues }) {
           ),
         ),
       ),
-      ),
     ),
-    errorSnackbarRoot && createPortal(React.createElement(Snackbar), errorSnackbarRoot),
   );
 }
 
 const installFilterStateProviderBridge = () => {
-  const container = document.createElement("div");
   rtlRender(
     React.createElement(FilterStateTestRootHarness, {
       // Every field's default, as production starts with: the filter bar
       // and the Settings drawer show the real fields.
       initialValues: buildFilterStateInitialValues(),
     }),
-    { container },
+    { container: document.getElementById("app-root") },
   );
 };
 
 // UI redesign phase 9b: the run buttons, the PR numbers, the rules, the
-// Script options and Backfill are the real Settings drawer's, mounted open
-// at Run & check, as react-app.jsx mounts it (closed there).
-// showSettingsSectionForTest switches its section. Inside the main tree,
-// so its hooks reach the same Providers.
+// Script options and Backfill are the real Settings drawer's, open at Run &
+// check (closed in production). showSettingsSectionForTest switches its
+// section.
 function SettingsDrawerTestHandle() {
   settingsDrawerTestHandle = useSettingsDrawer();
   React.useEffect(
@@ -596,21 +486,6 @@ function SettingsDrawerTestHandle() {
     [],
   );
   return null;
-}
-
-function SettingsDrawerTestHarness() {
-  const container = document.getElementById("settings-drawer-root");
-  if (!container) return null;
-  return createPortal(
-    React.createElement(
-      SettingsDrawerProvider,
-      { initialOpen: true },
-      React.createElement(SettingsDrawerTestHandle),
-      React.createElement(SettingsDrawer),
-    ),
-    container,
-    "settings-drawer",
-  );
 }
 
 // The status message's setter, for tests that fake the script's
@@ -630,50 +505,6 @@ const setStatusTextForTest = (text) => {
   act(() => statusTextTestHandle?.setStatusText(text));
 };
 
-// Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
-// installReactStatusTextMountBridges is gone. It stubbed window.updateReactStatusText/
-// updateReactOutputText as plain textContent writers for index.page.js's
-// setStatusTextOnly/setOutputMessage, whose last callers were deleted; every
-// remaining status writer here goes through the real StatusTextProvider.
-
-// Phase H.9 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-// #trigger-auto-run-btn/#quick-check-btn/#quick-check-all-btn are now fully
-// React-owned (components/TriggerAutoRunButton.jsx/QuickCheckButton.jsx/
-// QuickCheckAllButton.jsx), each calling useTriggerAutoRun()/
-// useQuickCheckActions() directly instead of window.handleTriggerAutoRun/
-// window.handleQuickCheck/window.handleQuickCheckAll (both deleted from
-// index.page.js, confirmed no other caller) - same real-RTL-mount
-// reasoning as the snackbar above, since several tests click these and
-// assert on the resulting disabled/label state. Wrapped in its own
-// PrActivityQueueProvider instance (useQuickCheckActions()'s own
-// markPrBusy/clearPrBusy for the "Quick check all" sweep) - no test here
-// asserts row-busy-indicator state through these 2 buttons specifically,
-// so a separate instance from the main persistent tree's is harmless.
-function ActionButtonsTestHarness() {
-  const { handleQuickCheckAll } = useQuickCheckActions();
-  const appHeaderContainer = document.getElementById("app-header-root");
-  const appBannerContainer = document.getElementById("app-banner-root");
-
-  return React.createElement(
-    React.Fragment,
-    null,
-    // UI redesign phase 9a: the real app header (Quick check all) and
-    // auto-update-paused banner.
-    appHeaderContainer &&
-      createPortal(
-        React.createElement(AppHeader, { onQuickCheckAll: () => handleQuickCheckAll() }),
-        appHeaderContainer,
-        "app-header",
-      ),
-    appBannerContainer &&
-      createPortal(
-        React.createElement(AuthorInsightsProvider, null, React.createElement(AutoUpdatePausedBanner)),
-        appBannerContainer,
-        "app-banner",
-      ),
-  );
-}
-
 // Unmounts the previous generation's React roots and installs the window
 // globals this suite still fakes (the helper modules index.html's <script>
 // tags would load).
@@ -682,8 +513,8 @@ function ActionButtonsTestHarness() {
 // this was installReactTableMountBridge, and also stubbed
 // window.mountReactPrTable for index.page.js's renderPrData to call. Both
 // that bridge and renderPrData are gone: the PR table now mounts from
-// FilterStateTestRootHarness's own PrDataProvider (PrTablePortalTestLive),
-// as react-app.jsx's does.
+// FilterStateTestRootHarness's own PrDataProvider (the real AppShell's
+// PrTable), as in production.
 const installReactTestGlobals = () => {
   cleanup();
   // index.html loads DOMPurify from a vendored <script>; without it the
@@ -969,7 +800,7 @@ describe("index page rendering with Testing Library", () => {
   // stats">, which Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full
   // migration roadmap") replaced with an empty React portal root
   // (DataTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM fallback
-  // left for this jsdom-only suite (which never loads react-app.jsx) to
+  // left for this jsdom-only suite (which never loads react-app.tsx) to
   // click. Already covered in a real browser by e2e/smoke.spec.js's
   // existing "lifecycle section expand/collapse and tab switching work"
   // test, which clicks both the Review statistics and Author Insights
@@ -981,7 +812,7 @@ describe("index page rendering with Testing Library", () => {
   // insights row" was removed here: it exercised Review Stats' "View in
   // table" link/content, which is React-owned (#stats-content-root) with
   // no vanilla-DOM fallback left for this jsdom-only suite (which never
-  // loads react-app.jsx) to render into - see the "React-owned Review
+  // loads react-app.tsx) to render into - see the "React-owned Review
   // Stats content renders cards/table and 'View in table' navigates..."
   // e2e test for that coverage.
 
@@ -1995,9 +1826,9 @@ describe("index page rendering with Testing Library", () => {
     expect(screen.getByRole("tabpanel", { name: "Backfill" })).toBeVisible();
 
     // The backfill badges themselves are React-owned (#backfill-badges,
-    // mounted by react-app.jsx) and no longer have a vanilla-DOM fallback
+    // rendered by the Settings drawer's BackfillSection) and no longer have a vanilla-DOM fallback
     // to assert against in this jsdom-only suite (which never loads
-    // react-app.jsx) - see the "React-owned Backfill status badges..." e2e
+    // react-app.tsx) - see the "React-owned Backfill status badges..." e2e
     // test for that coverage. This waitFor still gates on the same async
     // status load completing, via `details`, which stays vanilla-rendered
     // regardless.
@@ -2031,7 +1862,7 @@ describe("index page rendering with Testing Library", () => {
 
   // The credential-field hints on the Run Script/filter inputs are covered by
   // ContextRunScriptTextInput.test.jsx, PrNumberFilterInput.test.jsx,
-  // react-app.test.jsx and e2e's "all 6 React-portaled non-credential-hint
+  // react-app.test.tsx and e2e's "all 6 React-portaled non-credential-hint
   // fields" test.
 
   // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
@@ -5230,36 +5061,14 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
-    fetchMock.mockClear();
-
-    expect(document.getElementById("merged-request-more-action")).toBeInTheDocument();
-
-    // Phase H.4 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
-    // mount the real MergedRequestMoreAction component and click its
-    // button, instead of calling window.handleRequestMoreMerged directly -
-    // same pattern ActionButtonsTestHarness already uses for
-    // TriggerAutoRunButton/QuickCheckButton/QuickCheckAllButton.
-    //
-    // Ninth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
-    // audit"): the button's own click handler now calls
-    // useRequestMoreMerged()'s returned function (via onRequestMore), not
-    // window.handleRequestMoreMerged - this small wrapper calls that hook
-    // itself, same shape as MergedRequestMoreActionLive in react-app.jsx.
-    function MergedRequestMoreActionTestHarness() {
-      const requestMoreMerged = useRequestMoreMerged();
-      return React.createElement(MergedRequestMoreAction, {
-        isVisible: true,
-        repo: "owner/repo",
-        onRequestMore: requestMoreMerged,
-      });
-    }
-    // Its own root, so the hook sees the inert default PrData/request-activity
-    // Contexts - enough here, since this test only asserts the POST body.
-    rtlRender(React.createElement(MergedRequestMoreActionTestHarness), {
-      container: document.getElementById("merged-request-more-action"),
+    // The shell's own button, under the table once the data has loaded
+    // (scope "all" by default).
+    const requestMore = await within(document.getElementById("merged-request-more-action")).findByRole("button", {
+      name: "Request more",
     });
+    fetchMock.mockClear();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Request more" }));
+    await user.click(requestMore);
 
     let requestMoreCall;
     await waitFor(() => {

@@ -14,7 +14,7 @@ const { useAutoRenderBlocking, useAutoRenderBlockingActions } = require('../stat
 
 // Window-bridge elimination Phase 7.4: AutoRenderBlockingSync replaces
 // index.page.js's recomputeDirtyPrSectionsFields. These mount it the way
-// react-app.jsx does (inside AutoRenderBlockingProvider > PrDataProvider >
+// react-app.tsx does (inside AutoRenderBlockingProvider > PrDataProvider >
 // NotesDirtyProvider > AuthorInsightsDraftsProvider) and drive the real
 // Providers' own write functions.
 let notesDirty;

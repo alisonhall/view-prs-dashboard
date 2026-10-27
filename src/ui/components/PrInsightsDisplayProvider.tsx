@@ -74,7 +74,7 @@ const stableValue = {
  * own comment for why that split matters).
  *
  * Must be mounted inside the <ActorIdentityContext.Provider> PrDataProvider
- * sets up - see react-app.jsx for the actual nesting. Doesn't need
+ * sets up - see AppShell's PrTable for the actual nesting. Doesn't need
  * usePrData() itself - every consumer already receives `row`/`actorsMap`
  * as props and passes them as plain arguments into these functions.
  */

@@ -11,8 +11,8 @@ import { describeLastUpdate, describeRepos } from '../../helpers/pr-app-header.h
 import { ActivityPopover } from './ActivityPopover';
 import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
-// The views, as tabs over the page's existing panels (#tab-panel-*, which
-// TabPanelVisibilitySync shows and hides).
+// The views, as tabs over AppShell's panels (#tab-panel-*, which AppShell
+// shows and hides).
 const VIEWS: ReadonlyArray<{ id: DataTabKey; label: string }> = [
   { id: 'pr-data', label: 'Pull requests' },
   { id: 'review-stats', label: 'Review stats' },

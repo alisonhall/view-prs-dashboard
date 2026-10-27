@@ -15,7 +15,7 @@ const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelec
 // useRowFilterSelection()/useAuthorThreadResolutionSelection()/
 // useChangeFilterActorSelection() directly (all 3 throw without a real
 // Provider ancestor), so every FilterStateProvider render in this file
-// needs them too - matching react-app.jsx's real AppRoot order
+// needs them too - matching react-app.tsx's real Provider order
 // (the 3 selection Providers wrap PrDataProvider/FilterStateProvider, not
 // the other way around).
 function AllSelectionProviders({ children }) {

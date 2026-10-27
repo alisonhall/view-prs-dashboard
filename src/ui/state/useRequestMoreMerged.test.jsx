@@ -122,13 +122,14 @@ describe('useRequestMoreMerged', () => {
     expect(finishActivity).toHaveBeenCalledTimes(1);
   });
 
-  // Regression: these hooks are called from AppRoot's body. When they read
-  // beginRequestActivity/renderRequestActivity through usePrData(), AppRoot
+  // Regression: these hooks are called high in the tree (once from the old
+  // AppRoot's body, now AppShell's MergedRequestMoreActionLive). When they
+  // read beginRequestActivity/renderRequestActivity through usePrData(), AppRoot
   // (and every portal it builds) re-rendered on each payload/repo/stats
   // update, since PrDataProvider's value changes on every one.
   test('given a component using the hook under a real PrDataProvider, when PR data is updated repeatedly, then it does not re-render', () => {
     let renders = 0;
-    const AppRootLike = React.memo(function AppRootLike() {
+    const ShellLike = React.memo(function ShellLike() {
       useRequestMoreMerged();
       renders += 1;
       return null;
@@ -136,7 +137,7 @@ describe('useRequestMoreMerged', () => {
     render(
       <PrDataProvider initialPayload={{}} initialSelectedRepo="">
         <prDataProbe.PrDataProbe />
-        <AppRootLike />
+        <ShellLike />
       </PrDataProvider>,
     );
     const baseline = renders;

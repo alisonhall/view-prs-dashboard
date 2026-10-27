@@ -109,10 +109,10 @@ function ActivityQueueProbe() {
 // useChangeFilterActorSelection() directly (all 3 throw without a real
 // Provider ancestor) - the 3 selection Providers wrap PrDataProvider/
 // FilterStateProvider now, not the other way around, matching
-// react-app.jsx's real AppRoot order after this phase's reorder.
+// react-app.tsx's real Provider order after this phase's reorder.
 //
 // UI redesign phase 1: section open state and expanded rows moved to
-// PrTableUiStateProvider (react-app.jsx wraps AppRoot in it), so it wraps
+// PrTableUiStateProvider (react-app.tsx wraps AppShell in it), so it wraps
 // every render here too. UiStateProbe exposes its value.
 function AllSelectionProviders({ children }) {
   return (
@@ -141,7 +141,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // Track C, slice C2c (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
 // PrTableApp reads payload/selectedRepo/visiblePrNumbers from
 // <PrDataProvider /> now, not as direct props - this wraps every render the
-// same way mountReactPrTable (react-app.jsx) really does. Updates after the
+// same way the app (react-app.tsx) really does. Updates after the
 // initial render go through the Provider's own applyFreshTablePayload (via
 // prDataProbe; it was the window.updateReactPrTable bridge), not a
 // `rerender` with new props - see the "delivers a fresh
@@ -157,7 +157,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // Activity drawer feature (see REACT_MIGRATION_PLAN.md): busyPrNumbers/
 // queuedPrNumbers moved from PrTableApp's own local state into
 // PrActivityQueueProvider.tsx - this wraps every render the same way
-// react-app.jsx's real AppRoot now does. Tenth follow-up (see
+// react-app.tsx's real Provider tree now does. Tenth follow-up (see
 // REACT_MIGRATION_PLAN.md, "Remaining-effort audit"): the markPrsBusy/
 // clearPrsBusy/markPrsQueued/clearPrsQueued window bridges that used to
 // drive this in tests are gone - ActivityQueueProbe above exposes the

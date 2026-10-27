@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 /**
  * The error/warning snackbar's state and actions, owned by
- * SnackbarProvider (which wraps `<AppRoot/>` from `mountAppRoot()`). Every
+ * SnackbarProvider (which wraps `<AppShell />` from `react-app.tsx`). Every
  * caller that reports a failure - the action hooks, PrDataProvider,
  * useActivityDrawerActions - calls showError/showWarning/hide from here.
  *

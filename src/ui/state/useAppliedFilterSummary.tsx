@@ -41,10 +41,9 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * each other while typing a multi-digit PR number.
  *
  * Must be called from somewhere inside both <RowFilterSelectionProvider>
- * and <JobEventsProvider> - true for every call site this hook actually
- * has (the prTable portal, and the appliedFilterSummary portal, both
- * widened to sit inside those Providers for exactly this reason - see
- * react-app.jsx's own comment at JobEventsProvider).
+ * and <JobEventsProvider> - both wrap <AppShell /> in react-app.tsx, so
+ * every call site (the PR table, and DataViewHeader above it) is inside
+ * them.
  */
 export interface AppliedFilterSummary {
   summaryText: string;

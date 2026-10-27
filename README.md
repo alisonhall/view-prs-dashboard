@@ -61,7 +61,7 @@ Compatibility note: migration shims were removed in Phase 3. Use canonical `src/
 
 High-level layering intent:
 
-- UI composition/wiring: `src/ui/react-app.jsx` (`mountAppRoot()` and the Providers it mounts)
+- UI composition/wiring: `src/ui/react-app.tsx` (the Providers) and `src/ui/components/shell/AppShell.tsx` (the page it renders)
 - UI components: `src/ui/components/`
 - UI pure helpers: `src/ui/helpers/`
 - Server routes/orchestration: `src/server/app.js` and `src/server/routes/`
@@ -72,7 +72,7 @@ High-level layering intent:
 
 Target module layout by layer:
 
-- UI composition/orchestration: `src/ui/react-app.jsx` (Providers in `src/ui/components/` and `src/ui/state/`)
+- UI composition/orchestration: `src/ui/react-app.tsx` and `src/ui/components/shell/AppShell.tsx` (Providers in `src/ui/components/` and `src/ui/state/`)
 - UI components (render/event wiring): `src/ui/components/`
 - UI pure helpers (formatters/transformers): `src/ui/helpers/`
 - UI test fixtures/factories: `src/ui/test-fixtures/`
@@ -91,7 +91,7 @@ These boundaries are enforced by ESLint restricted import rules in `eslint.confi
 
 Contribution guidance:
 
-- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/react-app.jsx`.
+- New UI behavior should default to component + helper extraction, not direct growth of `src/ui/react-app.tsx` or `AppShell.tsx`.
 - New server behavior should keep routes thin and place reusable logic in helper/service modules.
 - New unit tests should be co-located with source files (`src/ui/components/*.test.js`, `src/ui/helpers/*.test.js`).
 - Integration/wiring tests should remain in `src/ui/integration-tests/` and server integration test folders.

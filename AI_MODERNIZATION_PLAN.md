@@ -1048,7 +1048,7 @@ No static type checking leads to:
 
 **Phase 12D: Component Migration**
 - [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
-  (plus `src/ui/react-app.jsx`; `pr-row-keys` was converted with the helpers)
+  (plus `src/ui/react-app.jsx`, now `.tsx`; `pr-row-keys` was converted with the helpers)
   - State layer first (decided 2026-10-23): the contexts, hooks and
     Providers survive the planned UI rework, the presentational components
     largely won't, so those are converted (or rewritten in `.tsx`) as part
@@ -1156,6 +1156,10 @@ No static type checking leads to:
     - Phase 9c (2026-10-26): the activity popover (shell/ActivityPopover.tsx)
       replaces ActivityDrawer.jsx (deleted); the five ActivityDrawer*Section
       components converted to .tsx in place.
+    - Phase 9d-2 (2026-10-26): `react-app.jsx` becomes `react-app.tsx` (the
+      Providers around the new shell/AppShell.tsx, which renders the whole
+      page), with its test; DataViewHeader replaces DataViewHeaderPortals;
+      TabPanelVisibilitySync deleted.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

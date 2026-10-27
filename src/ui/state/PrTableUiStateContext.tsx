@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 /**
  * The PR table's own UI state, owned by PrTableUiStateProvider (which
- * wraps <AppRoot/> from mountAppRoot()): which sections are open, which
+ * wraps <AppShell /> in react-app.tsx): which sections are open, which
  * rows show their summary, and the detail pane (UI_REDESIGN_PLAN.md,
  * phase 4): the selected PR, whether the pane is shown, and its tab. It
  * lives above the table so Settings › Export can read it: Export exports the

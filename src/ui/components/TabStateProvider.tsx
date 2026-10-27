@@ -4,9 +4,8 @@ import { TabStateContext, type DataTabKey } from '../state/TabStateContext';
 /**
  * Owns which view is showing, as plain React state (it
  * genuinely originates here, so no ref-plus-version pattern is needed).
- * Panel visibility follows from it: `TabPanelVisibilitySync.jsx` sets each
- * panel's `hidden` attribute from this Context, and `useIsTabPanelVisible`
- * reads it directly.
+ * Panel visibility follows from it: AppShell hides the other views'
+ * panels, through `useIsTabPanelVisible`.
  */
 export function TabStateProvider({ children }: { children?: ReactNode }) {
   const [activeDataTab, setActiveDataTabState] = useState<DataTabKey>('pr-data');

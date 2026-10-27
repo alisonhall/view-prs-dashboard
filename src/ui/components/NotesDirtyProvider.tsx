@@ -3,9 +3,9 @@ import { NotesDirtyContext, type NotesDirtyValue } from '../state/NotesDirtyCont
 
 /**
  * Owns which PR numbers currently have an unsaved Notes edit. Wraps
- * <AppRoot /> from mountAppRoot(), not just the table, so
- * AutoRenderBlockingSync (inside AppRoot, next to the drafts Provider) can
- * read it.
+ * <AppShell /> in react-app.tsx, not just the table, so
+ * AutoRenderBlockingSync (next to the drafts Provider, in react-app.tsx)
+ * can read it.
  *
  * Unlike NeedsAttentionProvider (which only *derives* a value from
  * upstream Context), this Provider genuinely owns writable state that

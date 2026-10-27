@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 /**
  * Closes every open `<details class="multi-select-dropdown">`
  * (MultiSelectDropdown: the filter bar's and the Settings drawer's lists)
- * when a click lands outside it. AppRoot calls this once.
+ * when a click lands outside it. AppShell calls this once.
  *
  * The dropdowns are looked up on each click rather than once at setup:
  * React renders them (some only once the filter options load), so this

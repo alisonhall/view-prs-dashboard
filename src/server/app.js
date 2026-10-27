@@ -2922,7 +2922,7 @@ const resetAutoCircuitBreakerAndRetry = (opts = {}) => {
 
 // Vite dev middleware (React/JSX transform)
 //
-// index.html loads react-app.jsx as an ES module. Express can't transpile
+// index.html loads react-app.tsx as an ES module. Express can't transpile
 // JSX or resolve bare module specifiers on its own, so outside of a
 // production build we embed Vite's dev server in middleware mode and let it
 // handle those requests before falling back to static files / API routes.

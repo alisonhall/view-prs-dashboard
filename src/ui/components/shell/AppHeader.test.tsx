@@ -4,7 +4,6 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataProvider } from '../../state/PrDataProvider';
 import { TabStateProvider } from '../TabStateProvider';
-import { TabPanelVisibilitySync } from '../TabPanelVisibilitySync';
 import { StatusTextProvider } from '../StatusTextProvider';
 import { useStatusText } from '../../state/StatusTextContext';
 import type { PrDataPayload } from '../../types/pr-data.ts';
@@ -24,7 +23,6 @@ const renderHeader = (payload: PrDataPayload = loaded({ repo: 'octocat/hello-wor
   render(
     <PrDataProvider initialPayload={payload}>
       <TabStateProvider>
-        <TabPanelVisibilitySync />
         <AppHeader onQuickCheckAll={async () => undefined} {...props} />
       </TabStateProvider>
     </PrDataProvider>,
@@ -49,6 +47,8 @@ describe('AppHeader', () => {
   });
 
   describe('view tabs', () => {
+    // The panels their aria-controls name (AppShell renders them, and shows
+    // the selected one: AppShell.test.tsx).
     const panelIds = ['tab-panel-pr-data', 'tab-panel-review-stats', 'tab-panel-author-insights'];
     beforeEach(() => {
       panelIds.forEach((id) => {
@@ -70,8 +70,7 @@ describe('AppHeader', () => {
 
       await user.click(screen.getByRole('tab', { name: 'Authors' }));
       expect(screen.getByRole('tab', { name: 'Authors' })).toHaveAttribute('aria-selected', 'true');
-      expect(document.getElementById('tab-panel-author-insights')?.hidden).toBe(false);
-      expect(document.getElementById('tab-panel-pr-data')?.hidden).toBe(true);
+      expect(screen.getByRole('tab', { name: 'Pull requests' })).toHaveAttribute('aria-selected', 'false');
     });
 
     test('arrow keys move between them', async () => {

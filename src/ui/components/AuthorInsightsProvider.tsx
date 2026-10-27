@@ -64,8 +64,8 @@ const stableValue = {
  * own comment for why that split matters).
  *
  * Must be mounted inside both <PrDataProvider> and the
- * <ActorIdentityContext.Provider> it sets up - see react-app.jsx's AppRoot
- * for the actual nesting.
+ * <ActorIdentityContext.Provider> it sets up - see react-app.tsx and
+ * AppShell for the actual nesting.
  */
 export function AuthorInsightsProvider({ children }: { children?: ReactNode }) {
   const { payload } = usePrData();

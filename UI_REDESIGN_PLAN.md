@@ -660,6 +660,30 @@ becomes a small `react-app.tsx`. Done in steps:
   - `index.html`'s comments describe what each mount point holds now
     (they still named window bridges, vanilla fallbacks, `createRoot` per
     container and the deleted `#request-activity-details`).
+- **9d-2 done (2026-10-26):**
+  - `shell/AppShell.tsx` renders the whole page in place: the snackbar,
+    the header and banner, the three views and the Settings drawer.
+    `index.html`'s body is just `#app-root` (plus the vendored scripts), and
+    no `createPortal` into static markup is left. The elements keep their
+    ids and classes (CSS, e2e and tests select by them).
+  - `react-app.jsx` is now `react-app.tsx`: only the Providers around
+    `<AppShell />` and the bootstrap (its history comments are gone).
+    FilterOptionsProvider now wraps the whole shell, not just the filter bar
+    and the drawer (only they read it).
+  - The views' `hidden` comes from TabStateContext in AppShell's render;
+    TabPanelVisibilitySync (a DOM write by id) is deleted. AppShell itself
+    reads no Context (TabPanel, StatsPart / AuthorPart and AppHeaderLive
+    do), so a tab switch or a filter edit doesn't re-render the PR table.
+    DataViewHeaderPortals becomes DataViewHeader, rendering #data-meta and
+    the filter bar in place.
+  - The integration harness renders the real AppShell into `#app-root`
+    inside its Providers, instead of portalling its own copies of the
+    header, banner, table, drawer, data header and snackbar; the Request
+    more test clicks the shell's own button. New AppShell.test.tsx: the
+    tabs show one view, and Review stats / Authors mount on first visit and
+    stay mounted.
+  - Comments that described `AppRoot`, `mountAppRoot`, portals or
+    `react-app.jsx` now describe react-app.tsx and AppShell.
 - **9c done (2026-10-26):**
   - `shell/ActivityPopover.tsx` in the app header, between Quick check all
     and Settings: an Activity button (the count of running jobs and queued

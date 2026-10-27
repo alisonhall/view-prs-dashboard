@@ -18,7 +18,7 @@
  * in that existing, already-tested pure helper, not reimplemented here -
  * but as of the ninth follow-up (see REACT_MIGRATION_PLAN.md,
  * "Remaining-effort audit") it's reached via the `onRequestMore` prop
- * (MergedRequestMoreActionLive in react-app.jsx passes
+ * (MergedRequestMoreActionLive in AppShell passes
  * useRequestMoreMerged()'s own returned function), not
  * window.handleRequestMoreMerged. It takes onPendingChange/onStatusChange
  * callbacks instead of reaching into #merged-request-more-btn/-status by
@@ -28,7 +28,7 @@
  * render (applyRenderResults runs on every poll cycle, ~15-30s), which
  * incidentally self-cleared any status text almost immediately regardless
  * of the target repo. Real local state doesn't get that free reset, so
- * react-app.jsx mounts this with key={repo} - without it, switching the
+ * AppShell mounts this with key={repo} - without it, switching the
  * repo filter mid-request (or right after one completes) would leave a
  * stale pending/status message from the *previous* repo's request showing
  * as if it described the new one.

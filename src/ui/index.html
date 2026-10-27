@@ -19,67 +19,8 @@
 </head>
 
 <body>
-    <!-- The elements below whose ids end in -root, plus #data-meta,
-         #pr-sections and #merged-request-more-action, are mount points
-         react-app.jsx renders into (AppRoot's portals); each starts
-         empty. -->
-    <!-- Snackbar.jsx: the whole #error-snackbar element (its `hidden` and
-         variant class change), not just its content. -->
-    <div id="error-snackbar-root"></div>
-    <!-- components/shell/AppHeader.tsx: the app's name and repo, the view
-         tabs, the latest status, when the data was last updated, Quick check
-         all, Activity and Settings. -->
-    <div id="app-header-root"></div>
-    <!-- components/shell/AutoUpdatePausedBanner.tsx. Its own element
-         directly in <body>, so it can stay stuck to the top of the window
-         while you scroll (styles/shell.css). -->
-    <div id="app-banner-root" class="app-banner-root"></div>
-
-    <!-- The views; their tabs are in the app header. -->
-    <div class="data-tabs" id="data-tabs">
-        <section id="tab-panel-pr-data" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-pr-data">
-            <!-- The PR data summary (DataViewHeaderPortals). -->
-            <pre id="data-meta" style="white-space: break-spaces;" role="region" aria-label="PR data summary"></pre>
-            <!-- components/filter-bar/FilterBar.tsx: the row filters, a
-                 "Showing N of M" count and the applied filters' chips. -->
-            <div id="filter-bar-root"></div>
-            <!-- The PR table (PrTableApp). -->
-            <div id="pr-sections" role="region" aria-label="Pull requests"></div>
-            <!-- MergedRequestMoreAction.jsx: renders nothing while there's
-                 nothing more to request. -->
-            <div id="merged-request-more-action" class="merged-request-more-action"></div>
-        </section>
-
-        <section id="tab-panel-review-stats" class="data-tab-panel" role="tabpanel" aria-labelledby="tab-review-stats"
-            hidden>
-            <div id="pr-stats" class="stats-panel">
-                <!-- ReviewStatsControls and ReviewStatsContent (lazy, mounted
-                     the first time the view shows). -->
-                <div id="stats-controls-root" role="group" aria-label="Review statistics controls"></div>
-                <div id="stats-content-root" role="region" aria-label="Review statistics"></div>
-            </div>
-        </section>
-
-        <section id="tab-panel-author-insights" class="data-tab-panel" role="tabpanel"
-            aria-labelledby="tab-author-insights" hidden>
-            <div id="author-insights" class="author-insights-panel">
-                <!-- The Authors view's parts, each lazy and inside its own
-                     AuthorInsightsProvider (react-app.jsx): the author
-                     picker, the selected author, the manual comments
-                     (AuthorInsightsCommentsSection.jsx), the author's PR
-                     notes and their created PRs. -->
-                <div id="author-insights-selector-root"></div>
-                <div id="author-insights-header-root" role="region" aria-label="Selected author"></div>
-                <div id="author-insights-content-root" role="region" aria-label="Author comments"></div>
-                <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes"></div>
-                <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs"></div>
-            </div>
-        </section>
-    </div>
-
-    <!-- components/settings/SettingsDrawer.tsx: the Settings drawer,
-         opened from the app header. -->
-    <div id="settings-drawer-root"></div>
+    <!-- react-app.tsx renders the whole page here (components/shell/AppShell.tsx). -->
+    <div id="app-root"></div>
 
     <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
          dev server and the standalone Express server serve static files
@@ -102,7 +43,7 @@
          together when bumping the "dompurify" dependency version. -->
     <script src="./vendor/purify.min.js"></script>
     <!-- The app (it installs its error filters before mounting). -->
-    <script type="module" src="./react-app.jsx"></script>
+    <script type="module" src="./react-app.tsx"></script>
 </body>
 
 </html>

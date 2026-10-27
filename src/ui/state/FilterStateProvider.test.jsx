@@ -330,8 +330,8 @@ describe('FilterStateProvider', () => {
   // correctly if the lists (simulated here by
   // MultiSelectSelectionProbe) and FilterStateProvider are real siblings
   // under the same Provider instances - exactly the tree
-  // FilterStateProviderWithSelectionContexts (and react-app.jsx's real
-  // AppRoot, after this phase's Provider-tree reorder) now provides.
+  // FilterStateProviderWithSelectionContexts (and react-app.tsx's real
+  // Provider tree, after this phase's reorder) now provides.
   describe('persisted overrides reflect the 3 selection Contexts directly', () => {
     let putBody;
 

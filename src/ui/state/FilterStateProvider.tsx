@@ -111,7 +111,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * window-level, see its file's comment) for ListSelectionSeeding to
  * apply once their options exist.
  *
- * Save: `persistRunScriptOptions` (on this Context; react-app.jsx's "Run
+ * Save: `persistRunScriptOptions` (on this Context; Run & check's "Run
  * script" button calls it) saves the run options, and a debounced effect
  * saves the view/filter options whenever `values` or a list selection
  * changes. Which fields each save covers is a product decision (not every
@@ -119,7 +119,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  *
  * The lists' checked state comes from the RowFilter/AuthorThreadResolution/
  * ChangeFilterActor selection Contexts, so this Provider must be mounted
- * inside all 3 (see react-app.jsx's Provider tree).
+ * inside all 3 (see react-app.tsx's Provider tree).
  */
 export function FilterStateProvider({
   initialValues,
