@@ -107,6 +107,19 @@ describe('PrDataPolling', () => {
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
+  test('given polling is running, when a "visible" event arrives without a "hidden" one first, then each poll still fires once per interval (no duplicate timers)', () => {
+    renderPrDataPolling();
+
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    jest.advanceTimersByTime(30000);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+    expect(window.pollBackfillStatus).toHaveBeenCalledTimes(6);
+    expect(window.renderRequestActivity).toHaveBeenCalledTimes(30);
+  });
+
   test('given beforeunload fires, when the poll interval would have elapsed, then nothing fires', () => {
     renderPrDataPolling();
 

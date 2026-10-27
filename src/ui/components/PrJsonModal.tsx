@@ -14,8 +14,55 @@ import { useEffect, useRef, useState } from 'react';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
+import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
-function summarizeDiffText(diffText) {
+type JsonRecord = Record<string, unknown>;
+const isRecord = (value: unknown): value is JsonRecord =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+// The PR the dialog shows: its table entry and row data.
+export interface PrJsonModalTarget {
+  entry: Pick<PrEntry, 'prNumber' | 'repo'> & { notes?: unknown };
+  pr: PrData;
+}
+
+// One stored file's part for this PR.
+interface JsonFileSection {
+  file: string;
+  entry: unknown;
+}
+
+interface PrJsonDetails {
+  prNumber: string;
+  repo: string;
+  dataFile: JsonFileSection;
+  prDetailFile: JsonFileSection;
+  userStateFile: JsonFileSection;
+}
+
+// GET /view-prs/diff's answer, or why there isn't one.
+interface DiffData {
+  ok: boolean;
+  error?: string;
+  file?: string;
+  source?: string;
+  stale?: boolean;
+  warning?: string;
+  commitFingerprint?: string;
+  fetchedAt?: string | null;
+  filePath?: string;
+  diffText?: string;
+}
+
+type DiffLineType = 'file' | 'meta' | 'hunk' | 'add' | 'del' | 'context';
+
+interface DiffBlock {
+  // null for lines before the first file header.
+  filePath: string | null;
+  lines: { key: number; type: DiffLineType; text: string }[];
+}
+
+function summarizeDiffText(diffText: unknown) {
   const lines = String(diffText || '').split(/\r?\n/);
   const summary = { filesChanged: 0, hunks: 0, additions: 0, deletions: 0, lines: lines.length };
   lines.forEach((line) => {
@@ -27,35 +74,46 @@ function summarizeDiffText(diffText) {
   return summary;
 }
 
-function buildPrJsonModalPayload({ entry, pr, payload, defaultRepo, getPerPrUserStateFromPayload }) {
+interface BuildPrJsonModalPayloadInput {
+  entry: PrJsonModalTarget['entry'] | null | undefined;
+  pr: (PrData & { repo?: string }) | null | undefined;
+  payload: PrDataPayload | null | undefined;
+  defaultRepo: string;
+  getPerPrUserStateFromPayload: typeof getPerPrUserStateFromPayload;
+}
+
+function buildPrJsonModalPayload({
+  entry,
+  pr,
+  payload,
+  defaultRepo,
+  getPerPrUserStateFromPayload,
+}: BuildPrJsonModalPayloadInput): PrJsonDetails {
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
   const byPrNumber = payload?.byPrNumber || {};
   const payloadEntry = byPrNumber?.[prNumber];
-  const dataSourceEntry = payloadEntry || entry || {};
-  const dataFileEntry =
-    dataSourceEntry && typeof dataSourceEntry === 'object' ? { ...dataSourceEntry } : dataSourceEntry;
+  const dataSourceEntry: unknown = payloadEntry || entry || {};
+  // Copies, not the payload's own objects: it's the table's live data, and
+  // notes and the detail-only fields are removed from these for display.
+  const dataFileEntry = isRecord(dataSourceEntry) ? { ...dataSourceEntry } : dataSourceEntry;
 
-  if (dataFileEntry && typeof dataFileEntry === 'object' && !Array.isArray(dataFileEntry)) {
+  if (isRecord(dataFileEntry)) {
     delete dataFileEntry.notes;
   }
 
   const splitPrDetailFields = ['activityTimeline', 'activityEvents', 'reviewThreads', 'commentEvents'];
-  const dataRow =
-    dataFileEntry &&
-    typeof dataFileEntry === 'object' &&
-    !Array.isArray(dataFileEntry) &&
-    dataFileEntry.data &&
-    typeof dataFileEntry.data === 'object' &&
-    !Array.isArray(dataFileEntry.data)
-      ? dataFileEntry.data
-      : null;
-  const detailRef = dataRow && typeof dataRow.detailRef === 'object' ? dataRow.detailRef : null;
-  const prDetailEntry = {};
+  const dataRow = isRecord(dataFileEntry) && isRecord(dataFileEntry.data) ? { ...dataFileEntry.data } : null;
+  if (dataRow && isRecord(dataFileEntry)) {
+    dataFileEntry.data = dataRow;
+  }
+  const detailRef = dataRow && isRecord(dataRow.detailRef) ? dataRow.detailRef : null;
+  const prDetailEntry: JsonRecord = {};
 
   splitPrDetailFields.forEach((fieldName) => {
     if (!dataRow) return;
     if (!Object.prototype.hasOwnProperty.call(dataRow, fieldName)) return;
-    prDetailEntry[fieldName] = Array.isArray(dataRow[fieldName]) ? [...dataRow[fieldName]] : [];
+    const value = dataRow[fieldName];
+    prDetailEntry[fieldName] = Array.isArray(value) ? [...value] : [];
     delete dataRow[fieldName];
   });
 
@@ -78,7 +136,7 @@ function buildPrJsonModalPayload({ entry, pr, payload, defaultRepo, getPerPrUser
   };
 }
 
-function formatDiffSummaryLine(diffData) {
+function formatDiffSummaryLine(diffData: DiffData | null) {
   if (!diffData || diffData.ok === false) {
     return String(diffData?.error || 'Diff data is unavailable');
   }
@@ -89,9 +147,13 @@ function formatDiffSummaryLine(diffData) {
   return `${stats.filesChanged} files, +${stats.additions}/-${stats.deletions}, ${stats.hunks} hunks, ${stats.lines} lines, ${source}, ${freshness}${fetchedAt}`;
 }
 
-function buildPrJsonModalAiClipboardText(detailsPayload, diffData, safeJsonStringify) {
-  const payload = detailsPayload || {};
-  const diff = diffData || {};
+function buildPrJsonModalAiClipboardText(
+  detailsPayload: Partial<PrJsonDetails> | null,
+  diffData: DiffData | null,
+  safeJsonStringify: (value: unknown) => string,
+) {
+  const payload: Partial<PrJsonDetails> = detailsPayload || {};
+  const diff: Partial<DiffData> = diffData || {};
   const repo = String(payload.repo || '').trim() || 'unknown';
   const prNumber = String(payload.prNumber || '').trim() || 'unknown';
   const dataFile = payload.dataFile || { file: 'check-open-pr-updates.data.json', entry: null };
@@ -142,7 +204,7 @@ function buildPrJsonModalAiClipboardText(detailsPayload, diffData, safeJsonStrin
   ].join('\n');
 }
 
-async function fetchPrDiffForModal({ repo, prNumber }) {
+async function fetchPrDiffForModal({ repo, prNumber }: { repo: string; prNumber: string }): Promise<DiffData> {
   const safeRepo = encodeURIComponent(String(repo || '').trim());
   const safePr = encodeURIComponent(String(prNumber || '').trim());
   if (!safeRepo || !safePr) {
@@ -166,11 +228,11 @@ async function fetchPrDiffForModal({ repo, prNumber }) {
       diffText: String(result.diffText || ''),
     };
   } catch (error) {
-    return { ok: false, error: String(error?.message || error || 'Failed to load diff') };
+    return { ok: false, error: String((error instanceof Error && error.message) || error || 'Failed to load diff') };
   }
 }
 
-function getDiffLineType(line) {
+function getDiffLineType(line: string): DiffLineType {
   const text = String(line || '');
   if (text.startsWith('diff --git ')) return 'file';
   if (text.startsWith('index ') || text.startsWith('Binary files ')) return 'meta';
@@ -180,7 +242,7 @@ function getDiffLineType(line) {
   return 'context';
 }
 
-function parseFileHeader(line) {
+function parseFileHeader(line: string) {
   const header = String(line || '');
   const fileHeaderMatch = header.match(/^diff --git\s+a\/(.+?)\s+b\/(.+)$/);
   if (fileHeaderMatch) return `${fileHeaderMatch[1]} -> ${fileHeaderMatch[2]}`;
@@ -192,10 +254,12 @@ function parseFileHeader(line) {
 // (that vanilla builder, renderDiffText in helpers/pr-diff-render.helpers.js,
 // was deleted once nothing else called it - see REACT_MIGRATION_PLAN.md's
 // 2026-09-20 entry).
-function buildDiffBlocks(diffText) {
+function buildDiffBlocks(diffText: string): DiffBlock[] {
   const lines = String(diffText || '').split(/\r?\n/);
-  const blocks = [];
-  let current = null;
+  const blocks: DiffBlock[] = [];
+  // Lines before the first file header, in a block of their own at the start.
+  let preamble: DiffBlock | null = null;
+  let current: DiffBlock | null = null;
   lines.forEach((line, index) => {
     const lineType = getDiffLineType(line);
     if (lineType === 'file') {
@@ -207,32 +271,41 @@ function buildDiffBlocks(diffText) {
     if (current) {
       current.lines.push(row);
     } else {
-      if (!blocks.length || blocks[0].filePath !== undefined) blocks.unshift({ filePath: null, lines: [] });
-      blocks[0].lines.push(row);
+      if (!preamble) {
+        preamble = { filePath: null, lines: [] };
+        blocks.unshift(preamble);
+      }
+      preamble.lines.push(row);
     }
   });
   return blocks;
 }
 
-function getModalFocusableElements(root) {
+function getModalFocusableElements(root: HTMLElement | null): HTMLElement[] {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
   return Array.from(
-    root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+    root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
   ).filter((node) => {
-    if (!node || node.disabled) return false;
+    if (!node || (node as HTMLButtonElement).disabled) return false;
     return node.getAttribute?.('aria-hidden') !== 'true';
   });
 }
 
-export function PrJsonModal({ target, payload, onClose }) {
+export interface PrJsonModalProps {
+  target: PrJsonModalTarget | null;
+  payload: PrDataPayload | null | undefined;
+  onClose?: () => void;
+}
+
+export function PrJsonModal({ target, payload, onClose }: PrJsonModalProps) {
   const isOpen = Boolean(target);
-  const rootRef = useRef(null);
-  const closeButtonRef = useRef(null);
-  const lastActiveElementRef = useRef(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const bodyOverflowRef = useRef('');
 
-  const [detailsPayload, setDetailsPayload] = useState(null);
-  const [diffData, setDiffData] = useState(null);
+  const [detailsPayload, setDetailsPayload] = useState<PrJsonDetails | null>(null);
+  const [diffData, setDiffData] = useState<DiffData | null>(null);
   const [loadingState, setLoading] = useState(false);
   const [wrapped, setWrapped] = useState(false);
   const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
@@ -242,7 +315,7 @@ export function PrJsonModal({ target, payload, onClose }) {
   // diff, manage focus + Escape/Tab handling + body scroll lock, matching
   // vanilla's openPrJsonModal/closePrJsonModal/handlePrJsonModalKeydown.
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!target) return undefined;
 
     const builtPayload = buildPrJsonModalPayload({
       entry: target.entry,
@@ -258,7 +331,7 @@ export function PrJsonModal({ target, payload, onClose }) {
     setCopyAllLabel('Copy all');
     setCopyDiffLabel('Copy diff');
 
-    lastActiveElementRef.current = document.activeElement;
+    lastActiveElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (document.body?.style) {
       bodyOverflowRef.current = String(document.body.style.overflow || '');
       document.body.style.overflow = 'hidden';
@@ -271,7 +344,7 @@ export function PrJsonModal({ target, payload, onClose }) {
       setLoading(false);
     });
 
-    const handleKeydown = (event) => {
+    const handleKeydown = (event: KeyboardEvent) => {
       const key = String(event?.key || '');
       if (key === 'Escape') {
         event.preventDefault?.();
@@ -297,10 +370,10 @@ export function PrJsonModal({ target, payload, onClose }) {
       const active = document.activeElement;
       if (!event.shiftKey && active === last) {
         event.preventDefault?.();
-        first.focus?.();
+        first?.focus();
       } else if (event.shiftKey && active === first) {
         event.preventDefault?.();
-        last.focus?.();
+        last?.focus();
       }
     };
     document.addEventListener('keydown', handleKeydown);

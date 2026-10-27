@@ -20,8 +20,8 @@
  *
  * The chart visuals (formerly createStatsVisuals in
  * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
- * DOM chart building) are now real JSX (see StatsVisuals.jsx,
- * GraphCard.jsx, ReviewerActivityChart.jsx - Track A of the post-Phase-6
+ * DOM chart building) are now real JSX (see StatsVisuals.tsx,
+ * GraphCard.tsx, ReviewerActivityChart.tsx - Track A of the post-Phase-6
  * migration follow-up, REACT_MIGRATION_PLAN.md), rendered directly below
  * rather than wrapped via a ref+useEffect bridge into a vanilla builder.
  *
@@ -30,7 +30,7 @@
  * table's own expandable sources) now go through useNavigateToPrInTable()
  * (state/) instead of window.navigateToPrInTableFromStats (deleted
  * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
- * same hook AuthorInsightsPrLink.jsx now uses, same "dispatch
+ * same hook AuthorInsightsPrLink.tsx now uses, same "dispatch
  * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
  * behavior the old bridge's navigateToPrInTable already had. No `repo` is
  * passed here (unchanged from before) - this component's source items
@@ -42,21 +42,27 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
-import { useReviewStats } from '../state/ReviewStatsContext';
+import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
-function SourceItemRow({ item, detailText }) {
+// The extra text after a source's PR (e.g. "3 comments").
+type SourceFormatter = (item: StatsSource) => string;
+type SourceSection = [label: string, items: StatsSource[], formatter: SourceFormatter];
+type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']>;
+
+function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
   const navigateToPrInTable = useNavigateToPrInTable();
   const prNumber = String(item?.prNumber || '').trim();
   const prTitle = String(item?.prTitle || '').trim();
   const label = prNumber && prTitle ? `PR #${prNumber}: ${prTitle}` : prNumber ? `PR #${prNumber}` : prTitle || 'Unknown source';
   const prUrl = String(item?.prUrl || '').trim();
   const author = String(item?.prAuthor || item?.author || item?.authorLogin || '').trim();
-  const detailParts = [];
+  const detailParts: string[] = [];
   if (author) {
     detailParts.push(`PR author: ${author}`);
   }
@@ -95,7 +101,7 @@ function SourceItemRow({ item, detailText }) {
   );
 }
 
-function SourcesDetails({ items, formatter }) {
+function SourcesDetails({ items, formatter }: { items: StatsSource[] | undefined; formatter: SourceFormatter }) {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
@@ -111,7 +117,15 @@ function SourcesDetails({ items, formatter }) {
   );
 }
 
-function StatCard({ label, value, detail, sources, formatter }) {
+interface StatCardProps {
+  label: string;
+  value: string;
+  detail?: string;
+  sources?: StatsSource[];
+  formatter: SourceFormatter;
+}
+
+function StatCard({ label, value, detail, sources, formatter }: StatCardProps) {
   return (
     <div className="stat-card" role="group" aria-label={label}>
       <span className="stat-card-label">{label}</span>
@@ -122,19 +136,21 @@ function StatCard({ label, value, detail, sources, formatter }) {
   );
 }
 
-const getReviewerSourceSections = (reviewer) =>
-  [
-    ['Comments', reviewer.sources.comments, (item) => `${item.count} comments`],
-    ['Reviews', reviewer.sources.reviews, (item) => `${item.count} reviews (${item.approvals} approvals)`],
+const getReviewerSourceSections = (reviewer: ReviewerRowData): SourceSection[] =>
+  (
     [
-      'Risky approvals',
-      reviewer.sources.riskyApprovals,
-      (item) => `approved ${formatIsoDatetime(item.approvedAt || '-')}`,
-    ],
-    ['Useful signals', reviewer.sources.usefulnessSignals, (item) => `${item.count} usefulness signals`],
-  ].filter(([, items]) => Array.isArray(items) && items.length > 0);
+      ['Comments', reviewer.sources.comments, (item) => `${item.count} comments`],
+      ['Reviews', reviewer.sources.reviews, (item) => `${item.count} reviews (${item.approvals} approvals)`],
+      [
+        'Risky approvals',
+        reviewer.sources.riskyApprovals,
+        (item) => `approved ${formatIsoDatetime(item.approvedAt || '-')}`,
+      ],
+      ['Useful signals', reviewer.sources.usefulnessSignals, (item) => `${item.count} usefulness signals`],
+    ] satisfies SourceSection[]
+  ).filter(([, items]) => Array.isArray(items) && items.length > 0);
 
-function ReviewerSourcesContent({ sections }) {
+function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
   return (
     <div className="stats-sources-group">
       {sections.map(([label, items, formatter]) => (
@@ -153,7 +169,7 @@ function ReviewerSourcesContent({ sections }) {
 
 const STATS_COLUMN_COUNT = 12;
 
-function ReviewerRow({ reviewer }) {
+function ReviewerRow({ reviewer }: { reviewer: ReviewerRowData }) {
   const [expanded, setExpanded] = useState(false);
   const sections = getReviewerSourceSections(reviewer);
   const hasSources = sections.length > 0;
@@ -203,7 +219,7 @@ export function ReviewStatsContent() {
   const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
   const actorsMap = payload?.actorsMap || {};
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
-  const lastStatsRef = useRef(null);
+  const lastStatsRef = useRef<ControlledStats | null>(null);
 
   // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
   // specifically, not [rows, actorsMap] (which would be new references on

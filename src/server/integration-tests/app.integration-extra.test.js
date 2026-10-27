@@ -132,6 +132,52 @@ describe("integration behavior", () => {
     expect(persistedUserState.notesByPrNumber[prNumber]).not.toHaveProperty("rallyStories");
   });
 
+  // The Notes tab sends only id, author, tone and note. Saving used to
+  // reset every comment's createdAt/updatedAt to the save time.
+  test("given stored note comments, when POST /notes saves them without timestamps, then unchanged ones keep theirs and an edited one keeps createdAt", async () => {
+    const prNumber = "124";
+    writeViewPrsData({ byPrNumber: { [prNumber]: { repo: "owner/repo" } }, lastRun: null });
+    const storedComment = (id, note) => ({
+      id,
+      author: "alice",
+      tone: "Positive",
+      note,
+      createdAt: "2026-01-02T03:04:05Z",
+      updatedAt: "2026-01-03T03:04:05Z",
+    });
+    writeViewPrsUserState({
+      ...EMPTY_USER_STATE,
+      notesByPrNumber: {
+        [prNumber]: {
+          comments: [storedComment("comment-1", "kept"), storedComment("comment-2", "before")],
+          otherNotes: "",
+          prDifficulty: "",
+          stories: [],
+          analysisOfPr: "",
+        },
+      },
+    });
+
+    const res = await request.post("/notes").send({
+      prNumber,
+      comments: [
+        { id: "comment-1", author: "alice", tone: "Positive", note: "kept" },
+        { id: "comment-2", author: "alice", tone: "Positive", note: "after" },
+        { id: "comment-3", author: "bob", tone: "Neutral", note: "new" },
+      ],
+      otherNotes: "changed other notes",
+    });
+    expect(res.status).toBe(200);
+
+    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[prNumber].comments;
+    const byId = Object.fromEntries(saved.map((comment) => [comment.id, comment]));
+    expect(byId["comment-1"]).toMatchObject({ createdAt: "2026-01-02T03:04:05Z", updatedAt: "2026-01-03T03:04:05Z" });
+    expect(byId["comment-2"].createdAt).toBe("2026-01-02T03:04:05Z");
+    expect(Date.parse(byId["comment-2"].updatedAt)).toBeGreaterThan(Date.parse("2026-01-03T03:04:05Z"));
+    expect(byId["comment-3"].createdAt).toBe(byId["comment-3"].updatedAt);
+    expect(Date.parse(byId["comment-3"].createdAt)).toBeGreaterThan(Date.parse("2026-01-03T03:04:05Z"));
+  });
+
   test("preserves other PR notes when POST /notes clears fields for a single PR", async () => {
     const existingPrNumber = "200";
     const clearedPrNumber = "201";

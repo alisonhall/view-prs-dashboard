@@ -7,7 +7,7 @@ import { useTabState } from './TabStateContext';
  * PrTableApp.tsx handles (it finds the row, scrolls to it and focuses it,
  * since it renders that markup). Used by AutoRenderBlockedLinks'
  * "jump to unsaved PR" links (with `focusUnsaved`) and by
- * AuthorInsightsPrLink.jsx/ReviewStatsContent.jsx (with `repo`, which
+ * AuthorInsightsPrLink.tsx/ReviewStatsContent.tsx (with `repo`, which
  * PrTableApp uses to pick the right PR when a number exists in more than
  * one repo). Returns false for an empty PR number.
  */

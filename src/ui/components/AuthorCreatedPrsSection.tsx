@@ -5,7 +5,7 @@
  * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): reads
  * `payload`/`selectedAuthorLogin` straight from PrDataContext instead of
  * being pushed props via window.updateAuthorInsightsCreatedPrs (deleted) -
- * `selectedAuthorLogin` is kept in sync by AuthorInsightsSelector.jsx
+ * `selectedAuthorLogin` is kept in sync by AuthorInsightsSelector.tsx
  * (Phase H.17, see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
  * cluster 2 - previously pr-author-insights.component.js's
  * renderAuthorInsights, deleted outright that phase), the single place

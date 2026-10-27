@@ -2,6 +2,7 @@ import type { NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
 import type {
   AuthorInsightsState,
   AuthorManualComment,
+  ManualCommentComposerDraft,
   ManualCommentEditDraft,
 } from "./pr-author-insights-data.helpers.ts";
 
@@ -19,7 +20,7 @@ export type AuthorInsightsDraftsState = Pick<
 export interface PrAutoRenderBlockingDeps {
   normalizePrNumber?: (value: unknown) => string;
   normalizeActorLogin?: NormalizeActorLogin;
-  isAuthorInsightsComposerDraftDirty?: (draft: unknown) => boolean;
+  isAuthorInsightsComposerDraftDirty?: (draft: ManualCommentComposerDraft | undefined) => boolean;
   getAuthorManualCommentsForLogin?: (authorLogin: string) => AuthorManualComment[];
   isAuthorInsightsEditDraftDirty?: (savedComment: AuthorManualComment, draft: ManualCommentEditDraft) => boolean;
   getAuthorInsightsDisplayName?: (authorLogin: string) => string;

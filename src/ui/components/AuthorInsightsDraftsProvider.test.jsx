@@ -54,7 +54,7 @@ describe('AuthorInsightsDraftsProvider', () => {
   // Eleventh follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort
   // audit"): getComposerDraft/updateComposerDraft/getEditDraftMap/
   // updateEditDraft/setManualComments/getManualComments no longer have a
-  // window.* bridge at all - AuthorInsightsCommentsSection.jsx (their only
+  // window.* bridge at all - AuthorInsightsCommentsSection.tsx (their only
   // real consumer) already called every one of them via
   // useAuthorInsightsDrafts() directly, so these round-trip entirely
   // through the Context value now.

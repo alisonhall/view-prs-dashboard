@@ -23,6 +23,7 @@
 
 import { useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import type { ReviewStatsViewState } from '../state/PrDataContext';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
 
 const SORT_OPTIONS = [
@@ -55,7 +56,7 @@ export function ReviewStatsControls() {
   // Commits a change to Context (setStatsViewState) - expensive enough
   // (triggers a full stats recompute) that it must only happen once per
   // real change, not once per keystroke.
-  const commit = (patch) => {
+  const commit = (patch: Partial<ReviewStatsViewState>) => {
     setState((previous) => ({ ...previous, ...patch }));
     setStatsViewState(patch);
   };
@@ -68,7 +69,7 @@ export function ReviewStatsControls() {
   // keystroke would re-trigger the full stats recompute mid-edit and
   // fight the user's typing (e.g. clearing the field to retype would
   // momentarily clamp to 0/12 and re-render immediately).
-  const updateDisplayOnly = (patch) => {
+  const updateDisplayOnly = (patch: Partial<ReviewStatsViewState>) => {
     setState((previous) => ({ ...previous, ...patch }));
   };
 

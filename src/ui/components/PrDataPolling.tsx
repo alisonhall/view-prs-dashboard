@@ -66,7 +66,7 @@ export const MIN_DATA_POLL_MS = 100;
 // elimination Phase 7.3 deleted.
 // Returns undefined (use the default) unless it's a whole number of ms >=
 // MIN_DATA_POLL_MS. react-app.tsx reads it once and passes it as a prop.
-export function readDataPollMsOverride(search) {
+export function readDataPollMsOverride(search: string | null | undefined): number | undefined {
   const raw = new URLSearchParams(search || '').get('dataPollMs');
   if (raw === null || !/^\d+$/.test(raw)) {
     return undefined;
@@ -75,7 +75,7 @@ export function readDataPollMsOverride(search) {
   return value >= MIN_DATA_POLL_MS ? value : undefined;
 }
 
-export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }) {
+export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }: { dataPollMs?: number }) {
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see
@@ -88,15 +88,9 @@ export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }) {
   useEffect(() => {
     const backfillPollMs = AUTO_BACKFILL_POLL_MS;
 
-    let dataInterval = null;
-    let backfillInterval = null;
-    let activityInterval = null;
-
-    const startIntervals = () => {
-      dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
-      backfillInterval = setInterval(() => pollBackfillStatus?.(), backfillPollMs);
-      activityInterval = setInterval(() => renderRequestActivity?.(), ACTIVITY_RENDER_MS);
-    };
+    let dataInterval: ReturnType<typeof setInterval> | null = null;
+    let backfillInterval: ReturnType<typeof setInterval> | null = null;
+    let activityInterval: ReturnType<typeof setInterval> | null = null;
 
     const stopIntervals = () => {
       if (dataInterval) {
@@ -111,6 +105,16 @@ export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }) {
         clearInterval(activityInterval);
         activityInterval = null;
       }
+    };
+
+    // Stops any running set first: a "visible" event while they're already
+    // running (without a "hidden" before it) would otherwise leave the old
+    // ones polling alongside the new.
+    const startIntervals = () => {
+      stopIntervals();
+      dataInterval = setInterval(() => pollForDataChanges?.(), dataPollMs);
+      backfillInterval = setInterval(() => pollBackfillStatus?.(), backfillPollMs);
+      activityInterval = setInterval(() => renderRequestActivity?.(), ACTIVITY_RENDER_MS);
     };
 
     startIntervals();

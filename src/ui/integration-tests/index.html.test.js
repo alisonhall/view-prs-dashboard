@@ -64,7 +64,7 @@ const { formatIsoDatetime } = require("../helpers/pr-formatting.helpers.ts").cre
 // The accessible names of a row's Signals icons, in slot order.
 const signalNames = (row) =>
   Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
@@ -3050,7 +3050,7 @@ describe("index page rendering with Testing Library", () => {
 
       // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // window.pollSchedulerStatus (a poll wrapper around a now-retired
-      // setInterval, see PrDataPolling.jsx's own comment) is gone - the
+      // setInterval, see PrDataPolling.tsx's own comment) is gone - the
       // progress indicator is driven by renderSchedulerStatus in production
       // too (RequestActivityProvider's, via Context since window-bridge
       // elimination Phase 7.3), called by JobEventsProvider.tsx's real SSE
