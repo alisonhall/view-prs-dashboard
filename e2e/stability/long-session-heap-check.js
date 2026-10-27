@@ -299,7 +299,7 @@ async function main() {
     browser = await chromium.launch();
     const page = await browser.newPage();
     // ?dataPollMs= makes PrDataPolling poll every DATA_POLL_MS instead of the
-    // real 30s (see readDataPollMsOverride in components/PrDataPolling.jsx).
+    // real 30s (see readDataPollMsOverride in components/PrDataPolling.tsx).
     // This used to pin window.AUTO_DATA_POLL_MS with an init script; that
     // global was removed by the window-bridge elimination work.
     await page.goto(`http://localhost:3458/?dataPollMs=${DATA_POLL_MS}`);

@@ -12,7 +12,7 @@
  * and writes AuthorInsightsDraftsContext directly now (useAuthorInsightsDrafts())
  * instead of mirroring into local useState while also calling through
  * window.* bridges - that Context *is* the shared state other code outside
- * this component's own lifetime needs (AutoRenderBlockingSync.jsx reads it
+ * this component's own lifetime needs (AutoRenderBlockingSync.tsx reads it
  * to decide whether a poll must wait - window-bridge elimination Phase 7.4;
  * index.page.js read it through window.* bridges before), so no local
  * mirroring or explicit recompute calls are needed here - every Context

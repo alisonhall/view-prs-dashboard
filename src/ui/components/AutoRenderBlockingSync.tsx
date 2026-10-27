@@ -65,7 +65,7 @@ export function AutoRenderBlockingSync() {
   // A push re-renders AutoRenderBlockingProvider and schedules a flush check;
   // skip it when nothing changed (most draft keystrokes don't change which
   // authors are blocking).
-  const lastPushedRef = useRef(null);
+  const lastPushedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const { getUnsavedNotesPrNumbers, getBlockingPrNumbers, normalizePrNumber } =

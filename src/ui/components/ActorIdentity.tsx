@@ -19,8 +19,21 @@
  */
 
 import { useActorIdentity } from '../state/ActorIdentityContext';
+import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
+import type { PrData } from '../types/pr-data.ts';
 
-export function ActorIdentity({ row, login, actorsMap = {}, fallbackName = '', className = '', as: Tag = 'span' }) {
+export interface ActorIdentityProps {
+  // The PR the actor appears on: says whether they're its author, and who
+  // the viewer is.
+  row?: PrData | null;
+  login: string | null | undefined;
+  actorsMap?: ActorsMap;
+  fallbackName?: string;
+  className?: string;
+  as?: 'span' | 'div';
+}
+
+export function ActorIdentity({ row, login, actorsMap = {}, fallbackName = '', className = '', as: Tag = 'span' }: ActorIdentityProps) {
   const {
     normalizeActorLogin,
     getEffectiveViewerLogin,

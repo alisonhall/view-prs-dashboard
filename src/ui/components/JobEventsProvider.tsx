@@ -164,7 +164,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       eventSource?.close();
     };
     // Deliberately no visibilitychange handling here, unlike
-    // PrDataPolling.jsx - an idle SSE connection costs nothing server-side,
+    // PrDataPolling.tsx - an idle SSE connection costs nothing server-side,
     // and closing/reopening it on every tab switch would just cause
     // reconnect churn for no benefit.
   }, []);

@@ -3050,7 +3050,7 @@ describe("index page rendering with Testing Library", () => {
 
       // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
       // window.pollSchedulerStatus (a poll wrapper around a now-retired
-      // setInterval, see PrDataPolling.jsx's own comment) is gone - the
+      // setInterval, see PrDataPolling.tsx's own comment) is gone - the
       // progress indicator is driven by renderSchedulerStatus in production
       // too (RequestActivityProvider's, via Context since window-bridge
       // elimination Phase 7.3), called by JobEventsProvider.tsx's real SSE

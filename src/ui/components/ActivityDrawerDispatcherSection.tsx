@@ -73,7 +73,7 @@ export function ActivityDrawerDispatcherSection({ onBump }: { onBump?: (repo: st
   // on close, so a bump request still in flight when it's closed
   // would otherwise resolve into a "state update on an unmounted
   // component" warning. Same `cancelled`-style guard already used for
-  // async effects elsewhere in this codebase (ExportSection.tsx, PrJsonModal.jsx).
+  // async effects elsewhere in this codebase (ExportSection.tsx, PrJsonModal.tsx).
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;

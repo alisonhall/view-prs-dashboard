@@ -6,7 +6,7 @@
  * Track C, slice C1 (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md):
  * interval-lifecycle ownership moved from index.page.js's own
  * setInterval/cleanupIntervals/restartIntervals into
- * components/PrDataPolling.jsx. This suite used to assert on the literal
+ * components/PrDataPolling.tsx. This suite used to assert on the literal
  * source text of index.page.js (which pattern existed, textually) - now
  * that the pattern lives in a real React component, it's tested
  * behaviorally instead: mount/unmount and visibility/beforeunload events
