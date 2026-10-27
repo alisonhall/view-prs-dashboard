@@ -1,4 +1,18 @@
-const createPrRowData = (overrides = {}) => ({
+import type { PrData, PrEntry } from "../types/pr-data.ts";
+
+// A PR entry the factories built: always with its row data.
+export type PrRowEntryFixture = PrEntry & { data: PrData };
+
+export interface FixtureShapeCheck {
+  valid: boolean;
+  issues: string[];
+}
+
+type JsonRecord = Record<string, unknown>;
+const isRecord = (value: unknown): value is JsonRecord =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+export const createPrRowData = (overrides: PrData = {}): PrData => ({
   number: "123",
   title: "Default PR title",
   titleDisplay: "Default PR title",
@@ -14,27 +28,26 @@ const createPrRowData = (overrides = {}) => ({
   ...overrides,
 });
 
-const createPrRowEntry = (overrides = {}) => {
+export const createPrRowEntry = (overrides: PrEntry = {}): PrRowEntryFixture => {
   const dataOverrides = overrides.data || {};
   const base = {
     prNumber: "123",
     repo: "owner/repo",
-    section: "open",
+    section: "open" as const,
     updatedAt: "2026-07-14T10:00:00Z",
     notes: {
       comments: [],
     },
-    data: createPrRowData(dataOverrides),
     ...overrides,
+    data: createPrRowData(dataOverrides),
   };
-  base.data = createPrRowData(dataOverrides);
   return base;
 };
 
-const validatePrRowEntryShape = (entry = {}) => {
-  const issues = [];
+export const validatePrRowEntryShape = (entry: unknown = {}): FixtureShapeCheck => {
+  const issues: string[] = [];
 
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+  if (!isRecord(entry)) {
     issues.push("entry must be an object");
     return { valid: false, issues };
   }
@@ -45,11 +58,11 @@ const validatePrRowEntryShape = (entry = {}) => {
   if (!String(entry.repo || "").trim()) {
     issues.push("repo is required");
   }
-  if (!entry.data || typeof entry.data !== "object" || Array.isArray(entry.data)) {
+  if (!isRecord(entry.data)) {
     issues.push("data object is required");
   }
 
-  const data = entry.data || {};
+  const data = isRecord(entry.data) ? entry.data : {};
   if (!String(data.number || "").trim()) {
     issues.push("data.number is required");
   }
@@ -67,10 +80,4 @@ const validatePrRowEntryShape = (entry = {}) => {
     valid: issues.length === 0,
     issues,
   };
-};
-
-module.exports = {
-  createPrRowData,
-  createPrRowEntry,
-  validatePrRowEntryShape,
 };

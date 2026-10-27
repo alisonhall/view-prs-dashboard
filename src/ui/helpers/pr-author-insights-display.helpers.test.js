@@ -10,7 +10,7 @@ const {
   createPrAuthorInsightsDisplayHelpers,
   resolveValidAuthorLogin,
 } = require("./pr-author-insights-display.helpers.ts");
-const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.js");
+const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.ts");
 
 describe("pr author insights display helpers", () => {
   const createDependencies = (overrides = {}) => ({

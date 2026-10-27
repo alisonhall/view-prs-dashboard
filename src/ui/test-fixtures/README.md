@@ -4,12 +4,12 @@ Shared fixture factories for view-prs UI integration tests. These fixtures reduc
 
 ## Available Fixtures
 
-### PR Row Fixtures (`pr-row.fixtures.js`)
+### PR Row Fixtures (`pr-row.fixtures.ts`)
 
 Basic PR row data structures for table rendering tests.
 
 ```javascript
-const { createPrRowData, createPrRowEntry, validatePrRowEntryShape } = require('./pr-row.fixtures.js');
+const { createPrRowData, createPrRowEntry, validatePrRowEntryShape } = require('./pr-row.fixtures.ts');
 
 // Create a basic PR row
 const row = createPrRowEntry();
@@ -31,7 +31,7 @@ if (!validation.valid) {
 }
 ```
 
-### API Response Fixtures (`api-response.fixtures.js`)
+### API Response Fixtures (`api-response.fixtures.ts`)
 
 Mock API response structures for fetch mocking in integration tests.
 
@@ -42,7 +42,7 @@ const {
   createBackfillStatusResponse,
   createActorNameCacheResponse,
   createDiffResponse,
-} = require('./api-response.fixtures.js');
+} = require('./api-response.fixtures.ts');
 
 // Create success response
 const response = createOkJsonResponse({ ok: true, data: [] });
@@ -59,7 +59,7 @@ const diffResponse = createDiffResponse({
 });
 ```
 
-### PR Data Fixtures (`pr-data.fixtures.js`)
+### PR Data Fixtures (`pr-data.fixtures.ts`)
 
 Complete PR data payloads matching server response shapes for full integration tests.
 
@@ -70,7 +70,7 @@ const {
   createMultiPrPayload,
   createSchedulerPayload,
   createReviewThread,
-} = require('./pr-data.fixtures.js');
+} = require('./pr-data.fixtures.ts');
 
 // Create empty payload
 const payload = createPrDataPayload();
@@ -119,15 +119,15 @@ All fixture modules include validation functions to verify fixture shapes:
 
 ```javascript
 // Validate PR row entry
-const { validatePrRowEntryShape } = require('./pr-row.fixtures.js');
+const { validatePrRowEntryShape } = require('./pr-row.fixtures.ts');
 const rowValidation = validatePrRowEntryShape(entry);
 
 // Validate API response
-const { validateApiResponseShape } = require('./api-response.fixtures.js');
+const { validateApiResponseShape } = require('./api-response.fixtures.ts');
 const apiValidation = validateApiResponseShape(response);
 
 // Validate PR data payload
-const { validatePrDataPayloadShape } = require('./pr-data.fixtures.js');
+const { validatePrDataPayloadShape } = require('./pr-data.fixtures.ts');
 const payloadValidation = validatePrDataPayloadShape(payload);
 
 // All validators return: { valid: boolean, issues: string[] }
@@ -143,8 +143,8 @@ if (!validation.valid) {
 ```javascript
 /** @jest-environment jsdom */
 
-const { createPrDataPayload, createPrEntryByScenario } = require('../test-fixtures/pr-data.fixtures.js');
-const { createOkJsonResponse } = require('../test-fixtures/api-response.fixtures.js');
+const { createPrDataPayload, createPrEntryByScenario } = require('../test-fixtures/pr-data.fixtures.ts');
+const { createOkJsonResponse } = require('../test-fixtures/api-response.fixtures.ts');
 
 describe('PR table rendering', () => {
   test('given multiple PRs, when rendering, then all PRs shown', async () => {
@@ -187,7 +187,7 @@ describe('PR table rendering', () => {
 ### Helper Test Example
 
 ```javascript
-const { createPrRowEntry } = require('../test-fixtures/pr-row.fixtures.js');
+const { createPrRowEntry } = require('../test-fixtures/pr-row.fixtures.ts');
 const { buildPrTitleCell } = require('../helpers/pr-title-cell.helpers.js');
 
 describe('pr-title-cell helpers', () => {

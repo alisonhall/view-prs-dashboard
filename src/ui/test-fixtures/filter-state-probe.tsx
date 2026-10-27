@@ -1,4 +1,4 @@
-import { useFilterState } from '../state/FilterStateContext';
+import { useFilterState, type FilterStateValue } from '../state/FilterStateContext';
 
 /**
  * Test helper: reads (and writes) FilterStateProvider's state from a test.
@@ -20,7 +20,7 @@ import { useFilterState } from '../state/FilterStateContext';
  * render) - it remembers only the latest mounted instance.
  */
 export function createFilterStateProbe() {
-  let latest = null;
+  let latest: FilterStateValue | null = null;
 
   function FilterStateProbe() {
     latest = useFilterState();
@@ -37,6 +37,6 @@ export function createFilterStateProbe() {
   return {
     FilterStateProbe,
     readValues: () => requireMounted().values,
-    setValue: (key, value) => requireMounted().setValue(key, value),
+    setValue: (key: string, value: unknown) => requireMounted().setValue(key, value),
   };
 }

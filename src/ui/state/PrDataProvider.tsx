@@ -80,7 +80,7 @@ const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
  * provides PrDataActionsContext (the data pipeline) and
  * ActorIdentityContext (derived from the payload). It publishes no window
  * bridges; tests read and write this state through the Contexts
- * (test-fixtures/pr-data-probe.jsx).
+ * (test-fixtures/pr-data-probe.tsx).
  *
  * `initialPayload`/`initialSelectedRepo`/... seed the state once at mount
  * (react-app.tsx). After that, updates go through this

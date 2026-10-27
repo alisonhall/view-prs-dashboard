@@ -18,7 +18,7 @@ const {
   createPrEntryByScenario,
   createMultiPrPayload,
   validatePrDataPayloadShape,
-} = require("./pr-data.fixtures.js");
+} = require("./pr-data.fixtures.ts");
 
 describe("PR data fixtures", () => {
   describe("createSchedulerPayload", () => {
