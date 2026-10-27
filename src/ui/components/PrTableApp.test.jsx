@@ -1648,6 +1648,29 @@ describe('PrTableApp', () => {
       expect(latestPane().entry.prNumber).toBe('1');
     });
 
+    // The "Auto update paused" chips name only a PR number, and unsaved
+    // notes can only be on the PR in the pane.
+    test('given two repos with the same PR number and the second one selected, when a focusUnsaved event names just the number, then the selected PR stays selected', () => {
+      const payload = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: '1', repo: 'owner/repo-a', section: 'open' }),
+          2: makeEntry({ prNumber: '1', repo: 'owner/repo-b', section: 'open' }),
+        },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
+      React.act(() => {
+        capturedSectionProps.find((p) => p.section.key === 'open').onSelectRow('1', 'owner/repo-b');
+      });
+
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1', focusUnsaved: true } }));
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo-b', prNumber: '1' });
+
+      // Without focusUnsaved (a "View in table" with no repo) it's still the
+      // first match.
+      fireEvent(window, new CustomEvent('pr-navigate-to-insights', { detail: { prNumber: '1' } }));
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo-a', prNumber: '1' });
+    });
+
     // Unsaved notes are in the pane's Notes tab.
     test('given focusUnsaved, when the event fires, then the pane opens on its Notes tab; without it the tab stays', () => {
       const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };

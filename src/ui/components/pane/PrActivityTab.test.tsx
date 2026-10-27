@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NowContext } from '../../state/NowContext';
+import { defaultPrInsightsDisplay, PrInsightsDisplayContext } from '../../state/PrInsightsDisplayContext';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
 
@@ -54,6 +55,27 @@ const events = [
 ];
 
 describe('PrActivityTab', () => {
+  // The pane's clock ticks every minute; the feed only depends on the PR
+  // and the filters.
+  test('a clock tick re-renders without building the events again', () => {
+    const buildActivityEvents = jest.fn(defaultPrInsightsDisplay.buildActivityEvents);
+    const pr = basePr(events);
+    const tree = (now: number) => (
+      <PrInsightsDisplayContext.Provider value={{ ...defaultPrInsightsDisplay, buildActivityEvents }}>
+        <NowContext.Provider value={now}>
+          <PrActivityTab pr={pr} lastLookedAt="" filters={DEFAULT_ACTIVITY_FILTERS} onFiltersChange={() => {}} timeZone="UTC" />
+        </NowContext.Provider>
+      </PrInsightsDisplayContext.Provider>
+    );
+    const { rerender } = render(tree(NOW));
+    const calls = buildActivityEvents.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+
+    rerender(tree(NOW + 60_000));
+    expect(buildActivityEvents).toHaveBeenCalledTimes(calls);
+    expect(dayHeadings()).toEqual(['Today', 'Yesterday', 'Tue · Oct 20']);
+  });
+
   test('groups events by day, newest first, with who did what', () => {
     render(<Harness pr={basePr(events)} />);
     expect(dayHeadings()).toEqual(['Today', 'Yesterday', 'Tue · Oct 20']);

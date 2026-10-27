@@ -101,9 +101,13 @@ export function ActivityPopover() {
     const onFocusOut = (event: FocusEvent) => {
       if (event.relatedTarget && !isInside(event.relatedTarget)) close(false);
     };
-    // Scrolling the popover's own content keeps it open.
+    // It's placed under the button with fixed positioning, so it closes when
+    // the button moves: the page, or a container around the button,
+    // scrolling. Scrolling anything else (its own content, a list in the
+    // filter bar, the table) keeps it open.
     const onScroll = (event: Event) => {
-      if (!isInside(event.target)) close(false);
+      const { target } = event;
+      if (target instanceof Document || (target instanceof Node && target.contains(buttonRef.current))) close(false);
     };
     window.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);

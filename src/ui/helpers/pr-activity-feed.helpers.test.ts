@@ -109,7 +109,7 @@ describe('buildActivityFeed', () => {
         formatTimeOfDay(`2026-01-${day}T00:00:00Z`, 'Asia/Tokyo');
         describeDay(`2026-02-${day}`, now, 'Asia/Tokyo');
       }
-      // The day key formatter (also used by describeDay for today/yesterday)
+      // The day key formatter (also used by describeDay for today)
       // and the time-of-day one, once each for this zone.
       expect(spy.mock.calls.filter(([, options]) => options?.timeZone === 'Asia/Tokyo')).toHaveLength(2);
       // describeDay's weekday and month-day formatters (UTC), at most once each.
@@ -175,6 +175,19 @@ describe('describeDay', () => {
   test('names today and yesterday', () => {
     expect(describeDay('2026-10-24', now, 'UTC')).toBe('Today');
     expect(describeDay('2026-10-23', now, 'UTC')).toBe('Yesterday');
+  });
+
+  // New York: 8 March 2026 is 23 hours long, 1 November 2026 is 25.
+  test('yesterday is the calendar day before, across a daylight saving change and a new year', () => {
+    const afterSpringForward = Date.parse('2026-03-09T04:30:00Z'); // 00:30 on 9 March
+    expect(describeDay('2026-03-08', afterSpringForward, 'America/New_York')).toBe('Yesterday');
+    expect(describeDay('2026-03-07', afterSpringForward, 'America/New_York')).toBe('Sat · Mar 7');
+
+    const endOfFallBack = Date.parse('2026-11-02T04:30:00Z'); // 23:30 on 1 November
+    expect(describeDay('2026-11-01', endOfFallBack, 'America/New_York')).toBe('Today');
+    expect(describeDay('2026-10-31', endOfFallBack, 'America/New_York')).toBe('Yesterday');
+
+    expect(describeDay('2025-12-31', Date.parse('2026-01-01T09:00:00Z'), 'UTC')).toBe('Yesterday');
   });
 
   test('gives other days their weekday and date, with the year when it differs', () => {

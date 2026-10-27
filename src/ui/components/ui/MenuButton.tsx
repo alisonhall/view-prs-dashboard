@@ -105,15 +105,22 @@ export function MenuButton({ icon, label, entries }: MenuButtonProps) {
       return undefined;
     }
     updatePosition();
-    const items = itemRefs.current;
-    (initialFocus === 'last' ? items[items.length - 1] : items[0])?.focus();
     window.addEventListener('scroll', updatePosition, true);
     window.addEventListener('resize', updatePosition);
     return () => {
       window.removeEventListener('scroll', updatePosition, true);
       window.removeEventListener('resize', updatePosition);
     };
-  }, [open, initialFocus, updatePosition]);
+  }, [open, updatePosition]);
+
+  // Focused once placed: until then the menu is visibility: hidden, which
+  // can't take focus.
+  const isPlaced = position !== null;
+  useEffect(() => {
+    if (!open || !isPlaced) return;
+    const items = itemRefs.current;
+    (initialFocus === 'last' ? items[items.length - 1] : items[0])?.focus();
+  }, [open, isPlaced, initialFocus]);
 
   useEffect(() => {
     if (!open) return undefined;

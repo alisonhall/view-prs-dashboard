@@ -164,6 +164,16 @@ describe('ListSelectionSeeding, for the rule lists', () => {
     expect(picked(state.change, 'change-filter-ignore-review-authors-list')).toEqual(['dependabot[bot]']);
   });
 
+  test('a login picked before the saved list loads is kept alongside the saved picks', () => {
+    render(tree(null, OPTIONS));
+    act(() => state.thread.setChecked('attention-author-thread-resolution-deny-list', ['dependabot[bot]']));
+
+    act(() => {
+      setPendingMultiSelectSelection('pendingAuthorThreadResolutionDenySelections', ['bob', 'renovate[bot]']);
+    });
+    expect(picked(state.thread, 'attention-author-thread-resolution-deny-list')).toEqual(['bob', 'renovate[bot]', 'dependabot[bot]']);
+  });
+
   test('a pick the data has no actor for is listed by its login, and unchecking it drops it', async () => {
     const user = userEvent.setup();
     act(() => {

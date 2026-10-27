@@ -36,6 +36,12 @@ describe('AppHeader', () => {
     expect(screen.getByRole('banner')).toHaveTextContent('octocat/hello-world');
   });
 
+  test('links Home (the server it is mounted in) and the README', () => {
+    renderHeader();
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'README' })).toHaveAttribute('href', './README.md');
+  });
+
   test('with rows from several repos, says how many and lists them on hover', () => {
     renderHeader({
       ...loaded({ repo: 'o/a', updatedAt: minutesAgo(5) }),

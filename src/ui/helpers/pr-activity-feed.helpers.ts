@@ -162,7 +162,10 @@ export const describeDay = (key: string, nowMs: number, timeZone?: string): stri
   const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return "Unknown date";
   const today = dayKeyOf(new Date(nowMs).toISOString(), timeZone);
-  const yesterday = dayKeyOf(new Date(nowMs - 86_400_000).toISOString(), timeZone);
+  // The calendar day before today's, not "24 hours ago": across a daylight
+  // saving change a day is 23 or 25 hours long.
+  const [todayYear = 0, todayMonth = 1, todayDay = 1] = today.split("-").map(Number);
+  const yesterday = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay - 1)).toISOString().slice(0, 10);
   if (key === today) return "Today";
   if (key === yesterday) return "Yesterday";
   const date = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));

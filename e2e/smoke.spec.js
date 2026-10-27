@@ -3149,3 +3149,31 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
   await quickCheckBtn.click();
   await expect(quickCheckBtn).toBeEnabled({ timeout: 5000 });
 });
+
+test("a row's More menu opens from the keyboard with its first item focused, and the arrow keys move through it", async ({ page }) => {
+  // The menu is visibility: hidden until it's placed, and a real browser
+  // won't focus a hidden element - jsdom does, so only a browser catches
+  // the item being focused too early (focus stayed on the button).
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+    .evaluateAll((checkboxes) => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.closest("details").open = true;
+      });
+    });
+
+  const button = prTables(page).getByRole("button", { name: "More actions for PR #1", exact: true }).first();
+  await button.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "More actions for PR #1", exact: true });
+  const items = menu.getByRole("menuitem");
+  await expect(items.first()).toBeFocused();
+
+  await page.keyboard.press("End");
+  await expect(items.last()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(button).toBeFocused();
+});

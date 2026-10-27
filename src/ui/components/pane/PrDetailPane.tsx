@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import type { PaneTab } from '../../state/PrTableUiStateContext';
@@ -172,7 +172,7 @@ function PaneContent({
   activityFilters: ActivityFilters;
   onActivityFiltersChange: (filters: ActivityFilters) => void;
 }) {
-  const pr = entry.data || {};
+  const pr = useMemo(() => entry.data || {}, [entry.data]);
   const repo = entry.repo || fallbackRepo;
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
@@ -194,8 +194,9 @@ function PaneContent({
   const conversationsBadge = openConversations
     ? `${openConversations} ${conversations?.isViewerSpecific ? 'with you' : 'open'}`
     : undefined;
-  // Every event, not the feed's first 60.
-  const eventCount = buildActivityEvents(pr, Number.POSITIVE_INFINITY).length;
+  // Every event, not the feed's first 60. Built again only when the PR
+  // changes, not on every pane render.
+  const eventCount = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length, [buildActivityEvents, pr]);
   const notesUnsaved = dirtyPrNumbers.includes(prNumber);
 
   const tabs: TabItem[] = [

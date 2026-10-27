@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useEffect, useId, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useRef, type ReactElement, type ReactNode } from 'react';
 import { installTooltipController, refreshTooltips, type TooltipPlacement } from './tooltip-controller';
 
 export { computeTooltipPosition, TOOLTIP_CLOSE_DELAY_MS, type TooltipPlacement } from './tooltip-controller';
@@ -56,7 +56,14 @@ export function Tooltip({
   useTooltipController();
   // The shared tooltip reads these attributes on events; when they change
   // under an open (or disabled-but-hovered) tooltip, have it look again.
+  // Not on mount: a new trigger isn't the one showing yet, and a table of
+  // them mounting would each re-measure the open bubble.
+  const hasMountedRef = useRef(false);
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     refreshTooltips();
   }, [content, disabled]);
   const descriptionId = useId();

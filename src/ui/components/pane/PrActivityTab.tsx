@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from '../ActorIdentity';
@@ -250,10 +250,15 @@ function Item({ item, pr, actorsMap, timeZone }: { item: FeedItem; pr: PrData; a
 export function PrActivityTab({ pr, actorsMap, lastLookedAt, filters, onFiltersChange, timeZone }: PrActivityTabProps) {
   const now = useNow();
   const { buildActivityEvents } = usePrInsightsDisplay();
-  const events = buildActivityEvents(pr, Number.POSITIVE_INFINITY);
+  // Built again only when the PR or the filters change, not on each minute
+  // tick (useNow) or other re-render.
+  const events = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY), [buildActivityEvents, pr]);
   const hasLastLooked = Boolean(lastLookedAt);
   const scope: ActivityScope = hasLastLooked ? filters.scope : 'all';
-  const feed = buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone });
+  const feed = useMemo(
+    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone }),
+    [events, scope, lastLookedAt, filters.kinds, timeZone],
+  );
   const prNumber = String(pr?.number ?? '');
   // A closed PR's timeline stops at its close date (mergedAt wins, else
   // closedAt), not today.

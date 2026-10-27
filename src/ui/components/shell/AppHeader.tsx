@@ -100,6 +100,10 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
           <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>
             Settings
           </Button>
+          {/* The server this app is mounted in (the app hub, at /view-prs). */}
+          <a className="app-header-link" href="/">
+            Home
+          </a>
           <a className="app-header-link" href="./README.md">
             README
           </a>

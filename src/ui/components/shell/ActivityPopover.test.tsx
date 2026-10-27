@@ -123,16 +123,26 @@ describe('ActivityPopover', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('the page scrolling closes it; scrolling its own content does not', async () => {
+  test('the page scrolling closes it; scrolling its own content, or a list elsewhere, does not', async () => {
     const user = userEvent.setup();
-    renderPopover();
+    renderPopover(undefined, <div data-testid="list-elsewhere" />);
     await user.click(button());
     const dialog = screen.getByRole('dialog', { name: 'Activity' });
 
     fireEvent.scroll(dialog.querySelector('.activity-popover-content') as Element);
+    fireEvent.scroll(screen.getByTestId('list-elsewhere'));
     expect(dialog).toBeInTheDocument();
 
     fireEvent.scroll(document);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  test('a container around the button scrolling closes it (the button moves)', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPopover();
+    await user.click(button());
+
+    fireEvent.scroll(container);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

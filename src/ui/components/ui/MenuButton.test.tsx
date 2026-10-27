@@ -49,6 +49,25 @@ describe('MenuButton', () => {
     expect(group).toContainElement(screen.getByRole('menuitem', { name: 'docs' }));
   });
 
+  // Browsers don't focus a visibility: hidden element (jsdom does), and the
+  // menu is hidden until it has been placed.
+  test('focuses the first item only once the menu is placed and visible', async () => {
+    const user = userEvent.setup();
+    renderMenu();
+    const visibilityAtFocus: string[] = [];
+    const onFocusIn = (event: FocusEvent) => {
+      const menu = (event.target as Element).closest('[role="menu"]') as HTMLElement | null;
+      if (menu) visibilityAtFocus.push(menu.style.visibility);
+    };
+    document.addEventListener('focusin', onFocusIn);
+
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #2' }));
+    document.removeEventListener('focusin', onFocusIn);
+
+    expect(screen.getByRole('menuitem', { name: 'View JSON' })).toHaveFocus();
+    expect(visibilityAtFocus).toEqual(['']);
+  });
+
   test('arrow keys, Home and End move between items, wrapping at the ends', async () => {
     const user = userEvent.setup();
     renderMenu();

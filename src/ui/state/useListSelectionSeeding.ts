@@ -29,7 +29,7 @@ interface SeededList<L extends string> {
 // options; runs when the options or pending selections change, not when the
 // selection does (it reads the selection as it rendered). With
 // `keepUnmatched`, a saved pick needn't be among the options: it's applied
-// at once and never dropped.
+// at once and never dropped, alongside anything picked before it loaded.
 function useSeedLists<L extends string>(
   lists: ReadonlyArray<SeededList<L>>,
   selection: CheckedByListIdValue<L>,
@@ -43,7 +43,11 @@ function useSeedLists<L extends string>(
       const pendingSelections = getPendingMultiSelectSelection(pendingKey);
       if (keepUnmatched) {
         if (!Array.isArray(pendingSelections)) return;
-        if (!checkedByListId[listId]?.size) setChecked(listId, pendingSelections.map(String));
+        // These lists are rules: a login ticked before the saved list loaded
+        // joins it rather than replacing it (the next save would otherwise
+        // write back only that one).
+        const current = Array.from(checkedByListId[listId] || []);
+        setChecked(listId, [...new Set([...pendingSelections.map(String), ...current])]);
         setPendingMultiSelectSelection(pendingKey, null);
         return;
       }

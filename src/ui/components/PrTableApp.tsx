@@ -705,9 +705,13 @@ export function PrTableApp() {
   // The listener below is subscribed once, so it reads open state through
   // this ref rather than a stale closure.
   const isSectionOpenRef = useRef(isSectionOpen);
+  const selectedPrRef = useRef(selectedPr);
+  const effectiveRepoRef = useRef(effectiveRepo);
   useEffect(() => {
     isSectionOpenRef.current = isSectionOpen;
-  }, [isSectionOpen]);
+    selectedPrRef.current = selectedPr;
+    effectiveRepoRef.current = effectiveRepo;
+  }, [isSectionOpen, selectedPr, effectiveRepo]);
   useEffect(() => {
     const handleNavigateToInsights = (event: Event) => {
       const { detail } = event as CustomEvent<
@@ -723,8 +727,17 @@ export function PrTableApp() {
       // Stats' "View in table", whose source items don't carry a repo
       // field yet) has it, in which case this falls back to the first
       // number match, same as before this parameter existed.
-      const repo = detail?.repo ? String(detail.repo) : '';
       const focusUnsaved = Boolean(detail?.focusUnsaved);
+      // Unsaved notes are only ever on the PR in the detail pane (leaving it
+      // asks first), and NotesDirtyContext keeps just its number - so the
+      // "Auto update paused" chips' focusUnsaved means the selected PR, not
+      // another repo's PR with the same number.
+      const selected = selectedPrRef.current;
+      const repo = detail?.repo
+        ? String(detail.repo)
+        : focusUnsaved && selected?.prNumber === prNumber
+          ? selected.repo
+          : '';
       // A PR can be in several sections (smart groups plus its lifecycle
       // section). Prefer one that's already open; otherwise open the first
       // one it's in. Taking the first match regardless used to pick the
@@ -735,7 +748,8 @@ export function PrTableApp() {
         const entry = (section.prs || []).find(
           (candidate) =>
             String(candidate?.data?.number ?? '') === prNumber &&
-            (!repo || candidate?.repo === repo),
+            // Rows without a repo of their own belong to the table's repo.
+            (!repo || (candidate?.repo || effectiveRepoRef.current) === repo),
         );
         if (entry) matches.push({ section, entry });
       });
