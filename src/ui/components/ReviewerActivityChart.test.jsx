@@ -32,7 +32,7 @@ const buildChartData = () => ({
 // behavior (legends, tooltips, hover states), not the real bucketing
 // algorithm's day-grouping logic (covered separately, at the helper level)
 // - so they use a simple one-bucket-per-date passthrough, the same shape
-// ReviewerActivityChart.jsx itself used to fall back to before
+// ReviewerActivityChart itself used to fall back to before
 // bucketTimelineChartData moved to useReviewStats() (Phase 7, sub-phase
 // 7.0 - see REACT_MIGRATION_PLAN.md).
 const passthroughBucketing = (chartData) => ({

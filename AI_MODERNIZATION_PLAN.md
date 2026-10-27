@@ -1172,6 +1172,13 @@ No static type checking leads to:
         MergedRequestMoreAction, PrDataPolling, PrJsonModal, Snackbar.
       - The test fixtures filter-state-probe.jsx and pr-data-probe.jsx
         belong to 12G.
+    - Converting those (decided 2026-10-27): the 18 components and the 5
+      UI test fixtures, on the `typescript/phase-12d` branch, in four
+      reviewed slices - Review stats, Authors, shared, fixtures. The UI
+      test files stay `.js`/`.jsx` (12G).
+    - 12D-1 (2026-10-27): the Review stats components (ReviewStatsContent,
+      ReviewStatsControls, StatsVisuals, GraphCard, ReviewerActivityChart)
+      are `.tsx`, typed against the stats helpers' own types.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
@@ -1183,6 +1190,10 @@ No static type checking leads to:
 **Phase 12F: Server Migration**
 - [ ] Decide how the server runs TypeScript (it is CommonJS run directly by
   `node`, with no build step), then extend tsconfig coverage to `src/server/`
+  - Leaning (2026-10-27): Node's own type stripping (Node 22.18+), so no
+    build step and no new dependency - which rules out syntax that needs
+    transforming (enums, namespaces, parameter properties), and require()
+    needs the `.ts` extension. Not started.
 - [ ] Migrate `src/server/helpers/*.js` → `*.ts`
 - [ ] Migrate `src/server/routes/*.js` → `*.ts`
 - [ ] Migrate `src/server/config/` and `src/server/storage/` → `*.ts`

@@ -18,8 +18,14 @@
  * @module components/ReviewerActivityChart
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import type {
+  BucketedPoint,
+  BucketedSeries,
+  TimelineBucket,
+  TimelineChartData,
+} from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
 
 const REVIEWER_COLORS = [
   '#1f77b4',
@@ -46,16 +52,30 @@ const PAD_RIGHT = 8;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 34;
 
-export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleOverride = '' }) {
+export interface ReviewerActivityChartProps {
+  chartData?: TimelineChartData | null;
+  titleOverride?: string;
+  subtitleOverride?: string;
+}
+
+// A point of the line chart, where it's drawn.
+interface Coord {
+  x: number;
+  y: number;
+  point: BucketedPoint;
+}
+
+export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleOverride = '' }: ReviewerActivityChartProps) {
   const { bucketTimelineChartData } = useReviewStats();
-  const hasData = Boolean(chartData?.series && chartData.series.length > 0);
+  const seriesCount = chartData?.series?.length ?? 0;
+  const hasData = seriesCount > 0;
 
   const [selectedSeriesKey, setSelectedSeriesKey] = useState('');
   const [tooltip, setTooltip] = useState({ visible: false, left: 0, top: 0, text: '' });
-  const lineContainerRef = useRef(null);
+  const lineContainerRef = useRef<HTMLDivElement>(null);
   const [lineWidth, setLineWidth] = useState(0);
 
-  const displayTimeline = useMemo(
+  const displayTimeline = useMemo<{ buckets: TimelineBucket[]; series: BucketedSeries[] }>(
     () => (hasData ? bucketTimelineChartData(chartData) : { buckets: [], series: [] }),
     [chartData, hasData, bucketTimelineChartData],
   );
@@ -83,7 +103,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
     const container = lineContainerRef.current;
     if (!container) return undefined;
 
-    const measure = (suggestedWidth) => {
+    const measure = (suggestedWidth: number) => {
       const measured = Math.round(suggestedWidth || container.clientWidth || 0);
       const usable = Math.max(560, measured > 0 ? measured - 10 : targetGraphWidth);
       return Math.max(usable, displayBuckets.length * 18);
@@ -113,7 +133,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
   const plotWidth = lineWidthEffective - PAD_LEFT - PAD_RIGHT;
   const plotHeight = LINE_HEIGHT - PAD_TOP - PAD_BOTTOM;
 
-  const seriesCoords = displaySeries.map((series) => {
+  const seriesCoords = displaySeries.map((series): Coord[] => {
     const points = series.points;
     return points.map((point, index) => ({
       x: PAD_LEFT + (points.length <= 1 ? 0 : (index / (points.length - 1)) * plotWidth),
@@ -122,13 +142,13 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
     }));
   });
 
-  const tooltipEnabledForSeries = (seriesKey) => !selectedSeriesKey || selectedSeriesKey === seriesKey;
+  const tooltipEnabledForSeries = (seriesKey: string) => !selectedSeriesKey || selectedSeriesKey === seriesKey;
 
-  const showTooltip = (seriesKey, coord, actor) => {
+  const showTooltip = (seriesKey: string, coord: Coord, actor: string | undefined) => {
     if (!tooltipEnabledForSeries(seriesKey)) return;
     setTooltip({ visible: true, left: tooltip.left, top: tooltip.top, text: `${actor} | ${coord.point.label} | ${coord.point.value}` });
   };
-  const moveTooltip = (seriesKey, coord) => {
+  const moveTooltip = (seriesKey: string, coord: Coord) => {
     if (!tooltipEnabledForSeries(seriesKey)) return;
     const left = Math.min(lineWidthEffective - 180, Math.max(8, coord.x + 10));
     const top = Math.max(8, coord.y - 30);
@@ -149,9 +169,8 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
 
   let focusSummaryText = 'Click an author in the legend to highlight that line and row data.';
   if (selectedSeriesKey) {
-    const selectedIndex = displaySeries.findIndex((series) => String(series.login || series.actor || '') === selectedSeriesKey);
-    if (selectedIndex >= 0) {
-      const series = displaySeries[selectedIndex];
+    const series = displaySeries.find((candidate) => String(candidate.login || candidate.actor || '') === selectedSeriesKey);
+    if (series) {
       const total = series.points.reduce((sum, point) => sum + point.value, 0);
       const peak = series.points.reduce((max, point) => Math.max(max, point.value), 0);
       focusSummaryText = `${String(series.actor || selectedSeriesKey)}: ${total} total events, peak ${peak} in a displayed bucket.`;
@@ -164,7 +183,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
     <section className="stats-graph-card stats-graph-card-fullwidth">
       <h3 className="stats-graph-title">{titleOverride || 'Activity over time per author'}</h3>
       <p className="stats-graph-subtitle">
-        {subtitleOverride || `Heatmap + line trends for top ${chartData.series.length} authors over time.`}
+        {subtitleOverride || `Heatmap + line trends for top ${seriesCount} authors over time.`}
       </p>
       <p className="stats-graph-detail" style={{ margin: '4px 0 0' }}>
         Timeline honors Review Statistics Start date and End date filters.
@@ -238,7 +257,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                   {String(series.actor || 'unknown')}
                 </div>
                 {series.points.map((point, pointIndex) => {
-                  const cellStyle = { width: `${heatmapDateColWidth}px`, height: '16px', borderRadius: '3px', border: '1px solid #d0d7de' };
+                  const cellStyle: CSSProperties = { width: `${heatmapDateColWidth}px`, height: '16px', borderRadius: '3px', border: '1px solid #d0d7de' };
                   if (point.value === 0) {
                     cellStyle.backgroundColor = '#f6f8fa';
                   } else {
@@ -366,14 +385,14 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
           {displaySeries.map((series, seriesIndex) => {
             const color = REVIEWER_COLORS[seriesIndex % REVIEWER_COLORS.length];
             const seriesKey = String(series.login || series.actor || '');
-            const coords = seriesCoords[seriesIndex];
+            const coords = seriesCoords[seriesIndex] ?? [];
             const active = !selectedSeriesKey || selectedSeriesKey === seriesKey;
 
             return (
               <React.Fragment key={seriesKey}>
                 {coords.map((coord, index) => {
-                  if (index === 0) return null;
                   const prev = coords[index - 1];
+                  if (!prev) return null;
                   const dx = coord.x - prev.x;
                   const dy = coord.y - prev.y;
                   const len = Math.sqrt(dx * dx + dy * dy);

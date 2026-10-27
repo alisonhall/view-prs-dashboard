@@ -18,15 +18,26 @@ import { ReviewerActivityChart } from './ReviewerActivityChart';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { useReviewStats } from '../state/ReviewStatsContext';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
+import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
+import type { ReviewerRow, ReviewerStats, StatsViewState } from '../helpers/pr-review-stats-aggregation.helpers.ts';
+import type { PrEntry } from '../types/pr-data.ts';
 
 const { toCount } = createPrFormattingHelpers();
 
-const sumReviewerMetric = (reviewerRows, key) => asArray(reviewerRows).reduce((total, reviewer) => total + toCount(reviewer?.[key]), 0);
+const sumReviewerMetric = (reviewerRows: ReviewerRow[], key: keyof ReviewerRow) =>
+  reviewerRows.reduce((total, reviewer) => total + toCount(reviewer?.[key]), 0);
 
-export function StatsVisuals({ stats, rows = [], actorsMap = {} }) {
+export interface StatsVisualsProps {
+  stats?: Pick<ReviewerStats, 'reviewerRows'> | null;
+  // The table rows the timelines are built from.
+  rows?: PrEntry[];
+  actorsMap?: ActorsMap;
+}
+
+export function StatsVisuals({ stats, rows = [], actorsMap = {} }: StatsVisualsProps) {
   const { getNormalizedStatsDateRange, aggregateReviewerCommentsTimeline, aggregateReviewerApprovalsTimeline, setStatsViewState } =
     useReviewStats();
-  const setSortBy = (sortBy) => setStatsViewState({ sortBy });
+  const setSortBy = (sortBy: StatsViewState['sortBy']) => setStatsViewState({ sortBy });
   const reviewerRows = asArray(stats?.reviewerRows);
   if (!reviewerRows.length) {
     return null;
