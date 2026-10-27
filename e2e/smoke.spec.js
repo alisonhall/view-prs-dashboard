@@ -458,13 +458,29 @@ test("In review toggle, row summary, and showing a PR in the detail pane work", 
   await page.goto("/");
   await waitForPrTable(page);
 
-  // In review is a toggle button (aria-pressed); the smart groups holding
-  // it are open by default.
-  const toggle = prTables(page).getByRole("button", { name: /^In Review for PR #/ }).first();
-  await expect(toggle).toHaveCount(1);
-  const before = await toggle.getAttribute("aria-pressed");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
+  // In review is in the row's More menu, worded for what choosing it does.
+  // Every section open, so PR #1's row stays in view as it moves between
+  // them.
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  const moreButton = prTables(page)
+    .getByRole("button", { name: "More actions for PR #1", exact: true })
+    .filter({ visible: true })
+    .first();
+  const inReviewItem = page.getByRole("menu").getByRole("menuitem", { name: /^(Mark in review|Remove from in review)$/ });
+  const toggleInReview = async () => {
+    await moreButton.click();
+    const wasInReview = (await inReviewItem.textContent()).includes("Remove from in review");
+    // The server's ack runs the update script, which can take a few seconds.
+    await Promise.all([page.waitForResponse("**/view-prs/ack", { timeout: PR_TABLE_READY_TIMEOUT_MS }), inReviewItem.click()]);
+    await moreButton.click();
+    await expect(inReviewItem).toHaveText(wasInReview ? "Mark in review" : "Remove from in review");
+    await page.keyboard.press("Escape");
+  };
+  // There and back, so the server state the other tests share is as it was.
+  await toggleInReview();
+  await toggleInReview();
 
   const prNumber = await openFirstRowInPane(page);
   const summaryRow = prTables(page).getByRole("row", { name: `Summary for PR #${prNumber}`, exact: true }).first();
@@ -510,11 +526,13 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   await page.keyboard.press("Escape");
   await expect(pane).toHaveAccessibleName("PR details");
 
-  // The pane's own close returns focus to the PR's row (its visible copy).
+  // The pane's own close hides it, returning focus to the PR's row (its
+  // visible copy); the Detail pane button shows it hidden.
   await links.first().focus();
   await page.keyboard.press("ArrowDown");
   await pane.getByRole("button", { name: "Close details", exact: true }).click();
-  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(pane).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
   await expect(links.first()).toBeFocused();
   expect(consoleErrors).toEqual([]);
 });
@@ -1897,10 +1915,12 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
       });
     });
 
-  // In review is a toggle button now (aria-pressed); still controlled, with
-  // no local optimistic state.
-  const toggle = prTables(page).getByRole("button", { name: "In Review for PR #1", exact: true }).first();
-  const before = await toggle.getAttribute("aria-pressed");
+  // In review is in the row's More menu now, worded from the PR's state;
+  // still controlled, with no local optimistic state.
+  const moreButton = prTables(page).getByRole("button", { name: "More actions for PR #1", exact: true }).first();
+  const inReviewItem = page.getByRole("menu").getByRole("menuitem", { name: /^(Mark in review|Remove from in review)$/ });
+  await moreButton.click();
+  const before = await inReviewItem.textContent();
 
   await page.route("**/view-prs/ack", (route) =>
     route.fulfill({
@@ -1910,10 +1930,11 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
     }),
   );
 
-  await toggle.click();
-  // The app's async round-trip (even against a mocked route) takes a tick -
-  // wait for it to settle on the pre-click value.
-  await expect(toggle).toHaveAttribute("aria-pressed", before);
+  await Promise.all([page.waitForResponse("**/view-prs/ack"), inReviewItem.click()]);
+  // After the failed round-trip the menu still offers the same choice.
+  await moreButton.click();
+  await expect(inReviewItem).toHaveText(before);
+  await page.keyboard.press("Escape");
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {

@@ -86,7 +86,7 @@ describe('PrReviewCell', () => {
     expect(screen.getByRole('img', { name: 'Notes: other notes · difficulty 2' })).toBeInTheDocument();
   });
 
-  describe('assigned users', () => {
+  describe('assigned users and review requested', () => {
     const assignedGroup = () => screen.getByRole('group', { name: 'Assigned' });
 
     test('shows each assignee, marking the viewer', () => {
@@ -100,6 +100,8 @@ describe('PrReviewCell', () => {
       expect(within(assignedGroup()).getByRole('img', { name: 'The Octocat (you)' })).toBeInTheDocument();
       expect(within(assignedGroup()).getByRole('img', { name: 'Hubot' })).toBeInTheDocument();
       expect(screen.getByText('TO')).toHaveAttribute('data-viewer', 'true');
+      // Labelled on the cell itself, not only in tooltips.
+      expect(assignedGroup()).toHaveTextContent(/^Assigned/);
     });
 
     test('notes an assignee who is also a requested reviewer', () => {
@@ -112,7 +114,7 @@ describe('PrReviewCell', () => {
           } as never,
         },
       );
-      expect(within(assignedGroup()).getByRole('img', { name: 'Hubot (reviewer)' })).toBeInTheDocument();
+      expect(within(assignedGroup()).getByRole('img', { name: 'Hubot (review requested)' })).toBeInTheDocument();
     });
 
     test('shows the viewer when they\'re a requested reviewer but not assigned, and no other reviewers', () => {
@@ -129,13 +131,17 @@ describe('PrReviewCell', () => {
           } as never,
         },
       );
-      expect(within(assignedGroup()).getAllByRole('img')).toHaveLength(1);
-      expect(within(assignedGroup()).getByRole('img', { name: 'The Octocat (you, reviewer, not assigned)' })).toBeInTheDocument();
+      const requested = screen.getByRole('group', { name: 'Review requested' });
+      expect(requested).toHaveTextContent(/^Review requested/);
+      expect(within(requested).getAllByRole('img')).toHaveLength(1);
+      expect(within(requested).getByRole('img', { name: 'The Octocat (you, review requested)' })).toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
     });
 
-    test('shows no assigned group when nobody is assigned', () => {
+    test("shows no people when nobody is assigned and your review isn't requested", () => {
       renderCell({}, { display: { collectAssignedUsers: () => [], collectRequestedReviewers: () => [{ login: 'mona' }] } as never });
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Review requested' })).not.toBeInTheDocument();
     });
   });
 });
