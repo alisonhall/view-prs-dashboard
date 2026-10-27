@@ -27,7 +27,10 @@
 
 <body>
     <!-- react-app.tsx renders the whole page here (components/shell/AppShell.tsx). -->
-    <div id="app-root"></div>
+    <div id="app-root">
+        <!-- Replaced when the app mounts; still here means its script didn't run. -->
+        <p class="app-loading">Loading the app…</p>
+    </div>
 
     <!-- Vendored copy of node_modules/marked/lib/marked.umd.js: both the Vite
          dev server and the standalone Express server serve static files

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataProvider } from '../../state/PrDataProvider';
 import { SettingsDrawerProvider } from '../../state/SettingsDrawerContext';
@@ -11,9 +11,12 @@ import { AppShell } from './AppShell';
 // The views' contents have their own tests; stand-ins here show where the
 // shell puts them and when it mounts them.
 const mockMounts: string[] = [];
+// Stand-ins named here throw when they render.
+const mockFailing = new Set<string>();
 // A function declaration: jest.mock factories run before the module body.
 function mockStandIn(name: string) {
   return function StandIn() {
+    if (mockFailing.has(name)) throw new Error(`${name} broke`);
     mockMounts.push(name);
     return <div data-testid={name} />;
   };
@@ -73,15 +76,33 @@ const panel = (tabName: string) => {
 
 beforeEach(() => {
   mockMounts.length = 0;
+  mockFailing.clear();
 });
 
-test('renders the page: the header, the three views labelled by their tabs, and the Settings drawer', () => {
+test('renders the page: the header, the three views labelled by their tabs, and the Settings drawer', async () => {
+  const user = userEvent.setup();
   renderShell();
   expect(screen.getByRole('banner')).toBeInTheDocument();
   expect(panel('Pull requests')).toContainElement(document.getElementById('pr-sections'));
-  expect(panel('Review stats')).toContainElement(document.getElementById('stats-content-root'));
-  expect(panel('Authors')).toContainElement(document.getElementById('author-insights-content-root'));
   expect(screen.getByTestId('settings-drawer')).toBeInTheDocument();
+  // The lazy views are empty until first shown.
+  expect(panel('Review stats')).toBeEmptyDOMElement();
+
+  await user.click(screen.getByRole('tab', { name: 'Review stats' }));
+  await user.click(screen.getByRole('tab', { name: 'Authors' }));
+  expect(await screen.findByTestId('author-created-prs')).toBeInTheDocument();
+  const stats = within(panel('Review stats') as HTMLElement);
+  expect(stats.getByRole('group', { name: 'Review statistics controls', hidden: true })).toContainElement(screen.getByTestId('stats-controls'));
+  expect(stats.getByRole('region', { name: 'Review statistics', hidden: true })).toContainElement(screen.getByTestId('stats-content'));
+  const authors = within(panel('Authors') as HTMLElement);
+  for (const [name, part] of [
+    ['Selected author', 'author-header'],
+    ['Author comments', 'author-comments'],
+    ["Author's PR notes", 'author-notes'],
+    ["Author's created PRs", 'author-created-prs'],
+  ] as const) {
+    expect(authors.getByRole('region', { name })).toContainElement(screen.getByTestId(part));
+  }
 });
 
 test('shows the view whose tab is selected and hides the others', async () => {
@@ -142,6 +163,25 @@ test('a change the Quick check action follows (a filter edit) re-renders the hea
   expect(mockFormStore.listeners.size).toBeGreaterThan(0);
   act(() => mockFormStore.bump());
   expect(['pr-table', 'data-view-header', 'settings-drawer'].map(renderCount)).toEqual(before);
+});
+
+test('a view that throws shows a notice in its place; the header and the other views carry on', async () => {
+  const user = userEvent.setup();
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  mockFailing.add('stats-content');
+  renderShell();
+
+  await user.click(screen.getByRole('tab', { name: 'Review stats' }));
+  const notice = await within(panel('Review stats') as HTMLElement).findByRole('alert');
+  expect(notice).toHaveTextContent("This view couldn't be shown.");
+  expect(notice).toHaveTextContent('stats-content broke');
+  expect(within(notice).getByRole('button', { name: 'Reload' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('tab', { name: 'Pull requests' }));
+  expect(panel('Pull requests')).toBeVisible();
+  expect(within(panel('Pull requests') as HTMLElement).queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('banner')).toBeInTheDocument();
+  jest.mocked(console.error).mockRestore();
 });
 
 // The PR table waiting for the first data load is react-app.test.tsx's (it

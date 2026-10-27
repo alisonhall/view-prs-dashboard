@@ -5,6 +5,8 @@
 
 import ReactDOM from 'react-dom/client';
 import { AppShell } from './components/shell/AppShell';
+import { ErrorNotice } from './components/shell/ErrorNotice';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { ListSelectionSeeding } from './state/useListSelectionSeeding';
 import { SnackbarProvider } from './components/SnackbarProvider';
 import { buildFilterStateInitialValues } from './state/filterStateInitialValues';
@@ -68,61 +70,66 @@ const DEFAULT_STATS_VIEW_STATE: ReviewStatsViewState = {
  * - The rest sit above <AppShell /> because components across the page
  *   read them (the header, the drawer and the table all reach the activity
  *   queue, the labels and the job events).
+ *
+ * An error the views' own boundaries don't catch (in a Provider, the
+ * header or the drawer) shows a notice with Reload instead of a blank page.
  */
 function mountApp(container: HTMLElement) {
   ReactDOM.createRoot(container).render(
-    <RowFilterSelectionProvider>
-      <AuthorThreadResolutionSelectionProvider>
-        <ChangeFilterActorSelectionProvider>
-          <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
-            <StatusTextProvider>
-              <OutputTextProvider>
-                <RequestActivityProvider loadOnMount>
-                  <BackfillStatusProvider>
-                    <PrActivityQueueProvider>
-                      <TabStateProvider>
-                        <SnackbarProvider>
-                          <AutoRenderBlockingProvider>
-                            <PrDataProvider
-                              initialPayload={{}}
-                              initialSelectedRepo=""
-                              initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
-                              loadOnMount
-                            >
-                              <NotesDirtyProvider>
-                                <PrTableUiStateProvider>
-                                  <SettingsDrawerProvider>
-                                    <RepoLabelsProvider>
-                                      <AuthorInsightsDraftsProvider>
-                                        <AutoRenderBlockingSync />
-                                        <JobEventsProvider>
-                                          <FilterOptionsProvider>
-                                            {/* Every multi-select list's selection (the filter
-                                                bar's and the Settings drawer's), kept in step
-                                                with its options. */}
-                                            <ListSelectionSeeding />
-                                            <AppShell />
-                                          </FilterOptionsProvider>
-                                        </JobEventsProvider>
-                                      </AuthorInsightsDraftsProvider>
-                                    </RepoLabelsProvider>
-                                  </SettingsDrawerProvider>
-                                </PrTableUiStateProvider>
-                              </NotesDirtyProvider>
-                              <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
-                            </PrDataProvider>
-                          </AutoRenderBlockingProvider>
-                        </SnackbarProvider>
-                      </TabStateProvider>
-                    </PrActivityQueueProvider>
-                  </BackfillStatusProvider>
-                </RequestActivityProvider>
-              </OutputTextProvider>
-            </StatusTextProvider>
-          </FilterStateProvider>
-        </ChangeFilterActorSelectionProvider>
-      </AuthorThreadResolutionSelectionProvider>
-    </RowFilterSelectionProvider>,
+    <ErrorBoundary fallback={(error) => <ErrorNotice title="Something went wrong, so the page can't be shown." error={error} />}>
+      <RowFilterSelectionProvider>
+        <AuthorThreadResolutionSelectionProvider>
+          <ChangeFilterActorSelectionProvider>
+            <FilterStateProvider initialValues={buildFilterStateInitialValues()}>
+              <StatusTextProvider>
+                <OutputTextProvider>
+                  <RequestActivityProvider loadOnMount>
+                    <BackfillStatusProvider>
+                      <PrActivityQueueProvider>
+                        <TabStateProvider>
+                          <SnackbarProvider>
+                            <AutoRenderBlockingProvider>
+                              <PrDataProvider
+                                initialPayload={{}}
+                                initialSelectedRepo=""
+                                initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
+                                loadOnMount
+                              >
+                                <NotesDirtyProvider>
+                                  <PrTableUiStateProvider>
+                                    <SettingsDrawerProvider>
+                                      <RepoLabelsProvider>
+                                        <AuthorInsightsDraftsProvider>
+                                          <AutoRenderBlockingSync />
+                                          <JobEventsProvider>
+                                            <FilterOptionsProvider>
+                                              {/* Every multi-select list's selection (the filter
+                                                  bar's and the Settings drawer's), kept in step
+                                                  with its options. */}
+                                              <ListSelectionSeeding />
+                                              <AppShell />
+                                            </FilterOptionsProvider>
+                                          </JobEventsProvider>
+                                        </AuthorInsightsDraftsProvider>
+                                      </RepoLabelsProvider>
+                                    </SettingsDrawerProvider>
+                                  </PrTableUiStateProvider>
+                                </NotesDirtyProvider>
+                                <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
+                              </PrDataProvider>
+                            </AutoRenderBlockingProvider>
+                          </SnackbarProvider>
+                        </TabStateProvider>
+                      </PrActivityQueueProvider>
+                    </BackfillStatusProvider>
+                  </RequestActivityProvider>
+                </OutputTextProvider>
+              </StatusTextProvider>
+            </FilterStateProvider>
+          </ChangeFilterActorSelectionProvider>
+        </AuthorThreadResolutionSelectionProvider>
+      </RowFilterSelectionProvider>
+    </ErrorBoundary>,
   );
 }
 

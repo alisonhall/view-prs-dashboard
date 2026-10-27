@@ -15,13 +15,15 @@ import { ReviewStatsProvider } from '../ReviewStatsProvider';
 import { Snackbar } from '../Snackbar';
 import { DataViewHeader } from '../filter-bar/DataViewHeader';
 import { SettingsDrawer } from '../settings/SettingsDrawer';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
+import { ErrorNotice } from './ErrorNotice';
 
 // The Review stats and Authors views aren't visible on load, so their code
 // loads the first time each is shown (the Settings drawer splits its own
-// sections). StatsPart and AuthorPart gate them on useHasTabPanelBeenVisible,
-// not useIsTabPanelVisible: once shown they stay mounted, since several hold
+// sections). LazyView gates them on useHasTabPanelBeenVisible, not
+// useIsTabPanelVisible: once shown they stay mounted, since several hold
 // local UI state (the stats sort, the selected author's drafts) a remount
 // would reset.
 const ReviewStatsControls = lazy(() =>
@@ -54,14 +56,26 @@ function AppHeaderLive() {
 }
 
 // One view, hidden unless its tab is selected. Its own component so a tab
-// switch re-renders only the panels, not what's in them.
+// switch re-renders only the panels, not what's in them. A view that
+// throws (or whose code fails to load) shows a notice in its place; the
+// header and the other views carry on.
 function TabPanel({ id, labelledBy, children }: { id: TabPanelId; labelledBy: string; children: ReactNode }) {
   const isVisible = useIsTabPanelVisible(id);
   return (
     <section id={id} className="data-tab-panel" role="tabpanel" aria-labelledby={labelledBy} hidden={!isVisible}>
-      {children}
+      <ErrorBoundary fallback={(error) => <ErrorNotice title="This view couldn't be shown." error={error} />}>
+        {children}
+      </ErrorBoundary>
     </section>
   );
+}
+
+// Review stats and Authors: nothing until the view is first shown, then
+// its parts (and their code) load together and stay mounted.
+function LazyView({ id, children }: { id: TabPanelId; children: ReactNode }) {
+  const hasBeenVisible = useHasTabPanelBeenVisible(id);
+  if (!hasBeenVisible) return null;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }
 
 // The PR table, once PrDataProvider has rendered its first payload. Its own
@@ -88,29 +102,6 @@ function MergedRequestMoreActionLive() {
   return <MergedRequestMoreAction key={repo} isVisible={isVisible} repo={repo} onRequestMore={requestMoreMerged} />;
 }
 
-// Each part of the Authors view has its own AuthorInsightsProvider (the
-// selected author's data); AuthorInsightsDraftsProvider, above the shell,
-// keeps unsaved comments across them.
-function AuthorPart({ children }: { children: ReactNode }) {
-  const hasBeenVisible = useHasTabPanelBeenVisible('tab-panel-author-insights');
-  if (!hasBeenVisible) return null;
-  return (
-    <AuthorInsightsProvider>
-      <Suspense fallback={null}>{children}</Suspense>
-    </AuthorInsightsProvider>
-  );
-}
-
-function StatsPart({ children }: { children: ReactNode }) {
-  const hasBeenVisible = useHasTabPanelBeenVisible('tab-panel-review-stats');
-  if (!hasBeenVisible) return null;
-  return (
-    <ReviewStatsProvider>
-      <Suspense fallback={null}>{children}</Suspense>
-    </ReviewStatsProvider>
-  );
-}
-
 /**
  * The page: the snackbar, the app header and the auto-update-paused banner,
  * the three views (the header's tabs choose which shows), and the Settings
@@ -119,7 +110,9 @@ function StatsPart({ children }: { children: ReactNode }) {
  *
  * It reads no Context itself (the parts that do are their own components),
  * so it renders once and the elements below keep their identity: a tab
- * switch or a filter edit doesn't re-render the PR table.
+ * switch or a filter edit doesn't re-render the PR table. Review stats and
+ * Authors each have one Provider for all their parts (they used to be
+ * separate portals, each with its own).
  */
 export function AppShell() {
   // Outside clicks close the filter dropdowns.
@@ -154,48 +147,44 @@ export function AppShell() {
         </TabPanel>
 
         <TabPanel id="tab-panel-review-stats" labelledBy="tab-review-stats">
-          <div id="pr-stats" className="stats-panel">
-            <div id="stats-controls-root" role="group" aria-label="Review statistics controls">
-              <StatsPart>
-                <ReviewStatsControls />
-              </StatsPart>
-            </div>
-            <div id="stats-content-root" role="region" aria-label="Review statistics">
-              <StatsPart>
-                <ReviewStatsContent />
-              </StatsPart>
-            </div>
-          </div>
+          <LazyView id="tab-panel-review-stats">
+            <ReviewStatsProvider>
+              <div id="pr-stats" className="stats-panel">
+                <div id="stats-controls-root" role="group" aria-label="Review statistics controls">
+                  <ReviewStatsControls />
+                </div>
+                <div id="stats-content-root" role="region" aria-label="Review statistics">
+                  <ReviewStatsContent />
+                </div>
+              </div>
+            </ReviewStatsProvider>
+          </LazyView>
         </TabPanel>
 
         <TabPanel id="tab-panel-author-insights" labelledBy="tab-author-insights">
-          <div id="author-insights" className="author-insights-panel">
-            <div id="author-insights-selector-root">
-              <AuthorPart>
-                <AuthorInsightsSelector />
-              </AuthorPart>
-            </div>
-            <div id="author-insights-header-root" role="region" aria-label="Selected author">
-              <AuthorPart>
-                <AuthorInsightsHeader />
-              </AuthorPart>
-            </div>
-            <div id="author-insights-content-root" role="region" aria-label="Author comments">
-              <AuthorPart>
-                <AuthorInsightsCommentsSection />
-              </AuthorPart>
-            </div>
-            <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes">
-              <AuthorPart>
-                <AuthorInsightsNotesSection />
-              </AuthorPart>
-            </div>
-            <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs">
-              <AuthorPart>
-                <AuthorCreatedPrsSection />
-              </AuthorPart>
-            </div>
-          </div>
+          <LazyView id="tab-panel-author-insights">
+            {/* The selected author's data; AuthorInsightsDraftsProvider,
+                above the shell, keeps unsaved comments. */}
+            <AuthorInsightsProvider>
+              <div id="author-insights" className="author-insights-panel">
+                <div id="author-insights-selector-root">
+                  <AuthorInsightsSelector />
+                </div>
+                <div id="author-insights-header-root" role="region" aria-label="Selected author">
+                  <AuthorInsightsHeader />
+                </div>
+                <div id="author-insights-content-root" role="region" aria-label="Author comments">
+                  <AuthorInsightsCommentsSection />
+                </div>
+                <div id="author-insights-notes-root" role="region" aria-label="Author's PR notes">
+                  <AuthorInsightsNotesSection />
+                </div>
+                <div id="author-insights-created-prs-root" role="region" aria-label="Author's created PRs">
+                  <AuthorCreatedPrsSection />
+                </div>
+              </div>
+            </AuthorInsightsProvider>
+          </LazyView>
         </TabPanel>
       </div>
 

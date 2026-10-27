@@ -46,7 +46,8 @@ const getPrTableApp = () => document.querySelector('#pr-sections [data-testid="p
 
 describe('react-app.tsx: mounts the app, and the PR table once PrDataProvider has data', () => {
   beforeAll(async () => {
-    document.body.innerHTML = '<div id="app-root"></div>';
+    // index.html's placeholder, which mounting replaces.
+    document.body.innerHTML = '<div id="app-root"><p class="app-loading">Loading the app…</p></div>';
     await act(async () => {
       await import('./react-app');
     });
@@ -57,6 +58,7 @@ describe('react-app.tsx: mounts the app, and the PR table once PrDataProvider ha
     expect(root?.querySelector('header')).not.toBeNull();
     expect(root?.querySelector('#tab-panel-pr-data')).not.toBeNull();
     expect(root?.querySelector('#settings-drawer-root')).not.toBeNull();
+    expect(root?.querySelector('.app-loading')).toBeNull();
   });
 
   // The Run Script inputs render the password-manager hints themselves, and

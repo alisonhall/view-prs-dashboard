@@ -7951,6 +7951,9 @@ describe("index page rendering with Testing Library", () => {
   // a UI redesign): the page's text areas, content areas and multi-select
   // filter lists in index.html each have a role and a name. Some live in
   // tab panels that start hidden, hence { hidden: true }.
+  // The Review stats and Authors views mount the first time they're shown
+  // (this harness has no TabStateProvider to show them); AppShell.test.tsx
+  // checks their regions.
   test("index.html's page areas and filter lists are reachable by role and name", () => {
     initTestPage();
 
@@ -7960,12 +7963,7 @@ describe("index page rendering with Testing Library", () => {
       "Backfill status details",
       "Backfill log",
       "PR data summary",
-      "Review statistics",
-      "Author comments",
       "Status message",
-      "Selected author",
-      "Author's PR notes",
-      "Author's created PRs",
       // The filter bar above the table (its applied-filter chips are a
       // group only while a filter is applied).
       "Filters",
@@ -7976,7 +7974,6 @@ describe("index page rendering with Testing Library", () => {
 
     const groups = [
       "Backfill status badges",
-      "Review statistics controls",
       "Labels",
       "Excluded labels",
       "Authors",
