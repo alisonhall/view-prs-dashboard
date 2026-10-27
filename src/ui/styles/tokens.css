@@ -68,22 +68,25 @@
   --color-label-4-bg: #eef0f3;
   --color-label-4-text: #424a53;
 
-  /* Review stats chart: one per reviewer's line, in order */
+  /* Review stats chart: one per reviewer's line, in order. The bright
+     ones are darker here than in the dark theme, so each line stands out
+     on white, and the pink and navy are clear of the magenta and dark
+     blue. */
   --color-series-0: #1f77b4;
   --color-series-1: #d62728;
   --color-series-2: #2ca02c;
   --color-series-3: #9467bd;
-  --color-series-4: #ff7f0e;
-  --color-series-5: #17becf;
-  --color-series-6: #e377c2;
+  --color-series-4: #d4650a;
+  --color-series-5: #0f8b98;
+  --color-series-6: #c66c9c;
   --color-series-7: #8c564b;
-  --color-series-8: #bcbd22;
+  --color-series-8: #868712;
   --color-series-9: #7f7f7f;
   --color-series-10: #003f5c;
   --color-series-11: #ef5675;
-  --color-series-12: #ffa600;
-  --color-series-13: #2f4b7c;
-  --color-series-14: #00a676;
+  --color-series-12: #a86e00;
+  --color-series-13: #243072;
+  --color-series-14: #00966b;
   --color-series-15: #c51b8a;
 
   /* The darkest avatar colour (ui.css), under white initials */
@@ -195,8 +198,8 @@
   --color-label-4-bg: #262c34;
   --color-label-4-text: #c9d1d9;
 
-  /* The same series colours, but lighter where the light ones (dark blues
-     and a brown) would vanish on the dark surface. */
+  /* The original bright series colours, and lighter versions of the dark
+     blues and brown, which would vanish on the dark surface. */
   --color-series-0: #1f77b4;
   --color-series-1: #d62728;
   --color-series-2: #2ca02c;

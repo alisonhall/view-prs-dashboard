@@ -93,13 +93,61 @@ describe('design tokens', () => {
     });
 
     // Lines and shapes need 3:1 to be seen (WCAG's non-text contrast).
-    test("in the dark theme, every chart line and the darkest avatar's circle stand out from the surface", () => {
-      const shapes = [...Array.from({ length: 16 }, (_, index) => `--color-series-${index}`), '--color-avatar-dark'];
-      const failing = shapes
-        .map((name) => ({ name, ratio: contrast(dark[name], dark['--color-surface']) }))
-        .filter(({ ratio }) => !(ratio >= 3))
-        .map(({ name, ratio }) => `${name}: ${ratio.toFixed(2)}`);
-      expect(failing).toEqual([]);
+    const SERIES = Array.from({ length: 16 }, (_, index) => `--color-series-${index}`);
+    const belowThreeToOne = (theme: Record<string, string>, names: string[], backgrounds: string[]) =>
+      names.flatMap((name) =>
+        backgrounds
+          .map((background) => ({ pair: `${name} on ${background}`, ratio: contrast(theme[name], theme[background]) }))
+          .filter(({ ratio }) => !(ratio >= 3))
+          .map(({ pair, ratio }) => `${pair}: ${ratio.toFixed(2)}`),
+      );
+
+    // The line chart's background fades from the surface to the inset colour.
+    test.each([
+      ['light', light],
+      ['dark', dark],
+    ])('in the %s theme, every chart line stands out from the chart background', (_name, theme) => {
+      expect(belowThreeToOne(theme, SERIES, ['--color-surface', '--color-surface-inset'])).toEqual([]);
+    });
+
+    // CIE76 colour difference (ΔE) of two #rrggbb colours, in CIELAB (D65).
+    const toLab = (hex = '') => {
+      const [r = 0, g = 0, b = 0] = [1, 3, 5]
+        .map((index) => parseInt(hex.slice(index, index + 2), 16) / 255)
+        .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      const f = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);
+      const fx = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047);
+      const fy = f(r * 0.2126 + g * 0.7152 + b * 0.0722);
+      const fz = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+      return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+    };
+    const deltaE = (a?: string, b?: string) => {
+      const [l1 = 0, a1 = 0, b1 = 0] = toLab(a);
+      const [l2 = 0, a2 = 0, b2 = 0] = toLab(b);
+      return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+    };
+
+    // Below about 20, two thin lines (and their legend dots) are easy to mix up.
+    test.each([
+      ['light', light],
+      ['dark', dark],
+    ])('in the %s theme, every two chart lines are clearly different colours', (_name, theme) => {
+      const tooClose = SERIES.flatMap((first, index) =>
+        SERIES.slice(index + 1)
+          .map((second) => ({ pair: `${first} and ${second}`, difference: deltaE(theme[first], theme[second]) }))
+          .filter(({ difference }) => !(difference >= 20))
+          .map(({ pair, difference }) => `${pair}: ${difference.toFixed(1)}`),
+      );
+      expect(tooClose).toEqual([]);
+    });
+
+    test('the colour difference matches known values', () => {
+      expect(deltaE('#ffffff', '#ffffff')).toBe(0);
+      expect(deltaE('#000000', '#ffffff')).toBeCloseTo(100, 0);
+    });
+
+    test("in the dark theme, the darkest avatar's circle stands out from the surface", () => {
+      expect(belowThreeToOne(dark, ['--color-avatar-dark'], ['--color-surface'])).toEqual([]);
     });
 
     test.each([

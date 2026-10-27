@@ -898,7 +898,10 @@ becomes a small `react-app.tsx`. Done in steps:
   - Dark mode. The older stylesheets' ~370 literal colours (and the Review
     stats chart's inline ones) are on tokens now, merged into roles - so a
     few light colours moved slightly, to the nearest token. The chart's
-    16 line colours are tokens too, lighter in dark where they'd vanish.
+    16 line colours are tokens too, each at least 3:1 on the chart's
+    background in both themes (darker bright colours in light, lighter
+    dark blues and brown in dark), and every two of them at least 20
+    apart (CIE76 ΔE) so lines aren't mixed up.
     Only the avatars (white on a dark hue; the darkest is a token) and the
     JSON diff's code area (dark in both) keep literals. tokens.css redefines every colour and shadow under
     `:root[data-theme="dark"]`, and its test checks text contrast in both
