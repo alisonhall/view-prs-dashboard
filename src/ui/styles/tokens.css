@@ -73,4 +73,8 @@
   /* Elevation */
   --shadow-tooltip: 0 6px 16px rgba(31, 35, 40, 0.2);
   --shadow-drawer: -8px 0 24px rgba(31, 35, 40, 0.06);
+
+  /* How far below the window's top sticky things sit: the Auto update
+     paused banner's height while it shows. AppShell sets it on <html>. */
+  --sticky-top: 0px;
 }

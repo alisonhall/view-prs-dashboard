@@ -692,6 +692,7 @@ Insights behavior notes:
   - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll.
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
+- An open section's header (its name, count and summary) stays at the top of the window while you scroll through its rows, below the `Auto update paused` banner when that's showing.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any Notes field has an unsaved edit (text, selects, and comments or stories added or removed).

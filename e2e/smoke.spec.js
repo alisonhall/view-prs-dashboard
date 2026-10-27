@@ -557,6 +557,32 @@ test("the docked detail pane stays in view while the page scrolls", async ({ pag
   expect(box.y).toBeLessThan(40);
 });
 
+test("an open section's header stays at the top while its rows scroll by", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 400 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+
+  // Scroll so the Open PRs section's top is above the window but its rows
+  // are still in it.
+  const section = prSection(page, "Open PRs");
+  const header = prSectionSummary(section);
+  await page.evaluate(() => {
+    const target = document.querySelector('[data-pr-section="open"]');
+    window.scrollTo(0, target.getBoundingClientRect().top + window.scrollY + 40);
+  });
+  const sectionBox = await section.boundingBox();
+  expect(sectionBox.y).toBeLessThan(0);
+  expect(sectionBox.y + sectionBox.height).toBeGreaterThan(100);
+  // Its header is pinned at the top of the window.
+  const headerBox = await header.boundingBox();
+  expect(Math.round(headerBox.y)).toBe(0);
+  await expect(header).toBeInViewport();
+});
+
 test("with the detail pane hidden, clicking a row shows it again for that PR", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
@@ -998,6 +1024,15 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // It stays stuck to the top of the window however far down you are.
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(pausedBanner).toBeInViewport();
+  // Its height is what the section headers and the docked pane stick below.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const height = document.getElementById("app-banner-root").getBoundingClientRect().height;
+        return height > 0 && document.documentElement.style.getPropertyValue("--sticky-top") === `${Math.round(height)}px`;
+      }),
+    )
+    .toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
 
   // Switch away from the Pull requests view - the pane and its Notes stay mounted

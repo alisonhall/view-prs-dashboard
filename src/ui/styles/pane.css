@@ -56,8 +56,9 @@
   flex: none;
   width: clamp(360px, 30vw, 560px);
   position: sticky;
-  top: var(--space-3);
-  max-height: calc(100vh - var(--space-6));
+  /* Below the Auto update paused banner when it's showing (AppShell). */
+  top: calc(var(--sticky-top, 0px) + var(--space-3));
+  max-height: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
   overflow-y: auto;
 }
 

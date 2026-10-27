@@ -885,8 +885,12 @@ becomes a small `react-app.tsx`. Done in steps:
     Me, Review Requested from Me (someone else's PR with your review
     requested now - not teams' requests, which the data doesn't resolve),
     open by default; Open PRs I'm Involved In stays, closed by default.
-  - Next: the section names stick to the top while their section scrolls;
-    then dark mode (the older stylesheets' colours onto tokens, then
+  - Sticky section names: an open section's header sticks to the top while
+    its rows scroll (`.pr-section` is `overflow: clip` now). AppShell puts
+    the Auto update paused banner's height in `--sticky-top` on <html>,
+    so the headers - and the docked pane, which the banner used to cover -
+    stick just below it.
+  - Next: dark mode (the older stylesheets' colours onto tokens, then
     Settings › Appearance: Light / Dark / System, starting on Light, saved in
     user-defaults.json with a copy in the browser for the first paint).
 

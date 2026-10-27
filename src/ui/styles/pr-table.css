@@ -10,7 +10,9 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  overflow: hidden;
+  /* clip, not hidden: keeps the rows inside the rounded corners without
+     making this a scroll container, which would stop the header sticking. */
+  overflow: clip;
 }
 
 .pr-section-header {
@@ -37,8 +39,21 @@
   box-shadow: inset var(--focus-ring);
 }
 
+/* An open section's header stays at the top of the window while you
+   scroll through its rows (below the Auto update paused banner when it's
+   showing: --sticky-top, from AppShell), so it's clear which section
+   you're in. */
 .pr-section[open] > .pr-section-header {
+  position: sticky;
+  top: var(--sticky-top, 0px);
+  z-index: 10;
   border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+}
+
+.pr-section[open] > .pr-section-header:hover {
+  background: var(--color-surface-subtle);
 }
 
 .pr-section-chevron {
