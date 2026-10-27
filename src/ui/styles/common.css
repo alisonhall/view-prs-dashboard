@@ -30,7 +30,10 @@
   border: 1px solid #d0d7de;
   border-radius: 10px;
   background: #fff;
-  overflow: hidden;
+  /* clip, not hidden: it still keeps the contents inside the rounded
+     corners, but doesn't make this a scroll container, which would stop
+     the docked detail pane (pane.css) sticking to the window. */
+  overflow: clip;
   margin-bottom: 12px;
 }
 

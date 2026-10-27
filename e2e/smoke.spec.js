@@ -484,12 +484,14 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   const pane = detailPane(page);
   await expect(pane).toHaveAccessibleName("PR details");
   await expect(pane).toContainText("No PR selected");
-  // Docked to the right of the tables, which drop Size and Activity for it.
+  // Docked to the right of the tables, which keep every column.
   const paneBox = await pane.boundingBox();
   const firstTable = prTables(page).getByRole("table").first();
   const tableBox = await firstTable.boundingBox();
   expect(paneBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
-  await expect(firstTable.getByRole("columnheader", { name: "Activity", exact: true })).toHaveCount(0);
+  for (const name of ["Author", "Size", "Activity", "Actions"]) {
+    await expect(firstTable.getByRole("columnheader", { name, exact: true })).toBeVisible();
+  }
 
   // ↓ from a row's link selects that row; ↓ again moves to the next one.
   const table = prTables(page).getByRole("table").first();
@@ -515,6 +517,39 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   await expect(pane).toHaveAccessibleName("PR details");
   await expect(links.first()).toBeFocused();
   expect(consoleErrors).toEqual([]);
+});
+
+test("the docked detail pane stays in view while the page scrolls", async ({ page }) => {
+  // Short enough that the open sections scroll the page.
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  await openFirstRowInPane(page);
+
+  const pane = detailPane(page);
+  // Partway down: at the very end it rightly moves up with the tables' end.
+  await page.evaluate(() => window.scrollTo(0, 400));
+  expect(await page.evaluate(() => window.scrollY)).toBe(400);
+  // Stuck near the top of the window, not scrolled away with the table.
+  const box = await pane.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeLessThan(40);
+});
+
+test("with the detail pane hidden, clicking a row shows it again for that PR", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await expect(detailPane(page)).toHaveCount(0);
+
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who").click();
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
 });
 
 test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {

@@ -71,7 +71,10 @@ export function PrTitleCell({
 
   return (
     <td className="pr-cell pr-cell-title" data-pr-number={prNumber} data-repo={repo || ''}>
-      <div className="pr-title-line">
+      {/* The same layout however much fits: the chevron in a column of its
+          own, the title wrapping beside it, and the labels on a line of
+          their own under it. */}
+      <div className="pr-title-cell">
         <button
           type="button"
           className="ui-icon-button pr-expand-toggle"
@@ -81,59 +84,67 @@ export function PrTitleCell({
         >
           <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} />
         </button>
-        {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
-        <span className="pr-title-text">
-          {title}{' '}
-          <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
-            #{prNumber}
-          </a>
-        </span>
-        {isActive ? (
-          <span className="pr-busy" data-busy="active">
-            <Signal icon="refresh" tone="pending" label={`PR #${prNumber} update in progress`} size={14} />
-          </span>
-        ) : isQueued ? (
-          <span className="pr-busy" data-busy="queued">
-            <Signal icon="checksPending" tone="muted" label={`PR #${prNumber} queued for update`} size={14} />
-          </span>
-        ) : null}
-        <CopyIconButton
-          className="pr-copy-title"
-          text={plainTitle ? `${plainTitle} #${prNumber}` : ''}
-          html={plainTitle ? `${escapeHtml(plainTitle)} <a href="${escapeHtml(url)}">#${escapeHtml(prNumber)}</a>` : ''}
-          label="Copy PR title and link"
-        />
-        {labels.map((label, index) => (
-          <span key={`${label}-${index}`} className="pr-label" data-hue={labelHue(label)}>
-            {label}
-          </span>
-        ))}
-      </div>
-      {hasMeta && (
-        <div className="pr-title-meta">
-          {showTargetBranch && (
-            <span>
-              Target branch: <code>{targetBranch}</code>
+        <div className="pr-title-body">
+          <div className="pr-title-line">
+            {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
+            <span className="pr-title-text">
+              {title}{' '}
+              <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
+                #{prNumber}
+              </a>
             </span>
+            {isActive ? (
+              <span className="pr-busy" data-busy="active">
+                <Signal icon="refresh" tone="pending" label={`PR #${prNumber} update in progress`} size={14} />
+              </span>
+            ) : isQueued ? (
+              <span className="pr-busy" data-busy="queued">
+                <Signal icon="checksPending" tone="muted" label={`PR #${prNumber} queued for update`} size={14} />
+              </span>
+            ) : null}
+            <CopyIconButton
+              className="pr-copy-title"
+              text={plainTitle ? `${plainTitle} #${prNumber}` : ''}
+              html={plainTitle ? `${escapeHtml(plainTitle)} <a href="${escapeHtml(url)}">#${escapeHtml(prNumber)}</a>` : ''}
+              label="Copy PR title and link"
+            />
+          </div>
+          {labels.length > 0 && (
+            <div className="pr-title-labels">
+              {labels.map((label, index) => (
+                <span key={`${label}-${index}`} className="pr-label" data-hue={labelHue(label)}>
+                  {label}
+                </span>
+              ))}
+            </div>
           )}
-          {pendingCommentCount > 0 && (
-            <span
-              className="pr-meta-chip"
-              data-tone="attention"
-              title="Unsubmitted draft review comments"
-            >
-              <Icon name="pencil" size={12} />
-              {pendingCommentCount} pending comment{pendingCommentCount === 1 ? '' : 's'}
-            </span>
-          )}
-          {pr?.updatePending && (
-            <span className="pr-meta-chip" title="A change was detected on GitHub; full details are queued to refresh.">
-              <Icon name="refresh" size={12} />
-              Update queued
-            </span>
+          {hasMeta && (
+            <div className="pr-title-meta">
+              {showTargetBranch && (
+                <span>
+                  Target branch: <code>{targetBranch}</code>
+                </span>
+              )}
+              {pendingCommentCount > 0 && (
+                <span
+                  className="pr-meta-chip"
+                  data-tone="attention"
+                  title="Unsubmitted draft review comments"
+                >
+                  <Icon name="pencil" size={12} />
+                  {pendingCommentCount} pending comment{pendingCommentCount === 1 ? '' : 's'}
+                </span>
+              )}
+              {pr?.updatePending && (
+                <span className="pr-meta-chip" title="A change was detected on GitHub; full details are queued to refresh.">
+                  <Icon name="refresh" size={12} />
+                  Update queued
+                </span>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
     </td>
   );
 }

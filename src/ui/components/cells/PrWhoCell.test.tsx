@@ -25,9 +25,11 @@ const descriptionText = () => {
 };
 
 describe('PrWhoCell', () => {
-  test('shows the author by name, as initials', () => {
+  test("shows the author's avatar and name", () => {
     renderCell({ authorLogin: 'octocat', author: 'The Octocat' });
-    expect(screen.getByRole('img', { name: 'Author: The Octocat' })).toHaveTextContent('TO');
+    const who = screen.getByRole('img', { name: 'Author: The Octocat' });
+    expect(who).toHaveTextContent('TO');
+    expect(who.querySelector('.pr-who-name')).toHaveTextContent('The Octocat');
   });
 
   test('marks the viewer\'s own PR', () => {

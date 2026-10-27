@@ -975,17 +975,29 @@ describe('PrTableApp', () => {
       expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
 
-    test('given the pane toggle, then the pane hides and Size/Activity come back; hiding asks first with unsaved notes', () => {
+    test('given the pane hidden, when a row is clicked, then the PR is selected and the pane shown; clicking it again deselects without hiding it', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.isPaneVisible).toBe(false);
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(capturedUiState.isPaneVisible).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(true);
+    });
+
+    test('given the pane toggle, then the pane hides; hiding asks first with unsaved notes', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
         renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
         const toggle = screen.getByRole('button', { name: 'Detail pane' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
-        expect(openSectionProps().showSizeAndActivity).toBe(false);
 
         React.act(() => toggle.click());
         expect(capturedUiState.isPaneVisible).toBe(false);
-        expect(openSectionProps().showSizeAndActivity).toBe(true);
         expect(confirm).not.toHaveBeenCalled();
 
         React.act(() => toggle.click());

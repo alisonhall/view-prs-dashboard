@@ -5,8 +5,8 @@
  * be told apart.
  *
  * Columns: select, Signals, Pull request, Who, Review, CHK·MRG, Size,
- * Activity, Actions. Size and Activity hide while the detail pane is
- * docked (`showSizeAndActivity`).
+ * Activity, Actions - all of them, with the detail pane docked too (its
+ * cells then take two lines where they need to; pr-table.css).
  *
  * The detail pane's keyboard selection, while focus is in the table (on
  * any row control, not while typing or when the key was already used):
@@ -33,7 +33,6 @@ interface Column {
   // screen readers), and its hover tooltip.
   fullLabel?: string;
   hideLabel?: boolean;
-  optional?: boolean;
 }
 
 const COLUMNS: Column[] = [
@@ -43,8 +42,8 @@ const COLUMNS: Column[] = [
   { key: 'who', label: 'Who', fullLabel: 'Author' },
   { key: 'review', label: 'Review', fullLabel: 'Review: approvals, open conversations, viewed files, notes, assigned' },
   { key: 'checks', label: 'CHK·MRG', fullLabel: 'Checks and mergeability' },
-  { key: 'size', label: 'Size', optional: true },
-  { key: 'activity', label: 'Activity', optional: true },
+  { key: 'size', label: 'Size' },
+  { key: 'activity', label: 'Activity' },
   { key: 'actions', label: 'Actions' },
 ];
 
@@ -69,7 +68,6 @@ export interface PrTableProps extends PrRowHandlers {
   getAttentionReasons?: (entry: PrEntry) => string[];
   activePrNumbers?: string[];
   queuedPrNumbers?: string[];
-  showSizeAndActivity?: boolean;
 }
 
 const NO_FLAGS: PrFlags = { isFlagged: false, isInReview: false, isAcknowledged: false };
@@ -94,7 +92,6 @@ export function PrTable({
   getAttentionReasons,
   activePrNumbers,
   queuedPrNumbers,
-  showSizeAndActivity = true,
   ...handlers
 }: PrTableProps) {
   useTooltipController();
@@ -122,7 +119,7 @@ export function PrTable({
       target.querySelector<HTMLElement>('.pr-link')?.focus();
     }
   };
-  const columns = COLUMNS.filter((column) => showSizeAndActivity || !column.optional);
+  const columns = COLUMNS;
   // Composite "repo::prNumber" keys: PR numbers are only unique within a repo.
   const activeKeys = new Set((activePrNumbers || []).map(String));
   const queuedKeys = new Set((queuedPrNumbers || []).map(String));
@@ -188,7 +185,6 @@ export function PrTable({
               isActive={activeKeys.has(activeKey)}
               isQueued={queuedKeys.has(activeKey)}
               columnCount={columns.length}
-              showSizeAndActivity={showSizeAndActivity}
               {...handlers}
             />
           );

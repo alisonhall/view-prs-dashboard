@@ -909,8 +909,8 @@ describe("index page rendering with Testing Library", () => {
     expect(summaryToggle).toHaveAccessibleName("Hide summary for PR #11");
     expect(within(summaryRow).getByRole("heading", { name: "Why it's here" })).toBeInTheDocument();
     // One cell spanning every column: select, Signals, Pull request, Who,
-    // Review, CHK·MRG, Actions (Size and Activity make room for the pane).
-    expect(summaryRow?.querySelector("td")?.getAttribute("colspan")).toBe("7");
+    // Review, CHK·MRG, Size, Activity, Actions (all kept with the pane open).
+    expect(summaryRow?.querySelector("td")?.getAttribute("colspan")).toBe("9");
 
     const pane = screen.getByRole("complementary", { name: "PR details" });
     expect(pane).toHaveTextContent("No PR selected");

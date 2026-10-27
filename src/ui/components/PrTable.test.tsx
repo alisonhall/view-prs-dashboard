@@ -60,12 +60,6 @@ describe('PrTable', () => {
     expect(abbreviation).toHaveAttribute('data-tip', 'Checks and mergeability');
   });
 
-  test('drops the Size and Activity columns when asked', () => {
-    renderTable({ showSizeAndActivity: false });
-    expect(headerShown()).toEqual(['Select', 'Signals', 'Pull request', 'Who', 'Review', 'CHK·MRG', 'Actions']);
-    expect(document.querySelectorAll('col')).toHaveLength(7);
-  });
-
   test('renders a row per PR, in order', () => {
     renderTable();
     expect(Array.from(document.querySelectorAll('tr.pr-row')).map((row) => row.getAttribute('data-pr-number'))).toEqual(['2', '1']);

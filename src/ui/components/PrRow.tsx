@@ -60,7 +60,6 @@ export interface PrRowProps extends PrRowHandlers {
   isActive: boolean;
   isQueued: boolean;
   columnCount: number;
-  showSizeAndActivity: boolean;
 }
 
 // Clicks on these do their own thing, not select the row. (The Signals and
@@ -84,7 +83,6 @@ export const PrRow = memo(function PrRow({
   isActive,
   isQueued,
   columnCount,
-  showSizeAndActivity,
   onToggleInsights,
   onSelectRow,
   onShowDetails,
@@ -137,12 +135,10 @@ export const PrRow = memo(function PrRow({
         <PrWhoCell pr={pr} actorsMap={actorsMap} />
         <PrReviewCell entry={entry} pr={pr} actorsMap={actorsMap} />
         <PrChecksCell pr={pr} />
-        {showSizeAndActivity && <PrSizeCell pr={pr} />}
-        {showSizeAndActivity && (
-          // Staleness depends on the PR's own lifecycle section, not the
-          // smart group it's shown in.
-          <PrActivityCell pr={pr} lastCheckedAt={lastCheckedAt} sectionKey={lifecycleSection || sectionKey} />
-        )}
+        <PrSizeCell pr={pr} />
+        {/* Staleness depends on the PR's own lifecycle section, not the
+            smart group it's shown in. */}
+        <PrActivityCell pr={pr} lastCheckedAt={lastCheckedAt} sectionKey={lifecycleSection || sectionKey} />
         <PrActionsCell
           pr={pr}
           repo={repo}

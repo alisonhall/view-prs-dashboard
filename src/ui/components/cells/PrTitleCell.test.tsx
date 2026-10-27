@@ -65,6 +65,26 @@ describe('PrTitleCell', () => {
     expect(hue).toMatch(/^[0-4]$/);
   });
 
+  // The same layout however wide the column: the chevron beside the title,
+  // and the labels always on a line of their own under it.
+  test('puts the labels on their own line under the title', () => {
+    renderCell({ pr: { number: '101', title: 'Fix', labels: ['bug'] } });
+    const titleLine = document.querySelector('.pr-title-line');
+    const labelsLine = document.querySelector('.pr-title-labels');
+    expect(titleLine).toHaveTextContent('Fix #101');
+    expect(titleLine).not.toContainElement(screen.getByText('bug'));
+    expect(labelsLine).toContainElement(screen.getByText('bug'));
+    expect(titleLine?.nextElementSibling).toBe(labelsLine);
+    expect(document.querySelector('.pr-title-cell')?.firstElementChild).toBe(
+      screen.getByRole('button', { name: 'Show summary for PR #101' }),
+    );
+  });
+
+  test('adds no labels line without labels', () => {
+    renderCell({ pr: { number: '101', title: 'Fix' } });
+    expect(document.querySelector('.pr-title-labels')).toBeNull();
+  });
+
   test('notes a non-main target branch, and not main', () => {
     renderCell({ pr: { number: '101', title: 'Fix', targetBranch: 'release/2.0' } });
     expect(screen.getByText(/Target branch:/)).toHaveTextContent('Target branch: release/2.0');
