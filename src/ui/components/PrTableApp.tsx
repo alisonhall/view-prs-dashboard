@@ -885,13 +885,20 @@ export function PrTableApp() {
   });
 
   // Detail pane selection (UI_REDESIGN_PLAN.md, phase 4). A row click
-  // selects its PR and shows the pane if it was hidden, or deselects it
-  // when it's the selected one; ↑/↓ in a table select without toggling
-  // (PrTable); the summary's "Show details" selects and shows the pane too.
+  // selects its PR and shows the pane if it was hidden. Clicking the
+  // selected PR again closes the pane, like its close button (it used to
+  // leave the pane open saying "No PR selected") - or, if the pane was
+  // hidden with that PR still selected, shows it. ↑/↓ in a table select
+  // without toggling (PrTable); the summary's "Show details" selects and
+  // shows the pane too.
   const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string) => {
     const pr = { repo, prNumber: String(prNumber ?? '') };
     if (samePr(pr, selectedPr)) {
-      selectPr(null);
+      if (!isPaneVisible) {
+        setPaneVisible(true);
+        return;
+      }
+      if (selectPr(null)) setPaneVisible(false);
       return;
     }
     if (selectPr(pr)) setPaneVisible(true);

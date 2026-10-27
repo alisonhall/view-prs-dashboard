@@ -710,6 +710,22 @@ test("with the detail pane hidden, clicking a row shows it again for that PR", a
   await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
 });
 
+test("clicking the PR shown in the detail pane again closes the pane", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  const authorCell = summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who");
+
+  await authorCell.click();
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
+
+  // Closed, not left open saying "No PR selected".
+  await authorCell.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
+});
+
 test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 900 });
   await page.goto("/");

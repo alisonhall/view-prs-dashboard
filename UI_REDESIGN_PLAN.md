@@ -916,6 +916,10 @@ becomes a small `react-app.tsx`. Done in steps:
     PR_SECTION_CATALOG lists the sections for Settings; its test checks it
     against the section builders. PrTableApp applies the choices after
     building the sections, so a change doesn't rebuild them.
+  - Clicking the row of the PR in the detail pane closes the pane (like
+    its close button), instead of leaving it open on "No PR selected". If
+    the pane was hidden with that PR still selected, the click shows it.
+    A double-click counts once, so it doesn't open the pane and close it.
 
 ## Decisions (2026-10-24)
 

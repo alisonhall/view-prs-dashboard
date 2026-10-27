@@ -98,8 +98,10 @@ export const PrRow = memo(function PrRow({
 
   const handleClick = (event: MouseEvent<HTMLTableRowElement>) => {
     const target = event.target as Element;
-    // Not when the click was on a control, or ended a text selection.
-    if (target.closest(INTERACTIVE) || String(window.getSelection?.() ?? '').trim()) return;
+    // Not when the click was on a control, or ended a text selection - nor
+    // the second click of a double-click, which would close the pane the
+    // first one opened (a click on the selected PR closes it).
+    if (event.detail > 1 || target.closest(INTERACTIVE) || String(window.getSelection?.() ?? '').trim()) return;
     onSelectRow?.(pr.number, repo);
   };
 

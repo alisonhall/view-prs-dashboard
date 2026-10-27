@@ -90,6 +90,18 @@ describe('PrRow', () => {
     expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
   });
 
+  test('a double-click selects it once (its second click would close the pane the first opened)', async () => {
+    const user = userEvent.setup();
+    const onSelectRow = jest.fn();
+    renderRow({ onSelectRow });
+    await user.dblClick(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledTimes(1);
+
+    // Two separate clicks still both count.
+    await user.click(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledTimes(2);
+  });
+
   test('a click on a signal icon (inside a focusable group, not a control) selects it too', async () => {
     const user = userEvent.setup();
     const onSelectRow = jest.fn();

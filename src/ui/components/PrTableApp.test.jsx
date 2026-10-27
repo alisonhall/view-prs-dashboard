@@ -913,7 +913,7 @@ describe('PrTableApp', () => {
     });
     const openSectionProps = () => capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
 
-    test('given a row click, then its PR is selected, shown in the pane and marked in the sections; a second click deselects it', () => {
+    test('given a row click, then its PR is selected, shown in the pane and marked in the sections; a second click closes the pane', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       expect(latestPane().entry).toBeNull();
 
@@ -922,9 +922,25 @@ describe('PrTableApp', () => {
       expect(latestPane().entry.prNumber).toBe('1');
       expect(openSectionProps().selectedPrKey).toBe('owner/repo::1');
 
+      // Not left open saying "No PR selected": closed, like its close button.
       React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
       expect(capturedUiState.selectedPr).toBeNull();
-      expect(latestPane().entry).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+    });
+
+    test('given the selected PR has unsaved notes, when its row is clicked again and the discard is refused, then the pane stays open on it', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        expect(confirm).toHaveBeenCalled();
+        expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+        expect(capturedUiState.isPaneVisible).toBe(true);
+      } finally {
+        confirm.mockRestore();
+      }
     });
 
     test('given ↑/↓ (onSelectPr), then it selects without toggling and reports success', () => {
@@ -1024,7 +1040,7 @@ describe('PrTableApp', () => {
       expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
 
-    test('given the pane hidden, when a row is clicked, then the PR is selected and the pane shown; clicking it again deselects without hiding it', () => {
+    test('given the pane hidden, when a row is clicked, then the PR is selected and the pane shown; clicking it again closes the pane', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
       expect(capturedUiState.isPaneVisible).toBe(false);
@@ -1035,7 +1051,20 @@ describe('PrTableApp', () => {
 
       React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
       expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+    });
+
+    test('given the pane hidden with a PR still selected, when the row of that PR is clicked, then the pane shows it again', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      // The toolbar's Detail pane button hides the pane but keeps the selection.
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.isPaneVisible).toBe(false);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
       expect(capturedUiState.isPaneVisible).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
 
     test('given the pane toggle, then the pane hides; hiding asks first with unsaved notes', () => {
