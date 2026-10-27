@@ -5,6 +5,44 @@ const {
   createViewPrsPrRouteHelpers,
 } = require("../helpers/view-prs-pr-route-helpers");
 
+const NOTE_TONES = ["Positive", "Negative", "Neutral"];
+const validIsoOrNull = (value) => {
+  const trimmed = String(value || "").trim();
+  return Number.isFinite(Date.parse(trimmed)) ? trimmed : null;
+};
+
+// POST /notes' comments as they're stored. The Notes tab sends only id,
+// author, tone and note, so a comment's timestamps come from its stored
+// copy (matched by id): createdAt is kept, and updatedAt moves to `now` only
+// when its author, tone or note changed. Timestamps a client does send
+// win. A new comment gets `now` for both.
+const buildSavedNoteComments = (rawComments, storedComments, now) => {
+  const storedById = new Map(
+    (Array.isArray(storedComments) ? storedComments : [])
+      .filter((comment) => comment && typeof comment === "object" && comment.id)
+      .map((comment) => [String(comment.id), comment]),
+  );
+  return (Array.isArray(rawComments) ? rawComments : [])
+    .filter((comment) => comment && typeof comment === "object")
+    .map((comment) => {
+      const id =
+        String(comment.id || "").trim() ||
+        `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const author = String(comment.author ?? "");
+      const tone = NOTE_TONES.includes(comment.tone) ? comment.tone : "Neutral";
+      const note = String(comment.note ?? "");
+      const stored = storedById.get(id);
+      const createdAt =
+        validIsoOrNull(comment.createdAt) || validIsoOrNull(stored?.createdAt) || now;
+      const unchanged =
+        stored && stored.author === author && stored.tone === tone && stored.note === note;
+      const updatedAt =
+        validIsoOrNull(comment.updatedAt) ||
+        (unchanged ? validIsoOrNull(stored.updatedAt) || createdAt : stored ? now : createdAt);
+      return { id, author, tone, note, createdAt, updatedAt };
+    });
+};
+
 const registerViewPrsPrRoutes = ({
   app,
   normalizeNotes,
@@ -103,41 +141,6 @@ const registerViewPrsPrRoutes = ({
       return;
     }
 
-    const noteTimestampsNow = new Date().toISOString();
-    const comments = rawComments
-      .filter((comment) => comment && typeof comment === "object")
-      .map((comment) => ({
-        id:
-          String(comment.id || "").trim() ||
-          `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        author: String(comment.author ?? ""),
-        tone: ["Positive", "Negative", "Neutral"].includes(comment.tone)
-          ? comment.tone
-          : "Neutral",
-        note: String(comment.note ?? ""),
-        createdAt:
-          Number.isFinite(Date.parse(String(comment.createdAt || "").trim()))
-            ? String(comment.createdAt).trim()
-            : noteTimestampsNow,
-        updatedAt:
-          Number.isFinite(Date.parse(String(comment.updatedAt || "").trim()))
-            ? String(comment.updatedAt).trim()
-            : Number.isFinite(Date.parse(String(comment.createdAt || "").trim()))
-              ? String(comment.createdAt).trim()
-              : noteTimestampsNow,
-      }));
-
-    const notes = normalizeNotes({
-      comments,
-      otherNotes: String(body.otherNotes ?? ""),
-      prDifficulty: String(body.prDifficulty ?? ""),
-      stories: body.stories,
-      // Older clients send these instead of stories.
-      rallyStories: body.rallyStories,
-      rallyLinks: body.rallyLinks,
-      analysisOfPr: String(body.analysisOfPr ?? ""),
-    });
-
     try {
       let data = { byPrNumber: {}, lastRun: null };
       if (fs.existsSync(viewPrsDataFile)) {
@@ -156,6 +159,21 @@ const registerViewPrsPrRoutes = ({
       const userState = normalizeViewPrsUserState(
         readJsonFileIfExists(viewPrsUserStateFile, {}),
       );
+      const comments = buildSavedNoteComments(
+        rawComments,
+        userState.notesByPrNumber[prNumber]?.comments,
+        new Date().toISOString(),
+      );
+      const notes = normalizeNotes({
+        comments,
+        otherNotes: String(body.otherNotes ?? ""),
+        prDifficulty: String(body.prDifficulty ?? ""),
+        stories: body.stories,
+        // Older clients send these instead of stories.
+        rallyStories: body.rallyStories,
+        rallyLinks: body.rallyLinks,
+        analysisOfPr: String(body.analysisOfPr ?? ""),
+      });
       userState.notesByPrNumber[prNumber] = notes;
       writeViewPrsUserState(userState);
 
@@ -395,5 +413,6 @@ const registerViewPrsPrRoutes = ({
 };
 
 module.exports = {
+  buildSavedNoteComments,
   registerViewPrsPrRoutes,
 };
