@@ -110,7 +110,7 @@ describe('PrReviewCell', () => {
         {
           display: {
             collectAssignedUsers: () => [{ login: 'hubot', name: 'Hubot' }],
-            collectRequestedReviewers: () => [{ login: 'hubot', name: 'Hubot' }],
+            collectPendingReviewRequests: () => [{ login: 'hubot', name: 'Hubot' }],
           } as never,
         },
       );
@@ -124,7 +124,7 @@ describe('PrReviewCell', () => {
           identity: { getEffectiveViewerLogin: () => 'octocat' },
           display: {
             collectAssignedUsers: () => [],
-            collectRequestedReviewers: () => [
+            collectPendingReviewRequests: () => [
               { login: 'octocat', name: 'The Octocat' },
               { login: 'mona', name: 'Mona' },
             ],
@@ -138,8 +138,19 @@ describe('PrReviewCell', () => {
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
     });
 
+    // GitHub drops a request once that person reviews; the broad reviewers
+    // list (collectRequestedReviewers) falls back to whoever has reviewed,
+    // which must not read as "Review requested".
+    test('does not show "Review requested" for a PR you have already reviewed, with no request left', () => {
+      renderCell(
+        { reviews: [{ authorLogin: 'octocat', state: 'APPROVED' }], requestedReviewers: [] },
+        { identity: { getEffectiveViewerLogin: () => 'octocat' } },
+      );
+      expect(screen.queryByRole('group', { name: 'Review requested' })).not.toBeInTheDocument();
+    });
+
     test("shows no people when nobody is assigned and your review isn't requested", () => {
-      renderCell({}, { display: { collectAssignedUsers: () => [], collectRequestedReviewers: () => [{ login: 'mona' }] } as never });
+      renderCell({}, { display: { collectAssignedUsers: () => [], collectPendingReviewRequests: () => [{ login: 'mona' }] } as never });
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
       expect(screen.queryByRole('group', { name: 'Review requested' })).not.toBeInTheDocument();
     });

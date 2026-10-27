@@ -4,7 +4,10 @@ import type { ActorsMap, ResolveActorDisplayName } from "./pr-actor-identity.hel
 // A PR's requested reviewers, deduped by login. The request fields come in
 // several shapes (plain logins, { login, name }, or the reviewer nested
 // under requestedReviewer/reviewer/user), so they're read as unknown and
-// narrowed here. With no requests at all, whoever has reviewed is used.
+// narrowed here. collectRequestedReviewers means reviewers broadly: with no
+// requests at all, whoever has reviewed is used. collectPendingReviewRequests
+// is only the outstanding requests (GitHub drops one once that person
+// reviews).
 
 export interface PrRequestedReviewersDeps {
   asArray?: (value: unknown) => unknown[];
@@ -37,7 +40,7 @@ const createPrRequestedReviewersHelpers = ({
       : (login: string, _actorsMap: ActorsMap, fallbackName?: string) =>
           String(fallbackName || login || "").trim();
 
-  const collectRequestedReviewers = (row: RequestedReviewersRow | null | undefined = {}): RequestedReviewer[] => {
+  const collectReviewers = (row: RequestedReviewersRow | null | undefined, fallBackToReviews: boolean): RequestedReviewer[] => {
     const safeRow: RequestedReviewersRow = row || {};
     const ordered: RequestedReviewer[] = [];
     const seen = new Set<string>();
@@ -76,7 +79,7 @@ const createPrRequestedReviewersHelpers = ({
 
     [safeRow.requestedReviewers, safeRow.reviewRequests, safeRow.reviewers].forEach(addFromValue);
 
-    if (ordered.length === 0) {
+    if (fallBackToReviews && ordered.length === 0) {
       asArraySafe(safeRow.reviews).forEach((review) =>
         addFromValue({
           login: review?.authorLogin,
@@ -90,6 +93,12 @@ const createPrRequestedReviewersHelpers = ({
 
     return ordered;
   };
+
+  const collectRequestedReviewers = (row: RequestedReviewersRow | null | undefined = {}): RequestedReviewer[] =>
+    collectReviewers(row, true);
+
+  const collectPendingReviewRequests = (row: RequestedReviewersRow | null | undefined = {}): RequestedReviewer[] =>
+    collectReviewers(row, false);
 
   const formatRequestedReviewersDisplay = (
     row: RequestedReviewersRow | null | undefined,
@@ -109,6 +118,7 @@ const createPrRequestedReviewersHelpers = ({
 
   return {
     collectRequestedReviewers,
+    collectPendingReviewRequests,
     formatRequestedReviewersDisplay,
   };
 };

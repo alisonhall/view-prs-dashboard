@@ -83,7 +83,7 @@ export function PrInsightsDisplayProvider({ children }: { children?: ReactNode }
     useActorIdentity();
 
   const value = useMemo<PrInsightsDisplayValue>(() => {
-    const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
+    const { collectRequestedReviewers, collectPendingReviewRequests, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
       asArray,
       resolveActorDisplayName,
     });
@@ -112,6 +112,7 @@ export function PrInsightsDisplayProvider({ children }: { children?: ReactNode }
       formatApproversDisplay,
       formatRequestedReviewersDisplay,
       collectRequestedReviewers,
+      collectPendingReviewRequests,
       formatAssignedUsersDisplay,
       collectAssignedUsers,
       buildPrPeopleOptions,
