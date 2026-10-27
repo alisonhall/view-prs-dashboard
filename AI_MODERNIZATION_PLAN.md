@@ -1185,6 +1185,13 @@ No static type checking leads to:
       AuthorInsightsPrDataMeta, AuthorInsightsPrLink) are `.tsx`.
       `PrNotesComment` gains the optional `createdAt`/`updatedAt` the data
       schema already has (the note-match sort reads them).
+    - 12D-3 (2026-10-27): the shared components (ActorIdentity,
+      AutoRenderBlockingSync, MergedRequestMoreAction, PrDataPolling,
+      PrJsonModal, Snackbar) are `.tsx`. Typing PrJsonModal found two bugs,
+      both fixed with tests: showing a PR deleted its activity, review-thread
+      and comment fields from the table's live payload (a shallow copy), and
+      diff lines before the first file header came out one block each, in
+      reverse order.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

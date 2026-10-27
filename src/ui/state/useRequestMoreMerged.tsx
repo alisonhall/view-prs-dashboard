@@ -14,18 +14,18 @@ import { useNotifyFailureSnackbar } from './useNotifyFailureSnackbar';
 export type RequestMoreMerged = (repoOverride?: string, callbacks?: RequestMoreCallbacks) => Promise<void>;
 
 /**
- * The "Request more" merged-PRs action (MergedRequestMoreAction.jsx, via
+ * The "Request more" merged-PRs action (MergedRequestMoreAction.tsx, via
  * MergedRequestMoreActionLive in AppShell): builds
  * createPrMergedRequestMoreActionHelpers with PrDataProvider's
  * applyFreshPrPayload/loadStoredData, request activity, status text and
  * failure snackbars.
  *
  * The pending flag is a ref - a double-call guard. The button's disabled
- * state comes from MergedRequestMoreAction.jsx's own isPending state, fed
+ * state comes from MergedRequestMoreAction.tsx's own isPending state, fed
  * by onPendingChange.
  *
  * getLatestSelectedRepo is left at the helper's empty-string fallback, not
- * usePrData()'s selectedRepo: MergedRequestMoreAction.jsx always passes the
+ * usePrData()'s selectedRepo: MergedRequestMoreAction.tsx always passes the
  * resolved repo (useMergedRequestMoreActionOptions' `repo`, which is
  * PrDataContext's selectedRepo) as the first argument, so that fallback is
  * never reached.

@@ -1755,7 +1755,7 @@ test("typing PR numbers into Run & check's PR-numbers field checks and unchecks 
 
 test("the PR JSON modal opens and renders real JSON for a real row", async ({ page }) => {
   // Regression test for Phase 7's safeJsonStringify/getPerPrUserStateFromPayload/
-  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx
+  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.tsx
   // used to read all 3 off window.*; it now imports them directly. jest
   // coverage already exercises each piece in isolation with mocked
   // payloads - this proves the real, wired-together button click still
@@ -2981,7 +2981,7 @@ test("Export follows the table's open sections: closing the sections that are op
 test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the snackbar is fully React-owned
-  // (Snackbar.jsx/SnackbarProvider.tsx). Test-only bridge removal: this used
+  // (Snackbar.tsx/SnackbarProvider.tsx). Test-only bridge removal: this used
   // to call window.showErrorNotification/showWarningNotification (deleted);
   // it now drives both variants through real app paths, with requests
   // intercepted. The auto-dismiss timer (no production caller passes a
