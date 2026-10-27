@@ -120,23 +120,21 @@
 .pr-col-review { width: 210px; }
 .pr-col-checks { width: 64px; }
 .pr-col-size { width: 96px; }
-.pr-col-activity { width: 64px; }
-.pr-col-actions { width: 172px; }
+.pr-col-activity { width: 92px; }
+.pr-col-actions { width: 80px; }
 
 /* With the detail pane docked: every column still shows, narrower, and the
    cells that can wrap take two lines (Signals and Review's signals, Size's
-   added over deleted, the Actions buttons in two rows) - so the Pull
-   request column keeps room for the title. */
+   added over deleted) - so the Pull request column keeps room for the
+   title. */
 .pr-workspace[data-pane="docked"] .pr-table { min-width: 740px; }
 .pr-workspace[data-pane="docked"] .pr-col-signals { width: 60px; }
 .pr-workspace[data-pane="docked"] .pr-col-who { width: 110px; }
 .pr-workspace[data-pane="docked"] .pr-col-review { width: 112px; }
 .pr-workspace[data-pane="docked"] .pr-col-size { width: 58px; }
-.pr-workspace[data-pane="docked"] .pr-col-activity { width: 56px; }
-.pr-workspace[data-pane="docked"] .pr-col-actions { width: 104px; }
+.pr-workspace[data-pane="docked"] .pr-col-activity { width: 84px; }
 
-.pr-workspace[data-pane="docked"] .pr-signal-slots,
-.pr-workspace[data-pane="docked"] .pr-actions {
+.pr-workspace[data-pane="docked"] .pr-signal-slots {
   flex-wrap: wrap;
 }
 
@@ -362,12 +360,30 @@
   color: var(--color-text-muted);
 }
 
-/* Review: assigned users after the slots */
-.pr-assignees {
+/* Review: the labelled people ("Assigned", "Review requested") on a line
+   under the slots */
+.pr-cell-review .ui-signal-group {
+  flex-wrap: wrap;
+}
+
+.pr-review-people {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+}
+
+.pr-people-group {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
-  margin-left: 10px;
-  vertical-align: middle;
+}
+
+.pr-people-label {
+  margin-right: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 /* Size, Activity */
@@ -386,6 +402,16 @@
 
 .pr-activity[data-stale="true"] {
   text-decoration: underline dotted;
+}
+
+/* "Author 2d", and under it "You 5d" */
+.pr-activity-line {
+  display: block;
+  white-space: nowrap;
+}
+
+.pr-activity-who {
+  font-size: var(--font-size-xs);
 }
 
 /* Actions */

@@ -55,30 +55,60 @@ describe('PrSizeCell', () => {
 });
 
 describe('PrActivityCell', () => {
-  test('shows the age, with the activity, your last activity and the last check in the tooltip', () => {
+  // A PR whose author, alice, last did something at `authorAt` (bob after).
+  const prWithAuthorActivity = (authorAt: string, extra = {}) => ({
+    authorLogin: 'alice',
+    activityEvents: [
+      { sourceId: 'e1', actor: 'alice', type: 'commit', channel: 'commit', occurredAt: authorAt },
+      { sourceId: 'e2', actor: 'bob', type: 'comment', channel: 'top-level', occurredAt: new Date().toISOString() },
+    ],
+    ...extra,
+  });
+  const lines = () => Array.from(document.querySelectorAll('.pr-activity-line')).map((line) => line.textContent);
+
+  test("shows the author's last activity, with the times, any merge and the last check in the tooltip", () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60000).toISOString();
-    inRow(<PrActivityCell pr={{ mergedAt: fiveMinutesAgo }} lastCheckedAt={fiveMinutesAgo} sectionKey="merged" />);
-    const age = screen.getByText('5m');
-    expect(descriptionOf(age)).toMatch(/^Merged: .+\nYour last activity: –\nLast checked for updates at .+\.$/);
-    expect(age).not.toHaveAttribute('data-stale');
+    inRow(
+      <PrActivityCell pr={prWithAuthorActivity(fiveMinutesAgo, { mergedAt: fiveMinutesAgo })} lastCheckedAt={fiveMinutesAgo} sectionKey="merged" />,
+    );
+    expect(lines()).toEqual(['Author 5m']);
+    const activity = document.querySelector('.pr-activity');
+    expect(descriptionOf(activity)).toMatch(
+      /^Author's last activity: .+\nYour last activity: –\nMerged: .+\nLast checked for updates at .+\.$/,
+    );
+    expect(activity).not.toHaveAttribute('data-stale');
   });
 
-  test('keeps the age moving with the shared clock, without new props', () => {
+  test('adds your own last activity under it, when you have any', () => {
+    const anHourAgo = new Date(Date.now() - 60 * 60000).toISOString();
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60000).toISOString();
+    inRow(<PrActivityCell pr={prWithAuthorActivity(anHourAgo, { baseline: twoDaysAgo })} lastCheckedAt={anHourAgo} sectionKey="merged" />);
+    expect(lines()).toEqual(['Author 1h', 'You 2d']);
+  });
+
+  test('shows a dash when the author has no activity', () => {
+    inRow(<PrActivityCell pr={{ authorLogin: 'alice' }} lastCheckedAt="" sectionKey="merged" />);
+    expect(lines()).toEqual(['Author –']);
+  });
+
+  test('keeps the ages moving with the shared clock, without new props', () => {
     jest.useFakeTimers();
     try {
       jest.setSystemTime(new Date('2026-10-24T12:00:00Z'));
       inRow(
         <NowProvider>
-          <PrActivityCell pr={{ sourceUpdatedAt: '2026-10-24T11:55:00Z' }} lastCheckedAt="2026-10-24T11:59:00Z" sectionKey="open" />
+          <PrActivityCell pr={prWithAuthorActivity('2026-10-24T11:55:00Z')} lastCheckedAt="2026-10-24T11:59:00Z" sectionKey="open" />
         </NowProvider>,
       );
-      expect(screen.getByText('5m')).not.toHaveAttribute('data-stale');
+      expect(lines()).toEqual(['Author 5m']);
+      expect(document.querySelector('.pr-activity')).not.toHaveAttribute('data-stale');
 
       act(() => {
         jest.advanceTimersByTime(20 * NOW_TICK_MS);
       });
-      // 25 minutes since the commit, and the last check is now stale.
-      expect(screen.getByText('25m')).toHaveAttribute('data-stale', 'true');
+      // 25 minutes since the author's commit, and the last check is now stale.
+      expect(lines()).toEqual(['Author 25m']);
+      expect(document.querySelector('.pr-activity')).toHaveAttribute('data-stale', 'true');
     } finally {
       jest.useRealTimers();
     }
@@ -86,9 +116,9 @@ describe('PrActivityCell', () => {
 
   test('marks an open PR whose last check is stale', () => {
     const anHourAgo = new Date(Date.now() - 60 * 60000).toISOString();
-    inRow(<PrActivityCell pr={{ sourceUpdatedAt: anHourAgo }} lastCheckedAt={anHourAgo} sectionKey="open" />);
-    const age = screen.getByText('1h');
-    expect(age).toHaveAttribute('data-stale', 'true');
-    expect(descriptionOf(age)).toMatch(/\(stale\)$/);
+    inRow(<PrActivityCell pr={prWithAuthorActivity(anHourAgo)} lastCheckedAt={anHourAgo} sectionKey="open" />);
+    const activity = document.querySelector('.pr-activity');
+    expect(activity).toHaveAttribute('data-stale', 'true');
+    expect(descriptionOf(activity)).toMatch(/\(stale\)$/);
   });
 });

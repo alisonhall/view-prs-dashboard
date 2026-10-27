@@ -100,6 +100,14 @@ const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
 const commonCss = fs.readFileSync(path.join(__dirname, "..", "styles", "common.css"), "utf8");
 
+// Chooses one of a PR row's More menu items (In review, Flag, Update PR...),
+// from the first copy of the row.
+const chooseRowMenuItem = async (user, prNumber, itemName) => {
+  const [moreButton] = await screen.findAllByRole("button", { name: `More actions for PR #${prNumber}` });
+  await user.click(moreButton);
+  await user.click(await screen.findByRole("menuitem", { name: itemName }));
+};
+
 const extractBodyHtml = (fullHtml) => {
   const bodyMatch = String(fullHtml || "").match(/<body[^>]*>([\s\S]*)<\/body>/i);
   return bodyMatch && bodyMatch[1] ? bodyMatch[1] : "";
@@ -889,13 +897,15 @@ describe("index page rendering with Testing Library", () => {
     expect(row).toBeTruthy();
 
     expect(row?.querySelector("input[type='checkbox']")).toBeTruthy();
-    expect(within(openSection).getByLabelText("In Review for PR #11")).toBeInTheDocument();
-    expect(within(openSection).getByLabelText("Flagged for PR #11")).toBeInTheDocument();
-    expect(within(row).getByRole("button", { name: "Update PR #11" })).toBeInTheDocument();
+    // Ack and the More menu, which holds In review, Flag and Update.
     expect(within(row).getByRole("button", { name: "Ack PR #11" })).toBeInTheDocument();
-    expect(
-      within(openSection).getByRole("button", { name: "More actions for PR #11" }),
-    ).toBeInTheDocument();
+    const moreButton = within(row).getByRole("button", { name: "More actions for PR #11" });
+    fireEvent.click(moreButton);
+    const menu = screen.getByRole("menu", { name: "More actions for PR #11" });
+    for (const item of ["Mark in review", "Flag", "Update PR"]) {
+      expect(within(menu).getByRole("menuitem", { name: item })).toBeInTheDocument();
+    }
+    fireEvent.click(moreButton);
 
     const summaryToggle = within(row).getByRole("button", { name: "Show summary for PR #11" });
     expect(within(row).getByText("1 pending comment")).toBeInTheDocument();
@@ -5112,7 +5122,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "In Review for PR #101", pressed: false })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ack PR #101", pressed: false })).toBeInTheDocument();
     });
 
     const labelChip = document.querySelector(".pr-cell-title .pr-label");
@@ -5621,12 +5631,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const updateButton = await screen.findByRole("button", {
-      name: /Update/,
-    });
-    expect(updateButton).toBeInTheDocument();
-
-    await user.click(updateButton);
+    await chooseRowMenuItem(user, "202", "Update PR");
 
     await waitFor(() => {
       const runCalls = fetchMock.mock.calls.filter((call) => {
@@ -5689,10 +5694,7 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = failingFetch;
     fetchMock = failingFetch;
 
-    const updateButton = await screen.findByRole("button", {
-      name: /Update/,
-    });
-    await user.click(updateButton);
+    await chooseRowMenuItem(user, "203", "Update PR");
 
     await waitFor(() => {
       expect(document.getElementById("status").textContent).toBe(
@@ -5739,8 +5741,7 @@ describe("index page rendering with Testing Library", () => {
     // The Settings drawer's PR numbers (a controlled field: set its state).
     act(() => filterStateTestHandle.setValue("prNumbersInput", "88,89"));
 
-    const inReviewToggle = await screen.findByLabelText("In Review for PR #1");
-    await user.click(inReviewToggle);
+    await chooseRowMenuItem(user, "1", "Mark in review");
 
     await waitFor(() => {
       const inReviewCall = fetchMock.mock.calls.find((call) => {
@@ -5754,8 +5755,7 @@ describe("index page rendering with Testing Library", () => {
       expect(inReviewCall).toBeDefined();
     });
 
-    const flaggedToggle = await screen.findByLabelText("Flagged for PR #1");
-    await user.click(flaggedToggle);
+    await chooseRowMenuItem(user, "1", "Flag");
 
     await waitFor(() => {
       const flaggedCall = fetchMock.mock.calls.find((call) => {

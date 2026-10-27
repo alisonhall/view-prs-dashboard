@@ -106,7 +106,9 @@ describe('PrRow', () => {
     const onSelectRow = jest.fn();
     renderRow({ onSelectRow });
     await user.click(screen.getByRole('button', { name: 'Show summary for PR #101' }));
-    await user.click(screen.getByRole('button', { name: 'Update PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'Ack PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #101' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Update PR' }));
     await user.click(screen.getByRole('checkbox'));
     expect(onSelectRow).not.toHaveBeenCalled();
   });
@@ -152,9 +154,9 @@ describe('PrRow', () => {
     const stops = Array.from(row.querySelectorAll('a[href], button, input, [tabindex]')).filter(
       (element) => element.getAttribute('tabindex') !== '-1',
     );
-    // select, Signals, toggle, link, copy, Who, Review, CHK·MRG, Size,
-    // Activity, and 5 actions.
-    expect(stops).toHaveLength(15);
+    // select, Signals, toggle, link, copy, Author, Review, CHK·MRG, Size,
+    // Activity, and the 2 actions (Ack, More).
+    expect(stops).toHaveLength(12);
   });
 
   test('threads onViewJson down to the More menu', async () => {

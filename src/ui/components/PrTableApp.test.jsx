@@ -932,11 +932,37 @@ describe('PrTableApp', () => {
       expect(capturedUiState.selectedPr.prNumber).toBe('2');
     });
 
-    test('given the pane\'s close, then the selection clears', () => {
+    test('given the pane\'s close, then the pane hides and the selection clears; a row click shows it again', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
       React.act(() => latestPane().onClose());
       expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(capturedUiState.isPaneVisible).toBe(true);
+    });
+
+    test('given Esc in the docked pane (onClearSelection), then only the selection clears; the pane stays', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => latestPane().onClearSelection());
+      expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(true);
+    });
+
+    test('given unsaved notes, when the pane is closed and leaving is cancelled, then it stays open on the PR', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        React.act(() => latestPane().onClose());
+        expect(confirm).toHaveBeenCalled();
+        expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+        expect(capturedUiState.isPaneVisible).toBe(true);
+      } finally {
+        confirm.mockRestore();
+      }
     });
 
     test('given unsaved notes on the selected PR, then switching asks first, and staying keeps the selection', () => {

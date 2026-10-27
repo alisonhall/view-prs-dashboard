@@ -863,6 +863,19 @@ becomes a small `react-app.tsx`. Done in steps:
     be dropped): the columns narrow and their cells take two lines where
     they need to; the pane takes 30vw (was 34vw), at least 360px.
   - Who shows the author's name beside the avatar, up to two lines.
+- **Feedback, round 2 (2026-10-27)**, same branch:
+  - The pane's close hides it (and clears the selection; a row click shows
+    it again). Esc in the docked pane still only clears the selection.
+  - Activity shows the PR author's last activity (their latest event, as
+    the Activity tab lists them) and, under it, yours (`baseline`) when
+    you have any; the times, any merge or close and the last check are in
+    the tooltip.
+  - In review, Flagged and Update moved into the row's More menu, worded
+    for what choosing them does (their state shows in Signals); Ack stays
+    a button, so Actions is just Ack and More.
+  - "Who" is "Author".
+  - The Review column's people sit on their own line, labelled "Assigned"
+    and "Review requested" (you, when requested but not assigned).
 
 ## Decisions (2026-10-24)
 

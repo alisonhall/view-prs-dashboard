@@ -843,12 +843,15 @@ export function PrTableApp() {
     selectPr(null);
   });
 
-  // The pane's own close, previous and next. Closing moves focus back to
-  // the PR's row, since the button that had it goes away.
+  // The pane's own close, previous and next. Closing hides the pane (a row
+  // click shows it again) and clears the selection, asking first with
+  // unsaved notes; focus goes back to the PR's row, since the button that
+  // had it goes away.
   const handleClosePane = useStableCallback(() => {
     const closing = selectedPr;
-    if (!closing || !selectPr(null)) return;
-    findRowLink(closing)?.focus();
+    if (closing && !selectPr(null)) return;
+    setPaneVisible(false);
+    if (closing) findRowLink(closing)?.focus();
   });
   const handleStepPr = (target: SelectedPr | undefined) => {
     if (target && selectPr(target)) findRowLink(target)?.scrollIntoView?.({ block: 'nearest' });
@@ -952,6 +955,7 @@ export function PrTableApp() {
             onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
             onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
             onClose={handleClosePane}
+            onClearSelection={handleClearSelection}
             onCheckboxChange={handleCheckboxChange}
             onAckAction={handleAckActionBusy}
             onApplyLabel={handleApplyLabelBusy}

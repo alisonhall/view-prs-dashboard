@@ -117,6 +117,19 @@ describe('PrDetailPane', () => {
       expect(onClose).toHaveBeenCalledTimes(2);
     });
 
+    // Close hides the pane; Esc, given onClearSelection, only deselects.
+    test('Esc calls onClearSelection when given, and the close button still onClose', async () => {
+      const user = userEvent.setup();
+      const onClearSelection = jest.fn();
+      const { onClose } = renderPane({ onClearSelection });
+      fireEvent.keyDown(screen.getByRole('tabpanel'), { key: 'Escape' });
+      expect(onClearSelection).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Close details' }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     describe('copy branch name button', () => {
       // defineProperty: user-event installs navigator.clipboard as a getter.
       const setClipboard = (value: unknown) => Object.defineProperty(navigator, 'clipboard', { value, configurable: true });

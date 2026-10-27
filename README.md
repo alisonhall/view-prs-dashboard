@@ -681,7 +681,7 @@ Insights behavior notes:
 
 - The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all`, `Activity` (see below), `Settings` and a link to this README.
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
-- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, close), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
+- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
   - Select a PR by clicking anywhere on its row that isn't a control (click it again to deselect; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
   - Leaving a PR with unsaved notes (another selection, previous/next, closing or hiding the pane) asks first.
   - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll.
@@ -764,7 +764,7 @@ The UI includes:
 - `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
   - `Reload labels` reloads the dropdown for the current repo
-- per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
+- a row's More menu (`More actions for PR #N`) › `Add label` applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
 - Settings › `Export` to build and export JSON from currently visible PR rows
 - Settings › `Actor names` to view and edit both display-name mappings and canonical login aliases
@@ -776,10 +776,7 @@ The UI includes:
   - if either JSON file is missing, it is created automatically on first read
   - writes that would clear all display-name mappings or all login aliases are rejected to prevent deleting all configured mappings
   - login alias rows must include both an alias login and a canonical login, and the two values must differ
-- per-row `In Review` checkbox in the `ACTIONS` cell with immediate persistence
-- per-row `Flagged` checkbox in the `ACTIONS` cell with immediate persistence
-  - flagged PRs display a `🚩` icon in `Needs Attention` with tooltip `PR was flagged`
-  - when both icons are present, the `🚩` icon is rendered below `⚠️`
+- a row's Actions: `Ack` as a button, and in its More menu `Mark in review` / `Remove from in review`, `Flag` / `Remove flag` and `Update PR` (saved at once); whether a PR is in review or flagged shows as an icon in its Signals column
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - The `Authors` view's manual comments editor, saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
@@ -943,25 +940,14 @@ Example missing dependency response:
 
 ## Date Columns
 
-### Last Activity Column
+### Activity Column
 
-The "LAST ACTIVITY" column displays two lines of information:
+The Activity column shows how long ago, in two short lines:
 
-- **Line 1 (bold)**: PR's last activity date
-  - Shows `mergedAt` if the PR is merged
-  - Shows `closedAt` if the PR is closed (but not merged)
-  - Otherwise shows `sourceUpdatedAt` or `updatedAt` (last commit timestamp)
-  - Tooltip: "Merged at", "Closed at", or "Last commit"
-- **Line 2 (muted)**: Your last activity on the PR
-  - Format: "You: `[datetime]`"
-  - Shows the `baseline` field (your last interaction with the PR)
-  - Tooltip: "Your last activity on this PR"
+- **Author**: the PR author's last activity - their latest event in the PR's activity (a commit, comment, review...), the same events the detail pane's Activity tab lists. `–` when none is recorded.
+- **You**: your own last activity on the PR (the `baseline` field), shown only when you have any.
 
-**Data sources:**
-- PR activity (Line 1): `mergedAt` (highest priority) → `closedAt` → `sourceUpdatedAt` → `updatedAt`
-- Viewer activity (Line 2): `baseline` field (always shows YOUR last interaction, never the merge/close date)
-
-This two-line format helps you quickly see both when the PR was last updated and when you last interacted with it.
+The tooltip has both exact times, when the PR merged or closed, and when it was last checked for updates. The ages are underlined (dotted) when an open PR's last check is stale.
 
 ## Troubleshooting
 
@@ -1093,12 +1079,11 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
-Below the summary, assigned users and requested reviewers show as small initials badges:
+In the Review column, a line under the signals shows people as small initials badges, each group labelled so it reads without hovering:
 
-- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the Reviewers row of the detail pane's Overview.
-- The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
-- A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
-- A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
+- **Assigned**: every assignee.
+- **Review requested**: you, when your review is requested but you aren't assigned (so "I'm reviewing this" stays visible). Other requested reviewers are in the Reviewers row of the detail pane's Overview.
+- Your own badge is highlighted; each badge names its person on hover, with `(you)` and `(review requested)` added where they apply.
 
 ## Check indicators in UI vs script
 

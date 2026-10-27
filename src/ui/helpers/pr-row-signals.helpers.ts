@@ -1,4 +1,4 @@
-import type { PrData, PrEntry } from "../types/pr-data.ts";
+import type { PrActivityEvent, PrData, PrEntry } from "../types/pr-data.ts";
 import { createPrUiRenderUtilsHelpers } from "./pr-ui-render-utils.helpers.ts";
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 import { getManualNotesFieldSummary, getManualNotesSummary } from "./pr-manual-notes-summary.helpers.ts";
@@ -136,21 +136,52 @@ export const formatShortAge = (value: unknown, nowMs: number = Date.now()): stri
   return `${Math.floor(hours / 24)}d`;
 };
 
+// The time of `login`'s latest event (logins compared through
+// normalizeLogin, which resolves aliases); "" when they have none.
+export const findLastActivityAt = (
+  events: readonly PrActivityEvent[],
+  login: unknown,
+  normalizeLogin: (value: unknown) => string,
+): string => {
+  const target = normalizeLogin(login);
+  if (!target) return "";
+  let latest = "";
+  let latestMs = Number.NEGATIVE_INFINITY;
+  events.forEach((event) => {
+    if (normalizeLogin(event?.actor) !== target) return;
+    const time = parseTimestamp(event?.occurredAt);
+    if (time > latestMs) {
+      latestMs = time;
+      latest = String(event.occurredAt);
+    }
+  });
+  return latest;
+};
+
 export interface ActivityView {
-  text: string;
+  // How long since the PR author's last activity ("–" for none), and the
+  // viewer's ("" when they have none, so the line is left out).
+  authorText: string;
+  viewerText: string;
   label: string;
 }
 
-// The Activity column: how long since the PR's last activity (merged,
-// closed, or last commit, as the old date column showed), with both that
-// time and the viewer's last activity in the tooltip.
-export const describeActivity = (pr: PrData = {}, nowMs: number = Date.now()): ActivityView => {
-  const time = pr?.mergedAt || pr?.closedAt || pr?.sourceUpdatedAt || "";
-  const kind = pr?.mergedAt ? "Merged" : pr?.closedAt ? "Closed" : "Last commit";
-  const viewerTime = String(pr?.baseline || "").trim();
-  const viewerLine = viewerTime && viewerTime !== "-" ? formatIsoDatetime(viewerTime) : "–";
+// The Activity column: how long since the PR author's last activity
+// (`authorActivityAt`, from their events) and since the viewer's (the
+// row's baseline), with both times - and when it merged or closed - in the
+// tooltip.
+export const describeActivity = (pr: PrData = {}, nowMs: number = Date.now(), authorActivityAt = ""): ActivityView => {
+  const viewerTime = Number.isFinite(parseTimestamp(pr?.baseline)) ? String(pr.baseline) : "";
+  const ended = pr?.mergedAt ? `Merged: ${formatIsoDatetime(pr.mergedAt)}` : pr?.closedAt ? `Closed: ${formatIsoDatetime(pr.closedAt)}` : "";
   return {
-    text: formatShortAge(time, nowMs) || "–",
-    label: `${kind}: ${time ? formatIsoDatetime(time) : "–"}\nYour last activity: ${viewerLine}`,
+    authorText: formatShortAge(authorActivityAt, nowMs) || "–",
+    viewerText: formatShortAge(viewerTime, nowMs),
+    label: [
+      `Author's last activity: ${authorActivityAt ? formatIsoDatetime(authorActivityAt) : "–"}`,
+      `Your last activity: ${viewerTime ? formatIsoDatetime(viewerTime) : "–"}`,
+      ended,
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
 };
