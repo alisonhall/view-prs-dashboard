@@ -1047,7 +1047,7 @@ No static type checking leads to:
   yet checked against how they're called.
 
 **Phase 12D: Component Migration**
-- [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
+- [x] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
   (plus `src/ui/react-app.jsx`, now `.tsx`; `pr-row-keys` was converted with the helpers)
   - State layer first (decided 2026-10-23): the contexts, hooks and
     Providers survive the planned UI rework, the presentational components
@@ -1172,6 +1172,32 @@ No static type checking leads to:
         MergedRequestMoreAction, PrDataPolling, PrJsonModal, Snackbar.
       - The test fixtures filter-state-probe.jsx and pr-data-probe.jsx
         belong to 12G.
+    - Converting those (decided 2026-10-27): the 18 components and the 5
+      UI test fixtures, on the `typescript/phase-12d` branch, in four
+      reviewed slices - Review stats, Authors, shared, fixtures. The UI
+      test files stay `.js`/`.jsx` (12G).
+    - 12D-1 (2026-10-27): the Review stats components (ReviewStatsContent,
+      ReviewStatsControls, StatsVisuals, GraphCard, ReviewerActivityChart)
+      are `.tsx`, typed against the stats helpers' own types.
+    - 12D-2 (2026-10-27): the Authors components (AuthorInsightsSelector,
+      AuthorInsightsHeader, AuthorInsightsCommentsSection,
+      AuthorInsightsNotesSection, AuthorCreatedPrsSection,
+      AuthorInsightsPrDataMeta, AuthorInsightsPrLink) are `.tsx`.
+      `PrNotesComment` gains the optional `createdAt`/`updatedAt` the data
+      schema already has (the note-match sort reads them).
+    - 12D-3 (2026-10-27): the shared components (ActorIdentity,
+      AutoRenderBlockingSync, MergedRequestMoreAction, PrDataPolling,
+      PrJsonModal, Snackbar) are `.tsx`. Typing PrJsonModal found two bugs,
+      both fixed with tests: showing a PR deleted its activity, review-thread
+      and comment fields from the table's live payload (a shallow copy), and
+      diff lines before the first file header came out one block each, in
+      reverse order.
+    - 12D-4 (2026-10-27): the 5 UI test fixtures are TypeScript
+      (api-response, pr-data and pr-row `.fixtures.ts`, and the
+      filter-state and pr-data probes `.tsx`), typed against the real
+      PrData/PrEntry/PrDataPayload types and with ES exports, which the
+      `.js` tests still `require()`. With that, 12D is done: no UI source
+      file is JavaScript; the UI tests stay `.js`/`.jsx` (12G).
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
@@ -1183,6 +1209,10 @@ No static type checking leads to:
 **Phase 12F: Server Migration**
 - [ ] Decide how the server runs TypeScript (it is CommonJS run directly by
   `node`, with no build step), then extend tsconfig coverage to `src/server/`
+  - Leaning (2026-10-27): Node's own type stripping (Node 22.18+), so no
+    build step and no new dependency - which rules out syntax that needs
+    transforming (enums, namespaces, parameter properties), and require()
+    needs the `.ts` extension. Not started.
 - [ ] Migrate `src/server/helpers/*.js` → `*.ts`
 - [ ] Migrate `src/server/routes/*.js` → `*.ts`
 - [ ] Migrate `src/server/config/` and `src/server/storage/` → `*.ts`

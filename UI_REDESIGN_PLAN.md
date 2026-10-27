@@ -851,6 +851,18 @@ becomes a small `react-app.tsx`. Done in steps:
     components, as expected, plus ActorIdentity, AutoRenderBlockingSync,
     MergedRequestMoreAction, PrDataPolling, PrJsonModal and Snackbar.
   - This plan is complete.
+- **Feedback (2026-10-27)**, on the `ui-redesign/feedback` branch:
+  - The docked detail pane sticks while the page scrolls: `.data-tabs`
+    had `overflow: hidden`, which made it the pane's scroll container;
+    it's `overflow: clip` now.
+  - Clicking a row shows the pane again if it was hidden.
+  - The Pull request cell has one layout at any width: the chevron in its
+    own column, the title flowing beside it (the copy button in a gutter
+    of its own), and the labels on a line of their own underneath.
+  - With the pane docked, every column stays (Size and Activity used to
+    be dropped): the columns narrow and their cells take two lines where
+    they need to; the pane takes 30vw (was 34vw), at least 360px.
+  - Who shows the author's name beside the avatar, up to two lines.
 
 ## Decisions (2026-10-24)
 

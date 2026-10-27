@@ -21,11 +21,8 @@
   min-width: 0;
 }
 
-/* With the pane docked, Size and Activity are hidden, so the table can be
-   narrower before it scrolls. */
-.pr-workspace[data-pane="docked"] .pr-table {
-  min-width: 720px;
-}
+/* With the pane docked the table keeps every column; pr-table.css narrows
+   them, their cells taking two lines where they need to. */
 
 /* Rows select for the pane */
 .pr-row {
@@ -57,7 +54,7 @@
 
 .pr-pane[data-mode="docked"] {
   flex: none;
-  width: clamp(360px, 34vw, 560px);
+  width: clamp(360px, 30vw, 560px);
   position: sticky;
   top: var(--space-3);
   max-height: calc(100vh - var(--space-6));

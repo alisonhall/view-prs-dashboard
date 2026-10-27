@@ -103,6 +103,10 @@ export interface PrNotesComment {
   author?: string;
   tone?: "Positive" | "Negative" | "Neutral" | "";
   note?: string;
+  // ISO date-times the server sets when it saves a comment; a comment not
+  // yet saved has neither.
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // One of a PR's stories: a name (e.g. "US12345") and/or its URL.

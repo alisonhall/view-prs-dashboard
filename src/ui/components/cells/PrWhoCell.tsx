@@ -9,9 +9,9 @@ import { Tooltip } from '../ui/Tooltip';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 
 /**
- * The Who column: the PR author's avatar, plus "+N" for anyone else with
- * non-merge commits (the old Author column listed them all). Names are in
- * the tooltip and the accessible name.
+ * The Who column: the PR author's avatar and name, plus "+N" for anyone
+ * else with non-merge commits (the old Author column listed them all).
+ * Their names are in the tooltip; the accessible name is the author's.
  */
 export interface PrWhoCellProps {
   pr: PrData;
@@ -54,11 +54,12 @@ export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
       <Tooltip content={label} focusTarget>
         <span className="pr-who" role="img" aria-label={name}>
           <Avatar initials={getUserInitials(primary.displayName, primary.key)} login={primary.key} isViewer={isViewer(primary.key)} />
-          {others.length > 0 && (
-            <span className="pr-who-more" aria-hidden="true">
-              +{others.length}
-            </span>
-          )}
+          {/* The name itself (up to two lines), so the author doesn't have to
+              be guessed from initials; the tooltip has it all. */}
+          <span className="pr-who-name" aria-hidden="true">
+            {primary.displayName}
+            {others.length > 0 && <span className="pr-who-more"> +{others.length}</span>}
+          </span>
         </span>
       </Tooltip>
     </td>

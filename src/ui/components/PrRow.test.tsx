@@ -24,7 +24,6 @@ const renderRow = (props: Partial<PrRowProps> = {}) =>
           isActive={false}
           isQueued={false}
           columnCount={9}
-          showSizeAndActivity
           onToggleInsights={jest.fn()}
           {...props}
         />
@@ -51,12 +50,6 @@ describe('PrRow', () => {
       'pr-cell-activity',
       'pr-cell-actions',
     ]);
-  });
-
-  test('leaves out Size and Activity when asked (the detail pane is open)', () => {
-    renderRow({ showSizeAndActivity: false, columnCount: 7 });
-    expect(cellClasses()).not.toContain('pr-cell-size');
-    expect(cellClasses()).not.toContain('pr-cell-activity');
   });
 
   test('tags the row with its PR number and section', () => {

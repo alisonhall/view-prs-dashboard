@@ -824,12 +824,16 @@ export function PrTableApp() {
   });
 
   // Detail pane selection (UI_REDESIGN_PLAN.md, phase 4). A row click
-  // selects its PR, or deselects it when it's the selected one; ↑/↓ in a
-  // table select without toggling (PrTable); the summary's "Show details"
-  // selects and shows the pane if it was hidden.
+  // selects its PR and shows the pane if it was hidden, or deselects it
+  // when it's the selected one; ↑/↓ in a table select without toggling
+  // (PrTable); the summary's "Show details" selects and shows the pane too.
   const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string) => {
     const pr = { repo, prNumber: String(prNumber ?? '') };
-    selectPr(samePr(pr, selectedPr) ? null : pr);
+    if (samePr(pr, selectedPr)) {
+      selectPr(null);
+      return;
+    }
+    if (selectPr(pr)) setPaneVisible(true);
   });
   const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
   const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
@@ -887,8 +891,9 @@ export function PrTableApp() {
     );
   }
 
-  // Docked beside the table on wide screens (Size and Activity then make
-  // room for it); below 900px an overlay drawer while a PR is selected.
+  // Docked beside the table on wide screens (the table keeps every column,
+  // its cells taking two lines where they need to); below 900px an overlay
+  // drawer while a PR is selected.
   const paneMode = isNarrow ? 'drawer' : 'docked';
   const isPaneDocked = isPaneVisible && !isNarrow;
   const paneFlags = selectedPr ? getPrFlags(selectedPr.prNumber, selectedPr.repo) : null;
@@ -914,7 +919,6 @@ export function PrTableApp() {
               isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
               expandedInsights={expandedInsights}
               selectedPrKey={selectedPrKey}
-              showSizeAndActivity={!isPaneDocked}
               onToggleSection={handleToggleSection}
               onToggleInsights={handleToggleInsights}
               onSelectRow={handleSelectRow}

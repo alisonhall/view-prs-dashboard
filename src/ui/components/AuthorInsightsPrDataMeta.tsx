@@ -2,7 +2,7 @@
  * AuthorInsightsPrDataMeta - React port of createAuthorInsightsPrDataMeta()
  * built in helpers/pr-author-insights-display.helpers.ts: a status/
  * approved/CHK/conversations/viewed-files/labels meta row for a PR entry.
- * Shared by AuthorCreatedPrsSection.jsx and AuthorInsightsNotesSection.jsx
+ * Shared by AuthorCreatedPrsSection.tsx and AuthorInsightsNotesSection.tsx
  * (Track B, REACT_MIGRATION_PLAN.md).
  *
  * Phase 7 (see REACT_MIGRATION_PLAN.md): toCount/formatChkDisplay/
@@ -40,7 +40,9 @@
  * @module components/AuthorInsightsPrDataMeta
  */
 
+import type { ReactNode } from 'react';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import type { PrEntry } from '../types/pr-data.ts';
 import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../helpers/pr-status-display.helpers.ts';
@@ -50,7 +52,13 @@ const { toCount } = createPrFormattingHelpers();
 const { formatChkDisplay } = createPrStatusDisplayHelpers();
 const { getViewedFilesSummary } = createPrViewedFilesSummaryHelpers({ toCount });
 
-export function AuthorInsightsPrDataMeta({ entry, children }) {
+export interface AuthorInsightsPrDataMetaProps {
+  entry: PrEntry | null | undefined;
+  // Extra meta items, after the standard ones.
+  children?: ReactNode;
+}
+
+export function AuthorInsightsPrDataMeta({ entry, children }: AuthorInsightsPrDataMetaProps) {
   const { getAuthorInsightsCreatedPrStatus, getAuthorInsightsStatusBadgeClassName, getOpenConversationCount } =
     useAuthorInsights();
   const row = entry?.data || {};

@@ -13,7 +13,28 @@ import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { toCount } = createPrFormattingHelpers();
 
-export function GraphCard({ title, subtitle, items, onHeaderClick }) {
+// Values go through toCount, so a missing or non-numeric one counts as 0.
+export interface GraphCardSegment {
+  label?: string;
+  value?: unknown;
+  tone?: string;
+}
+
+// One bar: a single value, or stacked `segments`.
+export interface GraphCardItem extends GraphCardSegment {
+  segments?: GraphCardSegment[];
+  detail?: string;
+  login?: string;
+}
+
+export interface GraphCardProps {
+  title: string;
+  subtitle?: string;
+  items?: GraphCardItem[] | null;
+  onHeaderClick?: () => void;
+}
+
+export function GraphCard({ title, subtitle, items, onHeaderClick }: GraphCardProps) {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
@@ -41,9 +62,10 @@ export function GraphCard({ title, subtitle, items, onHeaderClick }) {
       {subtitle && <p className="stats-graph-subtitle">{subtitle}</p>}
       <div className="stats-graph-list">
         {items.map((item, index) => {
-          const isStacked = Array.isArray(item?.segments);
-          const segmentValues = isStacked
-            ? item.segments.map((seg) => Math.max(0, toCount(seg?.value)))
+          const segments = Array.isArray(item?.segments) ? item.segments : null;
+          const isStacked = segments !== null;
+          const segmentValues = segments
+            ? segments.map((seg) => Math.max(0, toCount(seg?.value)))
             : [Math.max(0, toCount(item?.value))];
           const totalValue = segmentValues.reduce((a, b) => a + b, 0);
           const totalPercent = isStacked ? Math.max(8, Math.round((totalValue / maxValue) * 100)) : 0;
@@ -55,9 +77,9 @@ export function GraphCard({ title, subtitle, items, onHeaderClick }) {
                 <span className="stats-graph-value">{String(totalValue)}</span>
               </div>
               <div className="stats-graph-track">
-                {isStacked
-                  ? item.segments.map((segment, segIndex) => {
-                      const segValue = segmentValues[segIndex];
+                {segments
+                  ? segments.map((segment, segIndex) => {
+                      const segValue = segmentValues[segIndex] ?? 0;
                       const segPercent = (segValue / Math.max(1, totalValue)) * totalPercent;
                       return (
                         <div

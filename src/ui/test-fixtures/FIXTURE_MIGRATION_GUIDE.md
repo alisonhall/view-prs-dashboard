@@ -69,7 +69,7 @@ test("author insights View in table switches to PR data tab", async () => {
 **After (Using Fixtures):**
 
 ```javascript
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 
 test("author insights View in table switches to PR data tab", async () => {
   initTestPage({
@@ -121,7 +121,7 @@ initTestPage({
 **After:**
 
 ```javascript
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 
 initTestPage({
   dataPayload: createMultiPrPayload({
@@ -166,20 +166,22 @@ initTestPage({
 **After:**
 
 ```javascript
-const { createPrEntry } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 
 initTestPage({
   dataPayload: createMultiPrPayload({
+    repo: "owner/custom-repo",
     prs: [
-      createPrEntry({
-        repo: "owner/custom-repo",
+      {
         prNumber: 42,
-        section: "closed",
-        data: {
-          title: "Custom PR",
-          // Only specify fields that differ from defaults
+        overrides: {
+          section: "closed",
+          data: {
+            title: "Custom PR",
+            // Only specify fields that differ from defaults
+          },
         },
-      }),
+      },
     ],
   }),
 });
@@ -187,27 +189,33 @@ initTestPage({
 
 ## Available Fixture Factories
 
-### From `pr-data.fixtures.js`
+### From `pr-data.fixtures.ts`
 
 1. **`createMultiPrPayload(config)`**
    - Creates complete data payload with multiple PRs
    - Includes `byPrNumber`, `actorsMap`, `lastRun`, `scheduler`
    - Best for: Most integration tests
 
-2. **`createPrScenario(scenarioName, overrides)`**
-   - Pre-configured scenarios: `"open-no-change"`, `"open-changed"`, `"open-approved"`, `"merged"`, `"draft"`
+2. **`createPrEntryByScenario(scenarioName, overrides)`**
+   - Pre-configured scenarios: `"open-no-change"`, `"open-changed"`, `"open-approved"`, `"open-in-review"`, `"merged"`, `"draft"`
    - Best for: Common test cases
 
-3. **`createPrEntry(config)`**
-   - Creates individual PR entry
+3. **`createPrDataPayload({ byPrNumber, actorsMap, lastRun, scheduler })`**
+   - Wraps PR entries you built yourself in a full payload
+   - Best for: Payloads `createMultiPrPayload` can't describe
+
+### From `pr-row.fixtures.ts`
+
+1. **`createPrRowEntry(overrides)`**
+   - Creates an individual PR entry (`data` merged over the row defaults)
    - Best for: Custom PR data needs
 
-### From `api-response.fixtures.js`
+### From `api-response.fixtures.ts`
 
-1. **`createDataResponse(data)`** - `/view-prs/data` endpoint
+1. **`createOkJsonResponse(payload)`** - any payload as a mocked fetch response, e.g. `createOkJsonResponse(createPrDataPayload(...))` for `/view-prs/data`
 2. **`createBackfillStatusResponse(config)`** - `/view-prs/backfill` endpoint
-3. **`createActionLogResponse(entries)`** - `/view-prs/action-log` endpoint
-4. **`createActorCacheResponse(entries)`** - `/view-prs/actor-name-cache` endpoint
+3. **`createActionLogResponse({ entries })`** - `/view-prs/action-log` endpoint
+4. **`createActorNameCacheResponse(entries)`** - `/view-prs/actor-name-cache` endpoint
 5. **Many more** - See [README.md](README.md)
 
 ## Migration Checklist
@@ -227,7 +235,7 @@ For each test block being migrated:
 ### Pattern 1: Simple Single PR Test
 
 ```javascript
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 
 initTestPage({
   dataPayload: createMultiPrPayload({
@@ -384,8 +392,8 @@ After each migration batch:
 ## Resources
 
 - [Fixture README](README.md) - Complete fixture factory documentation
-- [pr-data.fixtures.js](pr-data.fixtures.js) - PR data fixture factories
-- [api-response.fixtures.js](api-response.fixtures.js) - API response fixtures
+- [pr-data.fixtures.ts](pr-data.fixtures.ts) - PR data fixture factories
+- [api-response.fixtures.ts](api-response.fixtures.ts) - API response fixtures
 - [Fixture tests](pr-data.fixtures.test.js) - Examples of fixture usage
 
 ---

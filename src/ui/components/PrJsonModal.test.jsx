@@ -171,6 +171,41 @@ describe('PrJsonModal', () => {
     expect(prDetailBlock.textContent).toContain('activityTimeline');
   });
 
+  // The payload is the table's live data: splitting the detail fields out
+  // for display used to delete them from the PR's own row (its Activity and
+  // Conversations tabs then emptied until the next refresh).
+  test('given a PR with detail-only fields, when the modal shows it, then the payload itself is left unchanged', async () => {
+    mockFetchOk();
+    const row = {
+      prNumber: '42',
+      repo: 'owner/repo',
+      notes: { otherNotes: 'kept' },
+      data: { number: 42, activityEvents: [{ type: 'comment' }], reviewThreads: [{ id: 't1' }] },
+    };
+    const payload = { byPrNumber: { 42: row } };
+    const before = JSON.parse(JSON.stringify(row));
+    render(<PrJsonModal target={{ entry: row, pr: { number: 42 } }} payload={payload} onClose={() => {}} />);
+
+    await waitFor(() => expect(document.querySelector('.pr-json-diff-file-path')).toBeInTheDocument());
+    expect(document.querySelectorAll('.pr-json-block')[1].textContent).toContain('reviewThreads');
+    expect(payload.byPrNumber[42]).toEqual(before);
+  });
+
+  test('given lines before the first file header, when rendering the diff, then they show first, in order', async () => {
+    mockFetchOk('preamble one\npreamble two\ndiff --git a/foo.js b/foo.js\n+new');
+    render(
+      <PrJsonModal
+        target={{ entry: { prNumber: '42', repo: 'owner/repo' }, pr: { number: 42 } }}
+        payload={{ byPrNumber: {} }}
+        onClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(document.querySelector('.pr-json-diff-file-path')).toBeInTheDocument());
+    const lines = Array.from(document.querySelectorAll('.pr-json-diff > .pr-json-diff-line')).map((line) => line.textContent);
+    expect(lines).toEqual(['preamble one', 'preamble two']);
+  });
+
   test('given the diff fetch fails, when rendering, then shows the error text instead of a diff', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,

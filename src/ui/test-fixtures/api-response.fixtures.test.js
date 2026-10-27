@@ -19,7 +19,7 @@ const {
   createDiffResponse,
   createAckResponse,
   validateApiResponseShape,
-} = require("./api-response.fixtures.js");
+} = require("./api-response.fixtures.ts");
 
 describe("API response fixtures", () => {
   describe("createOkJsonResponse", () => {

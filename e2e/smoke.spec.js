@@ -484,12 +484,14 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   const pane = detailPane(page);
   await expect(pane).toHaveAccessibleName("PR details");
   await expect(pane).toContainText("No PR selected");
-  // Docked to the right of the tables, which drop Size and Activity for it.
+  // Docked to the right of the tables, which keep every column.
   const paneBox = await pane.boundingBox();
   const firstTable = prTables(page).getByRole("table").first();
   const tableBox = await firstTable.boundingBox();
   expect(paneBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
-  await expect(firstTable.getByRole("columnheader", { name: "Activity", exact: true })).toHaveCount(0);
+  for (const name of ["Author", "Size", "Activity", "Actions"]) {
+    await expect(firstTable.getByRole("columnheader", { name, exact: true })).toBeVisible();
+  }
 
   // ↓ from a row's link selects that row; ↓ again moves to the next one.
   const table = prTables(page).getByRole("table").first();
@@ -515,6 +517,39 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   await expect(pane).toHaveAccessibleName("PR details");
   await expect(links.first()).toBeFocused();
   expect(consoleErrors).toEqual([]);
+});
+
+test("the docked detail pane stays in view while the page scrolls", async ({ page }) => {
+  // Short enough that the open sections scroll the page.
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  await openFirstRowInPane(page);
+
+  const pane = detailPane(page);
+  // Partway down: at the very end it rightly moves up with the tables' end.
+  await page.evaluate(() => window.scrollTo(0, 400));
+  expect(await page.evaluate(() => window.scrollY)).toBe(400);
+  // Stuck near the top of the window, not scrolled away with the table.
+  const box = await pane.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeLessThan(40);
+});
+
+test("with the detail pane hidden, clicking a row shows it again for that PR", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await expect(detailPane(page)).toHaveCount(0);
+
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  await summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who").click();
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
 });
 
 test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
@@ -902,7 +937,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // (state/useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx). No
   // existing e2e spec drove these chips directly before this test - the 2
   // "View in table" specs elsewhere in this file exercise a different,
-  // sibling implementation (AuthorInsightsPrLink.jsx's "View in table" button).
+  // sibling implementation (AuthorInsightsPrLink.tsx's "View in table" button).
   // Test-only bridge removal: opens with ?dataPollMs= and makes a real held-back
   // poll (changeServerData) instead of window.setPendingAutoRenderPayload.
   await page.goto("/?dataPollMs=300");
@@ -1755,7 +1790,7 @@ test("typing PR numbers into Run & check's PR-numbers field checks and unchecks 
 
 test("the PR JSON modal opens and renders real JSON for a real row", async ({ page }) => {
   // Regression test for Phase 7's safeJsonStringify/getPerPrUserStateFromPayload/
-  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.jsx
+  // DEFAULT_REPO migration (see REACT_MIGRATION_PLAN.md) - PrJsonModal.tsx
   // used to read all 3 off window.*; it now imports them directly. jest
   // coverage already exercises each piece in isolation with mocked
   // payloads - this proves the real, wired-together button click still
@@ -2548,7 +2583,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // section, since it depends on the same PR-link/meta-formatting
   // helpers). Unlike the created-PRs section, this component receives a
   // freshly-computed `selectedAuthor` object as a prop on every render
-  // (see AuthorInsightsNotesSection.jsx's own comment), so it needs no
+  // (see AuthorInsightsNotesSection.tsx's own comment), so it needs no
   // incrementing `key` - a plain effect dependency array already re-runs
   // on every author switch. This test guards the same structural
   // container-split regression as the header/selector/created-PRs tests:
@@ -2981,7 +3016,7 @@ test("Export follows the table's open sections: closing the sections that are op
 test("Snackbar shows a real failure as an error and a real poll failure as a warning, closes, and clears when polling recovers", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): the snackbar is fully React-owned
-  // (Snackbar.jsx/SnackbarProvider.tsx). Test-only bridge removal: this used
+  // (Snackbar.tsx/SnackbarProvider.tsx). Test-only bridge removal: this used
   // to call window.showErrorNotification/showWarningNotification (deleted);
   // it now drives both variants through real app paths, with requests
   // intercepted. The auto-dismiss timer (no production caller passes a

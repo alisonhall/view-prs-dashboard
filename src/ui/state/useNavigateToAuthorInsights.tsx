@@ -15,7 +15,7 @@ import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.h
  * Returns false for an empty login.
  *
  * The textarea is found with querySelector against the data attributes
- * AuthorInsightsCommentsSection.jsx renders; there is no ref for "the
+ * AuthorInsightsCommentsSection.tsx renders; there is no ref for "the
  * dirty textarea for author X".
  */
 export type NavigateToAuthorInsights = (authorLogin: unknown, options?: { focusUnsaved?: boolean }) => boolean;

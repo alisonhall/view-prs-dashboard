@@ -8,7 +8,7 @@ import type { PrDataPayload } from '../types/pr-data.ts';
  * or must wait for the user's unsaved edits to clear.
  *
  * The blocking state (which PRs/authors have unsaved edits) is computed by
- * `AutoRenderBlockingSync.jsx` from `NotesDirtyContext` and the drafts
+ * `AutoRenderBlockingSync.tsx` from `NotesDirtyContext` and the drafts
  * Context, and pushed in through the actions Context's `setBlockingState`.
  *
  * Default value (unwrapped) is a safe no-op, matching every other Context

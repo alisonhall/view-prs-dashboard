@@ -37,8 +37,15 @@
  */
 
 import { useState } from 'react';
+import type { RequestMoreMerged } from '../state/useRequestMoreMerged';
 
-export function MergedRequestMoreAction({ isVisible, repo, onRequestMore }) {
+export interface MergedRequestMoreActionProps {
+  isVisible: boolean;
+  repo: string;
+  onRequestMore?: RequestMoreMerged;
+}
+
+export function MergedRequestMoreAction({ isVisible, repo, onRequestMore }: MergedRequestMoreActionProps) {
   const [isPending, setIsPending] = useState(false);
   const [statusText, setStatusText] = useState('');
 
