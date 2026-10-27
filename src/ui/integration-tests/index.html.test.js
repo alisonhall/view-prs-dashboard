@@ -64,7 +64,7 @@ const { formatIsoDatetime } = require("../helpers/pr-formatting.helpers.ts").cre
 // The accessible names of a row's Signals icons, in slot order.
 const signalNames = (row) =>
   Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
 const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
 // Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the

@@ -1047,7 +1047,7 @@ No static type checking leads to:
   yet checked against how they're called.
 
 **Phase 12D: Component Migration**
-- [ ] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
+- [x] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
   (plus `src/ui/react-app.jsx`, now `.tsx`; `pr-row-keys` was converted with the helpers)
   - State layer first (decided 2026-10-23): the contexts, hooks and
     Providers survive the planned UI rework, the presentational components
@@ -1192,6 +1192,12 @@ No static type checking leads to:
       and comment fields from the table's live payload (a shallow copy), and
       diff lines before the first file header came out one block each, in
       reverse order.
+    - 12D-4 (2026-10-27): the 5 UI test fixtures are TypeScript
+      (api-response, pr-data and pr-row `.fixtures.ts`, and the
+      filter-state and pr-data probes `.tsx`), typed against the real
+      PrData/PrEntry/PrDataPayload types and with ES exports, which the
+      `.js` tests still `require()`. With that, 12D is done: no UI source
+      file is JavaScript; the UI tests stay `.js`/`.jsx` (12G).
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

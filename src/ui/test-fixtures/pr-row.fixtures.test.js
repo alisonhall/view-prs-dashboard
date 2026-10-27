@@ -1,7 +1,7 @@
 const {
   createPrRowEntry,
   validatePrRowEntryShape,
-} = require("./pr-row.fixtures.js");
+} = require("./pr-row.fixtures.ts");
 
 describe("pr row fixtures", () => {
   test("given default fixture output, when shape is validated, then the fixture is valid", () => {

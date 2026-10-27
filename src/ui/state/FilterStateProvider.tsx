@@ -103,7 +103,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * can't afford a whole-object Context subscription; see
  * `useFilterFieldValue`/`useFilterFieldActions` in FilterStateContext.tsx.
  * Tests read and write the same state through the Context
- * (`test-fixtures/filter-state-probe.jsx`).
+ * (`test-fixtures/filter-state-probe.tsx`).
  *
  * Restore: a mount-only effect reads the saved overrides into `values`,
  * and hands the 9 multi-select lists' saved selections to
