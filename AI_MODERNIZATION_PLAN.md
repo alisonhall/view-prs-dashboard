@@ -1160,6 +1160,18 @@ No static type checking leads to:
       Providers around the new shell/AppShell.tsx, which renders the whole
       page), with its test; DataViewHeader replaces DataViewHeaderPortals;
       TabPanelVisibilitySync deleted.
+    - Still `.jsx` after the UI redesign (2026-10-26, UI_REDESIGN_PLAN.md
+      phase 10), 18 components, none in `src/ui/state/`:
+      - Review stats: ReviewStatsContent, ReviewStatsControls,
+        StatsVisuals, GraphCard, ReviewerActivityChart.
+      - Authors: AuthorInsightsSelector, AuthorInsightsHeader,
+        AuthorInsightsCommentsSection, AuthorInsightsNotesSection,
+        AuthorCreatedPrsSection, AuthorInsightsPrDataMeta,
+        AuthorInsightsPrLink.
+      - Shared: ActorIdentity, AutoRenderBlockingSync,
+        MergedRequestMoreAction, PrDataPolling, PrJsonModal, Snackbar.
+      - The test fixtures filter-state-probe.jsx and pr-data-probe.jsx
+        belong to 12G.
 - [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 

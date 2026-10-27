@@ -41,8 +41,11 @@ Canonical runtime and scripts now live under `src/`:
   - Shared helpers: `src/server/helpers/`
   - State storage internals: `src/server/storage/`
   - Tests: `src/server/integration-tests/`
-- UI assets and page controller: `src/ui/`
+- UI: `src/ui/` (`index.html`, and `react-app.tsx`, which mounts the app)
+  - Components: `src/ui/components/` (the page layout and header in `components/shell/`)
+  - Contexts, Providers and hooks: `src/ui/state/`
   - UI helpers: `src/ui/helpers/`
+  - Stylesheets: `src/ui/styles/` (one per area, linked from `index.html`; `tokens.css` holds the design tokens)
 - UI tests: `src/ui/integration-tests/`
 - CLI/update scripts: `src/script/`
   - Script tests: `src/script/integration-tests/`
@@ -56,6 +59,7 @@ Compatibility note: migration shims were removed in Phase 3. Use canonical `src/
 
 - Planning and phased modernization checklist: `AI_MODERNIZATION_PLAN.md`
 - Vanilla-to-React UI migration (complete): `docs/history/REACT_MIGRATION_PLAN.md`
+- UI redesign (the current layout): `UI_REDESIGN_PLAN.md`
 - Window-bridge elimination, the migration's last step (complete): `docs/history/WINDOW_BRIDGE_ELIMINATION_PLAN.md`
 - Server-side helper extraction/integration status: `PHASE_8_STATUS.md`
 
@@ -257,7 +261,7 @@ Set `VIEW_PRS_SKIP_UNCHANGED=1` to enable updated-at based row reuse for unchang
 - Prefetch and row recompute now prioritize open/draft PRs first; closed/merged prefetch runs in a deferred phase so active review rows update earlier in long runs.
 - This keeps `CHK`/`MRG` values current while reducing full recomputation and API volume.
 
-The UI also polls scheduler state independently of `dataVersion`, so the Auto Refresh panel updates even when the underlying PR data file has not changed.
+The UI also polls scheduler state independently of `dataVersion`, so the Activity popover's scheduled jobs update even when the underlying PR data file has not changed.
 
 Example:
 
@@ -398,11 +402,13 @@ Then open:
 - `http://localhost:9000/view-prs/index.html`
 - `http://localhost:9000/health/deps` (dependency health)
 
+The page has three views, chosen by the tabs in the app header: `Pull requests` (the filter bar, the PR table in sections, and the detail pane docked beside it), `Review stats` and `Authors`. The header also shows the repo (or how many repos the table holds), the latest status, when the data was last updated, `Quick check all`, `Activity` (a popover of background jobs) and `Settings` (a drawer with running the script, the rules, backfill, the action log, actor names and export).
+
 When localhost is running, the server starts an automatic background refresh for `view-prs` data, driven by a single per-repo-aware dispatcher (replacing three independent timers) so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
 - **Quick check** (every 5 minutes per repo, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it now gets the exact same immediate fast-follow treatment (fixed - previously it only sat flagged until the merged/closed drain's own, actually *longer*, 30-minute interval).
   - A quick check does nothing if a full auto refresh for the same repo is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
-  - `Last quick check skip` in the Auto Refresh panel (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
+  - `Last skip` on the quick check's row in the Activity popover (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
 - **Merged/closed drain** (every 30 minutes per repo, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
 - **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net.
 - Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
@@ -683,7 +689,7 @@ Insights behavior notes:
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any Notes field has an unsaved edit (text, selects, and comments or stories added or removed).
-- Unsaved `Author Insights` manual comment drafts and manual comment edits also pause auto-refresh until they are saved, canceled, or explicitly discarded.
+- Unsaved manual comment drafts and edits in the `Authors` view also pause auto-refresh until they are saved, canceled, or explicitly discarded.
 - When auto-refresh is paused, an `Auto update paused` banner appears under the app header - and stays at the top of the window while you scroll - with clickable blocker chips (PR numbers and author-draft chips) that jump directly to the matching unsaved UI, plus a `Discard unsaved` action (manual override to render the pending update and discard unsaved edits).
 - Polling failures now show a persistent warning snackbar that includes `Last successful check` and `Last error at` timestamps.
 - The polling warning snackbar is automatically cleared after a successful poll.
@@ -775,7 +781,7 @@ The UI includes:
   - when both icons are present, the `🚩` icon is rendered below `⚠️`
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
-- Author Insights manual comments editor saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
+- The `Authors` view's manual comments editor, saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
 - PR-number-column relative `↻ ... ago` indicators are based on the latest successfully rendered run timestamp (`lastRun.updatedAt`), not per-row stale timestamps.
 - `YOUR LAST ACTIVITY` / `MERGED AT` date cells show five small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, stories, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
 - per-row `View PR JSON details` modal with four expanded-by-default sections:
@@ -815,14 +821,14 @@ Each field shows read-only, with an `Edit` button (`Add` while it's empty) that 
 
 Stories are persisted in user state as `stories: [{ name, url }]`. Notes saved before stories existed kept names (`rallyStories`) and URLs (`rallyLinks`) in two separate lists; those are read as stories, paired by position, and saved in the new shape on the next write.
 
-Author Insights manual comments fields include:
+The `Authors` view's manual comment fields include:
 
 - comment text (textarea)
 - sentiment (`positive`, `negative`, `neutral`)
 - save comment
 - inline edit for any saved comment
 
-Unsaved Author Insights manual-comment drafts and inline edits are preserved across internal rerenders and pause auto-refresh until they are saved, canceled, or explicitly discarded.
+Unsaved manual-comment drafts and inline edits in the `Authors` view are preserved across internal rerenders and pause auto-refresh until they are saved, canceled, or explicitly discarded.
 
 Saved manual author comments are grouped by `authorLogin` in `data/check-open-pr-updates.author-comments.json`, include `createdAt` and `updatedAt` timestamps, and are loaded lazily for the selected author.
 
@@ -1169,12 +1175,12 @@ Additional notes:
 - `activityTimeline` now collapses only consecutive runs of the same actor and activity type, so interruptions by another person or another type of event are preserved.
 - `reviewThreads`, `commentEvents`, and `activityEvents` keep the richer raw history needed for later analytics and reviewer-behavior views.
 - **Activity Timeline filtering**: The daily summary on the detail pane's Activity tab displays all dates with activity, and omits weekend dates (Sat-Sun) without activity. A run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row (with the date range) instead of a dash row per day; an isolated single no-activity weekday still shows its own dash ("-") row. This reduces visual clutter while maintaining visibility of business-week activity patterns.
-- The page now includes a `Review Statistics` tab with dedicated controls (`Sort by`, `Filter`, `Min comments`, `Top reviewers`) to rank and focus reviewer activity. Reviewer names are resolved using `actorsMap` display names. The statistics view features prominent graph cards:
+- The `Review stats` view has its own controls (`Sort by`, `Filter`, `Min comments`, `Top reviewers`) to rank and focus reviewer activity. Reviewer names are resolved using `actorsMap` display names. The statistics view features prominent graph cards:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
-  - Source rows in the statistics panel include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
-- The page now includes an `Author Insights` tab that shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in Author Insights include a `View in table` button with the same navigation behavior.
+  - Source rows in the statistics view include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
+- The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 
 ## Modifier options

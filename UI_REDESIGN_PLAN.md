@@ -838,6 +838,19 @@ becomes a small `react-app.tsx`. Done in steps:
     table, the filter bar, an expanded row, each pane tab, the activity
     popover, each Settings section, Review stats and Authors) before and
     after: no differences.
+- **10-2 done (2026-10-26):**
+  - No module and no class in `styles/` is unreferenced, so the first
+    bullet has nothing left to remove.
+  - The README describes the layout (the three views, the header, the
+    Activity popover and the Settings drawer) and where the UI code and
+    stylesheets live; the old "Auto Refresh panel", "Review Statistics
+    tab" and "Author Insights tab" wording is gone.
+  - `UI_MODERNIZATION_PROPOSAL.md` is marked superseded by this plan.
+  - The 18 components still in `.jsx` are listed under Phase 12D in
+    `AI_MODERNIZATION_PLAN.md`: the Review stats and Authors views'
+    components, as expected, plus ActorIdentity, AutoRenderBlockingSync,
+    MergedRequestMoreAction, PrDataPolling, PrJsonModal and Snackbar.
+  - This plan is complete.
 
 ## Decisions (2026-10-24)
 
