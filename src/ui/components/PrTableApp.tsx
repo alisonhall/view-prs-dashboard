@@ -24,6 +24,9 @@ import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateConte
 import { NowProvider } from '../state/NowContext';
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
+import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
+import { useSettingsDrawer } from '../state/SettingsDrawerContext';
+import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
@@ -112,6 +115,9 @@ export function PrTableApp() {
     reportRenderedSections,
   } = usePrTableUiState();
   const { dirtyPrNumbers } = useNotesDirty();
+  // Settings › Appearance: which sections show, and which start open.
+  const { preferences: sectionPreferences } = usePrSectionPreferences();
+  const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
 
@@ -471,7 +477,7 @@ export function PrTableApp() {
   );
 
   // Build sections from payload using existing vanilla JS helpers
-  const sections = useMemo(() => {
+  const builtSections = useMemo(() => {
     if (!payload || !payload.byPrNumber) {
       return [];
     }
@@ -630,6 +636,25 @@ export function PrTableApp() {
     collectPendingReviewRequests,
   ]);
 
+  // Settings › Appearance's choices: hidden sections are left out entirely
+  // (so they're not in previous/next, Export or View in table either), and
+  // a saved "Open when the page loads" replaces the built-in default.
+  const sections = useMemo(
+    () =>
+      builtSections
+        .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
+        .map((section) => ({ ...section, defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen) })),
+    [builtSections, sectionPreferences],
+  );
+  // The PRs the filters let through that aren't in any section on the page
+  // (all their sections are hidden), for the filter bar's count.
+  const hiddenPrCount = useMemo(() => {
+    const keyOf = (entry: PrEntry) => buildActivePrKey(String(entry?.data?.number ?? entry?.prNumber ?? ''), entry?.repo || effectiveRepo);
+    const onPage = new Set(sections.flatMap((section) => section.prs.map(keyOf)));
+    const inAnySection = new Set(builtSections.flatMap((section) => section.prs.map(keyOf)));
+    return [...inAnySection].filter((key) => !onPage.has(key)).length;
+  }, [builtSections, sections, effectiveRepo]);
+
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead
   // of a stale closure over whatever `sections` was when it first mounted.
@@ -648,8 +673,9 @@ export function PrTableApp() {
         defaultOpen: Boolean(section.defaultOpen),
         prNumbers: (section.prs || []).map((entry) => String(entry?.data?.number || '')),
       })),
+      hiddenPrCount,
     );
-  }, [sections, reportRenderedSections]);
+  }, [sections, hiddenPrCount, reportRenderedSections]);
 
   // The selected PR's entry, looked up again in each payload; null when
   // nothing is selected or the PR is no longer in the data.
@@ -722,6 +748,18 @@ export function PrTableApp() {
     if (target.focusUnsaved) setPaneTab('notes');
     setNavigationRequestCount((count) => count + 1);
   });
+  // For a PR in no section on the page (Settings › Appearance hid them
+  // all): selected in the detail pane, if it's in the data.
+  const showPrInPane = useStableCallback(({ prNumber, repo, focusUnsaved }: { prNumber: string; repo: string; focusUnsaved: boolean }) => {
+    const entry = Object.values(payload?.byPrNumber || {}).find(
+      (candidate) =>
+        String(candidate?.data?.number ?? candidate?.prNumber ?? '') === prNumber &&
+        (!repo || (candidate?.repo || effectiveRepo) === repo),
+    );
+    if (!entry || !selectPr({ repo: entry.repo || effectiveRepo, prNumber })) return;
+    setPaneVisible(true);
+    if (focusUnsaved) setPaneTab('notes');
+  });
   // The listener below is subscribed once, so it reads open state through
   // this ref rather than a stale closure.
   const isSectionOpenRef = useRef(isSectionOpen);
@@ -777,6 +815,9 @@ export function PrTableApp() {
         matches.find(({ section }) => isSectionOpenRef.current(section.key, Boolean(section.defaultOpen))) ||
         matches[0];
       if (!target) {
+        // Not in any section on the page (its sections are hidden): show it
+        // in the detail pane instead.
+        showPrInPane({ prNumber, repo, focusUnsaved });
         return;
       }
       const { section: matchingSection, entry: matchingEntry } = target;
@@ -792,7 +833,7 @@ export function PrTableApp() {
     return () => {
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
-  }, [navigateToPr]);
+  }, [navigateToPr, showPrInPane]);
 
   // Runs once a navigation's PR is selected and rendered: scrolls to and
   // focuses its row's link in the section it was found in (the same PR's
@@ -888,8 +929,9 @@ export function PrTableApp() {
   // render defeated row memoization when the payload has none).
   const actorsMap = useMemo(() => payload?.actorsMap || NO_ACTORS, [payload?.actorsMap]);
 
-  // Loading state: Show message while data loads
-  if (sections.length === 0) {
+  // Loading state: Show message while data loads (no sections built yet -
+  // not every section hidden, which shows its own message below).
+  if (builtSections.length === 0) {
     const hasPayload = payload && Object.keys(payload).length > 0;
     const hasPrs = payload?.byPrNumber && Object.keys(payload.byPrNumber).length > 0;
     
@@ -934,6 +976,12 @@ export function PrTableApp() {
       </div>
       <div className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
         <div className="pr-workspace-list">
+          {sections.length === 0 && (
+            <div className="pr-sections-all-hidden">
+              <p>Every section is hidden.</p>
+              <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+            </div>
+          )}
           {sections.map((section) => (
             <PrSection
               key={section.key}

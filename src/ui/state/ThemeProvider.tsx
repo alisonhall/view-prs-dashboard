@@ -14,7 +14,7 @@ import {
 } from '../helpers/theme.helpers.ts';
 import { useMediaQuery } from './useMediaQuery';
 
-const { readUiSessionOverrides, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
+const { readUiSessionOverrides, updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({
   fetch: (input, init) => fetch(input, init),
 });
 
@@ -71,10 +71,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     hasChosenRef.current = true;
     setPreferenceState(next);
     storeThemePreference(next);
-    (async () => {
-      const overrides = await readUiSessionOverrides();
-      await writeUiSessionOverrides({ ...overrides, [THEME_OVERRIDE_KEY]: next });
-    })();
+    updateUiSessionOverride(THEME_OVERRIDE_KEY, next);
   }, []);
 
   const value = useMemo(() => ({ preference, theme, setPreference }), [preference, theme, setPreference]);

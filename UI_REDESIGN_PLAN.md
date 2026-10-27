@@ -910,6 +910,12 @@ becomes a small `react-app.tsx`. Done in steps:
     starting on Light; ThemeProvider saves it in user-defaults.json
     (`theme`) and in localStorage, which an inline script in index.html
     reads before the first paint.
+  - Settings › Appearance › Sections: show or hide each PR table section
+    and choose whether it starts open, saved in user-defaults.json as
+    `prSections` (only differences from the built-in defaults).
+    PR_SECTION_CATALOG lists the sections for Settings; its test checks it
+    against the section builders. PrTableApp applies the choices after
+    building the sections, so a change doesn't rebuild them.
 
 ## Decisions (2026-10-24)
 

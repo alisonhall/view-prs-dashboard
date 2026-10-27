@@ -56,14 +56,18 @@ export interface PrTableUiStateValue {
   // it, in memory only.
   paneTab: PaneTab;
   setPaneTab: (tab: PaneTab) => void;
-  reportRenderedSections: (sections: RenderedSection[]) => void;
+  // Also how many of the PRs the filters let through are in no rendered
+  // section, because Settings › Appearance hid all of theirs.
+  reportRenderedSections: (sections: RenderedSection[], hiddenPrCount?: number) => void;
 }
 
-// From the reported sections: how many are open, and the PR numbers in
-// the open ones (display order, each once).
+// From the reported sections: how many are open, the PR numbers in the
+// open ones (display order, each once), and how many PRs are only in
+// hidden sections (the filter bar's count mentions them).
 export interface PrTableOpenSectionsValue {
   openSectionCount: number;
   prNumbersInOpenSections: string[];
+  hiddenPrCount: number;
 }
 
 export const defaultPrTableUiState: PrTableUiStateValue = {
@@ -85,6 +89,7 @@ export const defaultPrTableUiState: PrTableUiStateValue = {
 export const defaultPrTableOpenSections: PrTableOpenSectionsValue = {
   openSectionCount: 0,
   prNumbersInOpenSections: [],
+  hiddenPrCount: 0,
 };
 
 export const PrTableUiStateContext = createContext<PrTableUiStateValue>(defaultPrTableUiState);

@@ -1,5 +1,6 @@
 import { usePrData } from '../../state/PrDataContext';
 import { useAppliedFilterSummary } from '../../state/useAppliedFilterSummary';
+import { usePrTableOpenSections } from '../../state/PrTableUiStateContext';
 import { FilterBar } from './FilterBar';
 
 /**
@@ -15,6 +16,7 @@ import { FilterBar } from './FilterBar';
 export function DataViewHeader() {
   const { payload } = usePrData();
   const { summaryText, shownCount, totalCount } = useAppliedFilterSummary();
+  const { hiddenPrCount } = usePrTableOpenSections();
   const loaded = Boolean(payload?.ok);
   return (
     <>
@@ -22,7 +24,7 @@ export function DataViewHeader() {
         {loaded ? summaryText : 'Loading...'}
       </pre>
       <div id="filter-bar-root">
-        <FilterBar shownCount={shownCount} totalCount={totalCount} loaded={loaded} />
+        <FilterBar shownCount={shownCount} totalCount={totalCount} loaded={loaded} hiddenCount={hiddenPrCount} />
       </div>
     </>
   );

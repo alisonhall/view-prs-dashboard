@@ -35,6 +35,9 @@ export interface FilterBarProps {
   shownCount: number;
   totalCount: number;
   loaded: boolean;
+  // Of the shown rows, how many are only in sections Settings › Appearance
+  // hides (so not on the page).
+  hiddenCount?: number;
 }
 
 /**
@@ -49,7 +52,7 @@ export interface FilterBarProps {
  * closed (hidden). The lists' selections are kept in step with their
  * options by <ListSelectionSeeding />, mounted beside it.
  */
-export function FilterBar({ shownCount, totalCount, loaded }: FilterBarProps) {
+export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
@@ -76,7 +79,9 @@ export function FilterBar({ shownCount, totalCount, loaded }: FilterBarProps) {
           <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} />
         </Button>
         <p className="filter-bar-count" aria-live="polite">
-          {loaded ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}` : 'Loading…'}
+          {loaded
+            ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}${hiddenCount > 0 ? ` · ${hiddenCount} in hidden sections` : ''}`
+            : 'Loading…'}
         </p>
         {chips.length > 0 && (
           <>

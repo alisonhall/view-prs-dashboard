@@ -90,6 +90,13 @@ const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
 const { PrTableUiStateProvider } = require('../state/PrTableUiStateProvider');
 const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableUiStateContext');
 const { NotesDirtyContext } = require('../state/NotesDirtyContext');
+const { PrSectionPreferencesProvider } = require('../state/PrSectionPreferencesProvider');
+const { SettingsDrawerProvider, useSettingsDrawer } = require('../state/SettingsDrawerContext');
+let capturedSettingsDrawer;
+function SettingsDrawerProbe() {
+  capturedSettingsDrawer = useSettingsDrawer();
+  return null;
+}
 
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
@@ -173,15 +180,23 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // below (e.g. to exercise a specific scope/PR-number filter) without every
 // existing call site needing to pass a full values object.
 // `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
+// `sectionPreferences`: Settings › Appearance's saved section choices
+// (user-defaults.json's prSections), read by PrSectionPreferencesProvider
+// through a mocked fetch.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
   needsAttention,
   filterStateValues,
   dirtyPrNumbers,
+  sectionPreferences,
   ...tableProps
-} = {}) =>
-  render(
+} = {}) => {
+  const table = <PrTableApp {...tableProps} />;
+  if (sectionPreferences) {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) }));
+  }
+  return render(
     <AllSelectionProviders>
       <PrDataProvider
         initialPayload={initialPayload}
@@ -207,7 +222,14 @@ const renderPrTableApp = ({
               <UiStateProbe />
               <OpenSectionsProbe />
               <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirtyPrNumbers || [], setNotesDirty: () => {} }}>
-                <PrTableApp {...tableProps} />
+                {sectionPreferences ? (
+                  <SettingsDrawerProvider>
+                    <SettingsDrawerProbe />
+                    <PrSectionPreferencesProvider>{table}</PrSectionPreferencesProvider>
+                  </SettingsDrawerProvider>
+                ) : (
+                  table
+                )}
               </NotesDirtyContext.Provider>
             </PrActivityQueueProvider>
           </NeedsAttentionContext.Provider>
@@ -215,6 +237,7 @@ const renderPrTableApp = ({
       </PrDataProvider>
     </AllSelectionProviders>,
   );
+};
 
 function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
@@ -1772,6 +1795,67 @@ describe('PrTableApp', () => {
       await waitFor(() => {
         expect(document.activeElement).toBe(needsAttentionLink);
       });
+    });
+  });
+
+  describe("Settings › Appearance section choices", () => {
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }) } };
+    const renderedKeys = () => screen.queryAllByTestId("section").map((element) => element.getAttribute("data-key"));
+    const latestSectionProps = (key) => capturedSectionProps.filter((p) => p.section.key === key).at(-1);
+
+    test("given a hidden section, then it is not rendered, and the others are", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { closed: { hidden: true } } });
+      await waitFor(() => expect(renderedKeys()).not.toContain("closed"));
+      expect(renderedKeys()).toEqual(["open", "draft", "merged"]);
+    });
+
+    test("given a saved \"open when the page loads\" choice, then the section starts open", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { open: { open: true } } });
+      await waitFor(() => expect(latestSectionProps("open").isOpen).toBe(true));
+      expect(latestSectionProps("draft").isOpen).toBe(false);
+    });
+
+    test("given every section hidden, then a message offers to choose sections", async () => {
+      const hideAll = { open: { hidden: true }, draft: { hidden: true }, merged: { hidden: true }, closed: { hidden: true } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: hideAll });
+      await waitFor(() => expect(screen.getByText("Every section is hidden.")).toBeInTheDocument());
+      expect(renderedKeys()).toEqual([]);
+
+      React.act(() => screen.getByRole("button", { name: "Choose sections to show" }).click());
+      expect(capturedSettingsDrawer.isOpen).toBe(true);
+      expect(capturedSettingsDrawer.section).toBe("appearance");
+    });
+
+    test("given PRs only in hidden sections, then their count is reported for the filter bar", async () => {
+      const twoPrs = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }),
+          2: makeEntry({ prNumber: "2", repo: "owner/repo", section: "draft" }),
+        },
+      };
+      renderPrTableApp({ initialPayload: twoPrs, selectedRepo: "", sectionPreferences: { open: { hidden: true } } });
+      await waitFor(() => expect(capturedOpenSections.hiddenPrCount).toBe(1));
+    });
+
+    test("given no hidden sections, then no PRs are counted as hidden", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: {} });
+      await waitFor(() => expect(renderedKeys()).toContain("open"));
+      expect(capturedOpenSections.hiddenPrCount).toBe(0);
+    });
+
+    test("given View in table for a PR whose sections are all hidden, then it is shown in the detail pane", async () => {
+      const hideOpen = { open: { hidden: true } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "owner/repo", sectionPreferences: hideOpen });
+      await waitFor(() => expect(renderedKeys()).not.toContain("open"));
+
+      fireEvent(window, new CustomEvent("pr-navigate-to-insights", { detail: { prNumber: "1" } }));
+
+      await waitFor(() => expect(capturedUiState.selectedPr).toEqual({ repo: "owner/repo", prNumber: "1" }));
+      expect(capturedUiState.isPaneVisible).toBe(true);
     });
   });
 });

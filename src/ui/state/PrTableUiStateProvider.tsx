@@ -58,6 +58,7 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const [isPaneVisible, setPaneVisibleState] = useState(readPaneVisible);
   const [paneTab, setPaneTab] = useState<PaneTab>('overview');
   const [renderedSections, setRenderedSections] = useState<RenderedSection[]>([]);
+  const [hiddenPrCount, setHiddenPrCount] = useState(0);
 
   const isSectionOpen = useCallback(
     (key: string, defaultOpen: boolean) => sectionOpenOverrides[key] ?? defaultOpen,
@@ -84,8 +85,9 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   }, []);
   // The table reports on every sections rebuild; an unchanged report keeps
   // the same state.
-  const reportRenderedSections = useCallback((sections: RenderedSection[]) => {
+  const reportRenderedSections = useCallback((sections: RenderedSection[], hiddenCount = 0) => {
     setRenderedSections((previous) => (sameSections(previous, sections) ? previous : sections));
+    setHiddenPrCount(hiddenCount);
   }, []);
 
   const tableValue = useMemo<PrTableUiStateValue>(
@@ -138,8 +140,8 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
     };
   }, [renderedSections, isSectionOpen]);
   const openSectionsValue = useMemo<PrTableOpenSectionsValue>(
-    () => ({ openSectionCount, prNumbersInOpenSections }),
-    [openSectionCount, prNumbersInOpenSections],
+    () => ({ openSectionCount, prNumbersInOpenSections, hiddenPrCount }),
+    [openSectionCount, prNumbersInOpenSections, hiddenPrCount],
   );
 
   return (

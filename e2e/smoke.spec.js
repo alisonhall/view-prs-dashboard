@@ -609,13 +609,14 @@ test("the pane's Previous PR scrolls the row into view below the stuck headers",
     .toBeGreaterThanOrEqual(0);
 });
 
-// Removes a saved theme from user-defaults.json (shared by every test),
-// keeping the other settings.
-const clearSavedTheme = async (request) => {
+// Removes Settings › Appearance choices from user-defaults.json (shared by
+// every test), keeping the other settings.
+const clearSavedAppearance = async (request, keys) => {
   const { overrides = {} } = await (await request.get("/view-prs/user-defaults")).json();
-  delete overrides.theme;
+  keys.forEach((key) => delete overrides[key]);
   await request.put("/view-prs/user-defaults", { data: overrides });
 };
+const clearSavedTheme = (request) => clearSavedAppearance(request, ["theme"]);
 
 test("Settings › Appearance: Dark is applied and kept after the browser is closed", async ({ page }) => {
   // Starts from no saved theme, and leaves none even if a check fails, so
@@ -646,6 +647,35 @@ test("Settings › Appearance: Dark is applied and kept after the browser is clo
     await expect((await openSettings(page, "Appearance")).getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
   } finally {
     await clearSavedTheme(page.request);
+  }
+});
+
+test("Settings › Appearance: a hidden section and a section's open-on-load choice are kept after a reload", async ({ page }) => {
+  // Starts from no saved choices, and leaves none even if a check fails.
+  await clearSavedAppearance(page.request, ["prSections"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    await expect(prSection(page, "Flagged")).toHaveCount(1);
+    await expect(prSection(page, "Open PRs")).not.toHaveAttribute("open", "");
+
+    const drawer = await openSettings(page, "Appearance");
+    const savedHidden = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("checkbox", { name: "Show Flagged", exact: true }).uncheck();
+    await savedHidden;
+    await expect(prSection(page, "Flagged")).toHaveCount(0);
+    const savedOpen = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("checkbox", { name: "Open Open PRs when the page loads", exact: true }).check();
+    await savedOpen;
+
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(prSection(page, "Open PRs")).toHaveAttribute("open", "");
+    await expect(prSection(page, "Flagged")).toHaveCount(0);
+    const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
+    expect(overrides.prSections).toEqual({ flagged: { hidden: true }, open: { open: true } });
+  } finally {
+    await clearSavedAppearance(page.request, ["prSections"]);
   }
 });
 

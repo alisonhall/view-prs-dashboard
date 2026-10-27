@@ -147,6 +147,44 @@
   font-size: var(--font-size-md);
 }
 
+/* Settings › Appearance's sections: a name and two checkboxes per row. */
+.settings-sections-table {
+  width: 100%;
+  max-width: 480px;
+  border-collapse: collapse;
+  font-size: var(--font-size-md);
+}
+
+.settings-sections-table th,
+.settings-sections-table td {
+  padding: 6px var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
+}
+
+.settings-sections-table thead th {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* The checkbox columns' headings, centred over their checkboxes. */
+.settings-sections-table thead th:not(:first-child) {
+  text-align: center;
+}
+
+.settings-sections-table tbody th {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.settings-sections-table td {
+  width: 1%;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
