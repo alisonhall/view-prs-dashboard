@@ -51,7 +51,7 @@ getDomPurify()?.addHook('afterSanitizeAttributes', (node) => {
 // relative URL/resource on the page, and <meta http-equiv="refresh"> can
 // navigate the whole tab. Layout/positioning bleed from inline `style`
 // attributes on ordinary elements is instead contained via CSS `contain`
-// on the wrapping element (see .pr-insights-hook-content in index.css).
+// on the wrapping element (see .pr-insights-hook-content in styles/insights.css).
 // <form> is forbidden too - DOMPurify's defaults allow it (including
 // password-type inputs and an arbitrary cross-origin `action`), and a
 // display-only insights panel has no legitimate use for one, but a form

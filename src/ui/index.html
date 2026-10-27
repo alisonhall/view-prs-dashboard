@@ -3,13 +3,20 @@
 <head>
     <meta charset="utf-8" />
     <title>View PR Updates</title>
-    <!-- Stylesheets for the UI redesign (UI_REDESIGN_PLAN.md) live in
-         ./styles/; index.css is split into them area by area as each area
-         is rewritten. tokens.css comes first: the others use its
-         variables. -->
+    <!-- The stylesheets, one per area (UI_REDESIGN_PLAN.md). tokens.css
+         comes first: the others use its variables. common.css through
+         snackbar.css were index.css (phase 10-1) and keep its place in the
+         order, before ui.css. -->
     <link rel="stylesheet" href="./styles/tokens.css" />
     <link rel="stylesheet" href="./styles/layout.css" />
-    <link rel="stylesheet" href="./index.css" />
+    <link rel="stylesheet" href="./styles/common.css" />
+    <link rel="stylesheet" href="./styles/multi-select.css" />
+    <link rel="stylesheet" href="./styles/settings-sections.css" />
+    <link rel="stylesheet" href="./styles/activity.css" />
+    <link rel="stylesheet" href="./styles/review-stats.css" />
+    <link rel="stylesheet" href="./styles/author-insights.css" />
+    <link rel="stylesheet" href="./styles/insights.css" />
+    <link rel="stylesheet" href="./styles/snackbar.css" />
     <link rel="stylesheet" href="./styles/ui.css" />
     <link rel="stylesheet" href="./styles/pr-table.css" />
     <link rel="stylesheet" href="./styles/pane.css" />

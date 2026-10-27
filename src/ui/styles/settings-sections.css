@@ -1,0 +1,235 @@
+/*
+ * The Settings drawer sections' own content (components/settings/): Run &
+ * check's #status and #output, Export, Action log and Actor names, and the
+ * shared copy and card styles. settings.css styles the drawer itself.
+ * Moved from index.css (phase 10-1).
+ */
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.section-card {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.section-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.advanced-options {
+  margin-top: 10px;
+}
+
+.advanced-options summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+#output {
+  white-space: pre-wrap;
+  font-family: monospace;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.scheduler-details {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 12px;
+  color: #1f2328;
+}
+
+.export-field-controls {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.export-field-list {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #f6f8fa;
+  padding: 10px;
+  max-height: 300px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px 12px;
+}
+
+.export-field-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #1f2328;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.export-field-option input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.export-field-option-source {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #57606a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.export-actions {
+  margin-top: 10px;
+}
+
+#export-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #1f2328;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.subtle-copy {
+  margin: 0 0 10px;
+  color: #57606a;
+  font-size: 13px;
+}
+
+.low-emphasis-card {
+  opacity: 0.86;
+  background: #fafbfc;
+  border-style: dashed;
+}
+
+#status {
+  margin: 0;
+  min-height: 42px;
+  white-space: pre-wrap;
+  border: 1px solid #d0d7de;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  font-family: SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.action-log-container {
+  overflow-x: auto;
+}
+
+.action-log-empty {
+  color: #667085;
+  font-style: italic;
+}
+
+.action-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.action-log-table th,
+.action-log-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid #d0d7de;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.action-log-table th {
+  background: #f6f8fa;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.action-log-table td.action-log-detail {
+  white-space: normal;
+  max-width: 280px;
+  word-break: normal;
+}
+
+.action-log-status-ok {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.action-log-status-fail {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ffebe9;
+  color: #cf222e;
+}
+
+.actor-name-cache-controls {
+  margin-bottom: 10px;
+}
+
+.actor-name-cache-status {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+}
+
+.actor-name-cache-status-info {
+  color: #475467;
+}
+
+.actor-name-cache-status-success {
+  color: #1a7f37;
+}
+
+.actor-name-cache-status-error {
+  color: #cf222e;
+}
+
+.actor-name-cache-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.actor-name-cache-row,
+.actor-login-alias-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.actor-name-cache-row input,
+.actor-login-alias-row input {
+  min-width: 0;
+}
+
+.actor-name-cache-remove {
+  white-space: nowrap;
+}

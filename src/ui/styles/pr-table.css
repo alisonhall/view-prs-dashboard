@@ -1,8 +1,7 @@
 /*
  * The PR table: sections, column headers, rows and cells (PrSection.tsx,
  * PrTable.tsx, PrRow.tsx, PrRowSummary.tsx, components/cells/). Uses
- * tokens.css. The insights row's content is still styled by index.css
- * (insight-*).
+ * tokens.css. The insights content is styled by insights.css (insight-*).
  */
 
 /* Sections */
@@ -124,7 +123,7 @@
 .pr-col-activity { width: 64px; }
 .pr-col-actions { width: 172px; }
 
-/* thead in the selector so this beats index.css's
+/* thead in the selector so this beats common.css's
    `.data-tab-panel table th { white-space: normal }`. */
 .pr-table thead th {
   padding: var(--space-2);

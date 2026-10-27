@@ -1,7 +1,7 @@
 /*
  * Design tokens for the UI redesign (UI_REDESIGN_PLAN.md). New styles use
- * these instead of literal values; index.css still has its own literals
- * until each area is rewritten. Text colours meet 4.5:1 on --color-surface
+ * these instead of literal values; the files moved from index.css
+ * (common.css through snackbar.css) still have their own literals. Text colours meet 4.5:1 on --color-surface
  * and --color-canvas.
  */
 :root {

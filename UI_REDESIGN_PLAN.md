@@ -824,6 +824,20 @@ becomes a small `react-app.tsx`. Done in steps:
   superseded by this plan.
 - List the components still in `.jsx` for Phase 12D. Expected: the Review
   statistics and Author Insights components, which this plan doesn't touch.
+- **Done in two slices** (decided 2026-10-26), each reviewed and committed:
+  10-1 splits what's left of `index.css` into `styles/` (decision 4);
+  10-2 is the README, the proposal and the `.jsx` list.
+- **10-1 done (2026-10-26):**
+  - `index.css` (1,757 lines) is gone, split by area into `styles/`:
+    common, multi-select, settings-sections, activity, review-stats,
+    author-insights, insights and snackbar. They're linked where
+    `index.css` was (before `ui.css`), so the cascade is unchanged; the
+    unused `@keyframes pr-progress-spin` is deleted. They keep their
+    literal values (not yet on tokens.css).
+  - Checked by comparing every element's computed style in 19 states (the
+    table, the filter bar, an expanded row, each pane tab, the activity
+    popover, each Settings section, Review stats and Authors) before and
+    after: no differences.
 
 ## Decisions (2026-10-24)
 

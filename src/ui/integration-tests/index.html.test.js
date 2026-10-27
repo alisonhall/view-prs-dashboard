@@ -98,8 +98,7 @@ const { SnackbarProvider } = require("../components/SnackbarProvider");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
-const cssPath = path.join(__dirname, "..", "index.css");
-const indexCss = fs.readFileSync(cssPath, "utf8");
+const commonCss = fs.readFileSync(path.join(__dirname, "..", "styles", "common.css"), "utf8");
 
 const extractBodyHtml = (fullHtml) => {
   const bodyMatch = String(fullHtml || "").match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -1632,8 +1631,8 @@ describe("index page rendering with Testing Library", () => {
       ),
     ).toBe(true);
 
-    expect(indexCss).toMatch(/\.actor-identity-viewer\s*\{/);
-    expect(indexCss).toMatch(/\.actor-identity-pr-author\s*\{/);
+    expect(commonCss).toMatch(/\.actor-identity-viewer\s*\{/);
+    expect(commonCss).toMatch(/\.actor-identity-pr-author\s*\{/);
   });
 
   test("given a review thread with multiple comments, when opening it on Conversations, then its GitHub link targets the thread starter URL", async () => {

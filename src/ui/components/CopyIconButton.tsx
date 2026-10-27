@@ -2,7 +2,7 @@
  * CopyIconButton - a small icon-only "copy to clipboard" button.
  *
  * The glyph is delivered entirely via CSS `::before` content (see
- * `.insight-copy-btn` in index.css) rather than JSX text, so the button
+ * `.insight-copy-btn` in styles/insights.css) rather than JSX text, so the button
  * never contributes visible text content to its surroundings - useful when
  * it sits next to a value that other code/tests locate by exact text.
  *

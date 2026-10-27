@@ -39,7 +39,7 @@ function Group({ id, heading, rows }: { id: string; heading: string; rows: Row[]
   );
 }
 
-// A two-column grid (index.css's .insight-grid): each key and value is a
+// A two-column grid (styles/insights.css's .insight-grid): each key and value is a
 // grid item of its own.
 function Rows({ rows }: { rows: Row[] }) {
   return (

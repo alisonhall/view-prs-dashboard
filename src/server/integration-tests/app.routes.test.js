@@ -632,13 +632,13 @@ describe("route behavior", () => {
     expect(payload.ok).toBe(false);
   });
 
-  test("serves stylesheet content when GET /index.css is requested", async () => {
+  test("serves stylesheet content when GET /styles/common.css is requested", async () => {
     const address = server.address();
     if (!address || typeof address !== "object") {
       throw new Error("Unable to resolve server address");
     }
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/index.css`);
+    const response = await fetch(`http://127.0.0.1:${address.port}/styles/common.css`);
     const css = await response.text();
 
     expect(response.status).toBe(200);
