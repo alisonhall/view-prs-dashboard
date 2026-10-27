@@ -127,6 +127,47 @@ describe("Smart Groups Helpers", () => {
     });
   });
 
+  describe("the viewer's own groups (mine, assigned to me, review requested)", () => {
+    // The viewer is "me"; "old-me" is an alias of theirs.
+    const helpers = () =>
+      createPrSmartGroupsHelpers({
+        getViewerLogin: () => "Me",
+        normalizeLogin: (login) => (String(login) === "old-me" ? "me" : String(login || "").toLowerCase()),
+        getAssigneeLogins: (entry) => entry.data.assignees || [],
+        getRequestedReviewerLogins: (entry) => entry.data.requested || [],
+      });
+    const pr = (section, data) => ({ section, prNumber: "1", data: { number: "1", ...data } });
+
+    test("mine: the viewer's open and draft PRs, through aliases, not merged or closed ones", () => {
+      const { isMyOpenPr } = helpers();
+      expect(isMyOpenPr(pr("open", { authorLogin: "me" }))).toBe(true);
+      expect(isMyOpenPr(pr("draft", { authorLogin: "old-me" }))).toBe(true);
+      expect(isMyOpenPr(pr("merged", { authorLogin: "me" }))).toBe(false);
+      expect(isMyOpenPr(pr("open", { authorLogin: "someone" }))).toBe(false);
+    });
+
+    test("assigned to me: open and draft PRs with the viewer among the assignees", () => {
+      const { isAssignedToMe } = helpers();
+      expect(isAssignedToMe(pr("open", { authorLogin: "someone", assignees: ["bob", "ME"] }))).toBe(true);
+      expect(isAssignedToMe(pr("closed", { assignees: ["me"] }))).toBe(false);
+      expect(isAssignedToMe(pr("open", { assignees: ["bob"] }))).toBe(false);
+    });
+
+    test("review requested: someone else's open or draft PR requesting the viewer's review", () => {
+      const { isReviewRequestedFromMe } = helpers();
+      expect(isReviewRequestedFromMe(pr("draft", { authorLogin: "someone", requested: ["old-me"] }))).toBe(true);
+      expect(isReviewRequestedFromMe(pr("open", { authorLogin: "me", requested: ["me"] }))).toBe(false);
+      expect(isReviewRequestedFromMe(pr("merged", { authorLogin: "someone", requested: ["me"] }))).toBe(false);
+      expect(isReviewRequestedFromMe(pr("open", { authorLogin: "someone", requested: ["bob"] }))).toBe(false);
+    });
+
+    test("without a known viewer, none of them match", () => {
+      const { isMyOpenPr, isAssignedToMe, isReviewRequestedFromMe } = createPrSmartGroupsHelpers();
+      const entry = pr("open", { authorLogin: "", assignees: [""], requested: [""] });
+      expect([isMyOpenPr(entry), isAssignedToMe(entry), isReviewRequestedFromMe(entry)]).toEqual([false, false, false]);
+    });
+  });
+
   describe("buildSmartGroupConfigs", () => {
     test("given parameters, when building configs, then returns all smart group configs", () => {
       const { buildSmartGroupConfigs } = createPrSmartGroupsHelpers();
@@ -139,7 +180,7 @@ describe("Smart Groups Helpers", () => {
         repo: "owner/repo",
       });
 
-      expect(configs).toHaveLength(4);
+      expect(configs).toHaveLength(7);
       expect(configs[0]).toMatchObject({
         groupKey: "flagged",
         title: "Flagged",
@@ -158,7 +199,12 @@ describe("Smart Groups Helpers", () => {
         icon: "⚠️",
         defaultOpen: true,
       });
-      expect(configs[3]).toMatchObject({
+      expect(configs.slice(3, 6).map(({ groupKey, title, defaultOpen }) => ({ groupKey, title, defaultOpen }))).toEqual([
+        { groupKey: "mine", title: "My Open & Draft PRs", defaultOpen: true },
+        { groupKey: "assigned-to-me", title: "Assigned to Me", defaultOpen: true },
+        { groupKey: "review-requested", title: "Review Requested from Me", defaultOpen: true },
+      ]);
+      expect(configs[6]).toMatchObject({
         groupKey: "interacted",
         title: "Open PRs I'm Involved In",
         icon: "💬",
@@ -171,7 +217,7 @@ describe("Smart Groups Helpers", () => {
 
       const configs = buildSmartGroupConfigs();
 
-      expect(configs).toHaveLength(4);
+      expect(configs).toHaveLength(7);
       expect(typeof configs[0].predicate).toBe("function");
     });
 

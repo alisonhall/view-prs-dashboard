@@ -517,6 +517,11 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
   - Independent of the `In Review` flag/checkbox - marking a PR in-review does not, by itself, make it need attention or affect its `STATUS`; it only controls membership in the `In Review` smart group above and the row's `In Review` checkbox state
   - Configuration controlled via `user-defaults.json` (see "Needs Attention Configuration" section below)
   - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
+- **My Open & Draft PRs**: your own open and draft PRs (expanded by default)
+- **Assigned to Me**: open and draft PRs you're assigned to (expanded by default)
+- **Review Requested from Me**: someone else's open and draft PRs where your review is currently requested (expanded by default). GitHub usually drops the request once you submit a review, so the PR leaves this section then.
+  - These three compare logins with your actor login aliases resolved; they stay empty when your login isn't known.
+  - A review requested from a team you're in doesn't count: the stored data records requested people, not teams' members.
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
   - Purpose: Personal reference for active PRs you're engaged with
   - Only shows OPEN or DRAFT PRs (excludes merged/closed to keep section actionable)

@@ -1073,6 +1073,37 @@ describe('PrTableApp', () => {
     expect(expandedInsights['open:owner/repo-b:1']).toBeFalsy();
   });
 
+  test("given the viewer's own, assigned and review-requested PRs, then each lands in its smart group (the real helpers)", () => {
+    createPrSmartGroupsHelpers.mockImplementation(
+      jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers,
+    );
+    const pr = (prNumber, section, data) => ({
+      prNumber,
+      repo: 'owner/repo',
+      section,
+      data: { number: prNumber, viewerLogin: 'me', authorLogin: 'someone', ...data },
+    });
+    const payload = {
+      byPrNumber: {
+        1: pr('1', 'open', { authorLogin: 'me' }),
+        2: pr('2', 'draft', { assignees: [{ login: 'me' }] }),
+        3: pr('3', 'open', { requestedReviewers: [{ login: 'me' }] }),
+        4: pr('4', 'merged', { authorLogin: 'me', assignees: [{ login: 'me' }] }),
+        // Reviewed by the viewer, with no request left: not review-requested.
+        5: pr('5', 'open', { requestedReviewers: [], reviews: [{ authorLogin: 'me', state: 'APPROVED' }] }),
+      },
+    };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+    const numbersIn = (key) =>
+      capturedSectionProps
+        .filter((props) => props.section.key === key)
+        .at(-1)
+        ?.section.prs.map((entry) => entry.prNumber);
+    expect(numbersIn('mine')).toEqual(['1']);
+    expect(numbersIn('assigned-to-me')).toEqual(['2']);
+    expect(numbersIn('review-requested')).toEqual(['3']);
+  });
+
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {
     installSmartGroupHelpers();
     const payload = {
