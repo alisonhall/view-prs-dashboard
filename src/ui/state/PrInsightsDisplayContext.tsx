@@ -41,7 +41,7 @@ const {
  * AuthorThreadResolutionSelectionContext's selections.
  */
 const buildDefaultPrInsightsDisplay = () => {
-  const { collectRequestedReviewers, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
+  const { collectRequestedReviewers, collectPendingReviewRequests, formatRequestedReviewersDisplay } = createPrRequestedReviewersHelpers({
     asArray,
     resolveActorDisplayName,
   });
@@ -83,6 +83,7 @@ const buildDefaultPrInsightsDisplay = () => {
     formatApproversDisplay,
     formatRequestedReviewersDisplay,
     collectRequestedReviewers,
+    collectPendingReviewRequests,
     formatAssignedUsersDisplay,
     collectAssignedUsers,
     getUserInitials,

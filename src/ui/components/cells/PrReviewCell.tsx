@@ -37,7 +37,7 @@ export interface PrReviewCellProps {
 export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   useTooltipController();
   const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
-  const { collectAssignedUsers, collectRequestedReviewers, getUserInitials, getOpenConversationCountWithMe } =
+  const { collectAssignedUsers, collectPendingReviewRequests, getUserInitials, getOpenConversationCountWithMe } =
     usePrInsightsDisplay();
 
   const approved = String(pr?.approved || '').toUpperCase() === 'YES';
@@ -64,7 +64,9 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
 
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
   const assignees = collectAssignedUsers(pr);
-  const reviewers = collectRequestedReviewers(pr);
+  // Outstanding requests only: the fallback to whoever has reviewed would
+  // label them "review requested" too.
+  const reviewers = collectPendingReviewRequests(pr);
   const loginOf = (person: { login?: unknown }) => String(person?.login || '').trim();
   const assigneeLogins = new Set(assignees.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
   const reviewerLogins = new Set(reviewers.map((person) => loginOf(person).toLowerCase()).filter(Boolean));

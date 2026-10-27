@@ -1082,7 +1082,7 @@ When status is `CHANGED`, optional reason tags can be shown inline:
 In the Review column, a line under the signals shows people as small initials badges, each group labelled so it reads without hovering:
 
 - **Assigned**: every assignee.
-- **Review requested**: you, when your review is requested but you aren't assigned (so "I'm reviewing this" stays visible). Other requested reviewers are in the Reviewers row of the detail pane's Overview.
+- **Review requested**: you, when your review is currently requested but you aren't assigned (so "I'm reviewing this" stays visible). GitHub drops the request once you submit a review, and the badge goes with it. Other requested reviewers are in the Reviewers row of the detail pane's Overview.
 - Your own badge is highlighted; each badge names its person on hover, with `(you)` and `(review requested)` added where they apply.
 
 ## Check indicators in UI vs script
