@@ -13,6 +13,8 @@ import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
@@ -87,6 +89,9 @@ export function PrTableApp() {
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
   const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
+  // For the viewer's own smart groups (their PRs, assigned, review requested).
+  const { getEffectiveViewerLogin, normalizeActorLogin } = useActorIdentity();
+  const { collectAssignedUsers, collectPendingReviewRequests } = usePrInsightsDisplay();
 
   // Section open/closed and expanded insights rows live in
   // PrTableUiStateProvider (above AppShell), not here, so Settings › Export can
@@ -560,6 +565,11 @@ export function PrTableApp() {
           // Use actual interaction detection
           return checkUserInteraction(entry);
         },
+        getViewerLogin: (entry) => String(getEffectiveViewerLogin(entry?.data || {}) || ''),
+        normalizeLogin: (login) => normalizeActorLogin(login),
+        getAssigneeLogins: (entry) => collectAssignedUsers(entry?.data || {}).map((person) => person.login),
+        // Outstanding requests only, not the broad reviewers list.
+        getRequestedReviewerLogins: (entry) => collectPendingReviewRequests(entry?.data || {}).map((person) => person.login),
       });
 
       // Deliberately not passing `repo` here: isFlagged/isInReview
@@ -608,7 +618,17 @@ export function PrTableApp() {
       // headers showed no attention even when their rows did.
       attentionCount: (config.rows || []).filter((entry) => checkNeedsAttention(entry)).length,
     }));
-  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction, buildGroupedPrSections]);
+  }, [
+    payload,
+    visiblePrNumbers,
+    checkNeedsAttention,
+    checkUserInteraction,
+    buildGroupedPrSections,
+    getEffectiveViewerLogin,
+    normalizeActorLogin,
+    collectAssignedUsers,
+    collectPendingReviewRequests,
+  ]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead

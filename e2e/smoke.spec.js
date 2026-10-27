@@ -3003,29 +3003,28 @@ test("Export follows the table's open sections: closing the sections that are op
   // (PrTableUiStateProvider) instead of `<details open>` in the DOM.
   // Closing a section that's open by default used to be recorded as "open"
   // in that state (flipping "no choice yet" gave true), which Export would
-  // now trust - this checks the real toggle end to end. On a fresh page
-  // only "In Review" and "Needs Attention" are open (their defaults); which
-  // PRs they hold can change as earlier tests edit the shared server's
-  // data, so this checks the counts reach zero rather than exact numbers.
+  // now trust - this checks the real toggle end to end. On a fresh page the
+  // sections open by default are In Review, Needs Attention and the
+  // viewer's own three; which PRs they hold can change as earlier tests
+  // edit the shared server's data, so this checks the counts reach zero
+  // rather than exact numbers.
+  const openByDefault = ["In Review", "Needs Attention", "My Open & Draft PRs", "Assigned to Me", "Review Requested from Me"];
   await page.goto("/");
   await waitForPrTable(page);
 
   await openSettings(page, "Export");
   const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
-  await expect(exportPanel.getByText(/Expanded PR sections: 2$/m)).toBeVisible();
+  await expect(exportPanel.getByText(new RegExp(`Expanded PR sections: ${openByDefault.length}$`, "m"))).toBeVisible();
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: [1-9]\d*\//)).toBeVisible();
 
   // The drawer covers the table: close it to toggle sections. Export stays
   // mounted, so its summary follows while it's closed.
-  await closeSettings(page);
-  await prSectionSummary(prSection(page, "In Review")).click();
-  await openSettings(page, "Export");
-  await expect(exportPanel.getByText(/Expanded PR sections: 1$/m)).toBeVisible();
-
-  await closeSettings(page);
-  await prSectionSummary(prSection(page, "Needs Attention")).click();
-  await openSettings(page, "Export");
-  await expect(exportPanel.getByText(/Expanded PR sections: 0$/m)).toBeVisible();
+  for (const [index, title] of openByDefault.entries()) {
+    await closeSettings(page);
+    await prSectionSummary(prSection(page, title)).click();
+    await openSettings(page, "Export");
+    await expect(exportPanel.getByText(new RegExp(`Expanded PR sections: ${openByDefault.length - index - 1}$`, "m"))).toBeVisible();
+  }
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: 0\//)).toBeVisible();
 
   await page.getByRole("button", { name: "Preview JSON" }).click();

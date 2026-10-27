@@ -876,6 +876,19 @@ becomes a small `react-app.tsx`. Done in steps:
   - "Who" is "Author".
   - The Review column's people sit on their own line, labelled "Assigned"
     and "Review requested" (you, when requested but not assigned).
+  - Follow-up: "Review requested" uses the outstanding requests only
+    (collectPendingReviewRequests); collectRequestedReviewers falls back to
+    whoever has reviewed.
+- **New features (2026-10-27)**, on the `ui-redesign/features` branch, in
+  three reviewed slices:
+  - Smart sections after Needs Attention: My Open & Draft PRs, Assigned to
+    Me, Review Requested from Me (someone else's PR with your review
+    requested now - not teams' requests, which the data doesn't resolve),
+    open by default; Open PRs I'm Involved In stays, closed by default.
+  - Next: the section names stick to the top while their section scrolls;
+    then dark mode (the older stylesheets' colours onto tokens, then
+    Settings › Appearance: Light / Dark / System, starting on Light, saved in
+    user-defaults.json with a copy in the browser for the first paint).
 
 ## Decisions (2026-10-24)
 
