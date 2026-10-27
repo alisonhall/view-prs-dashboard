@@ -12,7 +12,7 @@
 .settings-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(31, 35, 40, 0.4);
+  background: var(--color-backdrop);
 }
 
 .settings-drawer {
@@ -93,6 +93,17 @@
 .settings-group {
   display: grid;
   gap: var(--space-2);
+}
+
+.settings-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-fieldset > .settings-heading {
+  margin-bottom: var(--space-1);
+  padding: 0;
 }
 
 .settings-heading {

@@ -895,9 +895,18 @@ becomes a small `react-app.tsx`. Done in steps:
     That needs the section not to be a scroll container, so it scrolls
     sideways only when its table can't fit (a container query on the
     list); then the column headers scroll away as before.
-  - Next: dark mode (the older stylesheets' colours onto tokens, then
-    Settings › Appearance: Light / Dark / System, starting on Light, saved in
-    user-defaults.json with a copy in the browser for the first paint).
+  - Dark mode. The older stylesheets' ~370 literal colours (and the Review
+    stats chart's inline ones) are on tokens now, merged into roles - so a
+    few light colours moved slightly, to the nearest token. The chart's
+    16 line colours are tokens too, lighter in dark where they'd vanish.
+    Only the avatars (white on a dark hue; the darkest is a token) and the
+    JSON diff's code area (dark in both) keep literals. tokens.css redefines every colour and shadow under
+    `:root[data-theme="dark"]`, and its test checks text contrast in both
+    themes. White text sits on new `-strong` fills, which stay dark enough
+    in the dark theme. Settings › Appearance: Light / Dark / System,
+    starting on Light; ThemeProvider saves it in user-defaults.json
+    (`theme`) and in localStorage, which an inline script in index.html
+    reads before the first paint.
 
 ## Decisions (2026-10-24)
 

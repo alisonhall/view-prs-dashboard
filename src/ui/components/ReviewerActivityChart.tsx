@@ -27,24 +27,9 @@ import type {
   TimelineChartData,
 } from '../helpers/pr-review-stats-date-bucketing.helpers.ts';
 
-const REVIEWER_COLORS = [
-  '#1f77b4',
-  '#d62728',
-  '#2ca02c',
-  '#9467bd',
-  '#ff7f0e',
-  '#17becf',
-  '#e377c2',
-  '#8c564b',
-  '#bcbd22',
-  '#7f7f7f',
-  '#003f5c',
-  '#ef5675',
-  '#ffa600',
-  '#2f4b7c',
-  '#00a676',
-  '#c51b8a',
-];
+// Each reviewer's line colour: tokens.css's 16 series colours, which have
+// lighter dark-theme versions where the light ones would vanish.
+const REVIEWER_COLORS = Array.from({ length: 16 }, (_, index) => `var(--color-series-${index})`);
 
 const LINE_HEIGHT = 236;
 const PAD_LEFT = 46;
@@ -202,13 +187,13 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
             minWidth: 'fit-content',
             boxSizing: 'border-box',
             padding: '8px',
-            border: '1px solid #d0d7de',
+            border: '1px solid var(--color-border-strong)',
             borderRadius: '8px',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--color-surface)',
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: columnTemplate, gap: '8px', alignItems: 'end', position: 'sticky', top: 0, backgroundColor: '#ffffff' }}>
-            <div style={{ fontWeight: 600, fontSize: '11px', color: '#57606a' }}>Author</div>
+          <div style={{ display: 'grid', gridTemplateColumns: columnTemplate, gap: '8px', alignItems: 'end', position: 'sticky', top: 0, backgroundColor: 'var(--color-surface)' }}>
+            <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--color-text-muted)' }}>Author</div>
             {displayBuckets.map((bucket) => (
               <div
                 key={bucket.key}
@@ -216,7 +201,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                 style={{
                   textAlign: 'center',
                   fontWeight: 500,
-                  color: '#57606a',
+                  color: 'var(--color-text-muted)',
                   width: `${heatmapDateColWidth}px`,
                   height: '36px',
                   display: 'flex',
@@ -231,7 +216,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                 <span style={{ fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{bucket.heatmapBottomLabel}</span>
               </div>
             ))}
-            <div style={{ fontWeight: 600, fontSize: '11px', color: '#57606a', textAlign: 'right' }}>Total</div>
+            <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--color-text-muted)', textAlign: 'right' }}>Total</div>
           </div>
 
           {displaySeries.map((series) => {
@@ -247,23 +232,23 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                   gap: '8px',
                   alignItems: 'center',
                   opacity: active ? 1 : 0.35,
-                  backgroundColor: active ? '#f6f8ff' : 'transparent',
+                  backgroundColor: active ? 'var(--color-accent-subtle)' : 'transparent',
                 }}
               >
                 <div
                   title={`${series.actor}: ${totalCount} total events`}
-                  style={{ minWidth: '120px', fontWeight: 500, fontSize: '11px', color: '#24292f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  style={{ minWidth: '120px', fontWeight: 500, fontSize: '11px', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
                   {String(series.actor || 'unknown')}
                 </div>
                 {series.points.map((point, pointIndex) => {
-                  const cellStyle: CSSProperties = { width: `${heatmapDateColWidth}px`, height: '16px', borderRadius: '3px', border: '1px solid #d0d7de' };
+                  const cellStyle: CSSProperties = { width: `${heatmapDateColWidth}px`, height: '16px', borderRadius: '3px', border: '1px solid var(--color-border-strong)' };
                   if (point.value === 0) {
-                    cellStyle.backgroundColor = '#f6f8fa';
+                    cellStyle.backgroundColor = 'var(--color-surface-inset)';
                   } else {
                     const intensity = point.value / maxValue;
                     const alpha = 0.18 + intensity * 0.72;
-                    cellStyle.backgroundColor = `rgba(9, 105, 218, ${alpha.toFixed(3)})`;
+                    cellStyle.backgroundColor = `color-mix(in srgb, var(--color-accent) ${(alpha * 100).toFixed(1)}%, transparent)`;
                   }
                   return (
                     <div
@@ -273,12 +258,12 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                     />
                   );
                 })}
-                <div style={{ fontSize: '11px', fontWeight: 600, color: '#57606a', textAlign: 'right' }}>{totalCount}</div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textAlign: 'right' }}>{totalCount}</div>
               </div>
             );
           })}
         </div>
-        <div style={{ fontSize: '10px', color: '#57606a', marginTop: '6px', fontStyle: 'italic' }}>{heatmapDisclaimer}</div>
+        <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginTop: '6px', fontStyle: 'italic' }}>{heatmapDisclaimer}</div>
       </div>
 
       <p className="stats-graph-subtitle" style={{ marginTop: '12px' }}>
@@ -294,9 +279,9 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
             position: 'relative',
             width: `${lineWidthEffective}px`,
             height: `${LINE_HEIGHT}px`,
-            border: '1px solid #d0d7de',
+            border: '1px solid var(--color-border-strong)',
             borderRadius: '8px',
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+            background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-inset) 100%)',
             overflow: 'hidden',
           }}
         >
@@ -312,7 +297,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                     top: `${y}px`,
                     width: `${plotWidth}px`,
                     height: '1px',
-                    backgroundColor: tick % 2 === 0 ? '#d8dee4' : '#eaeef2',
+                    backgroundColor: tick % 2 === 0 ? 'var(--color-border-strong)' : 'var(--color-border)',
                   }}
                 />
                 <div
@@ -321,7 +306,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                     right: `${lineWidthEffective - PAD_LEFT - 34}px`,
                     top: `${y - 7}px`,
                     fontSize: '10px',
-                    color: '#57606a',
+                    color: 'var(--color-text-muted)',
                     width: '30px',
                     textAlign: 'right',
                   }}
@@ -332,8 +317,8 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
             );
           })}
 
-          <div style={{ position: 'absolute', left: `${PAD_LEFT}px`, top: `${PAD_TOP + plotHeight}px`, width: `${plotWidth}px`, height: '1px', backgroundColor: '#9da7b3' }} />
-          <div style={{ position: 'absolute', left: `${PAD_LEFT}px`, top: `${PAD_TOP}px`, width: '1px', height: `${plotHeight}px`, backgroundColor: '#9da7b3' }} />
+          <div style={{ position: 'absolute', left: `${PAD_LEFT}px`, top: `${PAD_TOP + plotHeight}px`, width: `${plotWidth}px`, height: '1px', backgroundColor: 'var(--color-border-emphasis)' }} />
+          <div style={{ position: 'absolute', left: `${PAD_LEFT}px`, top: `${PAD_TOP}px`, width: '1px', height: `${plotHeight}px`, backgroundColor: 'var(--color-border-emphasis)' }} />
           <div
             style={{
               position: 'absolute',
@@ -343,7 +328,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
               transformOrigin: 'left top',
               fontSize: '10px',
               fontWeight: 600,
-              color: '#57606a',
+              color: 'var(--color-text-muted)',
               whiteSpace: 'nowrap',
             }}
           >
@@ -356,10 +341,10 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
             const bucket = displayBuckets[idx];
             return (
               <React.Fragment key={`xtick-${tick}`}>
-                <div style={{ position: 'absolute', left: `${x}px`, top: `${PAD_TOP}px`, width: '1px', height: `${plotHeight}px`, backgroundColor: 'rgba(157, 167, 179, 0.25)' }} />
+                <div style={{ position: 'absolute', left: `${x}px`, top: `${PAD_TOP}px`, width: '1px', height: `${plotHeight}px`, backgroundColor: 'var(--color-border-subtle)' }} />
                 <div
                   title={String(bucket?.title || '')}
-                  style={{ position: 'absolute', left: `${x - 32}px`, top: `${PAD_TOP + plotHeight + 4}px`, width: '64px', textAlign: 'center', fontSize: '10px', color: '#57606a' }}
+                  style={{ position: 'absolute', left: `${x - 32}px`, top: `${PAD_TOP + plotHeight + 4}px`, width: '64px', textAlign: 'center', fontSize: '10px', color: 'var(--color-text-muted)' }}
                 >
                   {String(bucket?.axisLabelWithTextMonth || bucket?.axisLabel || '')}
                 </div>
@@ -376,7 +361,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
               textAlign: 'center',
               fontSize: '10px',
               fontWeight: 600,
-              color: '#57606a',
+              color: 'var(--color-text-muted)',
             }}
           >
             Date
@@ -448,11 +433,11 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
               pointerEvents: 'none',
               padding: '6px 8px',
               borderRadius: '6px',
-              border: '1px solid #d0d7de',
-              backgroundColor: '#ffffff',
-              color: '#24292f',
+              border: '1px solid var(--color-border-strong)',
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text)',
               fontSize: '11px',
-              boxShadow: '0 2px 8px rgba(31, 35, 40, 0.16)',
+              boxShadow: 'var(--shadow-popover)',
               zIndex: 2,
             }}
           >
@@ -478,16 +463,16 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
                   gap: '6px',
                   padding: '2px 6px',
                   border: '1px solid',
-                  borderColor: active ? '#9ec1ff' : 'transparent',
+                  borderColor: active ? 'var(--color-border-selected)' : 'transparent',
                   borderRadius: '6px',
-                  background: active ? '#eef4ff' : 'transparent',
+                  background: active ? 'var(--color-accent-subtle)' : 'transparent',
                   cursor: 'pointer',
                   opacity: active ? 1 : 0.35,
                   fontWeight: active ? 600 : 400,
                 }}
               >
                 <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: color }} />
-                <span style={{ fontSize: '11px', color: '#57606a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {series.actor} ({total})
                 </span>
               </button>
@@ -496,7 +481,7 @@ export function ReviewerActivityChart({ chartData, titleOverride = '', subtitleO
         </div>
       </div>
 
-      <div style={{ fontSize: '10px', color: '#57606a', marginTop: '8px', fontStyle: 'italic' }}>{lineDisclaimer}</div>
+      <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginTop: '8px', fontStyle: 'italic' }}>{lineDisclaimer}</div>
     </section>
   );
 }

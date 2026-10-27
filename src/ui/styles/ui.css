@@ -83,7 +83,7 @@
 
 .ui-avatar[data-hue="0"] { background: #6e40c9; }
 .ui-avatar[data-hue="1"] { background: #0a6b76; }
-.ui-avatar[data-hue="2"] { background: #1f2328; }
+.ui-avatar[data-hue="2"] { background: var(--color-avatar-dark); }
 .ui-avatar[data-hue="3"] { background: #9a3412; }
 .ui-avatar[data-hue="4"] { background: #0757ba; }
 .ui-avatar[data-hue="5"] { background: #1a6b33; }
@@ -137,8 +137,8 @@
 }
 
 .ui-button[data-variant="primary"] {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
+  border-color: var(--color-accent-strong);
+  background: var(--color-accent-strong);
   color: var(--color-text-on-strong);
 }
 
@@ -269,7 +269,7 @@
 .ui-chip[aria-pressed="true"] {
   border-color: var(--color-text);
   background: var(--color-text);
-  color: var(--color-text-on-strong);
+  color: var(--color-text-inverse);
 }
 
 .ui-chip-count {

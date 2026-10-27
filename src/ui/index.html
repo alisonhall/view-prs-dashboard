@@ -23,6 +23,16 @@
     <link rel="stylesheet" href="./styles/filter-bar.css" />
     <link rel="stylesheet" href="./styles/shell.css" />
     <link rel="stylesheet" href="./styles/settings.css" />
+    <!-- Settings › Appearance: the browser's copy of the theme, set before
+         the first paint so a dark page doesn't flash light. Repeats
+         helpers/theme.helpers.ts's storage key and rule (its test checks). -->
+    <script>
+      try {
+        var theme = localStorage.getItem("view-prs:theme");
+        var dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (error) {}
+    </script>
 </head>
 
 <body>

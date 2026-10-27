@@ -1,16 +1,16 @@
 /* The Review stats view (ReviewStats*). Moved from index.css (phase 10-1). */
 
 .stats-panel {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 10px;
   padding: 12px;
-  background: #f6f8fa;
+  background: var(--color-surface-inset);
   margin-bottom: 12px;
 }
 
 .stats-empty {
   margin: 0;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-controls {
@@ -25,19 +25,19 @@
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-controls select,
 .stats-controls input {
   width: 100%;
   height: 32px;
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 0 8px;
   box-sizing: border-box;
-  background: #fff;
-  color: #1f2328;
+  background: var(--color-surface);
+  color: var(--color-text);
   font-size: 13px;
 }
 
@@ -49,10 +49,10 @@
 }
 
 .stat-card {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 10px;
   padding: 10px;
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .stat-card-label {
@@ -60,7 +60,7 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #57606a;
+  color: var(--color-text-muted);
   text-transform: uppercase;
 }
 
@@ -69,14 +69,14 @@
   margin-top: 4px;
   font-size: 24px;
   font-weight: 700;
-  color: #1f2328;
+  color: var(--color-text);
 }
 
 .stat-card-detail {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-visuals {
@@ -87,11 +87,11 @@
 }
 
 .stats-graph-card {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 10px;
   padding: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+  background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-inset) 100%);
+  box-shadow: var(--shadow-card);
 }
 
 .stats-graph-card-fullwidth {
@@ -102,18 +102,18 @@
   margin: 0;
   font-size: 14px;
   font-weight: 700;
-  color: #1f2328;
+  color: var(--color-text);
 }
 
 .stats-graph-title-clickable:hover {
-  color: #0b57d0;
+  color: var(--color-accent-text);
   text-decoration: underline;
 }
 
 .stats-graph-subtitle {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-graph-list {
@@ -137,12 +137,12 @@
 
 .stats-graph-label {
   font-weight: 600;
-  color: #1f2328;
+  color: var(--color-text);
   overflow-wrap: anywhere;
 }
 
 .stats-graph-value {
-  color: #57606a;
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
@@ -151,7 +151,7 @@
   display: flex;
   height: 10px;
   border-radius: 999px;
-  background: #eaeef2;
+  background: var(--color-surface-hover);
   overflow: hidden;
 }
 
@@ -159,7 +159,7 @@
   height: 100%;
   min-width: 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #0b57d0 0%, #4c9aff 100%);
+  background: linear-gradient(90deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-fill-segment {
@@ -176,28 +176,28 @@
 }
 
 .stats-graph-fill-comments {
-  background: linear-gradient(90deg, #0b57d0 0%, #59a5ff 100%);
+  background: linear-gradient(90deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-fill-reviews {
-  background: linear-gradient(90deg, #6f42c1 0%, #9a6cff 100%);
+  background: linear-gradient(90deg, var(--color-done) 0%, color-mix(in srgb, var(--color-done) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-fill-approvals {
-  background: linear-gradient(90deg, #1a7f37 0%, #4ac26b 100%);
+  background: linear-gradient(90deg, var(--color-success) 0%, color-mix(in srgb, var(--color-success) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-fill-usefulness {
-  background: linear-gradient(90deg, #b35900 0%, #f39c12 100%);
+  background: linear-gradient(90deg, var(--color-attention) 0%, color-mix(in srgb, var(--color-attention) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-fill-risk {
-  background: linear-gradient(90deg, #b42318 0%, #f85149 100%);
+  background: linear-gradient(90deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 60%, var(--color-surface)) 100%);
 }
 
 .stats-graph-detail {
   font-size: 11px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-sources {
@@ -207,7 +207,7 @@
 
 .stats-sources summary {
   cursor: pointer;
-  color: #0b57d0;
+  color: var(--color-accent-text);
   font-weight: 600;
 }
 
@@ -218,7 +218,7 @@
 }
 
 .stats-source-detail {
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-sources-group {
@@ -229,7 +229,7 @@
 
 .stats-sources-group-title {
   font-weight: 700;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .stats-sources-cell {
@@ -237,10 +237,10 @@
 }
 
 .stats-sources-toggle {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
-  background: #f6f8fa;
-  color: #0b57d0;
+  background: var(--color-surface-inset);
+  color: var(--color-accent-text);
   padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
@@ -248,11 +248,11 @@
 }
 
 .stats-sources-toggle:hover {
-  background: #eaf2ff;
+  background: var(--color-accent-subtle);
 }
 
 .stats-sources-row-cell {
-  background: #fff;
+  background: var(--color-surface);
   padding: 10px;
 }
 
@@ -260,12 +260,12 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .stats-table th,
 .stats-table td {
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   padding: 6px 8px;
   text-align: left;
   vertical-align: top;
@@ -273,12 +273,12 @@
 }
 
 .stats-table th {
-  background: #f6f8fa;
+  background: var(--color-surface-inset);
   font-size: 12px;
 }
 
 .stats-note {
   margin: 10px 0 0;
   font-size: 12px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }

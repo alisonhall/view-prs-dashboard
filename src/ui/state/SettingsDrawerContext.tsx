@@ -16,7 +16,8 @@ export type SettingsSectionId =
   | 'backfill'
   | 'action-log'
   | 'actor-names'
-  | 'export';
+  | 'export'
+  | 'appearance';
 
 export interface SettingsDrawerValue {
   isOpen: boolean;

@@ -8,6 +8,13 @@ body {
   padding: 0 24px 24px;
   font-family: var(--font-sans);
   color: var(--color-text);
+  background: var(--color-surface);
+}
+
+/* Links without their own colour (the header's Home and README) - the
+   browser's default blue doesn't suit the dark theme. */
+a {
+  color: var(--color-accent-text);
 }
 
 @media (max-width: 600px) {

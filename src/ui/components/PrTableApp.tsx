@@ -905,8 +905,8 @@ export function PrTableApp() {
         }}>
           ⏳
         </div>
-        <h3 style={{ margin: '0 0 10px 0', color: '#1f2328' }}>Loading Pull Requests...</h3>
-        <p style={{ fontSize: '14px', color: '#656d76', margin: '0' }}>
+        <h3 style={{ margin: '0 0 10px 0', color: 'var(--color-text)' }}>Loading Pull Requests...</h3>
+        <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', margin: '0' }}>
           {!hasPayload && 'Fetching data from server...'}
           {hasPayload && !hasPrs && 'Processing repository data...'}
           {hasPrs && 'Building PR sections...'}

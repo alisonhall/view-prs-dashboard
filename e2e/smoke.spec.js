@@ -306,9 +306,9 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
   await openSettings(page);
   const nav = settingsDrawer(page).getByRole("tablist", { name: "Settings sections", exact: true });
   const firstTab = nav.getByRole("tab", { name: "Run & check", exact: true });
-  const lastTab = nav.getByRole("tab", { name: "Export", exact: true });
+  const lastTab = nav.getByRole("tab", { name: "Appearance", exact: true });
 
-  // One row: the nav is about one tab high (stacked, the nine were ~310px).
+  // One row: the nav is about one tab high (stacked, they took over 300px).
   const navBox = await nav.boundingBox();
   const tabBox = await firstTab.boundingBox();
   expect(navBox.height).toBeLessThan(tabBox.height * 1.5);
@@ -321,7 +321,7 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
       return range.getClientRects().length;
     }),
   );
-  expect(labelLines).toEqual(Array(9).fill(1));
+  expect(labelLines).toEqual(Array(10).fill(1));
   expect(await nav.evaluate((element) => element.closest(".settings-nav").scrollWidth > element.closest(".settings-nav").clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
 
@@ -330,7 +330,7 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
   await page.keyboard.press("End");
   await expect(lastTab).toHaveAttribute("aria-selected", "true");
   await expect(lastTab).toBeInViewport();
-  await expect(settingsDrawer(page).getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+  await expect(settingsDrawer(page).getByRole("group", { name: "Theme", exact: true })).toBeVisible();
 });
 
 test("at phone width the activity popover stays in the window, under its button", async ({ page }) => {
@@ -407,8 +407,8 @@ test("the Settings drawer opens from the header, switches sections, and closes w
   await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
   await page.keyboard.press("End");
-  await expect(drawer.getByRole("tab", { name: "Export", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(drawer.getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("group", { name: "Theme", exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
@@ -607,6 +607,46 @@ test("the pane's Previous PR scrolls the row into view below the stuck headers",
   await expect
     .poll(async () => (await row.boundingBox()).y - ((await columnHeader.boundingBox()).y + (await columnHeader.boundingBox()).height))
     .toBeGreaterThanOrEqual(0);
+});
+
+// Removes a saved theme from user-defaults.json (shared by every test),
+// keeping the other settings.
+const clearSavedTheme = async (request) => {
+  const { overrides = {} } = await (await request.get("/view-prs/user-defaults")).json();
+  delete overrides.theme;
+  await request.put("/view-prs/user-defaults", { data: overrides });
+};
+
+test("Settings › Appearance: Dark is applied and kept after the browser is closed", async ({ page }) => {
+  // Starts from no saved theme, and leaves none even if a check fails, so
+  // a retry and the later tests start on Light.
+  await clearSavedTheme(page.request);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const html = page.locator("html");
+    await expect(html).toHaveAttribute("data-theme", "light");
+
+    const drawer = await openSettings(page, "Appearance");
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("radio", { name: "Dark", exact: true }).check();
+    await saved;
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    // The colours come from the dark tokens.
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(22, 27, 34)");
+
+    // The browser copy sets it before the page renders...
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    // ...and with that copy gone (a fresh browser), user-defaults.json still has it.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    await expect((await openSettings(page, "Appearance")).getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
+  } finally {
+    await clearSavedTheme(page.request);
+  }
 });
 
 test("in a window too narrow for the table, a section still scrolls sideways", async ({ page }) => {
