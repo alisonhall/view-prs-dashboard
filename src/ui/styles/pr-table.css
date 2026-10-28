@@ -183,10 +183,8 @@
   flex-wrap: wrap;
 }
 
-.pr-workspace[data-pane="docked"] .pr-size-added,
-.pr-workspace[data-pane="docked"] .pr-size-deleted {
-  display: block;
-  margin-left: 0;
+.pr-workspace[data-pane="docked"] .pr-size {
+  flex-direction: column;
 }
 
 /* thead in the selector so this beats common.css's
@@ -289,9 +287,26 @@
   padding-top: 2px;
 }
 
-/* Flowed as text, not a flex row: the state icon, title, number, busy
-   indicator and copy button wrap together, and a word only breaks when it
-   can't fit on a line of its own. */
+/* The PR number (its link) first, so it's in the same place on every row,
+   then the state icon (smart groups), any busy indicator and the labels
+   (wrapping onto more lines when there are many). */
+.pr-title-number-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  margin-bottom: 2px;
+}
+
+.pr-title-number-line .pr-link {
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The title flows as text, with the copy button in a gutter; a word only
+   breaks when it can't fit on a line of its own. */
 .pr-title-line {
   position: relative;
   /* A gutter for the copy button, so it never wraps onto a line of its
@@ -307,11 +322,6 @@
   width: 22px;
   height: 22px;
   margin: 0;
-}
-
-.pr-title-line > :not(.pr-title-text) {
-  margin-right: 4px;
-  vertical-align: middle;
 }
 
 .pr-title-line > .pr-title-text {
@@ -332,14 +342,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
-}
-
-.pr-title-text .pr-link {
-  margin-left: 2px;
-  font-weight: 400;
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
 }
 
 .pr-copy-title {
@@ -443,40 +445,68 @@
   color: var(--color-text-muted);
 }
 
-/* Review: the labelled people ("Assigned", "Review requested") on a line
-   under the slots */
+/* Review: the labelled people under the slots - "Assigned" then "Review
+   requested", each on a line of its own, its label in a fixed-width column
+   so the avatars start in the same place on every row. A label never
+   breaks (common.css lets table text break anywhere). */
 .pr-cell-review .ui-signal-group {
   flex-wrap: wrap;
 }
 
 .pr-review-people {
-  display: flex;
+  display: grid;
   flex-basis: 100%;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 3px;
   margin-top: 4px;
 }
 
 .pr-people-group {
-  display: inline-flex;
+  display: grid;
+  /* Wide enough for "Review requested" in the usual fonts; a wider font
+     widens that row's column rather than running into the avatars. */
+  grid-template-columns: minmax(8.4em, max-content) minmax(0, 1fr);
+  column-gap: 6px;
   align-items: center;
-  gap: 2px;
+  font-size: var(--font-size-xs);
 }
 
 .pr-people-label {
-  margin-right: 3px;
-  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.pr-people-avatars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* Docked, the column is too narrow for both: the label above its avatars. */
+.pr-workspace[data-pane="docked"] .pr-people-group {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
 }
 
 /* Size, Activity */
+/* Each count stays whole: the line breaks between the two, never inside a
+   number (common.css lets table text break anywhere). */
 .pr-size {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
 }
 
+.pr-size-added,
+.pr-size-deleted {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
 .pr-size-added { color: var(--color-success); }
-.pr-size-deleted { color: var(--color-danger); margin-left: 2px; }
+.pr-size-deleted { color: var(--color-danger); }
 
 .pr-activity {
   font-size: var(--font-size-sm);

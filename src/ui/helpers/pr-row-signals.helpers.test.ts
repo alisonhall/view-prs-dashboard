@@ -1,4 +1,5 @@
 import {
+  formatCompactCount,
   describeActivity,
   describeChecks,
   describeMergeable,
@@ -99,6 +100,32 @@ describe("pr row signals helpers", () => {
 
     test("is empty when no line counts are recorded", () => {
       expect(describeSize({})).toBeNull();
+    });
+
+    test("shortens large counts for the column, keeping the exact ones in the tooltip", () => {
+      expect(describeSize({ additions: 9999, deletions: 12345, changedFilesCount: 40 })).toEqual({
+        additions: "+9999",
+        deletions: "−12k",
+        label: "40 files changed\n+9999 additions, −12345 deletions",
+      });
+    });
+  });
+
+  describe("formatCompactCount", () => {
+    test("is exact below 10,000, then whole thousands, then millions to one place", () => {
+      expect(formatCompactCount(0)).toBe("0");
+      expect(formatCompactCount(9999)).toBe("9999");
+      expect(formatCompactCount(10_000)).toBe("10k");
+      expect(formatCompactCount(123_456)).toBe("123k");
+      expect(formatCompactCount(999_499)).toBe("999k");
+      expect(formatCompactCount(999_500)).toBe("1M");
+      expect(formatCompactCount(1_250_000)).toBe("1.3M");
+    });
+
+    test("never needs more than 4 characters (5 with the sign) below 100 million", () => {
+      [9999, 10_000, 99_999, 999_499, 999_500, 9_949_999, 99_000_000].forEach((count) =>
+        expect(formatCompactCount(count).length).toBeLessThanOrEqual(4),
+      );
     });
   });
 

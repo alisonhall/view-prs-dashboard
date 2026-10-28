@@ -138,6 +138,26 @@ describe('PrReviewCell', () => {
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
     });
 
+    test('lists Assigned before Review requested, each a label then its avatars, so they line up row to row', () => {
+      renderCell(
+        {},
+        {
+          identity: { getEffectiveViewerLogin: () => 'octocat' },
+          display: {
+            collectAssignedUsers: () => [{ login: 'hubot', name: 'Hubot' }],
+            collectPendingReviewRequests: () => [{ login: 'octocat', name: 'The Octocat' }],
+          } as never,
+        },
+      );
+      const groups = document.querySelectorAll('.pr-people-group');
+      expect(Array.from(groups).map((group) => group.getAttribute('aria-label'))).toEqual(['Assigned', 'Review requested']);
+      groups.forEach((group) => {
+        expect(group.children[0]).toHaveClass('pr-people-label');
+        expect(group.children[1]).toHaveClass('pr-people-avatars');
+        expect(group.children).toHaveLength(2);
+      });
+    });
+
     // GitHub drops a request once that person reviews; the broad reviewers
     // list (collectRequestedReviewers) falls back to whoever has reviewed,
     // which must not read as "Review requested".

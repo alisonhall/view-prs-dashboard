@@ -100,8 +100,17 @@ export interface SizeView {
   label: string;
 }
 
-// "+38 −12", with the files count in the tooltip. Null when the PR has no
-// line counts recorded.
+// A line count short enough for the Size column (about 5 characters with
+// its sign, docked): exact below 10,000, then whole thousands ("12k",
+// "123k") and millions to one place ("1.2M").
+export const formatCompactCount = (count: number): string => {
+  if (count < 10_000) return String(count);
+  if (count < 999_500) return `${Math.round(count / 1000)}k`;
+  return `${(Math.round(count / 100_000) / 10).toString()}M`;
+};
+
+// "+38 −12", with the exact counts and the files count in the tooltip.
+// Null when the PR has no line counts recorded.
 export const describeSize = (pr: PrData = {}): SizeView | null => {
   const hasCounts = pr?.additions !== undefined || pr?.deletions !== undefined;
   if (!hasCounts) return null;
@@ -110,8 +119,8 @@ export const describeSize = (pr: PrData = {}): SizeView | null => {
   const files = toCount(pr.changedFilesCount);
   const filesText = files ? `${files} file${files === 1 ? "" : "s"} changed\n` : "";
   return {
-    additions: `+${additions}`,
-    deletions: `−${deletions}`,
+    additions: `+${formatCompactCount(additions)}`,
+    deletions: `−${formatCompactCount(deletions)}`,
     label: `${filesText}+${additions} additions, −${deletions} deletions`,
   };
 };

@@ -87,7 +87,8 @@ describe('PrRow', () => {
     const onSelectRow = jest.fn();
     renderRow({ onSelectRow });
     await user.click(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
-    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+    // With the clicked row, which stays in place if the pane opens or closes.
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo', document.querySelector('tr.pr-row'));
   });
 
   test('a double-click selects it once (its second click would close the pane the first opened)', async () => {
@@ -110,7 +111,8 @@ describe('PrRow', () => {
     const reviewGroup = screen.getByRole('group', { name: 'Review' });
     expect(reviewGroup).toHaveAttribute('tabindex', '0');
     await user.click(within(reviewGroup).getAllByRole('img')[0] as HTMLElement);
-    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+    // With the clicked row, which stays in place if the pane opens or closes.
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo', document.querySelector('tr.pr-row'));
   });
 
   test('clicks on the row\'s controls and links do not select it', async () => {

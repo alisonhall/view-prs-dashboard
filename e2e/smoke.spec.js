@@ -726,6 +726,88 @@ test("clicking the PR shown in the detail pane again closes the pane", async ({ 
   await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
 
+test("with the detail pane docked, the Review labels and Size counts never break mid-word", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(prTables(page).locator(".pr-workspace")).toHaveAttribute("data-pane", "docked");
+  // Each text on one line: its boxes (one per text node and line) all
+  // share a top.
+  const lineCounts = await prTables(page)
+    .locator(".pr-people-label, .pr-size-added, .pr-size-deleted, .pr-title-number-line .pr-link")
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => element.getClientRects().length > 0)
+        .map((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const tops = new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top)));
+          return { text: element.textContent, lines: tops.size };
+        }),
+    );
+  expect(lineCounts.length).toBeGreaterThan(0);
+  expect(lineCounts.filter(({ lines }) => lines !== 1)).toEqual([]);
+});
+
+test("opening and closing the detail pane keeps the clicked PR row where it was on screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await expect(detailPane(page)).toHaveCount(0);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+
+  // A row in the last section with rows, scrolled to the middle of the window.
+  const row = prTables(page).locator("tr.pr-row").last();
+  await row.evaluate((element) => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 300));
+  const topBefore = (await row.boundingBox()).y;
+  const tableWidthBefore = (await prTables(page).getByRole("table").last().boundingBox()).width;
+
+  await row.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  // The table did reflow (narrower beside the pane)...
+  expect((await prTables(page).getByRole("table").last().boundingBox()).width).toBeLessThan(tableWidthBefore);
+  // ...but the row stayed put.
+  expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
+
+  await row.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
+
+  // The pane's close button and the toolbar's Detail pane button keep the
+  // selected row still too. In a taller window, with the page at the top,
+  // the third row is on screen with both buttons and has rows above it
+  // that reflow (the first two don't move whatever the layout). Each
+  // button is brought into view first, as a user would scroll to it, and
+  // the row measured from there.
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const topRow = prTables(page).locator("tr.pr-row").nth(2);
+  await topRow.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  const closeButton = detailPane(page).getByRole("button", { name: "Close details", exact: true });
+  await closeButton.scrollIntoViewIfNeeded();
+  await expect(topRow).toBeInViewport();
+  const topRowBeforeClose = (await topRow.boundingBox()).y;
+  await closeButton.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBeforeClose)).toBeLessThanOrEqual(1);
+
+  await topRow.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  const toolbarToggle = page.getByRole("button", { name: "Detail pane", exact: true });
+  await toolbarToggle.scrollIntoViewIfNeeded();
+  await expect(topRow).toBeInViewport();
+  const topRowBefore = (await topRow.boundingBox()).y;
+  await toolbarToggle.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBefore)).toBeLessThanOrEqual(1);
+  await toolbarToggle.click();
+  await expect(detailPane(page)).toHaveCount(1);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBefore)).toBeLessThanOrEqual(1);
+});
+
 test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 900 });
   await page.goto("/");

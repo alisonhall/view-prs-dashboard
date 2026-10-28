@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
@@ -27,6 +27,7 @@ import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
 import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
@@ -727,6 +728,35 @@ export function PrTableApp() {
     return true;
   };
 
+  // Opening or closing the pane narrows or widens the table, so rows change
+  // height: one row stays where it is on screen and the rest of the page
+  // reflows around it (captureRowAnchor) - the row clicked, else the row
+  // that was clicked to select the PR (a PR can have a row in several
+  // sections; this is the one the user was looking at), else the focused
+  // one, else the selected one, else the first in view. Every show/hide
+  // here goes through this. Returns the row kept still, if any.
+  const paneAnchorRef = useRef<RowAnchor | null>(null);
+  const selectedRowRef = useRef<Element | null>(null);
+  const selectedPrRow = (): Element | null => {
+    const row = selectedRowRef.current;
+    return row?.isConnected &&
+      selectedPr &&
+      row.getAttribute('data-pr-number') === selectedPr.prNumber &&
+      row.getAttribute('data-repo') === selectedPr.repo
+      ? row
+      : null;
+  };
+  const showPane = (visible: boolean, row?: Element | null): RowAnchor | null => {
+    if (visible !== isPaneVisible) paneAnchorRef.current = captureRowAnchor(row ?? selectedPrRow() ?? document.activeElement);
+    setPaneVisible(visible);
+    return paneAnchorRef.current;
+  };
+  useLayoutEffect(() => {
+    const anchor = paneAnchorRef.current;
+    paneAnchorRef.current = null;
+    restoreRowAnchor(anchor);
+  }, [isPaneVisible]);
+
   // Listen for "View in table" clicks (Author Insights, Review Stats) and
   // the "Auto update paused" chips (with `focusUnsaved`), which dispatch
   // this event (state/useNavigateToPrInTable.tsx) rather than reaching
@@ -757,7 +787,7 @@ export function PrTableApp() {
         (!repo || (candidate?.repo || effectiveRepo) === repo),
     );
     if (!entry || !selectPr({ repo: entry.repo || effectiveRepo, prNumber })) return;
-    setPaneVisible(true);
+    showPane(true);
     if (focusUnsaved) setPaneTab('notes');
   });
   // The listener below is subscribed once, so it reads open state through
@@ -891,21 +921,22 @@ export function PrTableApp() {
   // hidden with that PR still selected, shows it. ↑/↓ in a table select
   // without toggling (PrTable); the summary's "Show details" selects and
   // shows the pane too.
-  const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string) => {
+  const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string, row?: Element) => {
     const pr = { repo, prNumber: String(prNumber ?? '') };
+    if (row) selectedRowRef.current = row;
     if (samePr(pr, selectedPr)) {
       if (!isPaneVisible) {
-        setPaneVisible(true);
+        showPane(true, row);
         return;
       }
-      if (selectPr(null)) setPaneVisible(false);
+      if (selectPr(null)) showPane(false, row);
       return;
     }
-    if (selectPr(pr)) setPaneVisible(true);
+    if (selectPr(pr)) showPane(true, row);
   });
   const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
   const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
-    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) setPaneVisible(true);
+    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) showPane(true);
   });
   const handleClearSelection = useStableCallback(() => {
     selectPr(null);
@@ -914,12 +945,19 @@ export function PrTableApp() {
   // The pane's own close, previous and next. Closing hides the pane (a row
   // click shows it again) and clears the selection, asking first with
   // unsaved notes; focus goes back to the PR's row, since the button that
-  // had it goes away.
+  // had it goes away - the copy kept still on screen, without scrolling (the
+  // PR's first copy can be in another section, and focusing it scrolled the
+  // page there), or else its first copy.
   const handleClosePane = useStableCallback(() => {
     const closing = selectedPr;
     if (closing && !selectPr(null)) return;
-    setPaneVisible(false);
-    if (closing) findRowLink(closing)?.focus();
+    const anchor = showPane(false);
+    if (!closing) return;
+    const keptRow = anchor?.element.closest('tr.pr-row');
+    const keptLink =
+      keptRow?.getAttribute('data-pr-number') === closing.prNumber ? keptRow.querySelector<HTMLElement>('.pr-link') : null;
+    if (keptLink) keptLink.focus({ preventScroll: true });
+    else findRowLink(closing)?.focus();
   });
   // The whole row comes into view, below the stuck headers (pr-table.css).
   const handleStepPr = (target: SelectedPr | undefined) => {
@@ -929,7 +967,7 @@ export function PrTableApp() {
   // Hiding the pane unmounts its Notes too.
   const handleTogglePane = () => {
     if (isPaneVisible && !confirmLeavingPr()) return;
-    setPaneVisible(!isPaneVisible);
+    showPane(!isPaneVisible);
   };
 
   // The same object until the payload's own map changes (a fresh `{}` each

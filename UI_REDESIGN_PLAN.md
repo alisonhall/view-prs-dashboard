@@ -920,6 +920,15 @@ becomes a small `react-app.tsx`. Done in steps:
     its close button), instead of leaving it open on "No PR selected". If
     the pane was hidden with that PR still selected, the click shows it.
     A double-click counts once, so it doesn't open the pane and close it.
+  - Row layout: opening or closing the pane keeps the clicked (or
+    selected) row still on screen (row-scroll-anchor.helpers.ts: measure
+    before, scroll by the difference after; for the pane's close and the
+    toolbar button, the row that was clicked to select the PR). The PR
+    number link starts the first line, followed by the labels, with the
+    title under them. Review's Assigned / Review requested
+    are a line each with a fixed-width label (label above the avatars when
+    docked). Size counts never break inside a number (common.css lets table
+    text break anywhere), and counts from 10,000 are shortened (+12k).
 
 ## Decisions (2026-10-24)
 

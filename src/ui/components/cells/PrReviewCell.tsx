@@ -152,11 +152,13 @@ function PeopleGroup({
       <span className="pr-people-label" aria-hidden="true">
         {label}
       </span>
-      {people.map((person) => (
-        <span key={person.login} role="img" aria-label={person.label} data-tip={person.label} data-tip-on="hover">
-          <Avatar initials={getUserInitials(person.displayName, person.login)} login={person.login} isViewer={person.isViewer} size="sm" />
-        </span>
-      ))}
+      <span className="pr-people-avatars">
+        {people.map((person) => (
+          <span key={person.login} role="img" aria-label={person.label} data-tip={person.label} data-tip-on="hover">
+            <Avatar initials={getUserInitials(person.displayName, person.login)} login={person.login} isViewer={person.isViewer} size="sm" />
+          </span>
+        ))}
+      </span>
     </span>
   );
 }

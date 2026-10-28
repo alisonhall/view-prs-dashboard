@@ -415,7 +415,7 @@ When localhost is running, the server starts an automatic background refresh for
 - Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
 - Each repo's cadence/priority can be overridden individually via a `schedulerRepoConfig` key in the existing `/view-prs/user-defaults` JSON blob (`PUT` the whole object, merging your own change in - a `PUT` replaces the file, it doesn't merge for you), e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 8, "quickCheckIntervalMs": 120000}}}`. There's no settings form for this yet; the Activity popover's "Dispatcher queue" section shows each repo's effective priority/cadence read-only. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
 - On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
-- While a run is in progress, PR rows currently being refreshed show a small spinner below the PR number link and above the relative "updated ... ago" text without forcing a full table rerender.
+- While a run is in progress, PR rows currently being refreshed show a small spinner beside the PR number link without forcing a full table rerender.
 - A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
@@ -689,7 +689,8 @@ Insights behavior notes:
 - The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
   - Select a PR by clicking anywhere on its row that isn't a control (clicking the PR in the pane again closes the pane, like its close button; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
   - Leaving a PR with unsaved notes (another selection, previous/next, closing or hiding the pane) asks first.
-  - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll.
+  - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll. Opening or closing the pane keeps the row you clicked (or the selected one) where it is on screen while the table reflows around it; a PR shown in several sections keeps the copy you clicked.
+  - Each row's PR number (its link) starts the cell's first line, followed by its labels, with the title under them, so the number is in the same place on every row. `Size` shows `+added −deleted`, each count kept whole (the line breaks between them); counts of 10,000 or more are shortened (`+12k`, `+1.2M`), with the exact numbers on hover.
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
 - An open section's header (its name and count) and, under it, its table's column headers stay at the top of the window while you scroll through its rows, below the `Auto update paused` banner when that's showing. In a window too narrow for the table, the section scrolls sideways instead and only its name stays.
@@ -1087,7 +1088,7 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
-In the Review column, a line under the signals shows people as small initials badges, each group labelled so it reads without hovering:
+In the Review column, lines under the signals show people as small initials badges, each group labelled so it reads without hovering. `Assigned` comes first, then `Review requested`, each on a line of its own, with the badges starting in the same place on every row (with the detail pane docked, each label sits above its badges). A label never breaks across lines.
 
 - **Assigned**: every assignee.
 - **Review requested**: you, when your review is currently requested but you aren't assigned (so "I'm reviewing this" stays visible). GitHub drops the request once you submit a review, and the badge goes with it. Other requested reviewers are in the Reviewers row of the detail pane's Overview.

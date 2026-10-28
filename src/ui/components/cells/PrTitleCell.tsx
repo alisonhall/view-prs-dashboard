@@ -72,8 +72,9 @@ export function PrTitleCell({
   return (
     <td className="pr-cell pr-cell-title" data-pr-number={prNumber} data-repo={repo || ''}>
       {/* The same layout however much fits: the chevron in a column of its
-          own, the title wrapping beside it, and the labels on a line of
-          their own under it. */}
+          own; beside it the PR number (its link) starting the first line, so
+          it's in the same place on every row, followed by the state, any
+          busy indicator and the labels; then the title wrapping under it. */}
       <div className="pr-title-cell">
         <button
           type="button"
@@ -85,14 +86,11 @@ export function PrTitleCell({
           <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} />
         </button>
         <div className="pr-title-body">
-          <div className="pr-title-line">
+          <div className="pr-title-number-line">
+            <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
+              #{prNumber}
+            </a>
             {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
-            <span className="pr-title-text">
-              {title}{' '}
-              <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
-                #{prNumber}
-              </a>
-            </span>
             {isActive ? (
               <span className="pr-busy" data-busy="active">
                 <Signal icon="refresh" tone="pending" label={`PR #${prNumber} update in progress`} size={14} />
@@ -102,6 +100,18 @@ export function PrTitleCell({
                 <Signal icon="checksPending" tone="muted" label={`PR #${prNumber} queued for update`} size={14} />
               </span>
             ) : null}
+            {labels.length > 0 && (
+              <div className="pr-title-labels">
+                {labels.map((label, index) => (
+                  <span key={`${label}-${index}`} className="pr-label" data-hue={labelHue(label)}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="pr-title-line">
+            <span className="pr-title-text">{title}</span>
             <CopyIconButton
               className="pr-copy-title"
               text={plainTitle ? `${plainTitle} #${prNumber}` : ''}
@@ -109,15 +119,6 @@ export function PrTitleCell({
               label="Copy PR title and link"
             />
           </div>
-          {labels.length > 0 && (
-            <div className="pr-title-labels">
-              {labels.map((label, index) => (
-                <span key={`${label}-${index}`} className="pr-label" data-hue={labelHue(label)}>
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
           {hasMeta && (
             <div className="pr-title-meta">
               {showTargetBranch && (
