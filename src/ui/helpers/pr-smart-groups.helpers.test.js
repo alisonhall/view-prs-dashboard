@@ -202,7 +202,7 @@ describe("Smart Groups Helpers", () => {
       expect(configs.slice(3, 6).map(({ groupKey, title, defaultOpen }) => ({ groupKey, title, defaultOpen }))).toEqual([
         { groupKey: "mine", title: "My Open & Draft PRs", defaultOpen: true },
         { groupKey: "assigned-to-me", title: "Assigned to Me", defaultOpen: true },
-        { groupKey: "review-requested", title: "Review Requested from Me", defaultOpen: true },
+        { groupKey: "review-requested", title: "Me as Reviewer", defaultOpen: true },
       ]);
       expect(configs[6]).toMatchObject({
         groupKey: "interacted",

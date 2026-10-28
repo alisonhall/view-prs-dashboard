@@ -51,7 +51,7 @@ describe('Settings › Appearance sections', () => {
       'Needs Attention',
       'My Open & Draft PRs',
       'Assigned to Me',
-      'Review Requested from Me',
+      'Me as Reviewer',
       "Open PRs I'm Involved In",
       'Open PRs',
       'Draft PRs',

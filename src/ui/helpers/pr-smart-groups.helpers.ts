@@ -143,7 +143,7 @@ const createPrSmartGroupsHelpers = ({
     },
     {
       groupKey: "review-requested",
-      title: "Review Requested from Me",
+      title: "Me as Reviewer",
       icon: "🔍",
       predicate: (entry) => isReviewRequestedFromMe(entry),
       defaultOpen: true,

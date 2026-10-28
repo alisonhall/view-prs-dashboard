@@ -161,7 +161,7 @@
 .pr-col-select { width: 34px; }
 .pr-col-signals { width: 88px; }
 .pr-col-who { width: 150px; }
-.pr-col-review { width: 210px; }
+.pr-col-review { width: 170px; }
 .pr-col-checks { width: 64px; }
 .pr-col-size { width: 96px; }
 .pr-col-activity { width: 92px; }
@@ -445,10 +445,10 @@
   color: var(--color-text-muted);
 }
 
-/* Review: the labelled people under the slots - "Assigned" then "Review
-   requested", each on a line of its own, its label in a fixed-width column
-   so the avatars start in the same place on every row. A label never
-   breaks (common.css lets table text break anywhere). */
+/* Review: the labelled people under the slots - "Assigned" then
+   "Reviewer", each on a line of its own, its label in a fixed-width column
+   so the avatars start in the same place on every row (docked too). A
+   label never breaks (common.css lets table text break anywhere). */
 .pr-cell-review .ui-signal-group {
   flex-wrap: wrap;
 }
@@ -462,15 +462,18 @@
 
 .pr-people-group {
   display: grid;
-  /* Wide enough for "Review requested" in the usual fonts; a wider font
-     widens that row's column rather than running into the avatars. */
-  grid-template-columns: minmax(8.4em, max-content) minmax(0, 1fr);
+  /* Wide enough for "Assigned" and "Reviewer" in the usual fonts; a wider
+     font widens that row's column rather than running into the avatars. */
+  grid-template-columns: minmax(4.8em, max-content) minmax(0, 1fr);
   column-gap: 6px;
-  align-items: center;
+  align-items: start;
   font-size: var(--font-size-xs);
 }
 
+/* As tall as a badge (the small avatar), so the label sits level with the
+   first one when more wrap under it. */
 .pr-people-label {
+  line-height: var(--avatar-size-sm);
   color: var(--color-text-muted);
   white-space: nowrap;
   overflow-wrap: normal;
@@ -482,10 +485,11 @@
   gap: 2px;
 }
 
-/* Docked, the column is too narrow for both: the label above its avatars. */
-.pr-workspace[data-pane="docked"] .pr-people-group {
+/* Docked, beside its label a group has room for one badge a line: with
+   three or more, the label goes above them so they get the cell's full
+   width (about four a line). One or two stay on the label's line. */
+.pr-workspace[data-pane="docked"] .pr-people-group:has(.pr-people-avatars > :nth-child(3)) {
   grid-template-columns: minmax(0, 1fr);
-  row-gap: 2px;
 }
 
 /* Size, Activity */

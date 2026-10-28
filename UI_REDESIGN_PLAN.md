@@ -926,8 +926,15 @@ becomes a small `react-app.tsx`. Done in steps:
     toolbar button, the row that was clicked to select the PR). The PR
     number link starts the first line, followed by the labels, with the
     title under them. Review's Assigned / Review requested
-    are a line each with a fixed-width label (label above the avatars when
-    docked). Size counts never break inside a number (common.css lets table
+    are a line each with a fixed-width label. Later "Review requested"
+    became "Reviewer" (shorter, and an automatic request doesn't always
+    mean a review is needed): the label column is about 53px instead of
+    92px, so groups stay one line when docked too, and the wide Review
+    column went from 210px to 170px, the 40px going to the title. Docked,
+    a group with three or more badges puts its label above them (`:has()`),
+    so they get the full width. The smart section "Review Requested from
+    Me" became "Me as Reviewer" for the same reason (its key stays, so
+    saved section choices still apply). Size counts never break inside a number (common.css lets table
     text break anywhere), and counts from 10,000 are shortened (+12k).
 
 ## Decisions (2026-10-24)

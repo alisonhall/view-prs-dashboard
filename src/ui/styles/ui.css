@@ -72,8 +72,8 @@
 }
 
 .ui-avatar[data-size="sm"] {
-  width: 20px;
-  height: 20px;
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
   font-size: 9px;
 }
 

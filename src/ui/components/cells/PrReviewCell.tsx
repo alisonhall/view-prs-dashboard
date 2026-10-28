@@ -19,11 +19,13 @@ const toCount = (value: unknown): number => {
  * 3. Viewed files.
  * 4. Notes, listing the fields that have content.
  *
- * On a line under the slots, labelled so they read without hovering:
+ * On lines under the slots, labelled so they read without hovering:
  * "Assigned" and the assigned users' avatars, as the old Approved column
- * showed; and "Review requested" with the viewer's, when their review is
- * requested but they aren't assigned, so "I'm reviewing this" stays
- * visible.
+ * showed; and "Reviewer" with the viewer's, when their review is requested
+ * but they aren't assigned. "Reviewer", not "Review requested": shorter,
+ * and some projects add reviewers automatically, so a request doesn't
+ * always mean a review is needed. Its tooltip still says "review
+ * requested".
  *
  * The cell is one keyboard stop (SignalGroup) whose focus tooltip lists
  * all of it; each icon and avatar also has its own tooltip on hover.
@@ -95,7 +97,7 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
     viewedFiles?.label || '',
     notes || '',
     assigned.length ? `Assigned: ${assigned.map((person) => person.label).join(', ')}` : '',
-    requested.length ? `Review requested: ${requested.map((person) => person.label).join(', ')}` : '',
+    requested.length ? `Reviewer: ${requested.map((person) => person.label).join(', ')}` : '',
   ].filter(Boolean);
 
   return (
@@ -119,7 +121,7 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
           <span className="pr-review-people">
             {assigned.length > 0 && <PeopleGroup label="Assigned" people={assigned} getUserInitials={getUserInitials} />}
             {requested.length > 0 && (
-              <PeopleGroup label="Review requested" people={requested} getUserInitials={getUserInitials} />
+              <PeopleGroup label="Reviewer" people={requested} getUserInitials={getUserInitials} />
             )}
           </span>
         )}
@@ -136,7 +138,7 @@ interface Person {
   label: string;
 }
 
-// One labelled group of avatars ("Assigned", "Review requested"), so what
+// One labelled group of avatars ("Assigned", "Reviewer"), so what
 // the badges mean shows without hovering; each names its person on hover.
 function PeopleGroup({
   label,

@@ -748,6 +748,31 @@ test("with the detail pane docked, the Review labels and Size counts never break
   expect(lineCounts.filter(({ lines }) => lines !== 1)).toEqual([]);
 });
 
+test("with the detail pane docked, three or more badges go under their label, using the cell's width", async ({ page }) => {
+  // Four assignees on every PR (the stored data has at most one).
+  await page.route("**/view-prs/data", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    Object.values(json.byPrNumber || {}).forEach((entry) => {
+      entry.data.assignees = ["carol", "dave", "erin", "finn"].map((login) => ({ login, name: login }));
+    });
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(prTables(page).locator(".pr-workspace")).toHaveAttribute("data-pane", "docked");
+
+  const assigned = prTables(page).getByRole("group", { name: "Assigned", exact: true }).first();
+  const label = assigned.locator(".pr-people-label");
+  const badges = assigned.getByRole("img");
+  await expect(badges).toHaveCount(4);
+  const labelBox = await label.boundingBox();
+  const badgeTops = await badges.evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().top)));
+  // All four on one line, under the label.
+  expect(new Set(badgeTops).size).toBe(1);
+  expect(badgeTops[0]).toBeGreaterThanOrEqual(Math.round(labelBox.y + labelBox.height) - 1);
+});
+
 test("opening and closing the detail pane keeps the clicked PR row where it was on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 });
   await page.goto("/");
@@ -3255,7 +3280,7 @@ test("Export follows the table's open sections: closing the sections that are op
   // viewer's own three; which PRs they hold can change as earlier tests
   // edit the shared server's data, so this checks the counts reach zero
   // rather than exact numbers.
-  const openByDefault = ["In Review", "Needs Attention", "My Open & Draft PRs", "Assigned to Me", "Review Requested from Me"];
+  const openByDefault = ["In Review", "Needs Attention", "My Open & Draft PRs", "Assigned to Me", "Me as Reviewer"];
   await page.goto("/");
   await waitForPrTable(page);
 

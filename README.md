@@ -519,7 +519,7 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
   - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
 - **My Open & Draft PRs**: your own open and draft PRs (expanded by default)
 - **Assigned to Me**: open and draft PRs you're assigned to (expanded by default)
-- **Review Requested from Me**: someone else's open and draft PRs where your review is currently requested (expanded by default). GitHub usually drops the request once you submit a review, so the PR leaves this section then.
+- **Me as Reviewer**: someone else's open and draft PRs where your review is currently requested (expanded by default). Named for the role rather than "review requested", because some projects add reviewers automatically, so it isn't always a to-do. GitHub usually drops the request once you submit a review, so the PR leaves this section then.
   - These three compare logins with your actor login aliases resolved; they stay empty when your login isn't known.
   - A review requested from a team you're in doesn't count: the stored data records requested people, not teams' members.
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
@@ -1088,10 +1088,10 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
-In the Review column, lines under the signals show people as small initials badges, each group labelled so it reads without hovering. `Assigned` comes first, then `Review requested`, each on a line of its own, with the badges starting in the same place on every row (with the detail pane docked, each label sits above its badges). A label never breaks across lines.
+In the Review column, lines under the signals show people as small initials badges, each group labelled so it reads without hovering. `Assigned` comes first, then `Reviewer`, each on a line of its own, with the badges starting in the same place on every row. With the detail pane docked, a group with three or more badges puts its label above them, so they get the cell's full width. A label never breaks across lines.
 
 - **Assigned**: every assignee.
-- **Review requested**: you, when your review is currently requested but you aren't assigned (so "I'm reviewing this" stays visible). GitHub drops the request once you submit a review, and the badge goes with it. Other requested reviewers are in the Reviewers row of the detail pane's Overview.
+- **Reviewer**: you, when your review is currently requested but you aren't assigned. It says `Reviewer` rather than `Review requested` because some projects add reviewers automatically, so a request doesn't always mean a review is needed (the badge's tooltip still says `review requested`). GitHub drops the request once you submit a review, and the badge goes with it. Other requested reviewers are in the Reviewers row of the detail pane's Overview.
 - Your own badge is highlighted; each badge names its person on hover, with `(you)` and `(review requested)` added where they apply.
 
 ## Check indicators in UI vs script

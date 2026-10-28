@@ -18,7 +18,7 @@ export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
   { key: 'needs-attention', title: 'Needs Attention', defaultOpen: true },
   { key: 'mine', title: 'My Open & Draft PRs', defaultOpen: true },
   { key: 'assigned-to-me', title: 'Assigned to Me', defaultOpen: true },
-  { key: 'review-requested', title: 'Review Requested from Me', defaultOpen: true },
+  { key: 'review-requested', title: 'Me as Reviewer', defaultOpen: true },
   { key: 'interacted', title: "Open PRs I'm Involved In", defaultOpen: false },
   { key: 'open', title: 'Open PRs', defaultOpen: false },
   { key: 'draft', title: 'Draft PRs', defaultOpen: false },

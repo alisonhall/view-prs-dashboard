@@ -117,6 +117,10 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* The small avatar (ui.css), and what lines up with it (the Review
+     column's labels) */
+  --avatar-size-sm: 20px;
+
   /* Radii */
   --radius-sm: 4px;
   --radius-md: 6px;
