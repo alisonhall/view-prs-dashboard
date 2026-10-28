@@ -2793,12 +2793,16 @@ describe("index page rendering with Testing Library", () => {
     // assigned=assignee-other, which alone would match PR #2, not PR #1).
     // Matches the real, fully-wired app's own precedence (also covered by
     // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
-    expect(
-      screen.getAllByRole("button", { name: "More actions for PR #1" }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole("button", { name: "More actions for PR #2" }),
-    ).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "More actions for PR #1" }).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.queryByRole("button", { name: "More actions for PR #2" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {
@@ -4325,8 +4329,12 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("approver=alice");
     });
 
-    expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "More actions for PR #402" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #402" })).not.toBeInTheDocument();
+    });
   });
 
   test("given assigned and approver entries without login, when filter options are rendered, then fallback names are used as option keys", async () => {
@@ -4690,9 +4698,13 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "More actions for PR #602" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "More actions for PR #603" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #602" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #603" })).not.toBeInTheDocument();
+    });
   });
 
   test("given no PRs have approval data, when data loads, then approver select is disabled", async () => {
@@ -4875,8 +4887,12 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "More actions for PR #902" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #902" })).not.toBeInTheDocument();
+    });
   });
 
   test("cycles focus within PR JSON modal with Tab and Shift+Tab", async () => {
