@@ -7,12 +7,12 @@ import { MenuButton } from '../ui/MenuButton';
 
 /**
  * The Actions column, as icon buttons with tooltips:
- * - In review and Flagged, as toggles (they were checkboxes)
- * - Update, and Ack (pressed once acknowledged; pressing again clears it)
- * - a More menu: View PR JSON details, and Add label (the repo's labels
- *   the PR doesn't have yet)
+ * - Ack (pressed once acknowledged; pressing again clears it)
+ * - a More menu: In review and Flagged (worded for what choosing them does;
+ *   their state already shows in the Signals column), Update, View PR JSON
+ *   details, and Add label (the repo's labels the PR doesn't have yet)
  *
- * Accessible names keep the PR number ("Update PR #2"), so each row's
+ * Accessible names keep the PR number ("Ack PR #2"), so each row's
  * controls can be told apart.
  */
 type PrNumber = string | number | undefined;
@@ -62,20 +62,6 @@ export function PrActionsCell({
     <td className="pr-cell pr-cell-actions">
       <span className="pr-actions">
         <IconButton
-          icon="eye"
-          label={`In Review for PR #${prNumber}`}
-          pressed={isInReview}
-          onClick={handle(() => onCheckboxChange?.(pr?.number, 'inReview', !isInReview, repo))}
-        />
-        <IconButton
-          icon="flag"
-          tone="danger"
-          label={`Flagged for PR #${prNumber}`}
-          pressed={isFlagged}
-          onClick={handle(() => onCheckboxChange?.(pr?.number, 'flagged', !isFlagged, repo))}
-        />
-        <IconButton icon="refresh" label={`Update PR #${prNumber}`} onClick={handle(() => onUpdatePr?.(pr?.number, entry, pr))} />
-        <IconButton
           icon="check"
           label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           pressed={isAcknowledged}
@@ -87,6 +73,19 @@ export function PrActionsCell({
           icon="more"
           label={`More actions for PR #${prNumber}`}
           entries={[
+            {
+              id: 'in-review',
+              label: isInReview ? 'Remove from in review' : 'Mark in review',
+              icon: 'eye',
+              onSelect: () => onCheckboxChange?.(pr?.number, 'inReview', !isInReview, repo),
+            },
+            {
+              id: 'flagged',
+              label: isFlagged ? 'Remove flag' : 'Flag',
+              icon: 'flag',
+              onSelect: () => onCheckboxChange?.(pr?.number, 'flagged', !isFlagged, repo),
+            },
+            { id: 'update', label: 'Update PR', icon: 'refresh', onSelect: () => void onUpdatePr?.(pr?.number, entry, pr) },
             { id: 'json', label: 'View PR JSON details', icon: 'braces', onSelect: () => onViewJson?.(entry, pr) },
             {
               id: 'labels',

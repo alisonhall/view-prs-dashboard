@@ -87,7 +87,20 @@ describe('PrRow', () => {
     const onSelectRow = jest.fn();
     renderRow({ onSelectRow });
     await user.click(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
-    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+    // With the clicked row, which stays in place if the pane opens or closes.
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo', document.querySelector('tr.pr-row'));
+  });
+
+  test('a double-click selects it once (its second click would close the pane the first opened)', async () => {
+    const user = userEvent.setup();
+    const onSelectRow = jest.fn();
+    renderRow({ onSelectRow });
+    await user.dblClick(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledTimes(1);
+
+    // Two separate clicks still both count.
+    await user.click(screen.getByRole('group', { name: 'Signals' }).closest('td') as HTMLElement);
+    expect(onSelectRow).toHaveBeenCalledTimes(2);
   });
 
   test('a click on a signal icon (inside a focusable group, not a control) selects it too', async () => {
@@ -98,7 +111,8 @@ describe('PrRow', () => {
     const reviewGroup = screen.getByRole('group', { name: 'Review' });
     expect(reviewGroup).toHaveAttribute('tabindex', '0');
     await user.click(within(reviewGroup).getAllByRole('img')[0] as HTMLElement);
-    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo');
+    // With the clicked row, which stays in place if the pane opens or closes.
+    expect(onSelectRow).toHaveBeenCalledWith('101', 'owner/repo', document.querySelector('tr.pr-row'));
   });
 
   test('clicks on the row\'s controls and links do not select it', async () => {
@@ -106,7 +120,9 @@ describe('PrRow', () => {
     const onSelectRow = jest.fn();
     renderRow({ onSelectRow });
     await user.click(screen.getByRole('button', { name: 'Show summary for PR #101' }));
-    await user.click(screen.getByRole('button', { name: 'Update PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'Ack PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #101' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Update PR' }));
     await user.click(screen.getByRole('checkbox'));
     expect(onSelectRow).not.toHaveBeenCalled();
   });
@@ -152,9 +168,9 @@ describe('PrRow', () => {
     const stops = Array.from(row.querySelectorAll('a[href], button, input, [tabindex]')).filter(
       (element) => element.getAttribute('tabindex') !== '-1',
     );
-    // select, Signals, toggle, link, copy, Who, Review, CHK·MRG, Size,
-    // Activity, and 5 actions.
-    expect(stops).toHaveLength(15);
+    // select, Signals, toggle, link, copy, Author, Review, CHK·MRG, Size,
+    // Activity, and the 2 actions (Ack, More).
+    expect(stops).toHaveLength(12);
   });
 
   test('threads onViewJson down to the More menu', async () => {

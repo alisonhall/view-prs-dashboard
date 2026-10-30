@@ -19,6 +19,9 @@
 .pr-workspace-list {
   flex: 1;
   min-width: 0;
+  /* pr-table.css lets a section scroll sideways only when its table can't
+     fit this width. */
+  container-type: inline-size;
 }
 
 /* With the pane docked the table keeps every column; pr-table.css narrows
@@ -56,8 +59,9 @@
   flex: none;
   width: clamp(360px, 30vw, 560px);
   position: sticky;
-  top: var(--space-3);
-  max-height: calc(100vh - var(--space-6));
+  /* Below the Auto update paused banner when it's showing (AppShell). */
+  top: calc(var(--sticky-top, 0px) + var(--space-3));
+  max-height: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
   overflow-y: auto;
 }
 
@@ -70,7 +74,7 @@
 .pr-pane-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(31, 35, 40, 0.4);
+  background: var(--color-backdrop);
 }
 
 .pr-pane[data-mode="drawer"] {

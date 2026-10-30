@@ -227,6 +227,12 @@ const ICON_SHAPES = {
       <path d="M7 7h.01" />
     </>
   ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+    </>
+  ),
   users: (
     <>
       <circle cx="9" cy="7" r="4" />

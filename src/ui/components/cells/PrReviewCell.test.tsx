@@ -86,7 +86,7 @@ describe('PrReviewCell', () => {
     expect(screen.getByRole('img', { name: 'Notes: other notes · difficulty 2' })).toBeInTheDocument();
   });
 
-  describe('assigned users', () => {
+  describe('assigned users and review requested', () => {
     const assignedGroup = () => screen.getByRole('group', { name: 'Assigned' });
 
     test('shows each assignee, marking the viewer', () => {
@@ -100,6 +100,8 @@ describe('PrReviewCell', () => {
       expect(within(assignedGroup()).getByRole('img', { name: 'The Octocat (you)' })).toBeInTheDocument();
       expect(within(assignedGroup()).getByRole('img', { name: 'Hubot' })).toBeInTheDocument();
       expect(screen.getByText('TO')).toHaveAttribute('data-viewer', 'true');
+      // Labelled on the cell itself, not only in tooltips.
+      expect(assignedGroup()).toHaveTextContent(/^Assigned/);
     });
 
     test('notes an assignee who is also a requested reviewer', () => {
@@ -108,11 +110,11 @@ describe('PrReviewCell', () => {
         {
           display: {
             collectAssignedUsers: () => [{ login: 'hubot', name: 'Hubot' }],
-            collectRequestedReviewers: () => [{ login: 'hubot', name: 'Hubot' }],
+            collectPendingReviewRequests: () => [{ login: 'hubot', name: 'Hubot' }],
           } as never,
         },
       );
-      expect(within(assignedGroup()).getByRole('img', { name: 'Hubot (reviewer)' })).toBeInTheDocument();
+      expect(within(assignedGroup()).getByRole('img', { name: 'Hubot (review requested)' })).toBeInTheDocument();
     });
 
     test('shows the viewer when they\'re a requested reviewer but not assigned, and no other reviewers', () => {
@@ -122,20 +124,55 @@ describe('PrReviewCell', () => {
           identity: { getEffectiveViewerLogin: () => 'octocat' },
           display: {
             collectAssignedUsers: () => [],
-            collectRequestedReviewers: () => [
+            collectPendingReviewRequests: () => [
               { login: 'octocat', name: 'The Octocat' },
               { login: 'mona', name: 'Mona' },
             ],
           } as never,
         },
       );
-      expect(within(assignedGroup()).getAllByRole('img')).toHaveLength(1);
-      expect(within(assignedGroup()).getByRole('img', { name: 'The Octocat (you, reviewer, not assigned)' })).toBeInTheDocument();
+      const requested = screen.getByRole('group', { name: 'Reviewer' });
+      expect(requested).toHaveTextContent(/^Reviewer/);
+      expect(within(requested).getAllByRole('img')).toHaveLength(1);
+      expect(within(requested).getByRole('img', { name: 'The Octocat (you, review requested)' })).toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
     });
 
-    test('shows no assigned group when nobody is assigned', () => {
-      renderCell({}, { display: { collectAssignedUsers: () => [], collectRequestedReviewers: () => [{ login: 'mona' }] } as never });
+    test('lists Assigned before Reviewer, each a label then its avatars, so they line up row to row', () => {
+      renderCell(
+        {},
+        {
+          identity: { getEffectiveViewerLogin: () => 'octocat' },
+          display: {
+            collectAssignedUsers: () => [{ login: 'hubot', name: 'Hubot' }],
+            collectPendingReviewRequests: () => [{ login: 'octocat', name: 'The Octocat' }],
+          } as never,
+        },
+      );
+      const groups = document.querySelectorAll('.pr-people-group');
+      expect(Array.from(groups).map((group) => group.getAttribute('aria-label'))).toEqual(['Assigned', 'Reviewer']);
+      groups.forEach((group) => {
+        expect(group.children[0]).toHaveClass('pr-people-label');
+        expect(group.children[1]).toHaveClass('pr-people-avatars');
+        expect(group.children).toHaveLength(2);
+      });
+    });
+
+    // GitHub drops a request once that person reviews; the broad reviewers
+    // list (collectRequestedReviewers) falls back to whoever has reviewed,
+    // which must not show you as "Reviewer" here.
+    test('does not show "Reviewer" for a PR you have already reviewed, with no request left', () => {
+      renderCell(
+        { reviews: [{ authorLogin: 'octocat', state: 'APPROVED' }], requestedReviewers: [] },
+        { identity: { getEffectiveViewerLogin: () => 'octocat' } },
+      );
+      expect(screen.queryByRole('group', { name: 'Reviewer' })).not.toBeInTheDocument();
+    });
+
+    test("shows no people when nobody is assigned and your review isn't requested", () => {
+      renderCell({}, { display: { collectAssignedUsers: () => [], collectPendingReviewRequests: () => [{ login: 'mona' }] } as never });
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Reviewer' })).not.toBeInTheDocument();
     });
   });
 });

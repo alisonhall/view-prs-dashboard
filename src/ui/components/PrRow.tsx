@@ -33,7 +33,9 @@ export interface PrRowHandlers {
   // The chevron: the row's summary.
   onToggleInsights: (prNumber: PrNumber, sectionKey: string, repo: string) => void;
   // A click on the row: select it, or deselect it if it's selected.
-  onSelectRow?: (prNumber: PrNumber, repo: string) => void;
+  // `row` is the clicked row, which the page keeps in place if the pane
+  // opens or closes.
+  onSelectRow?: (prNumber: PrNumber, repo: string, row?: Element) => void;
   // The summary's "Show details": show it in the pane.
   onShowDetails?: (prNumber: PrNumber, repo: string) => void;
   onCheckboxChange?: PrActionsCellProps['onCheckboxChange'];
@@ -98,9 +100,11 @@ export const PrRow = memo(function PrRow({
 
   const handleClick = (event: MouseEvent<HTMLTableRowElement>) => {
     const target = event.target as Element;
-    // Not when the click was on a control, or ended a text selection.
-    if (target.closest(INTERACTIVE) || String(window.getSelection?.() ?? '').trim()) return;
-    onSelectRow?.(pr.number, repo);
+    // Not when the click was on a control, or ended a text selection - nor
+    // the second click of a double-click, which would close the pane the
+    // first one opened (a click on the selected PR closes it).
+    if (event.detail > 1 || target.closest(INTERACTIVE) || String(window.getSelection?.() ?? '').trim()) return;
+    onSelectRow?.(pr.number, repo, event.currentTarget);
   };
 
   return (

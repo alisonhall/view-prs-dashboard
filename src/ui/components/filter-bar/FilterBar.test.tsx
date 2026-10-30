@@ -92,6 +92,14 @@ describe('FilterBar header', () => {
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
+  test('mentions the shown PRs that are only in hidden sections (so not on the page)', () => {
+    const { unmount } = renderBar(LABELS, { hiddenCount: 2 });
+    expect(screen.getByText('Showing 3 of 5 PRs · 2 in hidden sections')).toBeInTheDocument();
+    unmount();
+    renderBar(LABELS, { hiddenCount: 0 });
+    expect(screen.getByText('Showing 3 of 5 PRs')).toBeInTheDocument();
+  });
+
   test('opens and closes, and remembers which it was left', async () => {
     const user = userEvent.setup();
     const { unmount } = renderBar();

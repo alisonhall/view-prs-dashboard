@@ -60,7 +60,10 @@ export interface PrDetailPaneProps {
   onTabChange: (tab: PaneTab) => void;
   onPrevious?: () => void;
   onNext?: () => void;
+  // Close: hides the pane (and clears the selection).
   onClose: () => void;
+  // Esc in the docked pane: clears the selection, keeping the pane.
+  onClearSelection?: () => void;
   onCheckboxChange?: (prNumber: PrNumber, type: 'inReview' | 'flagged', checked: boolean, repo: string) => void;
   onAckAction?: (prNumber: PrNumber, isAcked: boolean, repo: string) => void;
   onApplyLabel?: (prNumber: PrNumber, label: string, repo: string) => void;
@@ -85,7 +88,7 @@ function EmptyState() {
 }
 
 export function PrDetailPane(props: PrDetailPaneProps) {
-  const { entry, mode, onClose } = props;
+  const { entry, mode, onClose, onClearSelection = onClose } = props;
   useTooltipController();
   const containerRef = useRef<HTMLElement>(null);
   // The Activity tab's filters, held here (not in the per-PR content) so
@@ -98,7 +101,7 @@ export function PrDetailPane(props: PrDetailPaneProps) {
   const handleKeyDown = (event: KeyboardEvent) => {
     if (isDrawer || event.key !== 'Escape' || !entry || isEditable(event.target)) return;
     event.preventDefault();
-    onClose();
+    onClearSelection();
   };
 
   const prNumber = String(entry?.data?.number ?? entry?.prNumber ?? '');

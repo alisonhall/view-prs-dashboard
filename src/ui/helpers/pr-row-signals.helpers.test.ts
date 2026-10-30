@@ -1,10 +1,12 @@
 import {
+  formatCompactCount,
   describeActivity,
   describeChecks,
   describeMergeable,
   describeNotes,
   describeSize,
   describeViewedFiles,
+  findLastActivityAt,
   formatShortAge,
 } from "./pr-row-signals.helpers.ts";
 
@@ -99,6 +101,32 @@ describe("pr row signals helpers", () => {
     test("is empty when no line counts are recorded", () => {
       expect(describeSize({})).toBeNull();
     });
+
+    test("shortens large counts for the column, keeping the exact ones in the tooltip", () => {
+      expect(describeSize({ additions: 9999, deletions: 12345, changedFilesCount: 40 })).toEqual({
+        additions: "+9999",
+        deletions: "−12k",
+        label: "40 files changed\n+9999 additions, −12345 deletions",
+      });
+    });
+  });
+
+  describe("formatCompactCount", () => {
+    test("is exact below 10,000, then whole thousands, then millions to one place", () => {
+      expect(formatCompactCount(0)).toBe("0");
+      expect(formatCompactCount(9999)).toBe("9999");
+      expect(formatCompactCount(10_000)).toBe("10k");
+      expect(formatCompactCount(123_456)).toBe("123k");
+      expect(formatCompactCount(999_499)).toBe("999k");
+      expect(formatCompactCount(999_500)).toBe("1M");
+      expect(formatCompactCount(1_250_000)).toBe("1.3M");
+    });
+
+    test("never needs more than 4 characters (5 with the sign) below 100 million", () => {
+      [9999, 10_000, 99_999, 999_499, 999_500, 9_949_999, 99_000_000].forEach((count) =>
+        expect(formatCompactCount(count).length).toBeLessThanOrEqual(4),
+      );
+    });
   });
 
   describe("formatShortAge", () => {
@@ -114,19 +142,43 @@ describe("pr row signals helpers", () => {
   });
 
   describe("describeActivity", () => {
-    test("uses merged, else closed, else last commit, and includes the viewer's last activity", () => {
-      const merged = describeActivity({ mergedAt: "2026-10-22T12:00:00Z", sourceUpdatedAt: "2026-10-21T12:00:00Z", baseline: "2026-10-20T12:00:00Z" }, NOW);
-      expect(merged.text).toBe("2d");
-      expect(merged.label).toMatch(/^Merged: .+\nYour last activity: .+/);
-      expect(describeActivity({ closedAt: "2026-10-24T11:00:00Z" }, NOW).label).toMatch(/^Closed: /);
-      expect(describeActivity({ sourceUpdatedAt: "2026-10-24T11:00:00Z", baseline: "-" }, NOW)).toEqual({
-        text: "1h",
-        label: expect.stringMatching(/^Last commit: .+\nYour last activity: –$/),
-      });
+    test("gives the author's and your last activity, with any merge or close in the tooltip", () => {
+      const merged = describeActivity({ mergedAt: "2026-10-22T12:00:00Z", baseline: "2026-10-20T12:00:00Z" }, NOW, "2026-10-23T12:00:00Z");
+      expect(merged).toMatchObject({ authorText: "1d", viewerText: "4d" });
+      expect(merged.label).toMatch(/^Author's last activity: .+\nYour last activity: .+\nMerged: .+$/);
+      expect(describeActivity({ closedAt: "2026-10-24T11:00:00Z" }, NOW).label).toMatch(/\nClosed: .+$/);
     });
 
-    test("shows a dash when there's no activity time", () => {
-      expect(describeActivity({}, NOW)).toEqual({ text: "–", label: "Last commit: –\nYour last activity: –" });
+    test("leaves your line out when you have no activity, and shows a dash for the author's when they have none", () => {
+      expect(describeActivity({ baseline: "-" }, NOW, "2026-10-24T11:00:00Z")).toEqual({
+        authorText: "1h",
+        viewerText: "",
+        label: expect.stringMatching(/^Author's last activity: .+\nYour last activity: –$/),
+      });
+      expect(describeActivity({}, NOW)).toEqual({
+        authorText: "–",
+        viewerText: "",
+        label: "Author's last activity: –\nYour last activity: –",
+      });
+    });
+  });
+
+  describe("findLastActivityAt", () => {
+    const normalize = (login: unknown) => ({ "old-login": "alice" } as Record<string, string>)[String(login)] ?? String(login || "").toLowerCase();
+
+    test("finds the person's latest event, through their aliases", () => {
+      const events = [
+        { actor: "alice", occurredAt: "2026-10-20T10:00:00Z" },
+        { actor: "bob", occurredAt: "2026-10-23T10:00:00Z" },
+        { actor: "old-login", occurredAt: "2026-10-22T10:00:00Z" },
+        { actor: "Alice", occurredAt: "not a date" },
+      ];
+      expect(findLastActivityAt(events, "ALICE", normalize)).toBe("2026-10-22T10:00:00Z");
+    });
+
+    test("gives nothing without a login or without their events", () => {
+      expect(findLastActivityAt([{ actor: "bob", occurredAt: "2026-10-23T10:00:00Z" }], "alice", normalize)).toBe("");
+      expect(findLastActivityAt([{ actor: "", occurredAt: "2026-10-23T10:00:00Z" }], "", normalize)).toBe("");
     });
   });
 });

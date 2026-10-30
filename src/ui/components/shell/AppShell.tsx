@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { usePrData } from '../../state/PrDataContext';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
 import { useMergedRequestMoreActionOptions } from '../../state/useMergedRequestMoreActionOptions';
@@ -53,6 +53,27 @@ const AuthorCreatedPrsSection = lazy(() =>
 function AppHeaderLive() {
   const quickCheckActions = useQuickCheckActions();
   return <AppHeader onQuickCheckAll={() => quickCheckActions.handleQuickCheckAll()} />;
+}
+
+// The Auto update paused banner sticks to the top of the window while it
+// shows; its height goes in --sticky-top on <html>, so the section headers
+// and the docked pane stick just below it rather than under it. Set
+// directly, so the shell doesn't re-render.
+function useStickyTopFrom(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const root = document.documentElement;
+    const apply = () => root.style.setProperty('--sticky-top', `${Math.round(element.getBoundingClientRect().height)}px`);
+    apply();
+    if (typeof ResizeObserver !== 'function') return () => root.style.removeProperty('--sticky-top');
+    const observer = new ResizeObserver(apply);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--sticky-top');
+    };
+  }, [ref]);
 }
 
 // One view, hidden unless its tab is selected. Its own component so a tab
@@ -117,6 +138,8 @@ function MergedRequestMoreActionLive() {
 export function AppShell() {
   // Outside clicks close the filter dropdowns.
   useMultiSelectDropdownClosing();
+  const bannerRootRef = useRef<HTMLDivElement>(null);
+  useStickyTopFrom(bannerRootRef);
 
   return (
     <>
@@ -129,7 +152,7 @@ export function AppShell() {
       </div>
       {/* Its own element at the top level, so it can stay stuck to the top
           of the window while you scroll (styles/shell.css). */}
-      <div id="app-banner-root" className="app-banner-root">
+      <div id="app-banner-root" className="app-banner-root" ref={bannerRootRef}>
         <AuthorInsightsProvider>
           <AutoUpdatePausedBanner />
         </AuthorInsightsProvider>

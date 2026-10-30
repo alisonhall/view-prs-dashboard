@@ -1,43 +1,96 @@
 /*
- * Design tokens for the UI redesign (UI_REDESIGN_PLAN.md). New styles use
- * these instead of literal values; the files moved from index.css
- * (common.css through snackbar.css) still have their own literals. Text colours meet 4.5:1 on --color-surface
- * and --color-canvas.
+ * Design tokens for the UI redesign (UI_REDESIGN_PLAN.md). Styles use these
+ * instead of literal colours, so the dark theme below only redefines them.
+ * Text colours meet 4.5:1 on --color-surface and --color-canvas, and
+ * --color-text-on-strong on each -strong fill, in both themes. The only
+ * literal colours left are the avatars' (white on a dark hue reads in both
+ * themes; the darkest is a token) and the JSON diff's code area (dark in both).
  */
 :root {
+  color-scheme: light;
+
   /* Surfaces */
   --color-canvas: #f6f7f9;
   --color-surface: #ffffff;
   --color-surface-subtle: #fbfcfe;
+  --color-surface-inset: #f6f8fa;
   --color-surface-muted: #f3f4f6;
   --color-surface-selected: #eef4fd;
   --color-surface-hover: #eef0f3;
+  --color-backdrop: rgba(31, 35, 40, 0.4);
 
   /* Borders */
   --color-border: #e1e4e8;
   --color-border-subtle: #eef0f3;
   --color-border-strong: #d0d7de;
+  --color-border-emphasis: #8c959f;
   --color-border-selected: #9cc0ee;
 
   /* Text */
   --color-text: #1f2328;
   --color-text-muted: #59636e;
   --color-text-on-strong: #ffffff;
+  /* On a --color-text fill (a pressed chip). */
+  --color-text-inverse: #ffffff;
 
-  /* Accents - each pairs with a distinct icon shape, never colour alone */
+  /* Accents - each pairs with a distinct icon shape, never colour alone.
+     A -strong colour is a fill under --color-text-on-strong. */
   --color-accent: #0969da;
+  --color-accent-strong: #0969da;
   --color-accent-text: #0757ba;
   --color-accent-subtle: #e7eef8;
   --color-success: #1a7f37;
-  --color-success-subtle: #e6f4ea;
+  --color-success-subtle: #eaf6ed;
   --color-danger: #cf222e;
+  --color-danger-strong: #cf222e;
   --color-danger-subtle: #ffebe9;
   --color-attention: #bc4c00;
+  --color-attention-strong: #bc4c00;
   --color-attention-text: #8a3b00;
   --color-attention-subtle: #fff4e5;
   --color-pending: #9a6700;
+  /* A fill under --color-text (the warning snackbar). */
+  --color-pending-strong: #ffd866;
+  --color-info: #0b7285;
+  --color-info-subtle: #eef9fb;
   --color-done: #8250df;
   --color-unknown: #6e7781;
+
+  /* PR labels: one of five tints, each with its own text colour */
+  --color-label-0-bg: #fbeae5;
+  --color-label-0-text: #a0281b;
+  --color-label-1-bg: #e8f0fb;
+  --color-label-1-text: #0b4a9e;
+  --color-label-2-bg: #e6f4ea;
+  --color-label-2-text: #1a6b33;
+  --color-label-3-bg: #f3eefe;
+  --color-label-3-text: #5b2fb0;
+  --color-label-4-bg: #eef0f3;
+  --color-label-4-text: #424a53;
+
+  /* Review stats chart: one per reviewer's line, in order. The bright
+     ones are darker here than in the dark theme, so each line stands out
+     on white, and the pink and navy are clear of the magenta and dark
+     blue. */
+  --color-series-0: #1f77b4;
+  --color-series-1: #d62728;
+  --color-series-2: #2ca02c;
+  --color-series-3: #9467bd;
+  --color-series-4: #d4650a;
+  --color-series-5: #0f8b98;
+  --color-series-6: #c66c9c;
+  --color-series-7: #8c564b;
+  --color-series-8: #868712;
+  --color-series-9: #7f7f7f;
+  --color-series-10: #003f5c;
+  --color-series-11: #ef5675;
+  --color-series-12: #a86e00;
+  --color-series-13: #243072;
+  --color-series-14: #00966b;
+  --color-series-15: #c51b8a;
+
+  /* The darkest avatar colour (ui.css), under white initials */
+  --color-avatar-dark: #1f2328;
 
   /* Tooltip */
   --color-tooltip-bg: #1f2328;
@@ -64,6 +117,10 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* The small avatar (ui.css), and what lines up with it (the Review
+     column's labels) */
+  --avatar-size-sm: 20px;
+
   /* Radii */
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -71,6 +128,108 @@
   --radius-pill: 999px;
 
   /* Elevation */
+  --shadow-card: 0 1px 2px rgba(31, 35, 40, 0.06);
+  --shadow-popover: 0 2px 8px rgba(31, 35, 40, 0.12);
   --shadow-tooltip: 0 6px 16px rgba(31, 35, 40, 0.2);
   --shadow-drawer: -8px 0 24px rgba(31, 35, 40, 0.06);
+  --shadow-snackbar: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-modal: 0 24px 48px rgba(15, 23, 42, 0.2);
+
+  /* How far below the window's top sticky things sit: the Auto update
+     paused banner's height while it shows. AppShell sets it on <html>. */
+  --sticky-top: 0px;
+  /* A PR section's header height, which its table's column headers stick
+     below. PrSection sets it on the section. */
+  --pr-section-header-height: 0px;
+  /* Its table's column header row height, which rows scrolled into view
+     stop below while that row sticks. PrSection sets it too. */
+  --pr-table-head-height: 0px;
+}
+
+/* Dark: Settings › Appearance sets data-theme on <html> (System follows the
+   operating system's setting). Only colours and shadows change. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-canvas: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-subtle: #1a2029;
+  --color-surface-inset: #10151c;
+  --color-surface-muted: #21262d;
+  --color-surface-selected: #172b45;
+  --color-surface-hover: #242a33;
+  --color-backdrop: rgba(1, 4, 9, 0.6);
+
+  --color-border: #30363d;
+  --color-border-subtle: #252b33;
+  --color-border-strong: #3d444d;
+  --color-border-emphasis: #6e7681;
+  --color-border-selected: #2f6cb5;
+
+  --color-text: #e6edf3;
+  --color-text-muted: #9198a1;
+  --color-text-on-strong: #ffffff;
+  --color-text-inverse: #0d1117;
+
+  --color-accent: #4493f8;
+  --color-accent-strong: #1f6feb;
+  --color-accent-text: #58a6ff;
+  --color-accent-subtle: #13243b;
+  --color-success: #3fb950;
+  --color-success-subtle: #12261b;
+  --color-danger: #f85149;
+  --color-danger-strong: #b62324;
+  --color-danger-subtle: #2d1517;
+  --color-attention: #db6d28;
+  --color-attention-strong: #a5461a;
+  --color-attention-text: #f0883e;
+  --color-attention-subtle: #2b1d0f;
+  --color-pending: #d29922;
+  --color-pending-strong: #6b4a00;
+  --color-info: #39c5cf;
+  --color-info-subtle: #0d2629;
+  --color-done: #ab7df8;
+  --color-unknown: #8b949e;
+
+  --color-label-0-bg: #3a1d18;
+  --color-label-0-text: #ffa198;
+  --color-label-1-bg: #142640;
+  --color-label-1-text: #79c0ff;
+  --color-label-2-bg: #142a1c;
+  --color-label-2-text: #7ee787;
+  --color-label-3-bg: #2a1e45;
+  --color-label-3-text: #d2a8ff;
+  --color-label-4-bg: #262c34;
+  --color-label-4-text: #c9d1d9;
+
+  /* The original bright series colours, and lighter versions of the dark
+     blues and brown, which would vanish on the dark surface. */
+  --color-series-0: #1f77b4;
+  --color-series-1: #d62728;
+  --color-series-2: #2ca02c;
+  --color-series-3: #9467bd;
+  --color-series-4: #ff7f0e;
+  --color-series-5: #17becf;
+  --color-series-6: #e377c2;
+  --color-series-7: #b9806f;
+  --color-series-8: #bcbd22;
+  --color-series-9: #7f7f7f;
+  --color-series-10: #4f9ec4;
+  --color-series-11: #ef5675;
+  --color-series-12: #ffa600;
+  --color-series-13: #8b9fe0;
+  --color-series-14: #00a676;
+  --color-series-15: #c51b8a;
+
+  --color-avatar-dark: #6e7681;
+
+  --color-tooltip-bg: #3d444d;
+  --color-tooltip-text: #ffffff;
+
+  --shadow-card: 0 1px 2px rgba(1, 4, 9, 0.5);
+  --shadow-popover: 0 2px 8px rgba(1, 4, 9, 0.6);
+  --shadow-tooltip: 0 6px 16px rgba(1, 4, 9, 0.6);
+  --shadow-drawer: -8px 0 24px rgba(1, 4, 9, 0.5);
+  --shadow-snackbar: 0 1px 3px rgba(1, 4, 9, 0.5), 0 1px 2px rgba(1, 4, 9, 0.7);
+  --shadow-modal: 0 24px 48px rgba(1, 4, 9, 0.7);
 }

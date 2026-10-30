@@ -90,6 +90,13 @@ const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
 const { PrTableUiStateProvider } = require('../state/PrTableUiStateProvider');
 const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableUiStateContext');
 const { NotesDirtyContext } = require('../state/NotesDirtyContext');
+const { PrSectionPreferencesProvider } = require('../state/PrSectionPreferencesProvider');
+const { SettingsDrawerProvider, useSettingsDrawer } = require('../state/SettingsDrawerContext');
+let capturedSettingsDrawer;
+function SettingsDrawerProbe() {
+  capturedSettingsDrawer = useSettingsDrawer();
+  return null;
+}
 
 // Tenth follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit"):
 // window.markPrsBusy/clearPrsBusy/markPrsQueued/clearPrsQueued are gone -
@@ -173,15 +180,23 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // below (e.g. to exercise a specific scope/PR-number filter) without every
 // existing call site needing to pass a full values object.
 // `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
+// `sectionPreferences`: Settings › Appearance's saved section choices
+// (user-defaults.json's prSections), read by PrSectionPreferencesProvider
+// through a mocked fetch.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
   needsAttention,
   filterStateValues,
   dirtyPrNumbers,
+  sectionPreferences,
   ...tableProps
-} = {}) =>
-  render(
+} = {}) => {
+  const table = <PrTableApp {...tableProps} />;
+  if (sectionPreferences) {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) }));
+  }
+  return render(
     <AllSelectionProviders>
       <PrDataProvider
         initialPayload={initialPayload}
@@ -207,7 +222,14 @@ const renderPrTableApp = ({
               <UiStateProbe />
               <OpenSectionsProbe />
               <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirtyPrNumbers || [], setNotesDirty: () => {} }}>
-                <PrTableApp {...tableProps} />
+                {sectionPreferences ? (
+                  <SettingsDrawerProvider>
+                    <SettingsDrawerProbe />
+                    <PrSectionPreferencesProvider>{table}</PrSectionPreferencesProvider>
+                  </SettingsDrawerProvider>
+                ) : (
+                  table
+                )}
               </NotesDirtyContext.Provider>
             </PrActivityQueueProvider>
           </NeedsAttentionContext.Provider>
@@ -215,6 +237,7 @@ const renderPrTableApp = ({
       </PrDataProvider>
     </AllSelectionProviders>,
   );
+};
 
 function installSectionHelpers() {
   // Minimal stand-in for the real vanilla helpers: one lifecycle section per
@@ -890,7 +913,7 @@ describe('PrTableApp', () => {
     });
     const openSectionProps = () => capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
 
-    test('given a row click, then its PR is selected, shown in the pane and marked in the sections; a second click deselects it', () => {
+    test('given a row click, then its PR is selected, shown in the pane and marked in the sections; a second click closes the pane', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       expect(latestPane().entry).toBeNull();
 
@@ -899,9 +922,25 @@ describe('PrTableApp', () => {
       expect(latestPane().entry.prNumber).toBe('1');
       expect(openSectionProps().selectedPrKey).toBe('owner/repo::1');
 
+      // Not left open saying "No PR selected": closed, like its close button.
       React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
       expect(capturedUiState.selectedPr).toBeNull();
-      expect(latestPane().entry).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+    });
+
+    test('given the selected PR has unsaved notes, when its row is clicked again and the discard is refused, then the pane stays open on it', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        expect(confirm).toHaveBeenCalled();
+        expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+        expect(capturedUiState.isPaneVisible).toBe(true);
+      } finally {
+        confirm.mockRestore();
+      }
     });
 
     test('given ↑/↓ (onSelectPr), then it selects without toggling and reports success', () => {
@@ -932,11 +971,37 @@ describe('PrTableApp', () => {
       expect(capturedUiState.selectedPr.prNumber).toBe('2');
     });
 
-    test('given the pane\'s close, then the selection clears', () => {
+    test('given the pane\'s close, then the pane hides and the selection clears; a row click shows it again', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
       React.act(() => latestPane().onClose());
       expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      expect(capturedUiState.isPaneVisible).toBe(true);
+    });
+
+    test('given Esc in the docked pane (onClearSelection), then only the selection clears; the pane stays', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => latestPane().onClearSelection());
+      expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(true);
+    });
+
+    test('given unsaved notes, when the pane is closed and leaving is cancelled, then it stays open on the PR', () => {
+      const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+      try {
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
+        React.act(() => latestPane().onClose());
+        expect(confirm).toHaveBeenCalled();
+        expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+        expect(capturedUiState.isPaneVisible).toBe(true);
+      } finally {
+        confirm.mockRestore();
+      }
     });
 
     test('given unsaved notes on the selected PR, then switching asks first, and staying keeps the selection', () => {
@@ -975,7 +1040,7 @@ describe('PrTableApp', () => {
       expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
 
-    test('given the pane hidden, when a row is clicked, then the PR is selected and the pane shown; clicking it again deselects without hiding it', () => {
+    test('given the pane hidden, when a row is clicked, then the PR is selected and the pane shown; clicking it again closes the pane', () => {
       renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
       React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
       expect(capturedUiState.isPaneVisible).toBe(false);
@@ -986,7 +1051,20 @@ describe('PrTableApp', () => {
 
       React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
       expect(capturedUiState.selectedPr).toBeNull();
+      expect(capturedUiState.isPaneVisible).toBe(false);
+    });
+
+    test('given the pane hidden with a PR still selected, when the row of that PR is clicked, then the pane shows it again', () => {
+      renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo' });
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
+      // The toolbar's Detail pane button hides the pane but keeps the selection.
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.isPaneVisible).toBe(false);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
+
+      React.act(() => openSectionProps().onSelectRow('2', 'owner/repo'));
       expect(capturedUiState.isPaneVisible).toBe(true);
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '2' });
     });
 
     test('given the pane toggle, then the pane hides; hiding asks first with unsaved notes', () => {
@@ -1045,6 +1123,37 @@ describe('PrTableApp', () => {
     const expandedInsights = capturedSectionProps.at(-1).expandedInsights;
     expect(expandedInsights['open:owner/repo-a:1']).toBe(true);
     expect(expandedInsights['open:owner/repo-b:1']).toBeFalsy();
+  });
+
+  test("given the viewer's own, assigned and review-requested PRs, then each lands in its smart group (the real helpers)", () => {
+    createPrSmartGroupsHelpers.mockImplementation(
+      jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers,
+    );
+    const pr = (prNumber, section, data) => ({
+      prNumber,
+      repo: 'owner/repo',
+      section,
+      data: { number: prNumber, viewerLogin: 'me', authorLogin: 'someone', ...data },
+    });
+    const payload = {
+      byPrNumber: {
+        1: pr('1', 'open', { authorLogin: 'me' }),
+        2: pr('2', 'draft', { assignees: [{ login: 'me' }] }),
+        3: pr('3', 'open', { requestedReviewers: [{ login: 'me' }] }),
+        4: pr('4', 'merged', { authorLogin: 'me', assignees: [{ login: 'me' }] }),
+        // Reviewed by the viewer, with no request left: not review-requested.
+        5: pr('5', 'open', { requestedReviewers: [], reviews: [{ authorLogin: 'me', state: 'APPROVED' }] }),
+      },
+    };
+    renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+    const numbersIn = (key) =>
+      capturedSectionProps
+        .filter((props) => props.section.key === key)
+        .at(-1)
+        ?.section.prs.map((entry) => entry.prNumber);
+    expect(numbersIn('mine')).toEqual(['1']);
+    expect(numbersIn('assigned-to-me')).toEqual(['2']);
+    expect(numbersIn('review-requested')).toEqual(['3']);
   });
 
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {
@@ -1715,6 +1824,67 @@ describe('PrTableApp', () => {
       await waitFor(() => {
         expect(document.activeElement).toBe(needsAttentionLink);
       });
+    });
+  });
+
+  describe("Settings › Appearance section choices", () => {
+    afterEach(() => {
+      delete global.fetch;
+    });
+
+    const payload = { byPrNumber: { 1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }) } };
+    const renderedKeys = () => screen.queryAllByTestId("section").map((element) => element.getAttribute("data-key"));
+    const latestSectionProps = (key) => capturedSectionProps.filter((p) => p.section.key === key).at(-1);
+
+    test("given a hidden section, then it is not rendered, and the others are", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { closed: { hidden: true } } });
+      await waitFor(() => expect(renderedKeys()).not.toContain("closed"));
+      expect(renderedKeys()).toEqual(["open", "draft", "merged"]);
+    });
+
+    test("given a saved \"open when the page loads\" choice, then the section starts open", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { open: { open: true } } });
+      await waitFor(() => expect(latestSectionProps("open").isOpen).toBe(true));
+      expect(latestSectionProps("draft").isOpen).toBe(false);
+    });
+
+    test("given every section hidden, then a message offers to choose sections", async () => {
+      const hideAll = { open: { hidden: true }, draft: { hidden: true }, merged: { hidden: true }, closed: { hidden: true } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: hideAll });
+      await waitFor(() => expect(screen.getByText("Every section is hidden.")).toBeInTheDocument());
+      expect(renderedKeys()).toEqual([]);
+
+      React.act(() => screen.getByRole("button", { name: "Choose sections to show" }).click());
+      expect(capturedSettingsDrawer.isOpen).toBe(true);
+      expect(capturedSettingsDrawer.section).toBe("appearance");
+    });
+
+    test("given PRs only in hidden sections, then their count is reported for the filter bar", async () => {
+      const twoPrs = {
+        byPrNumber: {
+          1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }),
+          2: makeEntry({ prNumber: "2", repo: "owner/repo", section: "draft" }),
+        },
+      };
+      renderPrTableApp({ initialPayload: twoPrs, selectedRepo: "", sectionPreferences: { open: { hidden: true } } });
+      await waitFor(() => expect(capturedOpenSections.hiddenPrCount).toBe(1));
+    });
+
+    test("given no hidden sections, then no PRs are counted as hidden", async () => {
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: {} });
+      await waitFor(() => expect(renderedKeys()).toContain("open"));
+      expect(capturedOpenSections.hiddenPrCount).toBe(0);
+    });
+
+    test("given View in table for a PR whose sections are all hidden, then it is shown in the detail pane", async () => {
+      const hideOpen = { open: { hidden: true } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: "owner/repo", sectionPreferences: hideOpen });
+      await waitFor(() => expect(renderedKeys()).not.toContain("open"));
+
+      fireEvent(window, new CustomEvent("pr-navigate-to-insights", { detail: { prNumber: "1" } }));
+
+      await waitFor(() => expect(capturedUiState.selectedPr).toEqual({ repo: "owner/repo", prNumber: "1" }));
+      expect(capturedUiState.isPaneVisible).toBe(true);
     });
   });
 });

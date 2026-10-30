@@ -863,6 +863,79 @@ becomes a small `react-app.tsx`. Done in steps:
     be dropped): the columns narrow and their cells take two lines where
     they need to; the pane takes 30vw (was 34vw), at least 360px.
   - Who shows the author's name beside the avatar, up to two lines.
+- **Feedback, round 2 (2026-10-27)**, same branch:
+  - The pane's close hides it (and clears the selection; a row click shows
+    it again). Esc in the docked pane still only clears the selection.
+  - Activity shows the PR author's last activity (their latest event, as
+    the Activity tab lists them) and, under it, yours (`baseline`) when
+    you have any; the times, any merge or close and the last check are in
+    the tooltip.
+  - In review, Flagged and Update moved into the row's More menu, worded
+    for what choosing them does (their state shows in Signals); Ack stays
+    a button, so Actions is just Ack and More.
+  - "Who" is "Author".
+  - The Review column's people sit on their own line, labelled "Assigned"
+    and "Review requested" (you, when requested but not assigned).
+  - Follow-up: "Review requested" uses the outstanding requests only
+    (collectPendingReviewRequests); collectRequestedReviewers falls back to
+    whoever has reviewed.
+- **New features (2026-10-27)**, on the `ui-redesign/features` branch, in
+  three reviewed slices:
+  - Smart sections after Needs Attention: My Open & Draft PRs, Assigned to
+    Me, Review Requested from Me (someone else's PR with your review
+    requested now - not teams' requests, which the data doesn't resolve),
+    open by default; Open PRs I'm Involved In stays, closed by default.
+  - Sticky section names: an open section's header sticks to the top while
+    its rows scroll (`.pr-section` is `overflow: clip` now). AppShell puts
+    the Auto update paused banner's height in `--sticky-top` on <html>,
+    so the headers - and the docked pane, which the banner used to cover -
+    stick just below it.
+  - The table's column headers stick too, below the section's header
+    (each section puts its header height in `--pr-section-header-height`).
+    That needs the section not to be a scroll container, so it scrolls
+    sideways only when its table can't fit (a container query on the
+    list); then the column headers scroll away as before.
+  - Dark mode. The older stylesheets' ~370 literal colours (and the Review
+    stats chart's inline ones) are on tokens now, merged into roles - so a
+    few light colours moved slightly, to the nearest token. The chart's
+    16 line colours are tokens too, each at least 3:1 on the chart's
+    background in both themes (darker bright colours in light, lighter
+    dark blues and brown in dark), and every two of them at least 20
+    apart (CIE76 ΔE) so lines aren't mixed up.
+    Only the avatars (white on a dark hue; the darkest is a token) and the
+    JSON diff's code area (dark in both) keep literals. tokens.css redefines every colour and shadow under
+    `:root[data-theme="dark"]`, and its test checks text contrast in both
+    themes. White text sits on new `-strong` fills, which stay dark enough
+    in the dark theme. Settings › Appearance: Light / Dark / System,
+    starting on Light; ThemeProvider saves it in user-defaults.json
+    (`theme`) and in localStorage, which an inline script in index.html
+    reads before the first paint.
+  - Settings › Appearance › Sections: show or hide each PR table section
+    and choose whether it starts open, saved in user-defaults.json as
+    `prSections` (only differences from the built-in defaults).
+    PR_SECTION_CATALOG lists the sections for Settings; its test checks it
+    against the section builders. PrTableApp applies the choices after
+    building the sections, so a change doesn't rebuild them.
+  - Clicking the row of the PR in the detail pane closes the pane (like
+    its close button), instead of leaving it open on "No PR selected". If
+    the pane was hidden with that PR still selected, the click shows it.
+    A double-click counts once, so it doesn't open the pane and close it.
+  - Row layout: opening or closing the pane keeps the clicked (or
+    selected) row still on screen (row-scroll-anchor.helpers.ts: measure
+    before, scroll by the difference after; for the pane's close and the
+    toolbar button, the row that was clicked to select the PR). The PR
+    number link starts the first line, followed by the labels, with the
+    title under them. Review's Assigned / Review requested
+    are a line each with a fixed-width label. Later "Review requested"
+    became "Reviewer" (shorter, and an automatic request doesn't always
+    mean a review is needed): the label column is about 53px instead of
+    92px, so groups stay one line when docked too, and the wide Review
+    column went from 210px to 170px, the 40px going to the title. Docked,
+    a group with three or more badges puts its label above them (`:has()`),
+    so they get the full width. The smart section "Review Requested from
+    Me" became "Me as Reviewer" for the same reason (its key stays, so
+    saved section choices still apply). Size counts never break inside a number (common.css lets table
+    text break anywhere), and counts from 10,000 are shortened (+12k).
 
 ## Decisions (2026-10-24)
 

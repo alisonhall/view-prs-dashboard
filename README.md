@@ -415,7 +415,7 @@ When localhost is running, the server starts an automatic background refresh for
 - Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
 - Each repo's cadence/priority can be overridden individually via a `schedulerRepoConfig` key in the existing `/view-prs/user-defaults` JSON blob (`PUT` the whole object, merging your own change in - a `PUT` replaces the file, it doesn't merge for you), e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 8, "quickCheckIntervalMs": 120000}}}`. There's no settings form for this yet; the Activity popover's "Dispatcher queue" section shows each repo's effective priority/cadence read-only. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
 - On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
-- While a run is in progress, PR rows currently being refreshed show a small spinner below the PR number link and above the relative "updated ... ago" text without forcing a full table rerender.
+- While a run is in progress, PR rows currently being refreshed show a small spinner beside the PR number link without forcing a full table rerender.
 - A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
@@ -517,6 +517,11 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
   - Independent of the `In Review` flag/checkbox - marking a PR in-review does not, by itself, make it need attention or affect its `STATUS`; it only controls membership in the `In Review` smart group above and the row's `In Review` checkbox state
   - Configuration controlled via `user-defaults.json` (see "Needs Attention Configuration" section below)
   - Example use: Open/Draft PRs with new commits, unresolved comments, failing checks, or marked for review
+- **My Open & Draft PRs**: your own open and draft PRs (expanded by default)
+- **Assigned to Me**: open and draft PRs you're assigned to (expanded by default)
+- **Me as Reviewer**: someone else's open and draft PRs where your review is currently requested (expanded by default). Named for the role rather than "review requested", because some projects add reviewers automatically, so it isn't always a to-do. GitHub usually drops the request once you submit a review, so the PR leaves this section then.
+  - These three compare logins with your actor login aliases resolved; they stay empty when your login isn't known.
+  - A review requested from a team you're in doesn't count: the stored data records requested people, not teams' members.
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
   - Purpose: Personal reference for active PRs you're engaged with
   - Only shows OPEN or DRAFT PRs (excludes merged/closed to keep section actionable)
@@ -681,12 +686,14 @@ Insights behavior notes:
 
 - The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all`, `Activity` (see below), `Settings` and a link to this README.
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
-- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, close), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
-  - Select a PR by clicking anywhere on its row that isn't a control (click it again to deselect; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
+- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
+  - Select a PR by clicking anywhere on its row that isn't a control (clicking the PR in the pane again closes the pane, like its close button; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
   - Leaving a PR with unsaved notes (another selection, previous/next, closing or hiding the pane) asks first.
-  - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll.
+  - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll. Opening or closing the pane keeps the row you clicked (or the selected one) where it is on screen while the table reflows around it; a PR shown in several sections keeps the copy you clicked.
+  - Each row's PR number (its link) starts the cell's first line, followed by its labels, with the title under them, so the number is in the same place on every row. `Size` shows `+added −deleted`, each count kept whole (the line breaks between them); counts of 10,000 or more are shortened (`+12k`, `+1.2M`), with the exact numbers on hover.
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
+- An open section's header (its name and count) and, under it, its table's column headers stay at the top of the window while you scroll through its rows, below the `Auto update paused` banner when that's showing. In a window too narrow for the table, the section scrolls sideways instead and only its name stays.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
 - Auto data-refresh rerenders are paused while any Notes field has an unsaved edit (text, selects, and comments or stories added or removed).
@@ -755,7 +762,7 @@ In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:..
 
 The UI includes:
 
-- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore), `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet), `Backfill` (the background backfill's status, Start/Stop/Refresh status, and its log), `Action log` (the server's log of actions), `Actor names` and `Export`. Backfill loads its status at page load and again each time its section opens; Action log, Actor names and Export load the first time their section opens (Action log and Actor names reload each time it opens again).
+- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore), `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet), `Backfill` (the background backfill's status, Start/Stop/Refresh status, and its log), `Action log` (the server's log of actions), `Actor names`, `Export` and `Appearance` (the theme: Light, Dark, or System to follow your computer's setting, Light to start; and which PR table sections show and which start open). Backfill loads its status at page load and again each time its section opens; Action log, Actor names and Export load the first time their section opens (Action log and Actor names reload each time it opens again).
 - `Run script` (full run to refresh PR data)
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
@@ -764,10 +771,12 @@ The UI includes:
 - `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
   - `Reload labels` reloads the dropdown for the current repo
-- per-row `+ Label` dropdown in the `ACTIONS` cell applies an existing label to just that PR (excludes labels already on the row)
+- a row's More menu (`More actions for PR #N`) › `Add label` applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
 - Settings › `Export` to build and export JSON from currently visible PR rows
 - Settings › `Actor names` to view and edit both display-name mappings and canonical login aliases
+- Settings › `Appearance` to pick the theme. It's saved in `user-defaults.json` as `theme` (so it stays after the browser is closed, and in another browser), with a copy in the browser that sets it before the page first draws
+- Settings › `Appearance` › Sections to hide PR table sections and choose which open when the page loads, saved in `user-defaults.json` as `prSections` (only what differs from the defaults). A hidden section isn't in the pane's previous/next or in Export; `View in table` for a PR that's only in hidden sections shows it in the detail pane. The filter bar's `Showing N of M PRs` adds how many of them are only in hidden sections. With every section hidden, the table says so and links to the setting. Changing a section's open-on-load choice also opens or closes it now, unless you've opened or closed it yourself since the page loaded
   - display-name mappings are stored in `view-prs/data/actor-name-cache.json`
   - login aliases are stored in `view-prs/data/actor-login-aliases.json`
   - when `/view-prs/data` encounters a previously unseen non-empty `authorLogin/login`, that login is automatically added to the actor-name cache (using the best available display name)
@@ -776,10 +785,7 @@ The UI includes:
   - if either JSON file is missing, it is created automatically on first read
   - writes that would clear all display-name mappings or all login aliases are rejected to prevent deleting all configured mappings
   - login alias rows must include both an alias login and a canonical login, and the two values must differ
-- per-row `In Review` checkbox in the `ACTIONS` cell with immediate persistence
-- per-row `Flagged` checkbox in the `ACTIONS` cell with immediate persistence
-  - flagged PRs display a `🚩` icon in `Needs Attention` with tooltip `PR was flagged`
-  - when both icons are present, the `🚩` icon is rendered below `⚠️`
+- a row's Actions: `Ack` as a button, and in its More menu `Mark in review` / `Remove from in review`, `Flag` / `Remove flag` and `Update PR` (saved at once); whether a PR is in review or flagged shows as an icon in its Signals column
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - The `Authors` view's manual comments editor, saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
@@ -943,25 +949,14 @@ Example missing dependency response:
 
 ## Date Columns
 
-### Last Activity Column
+### Activity Column
 
-The "LAST ACTIVITY" column displays two lines of information:
+The Activity column shows how long ago, in two short lines:
 
-- **Line 1 (bold)**: PR's last activity date
-  - Shows `mergedAt` if the PR is merged
-  - Shows `closedAt` if the PR is closed (but not merged)
-  - Otherwise shows `sourceUpdatedAt` or `updatedAt` (last commit timestamp)
-  - Tooltip: "Merged at", "Closed at", or "Last commit"
-- **Line 2 (muted)**: Your last activity on the PR
-  - Format: "You: `[datetime]`"
-  - Shows the `baseline` field (your last interaction with the PR)
-  - Tooltip: "Your last activity on this PR"
+- **Author**: the PR author's last activity - their latest event in the PR's activity (a commit, comment, review...), the same events the detail pane's Activity tab lists. `–` when none is recorded.
+- **You**: your own last activity on the PR (the `baseline` field), shown only when you have any.
 
-**Data sources:**
-- PR activity (Line 1): `mergedAt` (highest priority) → `closedAt` → `sourceUpdatedAt` → `updatedAt`
-- Viewer activity (Line 2): `baseline` field (always shows YOUR last interaction, never the merge/close date)
-
-This two-line format helps you quickly see both when the PR was last updated and when you last interacted with it.
+The tooltip has both exact times, when the PR merged or closed, and when it was last checked for updates. The ages are underlined (dotted) when an open PR's last check is stale.
 
 ## Troubleshooting
 
@@ -1093,12 +1088,11 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `YES` means **your latest review state is APPROVED**.
   - count shows **all latest approvals**, including yours.
 
-Below the summary, assigned users and requested reviewers show as small initials badges:
+In the Review column, lines under the signals show people as small initials badges, each group labelled so it reads without hovering. `Assigned` comes first, then `Reviewer`, each on a line of its own, with the badges starting in the same place on every row. With the detail pane docked, a group with three or more badges puts its label above them, so they get the cell's full width. A label never breaks across lines.
 
-- A badge is shown for every assignee, plus every requested reviewer who isn't already an assignee - so a reviewer who isn't assigned to the PR is still visible here, not just in the Reviewers row of the detail pane's Overview.
-- The badge for the current viewer gets a highlighted "me" style (blue border/background), with `(you)` added to its tooltip.
-- A badge for anyone who is one of the PR's requested reviewers gets a small green corner-dot indicator, with `(reviewer)` added to its tooltip - regardless of whether they're also assigned. Both the "me" and "reviewer" indicators can apply to the same badge at once.
-- A reviewer who is **not** assigned additionally gets a dashed border and lighter fill (instead of the solid pill used for assignees), with `(not assigned)` added to its tooltip, so it's visually distinct from an actual assignee at a glance.
+- **Assigned**: every assignee.
+- **Reviewer**: you, when your review is currently requested but you aren't assigned. It says `Reviewer` rather than `Review requested` because some projects add reviewers automatically, so a request doesn't always mean a review is needed (the badge's tooltip still says `review requested`). GitHub drops the request once you submit a review, and the badge goes with it. Other requested reviewers are in the Reviewers row of the detail pane's Overview.
+- Your own badge is highlighted; each badge names its person on hover, with `(you)` and `(review requested)` added where they apply.
 
 ## Check indicators in UI vs script
 

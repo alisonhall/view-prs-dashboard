@@ -10,7 +10,9 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  overflow: hidden;
+  /* clip, not hidden: keeps the rows inside the rounded corners without
+     making this a scroll container, which would stop the header sticking. */
+  overflow: clip;
 }
 
 .pr-section-header {
@@ -37,8 +39,21 @@
   box-shadow: inset var(--focus-ring);
 }
 
+/* An open section's header stays at the top of the window while you
+   scroll through its rows (below the Auto update paused banner when it's
+   showing: --sticky-top, from AppShell), so it's clear which section
+   you're in. */
 .pr-section[open] > .pr-section-header {
+  position: sticky;
+  top: var(--sticky-top, 0px);
+  z-index: 10;
   border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+}
+
+.pr-section[open] > .pr-section-header:hover {
+  background: var(--color-surface-subtle);
 }
 
 .pr-section-chevron {
@@ -82,7 +97,7 @@
 }
 
 .pr-section-count[data-tone="attention"] {
-  background: var(--color-attention);
+  background: var(--color-attention-strong);
   color: var(--color-text-on-strong);
 }
 
@@ -94,8 +109,20 @@
   font-weight: 500;
 }
 
-.pr-section-content {
-  overflow-x: auto;
+/* A section scrolls sideways only when its table is wider than the list
+   (narrow windows; the widths are .pr-table's min-widths plus the section's
+   two 1px borders - pr-table-widths.test.ts checks they match). Otherwise it's no scroll container, so the column headers can stick to
+   the window below the section's header. */
+@container (max-width: 902px) {
+  .pr-workspace:not([data-pane="docked"]) .pr-section-content {
+    overflow-x: auto;
+  }
+}
+
+@container (max-width: 742px) {
+  .pr-section-content {
+    overflow-x: auto;
+  }
 }
 
 .pr-section-empty {
@@ -105,9 +132,26 @@
   color: var(--color-text-muted);
 }
 
+/* Settings › Appearance hid every section. */
+.pr-sections-all-hidden {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.pr-sections-all-hidden p {
+  margin: 0;
+}
+
 /* Table */
 .pr-table {
   width: 100%;
+  /* The container queries below and above use this + 2. */
   min-width: 900px;
   border-collapse: collapse;
   table-layout: fixed;
@@ -117,45 +161,80 @@
 .pr-col-select { width: 34px; }
 .pr-col-signals { width: 88px; }
 .pr-col-who { width: 150px; }
-.pr-col-review { width: 210px; }
+.pr-col-review { width: 170px; }
 .pr-col-checks { width: 64px; }
 .pr-col-size { width: 96px; }
-.pr-col-activity { width: 64px; }
-.pr-col-actions { width: 172px; }
+.pr-col-activity { width: 92px; }
+.pr-col-actions { width: 80px; }
 
 /* With the detail pane docked: every column still shows, narrower, and the
    cells that can wrap take two lines (Signals and Review's signals, Size's
-   added over deleted, the Actions buttons in two rows) - so the Pull
-   request column keeps room for the title. */
+   added over deleted) - so the Pull request column keeps room for the
+   title. */
+/* The container queries use this + 2 too. */
 .pr-workspace[data-pane="docked"] .pr-table { min-width: 740px; }
 .pr-workspace[data-pane="docked"] .pr-col-signals { width: 60px; }
 .pr-workspace[data-pane="docked"] .pr-col-who { width: 110px; }
 .pr-workspace[data-pane="docked"] .pr-col-review { width: 112px; }
 .pr-workspace[data-pane="docked"] .pr-col-size { width: 58px; }
-.pr-workspace[data-pane="docked"] .pr-col-activity { width: 56px; }
-.pr-workspace[data-pane="docked"] .pr-col-actions { width: 104px; }
+.pr-workspace[data-pane="docked"] .pr-col-activity { width: 84px; }
 
-.pr-workspace[data-pane="docked"] .pr-signal-slots,
-.pr-workspace[data-pane="docked"] .pr-actions {
+.pr-workspace[data-pane="docked"] .pr-signal-slots {
   flex-wrap: wrap;
 }
 
-.pr-workspace[data-pane="docked"] .pr-size-added,
-.pr-workspace[data-pane="docked"] .pr-size-deleted {
-  display: block;
-  margin-left: 0;
+.pr-workspace[data-pane="docked"] .pr-size {
+  flex-direction: column;
 }
 
 /* thead in the selector so this beats common.css's
    `.data-tab-panel table th { white-space: normal }`. */
+/* The bottom line is a shadow: a collapsed table border doesn't move with
+   a sticky cell (below). */
 .pr-table thead th {
   padding: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-border);
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-text-muted);
   text-align: left;
   white-space: nowrap;
+}
+
+/* A row scrolled into view (the pane's Previous / Next, or Tab) stops
+   below what's stuck at the top: the banner and the section's header, and
+   the column headers too while they stick (below). */
+.pr-table tbody * {
+  scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--space-2));
+}
+
+/* Stuck below the section's header (its height from PrSection) while the
+   rows scroll by - only while the table fits, the same widths as the
+   sideways scrolling above: inside that scroll box the offset would push
+   the column headers down over the first row instead. */
+@container (min-width: 903px) {
+  .pr-table thead th {
+    position: sticky;
+    top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px));
+    z-index: 9;
+  }
+
+  .pr-table tbody * {
+    scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--pr-table-head-height, 0px) + var(--space-2));
+  }
+}
+
+@container (min-width: 743px) {
+  .pr-workspace[data-pane="docked"] .pr-table thead th {
+    position: sticky;
+    top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px));
+    z-index: 9;
+  }
+
+  .pr-workspace[data-pane="docked"] .pr-table tbody * {
+    scroll-margin-top: calc(var(--sticky-top, 0px) + var(--pr-section-header-height, 0px) + var(--pr-table-head-height, 0px) + var(--space-2));
+  }
 }
 
 .pr-table th:first-child,
@@ -208,9 +287,26 @@
   padding-top: 2px;
 }
 
-/* Flowed as text, not a flex row: the state icon, title, number, busy
-   indicator and copy button wrap together, and a word only breaks when it
-   can't fit on a line of its own. */
+/* The PR number (its link) first, so it's in the same place on every row,
+   then the state icon (smart groups), any busy indicator and the labels
+   (wrapping onto more lines when there are many). */
+.pr-title-number-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  margin-bottom: 2px;
+}
+
+.pr-title-number-line .pr-link {
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The title flows as text, with the copy button in a gutter; a word only
+   breaks when it can't fit on a line of its own. */
 .pr-title-line {
   position: relative;
   /* A gutter for the copy button, so it never wraps onto a line of its
@@ -226,11 +322,6 @@
   width: 22px;
   height: 22px;
   margin: 0;
-}
-
-.pr-title-line > :not(.pr-title-text) {
-  margin-right: 4px;
-  vertical-align: middle;
 }
 
 .pr-title-line > .pr-title-text {
@@ -251,14 +342,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
-}
-
-.pr-title-text .pr-link {
-  margin-left: 2px;
-  font-weight: 400;
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
 }
 
 .pr-copy-title {
@@ -297,11 +380,11 @@
   white-space: nowrap;
 }
 
-.pr-label[data-hue="0"] { background: #fbeae5; color: #a0281b; }
-.pr-label[data-hue="1"] { background: #e8f0fb; color: #0b4a9e; }
-.pr-label[data-hue="2"] { background: #e6f4ea; color: #1a6b33; }
-.pr-label[data-hue="3"] { background: #f3eefe; color: #5b2fb0; }
-.pr-label[data-hue="4"] { background: #eef0f3; color: #424a53; }
+.pr-label[data-hue="0"] { background: var(--color-label-0-bg); color: var(--color-label-0-text); }
+.pr-label[data-hue="1"] { background: var(--color-label-1-bg); color: var(--color-label-1-text); }
+.pr-label[data-hue="2"] { background: var(--color-label-2-bg); color: var(--color-label-2-text); }
+.pr-label[data-hue="3"] { background: var(--color-label-3-bg); color: var(--color-label-3-text); }
+.pr-label[data-hue="4"] { background: var(--color-label-4-bg); color: var(--color-label-4-text); }
 
 .pr-title-meta {
   display: flex;
@@ -362,22 +445,72 @@
   color: var(--color-text-muted);
 }
 
-/* Review: assigned users after the slots */
-.pr-assignees {
-  display: inline-flex;
+/* Review: the labelled people under the slots - "Assigned" then
+   "Reviewer", each on a line of its own, its label in a fixed-width column
+   so the avatars start in the same place on every row (docked too). A
+   label never breaks (common.css lets table text break anywhere). */
+.pr-cell-review .ui-signal-group {
+  flex-wrap: wrap;
+}
+
+.pr-review-people {
+  display: grid;
+  flex-basis: 100%;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.pr-people-group {
+  display: grid;
+  /* Wide enough for "Assigned" and "Reviewer" in the usual fonts; a wider
+     font widens that row's column rather than running into the avatars. */
+  grid-template-columns: minmax(4.8em, max-content) minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: start;
+  font-size: var(--font-size-xs);
+}
+
+/* As tall as a badge (the small avatar), so the label sits level with the
+   first one when more wrap under it. */
+.pr-people-label {
+  line-height: var(--avatar-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.pr-people-avatars {
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px;
-  margin-left: 10px;
-  vertical-align: middle;
+}
+
+/* Docked, beside its label a group has room for one badge a line: with
+   three or more, the label goes above them so they get the cell's full
+   width (about four a line). One or two stay on the label's line. */
+.pr-workspace[data-pane="docked"] .pr-people-group:has(.pr-people-avatars > :nth-child(3)) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Size, Activity */
+/* Each count stays whole: the line breaks between the two, never inside a
+   number (common.css lets table text break anywhere). */
 .pr-size {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
 }
 
+.pr-size-added,
+.pr-size-deleted {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
 .pr-size-added { color: var(--color-success); }
-.pr-size-deleted { color: var(--color-danger); margin-left: 2px; }
+.pr-size-deleted { color: var(--color-danger); }
 
 .pr-activity {
   font-size: var(--font-size-sm);
@@ -386,6 +519,16 @@
 
 .pr-activity[data-stale="true"] {
   text-decoration: underline dotted;
+}
+
+/* "Author 2d", and under it "You 5d" */
+.pr-activity-line {
+  display: block;
+  white-space: nowrap;
+}
+
+.pr-activity-who {
+  font-size: var(--font-size-xs);
 }
 
 /* Actions */

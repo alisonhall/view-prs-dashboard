@@ -1,12 +1,20 @@
 import type { PrEntry, PrFlagsByRepo } from "../types/pr-data.ts";
 
 // Smart groups: accordion sections a PR can appear in alongside its
-// lifecycle section (Flagged, In Review, Needs Attention, Open PRs I'm
-// Involved In), each defined by a predicate over the entry.
+// lifecycle section (Flagged, In Review, Needs Attention, the viewer's own
+// open and draft PRs, those assigned to them, those requesting their
+// review, Open PRs I'm Involved In), each defined by a predicate over the
+// entry.
 
 export interface PrSmartGroupsDeps {
   hasNeedsAttentionFlag?: (entry: PrEntry) => boolean;
   hasUserInteraction?: (entry: PrEntry) => boolean;
+  // The viewer's login for a PR ("" when unknown), and how logins are
+  // compared (aliases resolved; trimmed and lowercased without it).
+  getViewerLogin?: (entry: PrEntry) => string;
+  normalizeLogin?: (login: unknown) => string;
+  getAssigneeLogins?: (entry: PrEntry) => string[];
+  getRequestedReviewerLogins?: (entry: PrEntry) => string[];
 }
 
 export interface SmartGroupConfig {
@@ -28,6 +36,10 @@ export interface SmartGroup<E extends PrEntry> {
 const createPrSmartGroupsHelpers = ({
   hasNeedsAttentionFlag,
   hasUserInteraction,
+  getViewerLogin = () => "",
+  normalizeLogin = (login) => String(login ?? "").trim().toLowerCase(),
+  getAssigneeLogins = () => [],
+  getRequestedReviewerLogins = () => [],
 }: PrSmartGroupsDeps = {}) => {
   const hasNeedsAttentionFlagSafe =
     typeof hasNeedsAttentionFlag === "function"
@@ -55,7 +67,36 @@ const createPrSmartGroupsHelpers = ({
 
   const hasInteraction = (entry: PrEntry): boolean => hasUserInteractionSafe(entry);
 
-  // The four groups, in display order, with their membership predicates.
+  // The viewer's open and draft PRs only: these sections are for what's
+  // still in progress.
+  const isOpenOrDraft = (entry: PrEntry): boolean => ["open", "draft"].includes(String(entry?.section || "").toLowerCase());
+  const loginKey = (login: unknown): string => String(normalizeLogin(login) || "").trim().toLowerCase();
+  const viewerKey = (entry: PrEntry): string => loginKey(getViewerLogin(entry));
+  const isAuthoredByViewer = (entry: PrEntry, viewer: string): boolean => loginKey(entry?.data?.authorLogin) === viewer;
+
+  const isMyOpenPr = (entry: PrEntry): boolean => {
+    const viewer = viewerKey(entry);
+    return Boolean(viewer) && isOpenOrDraft(entry) && isAuthoredByViewer(entry, viewer);
+  };
+
+  const isAssignedToMe = (entry: PrEntry): boolean => {
+    const viewer = viewerKey(entry);
+    return Boolean(viewer) && isOpenOrDraft(entry) && getAssigneeLogins(entry).some((login) => loginKey(login) === viewer);
+  };
+
+  // Someone else's PR whose review is currently requested from the viewer
+  // (GitHub drops the request once they submit a review).
+  const isReviewRequestedFromMe = (entry: PrEntry): boolean => {
+    const viewer = viewerKey(entry);
+    return (
+      Boolean(viewer) &&
+      isOpenOrDraft(entry) &&
+      !isAuthoredByViewer(entry, viewer) &&
+      getRequestedReviewerLogins(entry).some((login) => loginKey(login) === viewer)
+    );
+  };
+
+  // The groups, in display order, with their membership predicates.
   const buildSmartGroupConfigs = ({
     flaggedByRepo = {},
     inReviewByRepo = {},
@@ -84,6 +125,27 @@ const createPrSmartGroupsHelpers = ({
       title: "Needs Attention",
       icon: "⚠️",
       predicate: (entry) => needsAttention(entry),
+      defaultOpen: true,
+    },
+    {
+      groupKey: "mine",
+      title: "My Open & Draft PRs",
+      icon: "🙋",
+      predicate: (entry) => isMyOpenPr(entry),
+      defaultOpen: true,
+    },
+    {
+      groupKey: "assigned-to-me",
+      title: "Assigned to Me",
+      icon: "📌",
+      predicate: (entry) => isAssignedToMe(entry),
+      defaultOpen: true,
+    },
+    {
+      groupKey: "review-requested",
+      title: "Me as Reviewer",
+      icon: "🔍",
+      predicate: (entry) => isReviewRequestedFromMe(entry),
       defaultOpen: true,
     },
     {
@@ -137,6 +199,9 @@ const createPrSmartGroupsHelpers = ({
     isInReview,
     needsAttention,
     hasInteraction,
+    isMyOpenPr,
+    isAssignedToMe,
+    isReviewRequestedFromMe,
     buildSmartGroupConfigs,
     applySmartGroups,
   };

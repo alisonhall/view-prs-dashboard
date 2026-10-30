@@ -306,9 +306,9 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
   await openSettings(page);
   const nav = settingsDrawer(page).getByRole("tablist", { name: "Settings sections", exact: true });
   const firstTab = nav.getByRole("tab", { name: "Run & check", exact: true });
-  const lastTab = nav.getByRole("tab", { name: "Export", exact: true });
+  const lastTab = nav.getByRole("tab", { name: "Appearance", exact: true });
 
-  // One row: the nav is about one tab high (stacked, the nine were ~310px).
+  // One row: the nav is about one tab high (stacked, they took over 300px).
   const navBox = await nav.boundingBox();
   const tabBox = await firstTab.boundingBox();
   expect(navBox.height).toBeLessThan(tabBox.height * 1.5);
@@ -321,7 +321,7 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
       return range.getClientRects().length;
     }),
   );
-  expect(labelLines).toEqual(Array(9).fill(1));
+  expect(labelLines).toEqual(Array(10).fill(1));
   expect(await nav.evaluate((element) => element.closest(".settings-nav").scrollWidth > element.closest(".settings-nav").clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
 
@@ -330,7 +330,7 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
   await page.keyboard.press("End");
   await expect(lastTab).toHaveAttribute("aria-selected", "true");
   await expect(lastTab).toBeInViewport();
-  await expect(settingsDrawer(page).getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+  await expect(settingsDrawer(page).getByRole("group", { name: "Theme", exact: true })).toBeVisible();
 });
 
 test("at phone width the activity popover stays in the window, under its button", async ({ page }) => {
@@ -407,8 +407,8 @@ test("the Settings drawer opens from the header, switches sections, and closes w
   await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
   await page.keyboard.press("End");
-  await expect(drawer.getByRole("tab", { name: "Export", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(drawer.getByRole("group", { name: "Export fields", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByRole("group", { name: "Theme", exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
@@ -458,13 +458,29 @@ test("In review toggle, row summary, and showing a PR in the detail pane work", 
   await page.goto("/");
   await waitForPrTable(page);
 
-  // In review is a toggle button (aria-pressed); the smart groups holding
-  // it are open by default.
-  const toggle = prTables(page).getByRole("button", { name: /^In Review for PR #/ }).first();
-  await expect(toggle).toHaveCount(1);
-  const before = await toggle.getAttribute("aria-pressed");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
+  // In review is in the row's More menu, worded for what choosing it does.
+  // Every section open, so PR #1's row stays in view as it moves between
+  // them.
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  const moreButton = prTables(page)
+    .getByRole("button", { name: "More actions for PR #1", exact: true })
+    .filter({ visible: true })
+    .first();
+  const inReviewItem = page.getByRole("menu").getByRole("menuitem", { name: /^(Mark in review|Remove from in review)$/ });
+  const toggleInReview = async () => {
+    await moreButton.click();
+    const wasInReview = (await inReviewItem.textContent()).includes("Remove from in review");
+    // The server's ack runs the update script, which can take a few seconds.
+    await Promise.all([page.waitForResponse("**/view-prs/ack", { timeout: PR_TABLE_READY_TIMEOUT_MS }), inReviewItem.click()]);
+    await moreButton.click();
+    await expect(inReviewItem).toHaveText(wasInReview ? "Mark in review" : "Remove from in review");
+    await page.keyboard.press("Escape");
+  };
+  // There and back, so the server state the other tests share is as it was.
+  await toggleInReview();
+  await toggleInReview();
 
   const prNumber = await openFirstRowInPane(page);
   const summaryRow = prTables(page).getByRole("row", { name: `Summary for PR #${prNumber}`, exact: true }).first();
@@ -510,11 +526,13 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
   await page.keyboard.press("Escape");
   await expect(pane).toHaveAccessibleName("PR details");
 
-  // The pane's own close returns focus to the PR's row (its visible copy).
+  // The pane's own close hides it, returning focus to the PR's row (its
+  // visible copy); the Detail pane button shows it hidden.
   await links.first().focus();
   await page.keyboard.press("ArrowDown");
   await pane.getByRole("button", { name: "Close details", exact: true }).click();
-  await expect(pane).toHaveAccessibleName("PR details");
+  await expect(pane).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
   await expect(links.first()).toBeFocused();
   expect(consoleErrors).toEqual([]);
 });
@@ -539,6 +557,146 @@ test("the docked detail pane stays in view while the page scrolls", async ({ pag
   expect(box.y).toBeLessThan(40);
 });
 
+test("an open section's header stays at the top while its rows scroll by", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 400 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+
+  // Scroll so the Open PRs section's top is above the window but its rows
+  // are still in it.
+  const section = prSection(page, "Open PRs");
+  const header = prSectionSummary(section);
+  await page.evaluate(() => {
+    const target = document.querySelector('[data-pr-section="open"]');
+    window.scrollTo(0, target.getBoundingClientRect().top + window.scrollY + 40);
+  });
+  const sectionBox = await section.boundingBox();
+  expect(sectionBox.y).toBeLessThan(0);
+  expect(sectionBox.y + sectionBox.height).toBeGreaterThan(100);
+  // Its header is pinned at the top of the window, and the table's column
+  // headers just below it.
+  const headerBox = await header.boundingBox();
+  expect(Math.round(headerBox.y)).toBe(0);
+  await expect(header).toBeInViewport();
+  const columnHeader = section.getByRole("columnheader", { name: "Pull request", exact: true });
+  const columnBox = await columnHeader.boundingBox();
+  expect(Math.abs(columnBox.y - (headerBox.y + headerBox.height))).toBeLessThanOrEqual(1);
+});
+
+test("the pane's Previous PR scrolls the row into view below the stuck headers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 400 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  const prNumber = await openFirstRowInPane(page);
+  await detailPane(page).getByRole("button", { name: "Next PR", exact: true }).click();
+
+  // Scroll so the first PR's row sits under its section's stuck headers.
+  const row = prTables(page).locator(`tr.pr-row[data-pr-number="${prNumber}"]`).first();
+  await row.evaluate((element) => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 10));
+  await detailPane(page).getByRole("button", { name: "Previous PR", exact: true }).click();
+
+  const section = row.locator("xpath=ancestor::details[1]");
+  const columnHeader = section.getByRole("columnheader", { name: "Pull request", exact: true });
+  await expect
+    .poll(async () => (await row.boundingBox()).y - ((await columnHeader.boundingBox()).y + (await columnHeader.boundingBox()).height))
+    .toBeGreaterThanOrEqual(0);
+});
+
+// Removes Settings › Appearance choices from user-defaults.json (shared by
+// every test), keeping the other settings.
+const clearSavedAppearance = async (request, keys) => {
+  const { overrides = {} } = await (await request.get("/view-prs/user-defaults")).json();
+  keys.forEach((key) => delete overrides[key]);
+  await request.put("/view-prs/user-defaults", { data: overrides });
+};
+const clearSavedTheme = (request) => clearSavedAppearance(request, ["theme"]);
+
+test("Settings › Appearance: Dark is applied and kept after the browser is closed", async ({ page }) => {
+  // Starts from no saved theme, and leaves none even if a check fails, so
+  // a retry and the later tests start on Light.
+  await clearSavedTheme(page.request);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const html = page.locator("html");
+    await expect(html).toHaveAttribute("data-theme", "light");
+
+    const drawer = await openSettings(page, "Appearance");
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("radio", { name: "Dark", exact: true }).check();
+    await saved;
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    // The colours come from the dark tokens.
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(22, 27, 34)");
+
+    // The browser copy sets it before the page renders...
+    await page.reload();
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    // ...and with that copy gone (a fresh browser), user-defaults.json still has it.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(html).toHaveAttribute("data-theme", "dark");
+    await expect((await openSettings(page, "Appearance")).getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
+  } finally {
+    await clearSavedTheme(page.request);
+  }
+});
+
+test("Settings › Appearance: a hidden section and a section's open-on-load choice are kept after a reload", async ({ page }) => {
+  // Starts from no saved choices, and leaves none even if a check fails.
+  await clearSavedAppearance(page.request, ["prSections"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    await expect(prSection(page, "Flagged")).toHaveCount(1);
+    await expect(prSection(page, "Open PRs")).not.toHaveAttribute("open", "");
+
+    const drawer = await openSettings(page, "Appearance");
+    const savedHidden = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("checkbox", { name: "Show Flagged", exact: true }).uncheck();
+    await savedHidden;
+    await expect(prSection(page, "Flagged")).toHaveCount(0);
+    const savedOpen = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await drawer.getByRole("checkbox", { name: "Open Open PRs when the page loads", exact: true }).check();
+    await savedOpen;
+
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(prSection(page, "Open PRs")).toHaveAttribute("open", "");
+    await expect(prSection(page, "Flagged")).toHaveCount(0);
+    const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
+    expect(overrides.prSections).toEqual({ flagged: { hidden: true }, open: { open: true } });
+  } finally {
+    await clearSavedAppearance(page.request, ["prSections"]);
+  }
+});
+
+test("in a window too narrow for the table, a section still scrolls sideways", async ({ page }) => {
+  // Below 900px the pane is a drawer, so the table has the window's width.
+  await page.setViewportSize({ width: 820, height: 700 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  const content = prSection(page, "Needs Attention").locator(".pr-section-content");
+  await expect
+    .poll(() => content.evaluate((element) => getComputedStyle(element).overflowX))
+    .toBe("auto");
+  expect(await content.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  // The column headers don't stick then (inside the scroll box their offset
+  // would push them over the first row), so the row's chevron is clickable.
+  const columnHeader = prSection(page, "Needs Attention").getByRole("columnheader", { name: "Pull request", exact: true });
+  expect(await columnHeader.evaluate((element) => getComputedStyle(element).position)).toBe("static");
+  const summaryToggle = prSection(page, "Needs Attention").getByRole("button", { name: /^Show summary for PR #\d+$/ }).first();
+  await summaryToggle.click({ trial: true });
+});
+
 test("with the detail pane hidden, clicking a row shows it again for that PR", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
@@ -550,6 +708,129 @@ test("with the detail pane hidden, clicking a row shows it again for that PR", a
   await summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who").click();
   await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
+});
+
+test("clicking the PR shown in the detail pane again closes the pane", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const summaryToggle = await firstSummaryToggle(page);
+  const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
+  const authorCell = summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who");
+
+  await authorCell.click();
+  await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
+
+  // Closed, not left open saying "No PR selected".
+  await authorCell.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("with the detail pane docked, the Review labels and Size counts never break mid-word", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(prTables(page).locator(".pr-workspace")).toHaveAttribute("data-pane", "docked");
+  // Each text on one line: its boxes (one per text node and line) all
+  // share a top.
+  const lineCounts = await prTables(page)
+    .locator(".pr-people-label, .pr-size-added, .pr-size-deleted, .pr-title-number-line .pr-link")
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => element.getClientRects().length > 0)
+        .map((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const tops = new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top)));
+          return { text: element.textContent, lines: tops.size };
+        }),
+    );
+  expect(lineCounts.length).toBeGreaterThan(0);
+  expect(lineCounts.filter(({ lines }) => lines !== 1)).toEqual([]);
+});
+
+test("with the detail pane docked, three or more badges go under their label, using the cell's width", async ({ page }) => {
+  // Four assignees on every PR (the stored data has at most one).
+  await page.route("**/view-prs/data", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    Object.values(json.byPrNumber || {}).forEach((entry) => {
+      entry.data.assignees = ["carol", "dave", "erin", "finn"].map((login) => ({ login, name: login }));
+    });
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await expect(prTables(page).locator(".pr-workspace")).toHaveAttribute("data-pane", "docked");
+
+  const assigned = prTables(page).getByRole("group", { name: "Assigned", exact: true }).first();
+  const label = assigned.locator(".pr-people-label");
+  const badges = assigned.getByRole("img");
+  await expect(badges).toHaveCount(4);
+  const labelBox = await label.boundingBox();
+  const badgeTops = await badges.evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().top)));
+  // All four on one line, under the label.
+  expect(new Set(badgeTops).size).toBe(1);
+  expect(badgeTops[0]).toBeGreaterThanOrEqual(Math.round(labelBox.y + labelBox.height) - 1);
+});
+
+test("opening and closing the detail pane keeps the clicked PR row where it was on screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("button", { name: "Detail pane", exact: true }).click();
+  await expect(detailPane(page)).toHaveCount(0);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+
+  // A row in the last section with rows, scrolled to the middle of the window.
+  const row = prTables(page).locator("tr.pr-row").last();
+  await row.evaluate((element) => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 300));
+  const topBefore = (await row.boundingBox()).y;
+  const tableWidthBefore = (await prTables(page).getByRole("table").last().boundingBox()).width;
+
+  await row.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  // The table did reflow (narrower beside the pane)...
+  expect((await prTables(page).getByRole("table").last().boundingBox()).width).toBeLessThan(tableWidthBefore);
+  // ...but the row stayed put.
+  expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
+
+  await row.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
+
+  // The pane's close button and the toolbar's Detail pane button keep the
+  // selected row still too. In a taller window, with the page at the top,
+  // the third row is on screen with both buttons and has rows above it
+  // that reflow (the first two don't move whatever the layout). Each
+  // button is brought into view first, as a user would scroll to it, and
+  // the row measured from there.
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const topRow = prTables(page).locator("tr.pr-row").nth(2);
+  await topRow.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  const closeButton = detailPane(page).getByRole("button", { name: "Close details", exact: true });
+  await closeButton.scrollIntoViewIfNeeded();
+  await expect(topRow).toBeInViewport();
+  const topRowBeforeClose = (await topRow.boundingBox()).y;
+  await closeButton.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBeforeClose)).toBeLessThanOrEqual(1);
+
+  await topRow.locator(".pr-cell-who").click();
+  await expect(detailPane(page)).toHaveCount(1);
+  const toolbarToggle = page.getByRole("button", { name: "Detail pane", exact: true });
+  await toolbarToggle.scrollIntoViewIfNeeded();
+  await expect(topRow).toBeInViewport();
+  const topRowBefore = (await topRow.boundingBox()).y;
+  await toolbarToggle.click();
+  await expect(detailPane(page)).toHaveCount(0);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBefore)).toBeLessThanOrEqual(1);
+  await toolbarToggle.click();
+  await expect(detailPane(page)).toHaveCount(1);
+  expect(Math.abs((await topRow.boundingBox()).y - topRowBefore)).toBeLessThanOrEqual(1);
 });
 
 test("below 900px the detail pane is a modal drawer: Esc closes it and focus goes back to its opener", async ({ page }) => {
@@ -980,6 +1261,15 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // It stays stuck to the top of the window however far down you are.
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(pausedBanner).toBeInViewport();
+  // Its height is what the section headers and the docked pane stick below.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const height = document.getElementById("app-banner-root").getBoundingClientRect().height;
+        return height > 0 && document.documentElement.style.getPropertyValue("--sticky-top") === `${Math.round(height)}px`;
+      }),
+    )
+    .toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
 
   // Switch away from the Pull requests view - the pane and its Notes stay mounted
@@ -1897,10 +2187,12 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
       });
     });
 
-  // In review is a toggle button now (aria-pressed); still controlled, with
-  // no local optimistic state.
-  const toggle = prTables(page).getByRole("button", { name: "In Review for PR #1", exact: true }).first();
-  const before = await toggle.getAttribute("aria-pressed");
+  // In review is in the row's More menu now, worded from the PR's state;
+  // still controlled, with no local optimistic state.
+  const moreButton = prTables(page).getByRole("button", { name: "More actions for PR #1", exact: true }).first();
+  const inReviewItem = page.getByRole("menu").getByRole("menuitem", { name: /^(Mark in review|Remove from in review)$/ });
+  await moreButton.click();
+  const before = await inReviewItem.textContent();
 
   await page.route("**/view-prs/ack", (route) =>
     route.fulfill({
@@ -1910,10 +2202,11 @@ test("a failed In Review toggle reverts the checkbox back to its real state, ins
     }),
   );
 
-  await toggle.click();
-  // The app's async round-trip (even against a mocked route) takes a tick -
-  // wait for it to settle on the pre-click value.
-  await expect(toggle).toHaveAttribute("aria-pressed", before);
+  await Promise.all([page.waitForResponse("**/view-prs/ack"), inReviewItem.click()]);
+  // After the failed round-trip the menu still offers the same choice.
+  await moreButton.click();
+  await expect(inReviewItem).toHaveText(before);
+  await page.keyboard.press("Escape");
 });
 
 test("React-owned label multi-select renders options from payload data and filtering by a checked label still works", async ({ page }) => {
@@ -2982,29 +3275,28 @@ test("Export follows the table's open sections: closing the sections that are op
   // (PrTableUiStateProvider) instead of `<details open>` in the DOM.
   // Closing a section that's open by default used to be recorded as "open"
   // in that state (flipping "no choice yet" gave true), which Export would
-  // now trust - this checks the real toggle end to end. On a fresh page
-  // only "In Review" and "Needs Attention" are open (their defaults); which
-  // PRs they hold can change as earlier tests edit the shared server's
-  // data, so this checks the counts reach zero rather than exact numbers.
+  // now trust - this checks the real toggle end to end. On a fresh page the
+  // sections open by default are In Review, Needs Attention and the
+  // viewer's own three; which PRs they hold can change as earlier tests
+  // edit the shared server's data, so this checks the counts reach zero
+  // rather than exact numbers.
+  const openByDefault = ["In Review", "Needs Attention", "My Open & Draft PRs", "Assigned to Me", "Me as Reviewer"];
   await page.goto("/");
   await waitForPrTable(page);
 
   await openSettings(page, "Export");
   const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
-  await expect(exportPanel.getByText(/Expanded PR sections: 2$/m)).toBeVisible();
+  await expect(exportPanel.getByText(new RegExp(`Expanded PR sections: ${openByDefault.length}$`, "m"))).toBeVisible();
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: [1-9]\d*\//)).toBeVisible();
 
   // The drawer covers the table: close it to toggle sections. Export stays
   // mounted, so its summary follows while it's closed.
-  await closeSettings(page);
-  await prSectionSummary(prSection(page, "In Review")).click();
-  await openSettings(page, "Export");
-  await expect(exportPanel.getByText(/Expanded PR sections: 1$/m)).toBeVisible();
-
-  await closeSettings(page);
-  await prSectionSummary(prSection(page, "Needs Attention")).click();
-  await openSettings(page, "Export");
-  await expect(exportPanel.getByText(/Expanded PR sections: 0$/m)).toBeVisible();
+  for (const [index, title] of openByDefault.entries()) {
+    await closeSettings(page);
+    await prSectionSummary(prSection(page, title)).click();
+    await openSettings(page, "Export");
+    await expect(exportPanel.getByText(new RegExp(`Expanded PR sections: ${openByDefault.length - index - 1}$`, "m"))).toBeVisible();
+  }
   await expect(exportPanel.getByText(/Visible PR rows eligible for export: 0\//)).toBeVisible();
 
   await page.getByRole("button", { name: "Preview JSON" }).click();

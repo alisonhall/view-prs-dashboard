@@ -37,7 +37,7 @@ describe('PrTable', () => {
   test('is named by its section and has a header per column', () => {
     renderTable();
     expect(screen.getByRole('table', { name: 'Open PRs' })).toBeInTheDocument();
-    expect(headerShown()).toEqual(['Select', 'Signals', 'Pull request', 'Who', 'Review', 'CHK·MRG', 'Size', 'Activity', 'Actions']);
+    expect(headerShown()).toEqual(['Select', 'Signals', 'Pull request', 'Author', 'Review', 'CHK·MRG', 'Size', 'Activity', 'Actions']);
     expect(document.querySelectorAll('col')).toHaveLength(9);
   });
 
@@ -48,7 +48,7 @@ describe('PrTable', () => {
       'Signals: changed, needs attention, flagged, in review',
       'Pull request',
       'Author',
-      'Review: approvals, open conversations, viewed files, notes, assigned',
+      'Review: approvals, open conversations, viewed files, notes, assigned, review requested',
       'Checks and mergeability',
       'Size',
       'Activity',
@@ -97,7 +97,7 @@ describe('PrTable', () => {
     test('↓ with nothing selected selects the row with focus', () => {
       const onSelectPr = jest.fn(() => true);
       renderTable({ prs: [entry('3'), entry('2'), entry('1')], onSelectPr });
-      fireEvent.keyDown(within(rows()[1] as HTMLElement).getByRole('button', { name: 'Update PR #2' }), { key: 'ArrowDown' });
+      fireEvent.keyDown(within(rows()[1] as HTMLElement).getByRole('button', { name: 'Ack PR #2' }), { key: 'ArrowDown' });
       expect(onSelectPr).toHaveBeenCalledWith('2', 'owner/repo');
       expect(prLink('2')).toHaveFocus();
     });

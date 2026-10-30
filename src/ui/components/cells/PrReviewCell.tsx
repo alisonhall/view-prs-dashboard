@@ -19,9 +19,13 @@ const toCount = (value: unknown): number => {
  * 3. Viewed files.
  * 4. Notes, listing the fields that have content.
  *
- * After the slots: avatars of the assigned users, as the old Approved
- * column showed. The viewer also gets one when they're a requested
- * reviewer but not assigned, so "I'm reviewing this" stays visible.
+ * On lines under the slots, labelled so they read without hovering:
+ * "Assigned" and the assigned users' avatars, as the old Approved column
+ * showed; and "Reviewer" with the viewer's, when their review is requested
+ * but they aren't assigned. "Reviewer", not "Review requested": shorter,
+ * and some projects add reviewers automatically, so a request doesn't
+ * always mean a review is needed. Its tooltip still says "review
+ * requested".
  *
  * The cell is one keyboard stop (SignalGroup) whose focus tooltip lists
  * all of it; each icon and avatar also has its own tooltip on hover.
@@ -35,7 +39,7 @@ export interface PrReviewCellProps {
 export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   useTooltipController();
   const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
-  const { collectAssignedUsers, collectRequestedReviewers, getUserInitials, getOpenConversationCountWithMe } =
+  const { collectAssignedUsers, collectPendingReviewRequests, getUserInitials, getOpenConversationCountWithMe } =
     usePrInsightsDisplay();
 
   const approved = String(pr?.approved || '').toUpperCase() === 'YES';
@@ -62,7 +66,9 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
 
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
   const assignees = collectAssignedUsers(pr);
-  const reviewers = collectRequestedReviewers(pr);
+  // Outstanding requests only: the fallback to whoever has reviewed would
+  // label them "review requested" too.
+  const reviewers = collectPendingReviewRequests(pr);
   const loginOf = (person: { login?: unknown }) => String(person?.login || '').trim();
   const assigneeLogins = new Set(assignees.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
   const reviewerLogins = new Set(reviewers.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
@@ -70,31 +76,28 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
     viewerLogin && reviewerLogins.has(viewerLogin) && !assigneeLogins.has(viewerLogin)
       ? reviewers.find((person) => loginOf(person).toLowerCase() === viewerLogin)
       : undefined;
-  const people = (viewerReviewerOnly ? [...assignees, viewerReviewerOnly] : assignees)
-    .map((person) => {
-      const login = loginOf(person);
-      const key = login.toLowerCase();
-      const displayName = resolveActorDisplayName(login, actorsMap, (person as { name?: string }).name) || login;
-      const roles = [
-        key === viewerLogin ? 'you' : '',
-        reviewerLogins.has(key) ? 'reviewer' : '',
-        assigneeLogins.has(key) ? '' : 'not assigned',
-      ].filter(Boolean);
-      return {
-        login,
-        displayName,
-        isViewer: Boolean(viewerLogin) && key === viewerLogin,
-        label: roles.length ? `${displayName} (${roles.join(', ')})` : displayName,
-      };
-    })
-    .filter((person) => person.login);
+  const toPerson = (person: { login?: unknown; name?: string }): Person => {
+    const login = loginOf(person);
+    const key = login.toLowerCase();
+    const displayName = resolveActorDisplayName(login, actorsMap, person.name) || login;
+    const roles = [key === viewerLogin ? 'you' : '', reviewerLogins.has(key) ? 'review requested' : ''].filter(Boolean);
+    return {
+      login,
+      displayName,
+      isViewer: Boolean(viewerLogin) && key === viewerLogin,
+      label: roles.length ? `${displayName} (${roles.join(', ')})` : displayName,
+    };
+  };
+  const assigned = assignees.map(toPerson).filter((person) => person.login);
+  const requested = viewerReviewerOnly ? [toPerson(viewerReviewerOnly)].filter((person) => person.login) : [];
 
   const summary = [
     approvalsLabel,
     openCount > 0 ? conversationsLabel : '',
     viewedFiles?.label || '',
     notes || '',
-    people.length ? `Assigned: ${people.map((person) => person.label).join(', ')}` : '',
+    assigned.length ? `Assigned: ${assigned.map((person) => person.label).join(', ')}` : '',
+    requested.length ? `Reviewer: ${requested.map((person) => person.label).join(', ')}` : '',
   ].filter(Boolean);
 
   return (
@@ -114,16 +117,50 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
           )}
           {notes ? <Signal icon="note" label={notes} size={14} inGroup /> : <EmptySignal />}
         </span>
-        {people.length > 0 && (
-          <span className="pr-assignees" role="group" aria-label="Assigned">
-            {people.map((person) => (
-              <span key={person.login} role="img" aria-label={person.label} data-tip={person.label} data-tip-on="hover">
-                <Avatar initials={getUserInitials(person.displayName, person.login)} login={person.login} isViewer={person.isViewer} size="sm" />
-              </span>
-            ))}
+        {(assigned.length > 0 || requested.length > 0) && (
+          <span className="pr-review-people">
+            {assigned.length > 0 && <PeopleGroup label="Assigned" people={assigned} getUserInitials={getUserInitials} />}
+            {requested.length > 0 && (
+              <PeopleGroup label="Reviewer" people={requested} getUserInitials={getUserInitials} />
+            )}
           </span>
         )}
       </SignalGroup>
     </td>
+  );
+}
+
+interface Person {
+  login: string;
+  displayName: string;
+  isViewer: boolean;
+  // The name and roles ("you", "review requested"), for the tooltip.
+  label: string;
+}
+
+// One labelled group of avatars ("Assigned", "Reviewer"), so what
+// the badges mean shows without hovering; each names its person on hover.
+function PeopleGroup({
+  label,
+  people,
+  getUserInitials,
+}: {
+  label: string;
+  people: Person[];
+  getUserInitials: (name: string, login: string) => string;
+}) {
+  return (
+    <span className="pr-people-group" role="group" aria-label={label}>
+      <span className="pr-people-label" aria-hidden="true">
+        {label}
+      </span>
+      <span className="pr-people-avatars">
+        {people.map((person) => (
+          <span key={person.login} role="img" aria-label={person.label} data-tip={person.label} data-tip-on="hover">
+            <Avatar initials={getUserInitials(person.displayName, person.login)} login={person.login} isViewer={person.isViewer} size="sm" />
+          </span>
+        ))}
+      </span>
+    </span>
   );
 }

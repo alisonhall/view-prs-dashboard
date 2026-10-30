@@ -12,22 +12,22 @@
   font-size: 13px;
   font-weight: 500;
   padding: 8px 12px;
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color-surface);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
   transition: background-color 0.15s ease, border-color 0.15s ease;
-  color: #1f2328;
+  color: var(--color-text);
   margin: 0;
   list-style: none;
 }
 
 .multi-select-summary:hover {
-  background-color: #f3f4f6;
-  border-color: #a5a5a5;
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border-emphasis);
 }
 
 .multi-select-summary::-webkit-details-marker {
@@ -47,10 +47,10 @@
 }
 
 .multi-select-list {
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-top: none;
   border-radius: 0 0 8px 8px;
-  background: #fff;
+  background: var(--color-surface);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -70,7 +70,7 @@
 }
 
 .multi-select-item:hover {
-  background-color: #f3f4f6;
+  background-color: var(--color-surface-muted);
 }
 
 .multi-select-item input[type="checkbox"] {
@@ -92,7 +92,7 @@
   content: "No options";
   display: block;
   padding: 8px;
-  color: #6e7681;
+  color: var(--color-text-muted);
   font-size: 13px;
   font-style: italic;
 }

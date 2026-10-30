@@ -8,11 +8,13 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
@@ -22,6 +24,10 @@ import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateConte
 import { NowProvider } from '../state/NowContext';
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
+import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
+import { useSettingsDrawer } from '../state/SettingsDrawerContext';
+import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
@@ -87,6 +93,9 @@ export function PrTableApp() {
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
   const visiblePrNumbers = useVisiblePrNumbers();
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
+  // For the viewer's own smart groups (their PRs, assigned, review requested).
+  const { getEffectiveViewerLogin, normalizeActorLogin } = useActorIdentity();
+  const { collectAssignedUsers, collectPendingReviewRequests } = usePrInsightsDisplay();
 
   // Section open/closed and expanded insights rows live in
   // PrTableUiStateProvider (above AppShell), not here, so Settings › Export can
@@ -107,6 +116,9 @@ export function PrTableApp() {
     reportRenderedSections,
   } = usePrTableUiState();
   const { dirtyPrNumbers } = useNotesDirty();
+  // Settings › Appearance: which sections show, and which start open.
+  const { preferences: sectionPreferences } = usePrSectionPreferences();
+  const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
 
@@ -466,7 +478,7 @@ export function PrTableApp() {
   );
 
   // Build sections from payload using existing vanilla JS helpers
-  const sections = useMemo(() => {
+  const builtSections = useMemo(() => {
     if (!payload || !payload.byPrNumber) {
       return [];
     }
@@ -560,6 +572,11 @@ export function PrTableApp() {
           // Use actual interaction detection
           return checkUserInteraction(entry);
         },
+        getViewerLogin: (entry) => String(getEffectiveViewerLogin(entry?.data || {}) || ''),
+        normalizeLogin: (login) => normalizeActorLogin(login),
+        getAssigneeLogins: (entry) => collectAssignedUsers(entry?.data || {}).map((person) => person.login),
+        // Outstanding requests only, not the broad reviewers list.
+        getRequestedReviewerLogins: (entry) => collectPendingReviewRequests(entry?.data || {}).map((person) => person.login),
       });
 
       // Deliberately not passing `repo` here: isFlagged/isInReview
@@ -608,7 +625,36 @@ export function PrTableApp() {
       // headers showed no attention even when their rows did.
       attentionCount: (config.rows || []).filter((entry) => checkNeedsAttention(entry)).length,
     }));
-  }, [payload, visiblePrNumbers, checkNeedsAttention, checkUserInteraction, buildGroupedPrSections]);
+  }, [
+    payload,
+    visiblePrNumbers,
+    checkNeedsAttention,
+    checkUserInteraction,
+    buildGroupedPrSections,
+    getEffectiveViewerLogin,
+    normalizeActorLogin,
+    collectAssignedUsers,
+    collectPendingReviewRequests,
+  ]);
+
+  // Settings › Appearance's choices: hidden sections are left out entirely
+  // (so they're not in previous/next, Export or View in table either), and
+  // a saved "Open when the page loads" replaces the built-in default.
+  const sections = useMemo(
+    () =>
+      builtSections
+        .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
+        .map((section) => ({ ...section, defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen) })),
+    [builtSections, sectionPreferences],
+  );
+  // The PRs the filters let through that aren't in any section on the page
+  // (all their sections are hidden), for the filter bar's count.
+  const hiddenPrCount = useMemo(() => {
+    const keyOf = (entry: PrEntry) => buildActivePrKey(String(entry?.data?.number ?? entry?.prNumber ?? ''), entry?.repo || effectiveRepo);
+    const onPage = new Set(sections.flatMap((section) => section.prs.map(keyOf)));
+    const inAnySection = new Set(builtSections.flatMap((section) => section.prs.map(keyOf)));
+    return [...inAnySection].filter((key) => !onPage.has(key)).length;
+  }, [builtSections, sections, effectiveRepo]);
 
   // Kept in sync every render so the 'pr-navigate-to-insights' listener
   // below (subscribed once) can always read the current sections instead
@@ -628,8 +674,9 @@ export function PrTableApp() {
         defaultOpen: Boolean(section.defaultOpen),
         prNumbers: (section.prs || []).map((entry) => String(entry?.data?.number || '')),
       })),
+      hiddenPrCount,
     );
-  }, [sections, reportRenderedSections]);
+  }, [sections, hiddenPrCount, reportRenderedSections]);
 
   // The selected PR's entry, looked up again in each payload; null when
   // nothing is selected or the PR is no longer in the data.
@@ -681,6 +728,35 @@ export function PrTableApp() {
     return true;
   };
 
+  // Opening or closing the pane narrows or widens the table, so rows change
+  // height: one row stays where it is on screen and the rest of the page
+  // reflows around it (captureRowAnchor) - the row clicked, else the row
+  // that was clicked to select the PR (a PR can have a row in several
+  // sections; this is the one the user was looking at), else the focused
+  // one, else the selected one, else the first in view. Every show/hide
+  // here goes through this. Returns the row kept still, if any.
+  const paneAnchorRef = useRef<RowAnchor | null>(null);
+  const selectedRowRef = useRef<Element | null>(null);
+  const selectedPrRow = (): Element | null => {
+    const row = selectedRowRef.current;
+    return row?.isConnected &&
+      selectedPr &&
+      row.getAttribute('data-pr-number') === selectedPr.prNumber &&
+      row.getAttribute('data-repo') === selectedPr.repo
+      ? row
+      : null;
+  };
+  const showPane = (visible: boolean, row?: Element | null): RowAnchor | null => {
+    if (visible !== isPaneVisible) paneAnchorRef.current = captureRowAnchor(row ?? selectedPrRow() ?? document.activeElement);
+    setPaneVisible(visible);
+    return paneAnchorRef.current;
+  };
+  useLayoutEffect(() => {
+    const anchor = paneAnchorRef.current;
+    paneAnchorRef.current = null;
+    restoreRowAnchor(anchor);
+  }, [isPaneVisible]);
+
   // Listen for "View in table" clicks (Author Insights, Review Stats) and
   // the "Auto update paused" chips (with `focusUnsaved`), which dispatch
   // this event (state/useNavigateToPrInTable.tsx) rather than reaching
@@ -701,6 +777,18 @@ export function PrTableApp() {
     setSectionOpen(target.sectionKey, true);
     if (target.focusUnsaved) setPaneTab('notes');
     setNavigationRequestCount((count) => count + 1);
+  });
+  // For a PR in no section on the page (Settings › Appearance hid them
+  // all): selected in the detail pane, if it's in the data.
+  const showPrInPane = useStableCallback(({ prNumber, repo, focusUnsaved }: { prNumber: string; repo: string; focusUnsaved: boolean }) => {
+    const entry = Object.values(payload?.byPrNumber || {}).find(
+      (candidate) =>
+        String(candidate?.data?.number ?? candidate?.prNumber ?? '') === prNumber &&
+        (!repo || (candidate?.repo || effectiveRepo) === repo),
+    );
+    if (!entry || !selectPr({ repo: entry.repo || effectiveRepo, prNumber })) return;
+    showPane(true);
+    if (focusUnsaved) setPaneTab('notes');
   });
   // The listener below is subscribed once, so it reads open state through
   // this ref rather than a stale closure.
@@ -757,6 +845,9 @@ export function PrTableApp() {
         matches.find(({ section }) => isSectionOpenRef.current(section.key, Boolean(section.defaultOpen))) ||
         matches[0];
       if (!target) {
+        // Not in any section on the page (its sections are hidden): show it
+        // in the detail pane instead.
+        showPrInPane({ prNumber, repo, focusUnsaved });
         return;
       }
       const { section: matchingSection, entry: matchingEntry } = target;
@@ -772,7 +863,7 @@ export function PrTableApp() {
     return () => {
       window.removeEventListener('pr-navigate-to-insights', handleNavigateToInsights);
     };
-  }, [navigateToPr]);
+  }, [navigateToPr, showPrInPane]);
 
   // Runs once a navigation's PR is selected and rendered: scrolls to and
   // focuses its row's link in the section it was found in (the same PR's
@@ -824,48 +915,68 @@ export function PrTableApp() {
   });
 
   // Detail pane selection (UI_REDESIGN_PLAN.md, phase 4). A row click
-  // selects its PR and shows the pane if it was hidden, or deselects it
-  // when it's the selected one; ↑/↓ in a table select without toggling
-  // (PrTable); the summary's "Show details" selects and shows the pane too.
-  const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string) => {
+  // selects its PR and shows the pane if it was hidden. Clicking the
+  // selected PR again closes the pane, like its close button (it used to
+  // leave the pane open saying "No PR selected") - or, if the pane was
+  // hidden with that PR still selected, shows it. ↑/↓ in a table select
+  // without toggling (PrTable); the summary's "Show details" selects and
+  // shows the pane too.
+  const handleSelectRow = useStableCallback((prNumber: PrNumber, repo: string, row?: Element) => {
     const pr = { repo, prNumber: String(prNumber ?? '') };
+    if (row) selectedRowRef.current = row;
     if (samePr(pr, selectedPr)) {
-      selectPr(null);
+      if (!isPaneVisible) {
+        showPane(true, row);
+        return;
+      }
+      if (selectPr(null)) showPane(false, row);
       return;
     }
-    if (selectPr(pr)) setPaneVisible(true);
+    if (selectPr(pr)) showPane(true, row);
   });
   const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
   const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
-    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) setPaneVisible(true);
+    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) showPane(true);
   });
   const handleClearSelection = useStableCallback(() => {
     selectPr(null);
   });
 
-  // The pane's own close, previous and next. Closing moves focus back to
-  // the PR's row, since the button that had it goes away.
+  // The pane's own close, previous and next. Closing hides the pane (a row
+  // click shows it again) and clears the selection, asking first with
+  // unsaved notes; focus goes back to the PR's row, since the button that
+  // had it goes away - the copy kept still on screen, without scrolling (the
+  // PR's first copy can be in another section, and focusing it scrolled the
+  // page there), or else its first copy.
   const handleClosePane = useStableCallback(() => {
     const closing = selectedPr;
-    if (!closing || !selectPr(null)) return;
-    findRowLink(closing)?.focus();
+    if (closing && !selectPr(null)) return;
+    const anchor = showPane(false);
+    if (!closing) return;
+    const keptRow = anchor?.element.closest('tr.pr-row');
+    const keptLink =
+      keptRow?.getAttribute('data-pr-number') === closing.prNumber ? keptRow.querySelector<HTMLElement>('.pr-link') : null;
+    if (keptLink) keptLink.focus({ preventScroll: true });
+    else findRowLink(closing)?.focus();
   });
+  // The whole row comes into view, below the stuck headers (pr-table.css).
   const handleStepPr = (target: SelectedPr | undefined) => {
-    if (target && selectPr(target)) findRowLink(target)?.scrollIntoView?.({ block: 'nearest' });
+    if (target && selectPr(target)) findRowLink(target)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
   };
 
   // Hiding the pane unmounts its Notes too.
   const handleTogglePane = () => {
     if (isPaneVisible && !confirmLeavingPr()) return;
-    setPaneVisible(!isPaneVisible);
+    showPane(!isPaneVisible);
   };
 
   // The same object until the payload's own map changes (a fresh `{}` each
   // render defeated row memoization when the payload has none).
   const actorsMap = useMemo(() => payload?.actorsMap || NO_ACTORS, [payload?.actorsMap]);
 
-  // Loading state: Show message while data loads
-  if (sections.length === 0) {
+  // Loading state: Show message while data loads (no sections built yet -
+  // not every section hidden, which shows its own message below).
+  if (builtSections.length === 0) {
     const hasPayload = payload && Object.keys(payload).length > 0;
     const hasPrs = payload?.byPrNumber && Object.keys(payload.byPrNumber).length > 0;
     
@@ -881,8 +992,8 @@ export function PrTableApp() {
         }}>
           ⏳
         </div>
-        <h3 style={{ margin: '0 0 10px 0', color: '#1f2328' }}>Loading Pull Requests...</h3>
-        <p style={{ fontSize: '14px', color: '#656d76', margin: '0' }}>
+        <h3 style={{ margin: '0 0 10px 0', color: 'var(--color-text)' }}>Loading Pull Requests...</h3>
+        <p style={{ fontSize: '14px', color: 'var(--color-text-muted)', margin: '0' }}>
           {!hasPayload && 'Fetching data from server...'}
           {hasPayload && !hasPrs && 'Processing repository data...'}
           {hasPrs && 'Building PR sections...'}
@@ -910,6 +1021,12 @@ export function PrTableApp() {
       </div>
       <div className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
         <div className="pr-workspace-list">
+          {sections.length === 0 && (
+            <div className="pr-sections-all-hidden">
+              <p>Every section is hidden.</p>
+              <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+            </div>
+          )}
           {sections.map((section) => (
             <PrSection
               key={section.key}
@@ -952,6 +1069,7 @@ export function PrTableApp() {
             onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
             onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
             onClose={handleClosePane}
+            onClearSelection={handleClearSelection}
             onCheckboxChange={handleCheckboxChange}
             onAckAction={handleAckActionBusy}
             onApplyLabel={handleApplyLabelBusy}

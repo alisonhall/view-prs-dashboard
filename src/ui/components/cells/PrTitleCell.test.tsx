@@ -67,20 +67,30 @@ describe('PrTitleCell', () => {
 
   // The same layout however wide the column: the chevron beside the title,
   // and the labels always on a line of their own under it.
-  test('puts the labels on their own line under the title', () => {
+  test('puts the PR number first, on a line of its own above the title, so it is in the same place on every row', () => {
+    renderCell({ pr: { number: '101', title: 'A long title that wraps onto more lines' } });
+    const numberLine = document.querySelector('.pr-title-number-line');
+    const link = screen.getByRole('link', { name: '#101' });
+    expect(numberLine?.firstElementChild).toBe(link);
+    expect(numberLine?.nextElementSibling).toBe(document.querySelector('.pr-title-line'));
+    expect(document.querySelector('.pr-title-line')).not.toContainElement(link);
+  });
+
+  test('puts the labels after the PR number on the first line, and the title under them (two lines, not three)', () => {
     renderCell({ pr: { number: '101', title: 'Fix', labels: ['bug'] } });
+    const numberLine = document.querySelector('.pr-title-number-line');
     const titleLine = document.querySelector('.pr-title-line');
-    const labelsLine = document.querySelector('.pr-title-labels');
-    expect(titleLine).toHaveTextContent('Fix #101');
+    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101' }));
+    expect(numberLine).toContainElement(screen.getByText('bug'));
+    expect(titleLine).toHaveTextContent('Fix');
     expect(titleLine).not.toContainElement(screen.getByText('bug'));
-    expect(labelsLine).toContainElement(screen.getByText('bug'));
-    expect(titleLine?.nextElementSibling).toBe(labelsLine);
+    expect(numberLine?.nextElementSibling).toBe(titleLine);
     expect(document.querySelector('.pr-title-cell')?.firstElementChild).toBe(
       screen.getByRole('button', { name: 'Show summary for PR #101' }),
     );
   });
 
-  test('adds no labels line without labels', () => {
+  test('has no labels without labels', () => {
     renderCell({ pr: { number: '101', title: 'Fix' } });
     expect(document.querySelector('.pr-title-labels')).toBeNull();
   });

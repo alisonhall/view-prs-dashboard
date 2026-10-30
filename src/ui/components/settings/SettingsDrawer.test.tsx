@@ -127,6 +127,7 @@ describe('SettingsDrawer', () => {
       'Action log',
       'Actor names',
       'Export',
+      'Appearance',
     ]);
   });
 

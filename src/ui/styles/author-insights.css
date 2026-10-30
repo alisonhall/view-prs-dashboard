@@ -1,10 +1,10 @@
 /* The Authors view (AuthorInsights*). Moved from index.css (phase 10-1). */
 
 .author-insights-panel {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 10px;
   padding: 12px;
-  background: #f6f8fa;
+  background: var(--color-surface-inset);
   margin-bottom: 12px;
 }
 
@@ -17,25 +17,25 @@
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: #57606a;
+  color: var(--color-text-muted);
   max-width: 320px;
 }
 
 .author-insights-select {
   height: 34px;
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 0 10px;
   font-size: 14px;
   box-sizing: border-box;
-  background: #fff;
-  color: #1f2328;
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .author-insights-selected {
   font-size: 13px;
   font-weight: 600;
-  color: #1f2328;
+  color: var(--color-text);
   margin-bottom: 12px;
 }
 
@@ -46,7 +46,7 @@
 .author-insights-section h3 {
   margin: 0 0 10px;
   font-size: 14px;
-  color: #1f2328;
+  color: var(--color-text);
 }
 
 .author-insights-list {
@@ -55,8 +55,8 @@
 }
 
 .author-insights-item {
-  background: #fff;
-  border: 1px solid #d0d7de;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 10px 12px;
   display: grid;
@@ -65,7 +65,7 @@
 
 .author-insights-link {
   font-weight: 600;
-  color: #0969da;
+  color: var(--color-accent-text);
   text-decoration: none;
 }
 
@@ -74,19 +74,19 @@
 }
 
 .author-insights-table-link {
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  background: var(--color-surface-inset);
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
-  color: #0969da;
+  color: var(--color-accent-text);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .author-insights-table-link:hover {
-  background: #eaeef2;
-  border-color: #b1bac4;
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-emphasis);
 }
 
 .author-insights-meta {
@@ -95,21 +95,21 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .author-insights-meta-detail {
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .author-insights-badge {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 999px;
   padding: 2px 8px;
-  background: #f6f8fa;
-  color: #1f2328;
+  background: var(--color-surface-inset);
+  color: var(--color-text);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -119,30 +119,30 @@
 .author-insights-badge-sentiment-positive,
 .author-insights-badge-status-merged,
 .author-insights-badge-status-no-change {
-  border-color: #1f7a1f;
-  color: #1f7a1f;
-  background: #edf9ed;
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background: var(--color-success-subtle);
 }
 
 .author-insights-badge-sentiment-negative,
 .author-insights-badge-status-closed,
 .author-insights-badge-status-changed {
-  border-color: #b42318;
-  color: #b42318;
-  background: #fff1f0;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
 }
 
 .author-insights-badge-sentiment-neutral,
 .author-insights-badge-status-no-activity,
 .author-insights-badge-status-default {
-  border-color: #0b7285;
-  color: #0b7285;
-  background: #eef9fb;
+  border-color: var(--color-info);
+  color: var(--color-info);
+  background: var(--color-info-subtle);
 }
 
 .author-insights-body {
   font-size: 13px;
-  color: #1f2328;
+  color: var(--color-text);
   white-space: pre-wrap;
 }
 
@@ -155,13 +155,13 @@
 .author-insights-comment-textarea {
   width: 100%;
   min-height: 72px;
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
   box-sizing: border-box;
-  background: #fff;
-  color: #1f2328;
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .author-insights-comment-controls {
@@ -173,24 +173,24 @@
 
 .author-insights-comment-sentiment {
   height: 32px;
-  border: 1px solid #c9d1d9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   padding: 0 8px;
   font-size: 12px;
-  background: #fff;
-  color: #1f2328;
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .author-insights-comment-save,
 .author-insights-comment-edit,
 .author-insights-comment-cancel {
   height: 32px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   padding: 0 10px;
   font-size: 12px;
-  background: #fff;
-  color: #0969da;
+  background: var(--color-surface);
+  color: var(--color-accent-text);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -198,13 +198,13 @@
 .author-insights-comment-save:hover,
 .author-insights-comment-edit:hover,
 .author-insights-comment-cancel:hover {
-  background: #eaf2ff;
-  border-color: #1f6feb;
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
 }
 
 .author-insights-comment-status {
   font-size: 12px;
-  color: #57606a;
+  color: var(--color-text-muted);
 }
 
 .author-insights-comment-actions {

@@ -79,4 +79,22 @@ describe("pr-ui-option-persistence helpers", () => {
 
     await expect(writeUiSessionOverrides({ repo: "a/b" })).resolves.toBeUndefined();
   });
+
+  test("updateUiSessionOverride sets one key and keeps the others, or removes it for undefined", async () => {
+    let saved = { repo: "a/b", theme: "dark" };
+    const fetchFn = jest.fn(async (_url, init) => {
+      if (init?.method === "PUT") {
+        saved = JSON.parse(init.body);
+        return { ok: true };
+      }
+      return { ok: true, json: async () => ({ overrides: saved }) };
+    });
+    const { updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+
+    await updateUiSessionOverride("prSections", { closed: { hidden: true } });
+    expect(saved).toEqual({ repo: "a/b", theme: "dark", prSections: { closed: { hidden: true } } });
+
+    await updateUiSessionOverride("theme", undefined);
+    expect(saved).toEqual({ repo: "a/b", prSections: { closed: { hidden: true } } });
+  });
 });

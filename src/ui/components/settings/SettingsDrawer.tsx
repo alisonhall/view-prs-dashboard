@@ -4,6 +4,7 @@ import { Tabs } from '../ui/Tabs';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { useMediaQuery } from '../../state/useMediaQuery';
 import { useHasSettingsSectionBeenVisible, useSettingsDrawer, type SettingsSectionId } from '../../state/SettingsDrawerContext';
+import { AppearanceSection } from './AppearanceSection';
 import { AttentionRulesSection } from './AttentionRulesSection';
 import { BackfillSection } from './BackfillSection';
 import { ChangeDetectionSection } from './ChangeDetectionSection';
@@ -59,6 +60,7 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; render: ()
       </OnceOpened>
     ),
   },
+  { id: 'appearance', label: 'Appearance', render: () => <AppearanceSection /> },
 ];
 const sectionIds = (id: string) => ({ tab: `settings-tab-${id}`, panel: `settings-panel-${id}` });
 

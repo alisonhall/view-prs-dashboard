@@ -32,6 +32,8 @@ import { AuthorInsightsDraftsProvider } from './components/AuthorInsightsDraftsP
 import { RowFilterSelectionProvider } from './state/RowFilterSelectionProvider';
 import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadResolutionSelectionProvider';
 import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
+import { ThemeProvider } from './state/ThemeProvider';
+import { PrSectionPreferencesProvider } from './state/PrSectionPreferencesProvider';
 import type { ReviewStatsViewState } from './state/PrDataContext';
 
 // The Review stats date range starts 3 months back from today (a
@@ -67,6 +69,10 @@ const DEFAULT_STATS_VIEW_STATE: ReviewStatsViewState = {
  * - AutoRenderBlockingProvider is outside PrDataProvider, which holds back
  *   new data while it says something is unsaved; AutoRenderBlockingSync
  *   works that out from NotesDirtyProvider and AuthorInsightsDraftsProvider.
+ * - ThemeProvider and PrSectionPreferencesProvider only need to cover
+ *   <AppShell /> (Settings › Appearance is in its drawer, and the table
+ *   reads the section choices); index.html sets the theme before anything
+ *   renders.
  * - The rest sit above <AppShell /> because components across the page
  *   read them (the header, the drawer and the table all reach the activity
  *   queue, the labels and the job events).
@@ -107,7 +113,11 @@ function mountApp(container: HTMLElement) {
                                                   bar's and the Settings drawer's), kept in step
                                                   with its options. */}
                                               <ListSelectionSeeding />
-                                              <AppShell />
+                                              <ThemeProvider>
+                                                <PrSectionPreferencesProvider>
+                                                  <AppShell />
+                                                </PrSectionPreferencesProvider>
+                                              </ThemeProvider>
                                             </FilterOptionsProvider>
                                           </JobEventsProvider>
                                         </AuthorInsightsDraftsProvider>

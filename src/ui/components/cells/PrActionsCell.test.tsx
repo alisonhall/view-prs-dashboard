@@ -48,23 +48,37 @@ const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
 };
 
 describe('PrActionsCell', () => {
-  test('In review and Flagged are toggles showing their state', () => {
-    renderCell({ isInReview: true, isFlagged: false });
-    expect(screen.getByRole('button', { name: 'In Review for PR #101', pressed: true })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Flagged for PR #101', pressed: false })).toBeInTheDocument();
+  test('only Ack and the More menu are buttons on the row', () => {
+    renderCell();
+    expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Ack PR #101',
+      'More actions for PR #101',
+    ]);
   });
 
-  test('toggling In review reports the PR, "inReview", the new state and the repo', async () => {
+  test('the More menu words In review and Flagged for what choosing them does', async () => {
+    const user = userEvent.setup();
+    renderCell({ isInReview: false, isFlagged: false });
+    const menu = await openMenu(user);
+    expect(within(menu).getByRole('menuitem', { name: 'Mark in review' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Flag' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+  });
+
+  test('the More menu\'s Mark in review reports the PR, "inReview", the new state and the repo', async () => {
     const user = userEvent.setup();
     const { onCheckboxChange } = renderCell({ isInReview: false });
-    await user.click(screen.getByRole('button', { name: 'In Review for PR #101' }));
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole('menuitem', { name: 'Mark in review' }));
     expect(onCheckboxChange).toHaveBeenCalledWith('101', 'inReview', true, 'owner/repo');
   });
 
-  test('toggling Flagged off reports false', async () => {
+  test('when flagged and in review, the More menu offers to remove them, reporting false', async () => {
     const user = userEvent.setup();
-    const { onCheckboxChange } = renderCell({ isFlagged: true });
-    await user.click(screen.getByRole('button', { name: 'Flagged for PR #101' }));
+    const { onCheckboxChange } = renderCell({ isFlagged: true, isInReview: true });
+    const menu = await openMenu(user);
+    expect(within(menu).getByRole('menuitem', { name: 'Remove from in review' })).toBeInTheDocument();
+    await user.click(within(menu).getByRole('menuitem', { name: 'Remove flag' }));
     expect(onCheckboxChange).toHaveBeenCalledWith('101', 'flagged', false, 'owner/repo');
   });
 
@@ -80,10 +94,11 @@ describe('PrActionsCell', () => {
     expect(onAckAction).toHaveBeenCalledWith('101', false, 'owner/repo');
   });
 
-  test('Update passes the PR number and an entry with the repo', async () => {
+  test('the More menu\'s Update PR passes the PR number and an entry with the repo', async () => {
     const user = userEvent.setup();
     const { onUpdatePr } = renderCell();
-    await user.click(screen.getByRole('button', { name: 'Update PR #101' }));
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole('menuitem', { name: 'Update PR' }));
     expect(onUpdatePr).toHaveBeenCalledWith('101', { prNumber: '101', repo: 'owner/repo' }, { number: '101' });
   });
 
@@ -98,7 +113,9 @@ describe('PrActionsCell', () => {
         </tbody>
       </table>,
     );
-    await user.click(screen.getByRole('button', { name: 'Update PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'Ack PR #101' }));
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #101' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Update PR' }));
     await user.click(screen.getByRole('button', { name: 'More actions for PR #101' }));
     await user.click(screen.getByRole('menuitem', { name: 'View PR JSON details' }));
   });

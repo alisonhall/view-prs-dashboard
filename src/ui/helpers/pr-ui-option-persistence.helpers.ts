@@ -119,11 +119,25 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     }
   };
 
+  // Saves one setting, keeping the others: reads the saved overrides, sets
+  // `key` (or removes it when `value` is undefined), and writes them back.
+  // Settings › Appearance saves its choices this way.
+  const updateUiSessionOverride = async (key: string, value: unknown): Promise<void> => {
+    const overrides = { ...(await readUiSessionOverrides()) };
+    if (value === undefined) {
+      delete overrides[key];
+    } else {
+      overrides[key] = value;
+    }
+    await writeUiSessionOverrides(overrides);
+  };
+
   return {
     getUiOptionDefaults,
     FILTER_STATE_FIELD_MAP,
     readUiSessionOverrides,
     writeUiSessionOverrides,
+    updateUiSessionOverride,
   };
 };
 
