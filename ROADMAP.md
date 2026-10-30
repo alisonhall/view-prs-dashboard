@@ -64,7 +64,7 @@
 - [ ] Remove all the unneeded extra padding around markdown paragraphs/bulleted lists/etc
 - [x] ~~Set max-height on 'Activity timeline' and add scroll when it overflows~~ - superseded (2026-10-25, UI_REDESIGN_PLAN.md phases 4-5): the timeline is a collapsed "Daily summary" in the detail pane, which scrolls as a whole
 - [x] ~~Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows~~ - superseded (2026-10-25, phases 4-5): each is its own tab in the detail pane, which scrolls
-- [ ] Add sticky table row
+- [x] ~~Add sticky table row~~ - done (2026-10-27, UI_REDESIGN_PLAN.md "New features"): an open section's header stays at the top of the window while its rows scroll, with its table's column headers under it (below the Auto update paused banner when it shows)
 
 ### Accessibility fixes
 
